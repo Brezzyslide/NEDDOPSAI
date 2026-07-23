@@ -21,10 +21,10 @@ export type PaginationParams = z.infer<typeof paginationSchema>;
 // ─── Organization ─────────────────────────────────────────────────────────────
 
 export const organizationStatusSchema = z.enum([
+  "onboarding",
   "active",
   "suspended",
-  "trial",
-  "inactive",
+  "closed",
 ]);
 
 export const subscriptionTierSchema = z.enum([

@@ -1,27 +1,34 @@
 /**
- * @workspace/permissions — Role hierarchy and permission map
+ * @workspace/permissions — Sprint 1 role hierarchy and permission map
  *
- * NeedsOps AI+ uses a simple four-level role hierarchy within each organisation.
- * Roles are additive — higher roles inherit all permissions from lower roles.
+ * Six membership roles in descending authority:
+ *   owner > administrator > manager > member > viewer > auditor
+ *
+ * Note: auditor is a special read-only role for compliance/audit purposes;
+ * it sits "beside" the hierarchy rather than strictly below viewer.
  */
 
-import type { UserRole } from "@workspace/shared";
+import type { MembershipRole } from "@workspace/shared";
 
-// ─── Role hierarchy (higher index = more permissions) ────────────────────────
+// ─── Role hierarchy ───────────────────────────────────────────────────────────
 
-export const ROLE_HIERARCHY: UserRole[] = [
+/** Ordered lowest → highest authority. Auditor is separate (read-only compliance role). */
+export const ROLE_HIERARCHY: MembershipRole[] = [
+  "auditor",
   "viewer",
   "member",
-  "admin",
+  "manager",
+  "administrator",
   "owner",
 ] as const;
 
 /**
  * Returns true if `userRole` has equal or higher authority than `requiredRole`.
+ * Auditor is treated as having the lowest operational authority.
  */
 export function roleAtLeast(
-  userRole: UserRole,
-  requiredRole: UserRole,
+  userRole: MembershipRole,
+  requiredRole: MembershipRole,
 ): boolean {
   return (
     ROLE_HIERARCHY.indexOf(userRole) >= ROLE_HIERARCHY.indexOf(requiredRole)
@@ -35,11 +42,18 @@ export type PermissionAction =
   | "organization:read"
   | "organization:update"
   | "organization:delete"
-  // Users
-  | "user:read"
-  | "user:invite"
-  | "user:update"
-  | "user:remove"
+  // Users / members
+  | "member:read"
+  | "member:invite"
+  | "member:update_role"
+  | "member:suspend"
+  | "member:reactivate"
+  | "member:remove"
+  // Invitations
+  | "invitation:read"
+  | "invitation:create"
+  | "invitation:resend"
+  | "invitation:revoke"
   // Workforce packs
   | "workforce:read"
   | "workforce:activate"
@@ -48,53 +62,62 @@ export type PermissionAction =
   | "worker:read"
   | "worker:assign"
   | "worker:manage"
-  // Audit logs
+  | "worker:approve"
+  // Audit
   | "audit:read"
+  // Security settings
+  | "security:manage"
   // Billing (Sprint 2+)
   | "billing:read"
-  | "billing:manage";
+  | "billing:manage"
+  // Organisation settings
+  | "settings:read"
+  | "settings:update";
 
-// ─── Permission map ───────────────────────────────────────────────────────────
+// ─── Role permission map ──────────────────────────────────────────────────────
 
-export const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
-  viewer: [
-    "organization:read",
-    "user:read",
-    "workforce:read",
-    "worker:read",
-  ],
-  member: [
-    "organization:read",
-    "user:read",
-    "workforce:read",
-    "workforce:activate",
-    "worker:read",
-    "worker:assign",
-  ],
-  admin: [
-    "organization:read",
-    "organization:update",
-    "user:read",
-    "user:invite",
-    "user:update",
-    "user:remove",
-    "workforce:read",
-    "workforce:activate",
-    "workforce:deactivate",
-    "worker:read",
-    "worker:assign",
-    "worker:manage",
-    "audit:read",
-    "billing:read",
-  ],
+export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
   owner: [
     "organization:read",
     "organization:update",
     "organization:delete",
-    "user:read",
-    "user:invite",
-    "user:update",
-    "user:remove",
+    "member:read",
+    "member:invite",
+    "member:update_role",
+    "member:suspend",
+    "member:reactivate",
+    "member:remove",
+    "invitation:read",
+    "invitation:create",
+    "invitation:resend",
+    "invitation:revoke",
+    "workforce:read",
+    "workforce:activate",
+    "workforce:deactivate",
+    "worker:read",
+    "worker:assign",
+    "worker:manage",
+    "worker:approve",
+    "audit:read",
+    "security:manage",
+    "billing:read",
+    "billing:manage",
+    "settings:read",
+    "settings:update",
+  ],
+  administrator: [
+    "organization:read",
+    "organization:update",
+    "member:read",
+    "member:invite",
+    "member:update_role",
+    "member:suspend",
+    "member:reactivate",
+    "member:remove",
+    "invitation:read",
+    "invitation:create",
+    "invitation:resend",
+    "invitation:revoke",
     "workforce:read",
     "workforce:activate",
     "workforce:deactivate",
@@ -102,7 +125,41 @@ export const ROLE_PERMISSIONS: Record<UserRole, PermissionAction[]> = {
     "worker:assign",
     "worker:manage",
     "audit:read",
+    "security:manage",
     "billing:read",
-    "billing:manage",
+    "settings:read",
+    "settings:update",
+  ],
+  manager: [
+    "organization:read",
+    "member:read",
+    "invitation:read",
+    "workforce:read",
+    "workforce:activate",
+    "worker:read",
+    "worker:assign",
+    "worker:approve",
+    "settings:read",
+  ],
+  member: [
+    "organization:read",
+    "member:read",
+    "workforce:read",
+    "worker:read",
+    "worker:assign",
+    "settings:read",
+  ],
+  viewer: [
+    "organization:read",
+    "member:read",
+    "workforce:read",
+    "worker:read",
+  ],
+  auditor: [
+    "organization:read",
+    "member:read",
+    "audit:read",
+    "workforce:read",
+    "worker:read",
   ],
 };

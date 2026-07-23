@@ -1,102 +1,52 @@
 ---
-name: NeedsOps Sprint 0 conventions
-description: Key decisions, gotchas, and patterns from the NeedsOps AI+ Sprint 0 build — covers OpenAPI codegen, Zod v3, mobile metro config, DB schema, and the cross-lib TypeScript resolution pattern.
+name: NeedsOps Sprint 0 + Sprint 1 conventions
+description: Key decisions, gotchas, and non-obvious rules from Sprint 0 and Sprint 1 of NeedsOps AI+
 ---
 
-## Cross-lib @workspace/* imports need tsconfig paths
+## OpenAPI / Codegen
+- `lib/api-zod` contains auto-generated Zod schemas from the OpenAPI spec; do NOT hand-edit it
+- Regenerate via `pnpm --filter @workspace/api-zod run generate`
 
-**Rule:** Lib packages that import from other `@workspace/*` packages (e.g. `lib/auth` importing `@workspace/shared`) must declare TypeScript `paths` in their own `tsconfig.json`. pnpm does NOT hoist workspace package symlinks to root node_modules, and newly added packages don't get cross-linked automatically.
+## Zod v3 gotchas
+- `.default()` on optional fields must come after `.optional()`: `z.string().optional().default("")`
+- Zod v3 `.enum([...])` requires a non-empty tuple literal; use `as const` on the array
 
-**Why:** The workspace uses pnpm without shameful hoisting. Existing packages that work only import from npm packages (drizzle-orm, zod, etc.), never from `@workspace/*`. New cross-lib imports fail with `Cannot find module '@workspace/X'` until paths are added.
+## lib/permissions guards API (Sprint 1)
+- `hasPermission(actor: MembershipActor, action: PermissionAction): boolean` — first arg is an OBJECT `{ userId, organizationId, role }`, NOT a role string
+- `canModifyMembership(actor, targetRole, isLastOwner: boolean)` — third param required
+- `roleAtLeast(role, required)` takes role strings directly (no actor object)
+- Administrators CAN manage other administrators (only owners are off-limits for admins)
 
-**How to apply:** In the consuming package's `tsconfig.json`:
-```json
-"paths": {
-  "@workspace/shared": ["../shared/src/index.ts"],
-  "@workspace/auth": ["../auth/src/index.ts"]
-}
-```
-For agents (two directories deep): use `../../lib/shared/src/index.ts`.
-Also add the corresponding `references` entries pointing to the same packages.
+## DB schema decisions (Sprint 1)
+- `users.organizationId` FK was REMOVED in Sprint 1 — membership is via `memberships` table
+- `users.externalId` = Clerk user ID; JIT-provisioned on first authenticated API hit
+- `organizations.status` enum = `onboarding | active | suspended | closed` (old: trial/inactive removed)
+- `invitations.invited_by` column = FK to users.id (NOT `invited_by_user_id`)
+- `workforce_packs` has NO `slug`, `category`, `display_order`, `price_per_month`, `worker_count`, or `is_featured` — only: id, name, description, industry, workers (jsonb), tier, status
+- Security boundary is UUID (`tenantContext.tenantId`), slug is cosmetic only
+- All tenant-scoped DB queries must use `tenantContext.tenantId`, never the slug
 
----
+## Mobile metro config
+- Must exclude `minimumReleaseAge` for Clerk packages in `pnpm-workspace.yaml`; otherwise pnpm skips recent Clerk releases
+- `expo-secure-store`, `expo-linking` are required peers of `@clerk/expo` — must be listed in mobile `package.json`
+- `react-native-worklets@0.5.1` required by `react-native-reanimated@4.x` in Expo SDK 53 (the `latest` tag installs too-new a version; pin to `0.5.1`)
+- `@types/react` must match `~19.1.10` for Expo SDK 53 compatibility (pnpm catalog value); subagent bumped it to `^19.2.0` which broke metro
+- `expo-linking` expected version for Expo SDK 53 is `~8.0.12`
 
-## lib packages that need node globals must declare "types": ["node"]
+## API server TypeScript rules
+- Express 5 + `@types/express` v5: `req.params.x` returns `string | string[]` — always wrap with `String(req.params.x)`
+- `@clerk/shared/keys` does NOT export `publishableKeyFromHost` in v2 — use `clerkMiddleware()` (reads env vars automatically)
+- `clerkMiddleware()` from `@clerk/express` auto-reads `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` from `process.env`; do NOT pass a callback
+- api-server tsconfig `references` must include lib/validation to get fresh types after schema changes; otherwise stale dist/ is used
 
-**Rule:** Add `"types": ["node"]` to the tsconfig and `"@types/node": "catalog:"` to package.json devDeps.
+## lib rebuild order
+Rebuild in this order when schema changes: `lib/shared` → `lib/db` → `lib/auth` → `lib/permissions` → `lib/validation`
+Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 
-**Why:** `tsconfig.base.json` uses `"lib": ["es2022"]` — no node globals by default. Packages using `drizzle-orm/pg-core` or any node globals need this. Pattern established in `lib/db`.
+## Sprint routing convention
+- Sprint 0 routes at `/api/*` (preserved for backwards compat)
+- Sprint 1 routes at `/v1/*`
 
-**Note:** For newly added packages, `@types/node` via devDep may not link immediately after `pnpm install`. If the error persists, simplify the package to avoid node types in Sprint 0 shells and defer the full implementation to Sprint 1 when the package is properly established.
-
----
-
-## Sprint 0 — what was built
-
-**Libs:**
-- `lib/shared` — platform constants, enums, labels
-- `lib/validation` — hand-authored Zod v3 schemas
-- `lib/api-spec` — OpenAPI 3.1 source (12 endpoints)
-- `lib/api-zod` — Orval-generated Zod schemas (do not edit)
-- `lib/api-client-react` — Orval-generated React Query hooks (do not edit)
-- `lib/db` — Drizzle ORM schema + pg client
-- `lib/auth` — auth types + middleware stubs
-- `lib/permissions` — RBAC role hierarchy + guards
-- `lib/integrations` — integration provider types + registry interface
-- `lib/agent-runtime` — Agent/AgentRunner interfaces + task/response types
-- `lib/audit` — audit event types + logger stub (schema deferred to Sprint 1)
-
-**Agents:**
-- `agents/shared` — BaseAgent abstract class + prompt utilities
-- `agents/chief-of-staff` — NeedsOpsChiefOfStaff router shell
-- `agents/needsops-compliance-officer` — NDIS compliance specialist agent shell
-
-**Artifacts:**
-- `artifacts/api-server` — Express 5 API, all 12 endpoints live
-- `artifacts/needsops-web` — React+Vite Command Centre (5 pages, live data)
-- `artifacts/needsops-mobile` — Expo 53 mobile shell (4 tabs)
-- `artifacts/worker` — background worker shell
-- `artifacts/desktop-connector` — desktop connector shell
-- `artifacts/admin` — admin portal placeholder (README only)
-
-**Infrastructure:**
-- `infrastructure/docker/` — Dockerfile reference
-- `infrastructure/deployment/` — deployment README
-- `infrastructure/scripts/` — db-push.sh, seed.sh
-
----
-
-## OpenAPI codegen (Orval) — Zod v3 gotcha
-
-`format: email` in OpenAPI spec generates `zod.email()` which is Zod v4 syntax. Project uses Zod v3 compat. Remove `format: email` from the spec to avoid codegen breakage.
-
----
-
-## Expo mobile — required setup
-
-1. `"main": "expo-router/entry"` required in mobile `package.json` — missing causes Metro startup failure.
-2. `metro.config.js` needs monorepo watch folders: `watchFolders: [workspaceRoot]` and `resolver.nodeModulesPaths`.
-3. `setBaseUrl` must be called in `_layout.tsx` before any React Query hooks execute.
-
----
-
-## Database seed
-
-Seeded via raw SQL using `gen_random_uuid()` (Node crypto unavailable in CodeExecution sandbox).
-Seed data: 3 orgs (sunrise-ndis, horizon-care, brightpath-health), 4 users under sunrise-ndis, 4 workforce packs.
-
----
-
-## lib/intelligence and lib/entitlements
-
-Two additional libs added post-Sprint 0.
-
-**lib/intelligence** — deterministic rule engines (SCHADS Award, NDIS Pricing, NDIS Compliance, Risk Matrix, Quality Indicators). Agents call engines; engines never call agents. All rule data must be versioned (year-based) and traceable to a source document.
-
-**lib/entitlements** — answers "does this org's subscription include this feature?", separate from `lib/permissions` which answers "can this user do this action?". Both checks must pass for gated actions. Sprint 0 ships `TIER_FEATURES` + `TIER_USAGE_LIMITS` maps and synchronous `checkEntitlementFromTier` helpers. Sprint 2: async `EntitlementService` backed by DB subscription records.
-
-**UI terminology**: customer-facing UI already uses "AI Workforce" / "Workforce Packs" — zero "agent" labels in web or mobile. Internal code continues to use `agents/` directory. No rename required in code.
-
-## lib/audit schema deferred
-
-The `auditLogTable` Drizzle definition is stubbed out in `lib/audit/src/schema.ts` (plain TS types, no drizzle-orm import). The real Drizzle definition is in the file as a commented-out code block. Sprint 1: uncomment, add drizzle-orm dep, import into lib/db, push to DB.
+## Seed script
+- `infrastructure/scripts/seed.sh` uses raw `psql` (not a Node script)
+- Requires `DATABASE_URL` env var

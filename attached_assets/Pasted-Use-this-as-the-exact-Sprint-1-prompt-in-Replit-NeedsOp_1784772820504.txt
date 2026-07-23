@@ -1,0 +1,1260 @@
+Use this as the exact Sprint 1 prompt in Replit.
+
+# NeedsOps AI+
+
+## Sprint 1: Organisations, Identity and Tenant Security
+
+Sprint 0 is approved and complete.
+
+Proceed with Sprint 1 only.
+
+Do not begin Sprint 2 or any later sprint until Sprint 1 has been implemented, tested, documented and approved.
+
+The purpose of Sprint 1 is to create the secure identity, organisation and tenant foundation that every future NeedsOps AI+ feature will depend on.
+
+NeedsOps AI+ is a multi-tenant AI operations and workforce platform.
+
+Every customer organisation must have its own secure tenant boundary.
+
+Users may belong to one or more organisations, but they must never access data belonging to an organisation unless they have an active membership in that organisation.
+
+Authentication confirms who the user is.
+
+Membership confirms which organisations the user belongs to.
+
+Permissions determine what the user may do.
+
+Entitlements determine what the organisation’s subscription includes.
+
+These concepts must remain separated throughout the architecture.
+
+---
+
+# Sprint 1 Objectives
+
+Build:
+
+* user registration
+* login
+* logout
+* email verification
+* password reset
+* secure sessions
+* organisation creation
+* organisation onboarding
+* organisation switching
+* team membership
+* invitation workflow
+* role-based access control
+* tenant context middleware
+* server-side tenant isolation
+* audit logging
+* protected web routes
+* protected API routes
+* authenticated mobile foundation
+* organisation dashboard shell
+* account and security settings
+
+Do not build:
+
+* Stripe
+* subscription billing
+* workforce pack purchasing
+* OpenAI integration
+* OpenClaw integration
+* Google integration
+* Microsoft integration
+* Xero
+* MYOB
+* ATO integration
+* document intelligence
+* Awa or NeedsOps Connect
+* browser extension
+* SCHADS engine implementation
+* NDIS pricing engine implementation
+* marketplace
+* production AI workers
+
+Use the existing `lib/entitlements` package only as a structural dependency. Do not implement paid plan enforcement yet.
+
+---
+
+# Non-Negotiable Security Principles
+
+The following rules must be enforced:
+
+1. Never trust a tenant ID supplied by the frontend.
+2. Every protected request must resolve the authenticated user on the server.
+3. Every tenant-scoped request must verify active organisation membership.
+4. Every tenant-owned query must include the resolved tenant ID.
+5. A user must not access another tenant by changing a URL, request body, query string or header.
+6. Role checks must happen on the server.
+7. Session tokens must not expose secrets.
+8. Passwords must never be stored directly.
+9. Authentication secrets must remain server-side.
+10. Every membership and role change must be audited.
+11. All invitation tokens must expire.
+12. Invitation tokens must be single use.
+13. Suspended users and memberships must lose access immediately.
+14. Deleted or inactive organisations must not allow operational access.
+15. Audit logs must not contain passwords, session tokens or raw secrets.
+
+Create automated tests for these boundaries.
+
+---
+
+# Authentication Technology
+
+Use the authentication solution already chosen or prepared in Sprint 0.
+
+If no production-ready authentication provider has been configured, use one of:
+
+* Clerk
+* Auth.js
+* another reputable provider compatible with the existing stack
+
+Prefer the option that works reliably within the current Replit architecture and remains portable to AWS later.
+
+Do not build password cryptography manually if a trusted authentication provider can handle it.
+
+The authentication layer must support both web and future mobile clients.
+
+Create an authentication abstraction in:
+
+```text
+lib/auth
+```
+
+The rest of the application should not depend directly on provider-specific implementation details.
+
+Create interfaces such as:
+
+```typescript
+interface AuthenticatedIdentity {
+  externalUserId: string;
+  email: string;
+  emailVerified: boolean;
+  displayName?: string;
+}
+
+interface AuthService {
+  getCurrentIdentity(): Promise<AuthenticatedIdentity | null>;
+  requireIdentity(): Promise<AuthenticatedIdentity>;
+  revokeSessions(externalUserId: string): Promise<void>;
+}
+```
+
+Adjust naming to suit the existing codebase, but preserve the abstraction.
+
+---
+
+# User Registration
+
+Build a complete user registration flow.
+
+Required fields:
+
+* first name
+* last name
+* email
+* password, if provider-managed email/password authentication is used
+* acceptance of Terms of Service
+* acceptance of Privacy Policy
+
+Record:
+
+* acceptance date
+* terms version
+* privacy version
+
+After registration:
+
+1. create the authentication identity
+2. create or update the application user record
+3. send email verification
+4. route the user to verification or onboarding
+5. prevent organisation administration until email is verified
+
+The user record should include:
+
+* id
+* external authentication ID
+* email
+* first name
+* last name
+* display name
+* email verification state
+* status
+* preferred timezone
+* locale
+* terms accepted at
+* terms version
+* privacy accepted at
+* privacy version
+* last login at
+* created at
+* updated at
+
+User statuses:
+
+```text
+pending_verification
+active
+suspended
+deactivated
+```
+
+---
+
+# Login and Session Management
+
+Build:
+
+* login page
+* logout
+* persistent session
+* session expiry handling
+* protected routes
+* session revocation
+* invalid session handling
+* account suspension handling
+
+After login:
+
+* if email is not verified, redirect to verification
+* if user has no organisation, redirect to organisation onboarding
+* if user belongs to one organisation, open that organisation
+* if user belongs to several organisations, use the last active organisation or show the organisation selector
+
+Record successful login in the audit log.
+
+Record security-relevant failed login information only where the provider makes it safely available.
+
+Do not store plaintext passwords or raw authentication tokens.
+
+---
+
+# Email Verification
+
+Build:
+
+* verification screen
+* resend verification option
+* verification state refresh
+* clear error messaging
+* expired verification handling
+
+Users should be able to sign in before verification only to complete the verification and onboarding process.
+
+They must not access operational organisation data until verification is complete.
+
+---
+
+# Password Reset
+
+Build:
+
+* forgot password page
+* reset email flow
+* reset confirmation page
+* successful reset handling
+* expired link handling
+* security confirmation notification where supported
+
+Password reset should be provider-managed where possible.
+
+---
+
+# Organisation Creation
+
+After identity verification, a user without an organisation should enter organisation onboarding.
+
+Create an organisation with:
+
+* legal or trading name
+* organisation display name
+* slug
+* organisation type
+* industry
+* country
+* state or territory
+* timezone
+* number of employees
+* number of participants or clients, optional
+* business phone
+* website, optional
+* ABN, optional
+* NDIS registration number, optional
+* primary contact name
+* primary contact email
+* preferred data region
+* status
+* created at
+* updated at
+
+Initial target industry options should include:
+
+* NDIS provider
+* disability services
+* aged care
+* healthcare
+* education
+* professional services
+* other regulated organisation
+* other
+
+Organisation statuses:
+
+```text
+onboarding
+active
+suspended
+closed
+```
+
+When the organisation is created:
+
+1. create the tenant record
+2. create tenant settings
+3. create the owner membership
+4. create default role assignments
+5. create an audit event
+6. set the new organisation as active in the user session
+7. redirect to the organisation dashboard
+
+The creator becomes:
+
+```text
+owner
+```
+
+---
+
+# Organisation Slugs
+
+Create safe organisation slugs.
+
+Requirements:
+
+* lowercase
+* URL safe
+* unique
+* protected against reserved words
+* capable of receiving a numeric or random suffix where needed
+
+Reserved examples:
+
+```text
+admin
+api
+login
+register
+support
+security
+billing
+settings
+system
+needsops
+```
+
+Do not use the slug as the security boundary.
+
+The organisation UUID remains the authoritative tenant identifier.
+
+---
+
+# Tenant Settings
+
+Create or complete a `tenant_settings` table.
+
+Fields should support:
+
+* tenant ID
+* timezone
+* locale
+* date format
+* time format
+* default currency
+* industry
+* data region preference
+* security notification email
+* organisation branding placeholder
+* created at
+* updated at
+
+Do not build full branding configuration yet.
+
+---
+
+# Membership Model
+
+A user may belong to multiple organisations.
+
+Create or complete the membership model.
+
+Fields:
+
+* id
+* tenant ID
+* user ID
+* role
+* status
+* invited by
+* joined at
+* suspended at
+* created at
+* updated at
+
+Membership statuses:
+
+```text
+invited
+active
+suspended
+revoked
+```
+
+Organisation roles:
+
+```text
+owner
+administrator
+manager
+member
+viewer
+auditor
+```
+
+Use the existing `lib/permissions` package.
+
+Do not duplicate permission definitions inside route handlers.
+
+---
+
+# Role and Permission Rules
+
+Use the existing role hierarchy and permission map.
+
+At minimum:
+
+## Owner
+
+Can:
+
+* update organisation
+* manage billing later
+* invite users
+* remove users
+* change roles
+* manage integrations later
+* manage workforce later
+* view audit logs
+* manage security
+* transfer ownership later
+
+## Administrator
+
+Can:
+
+* invite users
+* manage most memberships
+* manage organisation settings
+* manage future integrations
+* view audit logs
+* cannot remove or demote the final owner
+* cannot transfer ownership unless explicitly allowed later
+
+## Manager
+
+Can:
+
+* use operational functions
+* create future tasks
+* approve permitted future actions
+* view relevant team activity
+* cannot manage billing
+* cannot manage owners
+
+## Member
+
+Can:
+
+* use authorised workforce functions later
+* view their permitted tasks and documents
+* cannot manage organisation settings
+
+## Viewer
+
+Can:
+
+* read authorised results
+* cannot create or approve actions
+
+## Auditor
+
+Can:
+
+* view audit logs
+* view relevant evidence and reports later
+* cannot perform operational actions
+
+Implement:
+
+```typescript
+requirePermission(permission)
+```
+
+and tenant-aware permission helpers.
+
+Do not rely only on hiding buttons in the UI.
+
+---
+
+# Tenant Context
+
+Create a server-side tenant context service and middleware.
+
+A protected request must resolve:
+
+```typescript
+interface TenantContext {
+  userId: string;
+  externalUserId: string;
+  tenantId: string;
+  membershipId: string;
+  role: MembershipRole;
+  permissions: Permission[];
+}
+```
+
+Tenant resolution may use:
+
+* organisation slug in the route
+* active organisation stored in the session
+* an organisation selector
+
+But the server must verify that the authenticated user has an active membership in the resolved organisation.
+
+Reject requests where:
+
+* user is unauthenticated
+* email is unverified
+* user is suspended
+* tenant is inactive
+* membership is missing
+* membership is suspended
+* required permission is missing
+
+Return consistent error responses.
+
+Suggested error codes:
+
+```text
+AUTHENTICATION_REQUIRED
+EMAIL_VERIFICATION_REQUIRED
+USER_SUSPENDED
+TENANT_NOT_FOUND
+TENANT_INACTIVE
+MEMBERSHIP_REQUIRED
+MEMBERSHIP_SUSPENDED
+PERMISSION_DENIED
+```
+
+---
+
+# Tenant Isolation
+
+Update all tenant-owned database services so they require tenant context.
+
+Avoid functions like:
+
+```typescript
+getTaskById(taskId)
+```
+
+Prefer:
+
+```typescript
+getTaskById({
+  tenantId,
+  taskId
+})
+```
+
+Even where task functionality is not yet active, establish this pattern in repositories and services.
+
+Create tenant-scoped repository helpers.
+
+Add tests proving:
+
+1. Tenant A cannot retrieve Tenant B organisation.
+2. Tenant A cannot retrieve Tenant B membership.
+3. A user cannot switch to an organisation without membership.
+4. Changing a tenant slug in the URL does not grant access.
+5. A suspended membership is rejected.
+6. A viewer cannot perform an administrator action.
+7. An administrator in Tenant A has no permissions in Tenant B unless separately assigned there.
+
+---
+
+# Organisation Switching
+
+Build organisation switching for multi-organisation users.
+
+Create:
+
+* organisation selector
+* list of active memberships
+* active organisation indicator
+* switch organisation action
+* last active organisation storage
+* safe redirection after switching
+
+When switching organisations:
+
+* verify active membership
+* refresh tenant context
+* clear tenant-specific cached state
+* record an audit event
+* redirect to the selected organisation dashboard
+
+Never accept an arbitrary tenant ID without verifying membership.
+
+---
+
+# Invitations
+
+Build a complete invitation workflow.
+
+Organisation owners and authorised administrators should be able to:
+
+* invite a user by email
+* select a role
+* view pending invitations
+* resend invitation
+* revoke invitation
+* see invitation expiry
+* see accepted status
+
+Invitation fields:
+
+* id
+* tenant ID
+* email
+* role
+* status
+* token hash
+* invited by user ID
+* expires at
+* accepted at
+* revoked at
+* created at
+* updated at
+
+Invitation statuses:
+
+```text
+pending
+accepted
+expired
+revoked
+```
+
+Security rules:
+
+* store token hashes, not plaintext tokens
+* tokens expire
+* tokens are single use
+* accepted tokens cannot be reused
+* revoked invitations cannot be accepted
+* invitation email must match the authenticated account
+* membership must not be duplicated
+* repeated webhooks or requests must remain idempotent
+
+Invitation flow:
+
+1. authorised user submits invitation
+2. system validates seat logic structurally, but no paid limit enforcement yet
+3. invitation record is created
+4. secure invitation link is generated
+5. email is sent or safely logged in development
+6. recipient signs in or creates account
+7. email is verified
+8. recipient accepts invitation
+9. active membership is created
+10. invitation is marked accepted
+11. audit events are written
+12. recipient can enter the organisation
+
+Create development-friendly email handling.
+
+If a real email provider is not configured, provide a safe development preview or local log, but do not claim that production email delivery is live.
+
+---
+
+# Team Management
+
+Build a team management page.
+
+Features:
+
+* list members
+* filter by role
+* filter by status
+* view pending invitations
+* invite member
+* change role
+* suspend membership
+* reactivate membership
+* remove or revoke membership
+* resend invitation
+* revoke invitation
+
+Protection rules:
+
+* final active owner cannot be removed
+* user cannot accidentally remove their own final owner access
+* administrator cannot remove the owner
+* role changes are audited
+* membership changes are tenant-scoped
+
+Do not implement ownership transfer yet unless the existing architecture makes it safe and straightforward.
+
+---
+
+# Protected Web Routes
+
+Create protected routes for:
+
+```text
+/app
+/app/:organisationSlug
+/app/:organisationSlug/dashboard
+/app/:organisationSlug/team
+/app/:organisationSlug/settings
+/app/:organisationSlug/security
+/app/:organisationSlug/audit
+```
+
+The exact route design may follow the existing web architecture.
+
+Dashboard should show:
+
+* organisation name
+* user role
+* AI Workforce placeholder
+* Connected Systems placeholder
+* Recent Activity placeholder
+* Tasks placeholder
+* Approvals placeholder
+* Sprint 1 onboarding status
+
+Do not claim AI, connectors or task execution are active.
+
+Use honest empty states such as:
+
+```text
+Your AI Workforce will be activated in a later sprint.
+```
+
+---
+
+# Account Settings
+
+Build account settings.
+
+Allow user to:
+
+* update first name
+* update last name
+* update display name
+* view email
+* see verification status
+* view active organisations
+* logout
+* revoke other sessions where supported
+* start password reset
+* deactivate account request placeholder
+
+Do not allow a user to change their email without a proper verification flow.
+
+---
+
+# Organisation Settings
+
+Build organisation settings.
+
+Allow authorised roles to update:
+
+* display name
+* business phone
+* website
+* industry
+* timezone
+* state
+* primary contact
+* security notification email
+
+ABN and NDIS registration number may be editable by owner or administrator.
+
+Record all material changes in the audit log.
+
+---
+
+# Security Settings
+
+Create a security settings page showing:
+
+* email verification
+* current session
+* session management, where supported
+* MFA status placeholder
+* recent security activity
+* password reset
+* organisation security contact
+
+Do not claim MFA is active unless it is actually implemented.
+
+Keep the architecture MFA-ready.
+
+---
+
+# Audit Logging
+
+Use the existing `lib/audit` package.
+
+Implement the real audit table now if it was left as a placeholder.
+
+Record events including:
+
+```text
+user.registered
+user.email_verified
+user.logged_in
+user.logged_out
+user.profile_updated
+organisation.created
+organisation.updated
+organisation.switched
+membership.created
+membership.role_changed
+membership.suspended
+membership.reactivated
+membership.revoked
+invitation.created
+invitation.resent
+invitation.revoked
+invitation.accepted
+security.session_revoked
+```
+
+Audit record fields should include:
+
+* id
+* tenant ID where applicable
+* actor user ID
+* actor type
+* event type
+* resource type
+* resource ID
+* request ID
+* IP address where appropriate
+* user agent where appropriate
+* metadata
+* created at
+
+Do not store sensitive authentication tokens.
+
+Create an organisation audit page for owner, administrator and auditor roles.
+
+Support:
+
+* date filter
+* actor filter
+* event type filter
+* pagination
+* event details
+
+CSV export may remain for a later sprint unless simple to implement safely.
+
+---
+
+# Mobile Authentication Foundation
+
+Update the Expo mobile shell.
+
+Build:
+
+* login
+* registration
+* email verification
+* password reset entry
+* secure session storage
+* organisation selector
+* authenticated dashboard shell
+* logout
+
+Use secure storage suitable for Expo.
+
+Do not store raw passwords.
+
+Do not build full mobile workforce features yet.
+
+The mobile dashboard should honestly show Sprint 1 capabilities only.
+
+---
+
+# Admin Application
+
+Protect the platform admin shell.
+
+Create a basic distinction between:
+
+* platform administration roles
+* customer organisation roles
+
+Do not grant platform admin access merely because someone is an organisation owner.
+
+For Sprint 1, the admin portal may support:
+
+* platform admin login
+* basic system status
+* user count
+* tenant count
+* no customer impersonation
+* no editing customer data unless explicitly required
+
+Use an environment-configured bootstrap platform admin or a safe provider metadata role.
+
+All platform admin access must be audited.
+
+---
+
+# Database Changes
+
+Create or update migrations for:
+
+* users
+* tenants
+* tenant_settings
+* memberships
+* invitations
+* audit_logs
+* legal_acceptances, if stored separately
+* user_preferences, if needed
+* active organisation preference, if stored server-side
+
+Preserve Sprint 0 seed data only for development.
+
+Update seed scripts to include:
+
+* development user
+* development tenant
+* owner membership
+* optional administrator membership
+* optional viewer membership
+* sample pending invitation
+
+Do not use development seed accounts in production.
+
+---
+
+# API Routes
+
+Implement or adapt routes similar to:
+
+```text
+GET    /v1/me
+PATCH  /v1/me
+GET    /v1/me/organisations
+
+POST   /v1/organisations
+GET    /v1/organisations/:slug
+PATCH  /v1/organisations/:slug
+POST   /v1/organisations/:slug/switch
+
+GET    /v1/organisations/:slug/members
+PATCH  /v1/organisations/:slug/members/:membershipId
+POST   /v1/organisations/:slug/members/:membershipId/suspend
+POST   /v1/organisations/:slug/members/:membershipId/reactivate
+DELETE /v1/organisations/:slug/members/:membershipId
+
+GET    /v1/organisations/:slug/invitations
+POST   /v1/organisations/:slug/invitations
+POST   /v1/organisations/:slug/invitations/:invitationId/resend
+DELETE /v1/organisations/:slug/invitations/:invitationId
+
+POST   /v1/invitations/:token/accept
+
+GET    /v1/organisations/:slug/audit
+```
+
+Exact endpoints may follow current conventions.
+
+Use:
+
+* Zod validation
+* request IDs
+* tenant context
+* permission middleware
+* standard response format
+* pagination
+* idempotency where needed
+
+---
+
+# Error Handling
+
+Create clear user-facing errors.
+
+Examples:
+
+```text
+Your email must be verified before continuing.
+You do not belong to this organisation.
+Your membership has been suspended.
+You do not have permission to manage this team.
+This invitation has expired.
+This invitation has already been used.
+The organisation could not be found.
+```
+
+Do not expose stack traces in production responses.
+
+Log errors using the central logger.
+
+---
+
+# Testing Requirements
+
+Create comprehensive tests.
+
+## Authentication
+
+* unauthenticated user cannot open protected route
+* unverified user cannot access organisation operations
+* suspended user is rejected
+* logout invalidates local session appropriately
+
+## Organisations
+
+* verified user can create organisation
+* creator becomes owner
+* organisation slug is unique
+* reserved slug is rejected
+* inactive organisation blocks access
+
+## Memberships
+
+* owner can invite
+* administrator can invite where permitted
+* member cannot invite
+* viewer cannot change roles
+* final owner cannot be removed
+* suspended membership loses access
+* reactivated membership regains access
+
+## Invitations
+
+* valid invitation can be accepted
+* expired invitation fails
+* revoked invitation fails
+* reused invitation fails
+* wrong email fails
+* duplicate membership is prevented
+
+## Tenant isolation
+
+* Tenant A cannot read Tenant B settings
+* Tenant A cannot modify Tenant B membership
+* changing URL slug does not bypass membership
+* user with memberships in two tenants receives correct tenant context after switching
+
+## Audit
+
+* organisation creation logged
+* invitation creation logged
+* role change logged
+* suspension logged
+* organisation switch logged
+
+## Permissions
+
+Test every organisation role against representative permissions.
+
+All critical tests must pass before Sprint 1 is marked complete.
+
+---
+
+# Documentation
+
+Update:
+
+```text
+README.md
+docs/architecture.md
+docs/security-principles.md
+docs/tenant-isolation.md
+docs/authentication.md
+docs/organisation-model.md
+docs/roles-and-permissions.md
+docs/invitation-flow.md
+docs/audit-logging.md
+```
+
+Document:
+
+* authentication provider choice
+* why it was chosen
+* tenant resolution
+* session flow
+* role model
+* invitation security
+* platform admin separation
+* known limitations
+* Sprint 2 dependencies
+
+---
+
+# Quality Rules
+
+Do not:
+
+* bypass authentication during development
+* create hard-coded production users
+* trust organisation IDs from the client
+* duplicate permission logic
+* mix entitlements with permissions
+* expose authentication provider secrets
+* store invitation tokens in plaintext
+* permit cross-tenant queries
+* build billing
+* build OpenAI
+* build OpenClaw
+* build connectors
+* claim unfinished features work
+
+Use existing Sprint 0 packages rather than replacing them unnecessarily.
+
+Preserve the rule:
+
+```text
+Authentication asks: Who are you?
+
+Membership asks: Which organisation do you belong to?
+
+Permissions ask: Can you perform this action?
+
+Entitlements ask: Has the organisation paid for this capability?
+
+Approvals ask: Has a human authorised this specific action?
+```
+
+Sprint 1 implements the first three.
+
+Entitlement billing and operational approval workflows come later.
+
+---
+
+# Sprint 1 Completion Criteria
+
+Sprint 1 is complete only when:
+
+* user registration works
+* email verification works
+* login works
+* logout works
+* password reset works
+* organisation onboarding works
+* creator becomes owner
+* organisation switching works
+* invitations work
+* role changes work
+* membership suspension works
+* tenant context works
+* protected routes work
+* tenant isolation tests pass
+* audit logging works
+* mobile authentication shell works
+* platform admin access is separated
+* lint passes
+* type checking passes
+* migrations pass
+* seeds pass
+* tests pass
+* documentation is updated
+
+---
+
+# Final Required Output
+
+At completion, provide:
+
+```text
+SPRINT 1 COMPLETION REPORT
+
+Overall status:
+Complete / Incomplete
+
+Authentication provider:
+-
+
+Completed:
+-
+
+Web routes created:
+-
+
+API routes created:
+-
+
+Mobile features created:
+-
+
+Database changes:
+-
+
+Roles and permissions implemented:
+-
+
+Tenant isolation tests:
+-
+
+Invitation workflow:
+-
+
+Audit events implemented:
+-
+
+Tests passed:
+-
+
+Environment variables added:
+-
+
+Known issues:
+-
+
+Security concerns:
+-
+
+Technical debt:
+-
+
+Manual configuration required:
+-
+
+Recommended Sprint 2 scope:
+-
+
+Ready for Sprint 2:
+Yes / No
+```
+
+Begin Sprint 1 now.
+
+Complete, test and document Sprint 1.
+
+Do not begin billing, OpenAI, OpenClaw, Google, Microsoft or any other connector work.
+
+Stop after producing the Sprint 1 Completion Report.

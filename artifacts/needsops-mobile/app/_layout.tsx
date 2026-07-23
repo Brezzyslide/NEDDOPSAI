@@ -14,6 +14,8 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
+import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
 
 // Set the API base URL so Expo (outside the web proxy) can reach the API server.
 if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -25,10 +27,23 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+const proxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
+
 function RootLayoutNav() {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  if (!isLoaded) {
+    return null;
+  }
+
   return (
-    <Stack screenOptions={{ headerBackTitle: 'Back' }}>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack screenOptions={{ headerShown: false }}>
+      {isSignedIn ? (
+        <Stack.Screen name="(tabs)" />
+      ) : (
+        <Stack.Screen name="(auth)" />
+      )}
     </Stack>
   );
 }
@@ -50,16 +65,24 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null;
 
   return (
-    <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView>
-            <KeyboardProvider>
-              <RootLayoutNav />
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </QueryClientProvider>
-      </ErrorBoundary>
-    </SafeAreaProvider>
+    <ClerkProvider
+      publishableKey={publishableKey}
+      tokenCache={tokenCache}
+      proxyUrl={proxyUrl}
+    >
+      <ClerkLoaded>
+        <SafeAreaProvider>
+          <ErrorBoundary>
+            <QueryClientProvider client={queryClient}>
+              <GestureHandlerRootView>
+                <KeyboardProvider>
+                  <RootLayoutNav />
+                </KeyboardProvider>
+              </GestureHandlerRootView>
+            </QueryClientProvider>
+          </ErrorBoundary>
+        </SafeAreaProvider>
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }

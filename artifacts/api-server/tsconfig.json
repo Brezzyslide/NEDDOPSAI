@@ -5,15 +5,23 @@
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@workspace/shared": ["../../lib/shared/src/index.ts"],
+      "@workspace/auth": ["../../lib/auth/src/index.ts"],
+      "@workspace/permissions": ["../../lib/permissions/src/index.ts"],
+      "@workspace/db": ["../../lib/db/src/index.ts"],
+      "@workspace/validation": ["../../lib/validation/src/index.ts"],
+      "@workspace/api-zod": ["../../lib/api-zod/src/index.ts"]
+    }
   },
   "include": ["src"],
   "references": [
-    {
-      "path": "../../lib/db"
-    },
-    {
-      "path": "../../lib/api-zod"
-    }
+    { "path": "../../lib/db" },
+    { "path": "../../lib/api-zod" },
+    { "path": "../../lib/shared" },
+    { "path": "../../lib/auth" },
+    { "path": "../../lib/permissions" },
+    { "path": "../../lib/validation" }
   ]
 }

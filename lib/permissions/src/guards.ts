@@ -1,67 +1,78 @@
 /**
- * @workspace/permissions — Permission guards
- *
- * Utility functions for checking permissions. Sprint 1+ will integrate
- * these with the auth middleware to enforce access control in API routes.
+ * @workspace/permissions — Permission guards (Sprint 1)
  */
 
-import type { AuthUser } from "@workspace/auth";
 import { ROLE_PERMISSIONS, roleAtLeast } from "./roles.js";
 import type { PermissionAction } from "./roles.js";
-import type { UserRole } from "@workspace/shared";
+import type { MembershipRole } from "@workspace/shared";
 
-/**
- * Returns true if the user has the given permission based on their role.
- */
+// ─── Minimal actor interface (no express dependency) ─────────────────────────
+
+export interface MembershipActor {
+  userId: string;
+  organizationId: string;
+  role: MembershipRole;
+}
+
+// ─── Guards ───────────────────────────────────────────────────────────────────
+
 export function hasPermission(
-  user: AuthUser,
+  actor: MembershipActor,
   action: PermissionAction,
 ): boolean {
-  const allowed = ROLE_PERMISSIONS[user.role] ?? [];
+  const allowed = ROLE_PERMISSIONS[actor.role] ?? [];
   return allowed.includes(action);
 }
 
-/**
- * Returns true if the user's role meets the minimum required role.
- */
-export function hasRole(user: AuthUser, minimumRole: UserRole): boolean {
-  return roleAtLeast(user.role, minimumRole);
+export function hasRole(
+  actor: MembershipActor,
+  minimumRole: MembershipRole,
+): boolean {
+  return roleAtLeast(actor.role, minimumRole);
 }
 
-/**
- * Throws a permission error if the user does not have the required action.
- * Sprint 1: replace throw with an HTTP 403 response via Express middleware.
- */
 export function assertPermission(
-  user: AuthUser,
+  actor: MembershipActor,
   action: PermissionAction,
 ): void {
-  if (!hasPermission(user, action)) {
+  if (!hasPermission(actor, action)) {
     throw new Error(
-      `Permission denied: user role '${user.role}' cannot perform '${action}'`,
+      `Permission denied: role '${actor.role}' cannot perform '${action}'`,
     );
   }
 }
 
-/**
- * Returns true if the user belongs to the given organisation.
- * This is the core tenant isolation check — every data-access guard must call this.
- */
-export function belongsToOrg(user: AuthUser, organizationId: string): boolean {
-  return user.organizationId === organizationId;
+export function belongsToOrg(
+  actor: MembershipActor,
+  organizationId: string,
+): boolean {
+  return actor.organizationId === organizationId;
 }
 
-/**
- * Throws if the user does not belong to the given organisation.
- * Sprint 1: integrate into requireTenantAccess middleware.
- */
 export function assertTenantAccess(
-  user: AuthUser,
+  actor: MembershipActor,
   organizationId: string,
 ): void {
-  if (!belongsToOrg(user, organizationId)) {
+  if (!belongsToOrg(actor, organizationId)) {
     throw new Error(
-      `Tenant access denied: user belongs to org '${user.organizationId}', not '${organizationId}'`,
+      `Tenant access denied: actor belongs to '${actor.organizationId}', not '${organizationId}'`,
     );
   }
+}
+
+/**
+ * An administrator cannot remove or demote the final owner.
+ * An owner cannot remove themselves if they are the only owner.
+ */
+export function canModifyMembership(
+  actor: MembershipActor,
+  targetRole: MembershipRole,
+  isLastOwner: boolean,
+): boolean {
+  // No one can remove the last owner
+  if (isLastOwner && targetRole === "owner") return false;
+  // Administrators cannot demote/remove owners
+  if (actor.role === "administrator" && targetRole === "owner") return false;
+  // Must have at least administrator to modify memberships
+  return roleAtLeast(actor.role, "administrator");
 }

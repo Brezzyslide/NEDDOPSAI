@@ -142,67 +142,15 @@ router.delete("/:id", async (req, res) => {
   res.status(204).send();
 });
 
-// GET /organizations/:orgId/users
-router.get("/:orgId/users", async (req, res) => {
-  const { orgId } = req.params;
-
-  const [org] = await db
-    .select()
-    .from(organizationsTable)
-    .where(eq(organizationsTable.id, orgId))
-    .limit(1);
-
-  if (!org) {
-    res.status(404).json({ error: "Organization not found" });
-    return;
-  }
-
-  const users = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.organizationId, orgId))
-    .orderBy(usersTable.createdAt);
-
-  res.json({ items: users, total: users.length });
+// GET /organizations/:orgId/users — Sprint 0 stub (users no longer have direct org FK;
+// use /v1/organisations/:slug/members for Sprint 1)
+router.get("/:orgId/users", async (_req, res) => {
+  res.status(410).json({ error: "Deprecated. Use /v1/organisations/:slug/members instead." });
 });
 
-// POST /organizations/:orgId/users
-router.post("/:orgId/users", async (req, res) => {
-  const { orgId } = req.params;
-
-  const [org] = await db
-    .select()
-    .from(organizationsTable)
-    .where(eq(organizationsTable.id, orgId))
-    .limit(1);
-
-  if (!org) {
-    res.status(404).json({ error: "Organization not found" });
-    return;
-  }
-
-  const parsed = (await import("@workspace/validation")).createUserSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Validation error" });
-    return;
-  }
-
-  const id = randomUUID();
-  const [user] = await db
-    .insert(usersTable)
-    .values({ id, organizationId: orgId, ...parsed.data })
-    .returning();
-
-  // Increment userCount
-  await db
-    .update(organizationsTable)
-    .set({
-      userCount: org.userCount + 1,
-      updatedAt: new Date(),
-    })
-    .where(eq(organizationsTable.id, orgId));
-
-  res.status(201).json(user);
+// POST /organizations/:orgId/users — deprecated in Sprint 1 (use invitations)
+router.post("/:orgId/users", async (_req, res) => {
+  res.status(410).json({ error: "Deprecated. Use /v1/organisations/:slug/invitations instead." });
 });
 
 export default router;

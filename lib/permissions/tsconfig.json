@@ -7,13 +7,11 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
-      "@workspace/shared": ["../shared/src/index.ts"],
-      "@workspace/auth": ["../auth/src/index.ts"]
+      "@workspace/shared": ["../shared/src/index.ts"]
     }
   },
   "references": [
-    { "path": "../shared" },
-    { "path": "../auth" }
+    { "path": "../shared" }
   ],
   "include": ["src"]
 }

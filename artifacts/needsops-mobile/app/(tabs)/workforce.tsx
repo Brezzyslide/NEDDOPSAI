@@ -196,4 +196,6 @@ const styles = StyleSheet.create({
   workerChip: { borderRadius: 8, borderWidth: 1, padding: 10, minWidth: '45%', flex: 1 },
   workerName: { fontSize: 13, fontWeight: '600' },
   workerRole: { fontSize: 11, marginTop: 2 },
+  empty: { alignItems: 'center', paddingVertical: 40 },
+  emptyTitle: { fontSize: 14, fontWeight: '500' },
 });

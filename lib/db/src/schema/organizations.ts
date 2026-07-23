@@ -1,12 +1,18 @@
+/**
+ * organizations table — Sprint 1 update
+ *
+ * Added: displayName, type, country, state, timezone, employeeCount,
+ * participantCount, businessPhone, website, abn, ndisRegistrationNumber,
+ * primaryContactName, primaryContactEmail, dataRegion.
+ * Updated status enum: onboarding | active | suspended | closed.
+ */
 import { pgTable, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
-import { createInsertSchema } from "drizzle-zod";
-import { z } from "zod/v4";
 
 export const orgStatusEnum = pgEnum("org_status", [
+  "onboarding",
   "active",
   "suspended",
-  "trial",
-  "inactive",
+  "closed",
 ]);
 
 export const subscriptionTierEnum = pgEnum("subscription_tier", [
@@ -17,14 +23,43 @@ export const subscriptionTierEnum = pgEnum("subscription_tier", [
 
 export const organizationsTable = pgTable("organizations", {
   id: text("id").primaryKey(),
+
+  /** Legal or trading name */
   name: text("name").notNull(),
+
+  /** URL-safe display handle (not the security boundary — UUID is) */
   slug: text("slug").notNull().unique(),
+
+  /** Friendly display name (may differ from legal name) */
+  displayName: text("display_name"),
+
+  /** Organisation type, e.g. "ndis_provider", "aged_care" */
+  type: text("type"),
+
   industry: text("industry"),
-  status: orgStatusEnum("status").notNull().default("trial"),
+  country: text("country").default("AU"),
+  state: text("state"),
+  timezone: text("timezone").default("Australia/Sydney"),
+
+  employeeCount: integer("employee_count"),
+  participantCount: integer("participant_count"),
+
+  businessPhone: text("business_phone"),
+  website: text("website"),
+  abn: text("abn"),
+  ndisRegistrationNumber: text("ndis_registration_number"),
+
+  primaryContactName: text("primary_contact_name"),
+  primaryContactEmail: text("primary_contact_email"),
+
+  /** Preferred data residency region, e.g. "ap-southeast-2" */
+  dataRegion: text("data_region").default("ap-southeast-2"),
+
+  status: orgStatusEnum("status").notNull().default("onboarding"),
   subscriptionTier: subscriptionTierEnum("subscription_tier")
     .notNull()
     .default("starter"),
-  userCount: integer("user_count").notNull().default(0),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -33,13 +68,5 @@ export const organizationsTable = pgTable("organizations", {
     .defaultNow(),
 });
 
-export const insertOrganizationSchema = createInsertSchema(organizationsTable)
-  .omit({ createdAt: true, updatedAt: true })
-  .extend({
-    id: z.string().min(1),
-    name: z.string().min(2),
-    slug: z.string().min(2),
-  });
-
-export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type Organization = typeof organizationsTable.$inferSelect;
+export type InsertOrganization = typeof organizationsTable.$inferInsert;

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <rect width="200" height="200" fill="none"/>
+  <circle cx="100" cy="100" r="70" fill="#0B1829" stroke="#00D4FF" stroke-width="3"/>
+  <text x="100" y="92" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="700" font-size="32" fill="#00D4FF">NO</text>
+  <text x="100" y="122" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="400" font-size="11" fill="#64748B" letter-spacing="2">AI+</text>
+</svg>

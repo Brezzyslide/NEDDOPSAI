@@ -1,69 +1,81 @@
 /**
- * @workspace/auth — Core authentication types
+ * @workspace/auth — Sprint 1 core authentication types
  *
- * Sprint 0 shell. Full implementation in Sprint 1 (Clerk integration).
- * These types define the shape that auth middleware will inject into requests.
+ * These interfaces form the abstraction layer between the application and
+ * the authentication provider (Clerk). The rest of the application depends
+ * only on these interfaces, not on Clerk directly.
  */
 
-import type { UserRole } from "@workspace/shared";
+import type { MembershipRole } from "@workspace/shared";
 
-// ─── Authenticated user (injected by auth middleware) ────────────────────────
+// ─── Authenticated identity (from the auth provider) ─────────────────────────
 
-export interface AuthUser {
-  /** User's UUID (primary key in users table) */
+/**
+ * The identity returned by the authentication provider.
+ * Maps Clerk's session claims to a provider-agnostic shape.
+ */
+export interface AuthenticatedIdentity {
+  /** The external provider's user ID (Clerk user ID) */
+  externalUserId: string;
+  email: string;
+  emailVerified: boolean;
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
+}
+
+// ─── Application user (from the database) ────────────────────────────────────
+
+export interface AppUser {
   id: string;
-  /** The organisation this user belongs to */
-  organizationId: string;
-  /** User's role within their organisation */
-  role: UserRole;
-  /** User's email address */
+  externalId: string;
   email: string;
-  /** External identity provider subject ID (Clerk user ID in Sprint 1+) */
-  externalId?: string;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
+  status: "pending_verification" | "active" | "suspended" | "deactivated";
 }
 
-// ─── JWT payload ──────────────────────────────────────────────────────────────
+// ─── Tenant context (resolved per request) ───────────────────────────────────
 
-export interface JWTPayload {
-  sub: string;             // User ID
-  org: string;             // Organisation ID
-  role: UserRole;
-  email: string;
-  iat: number;
-  exp: number;
+/**
+ * Attached to every authenticated tenant-scoped request.
+ * This is the resolved security context — never trust anything else.
+ *
+ * `permissions` is typed as `string[]` so lib/auth has no dependency on
+ * lib/permissions (which itself depends on lib/auth via lib/shared). The
+ * API server's requirePermission middleware casts to PermissionAction[].
+ */
+export interface TenantContext {
+  userId: string;           // Internal DB user ID
+  externalUserId: string;   // Clerk user ID
+  tenantId: string;         // Organisation UUID (authoritative tenant boundary)
+  tenantSlug: string;       // Organisation slug (for display only)
+  membershipId: string;
+  role: MembershipRole;
+  permissions: string[];    // PermissionAction[] values (string to avoid circular dep)
 }
 
-// ─── Session ──────────────────────────────────────────────────────────────────
-
-export interface Session {
-  user: AuthUser;
-  /** ISO timestamp when the session was created */
-  createdAt: string;
-  /** ISO timestamp when the session expires */
-  expiresAt: string;
-}
-
-// ─── Auth context (attached to req.auth in Sprint 1+) ────────────────────────
-
-export interface AuthContext {
-  user: AuthUser;
-  session: Session;
-  /** True if the user is an org owner or admin */
-  isAdmin: boolean;
-  /** True if the user is the org owner */
-  isOwner: boolean;
-}
-
-// ─── Auth errors ─────────────────────────────────────────────────────────────
+// ─── Auth error codes ─────────────────────────────────────────────────────────
 
 export type AuthErrorCode =
-  | "UNAUTHENTICATED"
-  | "TOKEN_EXPIRED"
-  | "TOKEN_INVALID"
-  | "INSUFFICIENT_PERMISSIONS"
-  | "TENANT_MISMATCH";
+  | "AUTHENTICATION_REQUIRED"
+  | "EMAIL_VERIFICATION_REQUIRED"
+  | "USER_SUSPENDED"
+  | "TENANT_NOT_FOUND"
+  | "TENANT_INACTIVE"
+  | "MEMBERSHIP_REQUIRED"
+  | "MEMBERSHIP_SUSPENDED"
+  | "PERMISSION_DENIED";
 
-export interface AuthError {
-  code: AuthErrorCode;
-  message: string;
+// ─── Auth service interface ───────────────────────────────────────────────────
+
+/**
+ * The auth service abstraction. The application depends on this interface,
+ * not on Clerk's SDK directly.
+ */
+export interface AuthService {
+  getCurrentIdentity(req: unknown): Promise<AuthenticatedIdentity | null>;
+  requireIdentity(req: unknown): Promise<AuthenticatedIdentity>;
+  revokeSessions(externalUserId: string): Promise<void>;
 }
