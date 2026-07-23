@@ -3,20 +3,18 @@
   "compileOnSave": false,
   "files": [],
   "references": [
-    {
-      "path": "./lib/db"
-    },
-    {
-      "path": "./lib/api-client-react"
-    },
-    {
-      "path": "./lib/api-zod"
-    },
-    {
-      "path": "./lib/shared"
-    },
-    {
-      "path": "./lib/validation"
-    }
+    { "path": "./lib/db" },
+    { "path": "./lib/shared" },
+    { "path": "./lib/validation" },
+    { "path": "./lib/api-zod" },
+    { "path": "./lib/api-client-react" },
+    { "path": "./lib/auth" },
+    { "path": "./lib/permissions" },
+    { "path": "./lib/integrations" },
+    { "path": "./lib/agent-runtime" },
+    { "path": "./lib/audit" },
+    { "path": "./agents/shared" },
+    { "path": "./agents/chief-of-staff" },
+    { "path": "./agents/needsops-compliance-officer" }
   ]
 }

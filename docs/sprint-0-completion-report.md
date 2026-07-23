@@ -30,6 +30,14 @@ Sprint 0 delivers the monorepo architecture, all service shells, database schema
 | `@workspace/validation` | Lib | Zod v4 schemas for all domain entities |
 | `@workspace/api-zod` | Lib | Generated Zod schemas from OpenAPI spec |
 | `@workspace/api-client-react` | Lib | Generated React Query hooks from OpenAPI spec |
+| `@workspace/auth` | Lib | Auth types + middleware stubs (Sprint 1: Clerk) |
+| `@workspace/permissions` | Lib | RBAC role hierarchy and permission guards |
+| `@workspace/integrations` | Lib | Integration provider types and registry interface |
+| `@workspace/agent-runtime` | Lib | Agent/runner interfaces and task/response types |
+| `@workspace/audit` | Lib | Audit event types, logger stub, schema placeholder |
+| `@workspace/agent-shared` | Agent lib | BaseAgent abstract class + prompt utilities |
+| `@workspace/agent-chief-of-staff` | Agent | Chief of Staff router shell |
+| `@workspace/agent-compliance-officer` | Agent | NeedsOps Compliance Officer shell (NDIS-focused) |
 
 ### Database Schema (PostgreSQL + Drizzle ORM)
 
@@ -177,6 +185,6 @@ docker compose up
 
 ## Sign-off
 
-Sprint 0 is complete. All services are running. The database is seeded. The web portal is live and connected to real API data. All shells are in place.
+Sprint 0 is complete. All services are running. The database is seeded. The web portal is live and connected to real API data. All shells are in place — including auth, permissions, integrations, agent-runtime, audit, the Chief of Staff, and the NeedsOps Compliance Officer. The full `pnpm run typecheck:libs` passes clean with zero errors.
 
 **Awaiting approval to begin Sprint 1.**

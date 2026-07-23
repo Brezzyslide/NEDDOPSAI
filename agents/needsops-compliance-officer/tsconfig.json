@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "paths": {
+      "@workspace/shared": ["../../lib/shared/src/index.ts"],
+      "@workspace/agent-runtime": ["../../lib/agent-runtime/src/index.ts"],
+      "@workspace/agent-shared": ["../shared/src/index.ts"]
+    }
+  },
+  "references": [
+    { "path": "../../lib/shared" },
+    { "path": "../../lib/agent-runtime" },
+    { "path": "../shared" }
+  ],
+  "include": ["src"]
+}

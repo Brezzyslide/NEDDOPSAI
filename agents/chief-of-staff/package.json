@@ -1,0 +1,21 @@
+{
+  "name": "@workspace/agent-chief-of-staff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "workspace": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/shared": "workspace:*",
+    "@workspace/agent-runtime": "workspace:*",
+    "@workspace/agent-shared": "workspace:*"
+  }
+}
