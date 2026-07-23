@@ -13,6 +13,8 @@
     { "path": "./lib/integrations" },
     { "path": "./lib/agent-runtime" },
     { "path": "./lib/audit" },
+    { "path": "./lib/intelligence" },
+    { "path": "./lib/entitlements" },
     { "path": "./agents/shared" },
     { "path": "./agents/chief-of-staff" },
     { "path": "./agents/needsops-compliance-officer" }

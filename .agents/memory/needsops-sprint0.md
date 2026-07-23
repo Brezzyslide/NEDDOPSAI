@@ -87,6 +87,16 @@ Seed data: 3 orgs (sunrise-ndis, horizon-care, brightpath-health), 4 users under
 
 ---
 
+## lib/intelligence and lib/entitlements
+
+Two additional libs added post-Sprint 0.
+
+**lib/intelligence** — deterministic rule engines (SCHADS Award, NDIS Pricing, NDIS Compliance, Risk Matrix, Quality Indicators). Agents call engines; engines never call agents. All rule data must be versioned (year-based) and traceable to a source document.
+
+**lib/entitlements** — answers "does this org's subscription include this feature?", separate from `lib/permissions` which answers "can this user do this action?". Both checks must pass for gated actions. Sprint 0 ships `TIER_FEATURES` + `TIER_USAGE_LIMITS` maps and synchronous `checkEntitlementFromTier` helpers. Sprint 2: async `EntitlementService` backed by DB subscription records.
+
+**UI terminology**: customer-facing UI already uses "AI Workforce" / "Workforce Packs" — zero "agent" labels in web or mobile. Internal code continues to use `agents/` directory. No rename required in code.
+
 ## lib/audit schema deferred
 
 The `auditLogTable` Drizzle definition is stubbed out in `lib/audit/src/schema.ts` (plain TS types, no drizzle-orm import). The real Drizzle definition is in the file as a commented-out code block. Sprint 1: uncomment, add drizzle-orm dep, import into lib/db, push to DB.
