@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "NeedsOps AI+ Portal"
+version = "1.0.0"
+id = "artifacts/needsops-web"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21266
+
+[services.development]
+run = "pnpm --filter @workspace/needsops-web run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/needsops-web", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/needsops-web/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21266"
+BASE_PATH = "/"

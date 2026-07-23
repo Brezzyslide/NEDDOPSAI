@@ -1,0 +1,1 @@
+- [NeedsOps Sprint 0 conventions](needsops-sprint0.md) — OpenAPI codegen rules, Zod v3 gotchas, mobile metro config, DB schema decisions

@@ -1,0 +1,225 @@
+# NeedsOps AI+
+
+## Sprint 0 – Foundation Build
+
+You are the Lead Software Architect, Principal Engineer and AI Platform Designer for a new enterprise SaaS platform called **NeedsOps AI+**.
+
+## Vision
+
+NeedsOps AI+ is not another chatbot.
+
+It is an AI Operations Platform that enables organisations to build, manage and work alongside an intelligent AI workforce.
+
+The platform is designed to become the operational brain of an organisation, coordinating specialist AI employees, business systems, documents, workflows and human approvals from one secure platform.
+
+The long-term vision is to build one of the world's leading AI workforce platforms, beginning with the Australian NDIS sector before expanding into other regulated industries.
+
+NeedsOps AI+ will eventually power an ecosystem that includes:
+
+* NeedsCare AI+
+* Need2Comply AI+
+* Needs2Learn AI+
+* Future products including Finance, HR, Marketing and Executive Operations.
+
+NeedsOps AI+ becomes the central operating platform connecting them all.
+
+---
+
+# Core Philosophy
+
+Customers do not purchase individual AI agents.
+
+Customers subscribe to an intelligent AI workforce.
+
+Every organisation has one secure AI Command Centre.
+
+Behind that command centre is a Chief of Staff AI that understands the organisation and automatically coordinates specialist AI employees to complete work.
+
+The customer simply explains what they need.
+
+NeedsOps AI+ decides which specialist workforce members should perform the task.
+
+Examples include:
+
+* Compliance Officer
+* Operations Manager
+* Executive Assistant
+* Policy Officer
+* HR Manager
+* Finance Officer
+* Marketing Director
+* Quality Manager
+* Incident Review Officer
+
+The customer receives one coordinated response.
+
+---
+
+# Target Market (Phase One)
+
+Australian NDIS Providers
+
+The first specialist workforce capability will focus on compliance, governance and operational excellence for disability service providers.
+
+However, the software architecture must remain industry-agnostic so that healthcare, aged care, education, legal, finance and other industries can later be added without rebuilding the platform.
+
+---
+
+# Technical Principles
+
+Build an enterprise-grade SaaS platform from day one.
+
+The architecture must support:
+
+* multi-tenancy
+* strict tenant isolation
+* organisation subscriptions
+* user seats
+* workforce packs
+* AI usage allowances
+* specialist AI workers
+* OpenAI integration
+* OpenClaw orchestration
+* background workers
+* approval workflows
+* audit logging
+* document intelligence
+* Google Workspace
+* Microsoft 365
+* Xero
+* Zoho
+* secure local computer access
+* mobile applications
+* browser automation
+* enterprise deployment
+
+The software must remain portable from Replit development to AWS production.
+
+---
+
+# Technology Stack
+
+Preferred technologies:
+
+* TypeScript
+* Next.js
+* React
+* Tailwind CSS
+* Node.js
+* Fastify
+* PostgreSQL
+* Drizzle ORM
+* pnpm
+* Turborepo
+* Expo React Native
+* Docker
+* Stripe
+* OpenAI API
+
+OpenClaw will be used as the orchestration layer but must never be exposed directly to customers.
+
+NeedsOps AI+ owns:
+
+* authentication
+* tenancy
+* billing
+* permissions
+* subscriptions
+* user management
+* workforce provisioning
+* approvals
+* audit history
+
+OpenClaw operates entirely behind the NeedsOps API.
+
+---
+
+# Build Strategy
+
+This project will be built in structured sprints.
+
+Each sprint must produce production-quality software.
+
+Do not rush ahead.
+
+Complete one sprint.
+
+Test it thoroughly.
+
+Fix all issues.
+
+Document the work.
+
+Then stop and wait for approval before beginning the next sprint.
+
+Never sacrifice architecture for speed.
+
+Never create placeholder functionality that pretends to work.
+
+---
+
+# Sprint 0 Objective
+
+For Sprint 0, build only the platform foundation.
+
+This includes:
+
+* monorepo setup
+* shared architecture
+* Next.js web application
+* API service
+* PostgreSQL integration
+* Drizzle ORM
+* shared packages
+* Expo mobile shell
+* worker service shell
+* admin application shell
+* desktop connector shell
+* reusable UI package
+* reusable validation package
+* reusable shared package
+* logging
+* environment validation
+* Docker support
+* testing foundation
+* documentation
+
+Do not build authentication, billing, AI integrations, OpenClaw integration or customer functionality yet.
+
+Those will be introduced in future sprints.
+
+---
+
+# Quality Standard
+
+Every decision should assume this platform will eventually support:
+
+* millions of users
+* thousands of organisations
+* hundreds of millions of AI tasks
+* enterprise customers
+* healthcare-grade governance
+* regulatory compliance
+* mission-critical business operations
+
+Prioritise:
+
+* clean architecture
+* scalability
+* security
+* maintainability
+* readability
+* modularity
+* strong typing
+* comprehensive documentation
+
+When Sprint 0 is complete:
+
+* run the platform
+* verify all services
+* run all tests
+* produce a Sprint Completion Report
+* list any technical debt
+* recommend Sprint 1
+
+Then stop and wait for approval before proceeding.

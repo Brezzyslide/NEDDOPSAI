@@ -1,0 +1,42 @@
+{
+  "name": "@workspace/needsops-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start --port $PORT",
+    "build": "expo export",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo-google-fonts/inter": "^0.2.3",
+    "@expo/vector-icons": "^14.1.0",
+    "@tanstack/react-query": "catalog:",
+    "@workspace/api-client-react": "workspace:*",
+    "expo": "~53.0.0",
+    "expo-blur": "~14.1.5",
+    "expo-font": "~13.3.1",
+    "expo-glass-effect": "~0.2.2",
+    "expo-haptics": "~14.1.4",
+    "expo-router": "~4.1.6",
+    "expo-splash-screen": "~0.29.24",
+    "expo-status-bar": "~2.2.3",
+    "expo-symbols": "~0.4.5",
+    "expo-web-browser": "~14.1.6",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-native": "0.79.4",
+    "react-native-gesture-handler": "~2.24.0",
+    "react-native-keyboard-controller": "^1.16.4",
+    "react-native-reanimated": "~3.17.5",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "~4.10.0",
+    "react-native-web": "~0.20.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "typescript": "~5.9.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "build", "dist", "**/*.test.ts"],
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "references": [
+    { "path": "../../lib/db" },
+    { "path": "../../lib/shared" }
+  ]
+}

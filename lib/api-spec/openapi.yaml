@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: NeedsOps AI+ Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: organizations
+    description: Organization (tenant) management
+  - name: users
+    description: User management
+  - name: workforcePacks
+    description: Workforce pack management
+  - name: system
+    description: System-level operations
 paths:
   /healthz:
     get:
@@ -24,6 +32,246 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /organizations:
+    get:
+      operationId: listOrganizations
+      tags: [organizations]
+      summary: List all organizations
+      description: Returns a paginated list of organizations
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationList"
+    post:
+      operationId: createOrganization
+      tags: [organizations]
+      summary: Create a new organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationInput"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /organizations/{id}:
+    get:
+      operationId: getOrganization
+      tags: [organizations]
+      summary: Get organization by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateOrganization
+      tags: [organizations]
+      summary: Update organization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizationUpdate"
+      responses:
+        "200":
+          description: Updated organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteOrganization
+      tags: [organizations]
+      summary: Delete organization
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /organizations/{orgId}/users:
+    get:
+      operationId: listOrganizationUsers
+      tags: [users]
+      summary: List users in an organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+    post:
+      operationId: createOrganizationUser
+      tags: [users]
+      summary: Create a user in an organization
+      parameters:
+        - name: orgId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /workforce-packs:
+    get:
+      operationId: listWorkforcePacks
+      tags: [workforcePacks]
+      summary: List all workforce packs
+      responses:
+        "200":
+          description: List of workforce packs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkforcePackList"
+
+  /workforce-packs/{id}:
+    get:
+      operationId: getWorkforcePack
+      tags: [workforcePacks]
+      summary: Get workforce pack by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workforce pack details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkforcePack"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /system/status:
+    get:
+      operationId: getSystemStatus
+      tags: [system]
+      summary: Get platform system status
+      description: Returns platform-wide status and service health
+      responses:
+        "200":
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemStatus"
+
+  /system/dashboard-summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [system]
+      summary: Get dashboard summary metrics
+      description: Returns aggregated metrics for the AI Command Centre dashboard
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +282,278 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        industry:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, inactive]
+        subscriptionTier:
+          type: string
+          enum: [starter, professional, enterprise]
+        userCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - subscriptionTier
+        - userCount
+        - createdAt
+        - updatedAt
+
+    OrganizationList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Organization"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    OrganizationInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+        slug:
+          type: string
+          minLength: 2
+        industry:
+          type: string
+        subscriptionTier:
+          type: string
+          enum: [starter, professional, enterprise]
+      required:
+        - name
+        - slug
+        - subscriptionTier
+
+    OrganizationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+        industry:
+          type: string
+        status:
+          type: string
+          enum: [active, suspended, trial, inactive]
+        subscriptionTier:
+          type: string
+          enum: [starter, professional, enterprise]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        organizationId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+        status:
+          type: string
+          enum: [active, invited, suspended]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - organizationId
+        - email
+        - role
+        - status
+        - createdAt
+
+    UserList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+      required:
+        - items
+        - total
+
+    UserInput:
+      type: object
+      properties:
+        email:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+      required:
+        - email
+        - role
+
+    WorkforceWorker:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - name
+        - role
+        - description
+        - capabilities
+
+    WorkforcePack:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        industry:
+          type: string
+        workers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkforceWorker"
+        tier:
+          type: string
+          enum: [starter, professional, enterprise]
+        status:
+          type: string
+          enum: [available, coming_soon]
+      required:
+        - id
+        - name
+        - description
+        - industry
+        - workers
+        - tier
+        - status
+
+    WorkforcePackList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkforcePack"
+        total:
+          type: integer
+      required:
+        - items
+        - total
+
+    ServiceStatusItem:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [operational, degraded, outage]
+        latencyMs:
+          type: ["integer", "null"]
+      required:
+        - name
+        - status
+
+    SystemStatus:
+      type: object
+      properties:
+        overall:
+          type: string
+          enum: [operational, degraded, outage]
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceStatusItem"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - overall
+        - services
+        - updatedAt
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalOrganizations:
+          type: integer
+        activeOrganizations:
+          type: integer
+        totalUsers:
+          type: integer
+        workforcePacksAvailable:
+          type: integer
+        platformVersion:
+          type: string
+        lastUpdated:
+          type: string
+          format: date-time
+      required:
+        - totalOrganizations
+        - activeOrganizations
+        - totalUsers
+        - workforcePacksAvailable
+        - platformVersion
+        - lastUpdated

@@ -1,0 +1,76 @@
+version: "3.9"
+
+# ─── NeedsOps AI+ Platform — Docker Compose ──────────────────────────────────
+#
+# Development compose stack. Brings up all platform services locally.
+#
+# Usage:
+#   docker compose up            — start all services
+#   docker compose up api        — start API only
+#   docker compose logs -f       — tail all logs
+#
+# Prerequisites:
+#   - Copy .env.example to .env and populate values
+#   - Run `pnpm --filter @workspace/db run push` after first start
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: needsops
+      POSTGRES_PASSWORD: needsops_dev
+      POSTGRES_DB: needsops
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U needsops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API Server ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: api
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      DATABASE_URL: postgres://needsops:needsops_dev@postgres:5432/needsops
+      SESSION_SECRET: ${SESSION_SECRET:-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5001/api/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Worker Service ───────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      target: api          # reuse same image for Sprint 0; split in future sprints
+    restart: unless-stopped
+    command: ["node", "--enable-source-maps", "./dist/worker.mjs"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://needsops:needsops_dev@postgres:5432/needsops
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
