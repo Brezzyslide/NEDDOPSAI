@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useClerk, useUser, Show } from "@clerk/react";
 import { Redirect, useLocation } from "wouter";
+import { useAuthFetch } from "@/lib/api";
 
 export default function AccountSettings() {
   const [, setLocation] = useLocation();
   const { signOut } = useClerk();
   const { user: clerkUser } = useUser();
-  const { data } = useQuery({ queryKey: ["me"], queryFn: () => fetch("/v1/me", { credentials: "include" }).then(r => r.json()) });
+  const apiFetch = useAuthFetch();
+  const { data } = useQuery({ queryKey: ["me"], queryFn: () => apiFetch("/v1/me").then(r => r.json()) });
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -15,7 +17,10 @@ export default function AccountSettings() {
   const dbUser = data?.user;
   useEffect(() => { if (dbUser) { setFirstName(dbUser.firstName ?? ""); setLastName(dbUser.lastName ?? ""); setDisplayName(dbUser.displayName ?? ""); } }, [dbUser]);
   const update = useMutation({
-    mutationFn: () => fetch("/v1/me", { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ firstName, lastName, displayName }) }).then(r => r.json()),
+    mutationFn: () => apiFetch("/v1/me", {
+      method: "PATCH",
+      body: JSON.stringify({ firstName, lastName, displayName }),
+    }).then(r => r.json()),
     onSuccess: () => { setSaved(true); setTimeout(() => setSaved(false), 2000); },
   });
   const inputClass = "w-full bg-[#112033] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] text-sm focus:outline-none focus:border-[#00D4FF]";

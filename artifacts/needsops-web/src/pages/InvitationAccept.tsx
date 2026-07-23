@@ -1,26 +1,29 @@
 import { useEffect, useState } from "react";
 import { useLocation, Redirect } from "wouter";
-import { Show } from "@clerk/react";
+import { useAuth, Show } from "@clerk/react";
+import { useAuthFetch } from "@/lib/api";
 
 export default function InvitationAccept() {
   const token = new URLSearchParams(window.location.search).get("token");
   const [status, setStatus] = useState<"idle"|"loading"|"success"|"error">("idle");
   const [message, setMessage] = useState("");
   const [, setLocation] = useLocation();
+  const { isSignedIn } = useAuth();
+  const apiFetch = useAuthFetch();
 
   useEffect(() => {
+    if (!isSignedIn) return;
     if (!token) { setStatus("error"); setMessage("No invitation token found."); return; }
     setStatus("loading");
-    fetch("/v1/invitations/accept", {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
+    apiFetch("/v1/invitations/accept", {
+      method: "POST",
       body: JSON.stringify({ token }),
     }).then(r => r.json()).then(d => {
       if (d.error) { setStatus("error"); setMessage(d.error.message); return; }
       setStatus("success");
       setTimeout(() => setLocation("/app-home"), 2000);
     }).catch(() => { setStatus("error"); setMessage("Network error. Please try again."); });
-  }, [token]);
+  }, [token, isSignedIn, apiFetch]);
 
   return (
     <>
@@ -45,7 +48,7 @@ export default function InvitationAccept() {
               <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Invitation accepted!</h1>
               <p className="text-[#64748B] text-sm">Redirecting to your dashboard...</p>
             </>}
-            {status === "error" && <>
+            {(status === "error" || status === "idle") && status === "error" && <>
               <div className="text-4xl mb-4">❌</div>
               <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Could not accept invitation</h1>
               <p className="text-[#64748B] text-sm mb-4">{message}</p>

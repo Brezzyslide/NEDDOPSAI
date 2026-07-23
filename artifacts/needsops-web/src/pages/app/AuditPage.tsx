@@ -4,9 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
+import { useAuthFetch } from "@/lib/api";
 
 export default function AuditPage() {
   const { slug } = useParams<{ slug: string }>();
+  const apiFetch = useAuthFetch();
   const [page, setPage] = useState(1);
   const [eventType, setEventType] = useState("");
 
@@ -15,7 +17,7 @@ export default function AuditPage() {
     queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: "20" });
       if (eventType) params.set("eventType", eventType);
-      return fetch(`/v1/organisations/${slug}/audit?${params}`, { credentials: "include" }).then(r => r.json());
+      return apiFetch(`/v1/organisations/${slug}/audit?${params}`).then(r => r.json());
     },
     enabled: !!slug,
   });

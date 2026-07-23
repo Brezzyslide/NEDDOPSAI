@@ -2,14 +2,16 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, Redirect } from "wouter";
 import { Show } from "@clerk/react";
+import { useAuthFetch } from "@/lib/api";
 
 interface OrgMembership { id: string; slug: string; name: string; displayName: string | null; status: string; subscriptionTier: string; role: string; }
 
 export default function AppHome() {
   const [, setLocation] = useLocation();
+  const apiFetch = useAuthFetch();
   const { data, isLoading } = useQuery({
     queryKey: ["me-orgs"],
-    queryFn: () => fetch("/v1/me/organisations", { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch("/v1/me/organisations").then(r => r.json()),
   });
 
   const orgs: OrgMembership[] = data?.organisations ?? [];

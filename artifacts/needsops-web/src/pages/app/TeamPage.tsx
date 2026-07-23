@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
+import { useAuthFetch } from "@/lib/api";
 
 const ROLE_COLORS: Record<string, string> = {
   owner: "bg-[#00D4FF]/10 text-[#00D4FF]",
@@ -16,6 +17,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function TeamPage() {
   const { slug } = useParams<{ slug: string }>();
+  const apiFetch = useAuthFetch();
   const qc = useQueryClient();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -24,19 +26,18 @@ export default function TeamPage() {
 
   const { data: membersData, isLoading: membersLoading } = useQuery({
     queryKey: ["org-members", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}/members`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/members`).then(r => r.json()),
     enabled: !!slug,
   });
   const { data: invData } = useQuery({
     queryKey: ["org-invitations", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}/invitations`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/invitations`).then(r => r.json()),
     enabled: !!slug,
   });
 
   const invite = useMutation({
-    mutationFn: () => fetch(`/v1/organisations/${slug}/invitations`, {
-      method: "POST", credentials: "include",
-      headers: { "Content-Type": "application/json" },
+    mutationFn: () => apiFetch(`/v1/organisations/${slug}/invitations`, {
+      method: "POST",
       body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
     }).then(r => r.json()),
     onSuccess: (d) => {

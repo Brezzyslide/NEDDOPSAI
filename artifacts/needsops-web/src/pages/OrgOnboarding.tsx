@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
+import { useAuthFetch } from "@/lib/api";
 
 type Step = 1 | 2 | 3;
 
@@ -24,6 +25,7 @@ const ORG_TYPES = [
 
 export default function OrgOnboarding() {
   const [, setLocation] = useLocation();
+  const apiFetch = useAuthFetch();
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<FormData>({
     name: "", type: "ndis_provider", industry: "",
@@ -39,10 +41,8 @@ export default function OrgOnboarding() {
   const handleSubmit = async () => {
     setSubmitting(true); setError("");
     try {
-      const res = await fetch("/v1/organisations", {
+      const res = await apiFetch("/v1/organisations", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ ...form, industry: form.type }),
       });
       const data = await res.json();

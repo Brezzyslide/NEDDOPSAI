@@ -47,6 +47,13 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 - Sprint 0 routes at `/api/*` (preserved for backwards compat)
 - Sprint 1 routes at `/v1/*`
 
+## Web → API connectivity (critical)
+- The web app (Vite) and API server run on different ports; root-relative `/v1/...` URLs hit Vite, not the API
+- Fix: add `server.proxy` in `vite.config.ts` — `/v1` and `/api` both target `http://localhost:8080`
+- All fetch calls must send a Clerk Bearer token via `Authorization: Bearer <token>`; `credentials: "include"` (cookies) does NOT work — `getAuth(req)` reads the Authorization header only
+- Pattern: `useAuthFetch()` hook in `src/lib/api.ts` calls `getToken()` from `useAuth()` and attaches the header; wrap with `useCallback([getToken])` so it's stable for `useEffect` deps
+- Every page that calls the API must use `apiFetch` from `useAuthFetch()` — never raw `fetch`
+
 ## Seed script
 - `infrastructure/scripts/seed.sh` uses raw `psql` (not a Node script)
 - Requires `DATABASE_URL` env var

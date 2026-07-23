@@ -4,13 +4,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
+import { useAuthFetch } from "@/lib/api";
 
 export default function OrgSettings() {
   const { slug } = useParams<{ slug: string }>();
+  const apiFetch = useAuthFetch();
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["org", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}`).then(r => r.json()),
     enabled: !!slug,
   });
   const org = data?.organisation;
@@ -34,9 +36,8 @@ export default function OrgSettings() {
   }, [org]);
 
   const update = useMutation({
-    mutationFn: () => fetch(`/v1/organisations/${slug}`, {
-      method: "PATCH", credentials: "include",
-      headers: { "Content-Type": "application/json" },
+    mutationFn: () => apiFetch(`/v1/organisations/${slug}`, {
+      method: "PATCH",
       body: JSON.stringify({ name, displayName, primaryContactName, primaryContactEmail, abn, ndisRegistrationNumber: ndisReg }),
     }).then(r => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["org", slug] }); setSaved(true); setTimeout(() => setSaved(false), 2000); },

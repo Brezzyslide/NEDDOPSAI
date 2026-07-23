@@ -72,6 +72,10 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    proxy: {
+      '/v1': { target: 'http://localhost:8080', changeOrigin: false },
+      '/api': { target: 'http://localhost:8080', changeOrigin: false },
+    },
   },
   preview: {
     port,

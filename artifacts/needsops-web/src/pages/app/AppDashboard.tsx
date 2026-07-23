@@ -3,23 +3,25 @@ import { useQuery } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
+import { useAuthFetch } from "@/lib/api";
 
 export default function AppDashboard() {
   const { slug } = useParams<{ slug: string }>();
+  const apiFetch = useAuthFetch();
 
   const { data: orgData } = useQuery({
     queryKey: ["org", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}`).then(r => r.json()),
     enabled: !!slug,
   });
   const { data: membersData } = useQuery({
     queryKey: ["org-members", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}/members`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/members`).then(r => r.json()),
     enabled: !!slug,
   });
   const { data: auditData } = useQuery({
     queryKey: ["org-audit-recent", slug],
-    queryFn: () => fetch(`/v1/organisations/${slug}/audit?limit=5`, { credentials: "include" }).then(r => r.json()),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/audit?limit=5`).then(r => r.json()),
     enabled: !!slug,
   });
 
