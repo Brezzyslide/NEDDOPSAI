@@ -1,0 +1,275 @@
+Sprint 0: Platform Foundation
+
+You are the senior software architect and lead full-stack engineer for a new SaaS platform called Awa Agents.
+
+Awa Agents is a multi-tenant AI workforce platform where individuals and organisations subscribe to an AI workforce that can perform real business tasks.
+
+The platform will eventually include:
+
+web application
+
+iOS and Android mobile application
+
+AI workforce dashboard
+
+specialist AI agents
+
+Chief of Staff routing agent
+
+OpenClaw orchestration behind the scenes
+
+OpenAI API integration
+
+subscription billing
+
+user seat management
+
+usage allowances
+
+workforce packs
+
+Google Drive, Gmail and Calendar integrations
+
+Microsoft 365 integration
+
+Xero integration
+
+Zoho integration
+
+approval workflows
+
+audit logs
+
+document processing
+
+scheduled tasks
+
+Awa Connect desktop connector
+
+browser extension
+
+enterprise infrastructure options
+
+workforce marketplace
+
+The platform must be designed from the beginning to support large-scale growth, but the first build must remain lean, modular and maintainable.
+
+Do not attempt to build the entire product in this first sprint.
+
+Build only the technical foundation described below.
+
+PRODUCT MODEL
+
+Customers do not primarily buy individual agents.
+
+Customers subscribe to:
+
+an organisation plan
+
+a number of user seats
+
+a monthly AI usage allowance
+
+included workforce packs
+
+optional premium add-ons
+
+Specialist agents exist internally, but customers experience them as a coordinated AI workforce.
+
+The default customer interaction will eventually be:
+
+Customer request
+↓
+Awa Chief of Staff
+↓
+Correct specialist agent
+↓
+Additional specialists if required
+↓
+One consolidated response
+Examples of future workforce packs include:
+
+Core AI Workforce
+
+Compliance Workforce
+
+Operations Workforce
+
+Finance Workforce
+
+HR Workforce
+
+Marketing Workforce
+
+The first specialist product will be:
+
+Awa Compliance Officer
+
+The first target market will be:
+
+Australian disability service providers
+
+The software architecture must allow new agents, workforce packs and industries to be added later without rebuilding the core platform.
+
+IMPORTANT ARCHITECTURE PRINCIPLES
+
+The platform must follow these rules from the beginning:
+
+multi-tenant architecture
+
+strict tenant isolation
+
+strong TypeScript typing
+
+modular monorepo
+
+queue-based background processing later
+
+no API secrets in frontend code
+
+no raw OAuth tokens stored in plain text
+
+no direct public exposure of OpenClaw
+
+OpenClaw must remain behind the Awa API
+
+all important actions must be auditable
+
+sensitive actions must later support human approval
+
+every tenant-owned database table must include tenant ID
+
+no user may access another tenant’s information
+
+authentication alone is not tenant isolation
+
+use environment variables for secrets
+
+use reusable services and interfaces
+
+avoid unnecessary microservices
+
+do not use Kubernetes for the initial build
+
+do not create one permanent server per user
+
+keep the project portable from Replit to AWS later
+
+TECHNOLOGY STACK
+
+Use the following stack unless there is a strong technical reason not to:
+
+Monorepo
+
+pnpm workspaces
+
+Turborepo
+
+TypeScript
+
+Web
+
+Next.js
+
+React
+
+Tailwind CSS
+
+accessible component system
+
+responsive design
+
+API
+
+Node.js
+
+Fastify or Express
+
+Zod validation
+
+structured error handling
+
+request ID middleware
+
+secure headers
+
+Database
+
+PostgreSQL
+
+Drizzle ORM
+
+UUID primary keys
+
+migration support
+
+Mobile
+
+Prepare the monorepo for:
+
+React Native
+
+Expo
+
+Do not build the full mobile application in this sprint.
+
+Future infrastructure compatibility
+
+The codebase must remain portable to:
+
+AWS ECS Fargate
+
+Amazon RDS
+
+Amazon S3
+
+Amazon SQS
+
+AWS Secrets Manager
+
+Redis
+
+OpenAI API
+
+OpenClaw Gateway
+
+REQUIRED MONOREPO STRUCTURE
+
+Create this structure:
+
+awa-agents/
+├── apps/
+│   ├── web/
+│   ├── api/
+│   ├── mobile/
+│   ├── worker/
+│   ├── admin/
+│   └── connector/
+├── packages/
+│   ├── database/
+│   ├── shared/
+│   ├── ui/
+│   ├── auth/
+│   ├── permissions/
+│   ├── integrations/
+│   ├── agent-runtime/
+│   ├── audit/
+│   └── validation/
+├── agents/
+│   ├── chief-of-staff/
+│   ├── awa-compliance-officer/
+│   └── shared/
+├── infrastructure/
+│   ├── docker/
+│   ├── deployment/
+│   └── scripts/
+├── docs/
+├── tests/
+├── package.json
+├── pnpm-workspace.yaml
+├── turbo.json
+├── tsconfig.base.json
+├── .env.example
+├── .gitignore
+└── README.md
+The folders may initially contain placeholder README files, but the web, API, database and shared packages must be functional.
