@@ -221,8 +221,113 @@ export const AUDIT_EVENTS = [
   "invitation.email_failed",
   "invitation.email_preview_created",
   "security.session_revoked",
+  // Sprint 2 — AI Workforce
+  "task.created",
+  "task.planned",
+  "task.state_changed",
+  "task.cancelled",
+  "specialist.assigned",
+  "approval.requested",
+  "approval.granted",
+  "approval.rejected",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
+
+// ─── Specialist execution statuses (Sprint 2) ────────────────────────────────
+
+export const SPECIALIST_EXECUTION_STATUSES = [
+  "available",
+  "beta",
+  "coming_soon",
+  "deprecated",
+] as const;
+export type SpecialistExecutionStatus = (typeof SPECIALIST_EXECUTION_STATUSES)[number];
+
+// ─── Workforce pack codes (Sprint 2) ─────────────────────────────────────────
+
+export const WORKFORCE_PACK_CODES = [
+  "core",
+  "compliance",
+  "operations",
+  "finance",
+  "hr",
+  "marketing",
+] as const;
+export type WorkforcePackCode = (typeof WORKFORCE_PACK_CODES)[number];
+
+export const WORKFORCE_PACK_LABELS: Record<WorkforcePackCode, string> = {
+  core: "Core Workforce",
+  compliance: "Compliance Workforce",
+  operations: "Operations Workforce",
+  finance: "Finance Workforce",
+  hr: "HR Workforce",
+  marketing: "Marketing Workforce",
+};
+
+// ─── Task states (Sprint 2) ───────────────────────────────────────────────────
+
+export const TASK_STATES = [
+  "draft",
+  "queued",
+  "planning",
+  "awaiting_approval",
+  "approved",
+  "executing",
+  "completed",
+  "cancelled",
+  "failed",
+] as const;
+export type TaskState = (typeof TASK_STATES)[number];
+
+export const TASK_STATE_LABELS: Record<TaskState, string> = {
+  draft: "Draft",
+  queued: "Queued",
+  planning: "Planning",
+  awaiting_approval: "Awaiting Approval",
+  approved: "Approved",
+  executing: "Executing",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  failed: "Failed",
+};
+
+// ─── Task priorities (Sprint 2) ───────────────────────────────────────────────
+
+export const TASK_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export type TaskPriority = (typeof TASK_PRIORITIES)[number];
+
+// ─── Approval types (Sprint 2) ────────────────────────────────────────────────
+
+export const APPROVAL_TYPES = [
+  "no_approval",
+  "manager_approval",
+  "administrator_approval",
+  "owner_approval",
+  "dual_approval",
+  "compliance_approval",
+  "platform_approval",
+] as const;
+export type ApprovalType = (typeof APPROVAL_TYPES)[number];
+
+export const APPROVAL_TYPE_LABELS: Record<ApprovalType, string> = {
+  no_approval: "No Approval Required",
+  manager_approval: "Manager Approval",
+  administrator_approval: "Administrator Approval",
+  owner_approval: "Owner Approval",
+  dual_approval: "Dual Approval",
+  compliance_approval: "Compliance Approval",
+  platform_approval: "Platform Approval",
+};
+
+// ─── Approval states (Sprint 2) ───────────────────────────────────────────────
+
+export const APPROVAL_STATES = [
+  "pending",
+  "approved",
+  "rejected",
+  "expired",
+] as const;
+export type ApprovalState = (typeof APPROVAL_STATES)[number];
 
 // ─── API error codes ──────────────────────────────────────────────────────────
 

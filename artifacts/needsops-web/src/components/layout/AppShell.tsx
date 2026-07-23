@@ -4,10 +4,13 @@ import { useClerk, useUser } from "@clerk/react";
 interface AppShellProps { orgSlug: string; children: React.ReactNode; }
 
 const NAV = [
-  { label: "Dashboard", icon: "⬡", path: "" },
-  { label: "Team", icon: "👥", path: "/team" },
-  { label: "Audit", icon: "📋", path: "/audit" },
-  { label: "Settings", icon: "⚙", path: "/settings" },
+  { label: "Dashboard",  icon: "⬡",  path: "" },
+  { label: "Workforce",  icon: "🤖", path: "/workforce" },
+  { label: "Tasks",      icon: "📌", path: "/tasks" },
+  { label: "Approvals",  icon: "✅", path: "/approvals" },
+  { label: "Team",       icon: "👥", path: "/team" },
+  { label: "Audit",      icon: "📋", path: "/audit" },
+  { label: "Settings",   icon: "⚙",  path: "/settings" },
 ];
 
 export default function AppShell({ orgSlug, children }: AppShellProps) {

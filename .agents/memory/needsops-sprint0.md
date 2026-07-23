@@ -57,3 +57,14 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 ## Seed script
 - `infrastructure/scripts/seed.sh` uses raw `psql` (not a Node script)
 - Requires `DATABASE_URL` env var
+
+## Sprint 2 — AI Workforce Foundation (complete)
+- `workforceRegistry.ts` in api-server/src/lib — single source of truth for 6 packs, 32 specialists, 35 capabilities. Static TS, not DB.
+- Chief of Staff: deterministic keyword routing in `chiefOfStaffService.ts` (`planTask()`). No LLM. Stable interface — future LLM replaces only `classifyIntent()`.
+- Approval priority: platform > compliance > dual > owner > administrator > manager > no_approval
+- Tasks/approvals routes use `requireAuth, resolveTenantFromSlug` + `req.tenantContext!.tenantId` (NOT `requireMembership`, NOT `req.appOrg`).
+- 10 new DB tables: specialists, capabilities, specialist_capabilities, tasks, task_specialists, task_execution_plans, approvals, approval_rules, approval_history
+- New web routes: /app/:slug/workforce, /app/:slug/tasks, /app/:slug/approvals
+- Mobile: tasks.tsx and approvals.tsx tabs added (placeholder data; live API deferred to Sprint 3 mobile auth)
+- Marketing pack is `coming_soon` by design; marketing specialists excluded from task routing.
+- 64 total tests passing (17 email + 47 workforce)

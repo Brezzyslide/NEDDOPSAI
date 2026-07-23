@@ -1,0 +1,604 @@
+# NeedsOps AI+
+
+## Sprint 2 – AI Workforce Foundation
+
+Sprint 1 has been approved.
+
+Proceed with Sprint 2 only.
+
+Do not begin Sprint 3 until Sprint 2 has been completed, tested, documented and approved.
+
+---
+
+# Purpose
+
+Sprint 2 establishes the heart of NeedsOps AI+.
+
+This sprint creates the AI Workforce architecture, specialist registry, workforce packs, Chief of Staff orchestration framework, task model and approval framework.
+
+No AI execution occurs yet.
+
+No OpenAI.
+
+No OpenClaw.
+
+No Google.
+
+No Microsoft.
+
+No billing.
+
+No Stripe.
+
+This sprint defines how the workforce will exist inside the platform.
+
+---
+
+# Architectural Principle
+
+The customer does not purchase individual AI agents.
+
+The customer purchases access to an AI Workforce.
+
+The workforce contains specialist workers.
+
+The Chief of Staff coordinates all specialists.
+
+Every future task enters through the Chief of Staff.
+
+Specialists never communicate directly with the customer unless explicitly requested.
+
+---
+
+# Build
+
+## Workforce Registry
+
+Create a registry capable of describing every specialist.
+
+Each specialist should contain metadata only.
+
+Example metadata:
+
+* id
+* code
+* display name
+* workforce pack
+* description
+* icon
+* colour
+* capabilities
+* required permissions
+* required entitlements
+* approval requirements
+* execution status
+* version
+
+Do not execute specialists.
+
+---
+
+# Workforce Packs
+
+Create the following packs.
+
+## Core Workforce
+
+Contains:
+
+Chief of Staff
+
+Executive Assistant
+
+Research Specialist
+
+Document Specialist
+
+Calendar Specialist
+
+Communication Specialist
+
+---
+
+## Compliance Workforce
+
+Contains:
+
+Compliance Officer
+
+Quality Officer
+
+Policy Officer
+
+Incident Review Officer
+
+Corrective Action Officer
+
+Restrictive Practice Officer
+
+---
+
+## Operations Workforce
+
+Contains:
+
+Operations Manager
+
+Service Delivery Coordinator
+
+Roster Coordinator
+
+Asset Coordinator
+
+Workflow Coordinator
+
+---
+
+## Finance Workforce
+
+Contains:
+
+Accounts Officer
+
+Payroll Officer
+
+Invoice Specialist
+
+Budget Analyst
+
+Financial Reporting Officer
+
+---
+
+## HR Workforce
+
+Contains:
+
+HR Officer
+
+Recruitment Officer
+
+Learning Coordinator
+
+Performance Officer
+
+Staff Compliance Officer
+
+---
+
+## Marketing Workforce
+
+Contains:
+
+Marketing Director
+
+Content Strategist
+
+Campaign Manager
+
+Brand Manager
+
+Social Media Specialist
+
+---
+
+# Chief of Staff
+
+Expand the existing Chief of Staff package.
+
+It should:
+
+Accept tasks.
+
+Analyse task intent.
+
+Determine required specialists.
+
+Determine whether approvals will eventually be required.
+
+Create a task execution plan.
+
+Return a simulated orchestration response.
+
+No AI.
+
+No OpenClaw.
+
+No LLM.
+
+Everything is deterministic.
+
+---
+
+# Task Model
+
+Create a platform-wide task entity.
+
+Suggested fields:
+
+* task id
+* tenant id
+* title
+* description
+* originating user
+* originating organisation
+* originating module
+* assigned specialists
+* current state
+* priority
+* approval state
+* created
+* updated
+
+Task states:
+
+Draft
+
+Queued
+
+Planning
+
+Awaiting Approval
+
+Approved
+
+Executing
+
+Completed
+
+Cancelled
+
+Failed
+
+Execution remains simulated.
+
+---
+
+# Approval Model
+
+Create approval definitions.
+
+Examples:
+
+No Approval
+
+Manager Approval
+
+Administrator Approval
+
+Owner Approval
+
+Dual Approval
+
+Compliance Approval
+
+Platform Approval
+
+Only model these.
+
+No execution.
+
+---
+
+# Workforce Capability Registry
+
+Every specialist should advertise capabilities.
+
+Example:
+
+Compliance Officer
+
+* Review policy
+* Review incident
+* Audit preparation
+* Restrictive practice review
+
+Operations Manager
+
+* Review roster
+* Create workflow
+* Capacity analysis
+
+Finance Officer
+
+* Review invoice
+* Budget summary
+* Payroll review
+
+Capabilities are metadata.
+
+---
+
+# Dashboard
+
+Update the dashboard.
+
+Display:
+
+Current AI Workforce
+
+Installed Workforce Packs
+
+Available Specialists
+
+Recent Tasks
+
+Task Queue
+
+Upcoming Approvals
+
+All data may be placeholder.
+
+---
+
+# Workforce Explorer
+
+Create a Workforce page.
+
+The customer should be able to browse:
+
+Every Workforce Pack
+
+Every Specialist
+
+Capabilities
+
+Status
+
+Description
+
+Whether included in their organisation
+
+No purchasing yet.
+
+---
+
+# Task Centre
+
+Create a Task Centre.
+
+Display:
+
+Queued
+
+Planning
+
+Awaiting Approval
+
+Completed
+
+Cancelled
+
+Tasks remain simulated.
+
+---
+
+# Approvals Centre
+
+Create an Approvals page.
+
+Show:
+
+Pending Approvals
+
+Approved
+
+Rejected
+
+Expired
+
+Placeholder data is acceptable.
+
+---
+
+# API
+
+Create APIs for:
+
+Workforce Packs
+
+Specialists
+
+Capabilities
+
+Tasks
+
+Approvals
+
+Chief of Staff Planning
+
+Execution Plans
+
+No execution APIs.
+
+---
+
+# Database
+
+Create tables for:
+
+workforce_packs
+
+specialists
+
+capabilities
+
+specialist_capabilities
+
+tasks
+
+task_specialists
+
+task_execution_plans
+
+approvals
+
+approval_rules
+
+approval_history
+
+All relationships should be tenant-aware where appropriate.
+
+---
+
+# Audit
+
+Record:
+
+Task Created
+
+Task Planned
+
+Specialist Assigned
+
+Approval Requested
+
+Approval Granted
+
+Approval Rejected
+
+Task Cancelled
+
+---
+
+# Mobile
+
+Mirror the web.
+
+Display:
+
+AI Workforce
+
+Tasks
+
+Approvals
+
+Workforce Packs
+
+Specialists
+
+No execution.
+
+---
+
+# Platform Admin
+
+Create admin pages to manage:
+
+Workforce Packs
+
+Specialists
+
+Capabilities
+
+Approval Rules
+
+Execution Status
+
+Version
+
+No editing of runtime behaviour yet.
+
+---
+
+# Tests
+
+Test:
+
+Task creation
+
+Chief of Staff planning
+
+Capability lookup
+
+Specialist lookup
+
+Approval routing
+
+Task state transitions
+
+Tenant isolation
+
+Permission enforcement
+
+Platform administration separation
+
+TypeScript must remain clean.
+
+All tests must pass.
+
+---
+
+# Documentation
+
+Update architecture documentation.
+
+Document:
+
+AI Workforce
+
+Chief of Staff
+
+Specialists
+
+Workforce Packs
+
+Task lifecycle
+
+Approval lifecycle
+
+Capability registry
+
+Relationship to future OpenClaw integration
+
+Relationship to future Intelligence Engines
+
+Relationship to future Connector Framework
+
+---
+
+# Completion Report
+
+Provide:
+
+Sprint status
+
+Packages added
+
+Database changes
+
+API routes
+
+Pages created
+
+Tests
+
+Architecture decisions
+
+Known limitations
+
+Technical debt
+
+Recommended Sprint 3
+
+Ready for Sprint 3
+
+Stop after producing the Sprint 2 Completion Report.
+
+Do not begin OpenAI.
+
+Do not begin OpenClaw.
+
+Do not begin Stripe.
+
+Do not begin Google.
+
+Do not begin Microsoft.
+
+Do not begin Connectors.
+
+Do not begin Intelligence Engine implementations.
+
+Do not begin Billing implementation.
+
+This sprint defines the AI Workforce architecture only.

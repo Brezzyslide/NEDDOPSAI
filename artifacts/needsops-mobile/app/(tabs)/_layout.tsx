@@ -23,6 +23,14 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} />
         <Label>Workforce</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="tasks">
+        <Icon sf={{ default: 'checklist', selected: 'checklist' }} />
+        <Label>Tasks</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="approvals">
+        <Icon sf={{ default: 'checkmark.seal', selected: 'checkmark.seal.fill' }} />
+        <Label>Approvals</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="system">
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>System</Label>
@@ -97,6 +105,30 @@ function ClassicTabLayout() {
               <SymbolView name="person.3" tintColor={color} size={24} />
             ) : (
               <Feather name="users" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{
+          title: 'Tasks',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="checklist" tintColor={color} size={24} />
+            ) : (
+              <Feather name="check-square" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="approvals"
+        options={{
+          title: 'Approvals',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="checkmark.seal" tintColor={color} size={24} />
+            ) : (
+              <Feather name="shield" size={22} color={color} />
             ),
         }}
       />
