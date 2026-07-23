@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation, Redirect } from "wouter";
 import { useAuth, Show } from "@clerk/react";
+import { useParams } from "wouter";
 import { useAuthFetch } from "@/lib/api";
 
 export default function InvitationAccept() {
-  const token = new URLSearchParams(window.location.search).get("token");
-  const [status, setStatus] = useState<"idle"|"loading"|"success"|"error">("idle");
+  const { token } = useParams<{ token: string }>();
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
   const [, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
@@ -18,11 +19,14 @@ export default function InvitationAccept() {
     apiFetch("/v1/invitations/accept", {
       method: "POST",
       body: JSON.stringify({ token }),
-    }).then(r => r.json()).then(d => {
-      if (d.error) { setStatus("error"); setMessage(d.error.message); return; }
-      setStatus("success");
-      setTimeout(() => setLocation("/app-home"), 2000);
-    }).catch(() => { setStatus("error"); setMessage("Network error. Please try again."); });
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setStatus("error"); setMessage(d.error.message); return; }
+        setStatus("success");
+        setTimeout(() => setLocation("/app-home"), 2000);
+      })
+      .catch(() => { setStatus("error"); setMessage("Network error. Please try again."); });
   }, [token, isSignedIn, apiFetch]);
 
   return (
@@ -39,21 +43,27 @@ export default function InvitationAccept() {
       <Show when="signed-in">
         <div className="min-h-dvh bg-[#0B1829] flex items-center justify-center px-4">
           <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl p-8 max-w-sm w-full text-center">
-            {status === "loading" && <>
-              <div className="h-8 w-8 border-2 border-[#00D4FF] border-t-transparent rounded-full animate-spin mx-auto mb-4"/>
-              <p className="text-[#E2E8F0]">Accepting invitation...</p>
-            </>}
-            {status === "success" && <>
-              <div className="text-4xl mb-4">✅</div>
-              <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Invitation accepted!</h1>
-              <p className="text-[#64748B] text-sm">Redirecting to your dashboard...</p>
-            </>}
-            {(status === "error" || status === "idle") && status === "error" && <>
-              <div className="text-4xl mb-4">❌</div>
-              <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Could not accept invitation</h1>
-              <p className="text-[#64748B] text-sm mb-4">{message}</p>
-              <button onClick={() => setLocation("/")} className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg text-sm">Go home</button>
-            </>}
+            {status === "loading" && (
+              <>
+                <div className="h-8 w-8 border-2 border-[#00D4FF] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-[#E2E8F0]">Accepting invitation...</p>
+              </>
+            )}
+            {status === "success" && (
+              <>
+                <div className="text-4xl mb-4">✅</div>
+                <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Invitation accepted!</h1>
+                <p className="text-[#64748B] text-sm">Redirecting to your dashboard...</p>
+              </>
+            )}
+            {status === "error" && (
+              <>
+                <div className="text-4xl mb-4">❌</div>
+                <h1 className="text-xl font-bold text-[#E2E8F0] mb-2">Could not accept invitation</h1>
+                <p className="text-[#64748B] text-sm mb-4">{message}</p>
+                <button onClick={() => setLocation("/")} className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg text-sm">Go home</button>
+              </>
+            )}
           </div>
         </div>
       </Show>

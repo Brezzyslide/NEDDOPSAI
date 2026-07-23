@@ -5,3 +5,4 @@ export * from "./invitations";
 export * from "./tenantSettings";
 export * from "./auditLog";
 export * from "./workforcePacks";
+export * from "./emailDeliveryLogs";

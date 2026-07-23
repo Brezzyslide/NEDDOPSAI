@@ -1,15 +1,23 @@
 /**
- * invitationService — Sprint 1
+ * invitationService — Sprint 1 (email delivery update)
  *
  * Security rules:
  * - Raw tokens are NEVER stored; only SHA-256 hashes
  * - Token expiry is enforced at acceptance time
  * - The invitee's authenticated email must match the invitation email
  * - Accepted or revoked invitations cannot be reused
+ * - Email delivery failures do not delete the invitation
  */
 
 import { randomUUID } from "crypto";
-import { db, invitationsTable, membershipsTable, usersTable } from "@workspace/db";
+import {
+  db,
+  invitationsTable,
+  membershipsTable,
+  usersTable,
+  organizationsTable,
+  emailDeliveryLogsTable,
+} from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import {
   generateInvitationToken,
@@ -25,6 +33,10 @@ import {
   ResourceNotFound,
 } from "../lib/errors.js";
 import type { MembershipRole } from "@workspace/shared";
+import { getEmailService } from "./email/index.js";
+import type { EmailDeliveryResult } from "./email/index.js";
+
+export type { EmailDeliveryResult };
 
 export interface CreateInvitationParams {
   organizationId: string;
@@ -33,7 +45,62 @@ export interface CreateInvitationParams {
   invitedByUserId: string;
 }
 
-export async function createInvitation(params: CreateInvitationParams) {
+export interface CreateInvitationResult {
+  invitation: typeof invitationsTable.$inferSelect;
+  /** Raw acceptance URL — only present in development mode for preview */
+  previewUrl: string | null;
+  emailDelivery: EmailDeliveryResult;
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+async function getOrgName(organizationId: string): Promise<string> {
+  const [org] = await db
+    .select({ name: organizationsTable.name })
+    .from(organizationsTable)
+    .where(eq(organizationsTable.id, organizationId))
+    .limit(1);
+  return org?.name ?? "your organisation";
+}
+
+async function getInviterName(userId: string): Promise<string | null> {
+  const [user] = await db
+    .select({
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      displayName: usersTable.displayName,
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+  if (!user) return null;
+  if (user.displayName) return user.displayName;
+  const parts = [user.firstName, user.lastName].filter(Boolean);
+  return parts.length > 0 ? parts.join(" ") : null;
+}
+
+async function logEmailDelivery(
+  invitationId: string,
+  result: EmailDeliveryResult,
+): Promise<void> {
+  await db.insert(emailDeliveryLogsTable).values({
+    id: randomUUID(),
+    invitationId,
+    provider: result.provider,
+    deliveryState: result.state,
+    providerMessageId: result.providerMessageId,
+    attemptedAt: new Date(),
+    sentAt: result.sentAt,
+    failureCategory: result.failureCategory,
+    failureSummary: result.failureSummary,
+  });
+}
+
+// ─── createInvitation ─────────────────────────────────────────────────────────
+
+export async function createInvitation(
+  params: CreateInvitationParams,
+): Promise<CreateInvitationResult> {
   // Check if there's already an active membership for this email
   const [existingUser] = await db
     .select({ id: usersTable.id })
@@ -71,21 +138,63 @@ export async function createInvitation(params: CreateInvitationParams) {
       tokenHash,
       invitedBy: params.invitedByUserId,
       expiresAt,
+      emailDeliveryStatus: "not_attempted",
     })
     .returning();
 
-  const invitationUrl = buildInvitationUrl(rawToken);
+  const acceptanceUrl = buildInvitationUrl(rawToken);
 
-  // Development: log the invitation URL since no email provider is configured
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`\n🔗 INVITATION LINK (dev only — never expose in prod):`);
-    console.log(`   Email: ${params.email}`);
-    console.log(`   URL:   ${invitationUrl}`);
-    console.log(`   Expires: ${expiresAt.toISOString()}\n`);
-  }
+  // Look up org name and inviter for the email
+  const [orgName, inviterName] = await Promise.all([
+    getOrgName(params.organizationId),
+    getInviterName(params.invitedByUserId),
+  ]);
 
-  return { invitation: invitation!, invitationUrl };
+  // Send invitation email through the service abstraction
+  const emailService = getEmailService();
+  const deliveryResult = await emailService.sendInvitationEmail({
+    toEmail: params.email,
+    orgName,
+    inviterName,
+    role: params.role,
+    expiresAt,
+    acceptanceUrl,
+  });
+
+  // Persist delivery log and update invitation status — do not throw on failure
+  await Promise.all([
+    logEmailDelivery(invitation!.id, deliveryResult).catch((err) =>
+      console.error("[invitationService] Failed to write delivery log:", err),
+    ),
+    db
+      .update(invitationsTable)
+      .set({ emailDeliveryStatus: deliveryResult.state, updatedAt: new Date() })
+      .where(eq(invitationsTable.id, invitation!.id))
+      .catch((err) =>
+        console.error("[invitationService] Failed to update delivery status:", err),
+      ),
+  ]);
+
+  // Fetch the updated invitation so the caller has the latest state
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
+    .where(eq(invitationsTable.id, invitation!.id))
+    .limit(1);
+
+  const isDev = process.env.NODE_ENV !== "production";
+  const previewUrl = isDev && deliveryResult.state === "development_preview"
+    ? acceptanceUrl
+    : null;
+
+  return {
+    invitation: updated!,
+    previewUrl,
+    emailDelivery: deliveryResult,
+  };
 }
+
+// ─── listInvitations ──────────────────────────────────────────────────────────
 
 export async function listInvitations(organizationId: string) {
   return db
@@ -93,6 +202,8 @@ export async function listInvitations(organizationId: string) {
     .from(invitationsTable)
     .where(eq(invitationsTable.organizationId, organizationId));
 }
+
+// ─── getInvitationByToken ─────────────────────────────────────────────────────
 
 export async function getInvitationByToken(rawToken: string) {
   const tokenHash = hashToken(rawToken);
@@ -103,6 +214,8 @@ export async function getInvitationByToken(rawToken: string) {
     .limit(1);
   return invitation ?? null;
 }
+
+// ─── revokeInvitation ────────────────────────────────────────────────────────
 
 export async function revokeInvitation(
   organizationId: string,
@@ -130,10 +243,13 @@ export async function revokeInvitation(
   return updated!;
 }
 
+// ─── resendInvitation ────────────────────────────────────────────────────────
+
 export async function resendInvitation(
   organizationId: string,
   invitationId: string,
-) {
+  resendingUserId: string,
+): Promise<CreateInvitationResult> {
   const [invitation] = await db
     .select()
     .from(invitationsTable)
@@ -146,35 +262,68 @@ export async function resendInvitation(
     .limit(1);
 
   if (!invitation) throw new ResourceNotFound("Invitation");
+  if (invitation.status === "revoked") throw new InvitationInvalid();
+  if (invitation.status === "accepted") throw new InvitationAlreadyUsed();
   if (invitation.status !== "pending") throw new InvitationAlreadyUsed();
 
-  // Generate a new token + new expiry
+  // Expire the old token by replacing it with a fresh one
   const { rawToken, tokenHash, expiresAt } = generateInvitationToken();
 
-  const [updated] = await db
+  await db
     .update(invitationsTable)
-    .set({ tokenHash, expiresAt, updatedAt: new Date() })
+    .set({ tokenHash, expiresAt, emailDeliveryStatus: "not_attempted", updatedAt: new Date() })
+    .where(eq(invitationsTable.id, invitationId));
+
+  const acceptanceUrl = buildInvitationUrl(rawToken);
+
+  const [orgName, inviterName] = await Promise.all([
+    getOrgName(organizationId),
+    getInviterName(resendingUserId),
+  ]);
+
+  const emailService = getEmailService();
+  const deliveryResult = await emailService.sendInvitationEmail({
+    toEmail: invitation.email,
+    orgName,
+    inviterName,
+    role: invitation.role,
+    expiresAt,
+    acceptanceUrl,
+  });
+
+  await Promise.all([
+    logEmailDelivery(invitationId, deliveryResult).catch((err) =>
+      console.error("[invitationService] Failed to write delivery log:", err),
+    ),
+    db
+      .update(invitationsTable)
+      .set({ emailDeliveryStatus: deliveryResult.state, updatedAt: new Date() })
+      .where(eq(invitationsTable.id, invitationId))
+      .catch((err) =>
+        console.error("[invitationService] Failed to update delivery status:", err),
+      ),
+  ]);
+
+  const [updated] = await db
+    .select()
+    .from(invitationsTable)
     .where(eq(invitationsTable.id, invitationId))
-    .returning();
+    .limit(1);
 
-  const invitationUrl = buildInvitationUrl(rawToken);
+  const isDev = process.env.NODE_ENV !== "production";
+  const previewUrl = isDev && deliveryResult.state === "development_preview"
+    ? acceptanceUrl
+    : null;
 
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`\n🔗 RESENT INVITATION LINK (dev only):`);
-    console.log(`   Email: ${invitation.email}`);
-    console.log(`   URL:   ${invitationUrl}`);
-    console.log(`   Expires: ${expiresAt.toISOString()}\n`);
-  }
-
-  return { invitation: updated!, invitationUrl };
+  return {
+    invitation: updated!,
+    previewUrl,
+    emailDelivery: deliveryResult,
+  };
 }
 
-/**
- * Accepts an invitation.
- * - Verifies token, expiry, and email match
- * - Creates an active membership for the user
- * - Marks invitation as accepted
- */
+// ─── acceptInvitation ────────────────────────────────────────────────────────
+
 export async function acceptInvitation(rawToken: string, userId: string, userEmail: string) {
   const invitation = await getInvitationByToken(rawToken);
 

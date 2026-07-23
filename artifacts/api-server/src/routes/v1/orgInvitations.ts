@@ -55,8 +55,6 @@ router.post(
         });
         return;
       }
-
-      // Prevent inviting to owner role via invitation
       if (role === "owner") {
         res.status(422).json({
           error: { code: "VALIDATION_ERROR", message: "Cannot invite a user as owner. Promote them after they join." },
@@ -64,7 +62,7 @@ router.post(
         return;
       }
 
-      const { invitation, invitationUrl } = await invitationService.createInvitation({
+      const { invitation, previewUrl, emailDelivery } = await invitationService.createInvitation({
         organizationId: ctx.tenantId,
         email,
         role: role as MembershipRole,
@@ -72,6 +70,8 @@ router.post(
       });
 
       const meta = auditService.getRequestMeta(req);
+
+      // Audit: invitation created
       await auditService.writeAuditEvent({
         organizationId: ctx.tenantId,
         actorUserId: ctx.userId,
@@ -82,10 +82,38 @@ router.post(
         ...meta,
       }).catch(() => {});
 
-      const isDev = process.env.NODE_ENV !== "production";
+      // Audit: email delivery outcome
+      const emailAuditType =
+        emailDelivery.state === "sent" ? "invitation.email_sent"
+        : emailDelivery.state === "development_preview" ? "invitation.email_preview_created"
+        : "invitation.email_failed";
+
+      await auditService.writeAuditEvent({
+        organizationId: ctx.tenantId,
+        actorUserId: ctx.userId,
+        eventType: emailAuditType,
+        resourceType: "invitation",
+        resourceId: invitation.id,
+        metadata: {
+          email,
+          provider: emailDelivery.provider,
+          deliveryState: emailDelivery.state,
+          ...(emailDelivery.providerMessageId ? { providerMessageId: emailDelivery.providerMessageId } : {}),
+          ...(emailDelivery.failureCategory ? { failureCategory: emailDelivery.failureCategory } : {}),
+        },
+        ...meta,
+      }).catch(() => {});
+
+      const emailFailed = emailDelivery.state === "failed";
       res.status(201).json({
-        invitation,
-        ...(isDev ? { invitationUrl } : {}),
+        success: true,
+        data: {
+          invitationCreated: true,
+          invitation,
+          emailDelivery: emailDelivery.state,
+          ...(emailFailed ? { message: "The invitation was created, but the email could not be delivered." } : {}),
+          ...(previewUrl ? { previewUrl } : {}),
+        },
       });
     } catch (err) {
       next(err);
@@ -102,23 +130,54 @@ router.post(
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
-      const { invitation, invitationUrl } = await invitationService.resendInvitation(
+      const { invitation, previewUrl, emailDelivery } = await invitationService.resendInvitation(
         ctx.tenantId,
         String(req.params.invitationId),
+        ctx.userId,
       );
 
       const meta = auditService.getRequestMeta(req);
+
       await auditService.writeAuditEvent({
         organizationId: ctx.tenantId,
         actorUserId: ctx.userId,
         eventType: "invitation.resent",
         resourceType: "invitation",
         resourceId: invitation.id,
+        metadata: { email: invitation.email, provider: emailDelivery.provider, deliveryState: emailDelivery.state },
         ...meta,
       }).catch(() => {});
 
-      const isDev = process.env.NODE_ENV !== "production";
-      res.json({ invitation, ...(isDev ? { invitationUrl } : {}) });
+      const emailAuditType =
+        emailDelivery.state === "sent" ? "invitation.email_sent"
+        : emailDelivery.state === "development_preview" ? "invitation.email_preview_created"
+        : "invitation.email_failed";
+
+      await auditService.writeAuditEvent({
+        organizationId: ctx.tenantId,
+        actorUserId: ctx.userId,
+        eventType: emailAuditType,
+        resourceType: "invitation",
+        resourceId: invitation.id,
+        metadata: {
+          email: invitation.email,
+          provider: emailDelivery.provider,
+          deliveryState: emailDelivery.state,
+          ...(emailDelivery.providerMessageId ? { providerMessageId: emailDelivery.providerMessageId } : {}),
+        },
+        ...meta,
+      }).catch(() => {});
+
+      const emailFailed = emailDelivery.state === "failed";
+      res.json({
+        success: true,
+        data: {
+          invitation,
+          emailDelivery: emailDelivery.state,
+          ...(emailFailed ? { message: "The invitation was updated, but the email could not be delivered." } : {}),
+          ...(previewUrl ? { previewUrl } : {}),
+        },
+      });
     } catch (err) {
       next(err);
     }

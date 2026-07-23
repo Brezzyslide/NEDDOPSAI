@@ -29,7 +29,10 @@ export function hashToken(rawToken: string): string {
 
 /**
  * Builds the invitation acceptance URL.
- * In development, this is logged to stdout and returned in the API response.
+ * Format: {WEB_APP_URL}/invitations/{token}/accept
+ *
+ * Uses WEB_APP_URL env var (set this to your public web app base URL).
+ * Falls back to APP_BASE_URL then localhost for dev convenience.
  */
 export function buildInvitationUrl(
   rawToken: string,
@@ -37,7 +40,9 @@ export function buildInvitationUrl(
 ): string {
   const base =
     baseUrl ??
+    process.env.WEB_APP_URL ??
     process.env.APP_BASE_URL ??
     `http://localhost:${process.env.PORT ?? 5001}`;
-  return `${base}/invitations/accept?token=${rawToken}`;
+  // Strip trailing slash so the path is clean
+  return `${base.replace(/\/$/, "")}/invitations/${rawToken}/accept`;
 }

@@ -67,7 +67,7 @@ catalogs:
       specifier: ^7.3.2
       version: 7.3.6
     vitest:
-      specifier: ^3.2.4
+      specifier: 3.2.7
       version: 3.2.7
     zod:
       specifier: ^3.25.76
@@ -251,6 +251,9 @@ importers:
       pino-http:
         specifier: ^10.5.0
         version: 10.5.0
+      resend:
+        specifier: ^6.18.0
+        version: 6.18.0
     devDependencies:
       '@types/cookie-parser':
         specifier: ^1.4.10
@@ -276,6 +279,9 @@ importers:
       thread-stream:
         specifier: 3.1.0
         version: 3.1.0
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.7(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
 
   artifacts/desktop-connector:
     dependencies:
@@ -5558,6 +5564,9 @@ packages:
     resolution: {integrity: sha512-40QW5YalBNfQo5yRYmiw7Yz6TKKVr3h6970B2YE+3fQpsWcrbj1PzJgxeJ19DRQjhMbKPIuMY8rFaXc8moolVw==}
     engines: {node: '>=10.13.0'}
 
+  postal-mime@2.7.5:
+    resolution: {integrity: sha512-GNEXKvWFQnbgO5NlrGzVa0FmWzBZ24PersAWErttSg1Hjpf0ATxTwS5DOMGaOpTG6bUh5cTr7xi0jAD942wCJA==}
+
   postcss-selector-parser@6.0.10:
     resolution: {integrity: sha512-IQ7TZdoaqbT+LCpShg46jnZVlhWD2w6iQYAcYXfHARZ7X1t/UGhhceQDs5X0cGqKvYlHNOuv7Oa1xmb0oQuA3w==}
     engines: {node: '>=4'}
@@ -5937,6 +5946,15 @@ packages:
 
   requires-port@1.0.0:
     resolution: {integrity: sha512-KigOCHcocU3XODJxsu8i/j8T9tzT4adHiecwORRQ0ZZFcp7ahwXuRU1m+yuO90C5ZUyGeGfocHDI14M3L3yDAQ==}
+
+  resend@6.18.0:
+    resolution: {integrity: sha512-EjxZ9AVzywJgOlUoIJe9ytBWVrfbUtJbjeoLnRSvpU1sv97Hh9DSwhw+k8kiujrG4Rg4bzTBsjlmwWWuoOxSug==}
+    engines: {node: '>=20'}
+    peerDependencies:
+      '@react-email/render': '*'
+    peerDependenciesMeta:
+      '@react-email/render':
+        optional: true
 
   resolve-from@5.0.0:
     resolution: {integrity: sha512-qYg9KP24dD5qka9J47d0aVky0N+b4fTU89LN9iDnjB5waksiC49rvMB0PrUJQGoTmH50XPiqOvAjDfaijGxYZw==}
@@ -12384,6 +12402,8 @@ snapshots:
 
   pngjs@5.0.0: {}
 
+  postal-mime@2.7.5: {}
+
   postcss-selector-parser@6.0.10:
     dependencies:
       cssesc: 3.0.0
@@ -12801,6 +12821,11 @@ snapshots:
       resolve: 1.7.1
 
   requires-port@1.0.0: {}
+
+  resend@6.18.0:
+    dependencies:
+      postal-mime: 2.7.5
+      standardwebhooks: 1.0.0
 
   resolve-from@5.0.0: {}
 

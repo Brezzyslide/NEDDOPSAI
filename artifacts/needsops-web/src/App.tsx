@@ -184,7 +184,7 @@ function AppRouter() {
             <Route path="/sign-in/*?" component={SignInPage} />
             <Route path="/sign-up/*?" component={SignUpPage} />
             <Route path="/onboarding" component={OrgOnboarding} />
-            <Route path="/invitations/accept" component={InvitationAccept} />
+            <Route path="/invitations/:token/accept" component={InvitationAccept} />
             <Route path="/app-home" component={AppHome} />
             <Route path="/app/:slug/team" component={TeamPage} />
             <Route path="/app/:slug/settings" component={OrgSettings} />

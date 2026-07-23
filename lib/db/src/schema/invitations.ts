@@ -48,6 +48,14 @@ export const invitationsTable = pgTable("invitations", {
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 
+  /**
+   * Latest email delivery status — mirrored from email_delivery_logs for
+   * quick access without a join. One of the emailDeliveryStateEnum values.
+   */
+  emailDeliveryStatus: text("email_delivery_status")
+    .notNull()
+    .default("not_attempted"),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

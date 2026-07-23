@@ -216,6 +216,10 @@ export const AUDIT_EVENTS = [
   "invitation.resent",
   "invitation.revoked",
   "invitation.accepted",
+  "invitation.email_delivery_attempted",
+  "invitation.email_sent",
+  "invitation.email_failed",
+  "invitation.email_preview_created",
   "security.session_revoked",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
@@ -240,6 +244,7 @@ export const API_ERROR_CODES = [
   "INVITATION_EMAIL_MISMATCH",
   "DUPLICATE_MEMBERSHIP",
   "OWNER_PROTECTION",
+  "EMAIL_DELIVERY_FAILED",
   "RATE_LIMITED",
   "INTERNAL_ERROR",
 ] as const;

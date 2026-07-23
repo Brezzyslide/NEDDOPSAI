@@ -1,0 +1,290 @@
+# NeedsOps AI+
+
+## Sprint 1 Email Delivery Completion Fix
+
+The invitation workflow is creating invitation records and secure invitation links successfully, but invitation emails are currently only printed to the server console.
+
+Complete the Sprint 1 invitation workflow by implementing real transactional email delivery through Resend.
+
+Do not begin Sprint 2.
+
+## Required architecture
+
+Create a provider-independent email abstraction inside the existing application architecture.
+
+Suggested interface:
+
+```typescript
+interface TransactionalEmailService {
+  sendInvitationEmail(input: InvitationEmailInput): Promise<EmailDeliveryResult>;
+  sendVerificationSupportEmail?(input: VerificationEmailInput): Promise<EmailDeliveryResult>;
+  sendPasswordResetSupportEmail?(input: PasswordResetEmailInput): Promise<EmailDeliveryResult>;
+}
+```
+
+Create:
+
+* `ResendEmailService`
+* `DevelopmentEmailService`
+* shared email templates
+* email delivery result types
+* structured delivery logging
+
+The invitation service must depend on the interface, not directly on the Resend SDK.
+
+## Environment variables
+
+Add these variables to `.env.example`:
+
+```env
+RESEND_API_KEY=
+EMAIL_FROM_ADDRESS=
+EMAIL_FROM_NAME=NeedsOps AI+
+WEB_APP_URL=
+EMAIL_DELIVERY_MODE=development
+```
+
+Supported delivery modes:
+
+```text
+development
+resend
+```
+
+In development mode:
+
+* do not claim an email was delivered
+* log the invitation URL safely
+* return a delivery status of `development_preview`
+* never log the raw invitation token separately from the complete preview URL
+
+In Resend mode:
+
+* require `RESEND_API_KEY`
+* require a valid sender address
+* send the actual email
+* record the Resend message ID where returned
+* handle provider errors safely
+
+## Invitation email
+
+Create a professional NeedsOps AI+ invitation email.
+
+Subject:
+
+```text
+You have been invited to join {{organisationName}} on NeedsOps AI+
+```
+
+Email content must include:
+
+* invited organisation name
+* inviter display name where available
+* assigned organisation role
+* invitation expiry date
+* clear Accept Invitation button
+* plain-text fallback link
+* warning that the invitation is intended only for the invited email address
+* NeedsOps AI+ branding
+* support statement
+* no internal IDs
+* no raw token displayed outside the invitation URL
+
+The acceptance URL should use:
+
+```text
+{{WEB_APP_URL}}/invitations/{{plainInvitationToken}}/accept
+```
+
+Use the existing invitation token generated during creation.
+
+Continue storing only the token hash in the database.
+
+Do not store the plaintext token after email construction.
+
+## Delivery states
+
+Add or support invitation email delivery states:
+
+```text
+not_attempted
+development_preview
+queued
+sent
+failed
+```
+
+Store appropriate non-sensitive metadata:
+
+* invitation ID
+* provider
+* delivery state
+* provider message ID, nullable
+* attempted at
+* sent at, nullable
+* failure category, nullable
+* failure summary, nullable
+
+Do not store API credentials or the plaintext token.
+
+## Invitation creation behaviour
+
+When an invitation is created:
+
+1. validate permission
+2. validate email and role
+3. validate seat availability structurally
+4. create secure plaintext token
+5. store token hash
+6. create invitation record
+7. build the acceptance URL
+8. send the invitation email through `TransactionalEmailService`
+9. update delivery state
+10. record audit events
+11. return a safe response
+
+If email delivery fails:
+
+* do not delete the valid invitation
+* return that the invitation was created but email delivery failed
+* allow an authorised user to resend it
+* show the failure state in the Team page
+* log the failure without exposing secrets
+
+Suggested response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "invitationCreated": true,
+    "emailDelivery": "failed",
+    "message": "The invitation was created, but the email could not be delivered."
+  }
+}
+```
+
+## Resend invitation behaviour
+
+When an authorised owner or administrator selects Resend:
+
+1. confirm the invitation remains pending
+2. confirm it is not revoked
+3. expire the old invitation token
+4. create a fresh single-use token
+5. store the new token hash
+6. update the expiry date
+7. send a new invitation email
+8. update delivery metadata
+9. audit the resend
+
+Do not resend the old plaintext token because it should no longer exist.
+
+## Team page changes
+
+Update pending invitations to show:
+
+* invited email
+* role
+* expiry date
+* delivery status
+* last delivery attempt
+* resend action
+* revoke action
+
+Use clear labels:
+
+```text
+Email sent
+Email delivery failed
+Development preview only
+Invitation expired
+Invitation accepted
+Invitation revoked
+```
+
+When in development mode, display a visible development-only link such as:
+
+```text
+Open invitation preview
+```
+
+Never show that preview link in production.
+
+## Audit events
+
+Add:
+
+```text
+invitation.email_delivery_attempted
+invitation.email_sent
+invitation.email_failed
+invitation.email_preview_created
+invitation.resent
+```
+
+Include:
+
+* tenant ID
+* actor user ID
+* invitation ID
+* invited email
+* provider
+* delivery state
+* provider message ID where safe
+
+Do not include the invitation token.
+
+## Testing
+
+Add tests for:
+
+1. Resend service receives the correct recipient.
+2. Invitation email contains the organisation name.
+3. Invitation email contains the correct acceptance URL.
+4. Token hash is stored while plaintext token is not stored.
+5. Failed email delivery does not delete the invitation.
+6. Failed delivery may be retried.
+7. Resend generates a new token.
+8. Old token fails after resend.
+9. Revoked invitation cannot be resent.
+10. Accepted invitation cannot be resent.
+11. Development mode logs a preview safely.
+12. Tenant A cannot resend Tenant B invitation.
+13. Member without invitation permission cannot resend.
+14. Provider error does not expose API keys.
+15. Audit events are created.
+
+## Manual configuration instructions
+
+After implementation, provide exact steps for:
+
+1. creating or connecting a Resend account
+2. adding the Resend API key to Replit Secrets
+3. configuring the sender address
+4. explaining domain verification requirements
+5. configuring the public web application URL
+6. switching `EMAIL_DELIVERY_MODE` from development to resend
+7. testing one invitation
+8. confirming delivery through server logs and the Team page
+
+Do not place any real API key in source control.
+
+## Completion requirement
+
+This Sprint 1 fix is complete only when:
+
+* invitation creation still works
+* a real invitation email can be delivered through Resend
+* development preview still works without Resend
+* failed delivery is visible and recoverable
+* resend creates a new secure token
+* old tokens stop working
+* Team page displays delivery state
+* tests pass
+* TypeScript passes
+* documentation is updated
+
+Complete this fix, run the tests and provide a concise completion report.
+
+Do not begin Sprint 2.
