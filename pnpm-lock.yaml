@@ -221,6 +221,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/entitlements':
+        specifier: workspace:*
+        version: link:../../lib/entitlements
       '@workspace/permissions':
         specifier: workspace:*
         version: link:../../lib/permissions

@@ -9,6 +9,11 @@ import adminRouter from "./admin.js";
 import workforceRouter from "./workforce.js";
 import tasksRouter from "./tasks.js";
 import approvalsRouter from "./approvalRoutes.js";
+// Sprint 3 routers
+import plansRouter from "./plans.js";
+import workforcePacksRouter from "./workforcePacks.js";
+import orgSubscriptionRouter from "./orgSubscription.js";
+import platformRouter from "./platform.js";
 import { apiErrorHandler } from "../../lib/errors.js";
 
 const router = Router();
@@ -20,8 +25,15 @@ router.use("/organisations/:slug/invitations", orgInvitationsRouter);
 router.use("/organisations/:slug/audit", orgAuditRouter);
 router.use("/organisations/:slug/tasks", tasksRouter);
 router.use("/organisations/:slug/approvals", approvalsRouter);
+// Sprint 3: subscription / entitlements / usage scoped to org
+router.use("/organisations/:slug", orgSubscriptionRouter);
 router.use("/invitations", invitationAcceptRouter);
 router.use("/workforce", workforceRouter);
+// Sprint 3: public plan catalogue and workforce-packs catalogue
+router.use("/plans", plansRouter);
+router.use("/workforce-packs", workforcePacksRouter);
+// Sprint 3: platform console (platform_roles DB-backed)
+router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);
 
 // Sprint 1 error handler

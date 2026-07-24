@@ -230,6 +230,38 @@ export const AUDIT_EVENTS = [
   "approval.requested",
   "approval.granted",
   "approval.rejected",
+  // Sprint 3 — Plans and entitlements
+  "plan.created",
+  "plan.version_created",
+  "plan.version_activated",
+  "plan.archived",
+  "tenant.subscription_created",
+  "tenant.subscription_changed",
+  "tenant.subscription_suspended",
+  "tenant.subscription_cancelled",
+  "tenant.trial_started",
+  "tenant.trial_extended",
+  "tenant.trial_expired",
+  "tenant.entitlement_granted",
+  "tenant.entitlement_denied",
+  "tenant.entitlement_revoked",
+  "tenant.override_created",
+  "tenant.override_revoked",
+  "usage.event_recorded",
+  "usage.limit_warning",
+  "usage.hard_limit_reached",
+  "seat.limit_warning",
+  "seat.limit_reached",
+  // Sprint 3 — Platform Console
+  "platform.organisation_viewed",
+  "platform.organisation_suspended",
+  "platform.organisation_reactivated",
+  "platform.trial_extended",
+  "platform.subscription_changed",
+  "platform.override_created",
+  "platform.override_revoked",
+  "platform.internal_note_added",
+  "platform.security_review_flagged",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
 
@@ -328,6 +360,223 @@ export const APPROVAL_STATES = [
   "expired",
 ] as const;
 export type ApprovalState = (typeof APPROVAL_STATES)[number];
+
+// ─── Plan codes (Sprint 3) ────────────────────────────────────────────────────
+
+export const PLAN_CODES = [
+  "foundation",
+  "professional",
+  "business",
+  "enterprise",
+] as const;
+export type PlanCode = (typeof PLAN_CODES)[number];
+
+export const PLAN_CODE_LABELS: Record<PlanCode, string> = {
+  foundation: "Foundation",
+  professional: "Professional",
+  business: "Business",
+  enterprise: "Enterprise",
+};
+
+// ─── Subscription statuses (Sprint 3) ────────────────────────────────────────
+
+export const SUBSCRIPTION_STATUSES = [
+  "active",
+  "suspended",
+  "cancelled",
+  "trial",
+  "trial_expired",
+  "past_due",
+] as const;
+export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
+
+export const SUBSCRIPTION_STATUS_LABELS: Record<SubscriptionStatus, string> = {
+  active: "Active",
+  suspended: "Suspended",
+  cancelled: "Cancelled",
+  trial: "Trial",
+  trial_expired: "Trial Expired",
+  past_due: "Past Due",
+};
+
+// ─── Feature categories (Sprint 3) ───────────────────────────────────────────
+
+export const FEATURE_CATEGORIES = [
+  "execution_capability",
+  "connector",
+  "workforce_pack",
+  "platform",
+] as const;
+export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
+
+// ─── Execution capability feature codes (Sprint 3) ───────────────────────────
+
+export const EXECUTION_CAPABILITY_CODES = [
+  "execution.openclaw_runtime",
+  "execution.browser_session",
+  "execution.browser_extension",
+  "execution.local_device",
+  "execution.local_files",
+  "execution.local_applications",
+  "execution.api_connectors",
+  "execution.scheduled_tasks",
+  "execution.multi_agent_workflows",
+] as const;
+export type ExecutionCapabilityCode = (typeof EXECUTION_CAPABILITY_CODES)[number];
+
+// ─── Connector eligibility feature codes (Sprint 3) ──────────────────────────
+
+export const CONNECTOR_CODES = [
+  "connector.google_workspace",
+  "connector.microsoft_365",
+  "connector.xero",
+  "connector.myob",
+  "connector.zoho",
+  "connector.needscare",
+  "connector.need2comply",
+  "connector.needs2learn",
+  "connector.custom_crm",
+  "connector.browser_based_system",
+] as const;
+export type ConnectorCode = (typeof CONNECTOR_CODES)[number];
+
+// ─── Platform feature codes (Sprint 3) ───────────────────────────────────────
+
+export const PLATFORM_FEATURE_CODES = [
+  "platform.mobile_access",
+  "platform.audit_history_basic",
+  "platform.audit_history_advanced",
+  "platform.approval_workflows",
+  "platform.api_access",
+  "platform.sso",
+  "platform.scim",
+  "platform.custom_branding",
+  "platform.advanced_reporting",
+  "platform.dedicated_runtime",
+  "platform.custom_connectors",
+  "platform.custom_retention",
+  "platform.regional_hosting",
+  "platform.sla",
+  "platform.dedicated_infrastructure",
+] as const;
+export type PlatformFeatureCode = (typeof PLATFORM_FEATURE_CODES)[number];
+
+// ─── Workforce pack feature codes (Sprint 3) ──────────────────────────────────
+
+export const WORKFORCE_PACK_FEATURE_CODES = [
+  "workforce_pack.core",
+  "workforce_pack.compliance",
+  "workforce_pack.operations",
+  "workforce_pack.finance",
+  "workforce_pack.hr",
+  "workforce_pack.marketing",
+] as const;
+export type WorkforcePackFeatureCode = (typeof WORKFORCE_PACK_FEATURE_CODES)[number];
+
+/** Union of all feature codes used as entitlement keys */
+export type FeatureCode =
+  | ExecutionCapabilityCode
+  | ConnectorCode
+  | PlatformFeatureCode
+  | WorkforcePackFeatureCode;
+
+export const ALL_FEATURE_CODES: readonly FeatureCode[] = [
+  ...EXECUTION_CAPABILITY_CODES,
+  ...CONNECTOR_CODES,
+  ...PLATFORM_FEATURE_CODES,
+  ...WORKFORCE_PACK_FEATURE_CODES,
+] as const;
+
+// ─── Usage dimension codes (Sprint 3) ────────────────────────────────────────
+
+export const USAGE_DIMENSION_CODES = [
+  "ai_tasks",
+  "task_plans",
+  "specialist_runs",
+  "browser_actions",
+  "local_device_actions",
+  "api_connector_actions",
+  "scheduled_runs",
+  "document_pages",
+  "storage_bytes",
+  "generated_files",
+  "input_tokens",
+  "output_tokens",
+  "active_users",
+] as const;
+export type UsageDimensionCode = (typeof USAGE_DIMENSION_CODES)[number];
+
+export const USAGE_DIMENSION_LABELS: Record<UsageDimensionCode, string> = {
+  ai_tasks: "AI Tasks",
+  task_plans: "Task Plans",
+  specialist_runs: "Specialist Runs",
+  browser_actions: "Browser Actions",
+  local_device_actions: "Local Device Actions",
+  api_connector_actions: "API Connector Actions",
+  scheduled_runs: "Scheduled Runs",
+  document_pages: "Document Pages",
+  storage_bytes: "Storage",
+  generated_files: "Generated Files",
+  input_tokens: "Input Tokens",
+  output_tokens: "Output Tokens",
+  active_users: "Active Users",
+};
+
+export const USAGE_DIMENSION_UNITS: Record<UsageDimensionCode, string> = {
+  ai_tasks: "tasks",
+  task_plans: "plans",
+  specialist_runs: "runs",
+  browser_actions: "actions",
+  local_device_actions: "actions",
+  api_connector_actions: "actions",
+  scheduled_runs: "runs",
+  document_pages: "pages",
+  storage_bytes: "bytes",
+  generated_files: "files",
+  input_tokens: "tokens",
+  output_tokens: "tokens",
+  active_users: "users",
+};
+
+// ─── Platform roles (Sprint 3) ────────────────────────────────────────────────
+
+export const PLATFORM_ROLES = [
+  "platform_super_admin",
+  "platform_operations_admin",
+  "platform_support_admin",
+  "platform_billing_admin",
+  "platform_security_auditor",
+] as const;
+export type PlatformRole = (typeof PLATFORM_ROLES)[number];
+
+export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
+  platform_super_admin: "Super Admin",
+  platform_operations_admin: "Operations Admin",
+  platform_support_admin: "Support Admin",
+  platform_billing_admin: "Billing Admin",
+  platform_security_auditor: "Security Auditor",
+};
+
+// ─── Tenant override types (Sprint 3) ────────────────────────────────────────
+
+export const OVERRIDE_TYPES = [
+  "extra_seats",
+  "workforce_pack",
+  "extra_usage",
+  "execution_capability",
+  "connector_access",
+  "feature_denial",
+  "trial_extension",
+] as const;
+export type OverrideType = (typeof OVERRIDE_TYPES)[number];
+
+// ─── Usage warning thresholds (Sprint 3) ─────────────────────────────────────
+
+export const USAGE_WARNING_THRESHOLDS = {
+  warn: 80,
+  critical: 95,
+  hard_limit: 100,
+} as const;
 
 // ─── Worker Profile — Sprint 2 Architecture Correction ───────────────────────
 //

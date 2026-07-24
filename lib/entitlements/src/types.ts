@@ -1,201 +1,143 @@
 /**
- * @workspace/entitlements — Subscription, workforce pack, and access entitlement types
+ * @workspace/entitlements — Sprint 3
  *
  * Entitlements is intentionally separate from @workspace/permissions.
  *
  * @workspace/permissions answers: "Can this user perform this action?" (RBAC)
  * @workspace/entitlements answers: "Does this organisation's subscription include this feature?" (billing gates)
  *
- * An org can have a user with admin RBAC permissions but still be blocked from
- * activating a workforce pack because their subscription tier doesn't include it.
- * Both checks must pass for an action to proceed.
- */
-
-import type { SubscriptionTier } from "@workspace/shared";
-
-// ─── Feature flags ────────────────────────────────────────────────────────────
-
-/**
- * Every gated feature in the platform has a flag here.
- * Sprint 2+: resolve these against the organisation's active subscription.
- */
-export type FeatureFlag =
-  // Workforce packs
-  | "workforce:ndis-compliance"          // NDIS Compliance Officer pack
-  | "workforce:ndis-operations"          // NDIS Operations Manager pack
-  | "workforce:enterprise"               // Enterprise workforce pack
-  | "workforce:healthcare"               // Healthcare pack (coming soon)
-  // Connectors / integrations
-  | "connector:google-workspace"
-  | "connector:microsoft-365"
-  | "connector:xero"
-  | "connector:zoho"
-  | "connector:custom-webhook"
-  // Platform features
-  | "feature:audit-log-export"
-  | "feature:api-access"
-  | "feature:sso"
-  | "feature:custom-branding"
-  | "feature:multi-location"
-  | "feature:advanced-reporting"
-  | "feature:bulk-user-import"
-  // AI capabilities
-  | "ai:document-processing"
-  | "ai:scheduled-tasks"
-  | "ai:human-approval-workflows"
-  | "ai:multi-agent-orchestration";
-
-// ─── Tier feature map ─────────────────────────────────────────────────────────
-
-/**
- * Defines which features are available on each subscription tier.
- * Sprint 2+: loaded from a database-backed plan configuration,
- * not hardcoded, so plans can be customised per organisation.
+ * An org can have a user with admin RBAC but still be blocked from activating a
+ * workforce pack because their subscription doesn't include it. Both checks must pass.
  *
- * This map is the Sprint 0 default baseline.
+ * Resolution order:
+ *   1. Subscription state (inactive → deny everything restricted)
+ *   2. Plan version features
+ *   3. Included workforce packs
+ *   4. Add-ons
+ *   5. Tenant overrides (may grant or explicitly deny)
+ *   6. Trials
+ *   7. Explicit denial (highest precedence — overrides everything)
+ *   8. Final decision
  */
-export const TIER_FEATURES: Record<SubscriptionTier, FeatureFlag[]> = {
-  starter: [
-    "workforce:ndis-compliance",
-    "workforce:ndis-operations",
-  ],
-  professional: [
-    "workforce:ndis-compliance",
-    "workforce:ndis-operations",
-    "workforce:enterprise",
-    "connector:google-workspace",
-    "connector:microsoft-365",
-    "connector:xero",
-    "feature:audit-log-export",
-    "feature:api-access",
-    "feature:advanced-reporting",
-    "ai:document-processing",
-    "ai:scheduled-tasks",
-    "ai:human-approval-workflows",
-  ],
-  enterprise: [
-    "workforce:ndis-compliance",
-    "workforce:ndis-operations",
-    "workforce:enterprise",
-    "workforce:healthcare",
-    "connector:google-workspace",
-    "connector:microsoft-365",
-    "connector:xero",
-    "connector:zoho",
-    "connector:custom-webhook",
-    "feature:audit-log-export",
-    "feature:api-access",
-    "feature:sso",
-    "feature:custom-branding",
-    "feature:multi-location",
-    "feature:advanced-reporting",
-    "feature:bulk-user-import",
-    "ai:document-processing",
-    "ai:scheduled-tasks",
-    "ai:human-approval-workflows",
-    "ai:multi-agent-orchestration",
-  ],
-};
 
-// ─── Usage limits ─────────────────────────────────────────────────────────────
+import type {
+  FeatureCode,
+  UsageDimensionCode,
+  WorkforcePackCode,
+  ExecutionChannel,
+  ConnectorCode,
+} from "@workspace/shared";
 
-export type UsageDimension =
-  | "users"                    // Total users in the organisation
-  | "workforce-packs"          // Active workforce packs
-  | "ai-tasks-per-month"       // AI task executions per billing period
-  | "document-pages-per-month" // Pages processed through document AI
-  | "api-calls-per-month"      // External API calls
-  | "connectors";              // Active third-party connectors
+// ─── Entitlement result ───────────────────────────────────────────────────────
 
-export interface UsageLimit {
-  dimension: UsageDimension;
-  /** Hard limit — request is blocked at this value. null = unlimited */
-  hardLimit: number | null;
-  /** Soft limit — warning triggered at this value. null = no warning */
-  softLimit: number | null;
-  /** Unit label for display, e.g. "users", "tasks", "pages" */
-  unit: string;
+export type EntitlementSource =
+  | "subscription"
+  | "addon"
+  | "override"
+  | "trial"
+  | "explicit_denial"
+  | "no_subscription";
+
+export type EntitlementDenialReason =
+  | "no_subscription"
+  | "subscription_inactive"
+  | "subscription_expired"
+  | "trial_expired"
+  | "feature_not_in_plan"
+  | "workforce_pack_not_included"
+  | "usage_hard_limit_reached"
+  | "explicit_denial"
+  | "override_expired";
+
+export interface EntitlementResult {
+  /** True if the feature/capability is granted */
+  allowed: boolean;
+  /** Human-readable reason for the decision */
+  reason: string;
+  /** How this entitlement was resolved */
+  source: EntitlementSource;
+  /** When this entitlement was evaluated */
+  evaluatedAt: Date;
+  /** When this entitlement expires (null = indefinite / subscription-based) */
+  effectiveUntil: Date | null;
+  /** Structured denial reason for UI logic */
+  denialReason?: EntitlementDenialReason;
+  /** Configuration data relevant to this entitlement (e.g. seat count) */
+  configuration?: Record<string, unknown>;
 }
 
-/**
- * Default usage limits per subscription tier.
- * Sprint 2+: override per organisation for enterprise custom plans.
- */
-export const TIER_USAGE_LIMITS: Record<SubscriptionTier, UsageLimit[]> = {
-  starter: [
-    { dimension: "users", hardLimit: 10, softLimit: 8, unit: "users" },
-    { dimension: "workforce-packs", hardLimit: 2, softLimit: null, unit: "packs" },
-    { dimension: "ai-tasks-per-month", hardLimit: 500, softLimit: 400, unit: "tasks" },
-    { dimension: "document-pages-per-month", hardLimit: 100, softLimit: 80, unit: "pages" },
-    { dimension: "api-calls-per-month", hardLimit: null, softLimit: null, unit: "calls" },
-    { dimension: "connectors", hardLimit: 0, softLimit: null, unit: "connectors" },
-  ],
-  professional: [
-    { dimension: "users", hardLimit: 50, softLimit: 40, unit: "users" },
-    { dimension: "workforce-packs", hardLimit: 5, softLimit: null, unit: "packs" },
-    { dimension: "ai-tasks-per-month", hardLimit: 5000, softLimit: 4000, unit: "tasks" },
-    { dimension: "document-pages-per-month", hardLimit: 2000, softLimit: 1600, unit: "pages" },
-    { dimension: "api-calls-per-month", hardLimit: 10000, softLimit: 8000, unit: "calls" },
-    { dimension: "connectors", hardLimit: 3, softLimit: null, unit: "connectors" },
-  ],
-  enterprise: [
-    { dimension: "users", hardLimit: null, softLimit: null, unit: "users" },
-    { dimension: "workforce-packs", hardLimit: null, softLimit: null, unit: "packs" },
-    { dimension: "ai-tasks-per-month", hardLimit: null, softLimit: null, unit: "tasks" },
-    { dimension: "document-pages-per-month", hardLimit: null, softLimit: null, unit: "pages" },
-    { dimension: "api-calls-per-month", hardLimit: null, softLimit: null, unit: "calls" },
-    { dimension: "connectors", hardLimit: null, softLimit: null, unit: "connectors" },
-  ],
-};
+// ─── Usage result ─────────────────────────────────────────────────────────────
 
-// ─── Entitlement check ────────────────────────────────────────────────────────
+export interface UsageAllowance {
+  dimensionCode: UsageDimensionCode;
+  /** null = unlimited */
+  hardLimit: number | null;
+  softLimitPct: number; // e.g. 80.0
+  currentUsage: number;
+  /** Derived: hardLimit !== null ? currentUsage / hardLimit * 100 : 0 */
+  usagePct: number;
+  /** Warning level: null | "warn" | "critical" | "at_limit" */
+  warningLevel: null | "warn" | "critical" | "at_limit";
+  periodStart: Date | null;
+  periodEnd: Date | null;
+}
+
+export interface UsageCheckResult {
+  allowed: boolean;
+  dimensionCode: UsageDimensionCode;
+  currentUsage: number;
+  hardLimit: number | null;
+  usagePct: number;
+  warningLevel: null | "warn" | "critical" | "at_limit";
+  reason: string;
+}
+
+// ─── Seat result ──────────────────────────────────────────────────────────────
+
+export interface SeatInfo {
+  /** From plan version (null = configurable enterprise) */
+  includedSeats: number | null;
+  /** Effective limit after overrides and addons */
+  effectiveLimit: number | null;
+  /** Active memberships (invited/suspended/revoked are excluded) */
+  seatsUsed: number;
+  seatsRemaining: number | null;
+  canInvite: boolean;
+  /** Set when seatsUsed >= 80% of effectiveLimit */
+  warningLevel: null | "warn" | "critical" | "at_limit";
+  seatOverride: number | null;
+}
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 export interface EntitlementContext {
   organizationId: string;
-  subscriptionTier: SubscriptionTier;
-  /** The organisation's current usage counters */
-  currentUsage?: Partial<Record<UsageDimension, number>>;
+  /** Loaded from tenant_subscriptions */
+  subscriptionStatus: string;
+  /** Active plan version ID */
+  planVersionId: string;
+  /** Plan code for UI labelling */
+  planCode: string;
+  /** Whether this org is currently on a trial */
+  isTrial: boolean;
+  trialEndAt: Date | null;
 }
 
-export type EntitlementDenialReason =
-  | "feature_not_on_tier"
-  | "usage_hard_limit_reached"
-  | "subscription_inactive"
-  | "workforce_pack_not_assigned";
+// ─── Legacy Sprint 0 types (kept for backwards compatibility) ─────────────────
+// These are deprecated. Use FeatureCode and the Sprint 3 service instead.
 
-export interface EntitlementResult {
-  /** True if the entitlement is granted */
-  granted: boolean;
-  /** Set when granted=false */
-  denialReason?: EntitlementDenialReason;
-  /** Human-readable message for display */
-  message: string;
-  /** The tier required to unlock this feature (for upgrade prompts) */
-  requiredTier?: SubscriptionTier;
-}
+/** @deprecated Use FeatureCode from @workspace/shared */
+export type FeatureFlag = string;
 
-// ─── Entitlement service interface ───────────────────────────────────────────
+/** @deprecated Use UsageAllowance */
+export type UsageDimension = string;
 
-/**
- * Sprint 2+: implement this against the live subscription DB.
- * Sprint 0: use `checkEntitlementFromTier` helper for static tier checks.
- */
-export interface EntitlementService {
-  /** Check whether an organisation has a specific feature flag enabled */
+/** @deprecated Use EntitlementResult */
+export interface EntitlementServiceLegacy {
   checkFeature(
-    context: EntitlementContext,
+    context: { organizationId: string; subscriptionTier: string },
     feature: FeatureFlag,
-  ): Promise<EntitlementResult>;
-
-  /** Check whether an organisation is within a usage dimension's limit */
-  checkUsage(
-    context: EntitlementContext,
-    dimension: UsageDimension,
-    requested?: number,
-  ): Promise<EntitlementResult>;
-
-  /** Get a summary of all current usage against limits */
-  getUsageSummary(
-    context: EntitlementContext,
-  ): Promise<Array<UsageLimit & { current: number }>>;
+  ): Promise<{ granted: boolean; message: string }>;
 }
+
+export type { FeatureCode, UsageDimensionCode, WorkforcePackCode, ExecutionChannel, ConnectorCode };

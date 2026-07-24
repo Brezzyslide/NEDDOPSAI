@@ -7,7 +7,8 @@
 
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAdmin } from "../../middlewares/requirePermission.js";
+// Sprint 3: use DB-backed platform auth middleware (also accepts Clerk platformAdmin flag)
+import { requirePlatformAdmin } from "../../middlewares/requirePlatformRole.js";
 import { db, usersTable, organizationsTable, membershipsTable, auditLogTable } from "@workspace/db";
 import { count } from "drizzle-orm";
 

@@ -42,6 +42,26 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
 }
 
 /**
+ * Convenience wrapper used by platform routes.
+ * Accepts a flattened shape and delegates to writeAuditEvent.
+ */
+export async function log(params: {
+  eventType: AuditEventType;
+  actorId?: string | null;
+  organizationId?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  await writeAuditEvent({
+    eventType: params.eventType,
+    actorUserId: params.actorId ?? null,
+    organizationId: params.organizationId ?? null,
+    actorType: "user",
+    resourceType: "platform",
+    metadata: params.metadata ?? {},
+  });
+}
+
+/**
  * Extracts audit metadata from an Express request.
  */
 export function getRequestMeta(req: {
@@ -63,3 +83,8 @@ export function getRequestMeta(req: {
     userAgent: Array.isArray(userAgent) ? userAgent[0] : userAgent ?? null,
   };
 }
+
+/**
+ * Namespace object — imported as `{ auditService }` by platform routes.
+ */
+export const auditService = { log, writeAuditEvent, getRequestMeta };

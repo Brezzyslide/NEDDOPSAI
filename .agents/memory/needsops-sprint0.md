@@ -69,6 +69,19 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 - Marketing pack is `coming_soon` by design; marketing specialists excluded from task routing.
 - 64 total tests passing (17 email + 47 workforce)
 
+## Sprint 3 — Entitlements, Subscriptions, Usage (complete)
+- `organizations.subscriptionTier` enum values: `starter | professional | enterprise` (NOT `foundation`). Sprint 3 plans use separate `plans` table with codes `foundation | professional | business | enterprise`.
+- `tenant_subscriptions.status` enum: `active | suspended | cancelled | trial | trial_expired` (NOT `trialing`).
+- `plan_usage_allowances.hard_limit` and `tenant_usage_allowances.hard_limit` must be `bigint` (not `integer`) — storage byte values exceed int4 range.
+- `EntitlementResult` uses `.allowed` (not `.granted`) — check `result.allowed` in tests and UI.
+- Drizzle wraps pg constraint errors in `.cause.message`, not top-level `.message` — idempotency error catch must check both.
+- Seat overrides use `tenant_overrides` table (`overrideType = "extra_seats"`, `value.seats`), NOT `tenant_usage_allowances`.
+- Platform auth middleware: `requirePlatformAuth` exported from `requirePlatformRole.ts`. `admin.ts` must import from there, not `requirePermission.ts`.
+- `auditService` in platform.ts imports as namespace object `{ auditService }` — exported as `const auditService = { log, writeAuditEvent, getRequestMeta }` at end of auditService.ts.
+- New workspace dep must be added to both `package.json` AND installed via `pnpm install` before build — esbuild can't resolve workspace packages not listed as deps.
+- Seed script must be run after migration: `cd artifacts/api-server && npx tsx src/seed.ts`. Idempotent.
+- 112 total tests passing (17 email + 47 workforce + 35 worker profiles + 13 sprint3-entitlements).
+
 ## Sprint 2 Architecture Correction (complete)
 - Internal concept: "Workforce Role" (32 specialists). Customer-facing: "AI Specialist". No UI rename.
 - New: `WorkerProfile` model in `workerProfileRegistry.ts` — defines execution surfaces, tool categories, connector categories, prohibited actions, approval-required actions, risk level for future OpenClaw.

@@ -9,6 +9,8 @@ const NAV = [
   { label: "Tasks",      icon: "📌", path: "/tasks" },
   { label: "Approvals",  icon: "✅", path: "/approvals" },
   { label: "Team",       icon: "👥", path: "/team" },
+  { label: "Plan",       icon: "💎", path: "/plan" },
+  { label: "Usage",      icon: "📊", path: "/usage" },
   { label: "Audit",      icon: "📋", path: "/audit" },
   { label: "Settings",   icon: "⚙",  path: "/settings" },
 ];

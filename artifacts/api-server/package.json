@@ -16,6 +16,7 @@
     "@workspace/api-zod": "workspace:*",
     "@workspace/auth": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/entitlements": "workspace:*",
     "@workspace/permissions": "workspace:*",
     "@workspace/shared": "workspace:*",
     "@workspace/validation": "workspace:*",

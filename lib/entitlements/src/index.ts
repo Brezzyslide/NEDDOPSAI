@@ -1,14 +1,13 @@
 /**
- * @workspace/entitlements
+ * @workspace/entitlements — Sprint 3
  *
- * Subscription entitlements, workforce pack access gates,
- * connector permissions, and usage limits for the NeedsOps AI+ platform.
+ * Commercial entitlement gates for the NeedsOps AI+ platform.
  *
- * Answers: "Does this organisation's plan include this feature?"
+ * Answers: "Does this organisation's plan include this feature/capability?"
  * (Distinct from @workspace/permissions which answers: "Can this user do this action?")
  *
- * Sprint 0: types, tier feature map, usage limits, and static helpers.
- * Sprint 2+: async EntitlementService backed by live subscription records.
+ * Sprint 3: async EntitlementService backed by live subscription + override records.
+ * Sprint 0 static helpers are preserved for compatibility but deprecated.
  */
 
 export * from "./types.js";

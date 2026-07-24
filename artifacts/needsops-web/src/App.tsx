@@ -39,6 +39,8 @@ import InvitationAccept from "@/pages/InvitationAccept";
 import WorkforcePage from "@/pages/app/WorkforcePage";
 import TaskCentrePage from "@/pages/app/TaskCentrePage";
 import ApprovalsPage from "@/pages/app/ApprovalsPage";
+import PlanPage from "@/pages/app/PlanPage";
+import UsagePage from "@/pages/app/UsagePage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -193,6 +195,8 @@ function AppRouter() {
             <Route path="/app/:slug/tasks" component={TaskCentrePage} />
             <Route path="/app/:slug/approvals" component={ApprovalsPage} />
             <Route path="/app/:slug/team" component={TeamPage} />
+            <Route path="/app/:slug/plan" component={PlanPage} />
+            <Route path="/app/:slug/usage" component={UsagePage} />
             <Route path="/app/:slug/settings" component={OrgSettings} />
             <Route path="/app/:slug/audit" component={AuditPage} />
             <Route path="/app/:slug" component={AppDashboard} />
