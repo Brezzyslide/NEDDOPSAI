@@ -68,3 +68,14 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 - Mobile: tasks.tsx and approvals.tsx tabs added (placeholder data; live API deferred to Sprint 3 mobile auth)
 - Marketing pack is `coming_soon` by design; marketing specialists excluded from task routing.
 - 64 total tests passing (17 email + 47 workforce)
+
+## Sprint 2 Architecture Correction (complete)
+- Internal concept: "Workforce Role" (32 specialists). Customer-facing: "AI Specialist". No UI rename.
+- New: `WorkerProfile` model in `workerProfileRegistry.ts` — defines execution surfaces, tool categories, connector categories, prohibited actions, approval-required actions, risk level for future OpenClaw.
+- `RegistrySpecialist` now has `workerProfileCodes: string[]` field linking roles → profiles.
+- `ROLE_TO_PROFILES` map and helper functions: `getWorkerProfilesForRole`, `getActiveWorkerProfilesForRole`, `getRoleCodesForProfile`, `getWorkerProfileByCode`.
+- New shared types: `WorkerProfileStatus`, `ExecutionChannel`, `ToolCategory`, `ConnectorCategory`, `RiskLevel`.
+- 2 new DB tables: `worker_profiles`, `workforce_role_profiles` (join). Migrated.
+- 35 new tests in `workerProfiles.test.ts`. Total: 99 tests, all passing.
+- No live permissions, no browser domains, no connector credentials yet. All Worker Profile fields are metadata only.
+- Chief of Staff profile: `internal_api` only, prohibits `modify_data`. Payroll profile: prohibits `process_payment`, `approve_payrun`, `access_tax_file_numbers`.

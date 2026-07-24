@@ -329,6 +329,63 @@ export const APPROVAL_STATES = [
 ] as const;
 export type ApprovalState = (typeof APPROVAL_STATES)[number];
 
+// ─── Worker Profile — Sprint 2 Architecture Correction ───────────────────────
+//
+// A Workforce Role (customer-facing: "AI Specialist") defines who is responsible
+// and what expertise applies. A Worker Profile defines which tools and execution
+// surfaces a future OpenClaw runtime may use when executing on behalf of that role.
+//
+// Relationship:
+//   Chief of Staff → Workforce Role → Worker Profile → Future OpenClaw Runtime
+
+export const WORKER_PROFILE_STATUSES = [
+  "active",
+  "beta",
+  "coming_soon",
+  "deprecated",
+] as const;
+export type WorkerProfileStatus = (typeof WORKER_PROFILE_STATUSES)[number];
+
+/** Execution surfaces a Worker Profile may be permitted to access */
+export const EXECUTION_CHANNELS = [
+  "internal_api",
+  "document_store",
+  "calendar_system",
+  "email_system",
+  "web_browser",
+  "local_files",
+  "database_query",
+] as const;
+export type ExecutionChannel = (typeof EXECUTION_CHANNELS)[number];
+
+/** Logical groupings of tools that may be made available to a Worker Profile */
+export const TOOL_CATEGORIES = [
+  "document_tools",
+  "calendar_tools",
+  "communication_tools",
+  "data_tools",
+  "search_tools",
+  "form_tools",
+  "reporting_tools",
+] as const;
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
+
+/** External system connector families a Worker Profile may be granted access to */
+export const CONNECTOR_CATEGORIES = [
+  "ndis_portal",
+  "payroll_system",
+  "hr_system",
+  "finance_system",
+  "calendar_system",
+  "email_system",
+  "document_management",
+] as const;
+export type ConnectorCategory = (typeof CONNECTOR_CATEGORIES)[number];
+
+/** Risk classification for a Worker Profile — determines oversight and audit requirements */
+export const RISK_LEVELS = ["low", "medium", "high", "critical"] as const;
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+
 // ─── API error codes ──────────────────────────────────────────────────────────
 
 export const API_ERROR_CODES = [

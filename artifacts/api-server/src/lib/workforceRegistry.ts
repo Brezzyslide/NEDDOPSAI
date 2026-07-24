@@ -1,8 +1,15 @@
 /**
  * Workforce Registry — Sprint 2
  *
- * Static metadata describing every workforce pack and specialist.
- * No AI, no LLM. This is pure data.
+ * Static metadata describing every Workforce Role (customer-facing: "AI Specialist")
+ * and the supporting catalogue of capabilities and packs.
+ *
+ * Internal concept: Workforce Role — defines business purpose, responsibilities,
+ * capabilities, approval requirements, and which Worker Profiles it may use.
+ *
+ * Customer-facing term: AI Specialist — the name shown in the UI.
+ *
+ * No AI, no LLM, no live execution. Pure metadata.
  *
  * Used to seed the database and serve the /v1/workforce/* endpoints.
  */
@@ -14,6 +21,15 @@ export interface RegistryCapability {
   description: string;
 }
 
+/**
+ * RegistrySpecialist describes a Workforce Role.
+ *
+ * Internal concept: Workforce Role — defines who is responsible and what expertise applies.
+ * Customer-facing term: AI Specialist — shown in the UI and API responses.
+ *
+ * A Workforce Role references one or more Worker Profiles, which define which tools
+ * and execution surfaces may be used when OpenClaw executes on behalf of this role.
+ */
 export interface RegistrySpecialist {
   id: string;
   code: string;
@@ -28,6 +44,12 @@ export interface RegistrySpecialist {
   approvalRequirements: string;
   executionStatus: "available" | "beta" | "coming_soon" | "deprecated";
   version: string;
+  /**
+   * Worker Profile codes this Workforce Role may execute through.
+   * OpenClaw (future) selects the appropriate profile at execution time.
+   * Empty until Sprint 2 Architecture Correction seeding.
+   */
+  workerProfileCodes: string[];
 }
 
 export interface RegistryPack {
@@ -105,6 +127,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["chief_of_staff_profile"],
   },
   {
     id: "spec_executive_assistant",
@@ -120,6 +143,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["executive_assistant_profile"],
   },
   {
     id: "spec_research_specialist",
@@ -135,6 +159,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["research_specialist_profile"],
   },
   {
     id: "spec_document_specialist",
@@ -150,6 +175,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["document_specialist_profile"],
   },
   {
     id: "spec_calendar_specialist",
@@ -165,6 +191,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["calendar_specialist_profile"],
   },
   {
     id: "spec_communication_specialist",
@@ -180,6 +207,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["communication_specialist_profile"],
   },
   // ── Compliance Workforce ─────────────────────────────────────────────────────
   {
@@ -196,6 +224,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["compliance_officer_profile"],
   },
   {
     id: "spec_quality_officer",
@@ -211,6 +240,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["quality_officer_profile"],
   },
   {
     id: "spec_policy_officer",
@@ -226,6 +256,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "administrator_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["policy_officer_profile"],
   },
   {
     id: "spec_incident_review_officer",
@@ -241,6 +272,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["incident_review_officer_profile"],
   },
   {
     id: "spec_corrective_action_officer",
@@ -256,6 +288,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["corrective_action_officer_profile"],
   },
   {
     id: "spec_restrictive_practice_officer",
@@ -271,6 +304,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "compliance_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["restrictive_practice_officer_profile"],
   },
   // ── Operations Workforce ─────────────────────────────────────────────────────
   {
@@ -287,6 +321,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["operations_manager_profile"],
   },
   {
     id: "spec_service_delivery_coordinator",
@@ -302,6 +337,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["service_delivery_coordinator_profile"],
   },
   {
     id: "spec_roster_coordinator",
@@ -317,6 +353,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["roster_coordinator_profile"],
   },
   {
     id: "spec_asset_coordinator",
@@ -332,6 +369,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["asset_coordinator_profile"],
   },
   {
     id: "spec_workflow_coordinator",
@@ -347,6 +385,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["workflow_coordinator_profile"],
   },
   // ── Finance Workforce ────────────────────────────────────────────────────────
   {
@@ -363,6 +402,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["accounts_officer_profile"],
   },
   {
     id: "spec_payroll_officer",
@@ -378,6 +418,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "administrator_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["payroll_officer_profile"],
   },
   {
     id: "spec_invoice_specialist",
@@ -393,6 +434,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["invoice_specialist_profile"],
   },
   {
     id: "spec_budget_analyst",
@@ -408,6 +450,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["budget_analyst_profile"],
   },
   {
     id: "spec_financial_reporting_officer",
@@ -423,6 +466,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "administrator_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["financial_reporting_officer_profile"],
   },
   // ── HR Workforce ─────────────────────────────────────────────────────────────
   {
@@ -439,6 +483,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["hr_officer_profile"],
   },
   {
     id: "spec_recruitment_officer",
@@ -454,6 +499,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["recruitment_officer_profile"],
   },
   {
     id: "spec_learning_coordinator",
@@ -469,6 +515,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["learning_coordinator_profile"],
   },
   {
     id: "spec_performance_officer",
@@ -484,6 +531,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["performance_officer_profile"],
   },
   {
     id: "spec_staff_compliance_officer",
@@ -499,6 +547,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "available",
     version: "1.0.0",
+    workerProfileCodes: ["staff_compliance_officer_profile"],
   },
   // ── Marketing Workforce ───────────────────────────────────────────────────────
   {
@@ -515,6 +564,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "administrator_approval",
     executionStatus: "coming_soon",
     version: "1.0.0",
+    workerProfileCodes: ["marketing_director_profile"],
   },
   {
     id: "spec_content_strategist",
@@ -530,6 +580,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "coming_soon",
     version: "1.0.0",
+    workerProfileCodes: ["content_strategist_profile"],
   },
   {
     id: "spec_campaign_manager",
@@ -545,6 +596,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "manager_approval",
     executionStatus: "coming_soon",
     version: "1.0.0",
+    workerProfileCodes: ["campaign_manager_profile"],
   },
   {
     id: "spec_brand_manager",
@@ -560,6 +612,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "coming_soon",
     version: "1.0.0",
+    workerProfileCodes: ["brand_manager_profile"],
   },
   {
     id: "spec_social_media_specialist",
@@ -575,6 +628,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     approvalRequirements: "no_approval",
     executionStatus: "coming_soon",
     version: "1.0.0",
+    workerProfileCodes: ["social_media_specialist_profile"],
   },
 ];
 

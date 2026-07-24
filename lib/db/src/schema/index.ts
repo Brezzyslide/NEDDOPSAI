@@ -15,3 +15,5 @@ export * from "./taskExecutionPlans";
 export * from "./approvals";
 export * from "./approvalRules";
 export * from "./approvalHistory";
+export * from "./workerProfiles";
+export * from "./workforceRoleProfiles";

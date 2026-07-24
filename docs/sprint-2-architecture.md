@@ -8,6 +8,8 @@
 
 Sprint 2 establishes the AI Workforce architecture — the core model that all future AI capabilities will be built on. No AI execution occurs in this sprint. Everything is metadata, models, and deterministic orchestration.
 
+> **Sprint 2 Architecture Correction** — the conceptual separation between Workforce Roles and Worker Profiles is documented here. See the [Workforce Role vs Worker Profile](#workforce-role-vs-worker-profile) section.
+
 ---
 
 ## Architectural Principle
@@ -15,20 +17,82 @@ Sprint 2 establishes the AI Workforce architecture — the core model that all f
 ```
 Customer Request
        ↓
- Chief of Staff        ← single entry point for all tasks
+ Chief of Staff              ← single entry point for all tasks
        ↓
- Intent Classification (deterministic keyword routing)
+ Intent Classification       ← deterministic keyword routing (Sprint 2)
        ↓
- Specialist Selection
+ Workforce Role Selection    ← who is responsible + what expertise applies
+       ↓
+ Worker Profile Selection    ← which tools + execution surfaces may be used
        ↓
  Execution Plan
        ↓
  Approval Gate (if required)
        ↓
- Simulated Execution   ← real execution added in future sprints
+ Simulated Execution         ← real execution via OpenClaw in future sprints
 ```
 
-**Specialists never communicate directly with the customer** unless explicitly configured. The Chief of Staff owns all task routing decisions.
+**Workforce Roles (AI Specialists) never communicate directly with the customer** unless explicitly configured. The Chief of Staff owns all task routing decisions.
+
+---
+
+## Workforce Role vs Worker Profile
+
+This separation was clarified in the Sprint 2 Architecture Correction.
+
+### Workforce Role (internal concept)
+**Customer-facing term:** AI Specialist
+
+A Workforce Role defines:
+- Business purpose and domain expertise
+- Responsibilities and scope
+- Capabilities (named actions it can perform)
+- Required workforce pack and entitlements
+- Approval requirements for tasks it is assigned to
+- Domain instructions (future)
+- Which Worker Profiles it may execute through
+- Which Intelligence Engines it may invoke (future)
+
+**Workforce Roles define *who* is responsible and *what* expertise applies.**
+
+### Worker Profile (internal concept)
+
+A Worker Profile defines what a future OpenClaw runtime may access and do when executing on behalf of a Workforce Role:
+
+| Field | Purpose |
+|-------|---------|
+| `allowedExecutionChannels` | Permitted execution surfaces (internal API, document store, calendar, etc.) |
+| `allowedToolCategories` | Logical groupings of tools the profile may invoke |
+| `allowedConnectorCategories` | External connector families the profile may connect to |
+| `allowedBrowserDomains` | Permitted web domains for browser channel (empty until Sprint N) |
+| `allowedLocalPathCategories` | Permitted local file path categories (empty until Sprint N) |
+| `allowedApplicationCategories` | Permitted desktop application categories (empty until Sprint N) |
+| `prohibitedActions` | Actions this profile may never perform |
+| `approvalRequiredActions` | Actions requiring explicit approval before execution |
+| `riskLevel` | Risk classification: low / medium / high / critical |
+
+**Worker Profiles define *which tools and execution surfaces* may be used.**
+
+### Full conceptual chain
+
+```
+Chief of Staff
+      ↓
+Workforce Role          ← defines who + what expertise
+      ↓
+Worker Profile          ← defines permitted tools + surfaces
+      ↓
+Future OpenClaw Runtime ← executes using the approved profile
+      ↓
+Browser, document store, calendar, APIs, or local device
+```
+
+### What OpenClaw does NOT own
+- Business policy (owned by Workforce Roles and approval rules)
+- Tenancy and multi-tenancy (owned by the platform)
+- Billing and entitlements (owned by the platform)
+- Approvals (owned by the approval model)
+- Intelligence Engine rules (owned by the Intelligence Engine layer, future)
 
 ---
 

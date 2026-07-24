@@ -1,0 +1,766 @@
+# NeedsOps AI+
+
+## Sprint 3: Plans, Entitlements, Usage and Commercial Foundation
+
+Sprint 2 is approved and complete.
+
+Proceed with Sprint 3 only.
+
+Do not begin OpenClaw, browser execution, local computer access, external connectors, Stripe payments or live AI execution during this sprint.
+
+The purpose of Sprint 3 is to build the commercial and entitlement foundation that controls what each organisation may access.
+
+NeedsOps AI+ does not primarily sell individual AI agents.
+
+Customers subscribe to:
+
+1. an organisation plan
+2. included user seats
+3. monthly usage allowances
+4. included workforce packs
+5. included execution capabilities
+6. optional premium add-ons
+7. enterprise infrastructure options
+
+The system must be ready to support live OpenClaw execution later, but no live runtime is introduced in this sprint.
+
+---
+
+# Core Architecture
+
+Preserve the separation:
+
+```text
+Authentication
+Who is the user?
+
+Membership
+Which organisation do they belong to?
+
+Permissions
+Can this user perform the action?
+
+Entitlements
+Does the organisation's plan include the capability?
+
+Usage
+Has the organisation exceeded its allowance?
+
+Approval
+Has a human approved this specific sensitive action?
+
+Execution Policy
+Is the action safe to perform through browser, local device or API?
+```
+
+Sprint 3 implements entitlements and usage.
+
+---
+
+# Plans
+
+Create these initial plans:
+
+## Foundation
+
+* 3 user seats
+* Core Workforce
+* Compliance Workforce
+* basic task allowance
+* basic audit history
+* mobile access
+* one execution channel later
+* no local desktop access
+* no browser automation
+* no enterprise isolation
+
+## Professional
+
+* 10 user seats
+* Core Workforce
+* Compliance Workforce
+* Operations Workforce
+* higher task allowance
+* higher token allowance
+* approval workflows
+* scheduled tasks later
+* browser execution eligibility later
+* Microsoft or Google connector eligibility later
+
+## Business
+
+* 30 user seats
+* Core Workforce
+* Compliance Workforce
+* Operations Workforce
+* Finance Workforce
+* HR Workforce
+* Marketing Workforce
+* browser execution eligibility
+* NeedsOps Connect eligibility
+* API connector eligibility
+* advanced audit history
+* larger usage limits
+
+## Enterprise
+
+* configurable user seats
+* configurable workforce packs
+* configurable usage
+* dedicated OpenClaw runtime eligibility
+* dedicated infrastructure
+* custom connectors
+* SSO eligibility
+* SCIM eligibility
+* custom retention
+* regional hosting
+* service-level agreement eligibility
+
+Do not hard-code final commercial prices.
+
+Use placeholder display pricing or no pricing until Stripe is added.
+
+---
+
+# Execution Capability Entitlements
+
+Create entitlement codes for future execution methods:
+
+```text
+execution.openclaw_runtime
+execution.browser_session
+execution.browser_extension
+execution.local_device
+execution.local_files
+execution.local_applications
+execution.api_connectors
+execution.scheduled_tasks
+execution.multi_agent_workflows
+```
+
+These are commercial capabilities only.
+
+Do not implement the actual execution.
+
+---
+
+# Connector Eligibility Entitlements
+
+Create feature codes for:
+
+```text
+connector.google_workspace
+connector.microsoft_365
+connector.xero
+connector.myob
+connector.zoho
+connector.needscare
+connector.need2comply
+connector.needs2learn
+connector.custom_crm
+connector.browser_based_system
+```
+
+Again, entitlement only.
+
+No connector code in this sprint.
+
+---
+
+# Workforce Pack Entitlements
+
+Plans should include workforce packs.
+
+Create plan-to-workforce-pack mappings for:
+
+* Core Workforce
+* Compliance Workforce
+* Operations Workforce
+* Finance Workforce
+* HR Workforce
+* Marketing Workforce
+
+Specialist availability should resolve through the workforce pack.
+
+The customer should not purchase individual specialist licences as the default model.
+
+---
+
+# Usage Dimensions
+
+Create usage dimensions for:
+
+```text
+ai_tasks
+task_plans
+specialist_runs
+browser_actions
+local_device_actions
+api_connector_actions
+scheduled_runs
+document_pages
+storage_bytes
+generated_files
+input_tokens
+output_tokens
+active_users
+```
+
+No real AI usage is recorded yet.
+
+Seed development usage and test the logic.
+
+---
+
+# Database
+
+Create or complete:
+
+* plans
+* plan_versions
+* features
+* plan_features
+* workforce_packs
+* workforce_pack_specialists
+* plan_workforce_packs
+* usage_dimensions
+* plan_usage_allowances
+* tenant_subscriptions
+* tenant_entitlements
+* tenant_workforce_packs
+* tenant_addons
+* tenant_usage_allowances
+* usage_events
+* usage_period_summaries
+
+All tenant-owned tables must include `organization_id` or the existing tenant key used across the project.
+
+Preserve historical plan versions.
+
+Do not allow editing an active historical plan version in place.
+
+---
+
+# Entitlement Service
+
+Use and complete `lib/entitlements`.
+
+Implement:
+
+```typescript
+tenantCanUseFeature()
+tenantHasWorkforcePack()
+tenantCanUseSpecialist()
+tenantCanUseExecutionChannel()
+tenantCanUseConnector()
+tenantCanUsePlatformCapability()
+```
+
+Resolution order:
+
+```text
+1. Subscription state
+2. Plan version
+3. Included workforce packs
+4. Add-ons
+5. Tenant overrides
+6. Trials
+7. Explicit denial
+8. Final decision
+```
+
+Return:
+
+* allowed
+* reason
+* source
+* effective date
+* configuration
+* evaluated timestamp
+
+---
+
+# Usage Service
+
+Implement:
+
+```typescript
+getUsageAllowance()
+getCurrentUsage()
+recordUsageEvent()
+checkUsage()
+getUsagePercentage()
+getUsageWarnings()
+```
+
+Usage must be tenant-isolated.
+
+Usage event recording must support idempotency.
+
+Create warning thresholds at:
+
+* 80%
+* 95%
+* 100%
+
+At 100%, hard-limited capabilities should be denied.
+
+---
+
+# Seat Management
+
+Create:
+
+```typescript
+getSeatAllowance()
+getSeatsUsed()
+getSeatsRemaining()
+canInviteMember()
+```
+
+Count:
+
+* active memberships
+
+Do not count:
+
+* pending invitations
+* suspended memberships
+* revoked memberships
+
+If a plan downgrade leaves the organisation above its seat limit:
+
+* keep existing members readable
+* block new invitations
+* show a clear warning
+* do not automatically remove users
+
+---
+
+# Trial Support
+
+Support:
+
+* trial start
+* trial end
+* trial plan
+* trial workforce packs
+* trial features
+* trial usage allowances
+* expired trial state
+
+When the trial ends:
+
+* preserve data
+* preserve audit history
+* block new restricted actions
+* show upgrade required
+* do not delete customer records
+
+---
+
+# Tenant Overrides
+
+Platform admins may create controlled overrides for:
+
+* extra seats
+* temporary workforce pack
+* extra usage
+* temporary browser execution eligibility
+* temporary local device eligibility
+* temporary connector access
+* explicit feature denial
+* extended trial
+
+Every override must include:
+
+* reason
+* created by
+* effective dates
+* audit event
+* internal note
+* customer-visible note where appropriate
+
+---
+
+# Web Pages
+
+Create:
+
+```text
+/app/:organisationSlug/plan
+/app/:organisationSlug/workforce
+/app/:organisationSlug/usage
+```
+
+## Plan page
+
+Show:
+
+* current plan
+* subscription status
+* trial status
+* seats included
+* seats used
+* workforce packs
+* execution capabilities
+* connector eligibility
+* current usage period
+* placeholder upgrade button
+
+Clearly state that online payments are coming later.
+
+## Workforce page
+
+Show:
+
+* included packs
+* unavailable packs
+* specialists
+* status
+* capabilities
+* included in plan
+* not included in plan
+
+## Usage page
+
+Show:
+
+* seats
+* tasks
+* task plans
+* specialist runs
+* future browser actions
+* future local actions
+* storage
+* token placeholders
+* current period
+* warning thresholds
+
+---
+
+# Dashboard
+
+Update the dashboard to show:
+
+* current plan
+* included workforce packs
+* seat usage
+* usage summary
+* execution capabilities
+* browser execution eligibility
+* local device eligibility
+* connector eligibility
+
+Do not claim any execution channel is active.
+
+Use labels such as:
+
+```text
+Available in your plan
+Not yet connected
+Coming in a later sprint
+```
+
+---
+
+# Platform Admin
+
+Expand admin tools to manage:
+
+* plans
+* plan versions
+* workforce pack assignments
+* feature entitlements
+* usage limits
+* tenant subscriptions
+* tenant overrides
+* trials
+* seat overrides
+* execution capability overrides
+
+All admin actions must be audited.
+
+Customer organisation owners must not access platform plan administration.
+
+---
+
+# API Routes
+
+Create or adapt:
+
+```text
+GET /v1/plans
+GET /v1/plans/:code
+GET /v1/workforce-packs
+GET /v1/workforce-packs/:code
+
+GET /v1/organisations/:slug/subscription
+GET /v1/organisations/:slug/entitlements
+GET /v1/organisations/:slug/workforce
+GET /v1/organisations/:slug/usage
+GET /v1/organisations/:slug/seats
+
+POST /v1/organisations/:slug/entitlements/check
+POST /v1/organisations/:slug/usage/check
+```
+
+Platform admin routes should exist separately under `/v1/platform/*`.
+
+Follow existing authentication, tenant context, permissions and audit patterns.
+
+---
+
+# Audit Events
+
+Add:
+
+```text
+plan.created
+plan.version_created
+plan.version_activated
+plan.archived
+
+tenant.subscription_created
+tenant.subscription_changed
+tenant.subscription_suspended
+tenant.subscription_cancelled
+
+tenant.trial_started
+tenant.trial_extended
+tenant.trial_expired
+
+tenant.entitlement_granted
+tenant.entitlement_denied
+tenant.entitlement_revoked
+
+tenant.override_created
+tenant.override_revoked
+
+usage.event_recorded
+usage.limit_warning
+usage.hard_limit_reached
+
+seat.limit_warning
+seat.limit_reached
+```
+
+Do not flood the audit log with repeated read-only entitlement checks.
+
+---
+
+# Seed Data
+
+Seed:
+
+* Foundation
+* Professional
+* Business
+* Enterprise
+* all workforce packs
+* all feature codes
+* all execution capability codes
+* all connector eligibility codes
+* all usage dimensions
+* plan mappings
+* one Foundation tenant
+* one Professional trial tenant
+* one temporary browser execution override
+* one temporary seat override
+* sample usage events
+
+Seed scripts must be idempotent.
+
+---
+
+# Tests
+
+Test:
+
+## Entitlements
+
+* plan grants included feature
+* missing feature denied
+* workforce pack grants specialist
+* unavailable pack denies specialist
+* browser execution entitlement resolves correctly
+* local device entitlement resolves correctly
+* API connector entitlement resolves correctly
+* override grants feature
+* explicit denial overrides plan grant
+* expired override is ignored
+* inactive subscription denies restricted capability
+* trial grants temporary capability
+* expired trial denies new restricted actions
+
+## Usage
+
+* usage below warning threshold allowed
+* warning at 80%
+* warning at 95%
+* denial at hard limit
+* unlimited usage allowed
+* idempotent usage event not double-counted
+* Tenant A usage isolated from Tenant B
+* period boundary handled correctly
+
+## Seats
+
+* active memberships count
+* pending invitations do not count
+* suspended memberships do not count
+* new invitation blocked at seat limit
+* seat override increases limit
+* over-limit downgrade preserves existing users
+
+## Security
+
+* organisation owner cannot create platform override
+* Tenant A cannot view Tenant B subscription
+* platform admin action is audited
+* URL manipulation does not expose another tenant's commercial state
+
+All tests must pass.
+
+---
+
+# Documentation
+
+Update:
+
+```text
+docs/commercial-model.md
+docs/plans-and-entitlements.md
+docs/usage-metering.md
+docs/workforce-packs.md
+docs/trials.md
+docs/tenant-overrides.md
+docs/execution-capabilities.md
+docs/connector-entitlements.md
+```
+
+Document clearly that:
+
+* OpenClaw comes later
+* browser and local execution are first-class capabilities
+* APIs are preferred where available but are not required
+* NeedsOps must work with systems customers already use
+* NeedsCare, Need2Comply and Needs2Learn are optional connectors, not mandatory dependencies
+
+---
+
+# Quality Rules
+
+Do not:
+
+* integrate Stripe
+* collect payments
+* integrate OpenAI
+* integrate OpenClaw
+* build browser execution
+* build local device access
+* build Google or Microsoft
+* build Xero or MYOB
+* build live connectors
+* sell individual agents as the primary model
+* mix entitlements with permissions
+* allow cross-tenant usage
+* overwrite historical plan versions
+
+---
+
+# Completion Criteria
+
+Sprint 3 is complete only when:
+
+* plans work
+* plan versions work
+* workforce pack entitlements work
+* execution capability entitlements work
+* connector eligibility works
+* usage limits work
+* seat limits work
+* trials work
+* overrides work
+* customer plan page works
+* workforce page works
+* usage page works
+* admin plan management works
+* audit events work
+* seeds are idempotent
+* TypeScript passes
+* tests pass
+* documentation is updated
+
+---
+
+# Final Output
+
+Provide:
+
+```text
+SPRINT 3 COMPLETION REPORT
+
+Overall status:
+Complete / Incomplete
+
+Plans:
+-
+
+Plan versions:
+-
+
+Workforce pack entitlements:
+-
+
+Execution capability entitlements:
+-
+
+Connector eligibility:
+-
+
+Usage dimensions:
+-
+
+Seat management:
+-
+
+Trials:
+-
+
+Tenant overrides:
+-
+
+Customer pages:
+-
+
+Platform admin:
+-
+
+Audit events:
+-
+
+Tests passed:
+-
+
+Known issues:
+-
+
+Security concerns:
+-
+
+Technical debt:
+-
+
+Recommended Sprint 4:
+-
+
+Ready for Sprint 4:
+Yes / No
+```
+
+Begin Sprint 3 now.
+
+Do not begin OpenClaw, browser execution, local device access, Stripe or live connectors.
+
+Stop after the Sprint 3 Completion Report.

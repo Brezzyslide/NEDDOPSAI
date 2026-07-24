@@ -1,0 +1,104 @@
+# NeedsOps AI+
+
+## Sprint 2 Architecture Correction
+
+Before beginning Sprint 3, make a small architecture correction to clarify the relationship between workforce roles and the future OpenClaw execution layer.
+
+Do not rebuild Sprint 2.
+
+Do not introduce OpenClaw yet.
+
+## Required clarification
+
+The 32 specialists created in Sprint 2 represent business roles within the NeedsOps AI Workforce.
+
+They are not OpenClaw runtimes and they are not separate software installations.
+
+Rename or document the internal concept as:
+
+```text
+Workforce Role
+```
+
+The customer-facing term may remain:
+
+```text
+AI Specialist
+```
+
+A Workforce Role defines:
+
+* business purpose
+* responsibilities
+* capabilities
+* required workforce pack
+* approval requirements
+* domain instructions
+* intelligence engines it may use
+* execution permissions it may request
+
+Create a future-facing `WorkerProfile` model.
+
+A Worker Profile defines what the future OpenClaw runtime may access and do for a Workforce Role.
+
+Suggested fields:
+
+* id
+* code
+* display_name
+* allowed_execution_channels
+* allowed_tool_categories
+* allowed_connector_categories
+* allowed_browser_domains
+* allowed_local_path_categories
+* allowed_application_categories
+* prohibited_actions
+* approval_required_actions
+* risk_level
+* status
+* version
+
+Create the relationship:
+
+```text
+Chief of Staff
+↓
+Workforce Role
+↓
+Worker Profile
+↓
+Future OpenClaw Runtime
+↓
+Browser, local device, files or APIs
+```
+
+Add metadata relationships so each Workforce Role may reference one or more Worker Profiles.
+
+Do not create live browser permissions, local paths or connector credentials yet.
+
+Create only:
+
+* types
+* interfaces
+* registry metadata
+* database-ready schema or migration if appropriate
+* documentation
+* tests for role-to-worker-profile mapping
+
+Preserve the existing specialists, workforce packs, capabilities, tasks and approval logic.
+
+Do not rename customer-facing UI unless necessary.
+
+Update documentation to state:
+
+* Workforce Roles define who is responsible and what expertise applies.
+* Worker Profiles define which tools and execution surfaces may be used.
+* OpenClaw will later execute tasks through approved Worker Profiles.
+* Intelligence Engines provide deterministic domain rules.
+* OpenClaw does not own business policy, tenancy, billing or approvals.
+
+Run type checking and tests.
+
+Provide a concise completion report.
+
+Stop after this correction and wait for Sprint 3.
