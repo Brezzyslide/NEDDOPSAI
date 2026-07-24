@@ -262,6 +262,20 @@ export const AUDIT_EVENTS = [
   "platform.override_revoked",
   "platform.internal_note_added",
   "platform.security_review_flagged",
+  // Sprint 4 — Expanded Platform Console
+  "platform.plan_created",
+  "platform.plan_updated",
+  "platform.plan_changed",
+  "platform.plan_version_created",
+  "platform.plan_version_activated",
+  "platform.plan_version_archived",
+  "platform.trial_started",
+  "platform.trial_cancelled",
+  "platform.high_priority_flagged",
+  "platform.feature_flag_updated",
+  "platform.platform_setting_updated",
+  "platform.platform_role_granted",
+  "platform.platform_role_revoked",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
 
@@ -546,6 +560,9 @@ export const PLATFORM_ROLES = [
   "platform_support_admin",
   "platform_billing_admin",
   "platform_security_auditor",
+  // Sprint 4 additions
+  "platform_auditor",
+  "platform_developer",
 ] as const;
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 
@@ -555,6 +572,8 @@ export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
   platform_support_admin: "Support Admin",
   platform_billing_admin: "Billing Admin",
   platform_security_auditor: "Security Auditor",
+  platform_auditor: "Auditor",
+  platform_developer: "Developer",
 };
 
 // ─── Tenant override types (Sprint 3) ────────────────────────────────────────

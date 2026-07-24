@@ -11,6 +11,9 @@ import { pgTable, pgEnum, text, timestamp } from "drizzle-orm/pg-core";
 import { usersTable } from "./users.js";
 
 export const platformRoleEnum = pgEnum("platform_role", [
+  // Sprint 4 additions
+  "platform_auditor",
+  "platform_developer",
   "platform_super_admin",
   "platform_operations_admin",
   "platform_support_admin",

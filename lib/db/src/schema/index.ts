@@ -36,3 +36,6 @@ export * from "./usagePeriodSummaries";
 export * from "./tenantOverrides";
 export * from "./platformRoles";
 export * from "./platformInternalNotes";
+// Sprint 4 — Feature Flags, Platform Settings
+export * from "./featureFlags";
+export * from "./platformSettings";

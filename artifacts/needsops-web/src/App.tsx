@@ -41,6 +41,18 @@ import TaskCentrePage from "@/pages/app/TaskCentrePage";
 import ApprovalsPage from "@/pages/app/ApprovalsPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
+// Platform Console — Sprint 4
+import PlatformDashboard from "@/pages/platform/PlatformDashboard";
+import PlatformOrgs from "@/pages/platform/PlatformOrgs";
+import PlatformOrgDetail from "@/pages/platform/PlatformOrgDetail";
+import PlatformCommercial from "@/pages/platform/PlatformCommercial";
+import PlatformTrials from "@/pages/platform/PlatformTrials";
+import PlatformWorkforce from "@/pages/platform/PlatformWorkforce";
+import PlatformUsage from "@/pages/platform/PlatformUsage";
+import PlatformSupport from "@/pages/platform/PlatformSupport";
+import PlatformSecurity from "@/pages/platform/PlatformSecurity";
+import PlatformAudit from "@/pages/platform/PlatformAudit";
+import PlatformSettings from "@/pages/platform/PlatformSettings";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -201,6 +213,18 @@ function AppRouter() {
             <Route path="/app/:slug/audit" component={AuditPage} />
             <Route path="/app/:slug" component={AppDashboard} />
             <Route path="/account" component={AccountSettings} />
+            {/* Platform Console — Sprint 4 */}
+            <Route path="/platform/organisations/:id" component={PlatformOrgDetail} />
+            <Route path="/platform/organisations" component={PlatformOrgs} />
+            <Route path="/platform/commercial" component={PlatformCommercial} />
+            <Route path="/platform/trials" component={PlatformTrials} />
+            <Route path="/platform/workforce" component={PlatformWorkforce} />
+            <Route path="/platform/usage" component={PlatformUsage} />
+            <Route path="/platform/support" component={PlatformSupport} />
+            <Route path="/platform/security" component={PlatformSecurity} />
+            <Route path="/platform/audit" component={PlatformAudit} />
+            <Route path="/platform/settings" component={PlatformSettings} />
+            <Route path="/platform" component={PlatformDashboard} />
             {/* Legacy Sprint 0 routes */}
             <Route path="/dashboard" component={Dashboard} />
             <Route path="/organizations" component={OrganizationsList} />

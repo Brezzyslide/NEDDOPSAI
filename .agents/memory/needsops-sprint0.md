@@ -82,6 +82,17 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 - Seed script must be run after migration: `cd artifacts/api-server && npx tsx src/seed.ts`. Idempotent.
 - 112 total tests passing (17 email + 47 workforce + 35 worker profiles + 13 sprint3-entitlements).
 
+## Sprint 4 — Platform Console (complete)
+- Platform console routes split into 12 sub-routers under `artifacts/api-server/src/routes/v1/platform*.ts`. `platform.ts` is the master router that mounts all of them.
+- New DB tables: `feature_flags` (key PK), `platform_settings` (key PK). New enum cols: `note_priority`, `note_category` on `platform_internal_notes`. New plan cols: `trial_length_days`, `monthly_price_cents`, `annual_price_cents`, `currency`, `notes`.
+- New platform roles in enum + shared types: `platform_auditor`, `platform_developer` (7 roles total now).
+- All platform console pages under `artifacts/needsops-web/src/pages/platform/`. PlatformShell guards access by checking `user.publicMetadata.platformAdmin` OR `publicMetadata.platformRole`.
+- `usePlatformFetch()` hook in `lib/platformApi.ts` auto-prefixes `/v1/platform/` paths.
+- Plans are NEVER edited in-place — editing creates a new version via `POST /commercial/plans/:id/versions`.
+- Seed defaults: `npx tsx src/seed-platform-defaults.ts` (10 feature flags, 10 platform settings). Idempotent.
+- No Stripe, no OpenClaw, no connectors in Sprint 4 — shown as "not_implemented" placeholders where applicable.
+- 147 total tests passing (35 new sprint4 tests).
+
 ## Sprint 2 Architecture Correction (complete)
 - Internal concept: "Workforce Role" (32 specialists). Customer-facing: "AI Specialist". No UI rename.
 - New: `WorkerProfile` model in `workerProfileRegistry.ts` — defines execution surfaces, tool categories, connector categories, prohibited actions, approval-required actions, risk level for future OpenClaw.

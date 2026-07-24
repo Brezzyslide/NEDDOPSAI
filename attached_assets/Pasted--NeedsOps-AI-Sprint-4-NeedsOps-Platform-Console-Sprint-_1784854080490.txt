@@ -1,0 +1,831 @@
+# NeedsOps AI+
+
+# Sprint 4 — NeedsOps Platform Console
+
+Sprint 3 has been approved.
+
+Proceed with Sprint 4 only.
+
+Do not begin OpenClaw integration, browser execution, local device execution, Stripe payments or external connectors.
+
+The objective of Sprint 4 is to build the complete NeedsOps Platform Console.
+
+This console is used only by NeedsOps staff.
+
+It is completely separate from customer organisation administration.
+
+Customer organisation owners must never see this console.
+
+---
+
+# Vision
+
+The Platform Console is the operational headquarters of NeedsOps AI+.
+
+Everything required to operate the SaaS business should eventually be manageable from here without writing code.
+
+This sprint builds Version 1.
+
+---
+
+# Platform Roles
+
+Support platform roles independent of customer organisations.
+
+Roles:
+
+* Platform Super Admin
+* Platform Operations
+* Platform Billing
+* Platform Support
+* Platform Security
+* Platform Auditor
+* Platform Developer (optional)
+
+Platform roles must never be inherited from customer organisation ownership.
+
+All platform actions must be audited.
+
+---
+
+# Console Navigation
+
+Create the following navigation.
+
+Dashboard
+
+Organisations
+
+Commercial
+
+Trials
+
+Workforce
+
+Usage
+
+Support
+
+Security
+
+Audit
+
+Platform Settings
+
+---
+
+# Dashboard
+
+Display real metrics.
+
+Cards:
+
+Total Organisations
+
+Active Organisations
+
+Trial Organisations
+
+Suspended Organisations
+
+Monthly Active Users
+
+Current Seats Used
+
+Current Tasks
+
+Pending Approvals
+
+Usage Warnings
+
+Platform Alerts
+
+System Health
+
+Recent Activity
+
+Do not fabricate MRR before Stripe exists.
+
+---
+
+# Organisations
+
+Create a searchable organisation directory.
+
+Display:
+
+Organisation Name
+
+Industry
+
+ABN
+
+NDIS Registration
+
+Owner
+
+Email
+
+Current Plan
+
+Subscription Status
+
+Trial Status
+
+Seats Used
+
+Seat Limit
+
+Current Usage %
+
+Workforce Packs
+
+Execution Capability Summary
+
+Last Activity
+
+Created Date
+
+Organisation Status
+
+Filters:
+
+Plan
+
+Industry
+
+Trial
+
+Suspended
+
+High Usage
+
+High Risk
+
+Inactive
+
+Search by:
+
+Name
+
+ABN
+
+Owner
+
+Email
+
+Slug
+
+---
+
+# Organisation Detail
+
+Create tabs.
+
+Overview
+
+Users
+
+Subscription
+
+Entitlements
+
+Usage
+
+Workforce
+
+Tasks
+
+Approvals
+
+Connectors (placeholder)
+
+Devices (placeholder)
+
+Security
+
+Audit
+
+Internal Notes
+
+Each tab should only show information currently available.
+
+Do not fake connector or OpenClaw data.
+
+---
+
+# Organisation Actions
+
+Platform staff should be able to:
+
+Suspend Organisation
+
+Reactivate Organisation
+
+Change Plan
+
+Assign Plan Version
+
+Start Trial
+
+Extend Trial
+
+Cancel Trial
+
+Grant Workforce Pack
+
+Remove Workforce Pack
+
+Grant Feature
+
+Remove Feature
+
+Increase Seats
+
+Decrease Seats
+
+Increase Usage
+
+Decrease Usage
+
+Create Tenant Override
+
+Remove Override
+
+Add Internal Note
+
+Flag Security Review
+
+Mark High Priority Support
+
+Every action requires:
+
+Reason
+
+Actor
+
+Timestamp
+
+Audit Event
+
+Confirmation for destructive actions.
+
+---
+
+# Commercial
+
+Create the Commercial section.
+
+This is where the business model lives.
+
+Plans
+
+Plan Versions
+
+Features
+
+Workforce Packs
+
+Usage Dimensions
+
+Execution Capabilities
+
+Connector Eligibility
+
+Tenant Overrides
+
+Do not edit database directly.
+
+Everything should use services.
+
+---
+
+# Plan Designer
+
+This is one of the most important pages.
+
+Allow creation of plans.
+
+Editable:
+
+Plan Name
+
+Description
+
+Display Order
+
+Visibility
+
+Status
+
+Trial Length
+
+Monthly Price Placeholder
+
+Annual Price Placeholder
+
+Currency
+
+Included Seats
+
+Included Workforce Packs
+
+Included Features
+
+Included Execution Capabilities
+
+Included Connector Categories
+
+Usage Limits
+
+Notes
+
+Plans are never edited directly.
+
+Editing creates a new Plan Version.
+
+---
+
+# Plan Versions
+
+Every plan version should display:
+
+Version Number
+
+Created
+
+Effective Date
+
+Created By
+
+Status
+
+Customers Assigned
+
+Comparison
+
+Allow:
+
+Clone
+
+Activate
+
+Archive
+
+Preview
+
+Never overwrite history.
+
+---
+
+# Workforce Designer
+
+Allow editing:
+
+Workforce Packs
+
+Included Workforce Roles
+
+Descriptions
+
+Visibility
+
+Status
+
+Version
+
+No runtime behaviour.
+
+Metadata only.
+
+---
+
+# Usage Designer
+
+Allow editing:
+
+Usage Dimension
+
+Monthly Limit
+
+Warning %
+
+Hard Limit
+
+Unlimited
+
+Unit
+
+Visibility
+
+---
+
+# Execution Capability Designer
+
+Manage:
+
+Browser Execution
+
+Local Device
+
+API Connector
+
+Scheduled Tasks
+
+Multi-Agent
+
+Dedicated Runtime
+
+Future Voice
+
+Future Autonomous Mode
+
+These remain metadata only.
+
+---
+
+# Connector Eligibility
+
+Manage which plans include eligibility for:
+
+Google Workspace
+
+Microsoft 365
+
+Xero
+
+MYOB
+
+Needscare
+
+Need2Comply
+
+Needs2Learn
+
+Custom CRM
+
+Browser Systems
+
+These are eligibility flags.
+
+Not integrations.
+
+---
+
+# Trials
+
+Manage:
+
+Current Trials
+
+Expired Trials
+
+Upcoming Expiry
+
+Extend
+
+Convert
+
+Cancel
+
+Notify
+
+Filter by days remaining.
+
+---
+
+# Usage Monitor
+
+Display:
+
+Highest Usage Organisations
+
+Hard Limits
+
+Warnings
+
+Top Usage Dimension
+
+Daily Activity
+
+Monthly Activity
+
+Charts.
+
+---
+
+# Support Centre
+
+Support staff should see:
+
+Open Support Notes
+
+Recent Internal Notes
+
+Flagged Organisations
+
+Recent Overrides
+
+Security Reviews
+
+Support Timeline
+
+---
+
+# Internal Notes
+
+Notes belong to NeedsOps.
+
+Customers never see them.
+
+Fields:
+
+Author
+
+Organisation
+
+Priority
+
+Category
+
+Created
+
+Last Updated
+
+Attachments Placeholder
+
+---
+
+# Security
+
+Display:
+
+Suspended Organisations
+
+Security Flags
+
+Recent Platform Actions
+
+Platform Logins
+
+Failed Platform Access
+
+Future OpenClaw Health Placeholder
+
+Future Device Health Placeholder
+
+---
+
+# Platform Settings
+
+Manage:
+
+Feature Flags
+
+Maintenance Mode
+
+Platform Branding
+
+Email Branding Placeholder
+
+Default Trial
+
+Default Currency
+
+Platform Configuration
+
+---
+
+# Platform API
+
+Expand APIs.
+
+Platform Dashboard
+
+Platform Organisations
+
+Commercial
+
+Plans
+
+Plan Versions
+
+Workforce Packs
+
+Usage
+
+Trials
+
+Internal Notes
+
+Platform Roles
+
+Feature Flags
+
+Platform Settings
+
+Follow existing architecture.
+
+---
+
+# Charts
+
+Add charts.
+
+Organisation Growth
+
+Plans Distribution
+
+Seat Usage
+
+Usage Distribution
+
+Trials
+
+Top Workforce Packs
+
+Most Used Features
+
+---
+
+# Audit
+
+Every platform action must be recorded.
+
+Include:
+
+Actor
+
+Action
+
+Target
+
+Before
+
+After
+
+Reason
+
+Timestamp
+
+---
+
+# Search
+
+Global platform search.
+
+Search:
+
+Organisation
+
+Owner
+
+Email
+
+ABN
+
+Slug
+
+Support Note
+
+Plan
+
+Trial
+
+---
+
+# Export
+
+CSV export for:
+
+Organisations
+
+Plans
+
+Trials
+
+Usage
+
+Support
+
+No PDF yet.
+
+---
+
+# Documentation
+
+Update platform console documentation.
+
+Explain:
+
+Role Separation
+
+Commercial Management
+
+Organisation Lifecycle
+
+Trial Lifecycle
+
+Plan Versioning
+
+Support Workflow
+
+Security Workflow
+
+---
+
+# Quality Rules
+
+Do not:
+
+Integrate Stripe
+
+Integrate OpenClaw
+
+Integrate Browser Execution
+
+Integrate Local Device
+
+Integrate Connectors
+
+Fake data
+
+Duplicate services
+
+Bypass audit logging
+
+Bypass permissions
+
+---
+
+# Completion Criteria
+
+Sprint 4 is complete only when:
+
+Platform Dashboard works
+
+Organisation directory works
+
+Organisation detail works
+
+Commercial pages work
+
+Plan Designer works
+
+Plan Versioning works
+
+Usage Designer works
+
+Workforce Designer works
+
+Connector Eligibility management works
+
+Trial management works
+
+Support Centre works
+
+Internal Notes work
+
+Charts work
+
+Audit works
+
+Search works
+
+Exports work
+
+Tests pass
+
+TypeScript passes
+
+Documentation updated
+
+---
+
+# Final Report
+
+Provide:
+
+Sprint Status
+
+Pages Created
+
+API Routes
+
+Database Changes
+
+Services
+
+Tests
+
+Known Issues
+
+Technical Debt
+
+Recommended Sprint 5
+
+Ready for Sprint 5
+
+Stop after Sprint 4.
+
+Do not begin OpenClaw integration.
