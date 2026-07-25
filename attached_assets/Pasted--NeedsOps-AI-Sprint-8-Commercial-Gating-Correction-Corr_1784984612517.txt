@@ -1,0 +1,77 @@
+# NeedsOps AI+
+
+## Sprint 8 Commercial Gating Correction
+
+Correct the wording and implementation boundary that currently describes execution submission as requiring a “Stripe entitlement check.”
+
+Stripe must not be called directly by the execution service, OpenClaw adapter, Runtime Broker client or execution policy.
+
+The correct execution gate is:
+
+1. authenticated user
+2. active tenant membership
+3. user permission
+4. operational tenant subscription state
+5. required feature entitlement
+6. required Workforce Pack entitlement
+7. required execution-channel entitlement
+8. available usage allowance
+9. Worker Profile permission
+10. required approval completed
+11. runtime available
+
+The authoritative commercial sources are:
+
+* tenant_subscriptions
+* tenant_entitlements
+* tenant_workforce_packs
+* tenant_addons
+* tenant_overrides
+* tenant_usage_allowances
+* usage events and summaries
+
+Stripe will later act only as a billing provider that updates the NeedsOps commercial state through verified webhooks.
+
+Execution must continue to work for valid subscriptions created through:
+
+* manual platform assignment
+* free trial
+* invoice agreement
+* enterprise contract
+* pilot agreement
+* future Stripe billing
+
+Create or confirm a provider-independent subscription state check such as:
+
+```typescript
+interface SubscriptionAccessDecision {
+  operational: boolean;
+  status: string;
+  source: string;
+  reason: string;
+}
+```
+
+The OpenClaw submission path must call the NeedsOps subscription and entitlement services, not Stripe.
+
+Update:
+
+* source comments
+* completion report wording
+* execution policy documentation
+* tests
+* any UI text mentioning Stripe as an execution requirement
+
+Add tests proving:
+
+1. an active manually assigned subscription may execute
+2. an active trial may execute within its entitlements
+3. an enterprise-contract subscription may execute
+4. inactive subscription is blocked
+5. missing execution entitlement is blocked
+6. Stripe is not imported by the execution service
+7. OpenClaw adapter does not know which billing provider is used
+
+Do not integrate Stripe during this correction.
+
+Run tests and provide a concise correction report.

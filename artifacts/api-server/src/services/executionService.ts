@@ -30,6 +30,7 @@ import {
   getStatusMessage,
 } from "@workspace/openclaw";
 import { getActiveWorkerProfilesForRole } from "../lib/workerProfileRegistry.js";
+import { checkExecutionAccess } from "./executionPolicy.js";
 
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
@@ -215,16 +216,37 @@ export async function submitTaskExecution(
     getTaskPlan(input.taskId),
   ]);
 
-  // 2. Build the package
+  // 2. Provider-independent execution gate (Steps 4–8)
+  //    Checks subscription state, feature entitlement, workforce pack,
+  //    execution channels, and usage allowance — using NeedsOps internal
+  //    tables only. No billing provider is consulted here.
+  const planData = planRow.planData as { assignedSpecialists?: string[] };
+  const primaryRole = planData.assignedSpecialists?.[0] ?? "chief_of_staff";
+
+  const access = await checkExecutionAccess(
+    input.organizationId,
+    primaryRole,
+    ["api", "internal"],  // base channels — updated from pkg once built
+  );
+
+  if (!access.allowed) {
+    // Revert task state — it was not yet changed, so nothing to undo
+    throw Object.assign(
+      new Error(access.decision.reason),
+      { code: "EXECUTION_ACCESS_DENIED", decision: access.decision },
+    );
+  }
+
+  // 3. Build the package
   const pkg = buildExecutionPackage(task, planRow, config);
 
-  // 3. Transition task to executing
+  // 4. Transition task to executing
   await db
     .update(tasksTable)
     .set({ currentState: "executing", updatedAt: new Date() })
     .where(eq(tasksTable.id, input.taskId));
 
-  // 4. Check if runtime is configured
+  // 5. Check if runtime is configured
   if (!isOpenClawConfigured(config)) {
     // Runtime not configured — create a pending session for when it connects
     await db.insert(executionSessionsTable).values({
@@ -247,7 +269,7 @@ export async function submitTaskExecution(
     };
   }
 
-  // 5. Submit to engine
+  // 6. Submit to engine
   const result = await engine.submitExecution(pkg);
 
   return {

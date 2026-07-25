@@ -46,12 +46,23 @@ description: Architecture decisions, constraints, and gotchas from the OpenClaw 
 - Submissions create `pending` sessions for later runtime connection
 - The platform runtime page shows "OpenClaw Runtime not connected." — never fabricates health data
 
+## Execution gate (executionPolicy.ts)
+
+The 11-step gate from the spec — steps 1–3 and 10–11 are middleware; steps 4–8 are in `executionPolicy.ts`:
+- Step 4: subscription state → `tenantCanUseFeature("execution.openclaw_runtime")` — if denied with subscription source, deniedAt = "subscription_state"
+- Step 5: runtime feature entitlement → same call, if denied with feature source, deniedAt = "runtime_entitlement"
+- Step 6: workforce pack → `tenantHasWorkforcePack(packForRole)`; role→pack map in SPECIALIST_PACK_MAP
+- Step 7: execution channels → `tenantCanUseExecutionChannel()`; "api"/"internal" channels skip this (always available)
+- Step 8: usage allowance → `checkUsage("ai_tasks", 1)`
+
+**Provider independence:** executionPolicy.ts does NOT import drizzle, @workspace/db, Stripe, or any billing provider. It delegates entirely to entitlementService. Stripe updates NeedsOps state later via webhooks — it is never called at submission time.
+
 ## What remains before first live browser execution
 
 1. OpenClaw Runtime Broker must be running and `OPENCLAW_RUNTIME_URL` set
 2. Org-level task submission UI (button to submit approved task)
 3. Execution status / output UI in org workspace
-4. Stripe commercial gating for execution
+4. Commercial gating — `executionPolicy.ts` gate is now wired in (Steps 4–8). Provider-independent: checks NeedsOps internal tables only
 5. Output delivery mechanism after `execution.completed`
 6. Approval-to-resume flow for mid-execution pauses
 7. Per-org concurrency limits

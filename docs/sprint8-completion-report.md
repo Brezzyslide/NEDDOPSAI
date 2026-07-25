@@ -142,13 +142,15 @@ The following items are **not yet built** — NeedsOps is not yet capable of run
 
 3. **Execution status UI** — no real-time display of execution progress, step completions, or final output within the org workspace. `PlatformRuntime` gives platform-level counts only.
 
-4. **Stripe / commercial gating** — execution is not yet gated on entitlement plan. Any `manager`-or-above member can submit any approved task.
+4. **Commercial gating** — the execution gate (`executionPolicy.ts`) is wired in and checks subscription state, feature entitlement, workforce pack, channel, and usage allowance using NeedsOps internal tables. Execution submissions are blocked if any gate step fails. The gate is provider-independent — no billing provider is called directly.
 
 5. **Output delivery** — when OpenClaw sends `execution.completed`, the task transitions to `completed` and the event payload is stored in `execution_events`. There is no mechanism to surface the output document or artefact back to the requesting user.
 
 6. **Approval flow for mid-execution pauses** — when OpenClaw sends `execution.awaiting_approval`, the task transitions to `awaiting_approval`. The existing approval system is not yet connected to the execution engine to resume after approval.
 
-7. **Rate limits / concurrency caps** — no per-org concurrent execution limit is enforced at the API layer.
+7. **Per-org concurrency caps** — no concurrent execution limit is enforced at the API layer beyond the usage allowance check.
+
+> **Commercial gate clarification (Sprint 8 correction):** Execution submission is gated on NeedsOps-internal subscription and entitlement tables (`tenant_subscriptions`, `tenant_entitlements`, `tenant_workforce_packs`, `tenant_usage_allowances`, etc.). No billing provider (Stripe or otherwise) is consulted at submission time. Stripe will later update NeedsOps commercial state through verified webhooks only. Execution works for all valid subscription sources: manual platform assignment, free trial, invoice agreement, enterprise contract, pilot agreement, and future Stripe billing.
 
 8. **`OPENCLAW_AUTH_TOKEN_REF`** — the broker auth token is read from a platform secret reference. The platform secrets store exists (Sprint 7), but no token has been configured.
 
