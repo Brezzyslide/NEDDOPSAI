@@ -1,0 +1,49 @@
+Before proceeding to the next feature sprint, conduct a full database architecture assessment for NeedsOps.
+
+Do not assume that the current database already satisfies the approved enterprise data isolation design.
+
+Review the existing database, Drizzle schemas, authentication system, organisation model, API queries and platform console implementation. Provide a written report confirming:
+
+1. Whether the application currently uses one shared database for all organisations.
+2. Whether all operational tables contain an organisationId or tenantId.
+3. Whether tenant filtering is enforced centrally or separately in individual API routes.
+4. Whether any query can execute without an organisation scope.
+5. Whether platform administrators can currently access customer operational information.
+6. Whether customer documents, AI conversations, embeddings, audit logs and connector credentials are tenant-scoped.
+7. Whether Row Level Security is implemented.
+8. Whether separate databases are currently provisioned for individual organisations.
+9. How migrations, backups and restoration currently operate.
+10. What changes are required to implement the approved hybrid architecture.
+
+The approved target architecture is:
+
+A shared Platform Database containing only platform-level information, including organisations, authentication, subscriptions, licences, billing, feature flags, platform configuration, system monitoring and support administration.
+
+A separately provisioned operational database for each customer organisation containing participants, staff, case notes, incidents, care plans, medication information, restrictive practices, rosters, documents, operational audit records, organisation AI data and connector data.
+
+The AI Privacy Gateway must ensure that every AI request:
+
+* operates under the authenticated user’s identity
+* inherits the user’s role and permissions
+* connects only to the user’s organisation database
+* retrieves only the minimum information required for the task
+* records the purpose and records accessed
+* does not use customer information for general model training
+* does not expose information between organisations
+* requires human approval for regulated or high-risk outputs
+
+Do not begin restructuring the production database yet.
+
+First provide:
+
+* the current-state database diagram
+* the current tenant-isolation model
+* identified security gaps
+* the proposed target-state diagram
+* the migration strategy
+* risks to existing data
+* estimated sprint breakdown
+* required database and infrastructure changes
+* automated tests needed to prove cross-company isolation
+
+Clearly distinguish between what is currently implemented, what is partly implemented and what is only proposed.
