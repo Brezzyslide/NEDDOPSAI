@@ -1,0 +1,702 @@
+Use this as the verification prompt for Replit after Sprint 7:
+
+Please verify that Sprint 7 was implemented exactly as approved.
+
+Do not provide a general summary and do not simply state that the sprint is complete.
+
+Inspect the live codebase, database configuration, migrations, environment configuration and test results. Answer every question below using:
+
+* Implemented
+* Partially implemented
+* Not implemented
+
+For every item marked Implemented, provide exact evidence, including file paths, migration names, database objects, commands run and test results.
+
+1. Separate Database Confirmation
+
+Confirm whether each organisation now has a genuinely separate PostgreSQL database.
+
+Provide the result of a database listing query such as:
+
+SELECT datname
+FROM pg_database
+ORDER BY datname;
+
+Show the actual databases created for:
+
+* the NeedsOps Platform Database
+* Organisation Alpha
+* Organisation Beta
+* every existing real organisation
+
+Confirm whether the current structure is:
+
+One managed PostgreSQL server or cluster
+├── needsops_platform
+├── organisation_alpha
+├── organisation_beta
+└── other organisation databases
+
+Clearly confirm that these are separate PostgreSQL databases and not merely:
+
+* separate schemas
+* separate table prefixes
+* separate organization_id values
+* separate search paths
+
+If schema-per-organisation remains active, explain whether it is temporary migration infrastructure or still the final data boundary.
+
+2. Hosting Model
+
+Confirm that standard organisations share approved managed PostgreSQL infrastructure while keeping separate databases.
+
+Confirm that the system does not create a separate paid server, RDS instance or PostgreSQL cluster for every small organisation.
+
+Show how the database registry distinguishes between:
+
+* shared infrastructure
+* dedicated enterprise infrastructure
+* server or cluster reference
+* database name
+* credential reference
+* migration version
+* provisioning status
+* health status
+* backup status
+* suspension status
+
+3. Platform Database Boundary
+
+List every table currently stored in the Platform Database.
+
+Confirm that the Platform Database contains only platform-level information, including:
+
+* organisations
+* users
+* authentication identities
+* user-to-organisation routing links
+* subscriptions
+* plans
+* licences
+* entitlements
+* feature flags
+* platform configuration
+* usage summaries
+* organisation database registry
+* backup summaries
+* database health summaries
+* support records
+* security alerts
+* platform audit records
+
+Confirm that it does not contain active customer operational content such as:
+
+* task bodies
+* approvals
+* approval history
+* organisation settings
+* workforce grants
+* participant data
+* case notes
+* incidents
+* care plans
+* medication information
+* restrictive practice records
+* customer documents
+* AI conversations
+* embeddings
+* organisation audit content
+* connector credentials
+
+List any operational tables or records that still remain in the Platform Database.
+
+For each remaining item, explain:
+
+* why it remains
+* whether it is still writable
+* when it will be removed
+* what prevents it becoming the authoritative record
+
+4. Operational Database Contents
+
+List all tables currently created inside each organisation’s Operational Database.
+
+Confirm that the migrated operational database contains:
+
+* organisation memberships
+* organisation settings
+* workforce pack grants
+* tasks
+* task execution plans
+* task specialists
+* approvals
+* approval rules
+* approval history
+* organisation audit log
+
+Clearly distinguish between:
+
+* tables already implemented
+* tables migrated from the old structure
+* tables planned for Sprint 8
+* placeholder tables with no working services yet
+
+5. Provisioning Service
+
+Show the organisation database provisioning implementation.
+
+Confirm that provisioning performs the following:
+
+1. Validates the organisation.
+2. Generates a stable internal database identifier.
+3. Creates a separate PostgreSQL database.
+4. Creates or assigns least-privilege database credentials.
+5. Stores only a secure credential reference in the Platform Database.
+6. Applies Operational Database migrations.
+7. Creates roles and permissions.
+8. Seeds initial organisation settings.
+9. Creates or links the first organisation administrator.
+10. Registers backup configuration.
+11. Performs a health check.
+12. Performs an isolation check.
+13. Writes a platform audit event.
+14. Marks the database active only after all checks pass.
+
+Provide:
+
+* provisioning service file
+* database creation code
+* registry code
+* migration runner
+* health check
+* failure handling
+* retry logic
+* idempotency tests
+
+Prove that retrying a failed provisioning job does not create duplicate databases or duplicate organisation records.
+
+6. Database Naming
+
+Confirm that database names are generated from stable internal identifiers and not directly from:
+
+* public organisation slug
+* organisation display name
+* user-controlled input
+
+Show the database-name generation function and its validation rules.
+
+Confirm that renaming an organisation or changing its slug does not rename or reroute its database.
+
+7. Secure Routing
+
+Show how withOrgContext() or its replacement now routes requests.
+
+Confirm that routing follows:
+
+Authenticated user
+→ requested organisation
+→ verified active platform relationship
+→ Platform Database registry lookup
+→ approved server or cluster
+→ approved Operational Database
+→ secure credential reference
+→ organisation database connection
+→ local membership and permission check
+→ transaction
+→ action
+
+Confirm that changing any of the following client values cannot redirect a user into another organisation’s database:
+
+* slug
+* organisation ID
+* tenant ID
+* database name
+* connection string
+* registry ID
+* server reference
+
+Provide the relevant middleware, routing and integration test files.
+
+8. Local Permission Check
+
+Confirm that a valid Platform Database membership does not automatically grant access to all organisation data.
+
+Show where the Operational Database verifies:
+
+* active local membership
+* local role
+* local permissions
+* delegated authority
+* relevant record access
+
+Explain what happens when:
+
+* the platform relationship is active but local membership is disabled
+* the local role is removed
+* a user is removed from the organisation
+* an organisation is suspended
+* a session remains active after access is revoked
+
+9. Connection Pool Isolation
+
+Show the connection pool manager for separate organisation databases.
+
+Confirm that:
+
+* each pool is tied to one database
+* pools cannot be relabelled or reused for another organisation
+* database credentials are not mixed
+* pools have maximum connection limits
+* inactive pools are closed
+* LRU eviction works
+* one organisation cannot exhaust all available connections
+* suspended organisation pools are closed
+* failed registry lookups fail closed
+* credentials can be rotated
+* migration versions are checked before use
+
+Provide concurrency and load-test results.
+
+Confirm whether tests used real PostgreSQL connections or mocks.
+
+10. Existing Organisation Migration
+
+List every organisation included in the Sprint 7 migration.
+
+For each organisation provide:
+
+Organisation	Database provisioned	Records copied	Validation passed	Reads cut over	Writes cut over	Rollback available
+
+For each migrated table provide:
+
+* source record count
+* destination record count
+* rejected record count
+* orphaned record count
+* relationship validation result
+* checksum or integrity result
+* reconciliation result
+
+Confirm that:
+
+* IDs were preserved where intended
+* timestamps were preserved
+* authorship was preserved
+* approval histories were preserved
+* organisation ownership was preserved
+* audit evidence was preserved
+
+Provide the generated migration reports.
+
+11. Dual-Write Status
+
+Confirm whether dual-write remains active anywhere.
+
+Search the codebase for every place where operational records are written to both:
+
+* the legacy shared tables or organisation schemas
+* the new Operational Database
+
+For every remaining dual-write path explain:
+
+* file and function
+* affected table
+* reason it remains
+* reconciliation mechanism
+* removal condition
+* removal date or sprint
+
+Confirm that dual-write is monitored for mismatches.
+
+Do not state that migration is complete while unmonitored or indefinite dual-write remains.
+
+12. Legacy Schema Status
+
+Confirm the current status of the Sprint 6 organisation schemas.
+
+State whether each schema is:
+
+* active
+* read-only
+* migration fallback
+* retained for rollback
+* archived
+* scheduled for removal
+
+Prove that normal production routes cannot continue writing operational data to the old schemas after cutover.
+
+13. Legacy Shared Audit Log
+
+Confirm whether new writes to the legacy audit_log have stopped.
+
+Show:
+
+* all old writers identified
+* replacement platform audit service
+* replacement organisation audit service
+* migration or retention plan
+* monitoring for unexpected legacy writes
+* database control preventing new normal application writes
+
+If backward-compatible writes still occur, mark this requirement as not complete.
+
+14. Audit Separation
+
+Confirm that:
+
+* platform audit records remain in the Platform Database
+* organisation operational audit records live in the relevant Operational Database
+
+Show example audit events for:
+
+* database provisioning
+* migration
+* user operational action
+* permission change
+* AI request
+* support access
+* backup
+* restore
+
+Confirm that the Platform Console cannot retrieve raw organisation audit payloads.
+
+15. Secret Management
+
+Show the secrets-management implementation.
+
+Confirm that the Platform Database stores only references for:
+
+* organisation database credentials
+* connector credentials
+* encryption keys
+* external service tokens
+
+Identify the actual secret provider or vault used.
+
+Confirm that plaintext secrets do not appear in:
+
+* source code
+* environment files committed to the repository
+* database records
+* logs
+* audit payloads
+* browser responses
+* exception messages
+* migration scripts
+
+Provide credential rotation and revocation test results.
+
+If the implementation currently uses encrypted values in the Platform Database rather than an external or approved secrets system, clearly mark this as partial and explain the risk.
+
+16. Database Roles and Privileges
+
+For the Platform Database and at least two organisation databases, list the database roles and privileges.
+
+Confirm that:
+
+* ordinary application roles are not superusers
+* ordinary roles cannot create databases
+* ordinary roles cannot connect to other organisation databases
+* organisation roles cannot read the Platform Database beyond approved routing operations
+* migration roles are separate from runtime roles
+* backup roles are separately controlled
+* platform support roles do not have standing unrestricted access
+
+Provide privilege test results.
+
+17. RLS Safety
+
+Confirm whether RLS still protects any remaining shared tenant tables.
+
+Show the deployment mechanism that prevents Drizzle or schema changes from silently removing RLS.
+
+Confirm the system now includes:
+
+* versioned RLS migrations
+* deployment-time verification
+* startup verification
+* health checks
+* automatic failure where required policies are absent
+* tests simulating missing RLS policies
+
+Provide evidence of a test where a required RLS policy was removed and the deployment or startup check failed.
+
+Confirm that production does not rely on someone manually running:
+
+psql "$DATABASE_URL" -f lib/db/migrations/sprint5-rls.sql
+
+18. Backup Automation
+
+Show how organisation-specific backups are created and monitored.
+
+For each organisation database confirm:
+
+* backup is registered
+* backup is encrypted
+* retention is configured
+* status is monitored
+* failures generate alerts
+* restoration is supported
+* backup actions are audited
+
+Clarify whether backups are:
+
+* logical PostgreSQL dumps
+* infrastructure snapshots
+* point-in-time recovery
+* another method
+
+State any current limitations honestly.
+
+19. Independent Restore Proof
+
+Provide evidence of a real restore test.
+
+The test must demonstrate:
+
+1. Organisation Alpha and Organisation Beta contain different records.
+2. A backup of Organisation Alpha is created.
+3. Alpha data is changed or removed.
+4. Alpha is restored.
+5. Alpha returns to the expected state.
+6. Beta remains unchanged.
+7. Platform data remains unchanged.
+8. The restore action is audited.
+
+Provide:
+
+* commands or automated test
+* before-and-after record counts
+* integrity results
+* test output
+* restore duration
+* known limitations
+
+A mocked restore test is not sufficient for completion.
+
+20. Platform Console Restrictions
+
+Confirm that the Platform Console now displays only safe metadata such as:
+
+* provisioning status
+* database health
+* migration version
+* backup status
+* pool status
+* storage usage
+* aggregate record counts
+* migration state
+* security alerts
+
+Confirm that it cannot display:
+
+* task bodies
+* approval content
+* participant information
+* case notes
+* incident content
+* medication information
+* organisation documents
+* AI prompts or responses
+* detailed organisation audit payloads
+* database credentials
+* connector credentials
+
+Provide route and UI test evidence.
+
+21. SECURITY DEFINER Functions
+
+List every SECURITY DEFINER function.
+
+For each function confirm:
+
+* purpose
+* owner
+* permitted execution roles
+* fixed safe search_path
+* input validation
+* whether dynamic SQL is used
+* whether raw records can be returned
+* automated privilege tests
+
+Confirm that these functions return only approved aggregates and cannot be manipulated to retrieve operational content.
+
+22. AI Privacy Gateway Foundation
+
+Show the AI Privacy Gateway foundation created in Sprint 7.
+
+Confirm that every current customer-data AI request carries:
+
+* authenticated user ID
+* verified organisation ID
+* Operational Database routing
+* local role
+* permission context
+* purpose
+* initiating module
+* correlation ID
+* retention classification
+* human approval requirement
+
+Search the entire codebase for direct calls to:
+
+* OpenAI
+* Gemini
+* Anthropic
+* any other AI provider
+* internal model proxy endpoints
+
+List all direct provider calls.
+
+For each call state whether:
+
+* it passes through the gateway
+* it processes customer information
+* it is a permitted platform-only call
+* it remains a privacy gateway bypass
+
+If any customer-data model call can bypass the gateway, mark the gateway requirement as incomplete.
+
+23. Minimum-Necessary Retrieval
+
+Show the interface created for minimum-necessary AI retrieval.
+
+Confirm that the AI gateway does not automatically retrieve all organisation data merely because a user has broad access.
+
+Provide at least one test showing that a user requesting a task summary does not also retrieve unrelated records.
+
+24. Real Cross-Database Isolation Tests
+
+Provide the latest results of real PostgreSQL integration tests proving:
+
+* Alpha cannot connect to Beta’s database
+* Beta cannot connect to Alpha’s database
+* Alpha credentials cannot authenticate to Beta’s database
+* changing a slug does not change routing rights
+* changing an organisation ID does not change routing rights
+* changing a database name in a request is ignored or rejected
+* pools cannot cross-route
+* suspended organisations cannot connect
+* removed users cannot connect
+* failed registry lookups fail closed
+* migration cannot copy Alpha records into Beta
+* platform aggregate functions cannot return raw records
+* the Platform Console cannot access operational content
+* backup restore of Alpha does not alter Beta
+
+Clearly distinguish:
+
+* mocked unit tests
+* containerised PostgreSQL tests
+* tests against the deployed PostgreSQL environment
+
+Core isolation acceptance requires real PostgreSQL tests.
+
+25. Operational Cost Control
+
+Confirm that the implementation controls hosting costs by allowing separate organisation databases on shared infrastructure.
+
+Show:
+
+* how many organisation databases one cluster can currently support
+* pool limits
+* connection limits
+* storage monitoring
+* conditions that trigger movement to another cluster
+* conditions that trigger dedicated enterprise infrastructure
+
+Confirm that provisioning one small organisation does not automatically create a separate paid server.
+
+26. Failure and Rollback Testing
+
+Provide evidence for the following failure cases:
+
+* database creation fails halfway through
+* migrations fail
+* secret creation fails
+* registry write fails
+* health check fails
+* initial administrator creation fails
+* backup registration fails
+* migration reconciliation fails
+* cutover fails
+* credential rotation fails
+
+For each case confirm:
+
+* the organisation is not marked active incorrectly
+* partial resources are cleaned up or recoverable
+* retry is safe
+* the event is audited
+* support staff receive a safe error
+* sensitive information is not leaked
+
+27. Documentation and Runbooks
+
+Provide the paths for:
+
+* Sprint 7 architecture document
+* provisioning runbook
+* migration runbook
+* rollback runbook
+* backup runbook
+* restore runbook
+* credential rotation runbook
+* organisation suspension runbook
+* database health runbook
+* incident response guidance
+* known limitations
+
+Confirm that the documents match the current implementation rather than the intended design.
+
+Final Verification Table
+
+Finish with this table:
+
+Requirement	Status	Exact evidence	Test type	Remaining work
+
+Include at minimum:
+
+* separate PostgreSQL database per organisation
+* shared infrastructure supported
+* no server per small organisation
+* Platform Database boundary
+* database provisioning
+* secure routing
+* connection pool isolation
+* existing organisation migration
+* dual-write removal
+* legacy schema write shutdown
+* audit separation
+* secrets management
+* RLS deployment safety
+* independent backup
+* independent restore
+* Platform Console restriction
+* AI Privacy Gateway foundation
+* real cross-database isolation tests
+* failure recovery
+* operational documentation
+
+Final Instruction
+
+Do not mark Sprint 7 complete based only on code existing.
+
+Sprint 7 can only be confirmed complete where:
+
+* the database structure exists
+* real data was migrated
+* production routes use the new structure
+* old operational writes have stopped
+* secrets are protected
+* backup and restoration work
+* AI routing controls are enforced
+* real PostgreSQL isolation tests pass
+
+Finish by stating one of:
+
+* Sprint 7 fully verified
+* Sprint 7 verified with listed limitations
+* Sprint 7 not yet complete
+
+Do not begin Sprint 8 until this verification is complete.
