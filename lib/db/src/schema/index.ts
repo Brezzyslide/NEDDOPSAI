@@ -44,3 +44,5 @@ export * from "./orgAuditLog";
 export * from "./platformAuditLog";
 // Sprint 6 — Organisation Database Registry
 export * from "./orgDatabaseRegistry";
+// Sprint 7 — Secrets Management
+export * from "./platformSecrets";

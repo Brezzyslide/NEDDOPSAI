@@ -1,5 +1,5 @@
 /**
- * org_database_registry — Sprint 6
+ * org_database_registry — Sprint 7 (updated from Sprint 6)
  *
  * Platform Database table. Records the provisioning state and connection
  * details for every organisation's Operational Database (or schema).
@@ -118,6 +118,53 @@ export const orgDatabaseRegistryTable = pgTable("org_database_registry", {
    * Who provisioned this org database.
    */
   provisionedBy: text("provisioned_by"),
+
+  // ── Sprint 7 columns ────────────────────────────────────────────────────────
+
+  /**
+   * TRUE = separate PostgreSQL database.
+   * FALSE = schema within shared cluster (default for dev/small orgs).
+   */
+  isDedicatedDb: boolean("is_dedicated_db").notNull().default(false),
+
+  /**
+   * Identifier for the managed PostgreSQL cluster.
+   * NULL = shared platform cluster.
+   */
+  clusterRef: text("cluster_ref"),
+
+  /**
+   * Backup schedule configuration.
+   * { schedule: string, retentionDays: number, encryptionEnabled: boolean }
+   */
+  backupConfig: jsonb("backup_config").notNull().default({}),
+
+  /**
+   * Last backup result: not_configured | pending | completed | failed
+   */
+  backupStatus: text("backup_status").default("not_configured"),
+
+  /**
+   * When the next scheduled backup should run.
+   */
+  nextBackupAt: timestamp("next_backup_at", { withTimezone: true }),
+
+  /**
+   * Data migration state machine.
+   * not_started | inventory | copying | validating | dual_write |
+   * reconciling | cutting_over | monitoring | finalised | failed
+   */
+  migrationState: text("migration_state").default("not_started"),
+
+  /**
+   * Human-readable reason if org database is suspended.
+   */
+  suspensionReason: text("suspension_reason"),
+
+  /**
+   * When this org database is scheduled for decommissioning.
+   */
+  decommissionAt: timestamp("decommission_at", { withTimezone: true }),
 
   /**
    * Arbitrary operational metadata (provisioning logs, error details, notes).

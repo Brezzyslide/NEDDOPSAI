@@ -212,6 +212,9 @@ importers:
       '@clerk/shared':
         specifier: ^2.22.0
         version: 2.22.1(react@19.1.0)
+      '@workspace/ai-gateway':
+        specifier: workspace:*
+        version: link:../../lib/ai-gateway
       '@workspace/api-zod':
         specifier: workspace:*
         version: link:../../lib/api-zod
@@ -230,6 +233,9 @@ importers:
       '@workspace/permissions':
         specifier: workspace:*
         version: link:../../lib/permissions
+      '@workspace/secrets':
+        specifier: workspace:*
+        version: link:../../lib/secrets
       '@workspace/shared':
         specifier: workspace:*
         version: link:../../lib/shared
@@ -815,6 +821,22 @@ importers:
         specifier: workspace:*
         version: link:../shared
 
+  lib/ai-gateway:
+    dependencies:
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.5
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   lib/api-client-react:
     dependencies:
       '@tanstack/react-query':
@@ -906,6 +928,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../db
+      '@workspace/secrets':
+        specifier: workspace:*
+        version: link:../secrets
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
@@ -935,6 +960,22 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.7(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0)
+
+  lib/secrets:
+    dependencies:
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.5
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   lib/shared: {}
 

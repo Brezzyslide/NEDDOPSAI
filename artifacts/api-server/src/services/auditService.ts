@@ -1,20 +1,20 @@
 /**
- * auditService — Sprint 1 (split in Sprint 5)
+ * auditService — Sprint 7
  *
- * Sprint 5: Routes events to the appropriate audit log table:
+ * Sprint 7: Legacy audit_log dual-write STOPPED. All events now go exclusively
+ * to their correct split tables:
  *   • Platform events  → platform_audit_log  (platform staff actions, config changes)
- *   • Org events       → org_audit_log       (user actions, record access, operational activity)
- *   • Both             → audit_log           (backward-compat until Sprint 7 migration)
+ *   • Org events       → org_audit_log       (user actions, operational activity)
  *
- * Routing rule: event types starting with "platform." are platform events.
- * Events with an organizationId and a non-platform event type are org events.
+ * The legacy audit_log table is now READ-ONLY (INSERT revoked in sprint7 migration).
+ * Existing rows are preserved for the retention period.
  *
  * Security: never log passwords, session tokens, raw auth material, or
  * customer operational content (case note text, AI prompts, connector tokens).
  */
 
 import { randomUUID } from "crypto";
-import { db, auditLogTable, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
+import { db, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
 import type { AuditEventType } from "@workspace/shared";
 
 export interface WriteAuditEventParams {
@@ -28,9 +28,7 @@ export interface WriteAuditEventParams {
   ipAddress?: string | null;
   userAgent?: string | null;
   metadata?: Record<string, unknown>;
-  /** Whether the event involves sensitive information (access purpose, AI retrieval) */
   isSensitive?: boolean;
-  /** Access purpose label for AI gateway and audited access events */
   accessPurpose?: string | null;
 }
 
@@ -43,40 +41,17 @@ function isPlatformEvent(eventType: string): boolean {
 // ─── Core write function ──────────────────────────────────────────────────────
 
 /**
- * Writes an audit event to the appropriate log table(s).
+ * Writes an audit event to the appropriate split log table.
  *
- * Sprint 5 routing:
- *   platform.*  → platform_audit_log + audit_log (compat)
- *   org event   → org_audit_log + audit_log (compat)
- *   no org      → platform_audit_log + audit_log (compat)
- *
- * Sprint 7 will stop writing to audit_log and migrate existing records.
+ * Sprint 7 routing (legacy audit_log dual-write REMOVED):
+ *   platform.*  → platform_audit_log only
+ *   org event   → org_audit_log only
+ *   no org      → platform_audit_log
  */
 export async function writeAuditEvent(params: WriteAuditEventParams): Promise<void> {
-  const id = randomUUID();
   const now = new Date();
   const isPlatform = isPlatformEvent(params.eventType);
   const hasOrg = !!params.organizationId;
-
-  // ── 1. Write to legacy shared table (backward compat until Sprint 7) ────────
-  await db.insert(auditLogTable).values({
-    id,
-    organizationId: params.organizationId ?? null,
-    actorUserId: params.actorUserId ?? null,
-    actorType: (params.actorType === "platform_staff" || params.actorType === "ai_gateway")
-      ? "system"
-      : (params.actorType ?? "user"),
-    eventType: params.eventType,
-    resourceType: params.resourceType,
-    resourceId: params.resourceId ?? null,
-    requestId: params.requestId ?? null,
-    ipAddress: params.ipAddress ?? null,
-    userAgent: params.userAgent ?? null,
-    metadata: params.metadata ?? {},
-    occurredAt: now,
-  }).catch(() => {}); // Non-fatal: new split tables are the source of truth
-
-  // ── 2. Write to split tables ─────────────────────────────────────────────────
 
   if (isPlatform || !hasOrg) {
     // Platform event → platform_audit_log
@@ -116,7 +91,7 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
 }
 
 /**
- * Convenience wrapper used by platform routes.
+ * Convenience wrapper for platform routes.
  */
 export async function log(params: {
   eventType: AuditEventType;
@@ -181,7 +156,4 @@ export function getRequestMeta(req: {
   };
 }
 
-/**
- * Namespace object — imported as `{ auditService }` by platform routes.
- */
 export const auditService = { log, logOrgEvent, writeAuditEvent, getRequestMeta };

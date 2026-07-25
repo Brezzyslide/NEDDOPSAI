@@ -1,1 +1,2 @@
 - [NeedsOps Sprint 0 conventions](needsops-sprint0.md) — OpenAPI codegen rules, Zod v3 gotchas, mobile metro config, DB schema decisions
+- [NeedsOps Sprint 7 Platform Database Boundary](needsops-sprint7.md) — dual-mode connection manager, backup restore pattern, Drizzle schema must match DB, RLS startup check, AI gateway rules

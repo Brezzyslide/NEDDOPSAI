@@ -184,7 +184,7 @@ describe("Sprint 6 — Org DB provisioning", () => {
     expect(entry).toBeTruthy();
     expect(entry!.status).toBe("active");
     expect(entry!.isVerified).toBe(true);
-    expect(entry!.migrationVersion).toBe("sprint6-foundation");
+    expect(entry!.migrationVersion).toBe("sprint7-extended");
     expect(entry!.isMigrated).toBe(false); // not yet data-migrated
   });
 
@@ -365,7 +365,7 @@ describe("Sprint 6 — Connection pool management", () => {
     const status = getPoolStatus();
     expect(status.activePools).toBeGreaterThanOrEqual(1);
     expect(status.maxPools).toBe(50);
-    expect(Array.isArray(status.schemas)).toBe(true);
+    expect(Array.isArray(status.poolSummaries)).toBe(true);
   });
 });
 

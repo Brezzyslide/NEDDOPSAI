@@ -20,6 +20,8 @@
     "@workspace/permissions": "workspace:*",
     "@workspace/shared": "workspace:*",
     "@workspace/org-db": "workspace:*",
+    "@workspace/secrets": "workspace:*",
+    "@workspace/ai-gateway": "workspace:*",
     "@workspace/validation": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

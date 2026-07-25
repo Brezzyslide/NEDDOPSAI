@@ -1,0 +1,419 @@
+Proceed with Sprint 7: Platform Database Boundary, Separate Organisation Databases, Migration, Secrets and Backup Automation.
+
+Sprint 5 is accepted.
+
+Sprint 6 is accepted as an interim schema-isolation foundation, but schema-per-organisation is not the final approved architecture.
+
+Do not treat the current organisation schemas as completion of organisation-specific database isolation.
+
+Approved Final Hosting Model
+
+The default architecture is:
+
+Shared managed PostgreSQL infrastructure
+├── needsops_platform database
+├── organisation_a operational database
+├── organisation_b operational database
+└── organisation_c operational database
+
+Each standard customer must receive a separate PostgreSQL Operational Database.
+
+Multiple customer databases may run on the same managed PostgreSQL server or cluster to control hosting costs.
+
+Do not create a separate paid PostgreSQL server or RDS instance for every small organisation.
+
+Dedicated servers or clusters must remain an optional enterprise configuration.
+
+Sprint 7 Objectives
+
+1. Finalise the Platform Database boundary.
+2. Replace schema-per-organisation as the final storage model with separate PostgreSQL databases per organisation.
+3. Migrate existing operational data safely.
+4. Build database-level provisioning and routing.
+5. Implement secure credential and secrets handling.
+6. Implement organisation-specific backup and restore.
+7. Remove dependence on manual RLS reapplication.
+8. Prepare the AI Privacy Gateway foundation.
+9. Preserve all Sprint 5 security controls during migration.
+
+1. Platform Database Boundary
+
+The Platform Database may contain only:
+
+* organisations
+* users
+* authentication identities
+* user-to-organisation routing links
+* subscriptions
+* plans
+* licences
+* entitlements
+* feature flags
+* platform configuration
+* usage summaries
+* organisation database registry
+* database health summaries
+* backup summaries
+* support records
+* security alerts
+* platform audit log
+
+It must not contain operational customer content after cutover.
+
+Move the following into each organisation’s Operational Database:
+
+* org memberships beyond minimum routing status
+* organisation settings
+* workforce grants
+* tasks
+* task execution plans
+* task specialists
+* approvals
+* approval rules
+* approval history
+* organisation audit records
+
+Future clinical, disability, workforce, AI and connector data must be created only inside the Operational Database.
+
+2. Separate Database Provisioning
+
+Refactor provisionOrgDb() so the final provisioning process creates a separate PostgreSQL database, not merely a schema.
+
+Provisioning must:
+
+1. Validate the organisation.
+2. Generate a stable internal database identifier.
+3. Create a separate PostgreSQL database.
+4. Create a least-privilege database role or credential set for that organisation.
+5. Store only a secure credential reference in org_database_registry.
+6. Apply Operational Database migrations.
+7. Create all operational tables.
+8. Apply required database roles and permissions.
+9. Configure backup registration.
+10. Seed initial settings.
+11. Create the initial organisation administrator.
+12. Run health and isolation checks.
+13. Write a platform audit event.
+14. Mark the database active only after every check succeeds.
+
+The database name must not be derived directly from the public organisation slug.
+
+Provisioning must remain idempotent and retry-safe.
+
+3. Shared Infrastructure, Separate Databases
+
+Support multiple organisation databases on one approved PostgreSQL server or cluster.
+
+Do not provision a separate server by default.
+
+The registry must distinguish:
+
+* shared cluster database
+* dedicated cluster database
+* migration state
+* database name
+* server or cluster reference
+* secret reference
+* migration version
+* backup state
+* health state
+* suspension state
+
+This will allow small organisations to share infrastructure while maintaining separate databases.
+
+4. Secure Database Routing
+
+Refactor withOrgContext() so it routes to the organisation’s registered database rather than only changing search_path.
+
+Required flow:
+
+Authenticated user
+→ verified organisation relationship
+→ Platform Database registry lookup
+→ approved server or cluster
+→ approved organisation database
+→ secure secret reference
+→ organisation database pool
+→ local operational role and permission check
+→ transaction
+→ action
+
+The client must never supply:
+
+* database name
+* connection string
+* server reference
+* credential
+* trusted organisation ID
+
+The current schema-based search_path mechanism may remain temporarily for migration compatibility, but it must not remain the final routing boundary.
+
+5. Connection Pool Management
+
+Update the pool manager to support separate databases.
+
+Requirements:
+
+* bounded pools
+* lazy pool creation
+* LRU eviction
+* inactive pool closure
+* credential rotation
+* database suspension
+* health checks
+* migration version checks
+* no credentials in logs
+* no cross-database pool reuse
+* fail-closed behaviour
+* safe concurrency
+* metrics without customer content
+
+Provide load tests showing that pool limits do not allow one organisation to exhaust the platform.
+
+6. Existing Data Migration
+
+Migrate all existing organisation schema data into separate Operational Databases.
+
+Migration stages:
+
+Inventory
+→ provision database
+→ initial copy
+→ validate
+→ temporary controlled dual-write if required
+→ reconcile
+→ cut reads over
+→ cut writes over
+→ disable schema writes
+→ monitor
+→ finalise
+
+For each organisation:
+
+* preserve IDs
+* preserve timestamps
+* preserve authorship
+* preserve approval history
+* preserve audit evidence
+* verify record counts
+* verify foreign keys
+* verify organisation ownership
+* verify checksums or equivalent integrity evidence
+* produce a migration report
+* maintain rollback capability until final sign-off
+
+Dual-write must be temporary and must include a clear removal condition.
+
+Do not delete schema-based source data immediately after cutover.
+
+7. Legacy Shared Tables
+
+The legacy audit_log may continue temporarily only during migration.
+
+During Sprint 7:
+
+* identify all remaining writers
+* migrate them to platform or organisation audit services
+* add monitoring for legacy writes
+* stop new legacy writes
+* make the table read-only
+* document the retention and decommissioning plan
+
+Do not leave indefinite backward-compatible writes in place.
+
+8. RLS Deployment Safety
+
+The current warning that drizzle push can remove RLS policies is unacceptable for production.
+
+Replace the manual rerun dependency with automated controls.
+
+Implement:
+
+* migrations that preserve or reapply RLS
+* a deployment-time RLS verification step
+* a startup security check
+* a database health check confirming RLS is active
+* failure of deployment or startup if required policies are absent
+* automated tests that simulate schema changes and confirm RLS remains enforced
+
+Do not rely on a developer remembering to run a separate SQL command.
+
+Where possible, stop using destructive schema-push behaviour in production and use controlled versioned migrations.
+
+9. Secrets Architecture
+
+Implement a secrets-management abstraction for:
+
+* organisation database credentials
+* connector credentials
+* encryption keys
+* external service tokens
+
+The Platform Database may store:
+
+* secret reference
+* credential version
+* rotation status
+* revocation status
+* last validation time
+
+It must not store plaintext secrets.
+
+Secrets must not appear in:
+
+* browser payloads
+* application logs
+* audit payloads
+* exception traces
+* source code
+* migration files
+
+Provide credential rotation and revocation tests.
+
+10. Organisation-Specific Backup and Restore
+
+Implement independent backup and restore for every organisation database.
+
+Requirements:
+
+* encrypted automated backups
+* retention configuration
+* backup health status
+* restore workflow
+* point-in-time recovery where supported
+* restore testing
+* audit events
+* customer-safe status reporting
+* failure alerts
+
+Prove through a test that Organisation Alpha can be restored without changing or interrupting Organisation Beta’s data.
+
+Do not claim independent restore capability until this test passes.
+
+11. Platform Console
+
+Update the Platform Console to show only:
+
+* database provisioning status
+* database health
+* migration version
+* backup status
+* pool status
+* storage usage
+* aggregate record counts
+* migration state
+* security alerts
+
+It must not expose organisation operational content.
+
+Aggregate functions must return counts and safe summaries only.
+
+Review all SECURITY DEFINER functions.
+
+Each must:
+
+* use a fixed safe search path
+* validate inputs
+* return only permitted aggregates
+* avoid dynamic SQL where possible
+* be executable only by approved roles
+* have automated privilege tests
+* never expose raw operational records
+
+12. AI Privacy Gateway Foundation
+
+Build the first enforceable AI Privacy Gateway layer.
+
+All current and future AI calls involving customer information must pass through one gateway.
+
+The Sprint 7 foundation must establish:
+
+* authenticated user identity
+* verified organisation
+* organisation database routing
+* operational role
+* purpose classification
+* correlation ID
+* audit event
+* approved model provider
+* retention classification
+* minimum-necessary retrieval interface
+* human approval requirement field
+
+Search the complete codebase for direct model-provider calls.
+
+Identify and remove or route any direct customer-data calls around the gateway.
+
+13. Test Requirements
+
+Create at least:
+
+* two organisation databases
+* separate users
+* separate tasks
+* separate approvals
+* separate settings
+* separate audit records
+
+Tests must prove:
+
+* Alpha cannot connect to Beta’s database
+* Beta cannot connect to Alpha’s database
+* changing a slug does not change routing rights
+* changing an organisation ID does not change routing rights
+* a pool cannot be reused for the wrong database
+* credentials cannot be read through the Platform Console
+* a suspended organisation cannot connect
+* a failed registry lookup fails closed
+* a migration cannot place one organisation’s data in another database
+* backup restore for one organisation does not alter the other
+* removal of RLS causes deployment or startup verification to fail
+* platform aggregate functions cannot return raw records
+
+Clearly state which tests use a real PostgreSQL database and which are mocked.
+
+Isolation acceptance requires real database integration tests.
+
+14. Required Sprint Output
+
+At completion provide:
+
+* architecture diagram
+* database list
+* database-to-organisation map
+* Platform Database table list
+* Operational Database table list
+* provisioning files
+* routing files
+* pool-management files
+* secrets files
+* migration files
+* backup files
+* restore test evidence
+* RLS verification evidence
+* AI gateway foundation files
+* test results
+* unresolved issues
+* known limitations
+* rollback procedure
+
+Definition of Done
+
+Sprint 7 is complete only when:
+
+* each organisation has a separate PostgreSQL Operational Database
+* small organisations may share the same managed PostgreSQL server or cluster
+* no separate paid server is created by default
+* Platform Database boundaries are enforced
+* existing operational data is migrated and reconciled
+* schema-based operational writes are disabled after cutover
+* credentials are stored through secure references
+* organisation-specific backup and restore is working
+* RLS cannot be silently removed by a normal deployment
+* legacy audit writes have stopped
+* secure database routing is tested
+* organisation database pools cannot leak or cross-route
+* AI requests have an enforceable gateway foundation
+* all real-database isolation tests pass
+
+Begin implementation now. Do not return another review or architecture proposal.

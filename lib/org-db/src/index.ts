@@ -1,38 +1,100 @@
 /**
- * @workspace/org-db — Sprint 6
+ * @workspace/org-db — Sprint 7
  *
  * Organisation Operational Database library.
  *
  * Exports:
- *   - createOrgSchema()       — Drizzle schema definitions for org tables
- *   - withOrgContext()        — Primary org data access gateway
- *   - provisionOrgDb()        — Provision a new org database/schema
- *   - deprovisionOrgDb()      — Remove an org schema (pre-migration only)
- *   - checkOrgDbHealth()      — Health check for an org's schema
- *   - drainAllPools()         — Graceful shutdown
- *   - drainOrgPool()          — Drain one org's connection pool
- *   - getPoolStatus()         — Connection pool metrics
- *   - deriveSchemaName()      — Org UUID → PostgreSQL schema name
- *   - OrgConnectionError      — Typed error for routing failures
+ *   Connection management:
+ *     - withOrgContext()         — Primary org data access gateway (Sprint 7: per-org routing)
+ *     - checkOrgDbHealth()       — Health check for an org's database
+ *     - drainAllPools()          — Graceful shutdown (wired to SIGTERM)
+ *     - drainOrgPool()           — Drain one org's connection pool (credential rotation)
+ *     - getPoolStatus()          — Connection pool metrics
+ *     - startPoolReaper()        — Start idle pool eviction (call at server startup)
+ *     - OrgConnectionError       — Typed error for routing failures
+ *
+ *   Provisioning:
+ *     - provisionOrgDb()         — 14-step idempotent provisioning (Sprint 7)
+ *     - deprovisionOrgDb()       — Remove an org database (pre-migration only)
+ *     - deriveSchemaName()       — Org UUID → PostgreSQL schema name
+ *     - deriveDatabaseName()     — Org UUID → PostgreSQL database name
+ *
+ *   Migration:
+ *     - migrateOrgData()         — Migrate shared table data → org database
+ *
+ *   Backup and restore:
+ *     - createOrgBackup()        — Logical backup of org operational schema
+ *     - restoreOrgBackup()       — Restore from encrypted backup payload
+ *     - getOrgBackupStatus()     — Backup status (safe for console display)
+ *
+ *   Schema versioning:
+ *     - applyMigrationsUpTo()    — Apply versioned DDL migrations
+ *     - CURRENT_MIGRATION_VERSION
+ *
+ *   RLS verification:
+ *     - verifyRLS()              — Check all required tables have RLS enabled
+ *     - verifyNeedsOpsAppRoleIsSecure() — Verify role cannot bypass RLS
+ *     - RLSVerificationError     — Thrown at startup if RLS is missing
+ *     - REQUIRED_RLS_TABLES
+ *
+ *   Schema definitions:
+ *     - createOrgSchema()        — Drizzle schema factory for org tables
  */
 
 export { createOrgSchema, type OrgSchemaType } from "./schema";
+
 export {
   withOrgContext,
   checkOrgDbHealth,
   drainAllPools,
   drainOrgPool,
   getPoolStatus,
+  startPoolReaper,
   OrgConnectionError,
   type OrgConnection,
   type OrgConnectionContext,
   type OrgDbHealth,
 } from "./orgConnectionManager";
+
 export {
   provisionOrgDb,
   deprovisionOrgDb,
   deriveSchemaName,
+  deriveDatabaseName,
   type ProvisionOrgDbInput,
   type ProvisionOrgDbResult,
   type ProvisioningStep,
 } from "./orgProvisioningService";
+
+export {
+  migrateOrgData,
+  type MigrationInput,
+  type MigrationReport,
+  type MigrationInventory,
+} from "./orgMigrationService";
+
+export {
+  createOrgBackup,
+  restoreOrgBackup,
+  getOrgBackupStatus,
+  BackupError,
+  type BackupResult,
+  type RestoreResult,
+  type BackupStatus,
+} from "./orgBackupService";
+
+export {
+  applyMigrationsUpTo,
+  CURRENT_MIGRATION_VERSION,
+  MIGRATION_VERSIONS,
+  type MigrationVersion,
+} from "./orgSchemaVersions";
+
+export {
+  verifyRLS,
+  verifyNeedsOpsAppRoleIsSecure,
+  RLSVerificationError,
+  REQUIRED_RLS_TABLES,
+  type RLSVerificationResult,
+  type RLSTableStatus,
+} from "./rlsVerifier";

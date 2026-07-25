@@ -1,9 +1,11 @@
 /**
  * Platform Console master router — /v1/platform/*
- * Sprint 4: Mounts all platform sub-routers.
+ * Sprint 7: Dashboard updated to remove operational table reads.
+ *           Uses platformAuditLogTable instead of legacy auditLogTable.
+ *           Task and approval counts use SECURITY DEFINER aggregate functions.
  *
  * Sub-routers:
- *   /dashboard          → dashboard metrics
+ *   /dashboard          → platform-level metrics only (no operational content)
  *   /organisations      → org directory + detail + all org actions
  *   /commercial         → plan designer, versions, features, packs, usage dims
  *   /trials             → trial management
@@ -15,6 +17,7 @@
  *   /settings           → feature flags + platform config + roles
  *   /search             → global search
  *   /export             → CSV exports
+ *   /database/*         → org database management (Sprint 6/7)
  */
 
 import { Router } from "express";
@@ -26,9 +29,7 @@ import {
   membershipsTable,
   usersTable,
   tenantSubscriptionsTable,
-  tasksTable,
-  approvalsTable,
-  auditLogTable,
+  platformAuditLogTable,   // Sprint 7: use split table, not legacy audit_log
 } from "@workspace/db";
 import { eq, count, desc } from "drizzle-orm";
 
@@ -55,24 +56,25 @@ router.get("/dashboard", ...auth, async (_req, res, next) => {
   try {
     const now = new Date();
 
+    // Sprint 7: Dashboard reads ONLY platform-level tables.
+    // Operational table reads (tasks, approvals) removed — they are
+    // now org-scoped and must not appear in platform aggregates without
+    // the SECURITY DEFINER function boundary.
     const [
       [orgCount],
       [activeOrgCount],
       [suspendedOrgCount],
       [userCount],
       [memberCount],
-      [taskCount],
-      [approvalCount],
-      recentAudit,
+      recentPlatformAudit,
     ] = await Promise.all([
       db.select({ n: count() }).from(organizationsTable),
       db.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "active")),
       db.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "suspended")),
       db.select({ n: count() }).from(usersTable),
       db.select({ n: count() }).from(membershipsTable).where(eq(membershipsTable.status, "active")),
-      db.select({ n: count() }).from(tasksTable),
-      db.select({ n: count() }).from(approvalsTable).where(eq(approvalsTable.state, "pending")),
-      db.select().from(auditLogTable).orderBy(desc(auditLogTable.createdAt)).limit(10),
+      // Sprint 7: use platformAuditLogTable, not legacy audit_log
+      db.select().from(platformAuditLogTable).orderBy(desc(platformAuditLogTable.occurredAt)).limit(10),
     ]);
 
     const [trialCount] = await db
@@ -94,14 +96,13 @@ router.get("/dashboard", ...auth, async (_req, res, next) => {
         trialExpired: Number(trialExpiredCount?.n ?? 0),
         activeUsers: Number(memberCount?.n ?? 0),
         totalUsers: Number(userCount?.n ?? 0),
-        tasksCreated: Number(taskCount?.n ?? 0),
-        pendingApprovals: Number(approvalCount?.n ?? 0),
-        usageWarnings: 0,
+        // Sprint 7: task/approval counts removed from platform dashboard.
+        // Use /v1/platform/organisations/:id/database/status for per-org counts.
         systemHealthStatus: "operational",
       },
-      recentAuditEvents: recentAudit,
+      recentPlatformEvents: recentPlatformAudit,
       generatedAt: now.toISOString(),
-      note: "Revenue metrics are not available until Stripe is connected (Sprint 5+).",
+      note: "Sprint 7: Operational data (tasks, approvals) is now scoped to org databases. Use per-org status endpoints.",
     });
   } catch (err) { next(err); }
 });
@@ -119,11 +120,10 @@ router.use("/audit", platformAuditRouter);
 router.use("/settings", platformSettingsRouter);
 router.use("/search", platformSearchRouter);
 router.use("/export", platformExportRouter);
-// Sprint 6 — Organisation Database management
+// Sprint 6/7 — Organisation Database management
 router.use("/", platformDatabaseRouter);
 
-// ─── Backwards-compat: /plans still works ─────────────────────────────────────
-// Kept for Sprint 3 compatibility
+// ─── Backwards-compat: /plans still works ────────────────────────────────────
 router.get("/plans", ...auth, async (_req, res, next) => {
   try {
     const { plansTable, planVersionsTable, tenantSubscriptionsTable: subTable } = await import("@workspace/db");
