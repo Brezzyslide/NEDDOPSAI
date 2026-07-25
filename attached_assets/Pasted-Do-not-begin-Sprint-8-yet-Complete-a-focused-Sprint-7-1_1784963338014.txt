@@ -1,0 +1,275 @@
+Do not begin Sprint 8 yet.
+
+Complete a focused Sprint 7.1 remediation sprint called:
+
+Sprint 7.1 — Production Boundary Close-Out
+
+The purpose of this sprint is to finish the live security and database boundary work identified in the Sprint 7 Verification Report. Do not add new product features during this sprint.
+
+1. Apply live database write restrictions
+
+Apply the existing migration commands to the live Replit PostgreSQL database.
+
+The needsops_app role must no longer be able to INSERT, UPDATE or DELETE operational data in these legacy shared tables:
+
+* public.audit_log
+* public.tasks
+* public.approvals
+* public.approval_history
+* public.task_execution_plans
+* public.task_specialists
+
+Where controlled migration access is still required, use a separate migration-only role or privileged migration connection. Do not leave write access with the application role.
+
+Add a startup verification that fails the server boot if needsops_app regains write access to any of these legacy operational tables.
+
+Provide live SQL evidence from information_schema.role_table_grants showing the final privileges.
+
+2. Complete organisation audit separation
+
+Organisation audit records must no longer be written to or read from shared public audit tables.
+
+Update the audit flow so that:
+
+* platform events write only to public.platform_audit_log
+* organisation events write only to the organisation schema’s org_audit_log
+* orgAudit.ts uses withOrgContext() and reads from the organisation schema
+* organisation audit routes no longer read from public.audit_log
+* organisation events no longer write to public.org_audit_log
+
+After the new routing is active:
+
+* mark public.audit_log as legacy and read-only
+* mark public.org_audit_log as legacy and read-only
+* do not drop either table yet
+* add monitoring or startup verification for unexpected new rows
+
+Add real PostgreSQL tests proving:
+
+* Alpha audit events stay inside Alpha’s schema
+* Beta audit events stay inside Beta’s schema
+* Alpha cannot read Beta audit records
+* Beta cannot read Alpha audit records
+* suspended organisations cannot access audit records
+* platform endpoints cannot return raw organisation audit payloads
+
+3. Provision persistent organisations
+
+The current org_database_registry has zero live rows. Provision persistent non-test organisations and do not remove them during test teardown.
+
+At minimum provision:
+
+* NeedsOps Internal
+* MH&R Holdings
+* Organisation Alpha
+* Organisation Beta
+
+Use stable UUID-derived schema names only. Do not use organisation slugs or display names for routing.
+
+For each organisation:
+
+* create the organisation schema
+* apply all organisation migrations
+* seed initial organisation settings
+* create or synchronise the initial administrator
+* run health checks
+* run table count checks
+* run isolation checks
+* register backup configuration
+* set migration version
+* mark active only after all checks pass
+
+Produce a persistent provisioning report containing:
+
+* organisation ID
+* schema name
+* status
+* migration version
+* table count
+* health result
+* isolation result
+* backup status
+* verification timestamp
+* errors or warnings
+
+At least one active registry entry must remain after all automated tests finish.
+
+4. Implement local organisation membership enforcement
+
+Do not rely only on the shared platform memberships table for operational access.
+
+Activate the organisation schema org_memberships table and enforce local membership inside the operational database context.
+
+Required access flow:
+
+1. Verify the authenticated user.
+2. Resolve the organisation from trusted platform membership or session context.
+3. Open withOrgContext().
+4. Verify that the user has an active local org_memberships record.
+5. Verify the local role or permission.
+6. Execute the operational request.
+
+Required behaviour:
+
+* missing local membership fails closed
+* suspended local membership fails closed
+* removed local membership fails closed
+* membership from another organisation cannot be reused
+* organisation suspension fails before operational queries run
+* owner or admin status must not bypass organisation isolation
+* request body, URL slug, database name or client-supplied organisation ID must not control routing
+
+Add real PostgreSQL tests for each case.
+
+5. Add persistent backup storage
+
+The current encrypted logical backup mechanics are not enough because the payload is not stored persistently.
+
+Create a backup storage abstraction and connect it to a durable development storage backend.
+
+The design should support future providers such as:
+
+* Amazon S3
+* Cloudflare R2
+* Google Cloud Storage
+* Azure Blob Storage
+
+The backup process must:
+
+* create an encrypted logical backup
+* calculate and verify a checksum
+* store the encrypted payload outside application memory
+* store only the storage reference and metadata in PostgreSQL
+* update last_backup_at
+* update backup_status
+* update next_backup_at
+* prevent cross-organisation retrieval
+* enforce configurable retention
+* log success and failure
+* support independent restoration
+
+Add a scheduler that processes backups when next_backup_at is due.
+
+The scheduler must be:
+
+* idempotent
+* safe across server restarts
+* protected against duplicate backups for the same schedule window
+* limited so it cannot overload the database
+
+Add tests proving:
+
+* a due backup is created
+* the encrypted payload is stored persistently
+* the same backup window is not processed twice
+* a storage failure updates backup status
+* corrupted backup payloads fail checksum validation
+* Alpha’s backup cannot restore into Beta
+* restoring Alpha does not alter Beta
+* expired backups are removed according to retention rules
+
+6. Improve secrets provider architecture
+
+Keep the current AES-256-GCM database-backed secrets implementation for development, but place it behind a provider interface.
+
+Create a secrets provider abstraction that can later support:
+
+* AWS Secrets Manager
+* GCP Secret Manager
+* Azure Key Vault
+* HashiCorp Vault
+
+Do not expose credentials, decrypted secrets or encryption keys in:
+
+* API responses
+* logs
+* error messages
+* audit payloads
+* test output
+
+Clearly document the database-backed provider as development and early-stage infrastructure, not the final production vault.
+
+7. Create the missing operational runbooks
+
+Create clear runbooks for:
+
+* credential rotation
+* organisation suspension
+* organisation reactivation
+* failed provisioning recovery
+* failed migration recovery
+* database health investigation
+* backup failure
+* restore execution
+* suspected cross-organisation exposure
+* secret compromise
+* legacy table write detection
+
+Each runbook must include:
+
+* required role or permission
+* exact commands or platform actions
+* expected result
+* rollback procedure
+* audit evidence to retain
+
+8. Add a Sprint 7.1 acceptance test suite
+
+Create a final acceptance test suite using real PostgreSQL.
+
+The suite must prove:
+
+1. needsops_app cannot write to legacy shared operational tables.
+2. Organisation audit writes stay in the correct organisation schema.
+3. Organisation audit reads stay in the correct organisation schema.
+4. Persistent organisation registry records exist.
+5. Local organisation membership is required.
+6. Disabled local membership fails closed.
+7. Alpha cannot access Beta’s tasks, approvals, settings, audits or backups.
+8. Platform routes cannot return raw operational records.
+9. Backup scheduling creates a persistent encrypted backup.
+10. Backup restore for Alpha does not alter Beta.
+11. RLS startup verification still passes.
+12. No direct AI provider bypass exists.
+13. Secrets do not appear in logs, errors or API responses.
+14. Server startup fails if legacy tables become writeable again.
+
+Definition of Done
+
+Sprint 7.1 can only be marked complete when:
+
+* all remediation code is implemented
+* all migrations are applied to the live Replit development database
+* live database privileges are verified
+* persistent organisation schemas exist
+* organisation audit reads and writes use organisation schemas
+* legacy shared operational writes are blocked
+* local organisation membership enforcement is active
+* backup payloads are stored persistently
+* independent restore remains proven
+* all automated tests pass
+* all missing runbooks are completed
+* the final report contains live database evidence
+
+In the final report, separate every requirement into these four evidence categories:
+
+* Implemented in source code
+* Tested
+* Applied to the live development database
+* Operationally verified
+
+Do not report something as complete merely because the code exists.
+
+Return:
+
+1. Sprint 7.1 implementation summary
+2. Files changed
+3. Database migrations applied
+4. Live database verification output
+5. Test results
+6. Persistent organisation provisioning report
+7. Backup and restore evidence
+8. Remaining risks
+9. Final pass or fail verdict
+
+Do not begin Sprint 8 until Sprint 7.1 receives a full PASS.
