@@ -1,0 +1,383 @@
+Use this to verify the implementation properly:
+
+Please confirm exactly how the organisation-specific database architecture has been implemented.
+
+Do not give a general summary. Provide technical evidence from the current codebase, database configuration and tests.
+
+Answer each point clearly as:
+
+* Implemented
+* Partially implemented
+* Not implemented
+
+For every item marked implemented, identify the relevant files, migrations, services, middleware and tests.
+
+1. Database structure
+
+Confirm whether NeedsOps now uses:
+
+* one shared Platform Database
+* one separate Operational Database for each organisation
+
+Show the current database architecture and explain where each database is hosted.
+
+Confirm whether separate organisation databases are:
+
+* separate PostgreSQL databases on the same managed database server
+* separate schemas
+* or separate database servers
+
+The approved design is separate PostgreSQL databases per organisation, which may share the same managed PostgreSQL infrastructure.
+
+Separate schemas alone do not satisfy the approved design.
+
+2. Organisation provisioning
+
+Show what happens when a new organisation signs up.
+
+Confirm whether the system automatically:
+
+* creates a new Operational Database
+* generates or assigns secure database credentials
+* runs Operational Database migrations
+* registers the database in the Platform Database
+* creates the first organisation administrator
+* performs a health check
+* records a provisioning audit event
+
+Provide the provisioning service file and test evidence.
+
+3. Database routing
+
+Show how an authenticated request is routed to the correct organisation database.
+
+Confirm that the routing flow is:
+
+Authenticate user
+→ resolve requested organisation
+→ verify active user-to-organisation relationship
+→ retrieve approved database routing record
+→ connect to that organisation’s Operational Database
+→ apply local permissions
+→ execute the request
+
+Confirm that the client cannot select an organisation database by submitting:
+
+* organization_id
+* tenantId
+* database name
+* connection string
+* slug without valid membership
+
+Show the routing and connection manager implementation.
+
+4. Shared Platform Database boundaries
+
+List every table currently remaining in the Platform Database.
+
+Confirm that it contains only platform-level information such as:
+
+* organisations
+* users
+* authentication identities
+* user-to-organisation routing links
+* subscriptions
+* licences
+* plans
+* entitlements
+* feature flags
+* platform configuration
+* usage summaries
+* database status
+* backup status
+* platform support information
+* platform audit records
+
+Confirm that the Platform Database does not contain:
+
+* participants
+* case notes
+* incidents
+* care plans
+* medication records
+* restrictive practices
+* rosters
+* customer documents
+* customer task bodies
+* detailed approvals
+* AI conversations
+* embeddings
+* connector credentials
+* detailed tenant audit content
+
+If any operational data remains in the Platform Database, list it and explain the migration plan.
+
+5. Organisation Operational Database contents
+
+List every table currently created inside an organisation’s Operational Database.
+
+Confirm where the following are stored:
+
+* memberships
+* local roles
+* permissions
+* staff operational profiles
+* tasks
+* approvals
+* participant assignments
+* participants
+* case notes
+* incidents
+* care plans
+* medication
+* restrictive practices
+* rosters
+* documents
+* AI conversations
+* embeddings
+* connector configuration
+* organisation audit logs
+
+Clearly distinguish between tables already implemented and tables only planned for future sprints.
+
+6. Current shared database security fixes
+
+Confirm whether Row Level Security has been enabled on every remaining tenant-scoped table in the current shared database.
+
+Provide:
+
+* the RLS migrations
+* the RLS policy definitions
+* the database roles used by the application
+* evidence that the ordinary application role cannot bypass RLS
+
+Confirm that RLS covers:
+
+* SELECT
+* INSERT
+* UPDATE
+* DELETE
+
+Show how the verified tenant context is established inside PostgreSQL.
+
+7. Join table ownership
+
+Confirm that these tables now have a direct non-null organization_id:
+
+* approval_history
+* task_execution_plans
+* task_specialists
+
+Show:
+
+* migrations
+* backfill logic
+* foreign keys
+* indexes
+* organisation consistency constraints
+* RLS policies
+
+Also list any other tables discovered without direct organisation ownership.
+
+8. Platform Console restrictions
+
+Confirm that the Platform Console can no longer read customer operational content.
+
+Show what the Platform Console is now allowed to display.
+
+Confirm that it cannot display:
+
+* participant information
+* case notes
+* incident content
+* medication information
+* task bodies
+* approval content
+* customer documents
+* AI prompts
+* AI responses
+* connector tokens
+* detailed customer audit payloads
+
+Provide the files changed and tests proving this restriction.
+
+9. Audit separation
+
+Confirm whether the mixed audit log has been split into:
+
+* Platform Audit Log
+* Organisation Operational Audit Log
+
+Show where each audit log is stored.
+
+Confirm that tenant operational audit records are stored in the relevant organisation database.
+
+Show the audit event schemas and access rules.
+
+10. AI Privacy Gateway
+
+Confirm whether every AI request must now pass through the AI Privacy Gateway.
+
+Show how the gateway verifies:
+
+* user identity
+* organisation membership
+* local role
+* permissions
+* task purpose
+* participant or record scope
+* minimum necessary information
+* human approval requirements
+* retention rules
+
+Confirm that no route, service, worker or agent can call an AI provider directly with customer information.
+
+Search the codebase for direct OpenAI, Gemini, Anthropic or other model calls and identify any bypasses.
+
+11. Organisation-specific AI data
+
+Confirm that the following are isolated per organisation:
+
+* AI conversations
+* prompts
+* responses
+* retrieval history
+* embeddings
+* document chunks
+* vector searches
+* knowledge bases
+* AI audit events
+
+Explain whether these are stored:
+
+* inside each organisation database
+* in organisation-specific vector namespaces
+* or in a shared vector store with enforced tenant isolation
+
+Provide tests proving Organisation A cannot retrieve Organisation B embeddings or AI conversations.
+
+12. Connector security
+
+Confirm that connectors are organisation-specific.
+
+Show how connector credentials are stored.
+
+Confirm that:
+
+* raw credentials are not stored in source code
+* credentials are not returned to the browser
+* credentials are not written to logs
+* one organisation cannot use another organisation’s connector
+* connector jobs establish organisation context before reading or writing data
+* tokens can be revoked and rotated
+
+Provide the connector framework files and tests.
+
+13. Backups and restore
+
+Confirm whether each organisation database has independent backup and restore capability.
+
+Show:
+
+* backup configuration
+* backup status monitoring
+* retention settings
+* restore procedure
+* restore test evidence
+
+Provide evidence that restoring Organisation A does not affect Organisation B.
+
+14. Migration of existing organisations
+
+Confirm whether existing organisations have been migrated from the shared database into their own Operational Databases.
+
+For each existing organisation, provide:
+
+* provisioning status
+* migration status
+* records copied
+* validation results
+* reconciliation results
+* cutover status
+* rollback status
+* remaining shared operational data
+
+Confirm whether dual-write is still active anywhere.
+
+If active, explain why and when it will be removed.
+
+15. Connection pooling and leakage prevention
+
+Explain how database connections are pooled.
+
+Confirm that:
+
+* organisation context cannot leak between pooled connections
+* connection pools are capped
+* inactive organisation pools are closed
+* failed routing requests fail closed
+* credentials can be rotated
+* suspended organisations cannot connect
+* database migration versions are checked
+
+Provide concurrency and tenant-context leakage test results.
+
+16. Cross-tenant security tests
+
+Provide the test files and results proving Organisation Alpha cannot access Organisation Beta data, and vice versa.
+
+Tests must cover:
+
+* direct record access
+* changed record IDs
+* changed slugs
+* forged organisation IDs
+* joins
+* updates
+* deletes
+* exports
+* documents
+* audit records
+* AI conversations
+* embeddings
+* connector operations
+* background jobs
+* cached responses
+* websocket or realtime channels
+* database connection reuse
+
+Do not only confirm the tests exist. Provide the latest test results.
+
+17. Hosting and cost structure
+
+Confirm whether each organisation database runs on shared managed PostgreSQL infrastructure or whether a separate database server is created per organisation.
+
+The approved default is:
+
+One shared managed PostgreSQL cluster
+├── Platform Database
+├── Organisation A Operational Database
+├── Organisation B Operational Database
+└── Organisation C Operational Database
+
+A separate database server should only be created for enterprise customers who require and pay for dedicated infrastructure.
+
+Confirm that the current implementation does not create a separate paid database server for every small organisation.
+
+18. Final evidence
+
+Finish with a table containing:
+
+Requirement	Status	Evidence	Remaining work
+
+Also provide:
+
+* current architecture diagram
+* current database list
+* current table-to-database map
+* migration files
+* test results
+* unresolved security issues
+* known limitations
+
+Do not state that the architecture is complete unless the code, database structure and tests prove it.
