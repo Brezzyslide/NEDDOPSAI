@@ -93,8 +93,37 @@ export {
 export {
   verifyRLS,
   verifyNeedsOpsAppRoleIsSecure,
+  verifyLegacyTablesReadOnly,
   RLSVerificationError,
+  LegacyWriteError,
   REQUIRED_RLS_TABLES,
+  LEGACY_WRITE_RESTRICTED_TABLES,
   type RLSVerificationResult,
   type RLSTableStatus,
+  type LegacyWriteCheckResult,
+  type LegacyWriteRestrictedTable,
 } from "./rlsVerifier";
+
+export {
+  checkLocalMembership,
+  withOrgMemberContext,
+  OrgMembershipError,
+  type LocalMembership,
+  type OrgMemberContext,
+} from "./orgMembershipGuard";
+
+export {
+  type BackupStorageProvider,
+  FilesystemBackupProvider,
+  BackupStorageError,
+  getDefaultBackupStorageProvider,
+  setDefaultBackupStorageProvider,
+} from "./backupStorage";
+
+export {
+  startBackupScheduler,
+  stopBackupScheduler,
+  processDueBackups,
+  type BackupSchedulerOptions,
+  type SchedulerRun,
+} from "./backupScheduler";

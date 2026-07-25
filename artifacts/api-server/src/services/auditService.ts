@@ -1,13 +1,15 @@
 /**
- * auditService — Sprint 7
+ * auditService — Sprint 7.1
  *
- * Sprint 7: Legacy audit_log dual-write STOPPED. All events now go exclusively
- * to their correct split tables:
- *   • Platform events  → platform_audit_log  (platform staff actions, config changes)
- *   • Org events       → org_audit_log       (user actions, operational activity)
+ * Audit event routing:
+ *   • Platform events  → public.platform_audit_log
+ *   • Org events       → org-schema org_audit_log (via withOrgContext)
+ *                        Falls back to public.org_audit_log when org not provisioned
  *
- * The legacy audit_log table is now READ-ONLY (INSERT revoked in sprint7 migration).
- * Existing rows are preserved for the retention period.
+ * Legacy tables (READ-ONLY from Sprint 7.1):
+ *   • public.audit_log     — INSERT revoked (sprint71 migration)
+ *   • public.org_audit_log — INSERT revoked (sprint71 migration); org events
+ *                            now route to org schema
  *
  * Security: never log passwords, session tokens, raw auth material, or
  * customer operational content (case note text, AI prompts, connector tokens).
@@ -15,6 +17,8 @@
 
 import { randomUUID } from "crypto";
 import { db, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
+import { withOrgContext, OrgConnectionError } from "@workspace/org-db";
+import { sql } from "drizzle-orm";
 import type { AuditEventType } from "@workspace/shared";
 
 export interface WriteAuditEventParams {
@@ -38,15 +42,21 @@ function isPlatformEvent(eventType: string): boolean {
   return eventType.startsWith("platform.");
 }
 
+function escSql(v: string | null | undefined): string {
+  if (v === null || v === undefined) return "NULL";
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+
 // ─── Core write function ──────────────────────────────────────────────────────
 
 /**
- * Writes an audit event to the appropriate split log table.
+ * Writes an audit event to the appropriate log table.
  *
- * Sprint 7 routing (legacy audit_log dual-write REMOVED):
- *   platform.*  → platform_audit_log only
- *   org event   → org_audit_log only
- *   no org      → platform_audit_log
+ * Routing logic (Sprint 7.1):
+ *   platform.* events  → platform_audit_log
+ *   org events         → org-schema org_audit_log (via withOrgContext)
+ *                        fallback to public.org_audit_log if org not provisioned
+ *   no org             → platform_audit_log
  */
 export async function writeAuditEvent(params: WriteAuditEventParams): Promise<void> {
   const now = new Date();
@@ -69,24 +79,69 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
       metadata: params.metadata ?? {},
       occurredAt: now,
     });
-  } else {
-    // Org operational event → org_audit_log
-    await db.insert(orgAuditLogTable).values({
-      id: randomUUID(),
-      organizationId: params.organizationId!,
-      actorUserId: params.actorUserId ?? null,
-      actorType: params.actorType ?? "user",
-      eventType: params.eventType,
-      resourceType: params.resourceType,
-      resourceId: params.resourceId ?? null,
-      requestId: params.requestId ?? null,
-      ipAddress: params.ipAddress ?? null,
-      userAgent: params.userAgent ?? null,
-      accessPurpose: params.accessPurpose ?? null,
-      isSensitive: params.isSensitive ?? false,
-      metadata: params.metadata ?? {},
-      occurredAt: now,
-    });
+    return;
+  }
+
+  // Org operational event — try org schema first, fallback to public.org_audit_log
+  const orgId = params.organizationId!;
+
+  try {
+    await withOrgContext(
+      { tenantId: orgId, userId: params.actorUserId ?? "system", purpose: "audit_write" },
+      async (conn) => {
+        await conn.db.execute(sql.raw(`
+          INSERT INTO "${conn.schemaName}".org_audit_log
+            (id, actor_user_id, actor_type, event_type, resource_type,
+             resource_id, request_id, ip_address, user_agent,
+             access_purpose, is_sensitive, metadata, occurred_at)
+          VALUES (
+            '${randomUUID()}',
+            ${escSql(params.actorUserId)},
+            ${escSql(params.actorType ?? "user")},
+            ${escSql(params.eventType)},
+            ${escSql(params.resourceType)},
+            ${escSql(params.resourceId)},
+            ${escSql(params.requestId)},
+            ${escSql(params.ipAddress)},
+            ${escSql(params.userAgent)},
+            ${escSql(params.accessPurpose)},
+            ${params.isSensitive ? "TRUE" : "FALSE"},
+            '${JSON.stringify(params.metadata ?? {}).replace(/'/g, "''")}',
+            NOW()
+          )
+        `));
+      },
+    );
+  } catch (err: any) {
+    if (err instanceof OrgConnectionError) {
+      // Org not yet provisioned — best-effort fallback to public.org_audit_log.
+      // The legacy table has FK constraints; if the insert fails (e.g. actor_user_id
+      // not in users table), swallow and warn — audit events must not block operations.
+      await db.insert(orgAuditLogTable).values({
+        id: randomUUID(),
+        organizationId: orgId,
+        actorUserId: null, // null avoids FK violation on users.id in legacy table
+        actorType: params.actorType ?? "user",
+        eventType: params.eventType,
+        resourceType: params.resourceType,
+        resourceId: params.resourceId ?? null,
+        requestId: params.requestId ?? null,
+        ipAddress: params.ipAddress ?? null,
+        userAgent: params.userAgent ?? null,
+        accessPurpose: params.accessPurpose ?? null,
+        isSensitive: params.isSensitive ?? false,
+        metadata: params.metadata ?? {},
+        occurredAt: now,
+      }).catch((fallbackErr: any) => {
+        // Best-effort: legacy fallback also failed — log warning, do not throw.
+        console.warn(
+          `[auditService] Legacy org_audit_log fallback failed for org ${orgId} ` +
+          `(event: ${params.eventType}): ${fallbackErr?.message ?? fallbackErr}`,
+        );
+      });
+    } else {
+      throw err;
+    }
   }
 }
 

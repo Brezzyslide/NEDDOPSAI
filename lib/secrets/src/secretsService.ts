@@ -286,3 +286,54 @@ export class SecretsError extends Error {
     this.name = "SecretsError";
   }
 }
+
+// ─── DatabaseSecretsProvider class ───────────────────────────────────────────
+
+/**
+ * DatabaseSecretsProvider
+ *
+ * Implements the SecretsProvider interface using AES-256-GCM encrypted rows
+ * in the platform_secrets table.
+ *
+ * ⚠️  DEV-ONLY: Suitable for development and early-stage SaaS. Replace with
+ * an external vault (AWS Secrets Manager, GCP Secret Manager, HashiCorp Vault)
+ * before handling production client credentials.
+ *
+ * This class wraps the standalone exported functions for backward compatibility
+ * with callers that use them directly.
+ */
+export class DatabaseSecretsProvider {
+  readonly providerName = "database";
+
+  async store(
+    secretRef: string,
+    value: Record<string, string>,
+    options?: { expiresAt?: Date; metadata?: Record<string, unknown> },
+  ): Promise<void> {
+    await storeSecret(secretRef, value, options);
+  }
+
+  async retrieve(secretRef: string): Promise<Record<string, string>> {
+    return retrieveSecret(secretRef);
+  }
+
+  async rotate(
+    secretRef: string,
+    newValue: Record<string, string>,
+    options?: { expiresAt?: Date; metadata?: Record<string, unknown> },
+  ): Promise<{ newVersion: number }> {
+    return rotateSecret(secretRef, newValue, options);
+  }
+
+  async revoke(secretRef: string): Promise<void> {
+    await revokeSecret(secretRef);
+  }
+
+  async getStatus(secretRef: string) {
+    return getSecretStatus(secretRef);
+  }
+
+  async markValidated(secretRef: string): Promise<void> {
+    await markSecretValidated(secretRef);
+  }
+}

@@ -1,0 +1,64 @@
+Yes, essentially. The difference is where the change is applied.
+
+Your previous prompt rewrote the whole Sprint 7.1 plan.
+
+Now that Replit has already produced a detailed implementation plan, you don’t want to resend the entire thing. You only want to change Item 3.
+
+I would simply send this:
+
+Amend Sprint 7.1 before implementation.
+
+Only revise Section 3 – Provision Persistent Organisations. Everything else in the Sprint 7.1 plan remains approved.
+
+Replace Section 3 with the following approach
+
+Do not hard-code tenants, organisation names or fixed UUIDs into the codebase.
+
+The platform must support organisation provisioning, but company creation is an administrative action and should remain manual.
+
+Instead of automatically provisioning organisations such as NeedsOps Internal, MH&R Holdings, Alpha or Beta, build a generic provisioning framework.
+
+Requirements:
+
+* Create a generic organisation provisioning command or administrative endpoint.
+* Provisioning must require an existing Platform Database organisation record.
+* Organisation creation and database provisioning are separate operations.
+* Do not automatically create organisations during:
+    * server startup
+    * database migrations
+    * test execution
+    * application deployment
+* The provisioning service must be organisation-agnostic. It should work for any valid organisation without source code changes.
+
+Manual testing
+
+Provide documented commands for manually creating and provisioning organisations during testing, for example:
+
+npm run create-org
+npm run provision-org-db
+
+or an equivalent administrator workflow.
+
+These commands must only execute when explicitly invoked.
+
+Test behaviour
+
+Integration tests may create temporary organisations using random UUIDs and clean them up afterwards.
+
+If an organisation is explicitly marked as persistent, test teardown must not delete it.
+
+Do not require a fixed number of persistent organisations for the test suite to pass.
+
+Acceptance criteria
+
+Replace:
+
+org_database_registry has ≥ 4 persistent rows.
+
+With:
+
+The platform can successfully provision any manually created organisation using the generic provisioning framework. Provisioning is idempotent, secure, UUID-based, and independent of organisation name or slug.
+
+Update the Sprint 7.1 implementation plan accordingly, then continue with the remaining approved work.
+
+This is much cleaner because it only changes the one part that needs changing, instead of asking Replit to rethink the whole sprint again.

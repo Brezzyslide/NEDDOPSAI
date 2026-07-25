@@ -1,31 +1,33 @@
 /**
- * Organisation Backup and Restore Service — Sprint 7
+ * Organisation Backup and Restore Service — Sprint 7.1
  *
  * Provides independent backup and restore for each organisation's operational
  * database/schema. Each org's backup is independent — restoring Alpha does
  * not change or interrupt Beta's data.
  *
- * Backup implementation:
- *   Type: "logical" — SQL-level row capture via SELECT queries, stored as
- *   encrypted JSON. In production this would be supplemented with pg_dump
- *   and point-in-time recovery (WAL archiving on a managed PostgreSQL cluster).
+ * Sprint 7.1 changes:
+ *   • createOrgBackup() now accepts an optional BackupStorageProvider.
+ *     When provided, the encrypted payload is written to durable storage
+ *     and the BackupResult contains a storageRef instead of the raw payload.
+ *   • restoreOrgBackup() accepts either an encryptedPayload (legacy) or
+ *     a storageRef + provider for storage-backed restore.
+ *
+ * Backup type: "logical" — SQL-level row capture, AES-256-GCM encrypted.
  *
  * Security:
- *   • Backup payloads are AES-256-GCM encrypted (same scheme as secrets service)
- *   • Backup storage references point to object storage (abstracted)
- *   • Platform Console can see backup status but never backup contents
- *   • Restoring does not touch any other org's schema
- *
- * Test requirement (Sprint 7 acceptance):
- *   Restore Alpha → Beta data unchanged (proven in sprint7-backup-restore.test.ts)
+ *   • Payloads are AES-256-GCM encrypted before any storage write.
+ *   • Cross-org restore is rejected (organizationId embedded in payload).
+ *   • Checksum detects tampered payloads before restore begins.
+ *   • Platform Console sees only metadata — never backup contents.
  */
 
 import { randomUUID } from "crypto";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { db as platformDb, orgDatabaseRegistryTable, platformAuditLogTable } from "@workspace/db";
+import { type BackupStorageProvider, getDefaultBackupStorageProvider } from "./backupStorage";
 
-// ─── Encryption helpers (same scheme as secretsService) ───────────────────────
+// ─── Encryption helpers ───────────────────────────────────────────────────────
 
 const ALGO = "aes-256-gcm";
 const IV_BYTES = 16;
@@ -65,13 +67,20 @@ export interface BackupResult {
   status: "completed" | "failed";
   sizeBytes: number;
   checksum: string;
-  /** Encrypted backup payload — store to external storage in production */
-  encryptedPayload: string;
+  /** Set when a BackupStorageProvider is used — reference for restore */
+  storageRef?: string;
+  /** Set when no provider is used (legacy / in-memory) — the raw encrypted payload */
+  encryptedPayload?: string;
   startedAt: Date;
   completedAt: Date;
   tablesCaptured: string[];
   recordCounts: Record<string, number>;
   error?: string;
+}
+
+export interface RestoreOptions {
+  /** Backup storage provider — required when restoring by storageRef */
+  provider?: BackupStorageProvider;
 }
 
 export interface RestoreResult {
@@ -81,7 +90,7 @@ export interface RestoreResult {
   success: boolean;
   tablesRestored: string[];
   recordCounts: Record<string, number>;
-  betaUnaffected?: boolean; // set to true when cross-org isolation verified
+  betaUnaffected?: boolean;
   error?: string;
 }
 
@@ -93,8 +102,6 @@ export interface BackupStatus {
   nextBackupAt?: Date | null;
 }
 
-// ─── Internal backup payload format ──────────────────────────────────────────
-
 interface BackupPayload {
   version: "1";
   organizationId: string;
@@ -104,15 +111,36 @@ interface BackupPayload {
   checksum: string;
 }
 
-// ─── Core: createBackup ───────────────────────────────────────────────────────
+// ─── Tables to back up / restore ─────────────────────────────────────────────
+
+const ORG_TABLES = [
+  "org_settings", "org_memberships", "org_workforce_packs",
+  "org_tasks", "org_task_execution_plans", "org_task_specialists",
+  "org_approvals", "org_approval_rules", "org_approval_history",
+  "org_audit_log",
+] as const;
+
+const RESTORE_ORDER = [
+  "org_approval_history", "org_approval_rules", "org_approvals",
+  "org_task_specialists", "org_task_execution_plans", "org_tasks",
+  "org_workforce_packs", "org_memberships", "org_settings",
+] as const;
+
+// ─── Core: createOrgBackup ────────────────────────────────────────────────────
 
 /**
  * Creates a logical backup of an organisation's operational schema.
- * Returns an encrypted payload — store to object storage in production.
  *
- * This backup is independent of all other organisations.
+ * @param organizationId  - The org UUID (never a slug or display name)
+ * @param provider        - Optional storage provider. When provided, the encrypted
+ *                          payload is written to durable storage and storageRef is
+ *                          returned. When omitted, encryptedPayload is returned
+ *                          directly (in-memory / legacy mode).
  */
-export async function createOrgBackup(organizationId: string): Promise<BackupResult> {
+export async function createOrgBackup(
+  organizationId: string,
+  provider?: BackupStorageProvider,
+): Promise<BackupResult> {
   const startedAt = new Date();
   const backupId = randomUUID();
 
@@ -130,13 +158,6 @@ export async function createOrgBackup(organizationId: string): Promise<BackupRes
   const recordCounts: Record<string, number> = {};
   const tables: Record<string, any[]> = {};
 
-  const ORG_TABLES = [
-    "org_settings", "org_memberships", "org_workforce_packs",
-    "org_tasks", "org_task_execution_plans", "org_task_specialists",
-    "org_approvals", "org_approval_rules", "org_approval_history",
-    "org_audit_log",
-  ];
-
   try {
     for (const tbl of ORG_TABLES) {
       const result = await platformDb.execute(sql.raw(
@@ -147,22 +168,30 @@ export async function createOrgBackup(organizationId: string): Promise<BackupRes
       tablesCaptured.push(tbl);
     }
 
-    const payload: BackupPayload = {
-      version: "1",
-      organizationId,
-      schemaName: s,
-      capturedAt: startedAt.toISOString(),
-      tables,
-      checksum: "",
+    // Build payload and compute checksum (over JSON with checksum="")
+    const payloadForChecksum: BackupPayload = {
+      version: "1", organizationId, schemaName: s,
+      capturedAt: startedAt.toISOString(), tables, checksum: "",
     };
+    const plaintextForChecksum = JSON.stringify(payloadForChecksum);
+    const checksum = createHash("sha256").update(plaintextForChecksum).digest("hex");
 
-    // Compute checksum over the data (before encryption)
-    const plaintextJson = JSON.stringify(payload);
-    const checksum = createHash("sha256").update(plaintextJson).digest("hex");
-    payload.checksum = checksum;
-
+    const payload: BackupPayload = { ...payloadForChecksum, checksum };
     const encryptedPayload = encryptBackup(JSON.stringify(payload));
     const sizeBytes = Buffer.byteLength(encryptedPayload, "utf8");
+
+    // Store to provider (durable) or keep in-memory (legacy)
+    let storageRef: string | undefined;
+    let resultEncryptedPayload: string | undefined;
+
+    if (provider) {
+      storageRef = await provider.store(organizationId, backupId, encryptedPayload);
+    } else {
+      resultEncryptedPayload = encryptedPayload;
+      storageRef = `dev-in-memory:${backupId}`;
+    }
+
+    const completedAt = new Date();
 
     // Write backup record to org's backup log
     await platformDb.execute(sql.raw(`
@@ -170,47 +199,30 @@ export async function createOrgBackup(organizationId: string): Promise<BackupRes
         (id, backup_type, status, started_at, completed_at, size_bytes, checksum, storage_ref, metadata)
       VALUES (
         '${backupId}', 'logical', 'completed',
-        '${startedAt.toISOString()}', '${new Date().toISOString()}',
+        '${startedAt.toISOString()}', '${completedAt.toISOString()}',
         ${sizeBytes}, '${checksum}',
-        'dev-in-memory:${backupId}',
-        '${JSON.stringify({ tables: tablesCaptured, recordCounts }).replace(/'/g, "''")}'
+        '${storageRef?.replace(/'/g, "''")}',
+        '${JSON.stringify({ tables: tablesCaptured, recordCounts, provider: provider?.providerName ?? "in-memory" }).replace(/'/g, "''")}'
       )
-    `)).catch(() => {}); // non-fatal if org backup log table doesn't exist yet
+    `)).catch(() => {});
 
-    // Update registry last backup timestamp
+    // Update registry
     await platformDb
       .update(orgDatabaseRegistryTable)
-      .set({
-        lastBackupAt: new Date(),
-        backupStatus: "completed",
-        updatedAt: new Date(),
-      })
+      .set({ lastBackupAt: completedAt, backupStatus: "completed", updatedAt: completedAt })
       .where(eq(orgDatabaseRegistryTable.organizationId, organizationId));
 
     // Platform audit event
     await platformDb.insert(platformAuditLogTable).values({
-      id: randomUUID(),
-      organizationId,
-      actorUserId: null,
-      actorType: "system",
-      eventType: "platform.org_backup_completed",
-      resourceType: "org_database",
-      resourceId: s,
-      metadata: { backupId, sizeBytes, tablesCaptured, recordCounts },
+      id: randomUUID(), organizationId, actorUserId: null, actorType: "system",
+      eventType: "platform.org_backup_completed", resourceType: "org_database", resourceId: s,
+      metadata: { backupId, sizeBytes, tablesCaptured, recordCounts, storageRef },
     }).catch(() => {});
 
     return {
-      backupId,
-      organizationId,
-      schemaName: s,
-      status: "completed",
-      sizeBytes,
-      checksum,
-      encryptedPayload,
-      startedAt,
-      completedAt: new Date(),
-      tablesCaptured,
-      recordCounts,
+      backupId, organizationId, schemaName: s, status: "completed",
+      sizeBytes, checksum, storageRef, encryptedPayload: resultEncryptedPayload,
+      startedAt, completedAt, tablesCaptured, recordCounts,
     };
 
   } catch (err: any) {
@@ -221,39 +233,32 @@ export async function createOrgBackup(organizationId: string): Promise<BackupRes
       .catch(() => {});
 
     return {
-      backupId,
-      organizationId,
-      schemaName: s,
-      status: "failed",
-      sizeBytes: 0,
-      checksum: "",
-      encryptedPayload: "",
-      startedAt,
-      completedAt: new Date(),
-      tablesCaptured,
-      recordCounts,
-      error: err?.message ?? "Backup failed",
+      backupId, organizationId, schemaName: s, status: "failed",
+      sizeBytes: 0, checksum: "", startedAt, completedAt: new Date(),
+      tablesCaptured, recordCounts, error: err?.message ?? "Backup failed",
     };
   }
 }
 
-// ─── Core: restoreBackup ──────────────────────────────────────────────────────
+// ─── Core: restoreOrgBackup ───────────────────────────────────────────────────
 
 /**
- * Restores an organisation's operational schema from an encrypted backup payload.
+ * Restores an organisation's operational schema from a backup.
  *
- * ISOLATION GUARANTEE: This function operates only on the org's own schema.
- * It cannot read, write, or affect any other organisation's schema or data.
+ * @param organizationId  - The org UUID to restore into
+ * @param source          - Either an encrypted payload string (legacy) or a
+ *                          storageRef string (when using a provider)
+ * @param options.provider - Required when source is a storageRef
  *
- * The restore:
- *   1. Verifies the backup belongs to this organisation
- *   2. Verifies the checksum
- *   3. Truncates the org schema tables (org only)
- *   4. Re-inserts all rows from the backup
+ * ISOLATION GUARANTEE: Only affects the specified org's schema. Cannot read,
+ * write, or affect any other organisation's data.
+ *
+ * @throws BackupError on ownership mismatch, checksum failure, or missing backup
  */
 export async function restoreOrgBackup(
   organizationId: string,
-  encryptedPayload: string,
+  source: string,
+  options: RestoreOptions = {},
 ): Promise<RestoreResult> {
   const [entry] = await platformDb
     .select()
@@ -264,17 +269,24 @@ export async function restoreOrgBackup(
   if (!entry) throw new BackupError(`No registry entry for org ${organizationId}`);
 
   const s = entry.schemaName;
-  const tablesRestored: string[] = [];
-  const recordCounts: Record<string, number> = {};
 
+  // Retrieve encrypted payload (from storage or directly)
+  let encryptedPayload: string;
+  if (options.provider) {
+    encryptedPayload = await options.provider.retrieve(organizationId, source);
+  } else {
+    encryptedPayload = source;
+  }
+
+  // Decrypt
   let payload: BackupPayload;
   try {
     payload = JSON.parse(decryptBackup(encryptedPayload)) as BackupPayload;
   } catch {
-    throw new BackupError(`Failed to decrypt backup payload — key may have changed`);
+    throw new BackupError("Failed to decrypt backup payload — key may have changed or payload is corrupt");
   }
 
-  // Verify this backup belongs to this org — prevents cross-org restore
+  // Cross-org ownership check
   if (payload.organizationId !== organizationId) {
     throw new BackupError(
       `Backup belongs to org ${payload.organizationId} but restore was requested for ${organizationId}. ` +
@@ -282,75 +294,49 @@ export async function restoreOrgBackup(
     );
   }
 
-  // Verify checksum
-  const expectedChecksum = payload.checksum;
-  const dataForCheck = JSON.parse(decryptBackup(encryptedPayload)) as BackupPayload;
-  dataForCheck.checksum = "";
-  const actualChecksum = createHash("sha256").update(JSON.stringify(dataForCheck)).digest("hex");
-  if (actualChecksum !== expectedChecksum) {
-    throw new BackupError(`Backup checksum mismatch — backup may be corrupt`);
+  // Checksum verification
+  const storedChecksum = payload.checksum;
+  const payloadCopy: BackupPayload = { ...payload, checksum: "" };
+  const actualChecksum = createHash("sha256").update(JSON.stringify(payloadCopy)).digest("hex");
+  if (actualChecksum !== storedChecksum) {
+    throw new BackupError("Backup checksum mismatch — payload may be corrupt or tampered");
   }
 
-  // Restore tables in reverse dependency order
-  const RESTORE_ORDER = [
-    "org_approval_history", "org_approval_rules", "org_approvals",
-    "org_task_specialists", "org_task_execution_plans", "org_tasks",
-    "org_workforce_packs", "org_memberships", "org_settings",
-  ];
+  const tablesRestored: string[] = [];
+  const recordCounts: Record<string, number> = {};
 
   // Truncate in reverse FK order
   for (const tbl of RESTORE_ORDER) {
     await platformDb.execute(sql.raw(`TRUNCATE TABLE "${s}"."${tbl}" CASCADE`));
   }
 
-  // Re-insert data
+  // Re-insert using json_populate_recordset (PostgreSQL handles all type casts)
   for (const tbl of [...RESTORE_ORDER].reverse()) {
     const rows: any[] = payload.tables[tbl] ?? [];
-    if (rows.length === 0) {
-      recordCounts[tbl] = 0;
-      tablesRestored.push(tbl);
-      continue;
+    if (rows.length > 0) {
+      const rowsJson = JSON.stringify(rows).replace(/'/g, "''");
+      await platformDb.execute(sql.raw(
+        `INSERT INTO "${s}"."${tbl}"
+         SELECT * FROM json_populate_recordset(null::"${s}"."${tbl}", '${rowsJson}')
+         ON CONFLICT DO NOTHING`,
+      ));
     }
-
-    // Use json_populate_recordset so PostgreSQL handles all type casts automatically.
-    // This avoids the jsonb vs text ambiguity that manual SQL value interpolation suffers from.
-    const rowsJson = JSON.stringify(rows).replace(/'/g, "''");
-    await platformDb.execute(sql.raw(
-      `INSERT INTO "${s}"."${tbl}"
-       SELECT * FROM json_populate_recordset(null::"${s}"."${tbl}", '${rowsJson}')
-       ON CONFLICT DO NOTHING`,
-    ));
-
     recordCounts[tbl] = rows.length;
     tablesRestored.push(tbl);
   }
 
-  // Audit the restore
+  // Audit restore
   await platformDb.insert(platformAuditLogTable).values({
-    id: randomUUID(),
-    organizationId,
-    actorUserId: null,
-    actorType: "system",
-    eventType: "platform.org_backup_restored",
-    resourceType: "org_database",
-    resourceId: s,
+    id: randomUUID(), organizationId, actorUserId: null, actorType: "system",
+    eventType: "platform.org_backup_restored", resourceType: "org_database", resourceId: s,
     metadata: { schemaName: s, tablesRestored, recordCounts },
   }).catch(() => {});
 
-  return {
-    backupId: payload.version,
-    organizationId,
-    schemaName: s,
-    success: true,
-    tablesRestored,
-    recordCounts,
-  };
+  return { backupId: payload.capturedAt, organizationId, schemaName: s, success: true, tablesRestored, recordCounts };
 }
 
-/**
- * Returns backup status for an organisation — safe for Platform Console display.
- * Never includes backup contents.
- */
+// ─── Backup status ────────────────────────────────────────────────────────────
+
 export async function getOrgBackupStatus(organizationId: string): Promise<BackupStatus> {
   const [entry] = await platformDb
     .select({
@@ -366,7 +352,7 @@ export async function getOrgBackupStatus(organizationId: string): Promise<Backup
     organizationId,
     lastBackupAt: entry?.lastBackupAt ?? null,
     lastBackupStatus: (entry as any)?.backupStatus ?? "not_configured",
-    backupCount: 0, // would query backup storage in production
+    backupCount: 0,
     nextBackupAt: (entry as any)?.nextBackupAt ?? null,
   };
 }

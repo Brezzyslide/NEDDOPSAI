@@ -1,12 +1,13 @@
 /**
- * organizations table — Sprint 1 update
+ * organizations table — Sprint 7.1 update
  *
- * Added: displayName, type, country, state, timezone, employeeCount,
- * participantCount, businessPhone, website, abn, ndisRegistrationNumber,
- * primaryContactName, primaryContactEmail, dataRegion.
- * Updated status enum: onboarding | active | suspended | closed.
+ * Added: isTestOrganisation, environment
+ *
+ * is_test_organisation: excludes from billing/analytics/production dashboards.
+ * environment: classification ('internal' | 'test' | 'production').
+ * Neither field is inferred from name or slug — always set explicitly.
  */
-import { pgTable, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
 
 export const orgStatusEnum = pgEnum("org_status", [
   "onboarding",
@@ -59,6 +60,19 @@ export const organizationsTable = pgTable("organizations", {
   subscriptionTier: subscriptionTierEnum("subscription_tier")
     .notNull()
     .default("starter"),
+
+  /**
+   * True for test/sandbox organisations.
+   * Excluded from billing reports, customer counts, and production analytics.
+   * Set explicitly — NEVER inferred from name, slug, or any string matching.
+   */
+  isTestOrganisation: boolean("is_test_organisation").notNull().default(false),
+
+  /**
+   * Environment classification: 'internal' | 'test' | 'production'.
+   * Use this field, not name matching, to identify org type.
+   */
+  environment: text("environment").notNull().default("production"),
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

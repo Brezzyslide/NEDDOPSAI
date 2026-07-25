@@ -166,6 +166,78 @@ export async function verifyRLS(options: { failFast?: boolean } = {}): Promise<R
   return result;
 }
 
+// ─── Legacy write restriction check ──────────────────────────────────────────
+
+/**
+ * Tables that must be READ-ONLY for needsops_app from Sprint 7.1 onward.
+ * Write access to these tables is a security boundary violation.
+ */
+export const LEGACY_WRITE_RESTRICTED_TABLES = [
+  "audit_log",
+  "org_audit_log",
+  "tasks",
+  "approvals",
+  "approval_history",
+  "task_execution_plans",
+  "task_specialists",
+] as const;
+
+export type LegacyWriteRestrictedTable = typeof LEGACY_WRITE_RESTRICTED_TABLES[number];
+
+export interface LegacyWriteCheckResult {
+  allReadOnly: boolean;
+  writeableTable: { tableName: string; privileges: string[] }[];
+  checkedAt: Date;
+}
+
+/**
+ * Verifies that needsops_app does NOT have INSERT, UPDATE, or DELETE
+ * on any of the legacy write-restricted tables.
+ *
+ * Called at server startup — if any table is writeable, the server should
+ * refuse to start (or emit a critical alert).
+ */
+export async function verifyLegacyTablesReadOnly(): Promise<LegacyWriteCheckResult> {
+  const tableList = LEGACY_WRITE_RESTRICTED_TABLES.join("', '");
+
+  const result = await platformDb.execute(sql.raw(`
+    SELECT table_name, array_agg(privilege_type ORDER BY privilege_type) AS privileges
+    FROM information_schema.role_table_grants
+    WHERE grantee = 'needsops_app'
+      AND table_schema = 'public'
+      AND table_name IN ('${tableList}')
+      AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+    GROUP BY table_name
+    ORDER BY table_name
+  `));
+
+  const writeableTable = (result.rows as any[]).map(row => ({
+    tableName: row.table_name as string,
+    privileges: row.privileges as string[],
+  }));
+
+  return {
+    allReadOnly: writeableTable.length === 0,
+    writeableTable,
+    checkedAt: new Date(),
+  };
+}
+
+export class LegacyWriteError extends Error {
+  public readonly writeableTables: string[];
+
+  constructor(result: LegacyWriteCheckResult) {
+    const tables = result.writeableTable.map(t => `${t.tableName}(${t.privileges.join(",")})`).join(", ");
+    super(
+      `[SECURITY] Legacy table write restriction violated. needsops_app still has write access to: ${tables}. ` +
+      "Run lib/db/migrations/sprint71-write-restrictions.sql to apply REVOKE commands. " +
+      "DO NOT start the server with write access on legacy operational tables.",
+    );
+    this.name = "LegacyWriteError";
+    this.writeableTables = result.writeableTable.map(t => t.tableName);
+  }
+}
+
 /**
  * Verify that the needsops_app role cannot bypass RLS.
  * Returns true if the role is safe; false if it can bypass (security risk).

@@ -1,0 +1,246 @@
+The plan is strong, but Item 3 must be changed. We should not hard-code four tenants or make normal testing depend on those tenants existing.
+
+Send Replit this correction:
+
+Revise the Sprint 7.1 plan before implementation.
+
+The overall Sprint 7.1 scope is approved, but the persistent organisation requirement must be changed. Do not hard-code tenants, company names or fixed tenant UUIDs into the platform.
+
+Company creation must remain a controlled manual administrative or testing action.
+
+Replace the current Done requirement
+
+Remove:
+
+org_database_registry has ≥ 4 persistent rows for NeedsOps Internal, MH&R Holdings, Organisation Alpha and Organisation Beta.
+
+Replace it with:
+
+The platform provides a generic, secure and idempotent organisation provisioning capability. Organisations may be created and provisioned manually for testing or administration, and any organisation explicitly marked persistent survives application restarts and test execution.
+
+The acceptance criteria must not depend on:
+
+* a specific number of organisations
+* specific organisation names
+* fixed organisation UUIDs
+* automatic tenant creation
+* persistent tenant records existing before ordinary tests run
+
+Replace Step 3 with the following
+
+3. Build generic manual organisation provisioning
+
+Do not create scripts/provision-persistent-orgs.ts containing fixed organisations.
+
+Create generic manual administrative commands instead.
+
+Recommended commands:
+
+npm run create-org -- \
+  --name="Example Organisation" \
+  --environment="test" \
+  --admin-user-id="<platform-user-uuid>"
+npm run provision-org-db -- \
+  --organization-id="<organisation-uuid>"
+
+A combined convenience command may also be created:
+
+npm run create-and-provision-test-org -- \
+  --name="Organisation Alpha Test" \
+  --admin-user-id="<platform-user-uuid>"
+
+The combined command must run only when explicitly invoked.
+
+It must never run automatically during:
+
+* server startup
+* application deployment
+* database migration
+* test global setup
+* backup scheduler startup
+* ordinary test execution
+
+Separate company creation from database provisioning
+
+Organisation creation and organisation database provisioning are separate actions.
+
+Required flow:
+
+1. An authorised platform administrator manually creates an organisation.
+2. The platform creates a stable organisation UUID.
+3. The administrator manually initiates operational database provisioning.
+4. The provisioning service confirms that the organisation exists in the Platform Database.
+5. The provisioning service creates the schema and registry record.
+6. Organisation migrations are applied.
+7. Initial settings and local membership are created.
+8. Health and isolation checks are completed.
+9. Backup configuration is registered.
+10. The registry is marked active only after every verification succeeds.
+
+The database provisioning service must not silently create a business organisation record.
+
+It must reject provisioning when the supplied organisation ID does not exist in the Platform Database.
+
+Organisation classification
+
+Support organisation metadata such as:
+
+* environment: internal, test or production
+* is_test_organisation: boolean
+* is_persistent: boolean
+* created_by
+* created_at
+* provisioning_reason or request reference
+
+Do not infer the organisation type from its name.
+
+Do not use name matching such as:
+
+* Alpha
+* Beta
+* Test
+* Internal
+* MH&R
+* NeedsOps
+
+Test organisations must be excluded by default from:
+
+* production customer counts
+* billing reports
+* subscription reports
+* production analytics
+* workforce reporting
+* platform revenue calculations
+* production operational dashboards
+
+Manual provisioning report
+
+Every manually invoked provisioning command must generate a provisioning report containing:
+
+* organisation ID
+* organisation name
+* environment classification
+* test organisation status
+* persistence status
+* schema name
+* provisioning mode
+* registry status
+* migration version
+* table count
+* health check result
+* isolation check result
+* backup configuration
+* local administrator result
+* verification timestamp
+* warnings and errors
+* actor user ID
+* correlation ID
+
+The report may be written to:
+
+docs/provisioning-reports/
+
+Use a generated filename based on the organisation ID and timestamp.
+
+Do not overwrite a single hard-coded report file.
+
+Test lifecycle rules
+
+Ordinary unit and integration tests must remain self-contained.
+
+Tests may create temporary organisations using random UUIDs.
+
+Temporary organisations must include:
+
+* environment = test
+* is_test_organisation = true
+* is_persistent = false
+* a unique test-run identifier
+
+Test teardown may delete only records created by that specific test run.
+
+Test teardown must never:
+
+* delete all organisation schemas
+* delete all test organisations
+* delete manually created organisations
+* delete organisations where is_persistent = true
+* delete registry records not owned by the current test run
+
+Do not add a global Vitest setup check that aborts when org_database_registry has zero active rows.
+
+Persistent organisations are not required for ordinary test execution.
+
+Replace the acceptance test requirements relating to persistent organisations
+
+Remove:
+
+Persistent organisation registry entries exist, at least four.
+
+Replace it with the following acceptance areas:
+
+1. An authorised administrator can manually create an organisation.
+2. Organisation database provisioning requires a valid existing organisation.
+3. A non-existent organisation ID is rejected.
+4. Any valid organisation name can be provisioned without source-code changes.
+5. Schema naming is derived from the stable organisation UUID only.
+6. Changing the organisation name or slug does not change routing.
+7. Provisioning is idempotent.
+8. A manually provisioned persistent organisation survives application restarts.
+9. A persistent organisation is not deleted by test teardown.
+10. Temporary test organisations are cleaned up safely.
+11. The server does not create organisations automatically at startup.
+12. Database migrations do not create organisations automatically.
+13. Ordinary test execution does not create persistent organisations automatically.
+14. Manual provisioning creates a platform audit event.
+
+The Sprint 7.1 acceptance suite may create temporary Alpha and Beta organisations during the test lifecycle to prove isolation. They must not be hard-coded permanent tenants.
+
+Audit and authorisation requirements
+
+Manual organisation creation and provisioning must require an authorised platform administrator.
+
+Every action must include:
+
+* authenticated actor
+* organisation ID
+* correlation ID
+* environment classification
+* reason or request reference
+* requested provisioning mode
+* success or failure result
+* timestamp
+
+Write the event to platform_audit_log.
+
+Do not place:
+
+* credentials
+* encryption keys
+* decrypted secrets
+* database passwords
+* connection strings
+
+inside provisioning reports or audit events.
+
+Retain the remaining Sprint 7.1 requirements
+
+Continue with all other approved Sprint 7.1 work:
+
+* live legacy table write restrictions
+* startup verification
+* organisation audit separation
+* local organisation membership enforcement
+* persistent object-storage backups
+* backup scheduler
+* SecretsProvider abstraction
+* operational runbooks
+* real PostgreSQL acceptance testing
+
+Update the Sprint 7.1 implementation plan with this revised provisioning model and proceed.
+
+Do not hard-code tenants.
+
+Do not automatically create companies.
+
+Do not begin Sprint 8.

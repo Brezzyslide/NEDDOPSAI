@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { drainAllPools, startPoolReaper } from "@workspace/org-db";
+import { startBackupScheduler, stopBackupScheduler, FilesystemBackupProvider } from "@workspace/org-db";
 import { runRLSStartupCheck } from "./startup/rlsStartupCheck";
 
 const rawPort = process.env["PORT"];
@@ -17,29 +18,34 @@ if (Number.isNaN(port) || port <= 0) {
 // ── Startup sequence ──────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
-  // 1. Verify RLS policies before accepting any traffic
-  //    Throws RLSVerificationError (exits with code 1) if policies are missing.
-  //    This prevents silent RLS removal from going undetected after drizzle push.
+  // 1. Verify RLS policies and legacy write restrictions before accepting traffic.
+  //    Throws RLSVerificationError or LegacyWriteError (exits with code 1).
   try {
     await runRLSStartupCheck();
   } catch (err: any) {
-    if (err.name === "RLSVerificationError") {
+    if (err.name === "RLSVerificationError" || err.name === "LegacyWriteError") {
       logger.error(
-        { missingRLS: err.missingRLS, missingPolicies: err.missingPolicies },
-        "[FATAL] RLS startup check failed. Run lib/db/migrations/sprint7-platform-boundary.sql to restore policies. Server will not start.",
+        { errName: err.name, details: err.writeableTables ?? err.missingRLS },
+        "[FATAL] Startup security check failed. Run the required migrations. Server will not start.",
       );
       process.exit(1);
     }
-    // Non-RLS errors (e.g. DB unreachable at startup) — log but continue
-    // to allow the app to start and surface errors through health checks
-    logger.warn({ err }, "[startup] RLS check encountered an error — continuing (DB may not be ready yet)");
+    // Non-security errors (e.g. DB unreachable at startup) — log but continue
+    logger.warn({ err }, "[startup] Startup check encountered an error — continuing (DB may not be ready yet)");
   }
 
   // 2. Start idle pool reaper for org connection pools
   startPoolReaper();
   logger.info("[startup] Organisation connection pool reaper started");
 
-  // 3. Start listening
+  // 3. Start backup scheduler
+  //    Uses FilesystemBackupProvider for dev; swap for GCS/S3 in production.
+  startBackupScheduler({
+    provider: new FilesystemBackupProvider(),
+    intervalMs: 5 * 60 * 1000, // 5 minutes
+  });
+
+  // 4. Start listening
   const server = app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
@@ -53,10 +59,12 @@ async function start(): Promise<void> {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutdown signal received — draining connections");
 
+    // Stop backup scheduler
+    stopBackupScheduler();
+
     // Stop accepting new requests
     server.close(async () => {
       try {
-        // Drain all organisation connection pools
         await drainAllPools();
         logger.info("All organisation connection pools drained");
       } catch (err) {
