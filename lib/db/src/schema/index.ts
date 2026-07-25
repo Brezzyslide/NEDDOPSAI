@@ -39,3 +39,8 @@ export * from "./platformInternalNotes";
 // Sprint 4 — Feature Flags, Platform Settings
 export * from "./featureFlags";
 export * from "./platformSettings";
+// Sprint 5 — Split Audit Architecture + Join Table Ownership
+export * from "./orgAuditLog";
+export * from "./platformAuditLog";
+// Sprint 6 — Organisation Database Registry
+export * from "./orgDatabaseRegistry";

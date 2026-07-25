@@ -127,7 +127,10 @@ router.get("/:id", ...auth, async (req, res, next) => {
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    const [sub, members, overrides, notes, tasks, approvals, usageRows] = await Promise.all([
+    // Sprint 5: Platform Console must NOT read operational content (task bodies,
+    // approval details). Only safe aggregate counts are permitted here.
+    // Operational content is accessible to authorised org members only via org portal.
+    const [sub, members, overrides, notes, taskCountResult, approvalCountResult, pendingApprovalCountResult, usageRows] = await Promise.all([
       db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1),
       db.select({ membership: membershipsTable, user: usersTable })
         .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
@@ -137,10 +140,10 @@ router.get("/:id", ...auth, async (req, res, next) => {
       db.select().from(platformInternalNotesTable)
         .where(eq(platformInternalNotesTable.organizationId, org.id))
         .orderBy(desc(platformInternalNotesTable.createdAt)).limit(50),
-      db.select().from(tasksTable).where(eq(tasksTable.organizationId, org.id))
-        .orderBy(desc(tasksTable.createdAt)).limit(20),
-      db.select().from(approvalsTable).where(eq(approvalsTable.organizationId, org.id))
-        .orderBy(desc(approvalsTable.createdAt)).limit(20),
+      // Counts only — no operational content exposed to platform console
+      db.select({ count: count() }).from(tasksTable).where(eq(tasksTable.organizationId, org.id)),
+      db.select({ count: count() }).from(approvalsTable).where(eq(approvalsTable.organizationId, org.id)),
+      db.select({ count: count() }).from(approvalsTable).where(and(eq(approvalsTable.organizationId, org.id), sql`state = 'pending'`)),
       db.select().from(usagePeriodSummariesTable).where(eq(usagePeriodSummariesTable.organizationId, org.id))
         .orderBy(desc(usagePeriodSummariesTable.periodStart)).limit(13),
     ]);
@@ -170,8 +173,17 @@ router.get("/:id", ...auth, async (req, res, next) => {
       entitlements,
       workforcePacks: packs,
       internalNotes: notes,
-      tasks,
-      approvals,
+      // Sprint 5: operational content restricted — platform console receives counts only.
+      // Task bodies and approval details are accessible to authorised org members only.
+      tasks: {
+        total: taskCountResult[0]?.count ?? 0,
+        note: "Task operational content is not accessible from the Platform Console. Authorised org members access tasks via the organisation portal.",
+      },
+      approvals: {
+        total: approvalCountResult[0]?.count ?? 0,
+        pending: pendingApprovalCountResult[0]?.count ?? 0,
+        note: "Approval content is not accessible from the Platform Console.",
+      },
       usageSummary: usageRows,
       seatInfo,
       placeholders: {
@@ -467,23 +479,36 @@ router.get("/:id/audit", ...auth, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/**
+ * Sprint 5: Task and approval operational content is NOT accessible from the
+ * Platform Console. Only aggregate counts are exposed via the org detail endpoint.
+ * Returning aggregate counts + a clear restriction notice.
+ */
 router.get("/:id/tasks", ...auth, async (req, res, next) => {
   try {
-    const limit = Math.min(100, Number(req.query.limit) || 20);
-    const tasks = await db.select().from(tasksTable)
-      .where(eq(tasksTable.organizationId, req.params.id!))
-      .orderBy(desc(tasksTable.createdAt)).limit(limit);
-    res.json({ tasks, count: tasks.length });
+    const [totalResult] = await db.select({ count: count() }).from(tasksTable)
+      .where(eq(tasksTable.organizationId, req.params.id!));
+    res.json({
+      restricted: true,
+      total: totalResult?.count ?? 0,
+      message: "Task operational content is not accessible from the Platform Console. Authorised org members access tasks via the organisation portal.",
+      accessPath: `/app/${req.params.id}/tasks`,
+    });
   } catch (err) { next(err); }
 });
 
 router.get("/:id/approvals", ...auth, async (req, res, next) => {
   try {
-    const limit = Math.min(100, Number(req.query.limit) || 20);
-    const approvals = await db.select().from(approvalsTable)
-      .where(eq(approvalsTable.organizationId, req.params.id!))
-      .orderBy(desc(approvalsTable.createdAt)).limit(limit);
-    res.json({ approvals, count: approvals.length });
+    const [totalResult] = await db.select({ count: count() }).from(approvalsTable)
+      .where(eq(approvalsTable.organizationId, req.params.id!));
+    const [pendingResult] = await db.select({ count: count() }).from(approvalsTable)
+      .where(and(eq(approvalsTable.organizationId, req.params.id!), sql`state = 'pending'`));
+    res.json({
+      restricted: true,
+      total: totalResult?.count ?? 0,
+      pending: pendingResult?.count ?? 0,
+      message: "Approval content is not accessible from the Platform Console. Authorised org members access approvals via the organisation portal.",
+    });
   } catch (err) { next(err); }
 });
 

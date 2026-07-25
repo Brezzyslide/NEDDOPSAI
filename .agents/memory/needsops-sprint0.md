@@ -82,6 +82,28 @@ Run: `cd lib/<name> && npx tsc -p tsconfig.json`
 - Seed script must be run after migration: `cd artifacts/api-server && npx tsx src/seed.ts`. Idempotent.
 - 112 total tests passing (17 email + 47 workforce + 35 worker profiles + 13 sprint3-entitlements).
 
+## Sprint 5 — Tenant Security Hardening (complete)
+- RLS enabled on 19 operational tables via `lib/db/migrations/sprint5-rls.sql` (idempotent, run after drizzle push).
+- RLS policy uses `NULLIF(current_setting('app.current_organization_id', TRUE), '')` — fails closed when context not set. Superuser bypasses RLS (expected); `needsops_app` role (NOSUPERUSER, NOLBYPASSRLS) enforces it.
+- `withTenantContext` / `withSystemTenantContext` / `withPlatformContext` in `lib/db/src/tenantAccess.ts` — use `set_config(..., true)` (is_local=true → cleared on transaction end, no pool leakage).
+- Join tables `approval_history`, `task_execution_plans`, `task_specialists` now have direct `organization_id` FK + NOT NULL + index; backfill ran at migration time.
+- Audit log split: `platform_audit_log` (platform.* events) + `org_audit_log` (org operational events). Old `audit_log` kept for backward compat until Sprint 7.
+- `auditService` routes by event type prefix: `platform.*` → platformAuditLog; others with orgId → orgAuditLog. Both also write to legacy `audit_log`.
+- Platform console (`platformOrgs.ts`) no longer returns task bodies or approval content — returns counts + restriction notice only. GET /:id/tasks and GET /:id/approvals return `{ restricted: true, total, message }`.
+- `taskService` + `approvalService` now include `organizationId` on all join table inserts.
+- 3 SECURITY DEFINER aggregate functions created for platform console: `platform_get_org_task_count`, `platform_get_org_approval_count`, `platform_get_org_pending_approval_count`.
+- 30 Sprint 5 isolation tests; 177 total passing.
+- Test key: superuser bypasses RLS (proven + documented); needsops_app role enforces RLS (proven via pg_roles check).
+
+## Sprint 6 — Organisation Database Foundation (complete, 205 tests)
+- `@workspace/org-db` at `lib/org-db/` — schema factory, provisioning service, connection manager, health check
+- Schema per org: `deriveSchemaName(orgId)` → `org_<uuid_underscores>` — never from slug, always from stable UUID
+- `provisionOrgDb()` 9-step idempotent — actorUserId must be null for system actors (FK to users table rejects non-UUID strings; store label in metadata instead)
+- `withOrgContext()`: pool-per-org (50 pools max × 5 connections); fail-closed on non-active status; sets search_path + RLS context vars in same tx
+- lib/org-db imports must use bare relative paths (no `.js` extension) — Vitest won't resolve `.js` → `.ts`. Convention matches lib/db.
+- `org_database_registry` in platform DB with `org_db_status` enum. RLS policies wiped by `drizzle push` if it recreates operational tables — always re-run `lib/db/migrations/sprint5-rls.sql` after any push on shared tables.
+- Platform console routes: POST/DELETE/GET /v1/platform/organisations/:id/database/* + GET /v1/platform/database/pools
+
 ## Sprint 4 — Platform Console (complete)
 - Platform console routes split into 12 sub-routers under `artifacts/api-server/src/routes/v1/platform*.ts`. `platform.ts` is the master router that mounts all of them.
 - New DB tables: `feature_flags` (key PK), `platform_settings` (key PK). New enum cols: `note_priority`, `note_category` on `platform_internal_notes`. New plan cols: `trial_length_days`, `monthly_price_cents`, `annual_price_cents`, `currency`, `notes`.

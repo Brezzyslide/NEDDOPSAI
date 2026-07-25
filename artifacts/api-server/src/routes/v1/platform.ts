@@ -44,6 +44,7 @@ import platformAuditRouter from "./platformAuditLog.js";
 import platformSettingsRouter from "./platformSettingsAdmin.js";
 import platformSearchRouter from "./platformSearch.js";
 import platformExportRouter from "./platformExport.js";
+import { platformDatabaseRouter } from "./platformDatabase.js";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -118,6 +119,8 @@ router.use("/audit", platformAuditRouter);
 router.use("/settings", platformSettingsRouter);
 router.use("/search", platformSearchRouter);
 router.use("/export", platformExportRouter);
+// Sprint 6 — Organisation Database management
+router.use("/", platformDatabaseRouter);
 
 // ─── Backwards-compat: /plans still works ─────────────────────────────────────
 // Kept for Sprint 3 compatibility

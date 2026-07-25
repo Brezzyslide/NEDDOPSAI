@@ -19,6 +19,7 @@
     "@workspace/entitlements": "workspace:*",
     "@workspace/permissions": "workspace:*",
     "@workspace/shared": "workspace:*",
+    "@workspace/org-db": "workspace:*",
     "@workspace/validation": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

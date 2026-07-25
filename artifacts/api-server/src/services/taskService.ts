@@ -83,18 +83,20 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     .set({ currentState: "planning", approvalState, updatedAt: new Date() })
     .where(eq(tasksTable.id, taskId));
 
-  // Persist execution plan
+  // Persist execution plan — Sprint 5: include organizationId for direct tenant ownership
   await db.insert(taskExecutionPlansTable).values({
     id: randomUUID(),
     taskId,
+    organizationId: input.organizationId,
     planData: plan as unknown as Record<string, unknown>,
     version: "1",
   });
 
-  // Assign specialists
+  // Assign specialists — Sprint 5: include organizationId for direct tenant ownership
   const specialistRows = plan.assignedSpecialists.map(code => ({
     id: randomUUID(),
     taskId,
+    organizationId: input.organizationId,
     specialistId: `spec_${code}`,
     role: code === "chief_of_staff" ? "lead" : "executor",
   }));

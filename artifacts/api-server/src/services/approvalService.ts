@@ -43,9 +43,11 @@ export async function createApproval(input: {
   const [approval] = await db.insert(approvalsTable).values(row).returning();
   if (!approval) throw new Error("Failed to create approval");
 
+  // Sprint 5: include organizationId for direct tenant ownership on join table
   await db.insert(approvalHistoryTable).values({
     id: randomUUID(),
     approvalId,
+    organizationId: input.organizationId,
     action: "requested",
     actorUserId: input.requestedByUserId ?? null,
     notes: input.notes ?? null,
@@ -94,9 +96,11 @@ export async function resolveApproval(input: {
     .where(eq(approvalsTable.id, input.approvalId))
     .returning();
 
+  // Sprint 5: include organizationId for direct tenant ownership on join table
   await db.insert(approvalHistoryTable).values({
     id: randomUUID(),
     approvalId: input.approvalId,
+    organizationId: input.organizationId,
     action: input.action,
     actorUserId: input.actorUserId,
     notes: input.notes ?? null,

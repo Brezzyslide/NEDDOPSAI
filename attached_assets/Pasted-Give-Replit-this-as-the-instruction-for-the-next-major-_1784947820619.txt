@@ -1,0 +1,1018 @@
+Give Replit this as the instruction for the next major build sprint:
+
+Proceed immediately with the NeedsOps Enterprise Data Isolation, Privacy and Organisation Database implementation.
+
+Do not provide another architecture review, proposal or gap analysis. The current-state assessment has already been accepted.
+
+Your task is to fix the current tenant-isolation vulnerabilities first, then implement the approved organisation-specific database architecture, AI Privacy Gateway, audit separation, secure connector framework and all privacy controls described below.
+
+This work must preserve the current application while moving NeedsOps from a shared application-controlled tenant model to a secure hybrid database architecture.
+
+Overall Objective
+
+Build NeedsOps so that:
+
+1. The current shared database is immediately protected by PostgreSQL Row Level Security.
+2. Every organisation receives its own separately provisioned Operational Database.
+3. Clinical, disability, workforce and operational information never enters the shared Platform Database.
+4. The Platform Console cannot casually browse customer operational content.
+5. Every AI request is tenant-scoped, permission-aware, purpose-limited and auditable.
+6. Connector credentials and connected-system data remain isolated to the organisation that owns them.
+7. Cross-organisation data access is prevented at the application, database, AI, background-job and connector layers.
+8. Existing organisations are safely migrated without data loss or unacceptable disruption.
+
+Non-Negotiable Security Rule
+
+NeedsOps is a shared platform, but every customer organisation must operate as though it has its own private enterprise environment.
+
+No organisation may read, update, delete, search, embed, summarise, export or infer information belonging to another organisation.
+
+A valid organisation slug is not proof of access.
+
+Application WHERE clauses are not sufficient as the only isolation control.
+
+Prompt instructions telling AI to respect privacy are not sufficient as a security control.
+
+Security must be enforced technically through authentication, authorisation, database boundaries, Row Level Security, tenant-aware data access, audit logging and automated isolation testing.
+
+Phase 1: Immediately Fix the Current Shared Database Vulnerabilities
+
+Implement this first before building additional operational modules.
+
+1. PostgreSQL Row Level Security
+
+Enable PostgreSQL Row Level Security on every current tenant-owned table.
+
+RLS must apply to:
+
+* SELECT
+* INSERT
+* UPDATE
+* DELETE
+
+The authorised organisation context must be established from the authenticated user and verified membership, not directly from a URL parameter, request body, query parameter or organisation slug.
+
+Use a secure transaction-scoped PostgreSQL tenant context such as:
+
+SET LOCAL app.current_organization_id = '<verified-organisation-id>';
+SET LOCAL app.current_user_id = '<authenticated-user-id>';
+
+RLS policies must compare records against the verified database session context.
+
+The application must not connect using a role that can casually bypass RLS.
+
+Any controlled RLS bypass role must be limited to narrowly defined migration or platform maintenance operations and must never be used by ordinary application routes.
+
+2. Fix Tables Without Direct Organisation Ownership
+
+Add a non-null organization_id to:
+
+* approval_history
+* task_execution_plans
+* task_specialists
+
+Requirements:
+
+* Backfill existing records from their valid parent relationships.
+* Identify and report orphaned or ambiguous records.
+* Add foreign keys.
+* Add indexes.
+* Prevent null organisation ownership.
+* Add database constraints where practical to ensure the child organisation matches the parent organisation.
+* Apply RLS directly to these tables.
+* Do not rely only on joins to infer organisation ownership at query time.
+
+Review all other tables for the same weakness and fix any additional tables lacking direct tenant ownership.
+
+3. Replace Slug-Based Tenant Trust
+
+Refactor resolveTenantFromSlug.
+
+The required request sequence is:
+
+Authenticate user
+→ Resolve requested organisation
+→ Verify active user-to-organisation relationship
+→ Verify organisation status
+→ Establish authorised organisation context
+→ Establish authorised user context
+→ Apply role and permissions
+→ Establish PostgreSQL RLS context
+→ Execute request
+
+The organisation slug may identify the requested organisation, but it must never grant access.
+
+Do not accept organization_id, tenantId or equivalent values supplied by the browser as trusted authorisation context.
+
+4. Central Tenant-Aware Data Access
+
+Create a central tenant-aware database access layer.
+
+Ordinary services and route handlers must not freely access tenant tables using the unrestricted database client.
+
+Provide secure interfaces such as:
+
+withPlatformContext()
+withTenantContext()
+withUserTenantContext()
+withSystemTenantContext()
+
+Each interface must:
+
+* require explicit identity and purpose
+* validate the organisation
+* set the database context
+* open a transaction where required
+* prevent context leakage between pooled connections
+* clear or isolate context after execution
+* produce an audit event
+* fail closed if no tenant context exists
+
+Any tenant query attempted without authorised tenant context must fail.
+
+5. Background Process Isolation
+
+Tenant isolation must also cover:
+
+* queues
+* scheduled jobs
+* webhooks
+* event consumers
+* notifications
+* report generation
+* document processing
+* exports
+* imports
+* AI jobs
+* connector synchronisation
+* indexing
+* embedding generation
+* retry jobs
+* dead-letter queues
+
+Every job payload must contain a verified organisation identifier and initiating identity or system-service identity.
+
+A worker must establish tenant context before accessing any organisation data.
+
+Do not allow a worker to iterate across all tenants using one unrestricted operational connection.
+
+6. Split the Audit Architecture
+
+Separate the current mixed audit log into:
+
+Platform Audit Log
+
+May include:
+
+* organisation created
+* subscription changed
+* plan changed
+* entitlement changed
+* feature flag changed
+* database provisioned
+* backup completed
+* security alert raised
+* platform administrator action
+* support-access request
+* system configuration change
+
+Organisation Operational Audit Log
+
+Must include:
+
+* user actions
+* record access where required
+* record creation
+* record update
+* record deletion
+* approvals
+* task actions
+* participant access
+* document access
+* incident access
+* exports
+* AI requests
+* connector actions
+* permission changes
+* sensitive information disclosures
+
+Tenant operational audit data must belong to the organisation and ultimately reside in its Operational Database.
+
+The Platform Console may receive safe summaries, security indicators and counts. It must not expose detailed customer operational audit content by default.
+
+7. Restrict the Platform Console
+
+Remove direct Platform Console access to customer task bodies, approval details, confidential audit payloads and customer-generated operational content.
+
+The Platform Console may display:
+
+* organisation identity
+* subscription status
+* plan
+* entitlements
+* high-level usage totals
+* database status
+* service health
+* backup status
+* storage usage
+* connector status without credentials
+* security alerts
+* migration status
+* support case status
+* aggregate AI usage
+
+It must not display:
+
+* participant information
+* case notes
+* incident narratives
+* medication information
+* care plans
+* behaviour support information
+* restrictive practice content
+* task bodies
+* approval content
+* staff operational records
+* customer documents
+* AI prompt or response content
+* embeddings
+* connector tokens
+* detailed tenant audit payloads
+
+Phase 2: Implement the Hybrid Database Architecture
+
+Platform Database
+
+The shared Platform Database must contain only platform-level information.
+
+Approved Platform Database content includes:
+
+* organisations
+* organisation routing registry
+* users
+* authentication identities
+* user-to-organisation access links
+* broad account status
+* subscriptions
+* plans
+* licences
+* entitlements
+* billing references
+* feature flags
+* platform configuration
+* service catalogue
+* workforce catalogue
+* platform usage summaries
+* operational database status
+* backup status
+* platform support records
+* platform security events
+* platform audit log
+
+The Platform Database may know that a user belongs to an organisation.
+
+It should not know which participants that user supports, their detailed employment information, their local delegations or the customer’s operational permissions.
+
+Organisation Operational Database
+
+Provision a separate Operational Database for every organisation.
+
+Each organisation database must contain only that organisation’s information, including:
+
+* organisation operational settings
+* local memberships
+* staff profiles
+* employment information
+* local roles
+* permissions
+* delegations
+* participant assignments
+* teams
+* tasks
+* approvals
+* task execution plans
+* task specialists
+* workforce pack grants
+* organisation audit log
+* participants
+* participant contacts
+* service agreements
+* case notes
+* incidents
+* care plans
+* health information
+* medication records
+* restrictive practices
+* behaviour support information
+* rosters
+* shifts
+* timesheets
+* documents
+* forms
+* assessments
+* compliance records
+* organisation reports
+* AI conversations
+* AI retrieval history
+* embeddings
+* organisation knowledge base
+* connector configuration
+* connector synchronisation records
+* connector operational data
+* local retention settings
+
+Clinical and NDIS tables must be created directly in the Operational Database.
+
+They must never be created temporarily in the Platform Database.
+
+Phase 3: Organisation Database Provisioning
+
+Build an automated organisation provisioning service.
+
+When an organisation is approved or activated, the service must:
+
+1. Create a unique organisation database.
+2. Generate secure database credentials.
+3. Store credentials or references securely.
+4. Run the current Operational Database migrations.
+5. Create required database roles.
+6. Enable required extensions.
+7. configure backup policies.
+8. Create initial organisation settings.
+9. Create the first authorised organisation administrator.
+10. Register the database in the Platform Database routing registry.
+11. Perform a health check.
+12. Record a platform audit event.
+13. Mark the organisation ready only after all checks pass.
+
+Provisioning must be:
+
+* idempotent
+* retry-safe
+* observable
+* auditable
+* reversible before customer use
+* protected against duplicate database creation
+
+Do not derive raw database names directly from public slugs. Use stable internal organisation identifiers and safe generated names.
+
+Phase 4: Secure Connection and Routing Manager
+
+Build a secure database connection manager capable of routing each authenticated request to the correct organisation database.
+
+Requirements:
+
+* Use the verified organisation identity from the authenticated session.
+* Never trust an organisation database identifier provided by the client.
+* Maintain safe connection pools.
+* Prevent connection pool exhaustion.
+* Prevent one organisation’s context leaking into another organisation’s connection.
+* Support database health checks.
+* Support controlled pool rotation.
+* Support credential rotation.
+* Support tenant database suspension.
+* Support migration version checks.
+* Support backup and restore operations.
+* Fail closed when routing information is missing or invalid.
+* Log routing failures without exposing credentials.
+
+The routing process must be:
+
+Authenticated user
+→ Verified platform membership
+→ Verified requested organisation
+→ Organisation database registry
+→ Secure credential reference
+→ Organisation database connection
+→ Local role and permission check
+→ Operational action
+
+Phase 5: Membership and Permission Boundaries
+
+Keep the minimum user-to-organisation access link in the Platform Database for login and routing.
+
+Store detailed operational access inside the organisation database.
+
+Platform Database Access Link
+
+May include:
+
+* user ID
+* organisation ID
+* active or inactive status
+* broad access type
+* invitation status
+* last access time
+* routing eligibility
+
+Organisation Database Permissions
+
+Must include:
+
+* operational role
+* participant access
+* team membership
+* local delegation
+* module permissions
+* record-level permissions
+* approval authority
+* service delivery assignment
+* clinical access level
+* document access
+* AI access permissions
+
+A platform membership alone must not grant access to all organisation data.
+
+Phase 6: Migrate Existing Organisations
+
+Implement a controlled migration for all existing organisations.
+
+Use a staged migration approach:
+
+Inventory
+→ Provision organisation database
+→ Initial copy
+→ Validate
+→ Controlled dual-write if necessary
+→ Reconcile
+→ Cut reads over
+→ Cut writes over
+→ Disable shared operational writes
+→ Monitor
+→ Finalise
+
+Requirements:
+
+* Map every current tenant table to its target location.
+* Preserve record IDs where safe and practical.
+* Preserve timestamps.
+* Preserve authorship and approval history.
+* Preserve audit evidence.
+* Validate record counts.
+* Validate relationships.
+* Validate checksums or equivalent integrity measures for sensitive records.
+* Produce a migration report for every organisation.
+* Support rollback before final cutover.
+* Do not delete source data immediately after cutover.
+* Apply a controlled retention and decommissioning plan.
+* Prevent new operational data being written to the old shared tables after cutover.
+
+Do not use indefinite dual-write. Dual-write must be temporary, measured and removed after successful reconciliation.
+
+Phase 7: Organisation-Specific Backup and Restore
+
+Every organisation database must have independent backup and restoration capability.
+
+Implement:
+
+* automated encrypted backups
+* point-in-time recovery where supported
+* backup health monitoring
+* retention schedules
+* restore testing
+* organisation-specific restore procedures
+* platform audit events for backup and restore actions
+* customer-safe backup status reporting
+* disaster recovery documentation
+
+Restoring one organisation must not restore, overwrite or affect another organisation.
+
+Backup access must be tightly controlled and auditable.
+
+Phase 8: Encryption and Secret Management
+
+Implement:
+
+* TLS for all database and service connections
+* encryption at rest
+* secure application secrets
+* secure database credentials
+* key rotation capability
+* token revocation
+* least-privilege service identities
+* environment separation
+* no production credentials in source code
+* no sensitive credentials in logs
+* no connector secrets in browser-accessible payloads
+
+For highly sensitive identifiers, support field-level or application-level encryption where required.
+
+Connector credentials must not be stored as ordinary readable database values.
+
+The organisation database should store:
+
+* connector type
+* connector status
+* approved scopes
+* secret reference
+* last synchronisation
+* error status
+* revocation status
+
+Actual OAuth refresh tokens, private keys and sensitive credentials should be stored in an approved secrets-management service or equivalent secure vault.
+
+Phase 9: AI Privacy Gateway
+
+Build an AI Privacy Gateway in front of every model request.
+
+No module may send customer information directly to an AI provider without going through the gateway.
+
+The gateway must:
+
+1. Authenticate the user.
+2. Verify the user’s organisation.
+3. Verify active organisation membership.
+4. Connect only to that organisation’s Operational Database.
+5. Apply the user’s local roles and permissions.
+6. Confirm the purpose of the request.
+7. Retrieve only the minimum information necessary.
+8. Exclude information outside the user’s access.
+9. Redact or mask unnecessary sensitive information.
+10. Record the records and document categories accessed.
+11. Apply organisation-specific AI settings.
+12. Apply provider and model restrictions.
+13. Send only approved context to the model.
+14. validate the response before release.
+15. Apply human approval requirements.
+16. Record an AI audit event.
+17. Apply retention rules.
+18. Prevent cross-organisation memory or retrieval.
+
+The model must never decide its own permissions.
+
+The model must receive only information already authorised by the gateway.
+
+AI Identity Propagation
+
+Every AI request must carry:
+
+* organisation ID
+* user ID
+* operational role
+* permission set
+* purpose
+* initiating module
+* participant or record scope where applicable
+* correlation ID
+* approval requirement
+* retention classification
+
+Purpose Limitation
+
+Supported purposes may include:
+
+* drafting a case note
+* summarising authorised incidents
+* preparing a weekly report
+* locating an approved procedure
+* comparing authorised records
+* assisting with compliance documentation
+* drafting an authorised care-related document
+
+Requests without a legitimate operational purpose must be denied or escalated.
+
+Minimum-Necessary Retrieval
+
+The AI must not retrieve every record merely because the user has broad access.
+
+Retrieve only what is reasonably necessary for the task.
+
+For example, rostering assistance should not automatically retrieve trauma history, medication records or forensic information where those details are not needed.
+
+Retrieval, Not General Training
+
+Organisation information must not be used for general model training.
+
+Customer information may be retrieved temporarily to perform an authorised task under the organisation’s settings and provider agreement.
+
+Store prompts, responses and retrieved context only according to configured retention rules.
+
+Human Approval Gates
+
+Require authorised human review before AI outputs become official records or trigger high-risk actions, including:
+
+* behaviour support plans
+* restrictive practice documentation
+* incident classifications
+* clinical recommendations
+* medication-related decisions
+* external regulatory submissions
+* legal or compliance determinations
+* participant risk decisions
+* staff disciplinary decisions
+* automated access revocation
+* material financial actions
+
+The AI may draft and assist. It must not independently make regulated decisions.
+
+Phase 10: Organisation-Specific AI Data
+
+Store the following only in the organisation’s Operational Database or organisation-controlled secure storage:
+
+* AI conversations
+* retrieval history
+* prompts retained under policy
+* responses retained under policy
+* embeddings
+* document chunks
+* knowledge indexes
+* approval history
+* AI feedback
+* model usage detail
+* sensitive-content classification
+* AI audit records
+
+Embeddings must retain organisation ownership metadata.
+
+Every vector search must be restricted to the current organisation database or organisation-specific vector namespace.
+
+Do not place multiple organisations’ sensitive embeddings into an unrestricted shared index.
+
+Phase 11: Connector Framework
+
+Build a common Connector Framework rather than one-off integrations.
+
+The framework must support future first-class integrations for:
+
+* Microsoft 365
+* Google Workspace
+* Xero
+* MYOB
+* ATO-related services where lawful and technically supported
+* Long Service Leave authorities
+* SCHADS Award interpretation services
+* NDIS and disability-sector systems where approved
+* document storage systems
+* payroll platforms
+* HR platforms
+* rostering platforms
+* communication systems
+
+Every connector must have:
+
+* organisation ownership
+* approved scopes
+* least-privilege access
+* secure credentials
+* revocation
+* token rotation
+* connection health
+* synchronisation logs
+* organisation-specific rate limits
+* retry controls
+* idempotency
+* error handling
+* audit logging
+* data classification
+* direction controls
+* field mapping
+* deletion handling
+* retention rules
+
+A connector for one organisation must never be usable by another organisation.
+
+Connector jobs must establish the organisation database context before reading or writing data.
+
+Phase 12: Privacy and Regulatory Controls
+
+Implement platform controls that support compliance with Australian privacy and disability-service obligations.
+
+The architecture must support:
+
+* collection limitation
+* purpose limitation
+* consent and authority recording
+* least-privilege access
+* sensitive information controls
+* health information controls
+* data accuracy
+* access correction
+* retention schedules
+* secure deletion
+* legal hold
+* breach investigation
+* breach notification workflows
+* data export
+* customer offboarding
+* audit evidence
+* human oversight
+* information residency configuration where required
+
+Do not claim legal compliance merely because controls exist.
+
+Build the evidence, configuration and audit capabilities organisations require to manage their obligations.
+
+Phase 13: Customer Support Access
+
+Needs Technology platform administrators must not have standing unrestricted access to customer operational databases.
+
+Implement a controlled support-access process with:
+
+* customer authorisation
+* stated reason
+* specific scope
+* specific organisation
+* named support user
+* time-limited access
+* approval
+* visible customer record
+* full audit trail
+* automatic expiry
+* emergency break-glass process
+* post-access review
+
+Break-glass access must be rare, justified, alerted and fully audited.
+
+Impersonation must never be silent.
+
+Phase 14: Automated Security and Isolation Testing
+
+Build automated tests proving that Organisation A cannot:
+
+* read Organisation B records
+* search Organisation B records
+* update Organisation B records
+* delete Organisation B records
+* export Organisation B records
+* access Organisation B documents
+* access Organisation B audit data
+* retrieve Organisation B embeddings
+* access Organisation B AI conversations
+* invoke Organisation B connectors
+* access Organisation B through a changed slug
+* access Organisation B by changing request IDs
+* access Organisation B through joins
+* access Organisation B through background jobs
+* access Organisation B through reports
+* access Organisation B through cached responses
+* access Organisation B through file URLs
+* access Organisation B through search indexes
+* access Organisation B through websocket or realtime channels
+
+Test:
+
+* horizontal privilege escalation
+* vertical privilege escalation
+* insecure direct object reference
+* missing tenant context
+* forged organisation IDs
+* forged slugs
+* disabled memberships
+* removed permissions
+* suspended organisations
+* stale sessions
+* background worker context leakage
+* pooled connection context leakage
+* platform administrator boundaries
+* AI gateway bypass attempts
+* connector credential exposure
+* backup and restore isolation
+
+Every test must fail closed.
+
+Phase 15: Observability Without Privacy Leakage
+
+Build platform monitoring that reports health without exposing customer content.
+
+Platform monitoring may include:
+
+* database availability
+* latency
+* connection pool status
+* migration version
+* backup success
+* storage usage
+* error counts
+* queue health
+* AI request counts
+* connector health
+* security alerts
+
+Do not place participant names, case-note content, incident details, medical information, AI prompts, AI responses, access tokens or confidential customer content in central logs.
+
+Use identifiers, classifications and correlation IDs where possible.
+
+Phase 16: Data Export, Offboarding and Deletion
+
+Build organisation-level export and offboarding capability.
+
+An organisation must be able to receive an export of its data in an agreed usable format.
+
+Offboarding must include:
+
+* access suspension
+* connector revocation
+* final export
+* export verification
+* retention hold where required
+* backup handling
+* deletion schedule
+* deletion approvals
+* deletion evidence
+* platform registry update
+* audit records
+
+Deletion must account for backups and legally required retention.
+
+Do not immediately destroy records that must be legally retained.
+
+Implementation Order
+
+Complete the work in this order:
+
+Sprint 5: Current Tenant Security Hardening
+
+* PostgreSQL RLS
+* direct organisation ownership on join tables
+* secure tenant context
+* central tenant-aware data access
+* Platform Console restrictions
+* split audit foundation
+* background-job tenant controls
+* cross-tenant isolation tests
+
+Sprint 6: Organisation Database Foundation
+
+* Platform Database boundary
+* Operational Database schema foundation
+* provisioning service
+* database registry
+* secure routing and connection manager
+* migration orchestration
+* backup automation
+* secrets architecture
+* health monitoring
+
+Sprint 7: Existing Organisation Migration and AI Gateway Foundation
+
+* provision databases for existing organisations
+* copy and validate existing operational records
+* temporary controlled dual-write where required
+* reconcile
+* cut over
+* disable shared operational writes
+* AI Privacy Gateway foundation
+* user identity propagation
+* purpose logging
+* minimum-necessary retrieval foundation
+
+Sprint 8: Operational and Clinical Data Model
+
+Build directly inside the Operational Database:
+
+* participants
+* participant contacts
+* staff operational profiles
+* participant assignments
+* case notes
+* incidents
+* care plans
+* medication
+* restrictive practices
+* behaviour support information
+* rosters
+* shifts
+* timesheets
+* documents
+* service agreements
+* assessments
+* compliance records
+* connector configuration
+* clinical audit trail
+* retention controls
+
+Sprint 9: Full AI Privacy and Organisation Intelligence
+
+* organisation AI conversations
+* organisation embeddings
+* organisation knowledge indexes
+* full AI Privacy Gateway
+* redaction
+* approval gating
+* response validation
+* AI audit evidence
+* model-provider controls
+* AI retention controls
+* prevention of cross-organisation AI retrieval
+
+Sprint 10: Connector Framework and Enterprise Operations
+
+* common connector architecture
+* secret vault integration
+* Microsoft 365 foundation
+* Google Workspace foundation
+* Xero and MYOB foundation
+* connector audit logs
+* synchronisation controls
+* organisation-level export
+* support-access controls
+* disaster recovery testing
+* enterprise security evidence
+
+Migration Safety Rules
+
+Do not:
+
+* drop current tables before validation
+* move clinical data into the Platform Database
+* trust browser-supplied tenant identity
+* rely on slugs for authorisation
+* use one unrestricted application database role
+* store connector tokens in logs
+* mix organisation embeddings without enforced isolation
+* allow platform staff standing access to customer records
+* leave dual-write running indefinitely
+* declare migration complete without reconciliation
+* claim isolation without negative security testing
+
+Required Deliverables
+
+For each sprint, produce:
+
+1. Database migrations.
+2. Updated Drizzle schemas.
+3. Updated middleware.
+4. Updated service and repository layers.
+5. Updated authentication and permission flow.
+6. Automated tests.
+7. Seed and test fixtures for at least two organisations.
+8. Migration scripts.
+9. Rollback procedures.
+10. Security documentation.
+11. Architecture diagrams.
+12. Audit event definitions.
+13. Operational runbooks.
+14. Backup and restore runbooks.
+15. Known limitations.
+16. Evidence of test completion.
+
+Mandatory Test Organisations
+
+Create at least two isolated test organisations:
+
+Organisation Alpha
+Organisation Beta
+
+Populate both with clearly different:
+
+* users
+* tasks
+* approvals
+* settings
+* participants
+* case notes
+* incidents
+* documents
+* AI conversations
+* embeddings
+* connector configurations
+
+Automated tests must attempt deliberate cross-access in both directions and prove that it fails at multiple layers.
+
+Definition of Done
+
+This programme is complete only when:
+
+* Current tenant tables are protected by RLS.
+* All tenant queries require verified tenant context.
+* Join tables carry direct organisation ownership.
+* The Platform Console no longer exposes customer operational content.
+* Platform and tenant audits are separated.
+* Every organisation can be provisioned with its own Operational Database.
+* Existing organisations have been migrated and reconciled.
+* Operational writes no longer enter the shared Platform Database.
+* Clinical and NDIS tables exist only in organisation databases.
+* Each organisation has independent backup and restore capability.
+* AI requests cannot bypass the AI Privacy Gateway.
+* AI retrieval is restricted by organisation, user permission and purpose.
+* AI conversations and embeddings are organisation-specific.
+* Connector credentials are securely isolated.
+* Platform support access is time-limited and audited.
+* Cross-tenant isolation tests pass.
+* Database routing and pooled connections cannot leak tenant context.
+* A restore test proves one organisation can be restored without affecting another.
+* Security and operational documentation is complete.
+* No critical or high-severity isolation defects remain open.
+
+Execution Instruction
+
+Begin implementation now.
+
+Do not return another review of the existing architecture.
+
+Start with Sprint 5 and work through the implementation in dependency order.
+
+Before changing existing production-sensitive structures, create safe migrations, backups and rollback paths.
+
+After each sprint, provide:
+
+* what was implemented
+* files changed
+* migrations created
+* tests run
+* test results
+* security controls verified
+* unresolved issues
+* what the next sprint will change
+
+Do not mark any security control complete unless it has been implemented and tested.
