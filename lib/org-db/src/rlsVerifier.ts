@@ -42,6 +42,9 @@ export const REQUIRED_RLS_TABLES = [
   "usage_period_summaries",
   "org_audit_log",
   "audit_log",
+  // Sprint 8 — Execution Runtime
+  "execution_sessions",
+  "execution_events",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

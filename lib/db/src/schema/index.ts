@@ -46,3 +46,6 @@ export * from "./platformAuditLog";
 export * from "./orgDatabaseRegistry";
 // Sprint 7 — Secrets Management
 export * from "./platformSecrets";
+// Sprint 8 — Execution Runtime
+export * from "./executionSessions";
+export * from "./executionEvents";

@@ -53,6 +53,7 @@ import PlatformSupport from "@/pages/platform/PlatformSupport";
 import PlatformSecurity from "@/pages/platform/PlatformSecurity";
 import PlatformAudit from "@/pages/platform/PlatformAudit";
 import PlatformSettings from "@/pages/platform/PlatformSettings";
+import PlatformRuntime from "@/pages/platform/PlatformRuntime";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -224,6 +225,7 @@ function AppRouter() {
             <Route path="/platform/security" component={PlatformSecurity} />
             <Route path="/platform/audit" component={PlatformAudit} />
             <Route path="/platform/settings" component={PlatformSettings} />
+            <Route path="/platform/runtime" component={PlatformRuntime} />
             <Route path="/platform" component={PlatformDashboard} />
             {/* Legacy Sprint 0 routes */}
             <Route path="/dashboard" component={Dashboard} />

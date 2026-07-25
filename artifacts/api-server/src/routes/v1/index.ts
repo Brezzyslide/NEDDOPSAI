@@ -9,6 +9,9 @@ import adminRouter from "./admin.js";
 import workforceRouter from "./workforce.js";
 import tasksRouter from "./tasks.js";
 import approvalsRouter from "./approvalRoutes.js";
+// Sprint 8: Execution lifecycle routes
+import executionRouter from "./execution.js";
+import runtimeEventsRouter from "./runtimeEvents.js";
 // Sprint 3 routers
 import plansRouter from "./plans.js";
 import workforcePacksRouter from "./workforcePacks.js";
@@ -25,6 +28,8 @@ router.use("/organisations/:slug/invitations", orgInvitationsRouter);
 router.use("/organisations/:slug/audit", orgAuditRouter);
 router.use("/organisations/:slug/tasks", tasksRouter);
 router.use("/organisations/:slug/approvals", approvalsRouter);
+// Sprint 8: Task execution sessions
+router.use("/organisations/:slug/tasks/:taskId/execution", executionRouter);
 // Sprint 3: subscription / entitlements / usage scoped to org
 router.use("/organisations/:slug", orgSubscriptionRouter);
 router.use("/invitations", invitationAcceptRouter);
@@ -32,6 +37,8 @@ router.use("/workforce", workforceRouter);
 // Sprint 3: public plan catalogue and workforce-packs catalogue
 router.use("/plans", plansRouter);
 router.use("/workforce-packs", workforcePacksRouter);
+// Sprint 8: OpenClaw webhook receiver (raw body — no json() middleware)
+router.use("/", runtimeEventsRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);

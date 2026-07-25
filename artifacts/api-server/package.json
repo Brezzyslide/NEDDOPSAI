@@ -22,6 +22,7 @@
     "@workspace/org-db": "workspace:*",
     "@workspace/secrets": "workspace:*",
     "@workspace/ai-gateway": "workspace:*",
+    "@workspace/openclaw": "workspace:*",
     "@workspace/validation": "workspace:*",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

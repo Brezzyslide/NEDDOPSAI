@@ -72,7 +72,9 @@ export type PermissionAction =
   | "billing:manage"
   // Organisation settings
   | "settings:read"
-  | "settings:update";
+  | "settings:update"
+  // AI Task Execution (Sprint 8)
+  | "task:execute";
 
 // ─── Role permission map ──────────────────────────────────────────────────────
 
@@ -104,6 +106,7 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "billing:manage",
     "settings:read",
     "settings:update",
+    "task:execute",
   ],
   administrator: [
     "organization:read",
@@ -129,6 +132,7 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "billing:read",
     "settings:read",
     "settings:update",
+    "task:execute",
   ],
   manager: [
     "organization:read",
@@ -140,6 +144,7 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "worker:assign",
     "worker:approve",
     "settings:read",
+    "task:execute",
   ],
   member: [
     "organization:read",

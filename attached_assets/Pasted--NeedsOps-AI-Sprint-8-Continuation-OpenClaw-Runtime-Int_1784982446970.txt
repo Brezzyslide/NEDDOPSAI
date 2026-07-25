@@ -1,0 +1,274 @@
+# NeedsOps AI+
+
+## Sprint 8 Continuation — OpenClaw Runtime Integration
+
+The Workforce Messaging and AI Planning work continues.
+
+The next objective is to integrate the first real execution runtime.
+
+That runtime is OpenClaw.
+
+This is not a generic connector.
+
+OpenClaw is the first implementation of the NeedsOps Execution Engine.
+
+The architecture must remain runtime-independent.
+
+NeedsOps owns:
+
+* tenants
+* organisations
+* conversations
+* tasks
+* Workforce Roles
+* Worker Profiles
+* execution plans
+* approvals
+* permissions
+* entitlements
+* audit
+* usage
+
+OpenClaw owns:
+
+* execution
+* browser automation
+* tool execution
+* runtime state
+* execution events
+
+OpenClaw must never become the owner of business logic.
+
+---
+
+## Objective
+
+Implement the OpenClaw Runtime Adapter.
+
+The adapter must translate an approved NeedsOps execution plan into an OpenClaw execution request.
+
+The adapter must also translate OpenClaw runtime events back into NeedsOps execution events.
+
+Do not embed OpenClaw-specific logic throughout the application.
+
+All OpenClaw interaction must occur through the existing Execution Engine abstraction.
+
+---
+
+## Do NOT
+
+Do not install OpenClaw inside Replit.
+
+Do not clone OpenClaw into the application.
+
+Do not embed OpenClaw source code.
+
+Do not bypass the Execution Engine abstraction.
+
+Do not hard-code runtime URLs.
+
+Do not hard-code secrets.
+
+Do not weaken tenant isolation.
+
+---
+
+## Build
+
+Implement:
+
+### OpenClawExecutionEngine
+
+Implement the existing ExecutionEngine interface.
+
+Support:
+
+* runtime registration
+* runtime discovery
+* runtime health
+* runtime capability reporting
+* execution submission
+* execution status
+* execution cancellation
+* execution pause
+* execution resume
+* execution event streaming
+* runtime version reporting
+
+---
+
+### Runtime Broker Client
+
+Create a dedicated service responsible for communicating with the remote OpenClaw Runtime Broker.
+
+This service must:
+
+* authenticate
+* submit execution packages
+* receive execution events
+* monitor runtime health
+* reconnect automatically
+* support timeouts
+* support retries
+* surface meaningful errors
+
+No other service should communicate directly with OpenClaw.
+
+---
+
+### Runtime Configuration
+
+Support configuration through environment variables.
+
+Example:
+
+* runtime mode
+* runtime URL
+* authentication token reference
+* timeout
+* retry policy
+* heartbeat interval
+
+Do not expose secrets to clients.
+
+---
+
+### Execution Package Translation
+
+Translate a NeedsOps execution plan into a runtime request.
+
+Include:
+
+* tenant identifier
+* execution identifier
+* Workforce Role
+* Worker Profile
+* ordered execution steps
+* requested tools
+* requested execution channels
+* requested connector categories
+* approval state
+* execution constraints
+
+Do not send internal platform-only metadata.
+
+---
+
+### Runtime Event Translation
+
+Translate OpenClaw events into NeedsOps events.
+
+Examples:
+
+* runtime connected
+* execution accepted
+* execution started
+* execution progress
+* execution paused
+* execution resumed
+* execution awaiting approval
+* execution completed
+* execution failed
+* runtime unavailable
+
+Persist these through the existing execution event system.
+
+---
+
+### Platform Console
+
+Add an OpenClaw Runtime section.
+
+Display:
+
+* runtime status
+* runtime version
+* connection state
+* last heartbeat
+* active executions
+* queued executions
+* failed executions
+* runtime health
+* supported capabilities
+
+If no runtime exists, display:
+
+"OpenClaw Runtime not connected."
+
+Do not fabricate health data.
+
+---
+
+### Customer Experience
+
+When a customer starts an approved execution:
+
+Show truthful progress.
+
+Examples:
+
+* Preparing execution
+* Connecting to runtime
+* Runtime accepted task
+* Execution in progress
+* Waiting for approval
+* Execution completed
+
+Do not claim browser activity unless it genuinely occurs.
+
+---
+
+### Security
+
+The Runtime Adapter must:
+
+* enforce tenant isolation
+* validate runtime identity
+* reject expired execution requests
+* reject unauthorised runtime events
+* never expose runtime credentials
+* audit all runtime interactions
+
+---
+
+### Testing
+
+Create tests for:
+
+* runtime registration
+* runtime health
+* execution submission
+* execution cancellation
+* execution pause
+* execution resume
+* execution event translation
+* runtime failure handling
+* reconnect logic
+* tenant isolation
+* invalid runtime rejection
+* expired execution rejection
+
+All existing tests must continue to pass.
+
+---
+
+## Completion Criteria
+
+Sprint continuation is complete only when:
+
+* OpenClawExecutionEngine exists
+* Runtime Broker client exists
+* execution packages are translated correctly
+* runtime events return to NeedsOps
+* runtime health is visible
+* customer execution status is updated from runtime events
+* platform monitoring works
+* all tests pass
+
+Do not build browser automation inside NeedsOps.
+
+Do not build local device access inside NeedsOps.
+
+Those capabilities belong to the OpenClaw runtime and later NeedsOps Connect.
+
+Provide a completion report showing exactly what remains before the first live browser execution.

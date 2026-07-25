@@ -227,6 +227,9 @@ importers:
       '@workspace/entitlements':
         specifier: workspace:*
         version: link:../../lib/entitlements
+      '@workspace/openclaw':
+        specifier: workspace:*
+        version: link:../../lib/openclaw
       '@workspace/org-db':
         specifier: workspace:*
         version: link:../../lib/org-db
@@ -922,6 +925,21 @@ importers:
       '@workspace/shared':
         specifier: workspace:*
         version: link:../shared
+
+  lib/openclaw:
+    dependencies:
+      '@workspace/agent-runtime':
+        specifier: workspace:*
+        version: link:../agent-runtime
+      '@workspace/db':
+        specifier: workspace:*
+        version: link:../db
+      '@workspace/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: 'catalog:'
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
 
   lib/org-db:
     dependencies:
