@@ -1,0 +1,830 @@
+NeedsOps AI+
+
+Full Build Audit and Direction Alignment Report
+
+Do not implement new features during this task.
+
+Pause development and conduct a complete audit of the NeedsOps AI+ codebase from Sprint 0 through the current sprint.
+
+The purpose of this audit is to establish:
+
+1. what has actually been built
+2. what is working
+3. what is only metadata, simulation or placeholder
+4. what remains unfinished
+5. whether the architecture still follows the original product intention
+6. whether any part of the build has drifted into a different product
+7. what must happen next to achieve the intended final platform
+
+Do not rely only on previous sprint completion reports.
+
+Inspect the actual:
+
+* source code
+* database schema
+* migrations
+* API routes
+* services
+* tests
+* web pages
+* mobile application
+* platform console
+* documentation
+* environment configuration
+* seeds
+* background workers
+* runtime abstractions
+* authentication
+* tenant isolation
+* permissions
+* entitlements
+* approvals
+* task flows
+
+Run the applications and tests where possible.
+
+Be direct and evidence-based.
+
+Do not claim functionality works merely because an interface, table, page or placeholder exists.
+
+⸻
+
+Original Product Intention
+
+NeedsOps AI+ is intended to become a multi-tenant AI operations platform where organisations subscribe to a governed AI workforce.
+
+The platform is not intended to be merely:
+
+* a CRM
+* a static workforce directory
+* a chatbot
+* a compliance application
+* a plan-management system
+* an admin dashboard
+* an API connector catalogue
+* an OpenClaw control panel
+
+The intended customer experience is:
+
+Customer signs up
+↓
+Creates or joins an organisation
+↓
+Selects a plan or begins a trial
+↓
+Receives access to an AI Workforce
+↓
+Uses a messaging interface to give work instructions
+↓
+Chief of Staff identifies the correct Workforce Role
+↓
+Workforce Role applies its business expertise
+↓
+Worker Profile defines allowed tools and execution surfaces
+↓
+NeedsOps checks permissions, entitlements, usage and approvals
+↓
+OpenClaw or another runtime executes the authorised work
+↓
+Execution occurs through one or more of:
+   - the customer’s logged-in browser
+   - a secure browser extension
+   - NeedsOps Connect on the customer’s local computer
+   - approved local folders and applications
+   - native APIs where available
+↓
+The customer sees progress, approves sensitive actions and receives the result
+↓
+All actions are tenant-isolated and audited
+
+The intended platform-owner experience is:
+
+NeedsOps Platform Console
+↓
+View and manage all organisations
+↓
+Manage plans, pricing and plan versions
+↓
+Manage workforce packs and access levels
+↓
+Manage trials, usage limits, overrides and support
+↓
+Monitor future runtimes, browser sessions, local devices and failures
+↓
+Operate the SaaS without changing code for ordinary commercial changes
+
+The intended architectural chain is:
+
+Chief of Staff
+↓
+Workforce Role
+↓
+Business knowledge and Intelligence Engines
+↓
+Worker Profile
+↓
+Execution Plan
+↓
+Policy and approval gates
+↓
+Execution Runtime
+↓
+Browser, local computer, files or API
+
+Important distinctions:
+
+* Workforce Roles define responsibility and expertise.
+* Worker Profiles define permitted tools and execution surfaces.
+* Intelligence Engines provide deterministic rules such as SCHADS, NDIS pricing, compliance, risk and quality.
+* OpenClaw is an execution runtime, not the owner of tenancy, billing, permissions or business policy.
+* APIs are preferred where reliable, but they are not required for every customer system.
+* NeedsOps must work with customer systems such as ShiftCare, Lumary, Brevity, custom CRMs, MYOB, Xero and government portals through approved browser or local execution where APIs are unavailable.
+* NeedsCare AI+, Need2Comply AI+ and Needs2Learn AI+ are optional external or first-party systems. NeedsOps must not depend on a customer purchasing them.
+
+⸻
+
+Audit Method
+
+Inspect each sprint and each major subsystem.
+
+For every feature, classify it as one of:
+
+LIVE
+Implemented and working end to end.
+PARTIAL
+Some real functionality exists, but important parts are missing.
+SIMULATED
+The flow works only through mock or deterministic simulation.
+METADATA ONLY
+Definitions, registry entries or database records exist, but no behaviour executes.
+PLACEHOLDER
+The page, route or interface exists primarily to reserve structure.
+NOT BUILT
+No meaningful implementation exists.
+BROKEN
+Implementation exists but currently fails.
+
+Every major claim must include evidence such as:
+
+* relevant package or file path
+* database table
+* API route
+* page route
+* test file
+* runtime behaviour
+* application output
+
+Do not list internal IDs or secrets.
+
+⸻
+
+Section 1: Executive Summary
+
+Provide a plain-English summary containing:
+
+* current maturity of the platform
+* strongest completed areas
+* largest unfinished areas
+* whether the product direction is still intact
+* whether development has drifted
+* whether the current platform can deliver real agentic work
+* whether a real external customer can currently use it meaningfully
+* the single most important next milestone
+
+Give an overall maturity score from 0 to 100, with an explanation.
+
+Do not score the quantity of code. Score progress toward the intended working product.
+
+⸻
+
+Section 2: Sprint-by-Sprint Audit
+
+Review:
+
+* Sprint 0: Platform Foundation
+* Sprint 1: Identity, Organisations and Tenant Security
+* Sprint 2: AI Workforce Foundation
+* Sprint 2 Architecture Correction
+* Sprint 3: Entitlements, Subscriptions and Usage
+* Sprint 4: Platform Console
+* Sprint 5, if started or completed
+* any unplanned work completed between sprints
+
+For every sprint provide:
+
+Original objective:
+-
+What was actually delivered:
+-
+Status:
+LIVE / PARTIAL / SIMULATED / METADATA ONLY / PLACEHOLDER / NOT BUILT / BROKEN
+Evidence:
+-
+Important deviations:
+-
+Technical debt introduced:
+-
+Does it support the original vision?
+Yes / Partly / No
+
+⸻
+
+Section 3: Customer Journey Audit
+
+Walk through the current customer journey using the real application.
+
+Evaluate each step:
+
+1. Public landing page
+2. Public plan comparison
+3. Plan selection
+4. Registration
+5. Email verification
+6. Organisation creation
+7. Trial or subscription assignment
+8. Login
+9. Organisation dashboard
+10. AI Workforce discovery
+11. Messaging interface
+12. Task creation
+13. Chief of Staff planning
+14. Workforce Role assignment
+15. Worker Profile mapping
+16. Execution planning
+17. Approval
+18. Runtime execution
+19. Browser execution
+20. Local computer execution
+21. Result delivery
+22. Usage recording
+23. Upgrade or payment
+24. Mobile experience
+
+For each step show:
+
+Status:
+-
+What the user can do now:
+-
+What is missing:
+-
+Evidence:
+-
+
+State clearly where the current journey stops being real and becomes simulated or unavailable.
+
+⸻
+
+Section 4: Platform Owner Journey Audit
+
+Evaluate the Platform Console.
+
+Confirm whether authorised NeedsOps staff can currently:
+
+* access the console
+* view organisations
+* search organisations
+* inspect tenant details
+* suspend and reactivate organisations
+* manage trials
+* create and version plans
+* set monthly and annual price values
+* set currencies
+* manage workforce packs
+* manage features
+* manage usage limits
+* manage seat limits
+* manage tenant overrides
+* grant platform roles
+* view audit history
+* add internal notes
+* export organisation information
+* monitor task failures
+* monitor execution sessions
+* monitor OpenClaw health
+* monitor browser sessions
+* monitor local devices
+* view connector health
+* view subscription revenue
+* manage Stripe billing
+
+For each capability classify the implementation.
+
+Also explain any manual setup required to give the first owner access to /platform.
+
+⸻
+
+Section 5: AI Workforce Audit
+
+Review the 32 Workforce Roles and their packs.
+
+Determine:
+
+* whether they are static metadata or executable entities
+* whether their capabilities are used in real task planning
+* whether they contain actual domain instructions
+* whether they have memory
+* whether they have tool access
+* whether they can produce outputs
+* whether they connect to OpenClaw
+* whether they can be versioned
+* whether they can be safely enabled or disabled
+* whether different organisations can configure them independently
+
+Review the Chief of Staff.
+
+Determine:
+
+* whether routing is deterministic or AI-based
+* how intent classification works
+* whether multi-role delegation is supported
+* whether routing is auditable
+* whether the interface can later accept OpenAI or OpenClaw without redesign
+* where the current routing method will fail
+
+Review Worker Profiles.
+
+Determine:
+
+* whether they are enforced or only descriptive
+* whether prohibited actions are actually blocked
+* whether allowed channels and tools are enforced
+* whether browser domains, local paths and applications are currently configured
+* whether profiles map cleanly to future OpenClaw execution
+
+⸻
+
+Section 6: Execution Readiness Audit
+
+Assess whether the platform currently has:
+
+* execution engine abstraction
+* mock runtime
+* OpenClaw runtime implementation
+* execution plans
+* execution plan versioning
+* execution sessions
+* execution steps
+* execution queue
+* tool registry
+* connector registry
+* execution policy service
+* approval gates
+* pause, resume and cancellation
+* event streaming
+* retry handling
+* runtime health checks
+* output storage
+* error recovery
+* tenant isolation
+* usage metering
+
+For every item give its implementation status and evidence.
+
+Then answer:
+
+Can NeedsOps currently perform a real task in a customer’s browser?
+Yes / No
+Can NeedsOps currently read a customer’s approved local folder?
+Yes / No
+Can NeedsOps currently operate a local desktop application?
+Yes / No
+Can NeedsOps currently perform a task through an external API?
+Yes / No
+Can NeedsOps currently communicate with OpenClaw?
+Yes / No
+
+Explain each answer plainly.
+
+⸻
+
+Section 7: OpenClaw Alignment Audit
+
+Determine whether any OpenClaw code, package, container or gateway is currently installed.
+
+Identify:
+
+* adapter interfaces
+* environment variables
+* mock implementations
+* runtime placeholders
+* real Gateway connection
+* authentication method
+* tenant workspace mapping
+* session mapping
+* specialist mapping
+* tool policy mapping
+* node pairing support
+* streaming support
+* health checks
+* upgrade strategy
+* version pinning
+* persistent state strategy
+
+State clearly:
+
+* what is already prepared
+* what remains to connect
+* whether current abstractions are sufficient
+* whether any refactoring is needed before OpenClaw integration
+
+Do not install OpenClaw during this audit.
+
+⸻
+
+Section 8: Browser and Local Computer Vision Audit
+
+Compare the current architecture to the central product goal:
+
+The customer logs into their existing CRM or business system.
+NeedsOps receives permission to use the existing logged-in session.
+The AI workforce performs approved browser work without requiring a native API.
+OR
+The customer installs NeedsOps Connect.
+The customer approves folders, applications and capabilities.
+The cloud workforce performs approved work through the local device.
+
+Audit whether the current schema and services support:
+
+* browser-session pairing
+* browser-extension pairing
+* domain allowlists
+* tab-level access
+* visible execution state
+* form filling
+* uploads and downloads
+* approval before submission
+* customer stop control
+* device identity
+* one-time device pairing
+* device revocation
+* allowed local paths
+* path traversal protection
+* symbolic-link protection
+* local application allowlists
+* local activity logs
+* local pause and disconnect
+
+Classify each item honestly.
+
+Identify any architecture that wrongly assumes all customer systems will use APIs.
+
+⸻
+
+Section 9: Connector and External System Audit
+
+Review the connector registry and integration architecture.
+
+Determine whether it supports all three execution types:
+
+API
+Browser
+Local
+
+Review planned or registered support for:
+
+* Google Workspace
+* Microsoft 365
+* Xero
+* MYOB
+* Zoho
+* NeedsCare AI+
+* Need2Comply AI+
+* Needs2Learn AI+
+* ShiftCare
+* Lumary
+* Brevity
+* custom CRM
+* government portals
+* ATO-related systems
+* local folders
+* local applications
+
+Distinguish between:
+
+* registered metadata
+* real OAuth integration
+* real API integration
+* real browser execution
+* real local execution
+
+Do not describe metadata registration as integration.
+
+⸻
+
+Section 10: Intelligence Engine Audit
+
+Review lib/intelligence.
+
+For each planned engine:
+
+* SCHADS Award
+* NDIS Pricing
+* NDIS Compliance
+* Risk
+* Quality
+
+Determine:
+
+* interface status
+* domain types
+* source version support
+* effective-date support
+* rule versioning
+* deterministic evaluation
+* evidence references
+* audit output
+* real data files
+* concrete rule implementations
+* tests
+* use by Workforce Roles
+
+Clearly distinguish foundational types from working engines.
+
+Determine whether any engine should be implemented before live OpenClaw execution, or whether it can follow later.
+
+⸻
+
+Section 11: Security and Governance Audit
+
+Evaluate:
+
+* authentication
+* email verification
+* sessions
+* tenant context
+* tenant isolation
+* RBAC
+* platform roles
+* entitlements
+* usage gates
+* approval enforcement
+* audit logging
+* secret storage
+* invitation token security
+* support access boundaries
+* cross-tenant tests
+* explicit-denial precedence
+* runtime policy boundaries
+* prompt injection readiness
+* browser-session risks
+* local-device risks
+* customer-data exposure risks
+
+List:
+
+* controls currently working
+* controls only documented
+* controls missing before live execution
+* critical blockers before external customers
+
+⸻
+
+Section 12: Commercial Readiness Audit
+
+Assess:
+
+* plan catalogue
+* plan versioning
+* price fields
+* workforce pack entitlements
+* connector eligibility
+* execution entitlements
+* seat limits
+* usage limits
+* trials
+* tenant overrides
+* public pricing page
+* plan-selection flow
+* automatic trial assignment
+* Stripe
+* payment collection
+* invoices
+* failed payment handling
+* upgrades
+* downgrades
+* promotions
+* taxes
+* subscription cancellation
+
+Answer:
+
+Can a new customer currently choose a plan without NeedsOps staff?
+Yes / No
+Can a new customer currently begin a trial without NeedsOps staff?
+Yes / No
+Can a new customer currently pay?
+Yes / No
+Can NeedsOps staff manually assign a plan?
+Yes / No
+Can prices and access levels be managed through the console?
+Yes / Partly / No
+
+⸻
+
+Section 13: Mobile Audit
+
+Inspect the Expo application.
+
+Determine what is genuinely connected to the backend.
+
+Review:
+
+* registration
+* login
+* organisation selection
+* dashboard
+* Workforce
+* tasks
+* approvals
+* execution sessions
+* notifications
+* secure token storage
+* offline behaviour
+* push notifications
+* deep links
+* App Store readiness
+
+Distinguish real backend data from placeholders.
+
+⸻
+
+Section 14: Code and Architecture Quality
+
+Assess:
+
+* monorepo organisation
+* package boundaries
+* naming consistency
+* duplicate logic
+* dead code
+* obsolete Sprint 0 routes
+* schema duplication
+* legacy columns
+* circular dependencies
+* test quality
+* test coverage
+* migration quality
+* seed idempotency
+* environment validation
+* Replit-specific coupling
+* AWS portability
+* runtime portability
+* OpenClaw replaceability
+
+List the ten most important technical debts, ranked by severity.
+
+⸻
+
+Section 15: Direction Drift Assessment
+
+Compare the actual build to the original vision.
+
+For each statement answer:
+
+ON TRACK
+PARTLY ON TRACK
+OFF TRACK
+
+Statements:
+
+1. NeedsOps is a multi-tenant SaaS.
+2. NeedsOps sells an AI Workforce rather than individual agents.
+3. Chief of Staff coordinates specialist Workforce Roles.
+4. Workforce Roles are separate from execution runtimes.
+5. Worker Profiles control tools and surfaces.
+6. Intelligence Engines remain separate from agents.
+7. OpenClaw remains replaceable behind an adapter.
+8. Browser execution is a first-class path.
+9. Local computer execution is a first-class path.
+10. Native APIs are optional accelerators, not a hard dependency.
+11. NeedsOps can work with customers using other CRMs.
+12. NeedsCare and Need2Comply are optional systems.
+13. Platform staff can manage organisations and commercial access.
+14. Customer users remain isolated by tenant.
+15. Sensitive actions require human control.
+16. The customer experience centres on messaging and assigning work.
+17. The platform is progressing toward real autonomous execution.
+18. The platform is not drifting into a static admin and metadata system.
+
+For every PARTLY ON TRACK or OFF TRACK, explain the correction needed.
+
+⸻
+
+Section 16: Gap Register
+
+Create a ranked gap register.
+
+Use these priorities:
+
+P0 — blocks the intended product
+P1 — required before external pilot
+P2 — required before paid launch
+P3 — valuable after launch
+
+For every gap include:
+
+* gap
+* priority
+* business impact
+* technical impact
+* affected subsystem
+* recommended sprint
+* dependency
+* estimated complexity: small / medium / large
+
+Do not estimate time in days or weeks.
+
+⸻
+
+Section 17: Recommended Roadmap
+
+Based on the actual codebase, recommend the next sprints.
+
+Do not blindly follow the previous roadmap if the code shows a different dependency order.
+
+The roadmap must preserve the central vision of real browser and local-device execution.
+
+At minimum consider:
+
+* Execution Framework, if not complete
+* OpenClaw Runtime Integration
+* Browser Execution
+* NeedsOps Connect
+* Self-Service Plan Selection and Trial Onboarding
+* Stripe Billing
+* Universal Connector Framework
+* Messaging Interface
+* Live AI and LLM Routing
+* Intelligence Engines
+* Notifications
+* Production Infrastructure
+* Security Hardening
+* External Pilot
+
+For every proposed sprint provide:
+
+* objective
+* key deliverables
+* why it comes in that order
+* dependency on earlier work
+* definition of done
+
+⸻
+
+Section 18: Final Verdict
+
+End with an honest verdict answering:
+
+1. What have we truly built?
+2. What have we not built?
+3. Is the architecture suitable for the original vision?
+4. Has the project departed from its intention?
+5. What is the next best sprint?
+6. What must not be built yet?
+7. What is the largest risk if development continues in the wrong order?
+8. What should the founder be confident about?
+9. What should the founder remain cautious about?
+
+⸻
+
+Required Report Format
+
+Create:
+
+docs/full-build-direction-audit.md
+
+Also print a concise summary in the Replit response.
+
+Use this structure:
+
+NEEDSOPS AI+ FULL BUILD AND DIRECTION AUDIT
+Audit date:
+Current branch or checkpoint:
+Current sprint:
+Test status:
+Applications inspected:
+Overall maturity score:
+Direction status:
+Real execution status:
+External customer readiness:
+Strongest completed areas:
+-
+Largest gaps:
+-
+Direction drift:
+-
+Immediate recommendation:
+-
+Next recommended sprint:
+-
+
+Do not make code changes during this audit.
+
+Do not begin the next sprint.
+
+Do not install OpenClaw.
+
+Do not add new pages, tables or services unless required only to run the audit, and if so, report them rather than committing them.
+
+Complete the audit, save the report and stop for review.
