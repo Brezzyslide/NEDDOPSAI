@@ -10,6 +10,7 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.21.0",
     "@workspace/db": "workspace:*",
     "@workspace/secrets": "workspace:*",
     "drizzle-orm": "catalog:",

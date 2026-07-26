@@ -171,13 +171,149 @@ export class FilesystemBackupProvider implements BackupStorageProvider {
   }
 }
 
+// ─── Object Storage provider (Replit Object Storage / GCS) ───────────────────
+
+/**
+ * ObjectStorageBackupProvider
+ *
+ * Stores encrypted backups in Replit Object Storage (Google Cloud Storage).
+ * This is the durable, production-ready backend for development on Replit.
+ *
+ * Requires:
+ *   DEFAULT_OBJECT_STORAGE_BUCKET_ID — set automatically when Object Storage
+ *   is provisioned in the Replit workspace.
+ *
+ * Storage layout:
+ *   backups/<orgId>/<backupId>.enc
+ *
+ * Authentication:
+ *   Uses Replit's GCS sidecar authentication — no explicit credentials needed.
+ */
+export class ObjectStorageBackupProvider implements BackupStorageProvider {
+  readonly providerName = "object-storage";
+  private readonly bucketId: string;
+
+  constructor(bucketId?: string) {
+    const resolved = bucketId ?? process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"];
+    if (!resolved) {
+      throw new BackupStorageError(
+        "ObjectStorageBackupProvider requires DEFAULT_OBJECT_STORAGE_BUCKET_ID to be set. " +
+        "Provision Object Storage in the Replit workspace first.",
+      );
+    }
+    this.bucketId = resolved;
+  }
+
+  private objectKey(organizationId: string, backupId: string): string {
+    if (!/^[0-9a-f-]{36}$/.test(organizationId)) {
+      throw new BackupStorageError(`Invalid organizationId format: ${organizationId}`);
+    }
+    if (!/^[0-9a-f-]{36}$/.test(backupId)) {
+      throw new BackupStorageError(`Invalid backupId format: ${backupId}`);
+    }
+    return `backups/${organizationId}/${backupId}.enc`;
+  }
+
+  async store(organizationId: string, backupId: string, encryptedPayload: string): Promise<string> {
+    const { Storage } = await import("@google-cloud/storage");
+    const storage = new Storage();
+    const key = this.objectKey(organizationId, backupId);
+    try {
+      await storage.bucket(this.bucketId).file(key).save(encryptedPayload, {
+        contentType: "application/octet-stream",
+        metadata: { organizationId, backupId, createdAt: new Date().toISOString() },
+      });
+      return backupId;
+    } catch (err: any) {
+      throw new BackupStorageError(
+        `Failed to store backup ${backupId} for org ${organizationId}: ${err?.message ?? err}`,
+        err,
+      );
+    }
+  }
+
+  async retrieve(organizationId: string, storageRef: string): Promise<string> {
+    const { Storage } = await import("@google-cloud/storage");
+    const storage = new Storage();
+    const key = this.objectKey(organizationId, storageRef);
+    try {
+      const [contents] = await storage.bucket(this.bucketId).file(key).download();
+      return contents.toString("utf8");
+    } catch (err: any) {
+      if (err?.code === 404 || err?.message?.includes("No such object")) {
+        throw new BackupStorageError(`Backup not found: ${storageRef} for org ${organizationId}`);
+      }
+      throw new BackupStorageError(
+        `Failed to retrieve backup ${storageRef} for org ${organizationId}: ${err?.message ?? err}`,
+        err,
+      );
+    }
+  }
+
+  async delete(organizationId: string, storageRef: string): Promise<void> {
+    const { Storage } = await import("@google-cloud/storage");
+    const storage = new Storage();
+    const key = this.objectKey(organizationId, storageRef);
+    try {
+      await storage.bucket(this.bucketId).file(key).delete({ ignoreNotFound: true });
+    } catch (err: any) {
+      throw new BackupStorageError(
+        `Failed to delete backup ${storageRef} for org ${organizationId}: ${err?.message ?? err}`,
+        err,
+      );
+    }
+  }
+
+  async exists(organizationId: string, storageRef: string): Promise<boolean> {
+    const { Storage } = await import("@google-cloud/storage");
+    const storage = new Storage();
+    const key = this.objectKey(organizationId, storageRef);
+    try {
+      const [exists] = await storage.bucket(this.bucketId).file(key).exists();
+      return exists;
+    } catch {
+      return false;
+    }
+  }
+
+  async list(organizationId: string): Promise<string[]> {
+    const { Storage } = await import("@google-cloud/storage");
+    const storage = new Storage();
+    const prefix = `backups/${organizationId}/`;
+    try {
+      const [files] = await storage.bucket(this.bucketId).getFiles({ prefix });
+      return files
+        .map(f => f.name.replace(prefix, "").replace(/\.enc$/, ""))
+        .filter(name => /^[0-9a-f-]{36}$/.test(name))
+        .sort()
+        .reverse(); // newest-first approximation (UUID v4 has time component in most generators)
+    } catch (err: any) {
+      throw new BackupStorageError(
+        `Failed to list backups for org ${organizationId}: ${err?.message ?? err}`,
+        err,
+      );
+    }
+  }
+}
+
 // ─── Default provider ─────────────────────────────────────────────────────────
 
 let _defaultProvider: BackupStorageProvider | null = null;
 
+/**
+ * Returns the default backup storage provider.
+ *
+ * Selection order:
+ *   1. ObjectStorageBackupProvider — when DEFAULT_OBJECT_STORAGE_BUCKET_ID is set
+ *   2. FilesystemBackupProvider   — fallback for environments without GCS
+ */
 export function getDefaultBackupStorageProvider(): BackupStorageProvider {
   if (!_defaultProvider) {
-    _defaultProvider = new FilesystemBackupProvider();
+    if (process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]) {
+      _defaultProvider = new ObjectStorageBackupProvider();
+    } else {
+      _defaultProvider = new FilesystemBackupProvider();
+    }
   }
   return _defaultProvider;
 }

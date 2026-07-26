@@ -5,10 +5,20 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
+    "provision-persistent-orgs": "tsx ./provision-persistent-orgs.ts",
+    "provision-org": "tsx ./provision-org.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "@workspace/org-db": "workspace:*",
+    "@workspace/secrets": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.20.0",
     "tsx": "catalog:"
   }
 }

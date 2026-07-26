@@ -1,7 +1,11 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { drainAllPools, startPoolReaper } from "@workspace/org-db";
-import { startBackupScheduler, stopBackupScheduler, FilesystemBackupProvider } from "@workspace/org-db";
+import {
+  startBackupScheduler, stopBackupScheduler,
+  FilesystemBackupProvider, ObjectStorageBackupProvider,
+  type BackupStorageProvider,
+} from "@workspace/org-db";
 import { runRLSStartupCheck } from "./startup/rlsStartupCheck";
 
 const rawPort = process.env["PORT"];
@@ -38,10 +42,20 @@ async function start(): Promise<void> {
   startPoolReaper();
   logger.info("[startup] Organisation connection pool reaper started");
 
-  // 3. Start backup scheduler
-  //    Uses FilesystemBackupProvider for dev; swap for GCS/S3 in production.
+  // 3. Start backup scheduler.
+  //    Uses ObjectStorageBackupProvider (GCS via Replit Object Storage) when
+  //    DEFAULT_OBJECT_STORAGE_BUCKET_ID is configured; falls back to filesystem.
+  let backupProvider: BackupStorageProvider;
+  if (process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]) {
+    backupProvider = new ObjectStorageBackupProvider();
+    logger.info("[startup] Backup provider: Replit Object Storage (GCS)");
+  } else {
+    backupProvider = new FilesystemBackupProvider();
+    logger.info("[startup] Backup provider: filesystem (.backup-store/) — set DEFAULT_OBJECT_STORAGE_BUCKET_ID for durable storage");
+  }
+
   startBackupScheduler({
-    provider: new FilesystemBackupProvider(),
+    provider: backupProvider,
     intervalMs: 5 * 60 * 1000, // 5 minutes
   });
 

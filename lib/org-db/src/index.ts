@@ -115,6 +115,7 @@ export {
 export {
   type BackupStorageProvider,
   FilesystemBackupProvider,
+  ObjectStorageBackupProvider,
   BackupStorageError,
   getDefaultBackupStorageProvider,
   setDefaultBackupStorageProvider,
