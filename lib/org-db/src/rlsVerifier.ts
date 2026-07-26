@@ -45,6 +45,12 @@ export const REQUIRED_RLS_TABLES = [
   // Sprint 8 — Execution Runtime
   "execution_sessions",
   "execution_events",
+  // Sprint 9 — Conversational Task Workroom
+  "conversations",
+  "conversation_messages",
+  "conversation_participants",
+  "message_attachments",
+  "message_reads",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

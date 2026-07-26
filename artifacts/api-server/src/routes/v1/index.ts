@@ -12,6 +12,10 @@ import approvalsRouter from "./approvalRoutes.js";
 // Sprint 8: Execution lifecycle routes
 import executionRouter from "./execution.js";
 import runtimeEventsRouter from "./runtimeEvents.js";
+// Sprint 9: Conversational Task Workroom
+import conversationsRouter from "./conversations.js";
+import taskWorkroomRouter from "./taskWorkroom.js";
+import notificationsRouter from "./notifications.js";
 // Sprint 3 routers
 import plansRouter from "./plans.js";
 import workforcePacksRouter from "./workforcePacks.js";
@@ -30,6 +34,12 @@ router.use("/organisations/:slug/tasks", tasksRouter);
 router.use("/organisations/:slug/approvals", approvalsRouter);
 // Sprint 8: Task execution sessions
 router.use("/organisations/:slug/tasks/:taskId/execution", executionRouter);
+// Sprint 9: Task Workroom (messages, clarifications, commands per task)
+router.use("/organisations/:slug/tasks/:taskId", taskWorkroomRouter);
+// Sprint 9: Conversations (general + task-linked)
+router.use("/organisations/:slug/conversations", conversationsRouter);
+// Sprint 9: Notifications (unread counts, mark-read)
+router.use("/organisations/:slug/notifications", notificationsRouter);
 // Sprint 3: subscription / entitlements / usage scoped to org
 router.use("/organisations/:slug", orgSubscriptionRouter);
 router.use("/invitations", invitationAcceptRouter);

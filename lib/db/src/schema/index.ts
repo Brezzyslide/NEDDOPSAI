@@ -49,3 +49,9 @@ export * from "./platformSecrets";
 // Sprint 8 — Execution Runtime
 export * from "./executionSessions";
 export * from "./executionEvents";
+// Sprint 9 — Conversational Task Workroom
+export * from "./conversations";
+export * from "./conversationMessages";
+export * from "./conversationParticipants";
+export * from "./messageAttachments";
+export * from "./messageReads";

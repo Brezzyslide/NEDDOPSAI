@@ -1,0 +1,1178 @@
+Paste this into Replit. It turns the Task Centre into a proper conversational workroom while preserving task governance, approvals, execution states and OpenClaw events.
+
+NeedsOps AI+
+
+Sprint 9: Conversational Task Workroom
+
+Proceed with this sprint only.
+
+Do not begin new connectors, browser extensions, local-device access, Stripe billing or unrelated platform features.
+
+The purpose of this sprint is to transform the existing Task Centre from a one-directional task form into a sophisticated conversational workroom where users and the AI Workforce can:
+
+* discuss ideas
+* brainstorm possible work
+* clarify vague requests
+* recognise when a task is being proposed
+* recognise when an existing task is being discussed
+* refine scope before creating a task
+* create tasks from conversation
+* revise plans
+* request and provide approvals
+* ask follow-up questions
+* receive live execution updates
+* pause work for clarification
+* review outputs
+* continue discussion after completion
+
+The conversation must understand the lifecycle of work.
+
+It must distinguish between:
+
+general conversation
+brainstorming
+possible task request
+clarification required
+task ready to create
+task created
+planning
+awaiting user response
+awaiting approval
+approved
+queued
+in progress
+paused
+blocked
+completed
+failed
+cancelled
+follow-up on completed task
+
+The system must not treat every message as a new task.
+
+⸻
+
+Core Product Experience
+
+The intended experience is:
+
+User:
+We have an audit coming up and I am not sure where to begin.
+Chief of Staff:
+I can help organise that. Which registration groups are in scope, when is the audit, and where is your evidence currently stored?
+User:
+Core, High Intensity and Behaviour Support. The audit is next month. Most evidence is in SharePoint.
+Chief of Staff:
+Understood. This now looks like a formal audit-readiness task.
+Proposed task:
+Prepare audit readiness review for Core, High Intensity and Behaviour Support.
+I recommend involving:
+- Compliance Officer
+- Quality Officer
+- Policy Officer
+Would you like me to create the task and prepare the work plan?
+User:
+Yes.
+Chief of Staff:
+Task created. I am preparing the plan now.
+
+During execution:
+
+Compliance Officer:
+I have completed the policy register review.
+Quality Officer:
+I found five evidence gaps that need confirmation.
+Chief of Staff:
+Before continuing, I need your answer:
+Are staff competency records stored in the same SharePoint location?
+[Reply required]
+
+During approval:
+
+Chief of Staff:
+The team is ready to draft corrective actions and update the audit register.
+This requires Manager approval.
+[Approve]
+[Reject]
+[Request changes]
+
+At completion:
+
+Chief of Staff:
+The task is complete.
+Outputs:
+- Audit readiness report
+- Evidence gap register
+- Corrective action plan
+Would you like the workforce to prepare the next implementation task?
+
+⸻
+
+Non-Negotiable Principle
+
+The conversation is the collaboration surface.
+
+The task remains the governed operational record.
+
+The system must preserve:
+
+* task state machine
+* approvals
+* Workforce Role assignment
+* Worker Profile restrictions
+* execution plans
+* OpenClaw runtime submission
+* tenant isolation
+* permissions
+* entitlements
+* usage controls
+* audit history
+
+Do not replace structured tasks with ungoverned chat.
+
+Use this relationship:
+
+Conversation
+↓
+Task intent recognised
+↓
+Clarification and refinement
+↓
+User confirms task creation
+↓
+Formal task created
+↓
+Plan discussed and approved
+↓
+Execution updates return to thread
+↓
+Outputs and follow-up remain in thread
+
+⸻
+
+1. Conversation and Task Thread Model
+
+Create or complete a reusable conversation model.
+
+Preferred structure:
+
+conversations
+
+Fields:
+
+* id
+* organization_id
+* created_by_user_id
+* title
+* conversation_type
+* status
+* primary_task_id, nullable
+* last_message_at
+* archived_at
+* created_at
+* updated_at
+
+Conversation types:
+
+general_workforce
+task_workroom
+specialist
+approval_followup
+execution_followup
+
+Statuses:
+
+active
+awaiting_user
+awaiting_approval
+in_progress
+completed
+archived
+closed
+
+conversation_messages
+
+Fields:
+
+* id
+* organization_id
+* conversation_id
+* task_id, nullable
+* sender_type
+* sender_user_id, nullable
+* workforce_role_code, nullable
+* worker_profile_code, nullable
+* message_type
+* content
+* structured_content, nullable
+* parent_message_id, nullable
+* correlation_id, nullable
+* status
+* created_at
+* updated_at
+
+Sender types:
+
+user
+chief_of_staff
+workforce_role
+runtime
+system
+
+Message types:
+
+text
+question
+clarification_request
+task_proposal
+task_created
+plan_proposal
+plan_revision
+delegation
+progress
+status_change
+approval_request
+approval_decision
+execution_update
+warning
+error
+output
+result
+follow_up
+system_notice
+
+conversation_participants
+
+Fields:
+
+* id
+* organization_id
+* conversation_id
+* participant_type
+* user_id, nullable
+* workforce_role_code, nullable
+* worker_profile_code, nullable
+* joined_at
+* left_at
+* created_at
+
+message_attachments
+
+Support attachments linked to conversation and task.
+
+message_reads
+
+Track unread state per user where appropriate.
+
+Do not force conversation content into tasks.description, approvals.notes or execution_events.
+
+⸻
+
+2. Conversational Intent Recognition
+
+Create a provider-independent Conversation Intelligence service.
+
+It must classify each new user message into a structured conversational state.
+
+Suggested output:
+
+interface ConversationUnderstanding {
+  conversationMode:
+    | "general"
+    | "brainstorming"
+    | "task_intent"
+    | "task_clarification"
+    | "task_confirmation"
+    | "task_followup"
+    | "approval_response"
+    | "execution_query"
+    | "cancellation_request"
+    | "status_request"
+    | "result_followup";
+  confidence: number;
+  existingTaskId?: string;
+  proposedTask?: {
+    title: string;
+    summary: string;
+    priority?: string;
+    requestedOutcome: string;
+    knownConstraints: string[];
+  };
+  clarificationRequired: boolean;
+  clarificationQuestions: string[];
+  shouldCreateTask: boolean;
+  shouldUpdateTask: boolean;
+  requestedTaskAction?:
+    | "create"
+    | "revise"
+    | "approve"
+    | "reject"
+    | "pause"
+    | "resume"
+    | "cancel"
+    | "status"
+    | "follow_up";
+  relatedWorkforceRoles: string[];
+  customerResponse: string;
+}
+
+The AI may propose task intent.
+
+Deterministic services must validate:
+
+* task existence
+* task ownership
+* current task state
+* user permissions
+* valid transition
+* selected Workforce Roles
+* required approval
+* execution availability
+
+The LLM must not directly change task state.
+
+⸻
+
+3. Task Recognition Rules
+
+The conversation must recognise common forms of task intent.
+
+Examples:
+
+Can you review our incident reports?
+Prepare a response to this email.
+I need help getting ready for an audit.
+Check which staff qualifications are expired.
+Open the CRM and update the participant record.
+Draft a policy review plan.
+Remind the team next week.
+
+But it must not automatically create a task for casual statements such as:
+
+Audits are stressful.
+What does the SCHADS Award say?
+Tell me about restrictive practice.
+I am thinking about reviewing our policies.
+
+Use this decision model:
+
+Informational request
+→ answer in conversation
+Exploratory or brainstorming request
+→ discuss and refine
+Clear actionable request with enough information
+→ propose task creation
+Clear actionable request with missing critical information
+→ ask clarification
+User explicitly confirms
+→ create formal task
+
+Allow organisations to configure whether low-risk tasks may be auto-created without a separate confirmation.
+
+Default behaviour:
+
+Require user confirmation before formal task creation.
+
+⸻
+
+4. Conversation State Awareness
+
+The system must always inspect the current conversation and related task state before replying.
+
+Examples:
+
+No task exists
+
+The AI may:
+
+* brainstorm
+* answer questions
+* ask clarification
+* propose a task
+
+Task is draft
+
+The AI may:
+
+* refine scope
+* revise title or description
+* propose Workforce Roles
+* prepare plan
+
+Task is planning
+
+The AI may:
+
+* provide planning updates
+* ask clarification
+* revise the plan
+
+Task is awaiting approval
+
+The AI must:
+
+* clearly state what is awaiting approval
+* present approval card
+* answer questions about the proposed action
+* not imply execution has started
+
+Task is approved or queued
+
+The AI may:
+
+* confirm approval
+* show queue status
+* explain next step
+
+Task is executing
+
+The AI must:
+
+* show runtime updates
+* answer status questions
+* surface blockers
+* ask user questions when execution cannot continue
+* support pause or cancel where authorised
+
+Task is paused or blocked
+
+The AI must:
+
+* explain the blocking reason
+* ask the precise question required
+* show what will resume after the answer
+
+Task is completed
+
+The AI may:
+
+* summarise results
+* show outputs
+* answer follow-up questions
+* propose a new follow-up task
+* never reopen or alter the completed task silently
+
+Task is failed
+
+The AI must:
+
+* explain the failure honestly
+* show safe retry options
+* preserve evidence and logs
+* ask whether to retry, revise or cancel
+
+⸻
+
+5. Clarification Workflow
+
+Create agent-initiated clarification requests.
+
+A clarification request must include:
+
+* task or proposed task
+* question
+* why the answer is required
+* blocking or non-blocking status
+* expected response type
+* requested by Workforce Role
+* expiry where relevant
+* resolved at
+* resolved by
+* response
+
+Create a structured message card.
+
+Examples:
+
+Clarification required
+The Compliance Officer needs to know:
+Which registration groups are included in this audit?
+Why this matters:
+The evidence checklist changes depending on registration group.
+[Reply]
+
+Execution or planning must pause where the question is blocking.
+
+Once the user replies:
+
+* store the response
+* mark clarification resolved
+* update task context
+* revise the plan if necessary
+* resume the correct workflow
+
+⸻
+
+6. Brainstorming Mode
+
+Support conversation before task creation.
+
+The Chief of Staff should be able to:
+
+* explore options
+* identify objectives
+* compare approaches
+* challenge weak assumptions respectfully
+* explain trade-offs
+* identify missing information
+* turn discussion into a proposed task
+* summarise agreed scope
+
+Brainstorming must not create hidden operational records.
+
+When the discussion becomes actionable, show:
+
+This is ready to become a task.
+Proposed title:
+Prepare audit readiness review
+Expected outcome:
+A report identifying evidence gaps and corrective actions.
+Workforce Roles:
+Compliance Officer
+Quality Officer
+[Create task]
+[Continue discussing]
+
+⸻
+
+7. Task Creation From Conversation
+
+When the user confirms task creation:
+
+1. validate tenant context
+2. validate permission
+3. validate entitlement
+4. validate usage
+5. create the task
+6. link it to the conversation
+7. link the originating messages
+8. assign Workforce Roles
+9. map Worker Profiles
+10. create task planning state
+11. add a task_created structured message
+12. begin Chief of Staff planning
+13. prevent duplicate creation through idempotency
+
+The user should not have to retype the title and description into a separate form.
+
+The existing task form may remain as an alternative.
+
+⸻
+
+8. Plan Discussion and Revision
+
+The AI must present the plan inside the conversation.
+
+Plan card should show:
+
+* task objective
+* selected Workforce Roles
+* Worker Profiles
+* proposed steps
+* expected outputs
+* required execution surfaces
+* risks
+* blockers
+* approvals
+* assumptions
+
+Provide actions:
+
+Approve plan
+Request changes
+Ask a question
+Cancel task
+
+When the user requests changes:
+
+* preserve the previous version
+* record the feedback
+* create a revised plan version
+* explain what changed
+* require fresh approval where material
+
+Approved plans remain immutable.
+
+⸻
+
+9. Approval Requests in Conversation
+
+Approval requests must appear as structured cards inside the task thread.
+
+Show:
+
+* requested action
+* requesting Workforce Role
+* affected system or resource
+* reason
+* risk level
+* before state where available
+* proposed after state where available
+* expiry
+* approval type
+* required approver
+
+Actions:
+
+Approve
+Reject
+Request changes
+Ask for more information
+
+A text reply such as:
+
+Yes, approve it.
+
+may be interpreted as approval intent, but deterministic permission and confirmation checks must still apply.
+
+For high-risk approval, require explicit button confirmation even when text intent is recognised.
+
+⸻
+
+10. Execution Updates in Conversation
+
+Convert existing execution_events into customer-readable structured messages.
+
+Do not duplicate events unnecessarily.
+
+Map runtime events such as:
+
+execution.accepted
+execution.started
+execution.step_started
+execution.step_completed
+execution.awaiting_approval
+execution.paused
+execution.resumed
+execution.completed
+execution.failed
+execution.cancelled
+
+into the task thread.
+
+Examples:
+
+Compliance Officer started reviewing the task.
+Step 2 of 5 completed:
+Policy register reviewed.
+Work is paused.
+The system needs approval before updating the external record.
+Execution failed during document upload.
+No external record was changed.
+
+Each update should include:
+
+* timestamp
+* Workforce Role
+* step
+* status
+* safe details
+* link to technical logs for authorised users
+
+Do not expose raw OpenClaw logs by default.
+
+⸻
+
+11. Agent-Initiated Queries During Execution
+
+OpenClaw or a Workforce Role may request information from the user.
+
+Create a secure runtime-to-conversation flow:
+
+Runtime detects missing information
+↓
+Runtime event sent to NeedsOps
+↓
+NeedsOps validates tenant and execution session
+↓
+Structured clarification message created
+↓
+Task moves to blocked or paused
+↓
+User replies
+↓
+NeedsOps validates reply
+↓
+Response sent to approved runtime session
+↓
+Execution resumes
+
+OpenClaw must not message customers directly outside NeedsOps.
+
+NeedsOps remains the conversation owner.
+
+⸻
+
+12. Task Detail Workroom
+
+Create or replace the task detail route:
+
+/app/:organisationSlug/tasks/:taskId
+
+The page should combine:
+
+* task header
+* status
+* priority
+* assignees
+* Workforce Roles
+* Worker Profiles
+* conversation thread
+* message composer
+* plan
+* approvals
+* execution progress
+* outputs
+* attachments
+* timeline
+* audit summary
+
+Use tabs or expandable panels only where needed.
+
+The conversation should remain the centre of the page.
+
+Suggested layout:
+
+Left:
+Task and conversation
+Right:
+Status
+Plan
+Approvals
+Outputs
+Workforce
+
+On mobile, use a single-column layout.
+
+⸻
+
+13. Main Workforce Chat
+
+The main Workforce Chat must also recognise when a conversation becomes a task.
+
+A task may begin from:
+
+/app/:organisationSlug/chat
+
+Once created, the same conversation may be opened in the Task Workroom.
+
+Do not create separate, disconnected conversation histories.
+
+Use one conversation model.
+
+⸻
+
+14. Specialist Participation
+
+Show which Workforce Roles are participating.
+
+Examples:
+
+Chief of Staff is coordinating.
+Compliance Officer joined.
+Policy Officer joined.
+Finance Officer left the task after completing the cost review.
+
+Workforce Roles may post role-labelled responses.
+
+The customer should see one coordinated experience, not chaotic agent chatter.
+
+Chief of Staff should consolidate where multiple roles respond.
+
+Provide an expandable “Workforce activity” panel for detailed handoffs.
+
+⸻
+
+15. Smart Status Questions
+
+The system must recognise questions such as:
+
+What is happening with this task?
+Where are we up to?
+Why is this paused?
+Who is working on it?
+What are you waiting for?
+Has it been approved?
+Did it complete?
+What failed?
+Can you stop it?
+Can we change the plan?
+
+Responses must come from actual task, approval and execution state.
+
+Do not ask the LLM to guess operational status.
+
+Use deterministic state data and allow the LLM only to explain it clearly.
+
+⸻
+
+16. Smart Task Commands
+
+Recognise user commands such as:
+
+Create the task.
+Change the deadline to Friday.
+Add the Policy Officer.
+Remove the Finance Officer.
+Approve the plan.
+Reject this step.
+Pause the task.
+Resume the task.
+Cancel it.
+Try again.
+Create a follow-up task.
+
+Every command must pass:
+
+* identity check
+* tenant membership
+* permission
+* entitlement
+* valid state transition
+* approval rules
+* audit logging
+
+The LLM identifies intent.
+
+NeedsOps services perform or reject the action.
+
+⸻
+
+17. Conversation Memory
+
+Conversation context should include:
+
+* recent messages
+* task scope
+* task status
+* plan
+* unresolved questions
+* approvals
+* outputs
+* selected Workforce Roles
+* organisation terminology
+
+Do not send the entire lifetime conversation to the AI without limits.
+
+Implement:
+
+* summarisation
+* recent-message window
+* structured task context
+* token budget
+* pinned decisions
+* unresolved issue list
+
+Keep durable operational facts in structured database fields, not only in conversation summaries.
+
+⸻
+
+18. Notifications and Unread State
+
+Create in-app notification support for:
+
+* agent asked a question
+* approval required
+* task started
+* task paused
+* task failed
+* task completed
+* user mentioned
+* plan revised
+
+Email and push delivery may remain later unless already available.
+
+Support:
+
+* unread counts
+* mark read
+* deep link to task message
+* notification preferences placeholder
+
+⸻
+
+19. Web API
+
+Create or adapt routes similar to:
+
+GET    /v1/organisations/:slug/conversations
+POST   /v1/organisations/:slug/conversations
+GET    /v1/organisations/:slug/conversations/:conversationId
+GET    /v1/organisations/:slug/conversations/:conversationId/messages
+POST   /v1/organisations/:slug/conversations/:conversationId/messages
+POST   /v1/organisations/:slug/conversations/:conversationId/cancel-response
+POST   /v1/organisations/:slug/conversations/:conversationId/create-task
+GET    /v1/organisations/:slug/tasks/:taskId/workroom
+POST   /v1/organisations/:slug/tasks/:taskId/messages
+POST   /v1/organisations/:slug/tasks/:taskId/clarifications/:id/respond
+POST   /v1/organisations/:slug/tasks/:taskId/plan/request-changes
+POST   /v1/organisations/:slug/tasks/:taskId/commands
+
+Use the existing approval and execution endpoints rather than duplicating them.
+
+⸻
+
+20. Streaming
+
+Stream:
+
+* AI response text
+* task recognition
+* Workforce Role selection
+* planning progress
+* clarification requests
+* runtime updates
+* approval requests
+* completion messages
+
+Use truthful state.
+
+Do not show generic fake progress.
+
+Allow the user to stop an AI response.
+
+Stopping an AI response does not automatically cancel a running task unless the user explicitly requests task cancellation.
+
+⸻
+
+21. Mobile
+
+Update the Expo app with real:
+
+* conversation list
+* task workroom
+* messages
+* attachments
+* agent questions
+* approval cards
+* execution updates
+* outputs
+* unread indicators
+* task commands
+
+Remove hardcoded production-path task and approval data.
+
+Mobile and web must use the same backend truth.
+
+⸻
+
+22. Audit Events
+
+Add:
+
+conversation.created
+conversation.message_created
+conversation.message_failed
+conversation.archived
+task.intent_detected
+task.proposed_from_conversation
+task.confirmed_from_conversation
+task.created_from_conversation
+task.scope_refined
+task.command_requested
+task.command_completed
+task.command_rejected
+clarification.requested
+clarification.responded
+clarification.expired
+plan.presented
+plan.change_requested
+plan.revised
+workforce_role.joined_conversation
+workforce_role.left_conversation
+runtime.update_posted
+result.posted_to_conversation
+followup_task.proposed
+
+Do not store raw sensitive message content in platform-wide audit logs.
+
+⸻
+
+23. Security
+
+Implement:
+
+* strict tenant isolation
+* message permission checks
+* attachment isolation
+* content-size limits
+* rate limiting
+* prompt injection controls
+* structured output validation
+* runtime event verification
+* safe markdown rendering
+* HTML sanitisation
+* no executable attachment rendering
+* no cross-task command execution
+* no hidden task creation
+* explicit confirmation for high-risk actions
+* no raw OpenClaw logs shown to normal users
+
+Treat message attachments and runtime content as untrusted.
+
+⸻
+
+24. Tests
+
+Create comprehensive tests.
+
+Task recognition
+
+* informational question does not create task
+* brainstorming does not create task
+* clear task request creates proposal
+* ambiguous task asks clarification
+* explicit confirmation creates task
+* retry does not create duplicate task
+* message about existing task links correctly
+* completed task follow-up does not silently reopen task
+
+State awareness
+
+* draft task supports refinement
+* awaiting approval shows correct approval
+* executing task returns real status
+* paused task explains blocker
+* completed task returns outputs
+* failed task offers valid retry options
+* cancelled task rejects resume unless policy permits
+
+Clarifications
+
+* agent can ask blocking question
+* user response resolves question
+* wrong tenant cannot respond
+* unresolved blocking question prevents progress
+* execution resumes after valid response
+
+Commands
+
+* authorised user can pause
+* unauthorised user cannot pause
+* invalid transition rejected
+* text approval intent still requires high-risk confirmation
+* cancel command is audited
+* status command reads deterministic state
+
+Conversation security
+
+* Tenant A cannot read Tenant B messages
+* user without task access cannot open workroom
+* attachment access is isolated
+* unsafe HTML is sanitised
+* prompt injection cannot override system policy
+
+Runtime updates
+
+* verified runtime event becomes message
+* duplicate runtime event is idempotent
+* forged runtime event rejected
+* terminal state update shown correctly
+* raw runtime secret is not exposed
+
+Mobile
+
+* mobile loads real workroom
+* mobile sends message
+* mobile resolves clarification
+* mobile approval works
+* no hardcoded task data remains
+
+All existing tests must continue to pass.
+
+⸻
+
+25. Completion Criteria
+
+This sprint is complete only when:
+
+* a user can begin with an ordinary conversation
+* the AI can distinguish discussion from task intent
+* the AI can ask clarification questions
+* user confirmation creates a formal task
+* the same thread continues after task creation
+* the Chief of Staff can brainstorm and refine scope
+* plan appears in the thread
+* plan changes can be requested
+* approvals appear in the thread
+* runtime events appear as meaningful updates
+* the agent can ask questions during execution
+* user responses resume the workflow
+* status questions return real state
+* task commands are recognised and safely executed
+* outputs appear in the task thread
+* web Task Workroom works
+* mobile Task Workroom works
+* tenant isolation passes
+* tests pass
+* documentation is updated
+
+⸻
+
+Final Required Output
+
+Provide:
+
+SPRINT 9 COMPLETION REPORT
+Overall status:
+Complete / Incomplete
+Conversation model:
+-
+Task Workroom:
+-
+Task intent recognition:
+-
+Brainstorming:
+-
+Clarification workflow:
+-
+Task creation from conversation:
+-
+Task state awareness:
+-
+Plan discussion and revision:
+-
+Approval cards:
+-
+Runtime updates:
+-
+Agent-initiated queries:
+-
+Smart status questions:
+-
+Smart task commands:
+-
+Conversation memory:
+-
+Notifications:
+-
+Web experience:
+-
+Mobile experience:
+-
+Database changes:
+-
+API routes:
+-
+Audit events:
+-
+Security controls:
+-
+Tests passed:
+-
+Known issues:
+-
+Technical debt:
+-
+Recommended next sprint:
+-
+Ready for next sprint:
+Yes / No
+
+Begin this sprint now.
+
+Do not begin unrelated connector, billing or infrastructure work.
+
+Stop after producing the completion report.
+
+The main test is simple: a user should be able to begin with a loose idea, work through it naturally with the Chief of Staff, turn it into a formal task, approve the plan, watch real execution updates and continue the discussion until the result is complete.

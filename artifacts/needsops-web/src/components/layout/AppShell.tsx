@@ -5,6 +5,7 @@ interface AppShellProps { orgSlug: string; children: React.ReactNode; }
 
 const NAV = [
   { label: "Dashboard",  icon: "⬡",  path: "" },
+  { label: "Chat",       icon: "💬", path: "/chat" },
   { label: "Workforce",  icon: "🤖", path: "/workforce" },
   { label: "Tasks",      icon: "📌", path: "/tasks" },
   { label: "Approvals",  icon: "✅", path: "/approvals" },

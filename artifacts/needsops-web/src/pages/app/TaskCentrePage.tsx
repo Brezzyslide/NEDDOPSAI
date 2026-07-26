@@ -4,7 +4,7 @@
  */
 
 import { useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
@@ -39,6 +39,7 @@ const PRIORITY_BADGE: Record<string, string> = {
 
 export default function TaskCentrePage() {
   const { slug } = useParams<{ slug: string }>();
+  const [, setLocation] = useLocation();
   const apiFetch = useAuthFetch();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
@@ -193,7 +194,8 @@ export default function TaskCentrePage() {
               return (
                 <div
                   key={task.id}
-                  className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 hover:border-[#00D4FF]/30 transition-colors"
+                  onClick={() => setLocation(`/app/${slug}/tasks/${task.id}`)}
+                  className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 hover:border-[#00D4FF]/30 transition-colors cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">

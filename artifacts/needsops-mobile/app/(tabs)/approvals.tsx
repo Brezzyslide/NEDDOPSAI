@@ -1,3 +1,7 @@
+/**
+ * Approvals screen — Sprint 9
+ * Replaced placeholder data with real API calls.
+ */
 import React, { useState } from 'react';
 import {
   View,
@@ -5,35 +9,13 @@ import {
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
 } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
-
-const PLACEHOLDER_APPROVALS = [
-  {
-    id: 'a1',
-    approvalType: 'compliance_approval',
-    state: 'pending',
-    taskId: 'Review NDIS Policy',
-    requestedAt: new Date().toISOString(),
-  },
-  {
-    id: 'a2',
-    approvalType: 'manager_approval',
-    state: 'approved',
-    taskId: 'Q2 Budget Summary',
-    requestedAt: new Date(Date.now() - 3600000).toISOString(),
-    resolvedAt: new Date(Date.now() - 1800000).toISOString(),
-  },
-  {
-    id: 'a3',
-    approvalType: 'administrator_approval',
-    state: 'rejected',
-    taskId: 'Incident Report #112',
-    requestedAt: new Date(Date.now() - 86400000).toISOString(),
-    resolvedAt: new Date(Date.now() - 82000000).toISOString(),
-  },
-];
+import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch';
 
 const STATE_STYLE: Record<string, { colour: string; label: string }> = {
   pending:  { colour: '#FCD34D', label: 'Pending' },
@@ -45,14 +27,34 @@ const STATE_STYLE: Record<string, { colour: string; label: string }> = {
 export default function ApprovalsScreen() {
   const colors = useColors();
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const apiFetch = useAuthenticatedFetch();
 
-  const filtered = activeFilter
-    ? PLACEHOLDER_APPROVALS.filter(a => a.state === activeFilter)
-    : PLACEHOLDER_APPROVALS;
+  const orgSlug = (global as any).__needsops_org_slug as string | undefined;
+
+  const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+    queryKey: ['mobile-approvals', orgSlug, activeFilter],
+    queryFn: async () => {
+      if (!orgSlug) return { approvals: [] };
+      const stateParam = activeFilter ? `?state=${activeFilter}` : '';
+      const res = await apiFetch(`/v1/organisations/${orgSlug}/approvals${stateParam}`);
+      if (!res.ok) return { approvals: [] };
+      return res.json();
+    },
+    enabled: !!orgSlug,
+    refetchInterval: 20_000,
+  });
+
+  const approvals: any[] = data?.approvals ?? [];
+  const pendingCount = approvals.filter(a => a.state === 'pending').length;
+  const filtered = activeFilter ? approvals.filter(a => a.state === activeFilter) : approvals;
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      >
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.eyebrow, { color: colors.primary }]}>AI WORKFORCE</Text>
@@ -62,61 +64,95 @@ export default function ApprovalsScreen() {
           </Text>
         </View>
 
-        {/* Pending highlight */}
-        {PLACEHOLDER_APPROVALS.filter(a => a.state === 'pending').length > 0 && (
-          <View style={[styles.pendingBanner, { backgroundColor: '#FCD34D22', borderColor: '#FCD34D44' }]}>
-            <Text style={styles.pendingIcon}>⏳</Text>
-            <Text style={[styles.pendingText, { color: '#FCD34D' }]}>
-              {PLACEHOLDER_APPROVALS.filter(a => a.state === 'pending').length} pending approval{PLACEHOLDER_APPROVALS.filter(a => a.state === 'pending').length > 1 ? 's' : ''} awaiting your review
+        {!orgSlug && (
+          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+              Select an organisation from the Organisations tab to view approvals.
             </Text>
           </View>
         )}
 
-        {/* Filter chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
-          {['All', 'Pending', 'Approved', 'Rejected'].map(f => {
-            const isActive = f === 'All' ? activeFilter === null : activeFilter === f.toLowerCase();
-            const col = f === 'All' ? colors.primary : (STATE_STYLE[f.toLowerCase()]?.colour ?? colors.primary);
-            return (
-              <TouchableOpacity
-                key={f}
-                onPress={() => setActiveFilter(f === 'All' ? null : f.toLowerCase())}
-                style={[styles.chip, { borderColor: isActive ? col : colors.border, backgroundColor: isActive ? col + '22' : 'transparent' }]}
-              >
-                <Text style={[styles.chipText, { color: isActive ? col : colors.mutedForeground }]}>{f}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Approval cards */}
-        <View style={styles.list}>
-          {filtered.map(approval => {
-            const s = STATE_STYLE[approval.state] ?? STATE_STYLE.pending!;
-            return (
-              <View key={approval.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.cardTop}>
-                  <View style={[styles.badge, { backgroundColor: s.colour + '22' }]}>
-                    <Text style={[styles.badgeText, { color: s.colour }]}>{s.label}</Text>
-                  </View>
-                  <Text style={[styles.approvalType, { color: colors.mutedForeground }]}>
-                    {approval.approvalType.replace(/_/g, ' ')}
+        {orgSlug && (
+          <>
+            {/* Pending banner */}
+            {pendingCount > 0 && (
+              <View style={[styles.pendingBanner, { backgroundColor: '#FCD34D22', borderColor: '#FCD34D44' }]}>
+                <Text style={styles.pendingIcon}>⏳</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pendingText, { color: '#FCD34D' }]}>
+                    {pendingCount} pending approval{pendingCount > 1 ? 's' : ''} awaiting your review
+                  </Text>
+                  <Text style={{ color: '#FCD34D88', fontSize: 11, marginTop: 2 }}>
+                    Open the web portal to approve or reject
                   </Text>
                 </View>
-                <Text style={[styles.taskName, { color: colors.foreground }]}>Task: {approval.taskId}</Text>
-                <Text style={[styles.date, { color: colors.mutedForeground }]}>
-                  Requested {new Date(approval.requestedAt).toLocaleDateString('en-AU')}
-                  {approval.resolvedAt ? ` · Resolved ${new Date(approval.resolvedAt).toLocaleDateString('en-AU')}` : ''}
-                </Text>
-                {approval.state === 'pending' && (
-                  <Text style={[styles.reviewNote, { color: colors.primary }]}>
-                    Open web portal to review and approve →
-                  </Text>
-                )}
               </View>
-            );
-          })}
-        </View>
+            )}
+
+            {/* Filter chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
+              {['All', 'Pending', 'Approved', 'Rejected'].map(f => {
+                const isActive = f === 'All' ? activeFilter === null : activeFilter === f.toLowerCase();
+                const col = f === 'All' ? colors.primary : (STATE_STYLE[f.toLowerCase()]?.colour ?? colors.primary);
+                return (
+                  <TouchableOpacity
+                    key={f}
+                    onPress={() => setActiveFilter(f === 'All' ? null : f.toLowerCase())}
+                    style={[styles.chip, { borderColor: isActive ? col : colors.border, backgroundColor: isActive ? col + '22' : 'transparent' }]}
+                  >
+                    <Text style={[styles.chipText, { color: isActive ? col : colors.mutedForeground }]}>{f}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {isLoading ? (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+            ) : isError ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.emptyText, { color: '#F87171' }]}>Failed to load approvals.</Text>
+              </View>
+            ) : filtered.length === 0 ? (
+              <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                  {activeFilter ? `No ${activeFilter} approvals.` : 'No approvals found.'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {filtered.map((approval: any) => {
+                  const s = STATE_STYLE[approval.state] ?? STATE_STYLE.pending!;
+                  return (
+                    <View key={approval.id} style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <View style={styles.cardTop}>
+                        <View style={[styles.badge, { backgroundColor: s.colour + '22' }]}>
+                          <Text style={[styles.badgeText, { color: s.colour }]}>{s.label}</Text>
+                        </View>
+                        <Text style={[styles.approvalType, { color: colors.mutedForeground }]}>
+                          {(approval.approvalType ?? '').replace(/_/g, ' ')}
+                        </Text>
+                      </View>
+                      {approval.task?.title && (
+                        <Text style={[styles.taskName, { color: colors.foreground }]}>
+                          Task: {approval.task.title}
+                        </Text>
+                      )}
+                      <Text style={[styles.date, { color: colors.mutedForeground }]}>
+                        Requested {new Date(approval.requestedAt).toLocaleDateString('en-AU')}
+                        {approval.resolvedAt ? ` · Resolved ${new Date(approval.resolvedAt).toLocaleDateString('en-AU')}` : ''}
+                      </Text>
+                      {approval.state === 'pending' && (
+                        <Text style={[styles.reviewNote, { color: colors.primary }]}>
+                          Open web portal to review and approve →
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </>
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -134,7 +170,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, marginTop: 4 },
   pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, padding: 12, marginBottom: 16 },
   pendingIcon: { fontSize: 18 },
-  pendingText: { fontSize: 13, fontWeight: '600', flex: 1 },
+  pendingText: { fontSize: 13, fontWeight: '600' },
   chips: { marginBottom: 16, flexGrow: 0 },
   chip: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 6, marginRight: 8 },
   chipText: { fontSize: 12, fontWeight: '600' },
@@ -147,4 +183,6 @@ const styles = StyleSheet.create({
   taskName: { fontSize: 14, fontWeight: '600' },
   date: { fontSize: 12 },
   reviewNote: { fontSize: 12, marginTop: 2 },
+  emptyCard: { borderRadius: 12, borderWidth: 1, padding: 20, alignItems: 'center' },
+  emptyText: { fontSize: 13, textAlign: 'center' },
 });

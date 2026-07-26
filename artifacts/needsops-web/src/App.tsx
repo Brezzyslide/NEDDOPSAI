@@ -38,6 +38,8 @@ import AccountSettings from "@/pages/app/AccountSettings";
 import InvitationAccept from "@/pages/InvitationAccept";
 import WorkforcePage from "@/pages/app/WorkforcePage";
 import TaskCentrePage from "@/pages/app/TaskCentrePage";
+import TaskWorkroomPage from "@/pages/app/TaskWorkroomPage";
+import WorkforceChatPage from "@/pages/app/WorkforceChatPage";
 import ApprovalsPage from "@/pages/app/ApprovalsPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
@@ -204,7 +206,9 @@ function AppRouter() {
             <Route path="/onboarding" component={OrgOnboarding} />
             <Route path="/invitations/:token/accept" component={InvitationAccept} />
             <Route path="/app-home" component={AppHome} />
+            <Route path="/app/:slug/chat" component={WorkforceChatPage} />
             <Route path="/app/:slug/workforce" component={WorkforcePage} />
+            <Route path="/app/:slug/tasks/:taskId" component={TaskWorkroomPage} />
             <Route path="/app/:slug/tasks" component={TaskCentrePage} />
             <Route path="/app/:slug/approvals" component={ApprovalsPage} />
             <Route path="/app/:slug/team" component={TeamPage} />
