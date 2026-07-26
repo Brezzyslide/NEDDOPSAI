@@ -16,6 +16,9 @@ import runtimeEventsRouter from "./runtimeEvents.js";
 import conversationsRouter from "./conversations.js";
 import taskWorkroomRouter from "./taskWorkroom.js";
 import notificationsRouter from "./notifications.js";
+// Sprint 9.2: Tenant-Aware Chief of Staff Memory
+import conversationMemoryRouter from "./conversationMemory.js";
+import organisationMemoryRouter from "./organisationMemory.js";
 // Sprint 3 routers
 import plansRouter from "./plans.js";
 import workforcePacksRouter from "./workforcePacks.js";
@@ -40,6 +43,9 @@ router.use("/organisations/:slug/tasks/:taskId", taskWorkroomRouter);
 router.use("/organisations/:slug/conversations", conversationsRouter);
 // Sprint 9: Notifications (unread counts, mark-read)
 router.use("/organisations/:slug/notifications", notificationsRouter);
+// Sprint 9.2: Conversation memory + Org memory (full-path routers)
+router.use("/", conversationMemoryRouter);
+router.use("/", organisationMemoryRouter);
 // Sprint 3: subscription / entitlements / usage scoped to org
 router.use("/organisations/:slug", orgSubscriptionRouter);
 router.use("/invitations", invitationAcceptRouter);

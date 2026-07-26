@@ -51,6 +51,9 @@ export const REQUIRED_RLS_TABLES = [
   "conversation_participants",
   "message_attachments",
   "message_reads",
+  // Sprint 9.2 — Tenant-Aware Chief of Staff Memory
+  "organisation_memory",
+  "conversation_memory",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

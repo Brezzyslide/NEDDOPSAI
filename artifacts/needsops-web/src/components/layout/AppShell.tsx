@@ -13,6 +13,7 @@ const NAV = [
   { label: "Plan",       icon: "💎", path: "/plan" },
   { label: "Usage",      icon: "📊", path: "/usage" },
   { label: "Audit",      icon: "📋", path: "/audit" },
+  { label: "Memory",     icon: "🧠", path: "/memory" },
   { label: "Settings",   icon: "⚙",  path: "/settings" },
 ];
 

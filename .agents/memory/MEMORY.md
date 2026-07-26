@@ -3,3 +3,4 @@
 - [NeedsOps Sprint 8 OpenClaw Runtime Integration](needsops-sprint8.md) — ExecutionEngine interface, taskId/executionId separation, RLS policy naming, openclaw package resolution, what remains before live execution
 - [NeedsOps Sprint 9 Conversational Task Workroom](needsops-sprint9.md) — 5 new RLS tables, rule-based classifier, word-boundary verb matching, SSE streaming contract, mobile org-slug global, REQUIRED_RLS_TABLES now 26
 - [NeedsOps Sprint 9.1 OpenAI Integration](needsops-sprint91.md) — gateway routes to OpenAI via AI_PROVIDER env var; openai SDK only in lib/ai-gateway/src/providers/openai.ts; graceful fallback replaces PROVIDER_NOT_CONNECTED throw; sprint7 tests updated
+- [NeedsOps Sprint 9.2 Tenant-Aware CoS Memory](needsops-sprint92.md) — platform DB tables (not per-org), 10-layer prompt, 300-msg retrieval, pinned decisions, org memory approval workflow, REQUIRED_RLS_TABLES=28

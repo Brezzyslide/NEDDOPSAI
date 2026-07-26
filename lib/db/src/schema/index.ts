@@ -55,3 +55,6 @@ export * from "./conversationMessages";
 export * from "./conversationParticipants";
 export * from "./messageAttachments";
 export * from "./messageReads";
+// Sprint 9.2 — Tenant-Aware Chief of Staff Memory
+export * from "./organisationMemory";
+export * from "./conversationMemory";

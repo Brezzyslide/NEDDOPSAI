@@ -35,6 +35,7 @@ import {
   buildStatusSummaryCard,
 } from "./conversationIntelligenceService.js";
 import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
+import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -352,7 +353,11 @@ export async function buildMessageContext(
     if (approval) ctx.pendingApprovalId = approval.id;
   }
 
-  // Recent messages (last 20 for context window)
+  // Recent messages — now configurable; contextSelectionService handles
+  // full 300-message retrieval. Keep a small window here for the MessageContext type.
+  const recentLimit = Math.min(
+    parseInt(process.env.AI_RECENT_HISTORY_MESSAGES ?? "30", 10), 50
+  );
   const recent = await db
     .select({
       senderType: conversationMessagesTable.senderType,
@@ -367,7 +372,7 @@ export async function buildMessageContext(
       )
     )
     .orderBy(desc(conversationMessagesTable.createdAt))
-    .limit(20);
+    .limit(recentLimit);
 
   ctx.recentMessages = recent.reverse();
   return ctx;
@@ -398,15 +403,14 @@ export async function processUserMessage(
   // 2. Build context
   const ctx = await buildMessageContext(organizationId, conversationId, taskId);
 
-  // 3. Classify intent — LLM primary (OpenAI when configured), deterministic fallback
-  // authCtxForLLM is optional and omitted here since processUserMessage doesn't
-  // receive auth context. The LLM service falls back to deterministic when userId
-  // is absent or AI_PROVIDER != openai.
+  // 3. Classify intent — LLM primary (OpenAI when configured), deterministic fallback.
+  // Sprint 9.2: classifyMessageLLM now builds the full tenant-aware context package
+  // internally (up to 300 messages, org memory, summary, pinned decisions).
   const understanding = await classifyMessageLLM(text, ctx, {
-    userId:         userId,
-    organizationId: organizationId,
-    role:           "member",   // conservative default — gateway enforces allowlist
-    permissions:    [],
+    userId,
+    organizationId,
+    role:        "member",   // conservative default — gateway enforces allowlist
+    permissions: [],
   });
 
   // 4. Build structured content if applicable

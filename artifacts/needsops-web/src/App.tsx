@@ -41,6 +41,7 @@ import TaskCentrePage from "@/pages/app/TaskCentrePage";
 import TaskWorkroomPage from "@/pages/app/TaskWorkroomPage";
 import WorkforceChatPage from "@/pages/app/WorkforceChatPage";
 import ApprovalsPage from "@/pages/app/ApprovalsPage";
+import OrgMemoryPage from "@/pages/app/OrgMemoryPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
 // Platform Console — Sprint 4
@@ -216,6 +217,7 @@ function AppRouter() {
             <Route path="/app/:slug/usage" component={UsagePage} />
             <Route path="/app/:slug/settings" component={OrgSettings} />
             <Route path="/app/:slug/audit" component={AuditPage} />
+            <Route path="/app/:slug/memory" component={OrgMemoryPage} />
             <Route path="/app/:slug" component={AppDashboard} />
             <Route path="/account" component={AccountSettings} />
             {/* Platform Console — Sprint 4 */}
