@@ -1,5 +1,5 @@
 /**
- * @workspace/ai-gateway — Sprint 7 Foundation
+ * @workspace/ai-gateway — Sprint 9.1
  *
  * AI Privacy Gateway for NeedsOps AI+.
  *
@@ -11,15 +11,17 @@
  *   • Audit event writing: ACTIVE
  *   • Purpose + role authorisation: ACTIVE
  *   • Field-level access control: ACTIVE
- *   • External provider connections: NOT YET CONNECTED (Sprint 9)
- *   • Internal deterministic routing: ACTIVE
+ *   • OpenAI provider: ACTIVE when AI_PROVIDER=openai + OPENAI_API_KEY set
+ *   • Deterministic fallback: ACTIVE
+ *   • Usage tracking: ACTIVE
  */
 
 export {
   createAIGateway,
   getProviderRegistry,
+  getActiveProviderStatus,
   type AIGateway,
-} from "./aiGateway";
+} from "./aiGateway.js";
 
 export {
   APPROVED_PROVIDERS,
@@ -36,4 +38,23 @@ export {
   type AIPurpose,
   type ApprovedProvider,
   type RetentionClass,
-} from "./types";
+  type AITokenUsage,
+  type AIProviderHealth,
+} from "./types.js";
+
+export {
+  recordSuccess,
+  recordFailure,
+  recordFallback,
+  incrementActiveStreams,
+  decrementActiveStreams,
+  getGlobalStats,
+  getOrgStats,
+  type OrgUsageStats,
+  type GlobalUsageStats,
+} from "./usageTracker.js";
+
+export {
+  isOpenAIConfigured,
+  getOpenAIModel,
+} from "./providers/openai.js";

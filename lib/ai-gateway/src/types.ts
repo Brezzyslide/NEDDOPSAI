@@ -1,5 +1,5 @@
 /**
- * AI Privacy Gateway — Types — Sprint 7
+ * AI Privacy Gateway — Types — Sprint 7 / Sprint 9.1
  *
  * All AI interactions involving customer information must pass through the
  * gateway. The gateway enforces identity, organisation isolation, purpose
@@ -13,15 +13,16 @@
  * approved purposes are permitted for each role.
  */
 export type AIPurpose =
-  | "task_planning"           // AI-assisted task creation and planning
-  | "task_execution"          // AI executing an approved task
-  | "workforce_routing"       // Matching tasks to specialists
-  | "compliance_check"        // Checking against NDIS regulations
-  | "report_generation"       // Generating summary reports
-  | "knowledge_retrieval"     // RAG retrieval from org knowledge base
-  | "search_assistance"       // Helping users search records
-  | "internal_tooling"        // Platform internal (not customer-facing)
-  | "testing";                // Test and development only
+  | "task_planning"              // AI-assisted task creation and planning
+  | "task_execution"             // AI executing an approved task
+  | "workforce_routing"          // Matching tasks to specialists
+  | "compliance_check"           // Checking against NDIS regulations
+  | "report_generation"          // Generating summary reports
+  | "knowledge_retrieval"        // RAG retrieval from org knowledge base
+  | "search_assistance"          // Helping users search records
+  | "conversation_intelligence"  // Sprint 9.1: Chief of Staff conversation understanding
+  | "internal_tooling"           // Platform internal (not customer-facing)
+  | "testing";                   // Test and development only
 
 // ─── Retention classification ──────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export interface AIRequest {
    * Each field must be justified by the declared purpose.
    */
   retrievedFields: string[];
-  /** Model identifier (e.g. "claude-3-5-haiku-20241022") */
+  /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
 }
@@ -115,6 +116,34 @@ export interface AIResponse {
   auditEventId: string;
   /** UTC timestamp */
   generatedAt: Date;
+  /** Sprint 9.1: token usage (undefined for internal/deterministic) */
+  usage?: AITokenUsage;
+  /** Sprint 9.1: actual model used */
+  model?: string;
+  /** Sprint 9.1: true when the deterministic fallback was used instead of OpenAI */
+  usedFallback?: boolean;
+  /** Sprint 9.1: reason the fallback was used */
+  fallbackReason?: string;
+  /** Sprint 9.1: time from request to response in ms */
+  latencyMs?: number;
+}
+
+// ─── Token usage ──────────────────────────────────────────────────────────────
+
+export interface AITokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+// ─── Provider health ──────────────────────────────────────────────────────────
+
+export interface AIProviderHealth {
+  provider: ApprovedProvider;
+  connected: boolean;
+  configured: boolean;
+  requiresApproval: boolean;
+  model?: string;
 }
 
 // ─── Minimum-necessary retrieval ─────────────────────────────────────────────
@@ -125,15 +154,16 @@ export interface AIResponse {
  * permitted to be passed to an AI provider.
  */
 export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
-  task_planning: ["task.id", "task.title", "task.description", "task.priority", "task.state"],
-  task_execution: ["task.id", "task.title", "task.description", "task.executionPlan", "specialist.name", "specialist.capabilities"],
-  workforce_routing: ["task.id", "task.title", "task.requiredCapabilities", "specialist.id", "specialist.capabilities", "specialist.availability"],
-  compliance_check: ["task.id", "task.title", "task.description", "approval.type", "approval.state"],
-  report_generation: ["task.aggregates", "approval.aggregates", "usage.aggregates"],
-  knowledge_retrieval: ["knowledge.chunk", "knowledge.source", "knowledge.relevanceScore"],
-  search_assistance: ["task.id", "task.title", "task.state"],
-  internal_tooling: [],    // No customer data — platform internal only
-  testing: ["test.mock"],  // Only mock data in test environment
+  task_planning:              ["task.id", "task.title", "task.description", "task.priority", "task.state"],
+  task_execution:             ["task.id", "task.title", "task.description", "task.executionPlan", "specialist.name", "specialist.capabilities"],
+  workforce_routing:          ["task.id", "task.title", "task.requiredCapabilities", "specialist.id", "specialist.capabilities", "specialist.availability"],
+  compliance_check:           ["task.id", "task.title", "task.description", "approval.type", "approval.state"],
+  report_generation:          ["task.aggregates", "approval.aggregates", "usage.aggregates"],
+  knowledge_retrieval:        ["knowledge.chunk", "knowledge.source", "knowledge.relevanceScore"],
+  search_assistance:          ["task.id", "task.title", "task.state"],
+  conversation_intelligence:  ["conversation.id", "task.id", "task.title", "task.state", "task.priority"],
+  internal_tooling:           [],    // No customer data — platform internal only
+  testing:                    ["test.mock"],  // Only mock data in test environment
 };
 
 // ─── Role → purpose authorisation ────────────────────────────────────────────
@@ -143,10 +173,10 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
  * Gateway enforces this — members cannot invoke purposes their role doesn't permit.
  */
 export const ROLE_PURPOSE_ALLOWLIST: Record<string, AIPurpose[]> = {
-  owner:         ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance"],
-  administrator: ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance"],
-  manager:       ["task_planning", "task_execution", "workforce_routing", "knowledge_retrieval", "search_assistance"],
-  member:        ["task_planning", "knowledge_retrieval", "search_assistance"],
+  owner:         ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
+  administrator: ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
+  manager:       ["task_planning", "task_execution", "workforce_routing", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
+  member:        ["task_planning", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
   support:       ["search_assistance"],
 };
 

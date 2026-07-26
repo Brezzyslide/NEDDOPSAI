@@ -1,0 +1,296 @@
+NeedsOps AI+
+
+Sprint 9.1 — OpenAI Integration for Chief of Staff
+
+Continue from the completed Sprint 9 architecture.
+
+Do not modify unrelated platform functionality.
+
+The objective of this sprint is to replace the deterministic conversation classifier as the primary production intelligence layer with a real OpenAI-powered Chief of Staff, while preserving the deterministic engine as validation and fallback.
+
+This sprint is not about browser automation or OpenClaw execution.
+
+It is about giving NeedsOps genuine reasoning capability.
+
+⸻
+
+Objectives
+
+Implement a production-ready OpenAI integration through the existing AI Privacy Gateway.
+
+The LLM must become the primary reasoning engine for:
+
+* conversation understanding
+* brainstorming
+* task intent recognition
+* clarification generation
+* Workforce Role selection
+* Worker Profile selection
+* execution plan generation
+* natural responses
+* task refinement
+* follow-up conversations
+
+The LLM must never directly:
+
+* create tasks
+* change task state
+* approve work
+* submit execution
+* bypass permissions
+* bypass entitlements
+* bypass Worker Profiles
+* bypass approval rules
+
+NeedsOps services remain the authority.
+
+⸻
+
+Architecture
+
+Use the existing architecture.
+
+User
+↓
+Conversation
+↓
+AI Privacy Gateway
+↓
+OpenAI Provider
+↓
+Structured Response
+↓
+NeedsOps Validation
+↓
+Task / Conversation / Approval Services
+
+Do not make direct OpenAI calls from:
+
+* controllers
+* routes
+* React components
+* mobile code
+* Workforce Roles
+
+Everything must flow through:
+
+AI Privacy Gateway
+
+⸻
+
+Provider
+
+Implement:
+
+OpenAIProvider
+
+that satisfies the existing AIProvider interface.
+
+Support:
+
+* chat completion
+* structured JSON responses
+* streaming responses
+* retries
+* timeout handling
+* usage reporting
+* model version reporting
+* provider health
+* graceful failure
+
+⸻
+
+Environment Variables
+
+Support:
+
+AI_PROVIDER=openai
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5.5
+OPENAI_ROUTING_MODEL=gpt-5.5
+OPENAI_PLANNING_MODEL=gpt-5.5
+OPENAI_REASONING_MODEL=gpt-5.5
+AI_TIMEOUT_MS=120000
+AI_MAX_RETRIES=2
+
+Never expose API keys to web or mobile clients.
+
+⸻
+
+Structured Output
+
+The Chief of Staff must always request structured output.
+
+The response should include:
+
+* understood intent
+* conversation mode
+* confidence
+* whether clarification is required
+* clarification questions
+* proposed task
+* proposed Workforce Roles
+* proposed Worker Profiles
+* execution summary
+* approval recommendation
+* customer-facing response
+
+Validate every field.
+
+Reject invalid values.
+
+Never trust raw LLM output.
+
+⸻
+
+Deterministic Validation
+
+After every OpenAI response:
+
+Validate:
+
+* Workforce Roles exist
+* Worker Profiles exist
+* permissions
+* entitlements
+* task state
+* conversation state
+* approval requirements
+* execution channels
+* connector categories
+
+The AI proposes.
+
+NeedsOps decides.
+
+⸻
+
+Fallback
+
+If OpenAI:
+
+* times out
+* rate limits
+* returns invalid JSON
+* fails validation
+
+Automatically fall back to the deterministic classifier.
+
+Log:
+
+* provider failure
+* fallback reason
+* request ID
+* model used
+
+Show an honest user message if operating in fallback mode.
+
+⸻
+
+Streaming
+
+Implement token streaming.
+
+The user should see responses appear naturally.
+
+Support:
+
+* stop generation
+* retry
+* regenerate response
+
+Stopping generation must not cancel a running task.
+
+⸻
+
+Usage
+
+Record:
+
+* model
+* input tokens
+* output tokens
+* total tokens
+* latency
+* retries
+* provider
+* organisation
+* user
+* conversation
+
+⸻
+
+Platform Console
+
+Extend the AI Operations page.
+
+Show:
+
+* current provider
+* model
+* provider status
+* requests today
+* average latency
+* token usage
+* failures
+* fallback count
+* active streams
+
+⸻
+
+Security
+
+Ensure:
+
+* API keys remain server-side
+* tenant isolation remains enforced
+* prompt injection protection remains active
+* structured validation remains mandatory
+* secrets never enter prompts
+* platform notes never enter prompts
+
+⸻
+
+Tests
+
+Create tests covering:
+
+* successful OpenAI request
+* streamed response
+* timeout
+* retry
+* invalid JSON
+* validation failure
+* deterministic fallback
+* token accounting
+* tenant isolation
+* permission validation
+* structured response validation
+
+All existing tests must continue to pass.
+
+⸻
+
+Completion Criteria
+
+Sprint 9.1 is complete only when:
+
+* OpenAI is the primary conversation intelligence provider
+* all requests pass through the AI Privacy Gateway
+* structured outputs validate successfully
+* deterministic fallback works
+* streaming responses work
+* usage is recorded
+* AI Operations dashboard reflects live provider health
+* no direct OpenAI calls exist outside the provider layer
+* all tests pass
+
+Provide a completion report showing:
+
+* models configured
+* provider health
+* streaming status
+* fallback behaviour
+* usage metrics
+* known limitations
+* readiness for the first live OpenClaw execution.

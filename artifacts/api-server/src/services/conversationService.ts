@@ -34,6 +34,7 @@ import {
   buildExecutionUpdateCard,
   buildStatusSummaryCard,
 } from "./conversationIntelligenceService.js";
+import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -397,8 +398,16 @@ export async function processUserMessage(
   // 2. Build context
   const ctx = await buildMessageContext(organizationId, conversationId, taskId);
 
-  // 3. Classify intent
-  const understanding = classifyMessage(text, ctx);
+  // 3. Classify intent — LLM primary (OpenAI when configured), deterministic fallback
+  // authCtxForLLM is optional and omitted here since processUserMessage doesn't
+  // receive auth context. The LLM service falls back to deterministic when userId
+  // is absent or AI_PROVIDER != openai.
+  const understanding = await classifyMessageLLM(text, ctx, {
+    userId:         userId,
+    organizationId: organizationId,
+    role:           "member",   // conservative default — gateway enforces allowlist
+    permissions:    [],
+  });
 
   // 4. Build structured content if applicable
   let structuredContent: StructuredContent | null = null;

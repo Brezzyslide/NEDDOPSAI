@@ -46,6 +46,7 @@ import platformSettingsRouter from "./platformSettingsAdmin.js";
 import platformSearchRouter from "./platformSearch.js";
 import platformRuntimeRouter from "./platformRuntime.js";
 import platformExportRouter from "./platformExport.js";
+import platformAIRouter from "./platformAI.js";
 import { platformDatabaseRouter } from "./platformDatabase.js";
 
 const router = Router();
@@ -123,6 +124,8 @@ router.use("/search", platformSearchRouter);
 router.use("/export", platformExportRouter);
 // Sprint 8 — OpenClaw Runtime monitoring
 router.use("/runtime", platformRuntimeRouter);
+// Sprint 9.1 — AI Operations dashboard
+router.use("/ai", platformAIRouter);
 // Sprint 6/7 — Organisation Database management
 router.use("/", platformDatabaseRouter);
 

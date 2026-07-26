@@ -2,10 +2,10 @@
  * Platform Runtime Monitor — /platform/runtime
  *
  * Sprint 8: OpenClaw Runtime Integration
+ * Sprint 9.1: AI Operations section added
  *
- * Displays the current state of the OpenClaw Runtime Broker connection.
- * When no runtime is connected, shows an honest "not connected" state —
- * does not fabricate health data.
+ * Displays the current state of the OpenClaw Runtime Broker connection
+ * and the AI Privacy Gateway provider health + usage metrics.
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -37,6 +37,205 @@ interface RuntimeStatus {
     maxConcurrentExecutions: number;
   } | null;
   retrievedAt: string;
+}
+
+interface AIStatus {
+  activeProvider: {
+    name: string;
+    connected: boolean;
+    model: string | null;
+    status: string;
+  };
+  configuration: {
+    aiProvider: string;
+    openaiModel: string | null;
+    timeoutMs: number;
+    maxRetries: number;
+    apiKeyConfigured: boolean;
+  };
+  providers: Array<{
+    name: string;
+    connected: boolean;
+    configured: boolean;
+    requiresApproval: boolean;
+    model: string | null;
+  }>;
+}
+
+interface AIStats {
+  provider: string;
+  model: string;
+  requests: {
+    total: number;
+    failures: number;
+    fallbacks: number;
+    successRate: number;
+  };
+  tokens: {
+    input: number;
+    output: number;
+    total: number;
+  };
+  latency: { avgMs: number };
+  streams: { active: number };
+  period: { start: string; description: string };
+}
+
+// ─── AI Operations section ────────────────────────────────────────────────────
+
+function AIOperationsSection({ platformFetch }: { platformFetch: ReturnType<typeof usePlatformFetch> }) {
+  const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
+  const [aiStats, setAiStats] = useState<AIStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAI = useCallback(async () => {
+    try {
+      const [statusRes, statsRes] = await Promise.all([
+        platformFetch("/ai/status"),
+        platformFetch("/ai/stats"),
+      ]);
+      if (statusRes.ok) setAiStatus(await statusRes.json() as AIStatus);
+      if (statsRes.ok)  setAiStats(await statsRes.json() as AIStats);
+    } catch { /* show stale data */ }
+    finally { setLoading(false); }
+  }, [platformFetch]);
+
+  useEffect(() => { void fetchAI(); }, [fetchAI]);
+
+  const providerColour = (connected: boolean) =>
+    connected ? "text-emerald-400" : "text-slate-500";
+
+  if (loading) return <div className="text-slate-500 text-sm animate-pulse">Loading AI operations…</div>;
+
+  const provider = aiStatus?.activeProvider;
+  const cfg = aiStatus?.configuration;
+
+  return (
+    <div className="space-y-5">
+      <h2 className="text-base font-semibold text-slate-200 uppercase tracking-wide">
+        AI Operations
+      </h2>
+
+      {/* Active provider card */}
+      <div className="bg-[#0B1829] rounded-xl border border-[#1E3A5F] p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="text-base font-semibold text-white capitalize">
+                {provider?.name ?? "internal"} provider
+              </h3>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                provider?.connected
+                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                  : "bg-slate-500/20 text-slate-400 border border-slate-500/30"
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-current mr-1.5" />
+                {provider?.status ?? "unknown"}
+              </span>
+            </div>
+            <p className="text-sm text-slate-400">
+              {cfg?.aiProvider === "openai"
+                ? cfg.apiKeyConfigured
+                  ? `OpenAI connected · Model: ${provider?.model ?? "not set"}`
+                  : "OpenAI selected but OPENAI_API_KEY is not configured"
+                : "Deterministic (rule-based) · No external AI calls"}
+            </p>
+          </div>
+          <span className="text-xs text-slate-500 font-mono">
+            {cfg?.aiProvider ?? "internal"}
+          </span>
+        </div>
+
+        <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <div>
+            <p className="text-slate-500 uppercase tracking-wide mb-1">Model</p>
+            <p className="text-slate-300 font-mono">{provider?.model ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wide mb-1">Timeout</p>
+            <p className="text-slate-300">{cfg?.timeoutMs ? `${cfg.timeoutMs / 1000}s` : "—"}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wide mb-1">Max retries</p>
+            <p className="text-slate-300">{cfg?.maxRetries ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 uppercase tracking-wide mb-1">API key</p>
+            <p className={cfg?.apiKeyConfigured ? "text-emerald-400" : "text-slate-500"}>
+              {cfg?.apiKeyConfigured ? "Configured" : "Not set"}
+            </p>
+          </div>
+        </div>
+
+        {/* All providers */}
+        {aiStatus?.providers && (
+          <div className="mt-5 pt-5 border-t border-[#1E3A5F]">
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">Approved providers</p>
+            <div className="flex flex-wrap gap-2">
+              {aiStatus.providers.map(p => (
+                <span
+                  key={p.name}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                    p.connected
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                      : "border-[#1E3A5F] bg-[#112033] text-slate-500"
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${p.connected ? "bg-emerald-400" : "bg-slate-600"}`} />
+                  {p.name}
+                  {p.model && <span className="text-slate-500 font-mono text-[10px] ml-0.5">({p.model})</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Today's usage metrics */}
+      {aiStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-[#0B1829] rounded-xl border border-[#1E3A5F] p-5">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Requests today</p>
+            <p className="text-2xl font-semibold text-white mt-1">{aiStats.requests.total.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">{aiStats.requests.successRate}% success</p>
+          </div>
+          <div className="bg-[#0B1829] rounded-xl border border-[#1E3A5F] p-5">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Tokens today</p>
+            <p className="text-2xl font-semibold text-white mt-1">{aiStats.tokens.total.toLocaleString()}</p>
+            <p className="text-xs text-slate-500 mt-1">{aiStats.tokens.input.toLocaleString()} in · {aiStats.tokens.output.toLocaleString()} out</p>
+          </div>
+          <div className="bg-[#0B1829] rounded-xl border border-[#1E3A5F] p-5">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Avg latency</p>
+            <p className="text-2xl font-semibold text-white mt-1">
+              {aiStats.latency.avgMs > 0 ? `${aiStats.latency.avgMs}ms` : "—"}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">Per request</p>
+          </div>
+          <div className="bg-[#0B1829] rounded-xl border border-[#1E3A5F] p-5">
+            <p className="text-xs text-slate-400 uppercase tracking-wide">Fallbacks</p>
+            <p className={`text-2xl font-semibold mt-1 ${aiStats.requests.fallbacks > 0 ? "text-yellow-400" : "text-white"}`}>
+              {aiStats.requests.fallbacks}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">{aiStats.requests.failures} failures · {aiStats.streams.active} active streams</p>
+          </div>
+        </div>
+      )}
+
+      {cfg?.aiProvider !== "openai" && (
+        <div className="rounded-lg bg-[#112033] border border-[#1E3A5F] p-4">
+          <p className="text-xs text-slate-400 leading-relaxed">
+            <span className="text-[#00D4FF] font-medium">OpenAI not active.</span>{" "}
+            Set{" "}
+            <code className="font-mono text-slate-300 bg-[#0B1829] px-1 rounded">AI_PROVIDER=openai</code>
+            {" "}and{" "}
+            <code className="font-mono text-slate-300 bg-[#0B1829] px-1 rounded">OPENAI_API_KEY</code>
+            {" "}in the platform environment to enable the AI Chief of Staff.
+            The deterministic classifier is currently active as fallback.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -80,6 +279,7 @@ function MetricCard({ label, value, sub }: { label: string; value: string | numb
 
 export default function PlatformRuntime() {
   const platformFetch = usePlatformFetch();
+  const [, forceRefresh] = useState(0);
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -279,6 +479,11 @@ export default function PlatformRuntime() {
           </p>
         </>
       )}
+
+      {/* AI Operations — Sprint 9.1 */}
+      <div className="border-t border-[#1E3A5F] pt-8">
+        <AIOperationsSection platformFetch={platformFetch} />
+      </div>
     </div>
   );
 }

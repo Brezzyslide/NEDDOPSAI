@@ -1,26 +1,14 @@
 /**
- * AI Privacy Gateway — Core — Sprint 7
+ * AI Privacy Gateway — Core — Sprint 7 / Sprint 9.1
  *
  * ALL AI requests involving customer data MUST pass through this gateway.
  * Direct model-provider calls are prohibited in application code.
  *
- * The gateway enforces:
- *   1. Authenticated user identity (never trusted from request body)
- *   2. Verified organisation membership (from platform DB)
- *   3. Purpose classification (caller declares intent)
- *   4. Role → purpose authorisation (role must be permitted for purpose)
- *   5. Minimum-necessary data access (only allowlisted fields per purpose)
- *   6. Approved model provider (registry of approved providers)
- *   7. Correlation ID tracing
- *   8. Mandatory audit event before and after any provider call
- *   9. Human approval requirement enforcement
- *   10. Retention classification
- *
- * Sprint 7 implementation note:
- *   No external AI provider calls are made in this sprint — the application
- *   uses deterministic routing only. The gateway establishes the enforced
- *   interface that Sprint 9 will connect to real providers.
- *   Any future model-provider call MUST go through this gateway.
+ * Sprint 9.1 additions:
+ *   - OpenAI provider connected when AI_PROVIDER=openai
+ *   - Deterministic fallback when OpenAI fails
+ *   - Token usage tracking
+ *   - Fallback event logging
  *
  * Usage:
  *   const gateway = createAIGateway(ctx);
@@ -43,7 +31,20 @@ import {
   type AIResponse,
   type AIPurpose,
   type ApprovedProvider,
-} from "./types";
+  type AIProviderHealth,
+} from "./types.js";
+import {
+  callOpenAI,
+  isOpenAIConfigured,
+  getOpenAIModel,
+  OpenAIProviderError,
+} from "./providers/openai.js";
+import {
+  recordSuccess,
+  recordFailure,
+  recordFallback,
+  getGlobalStats,
+} from "./usageTracker.js";
 
 // ─── Gateway factory ──────────────────────────────────────────────────────────
 
@@ -53,6 +54,10 @@ export interface AIGateway {
    * Processes an AI request through all gateway enforcement layers.
    * Writes audit events before and after the provider call.
    * Returns a response with tracing metadata.
+   *
+   * Sprint 9.1: If AI_PROVIDER=openai and the call succeeds, returns real LLM output.
+   * If OpenAI fails for any reason, automatically falls back to the internal
+   * deterministic placeholder and sets usedFallback=true on the response.
    */
   process(request: AIRequest): Promise<AIResponse>;
   /**
@@ -68,7 +73,6 @@ export interface AIGateway {
  * The context is immutable after creation.
  */
 export function createAIGateway(ctx: AIGatewayContext): AIGateway {
-  // ── Validate context at creation time ──────────────────────────────────────
   validateContext(ctx);
 
   return {
@@ -124,7 +128,7 @@ function validateFields(purpose: AIPurpose, fields: string[]): void {
 async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promise<AIResponse> {
   const responseId = randomUUID();
   const requestAuditId = randomUUID();
-  const now = new Date();
+  const startMs = Date.now();
 
   // Validate retrieved fields against purpose allowlist
   if (request.retrievedFields.length > 0) {
@@ -141,25 +145,56 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     retrievedFields: request.retrievedFields,
   });
 
-  // ── Provider call ──────────────────────────────────────────────────────────
-  // Sprint 7 foundation: no real LLM calls — gateway enforces the interface.
-  // Sprint 9 will connect real providers here.
+  // ── Provider routing ───────────────────────────────────────────────────────
+  const configuredProvider = getConfiguredProvider();
   let content: string;
+  let usedFallback = false;
+  let fallbackReason: string | undefined;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let actualModel: string | undefined;
 
-  if (ctx.provider === "internal") {
+  if (ctx.provider === "internal" || configuredProvider === "internal") {
     // Internal deterministic routing — no external call
-    content = `[AI Gateway Sprint 7 Foundation] Provider: ${ctx.provider}, Purpose: ${ctx.purpose}, Correlation: ${ctx.correlationId}. Real LLM integration is pending Sprint 9.`;
+    content = buildInternalResponse(ctx);
+  } else if (configuredProvider === "openai") {
+    // OpenAI provider — with automatic fallback to internal on failure
+    try {
+      const result = await callOpenAI(request);
+      content = result.content;
+      inputTokens = result.inputTokens;
+      outputTokens = result.outputTokens;
+      actualModel = result.model;
+      recordSuccess({
+        organizationId: ctx.organizationId,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        latencyMs: result.latencyMs,
+      });
+    } catch (err) {
+      // Log and fall back to internal
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      const errorKind = err instanceof OpenAIProviderError ? err.kind : "api_error";
+      fallbackReason = `OpenAI ${errorKind}: ${errorMsg}`;
+      usedFallback = true;
+      recordFailure(ctx.organizationId);
+      recordFallback(ctx.organizationId);
+      content = buildInternalResponse(ctx);
+      console.warn(
+        `[AI Gateway] WARN: OpenAI provider failed — using deterministic fallback. ` +
+        `correlationId=${ctx.correlationId} reason="${fallbackReason}"`,
+      );
+    }
   } else {
-    // External provider path — not yet connected in Sprint 7
-    // This enforces that no application code bypasses the gateway:
-    // the gateway is the ONLY place where external provider calls will be added.
+    // Other external providers not yet connected
     throw new AIGatewayError(
       `External AI provider "${ctx.provider}" is not yet connected. ` +
-      "Sprint 9 will connect approved providers through this gateway. " +
-      "Do not add direct provider SDK calls in application code.",
+      "Configure AI_PROVIDER=openai to enable external provider support.",
       "PROVIDER_NOT_CONNECTED",
     );
   }
+
+  const latencyMs = Date.now() - startMs;
 
   const response: AIResponse = {
     responseId,
@@ -169,7 +204,12 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     provider: ctx.provider,
     correlationId: ctx.correlationId,
     auditEventId: requestAuditId,
-    generatedAt: now,
+    generatedAt: new Date(),
+    latencyMs,
+    model: actualModel,
+    usedFallback,
+    fallbackReason,
+    usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens } : undefined,
   };
 
   // ── Post-response audit event ──────────────────────────────────────────────
@@ -181,9 +221,35 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     responseId,
     retrievedFields: request.retrievedFields,
     requiresHumanApproval: ctx.requiresHumanApproval,
+    usedFallback,
+    fallbackReason,
+    inputTokens,
+    outputTokens,
+    latencyMs,
   });
 
   return response;
+}
+
+// ─── Internal fallback response ───────────────────────────────────────────────
+
+function buildInternalResponse(ctx: AIGatewayContext): string {
+  return JSON.stringify({
+    _source: "internal_deterministic",
+    provider: ctx.provider,
+    purpose: ctx.purpose,
+    correlationId: ctx.correlationId,
+  });
+}
+
+// ─── Provider config ──────────────────────────────────────────────────────────
+
+function getConfiguredProvider(): ApprovedProvider {
+  const env = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
+  if (APPROVED_PROVIDERS.includes(env as ApprovedProvider)) {
+    return env as ApprovedProvider;
+  }
+  return "internal";
 }
 
 // ─── Audit writer ─────────────────────────────────────────────────────────────
@@ -196,6 +262,11 @@ interface GatewayAuditParams {
   responseId: string;
   retrievedFields: string[];
   requiresHumanApproval?: boolean;
+  usedFallback?: boolean;
+  fallbackReason?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  latencyMs?: number;
 }
 
 async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void> {
@@ -208,22 +279,26 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
     resourceType: "ai_request",
     resourceId: params.responseId,
     accessPurpose: params.ctx.purpose,
-    isSensitive: true,  // All AI gateway events are sensitive
+    isSensitive: true,
     metadata: {
       correlationId: params.ctx.correlationId,
       provider: params.ctx.provider,
+      configuredProvider: getConfiguredProvider(),
       purpose: params.ctx.purpose,
       role: params.ctx.role,
       retentionClass: params.ctx.retentionClass,
       phase: params.phase,
       retrievedFieldCount: params.retrievedFields.length,
-      // Note: retrievedFields are listed by name only — no values are logged
       retrievedFields: params.retrievedFields,
       requiresHumanApproval: params.requiresHumanApproval ?? params.ctx.requiresHumanApproval,
+      usedFallback: params.usedFallback ?? false,
+      fallbackReason: params.fallbackReason ?? null,
+      inputTokens: params.inputTokens ?? 0,
+      outputTokens: params.outputTokens ?? 0,
+      latencyMs: params.latencyMs ?? null,
     },
     occurredAt: new Date(),
   }).catch(() => {
-    // Audit write failure must not suppress the AI response, but must be logged
     console.error("[AI Gateway] WARN: Failed to write audit event for response", params.responseId);
   });
 }
@@ -234,14 +309,43 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
  * Lists all approved providers and their connection status.
  * Used by the platform console to show gateway health.
  */
-export function getProviderRegistry(): Array<{
+export function getProviderRegistry(): AIProviderHealth[] {
+  const configured = getConfiguredProvider();
+  return APPROVED_PROVIDERS.map(provider => {
+    if (provider === "openai") {
+      return {
+        provider,
+        connected: configured === "openai" && isOpenAIConfigured(),
+        configured: isOpenAIConfigured(),
+        requiresApproval: true,
+        model: isOpenAIConfigured() ? getOpenAIModel() : undefined,
+      };
+    }
+    return {
+      provider,
+      connected: provider === "internal",
+      configured: provider === "internal",
+      requiresApproval: provider !== "internal",
+    };
+  });
+}
+
+/**
+ * Returns the current active provider and its health summary.
+ * Used by the platform AI Operations dashboard.
+ */
+export function getActiveProviderStatus(): {
   provider: ApprovedProvider;
   connected: boolean;
-  requiresApproval: boolean;
-}> {
-  return APPROVED_PROVIDERS.map(provider => ({
+  model: string | undefined;
+  usageStats: ReturnType<typeof getGlobalStats>;
+} {
+  const provider = getConfiguredProvider();
+  const model = provider === "openai" && isOpenAIConfigured() ? getOpenAIModel() : undefined;
+  return {
     provider,
-    connected: provider === "internal",   // Only internal is connected in Sprint 7
-    requiresApproval: provider !== "internal",
-  }));
+    connected: provider === "internal" || (provider === "openai" && isOpenAIConfigured()),
+    model,
+    usageStats: getGlobalStats(provider, model ?? "deterministic"),
+  };
 }
