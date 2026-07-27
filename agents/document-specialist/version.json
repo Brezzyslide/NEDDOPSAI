@@ -1,0 +1,25 @@
+{
+  "specialistCode": "document_specialist",
+  "instructionVersion": "1.0.0",
+  "effectiveDate": "2026-07-27",
+  "status": "active",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-27",
+      "changes": "Initial Sprint 9.5 live specialist instructions"
+    }
+  ],
+  "supportedCapabilities": [
+    "document.draft",
+    "document.review",
+    "document.summarise",
+    "document.format",
+    "document.evidence_register"
+  ],
+  "modelRequirements": {
+    "minimumContextWindow": 16000,
+    "preferredModels": ["gpt-4o", "gpt-4-turbo"],
+    "requiresStructuredOutput": true
+  }
+}

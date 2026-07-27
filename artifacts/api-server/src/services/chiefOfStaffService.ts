@@ -122,6 +122,8 @@ function selectSpecialists(intentScores: IntentScore[]): RegistrySpecialist[] {
   for (const { capabilityCode } of intentScores.slice(0, 5)) {
     const specialists = getSpecialistsByCapability(capabilityCode)
       .filter(s => s.executionStatus === "available" || s.executionStatus === "beta");
+      // Sprint 9.5: Full async eligibility enforcement happens in chiefOfStaffOrchestrator.
+      // planTask() uses the legacy workforce registry for intent routing only.
 
     for (const s of specialists) {
       if (!seen.has(s.code) && selected.length < 4) {

@@ -5,3 +5,4 @@
 - [NeedsOps Sprint 9.1 OpenAI Integration](needsops-sprint91.md) — gateway routes to OpenAI via AI_PROVIDER env var; openai SDK only in lib/ai-gateway/src/providers/openai.ts; graceful fallback replaces PROVIDER_NOT_CONNECTED throw; sprint7 tests updated
 - [NeedsOps Sprint 9.2 Tenant-Aware CoS Memory](needsops-sprint92.md) — platform DB tables (not per-org), 10-layer prompt, 300-msg retrieval, pinned decisions, org memory approval workflow, REQUIRED_RLS_TABLES=28
 - [NeedsOps Sprint 9.4 Capability Gate](needsops-sprint94.md) — static registry allowlist, EntitlementResult uses .allowed not .granted, lib/db must be rebuilt after schema changes, partial-access also requires user confirmation
+- [NeedsOps Sprint 9.5 Specialist Runtime](needsops-sprint95.md) — eligibility 12-check, 3 active specialists, REQUIRED_RLS_TABLES=33, policy must be named tenant_isolation, queue worker not daemonized

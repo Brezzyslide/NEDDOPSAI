@@ -54,6 +54,13 @@ export const REQUIRED_RLS_TABLES = [
   // Sprint 9.2 — Tenant-Aware Chief of Staff Memory
   "organisation_memory",
   "conversation_memory",
+  // Sprint 9.4 — Capability decisions
+  "capability_decisions",
+  // Sprint 9.5 — Specialist Runtime
+  "specialist_runs",
+  "specialist_queue",
+  "specialist_run_memory",
+  "specialist_conflicts",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

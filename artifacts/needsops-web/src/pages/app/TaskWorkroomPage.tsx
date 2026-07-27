@@ -12,6 +12,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+import SpecialistRunsPanel from "@/components/workroom/SpecialistRunsPanel";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -291,12 +292,16 @@ function TaskSidePanel({
   pendingApproval,
   onCommand,
   commandLoading,
+  orgSlug,
+  taskId,
 }: {
   task: Task;
   plan: Plan | null;
   pendingApproval: Approval | null;
   onCommand: (cmd: string) => void;
   commandLoading: boolean;
+  orgSlug: string;
+  taskId: string;
 }) {
   const state = STATE_CONFIG[task.currentState];
   const assignedRoles = plan?.assignedSpecialists ?? [];
@@ -388,7 +393,7 @@ function TaskSidePanel({
 
       {/* Workforce */}
       {assignedRoles.length > 0 && (
-        <div className="p-4">
+        <div className="p-4 border-b border-[#1E3A5F]">
           <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Workforce</p>
           <div className="space-y-2">
             {assignedRoles.map(role => (
@@ -407,6 +412,12 @@ function TaskSidePanel({
           </div>
         </div>
       )}
+
+      {/* Sprint 9.5: Specialist Runs */}
+      <div className="p-4">
+        <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Specialist Runs</p>
+        <SpecialistRunsPanel orgSlug={orgSlug} taskId={taskId} />
+      </div>
     </div>
   );
 }
@@ -697,6 +708,8 @@ export default function TaskWorkroomPage() {
           pendingApproval={pendingApproval}
           onCommand={handleCommand}
           commandLoading={commandLoading}
+          orgSlug={slug ?? ""}
+          taskId={taskId ?? ""}
         />
       </div>
     </AppShell>

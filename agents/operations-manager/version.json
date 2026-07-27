@@ -1,0 +1,26 @@
+{
+  "specialistCode": "operations_manager",
+  "instructionVersion": "1.0.0",
+  "effectiveDate": "2026-07-27",
+  "status": "active",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-27",
+      "changes": "Initial Sprint 9.5 live specialist instructions"
+    }
+  ],
+  "supportedCapabilities": [
+    "operations.roster_review",
+    "operations.workflow_design",
+    "operations.capacity_planning",
+    "operations.service_delivery_review",
+    "operations.asset_management",
+    "operations.process_improvement"
+  ],
+  "modelRequirements": {
+    "minimumContextWindow": 16000,
+    "preferredModels": ["gpt-4o", "gpt-4-turbo"],
+    "requiresStructuredOutput": true
+  }
+}

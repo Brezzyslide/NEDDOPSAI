@@ -61,3 +61,8 @@ export * from "./conversationMemory";
 // Sprint 9.4 — Capability Registry and Capability Decisions
 export * from "./businessCapabilities";
 export * from "./capabilityDecisions";
+// Sprint 9.5 — Specialist Runtime
+export * from "./specialistRuns";
+export * from "./specialistQueue";
+export * from "./specialistRunMemory";
+export * from "./specialistConflicts";

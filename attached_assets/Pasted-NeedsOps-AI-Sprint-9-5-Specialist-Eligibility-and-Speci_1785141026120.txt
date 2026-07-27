@@ -1,0 +1,1129 @@
+NeedsOps AI+
+
+Sprint 9.5 — Specialist Eligibility and Specialist Runtime
+
+Continue from the completed capability identification and entitlement sprint.
+
+The purpose of this sprint is to close the gap between:
+
+Capability approved
+↓
+Specialist assigned
+
+and:
+
+Capability approved
+↓
+Eligible specialist selected
+↓
+Temporary specialist run created
+↓
+Specialist performs domain reasoning
+↓
+Structured result returned
+↓
+Chief of Staff consolidates
+↓
+OpenClaw-ready execution package created
+
+Do not begin AWS deployment, browser automation, local-device access, Stripe or unrelated connector work.
+
+⸻
+
+Core Objectives
+
+This sprint must deliver:
+
+1. Specialist eligibility enforcement inside task planning
+2. Temporary specialist runs
+3. Specialist work packages
+4. Real specialist reasoning through the AI Privacy Gateway
+5. Role-specific specialist instructions
+6. Structured specialist outputs
+7. Specialist retries, clarification and failure handling
+8. Parallel and dependent specialist execution
+9. Chief of Staff consolidation
+10. OpenClaw-ready execution packages
+11. Task Workroom specialist progress
+12. Platform Console specialist monitoring
+
+The current Workforce Roles must no longer be treated only as labels attached to a task.
+
+⸻
+
+Non-Negotiable Architecture
+
+Preserve this chain:
+
+Customer request
+↓
+Chief of Staff
+↓
+Capability identification
+↓
+Capability entitlement decision
+↓
+Specialist eligibility validation
+↓
+Specialist work package
+↓
+Temporary specialist run
+↓
+Specialist reasoning
+↓
+Structured specialist output
+↓
+Chief of Staff consolidation
+↓
+Future OpenClaw runtime
+
+The Chief of Staff coordinates.
+
+Specialists perform the specialist work.
+
+NeedsOps owns permissions, entitlements, task state, approvals and audit.
+
+OpenClaw later performs authorised external actions.
+
+⸻
+
+1. Wire Specialist Eligibility Into Planning
+
+Complete the deferred integration of:
+
+validateSpecialistEligibility()
+
+inside:
+
+taskService.planTask()
+
+or the current authoritative task-planning service.
+
+Before assigning any specialist, validate:
+
+* requested capability
+* requested capability level
+* organisation entitlement
+* Workforce Pack access
+* specialist capability mapping
+* Worker Profile mapping
+* user permission
+* explicit denial
+* usage allowance
+* required execution channel
+* required connector category
+* approval requirement
+* specialist activation status
+
+Return a structured result:
+
+interface SpecialistEligibilityDecision {
+  workforceRoleCode: string;
+  capabilityCode: string;
+  eligible: boolean;
+  reasonCode: string;
+  reasons: string[];
+  workerProfileCode?: string;
+  approvalRequired: boolean;
+  evaluatedAt: string;
+}
+
+No specialist may be assigned without an allowed eligibility decision.
+
+Do not substitute the nearest available specialist when the correct specialist is unavailable.
+
+⸻
+
+2. Specialist Run Model
+
+Create a tenant-scoped specialist_runs table.
+
+Fields:
+
+* id
+* organization_id
+* conversation_id, nullable
+* task_id
+* execution_plan_id, nullable
+* execution_step_id, nullable
+* capability_decision_id
+* specialist_eligibility_decision_id
+* workforce_role_code
+* worker_profile_code
+* specialist_instruction_version
+* model_provider
+* model_name
+* status
+* priority
+* attempt_number
+* maximum_attempts
+* queued_at
+* started_at, nullable
+* completed_at, nullable
+* failed_at, nullable
+* cancelled_at, nullable
+* clarification_required
+* approval_required
+* external_execution_required
+* confidence, nullable
+* result_summary, nullable
+* runtime_execution_id, nullable
+* idempotency_key
+* created_at
+* updated_at
+
+Statuses:
+
+created
+queued
+preparing
+running
+awaiting_clarification
+awaiting_approval
+waiting_for_dependency
+waiting_for_runtime
+completed
+failed
+cancelled
+expired
+
+Use RLS and tenant isolation.
+
+Use an idempotency constraint so retries cannot create duplicate runs.
+
+⸻
+
+3. Initial Live Specialists
+
+Activate real specialist intelligence for only:
+
+Compliance Officer
+Document Specialist
+Operations Manager
+
+All other Workforce Roles remain metadata-only.
+
+They must display:
+
+Specialist intelligence not yet activated.
+
+Do not create shallow AI copies for all existing roles.
+
+⸻
+
+4. Specialist Instructions
+
+Create versioned instructions for each active specialist.
+
+Each specialist definition must include:
+
+* identity
+* purpose
+* domain responsibilities
+* supported capabilities
+* domain boundaries
+* decision framework
+* allowed memory types
+* allowed data categories
+* allowed tools
+* allowed connector categories
+* allowed execution channels
+* prohibited actions
+* approval-required actions
+* clarification rules
+* evidence requirements
+* output schema
+* current limitations
+* version
+* effective date
+
+Use shared safety, privacy and evidence rules.
+
+Suggested structure:
+
+agents/
+├── shared/
+│   ├── safety.md
+│   ├── privacy.md
+│   ├── evidence.md
+│   └── approval-rules.md
+│
+├── compliance-officer/
+│   ├── identity.md
+│   ├── instructions.md
+│   ├── output-schema.ts
+│   └── version.json
+│
+├── document-specialist/
+│   ├── identity.md
+│   ├── instructions.md
+│   ├── output-schema.ts
+│   └── version.json
+│
+└── operations-manager/
+    ├── identity.md
+    ├── instructions.md
+    ├── output-schema.ts
+    └── version.json
+
+Record the instruction version used for every run.
+
+⸻
+
+5. Specialist Work Package
+
+Create a validated work package for each run.
+
+Suggested type:
+
+interface SpecialistWorkPackage {
+  specialistRunId: string;
+  organizationId: string;
+  conversationId?: string;
+  taskId: string;
+  capabilityCode: string;
+  capabilityLevel:
+    | "general_information"
+    | "professional_analysis"
+    | "execution";
+  workforceRoleCode: string;
+  workerProfileCode: string;
+  objective: string;
+  responsibilities: string[];
+  expectedOutputs: string[];
+  approvedOrganisationMemory: MemoryReference[];
+  relevantConversationContext: MessageReference[];
+  taskContext: TaskContextReference[];
+  previousSpecialistOutputs: SpecialistOutputReference[];
+  allowedCapabilities: string[];
+  allowedTools: string[];
+  allowedConnectorCategories: string[];
+  allowedExecutionChannels: string[];
+  prohibitedActions: string[];
+  approvalRequiredActions: string[];
+  dependencies: Array<{
+    specialistRunId: string;
+    requiredOutput: string;
+  }>;
+  assumptions: string[];
+  unresolvedQuestions: string[];
+  riskLevel: string;
+  expiresAt: string;
+}
+
+The Chief of Staff orchestration service creates the work package.
+
+Deterministic validation must approve it before the specialist receives it.
+
+Do not send full tenant memory or full conversation history.
+
+⸻
+
+6. Specialist Context Service
+
+Create:
+
+buildSpecialistContext({
+  organizationId,
+  conversationId,
+  taskId,
+  specialistRunId,
+  workforceRoleCode,
+  workerProfileCode,
+  capabilityCode
+})
+
+Retrieve only relevant and authorised:
+
+* task scope
+* approved execution-plan step
+* approved organisation memory
+* pinned decisions
+* unresolved questions
+* relevant historical messages
+* previous specialist outputs
+* evidence references
+* approval state
+* execution entitlement state
+
+Apply role-specific filtering.
+
+Examples:
+
+Compliance Officer
+
+May receive:
+
+* compliance policies
+* audit evidence
+* incident procedures
+* NDIS-related memory
+* corrective-action records
+
+Must not receive unrelated payroll or banking data.
+
+Document Specialist
+
+May receive:
+
+* approved file metadata
+* document extracts
+* requested formats
+* templates
+* document-related task context
+
+Operations Manager
+
+May receive:
+
+* workflows
+* systems information
+* operational constraints
+* role responsibilities
+* service-delivery context
+* dependency outputs
+
+⸻
+
+7. Specialist Intelligence Service
+
+Create a provider-independent service.
+
+Suggested interface:
+
+interface SpecialistIntelligenceService {
+  executeRun(
+    workPackage: SpecialistWorkPackage,
+    context: SpecialistContext
+  ): Promise<SpecialistRunResult>;
+  reviseRun(
+    specialistRunId: string,
+    feedback: string
+  ): Promise<SpecialistRunResult>;
+  resumeAfterClarification(
+    specialistRunId: string,
+    clarificationResponse: string
+  ): Promise<SpecialistRunResult>;
+}
+
+All AI calls must pass through the AI Privacy Gateway.
+
+No specialist may directly import the OpenAI SDK.
+
+Support:
+
+* OpenAI provider
+* deterministic test provider
+* structured output
+* retries
+* timeout
+* usage tracking
+* provider fallback
+* safe failure
+
+⸻
+
+8. Specialist Output Schema
+
+Every specialist must return structured output.
+
+interface SpecialistRunResult {
+  specialistRunId: string;
+  workforceRoleCode: string;
+  capabilityCode: string;
+  status:
+    | "completed"
+    | "blocked"
+    | "failed";
+  summary: string;
+  findings: Array<{
+    title: string;
+    description: string;
+    severity?: "low" | "medium" | "high" | "critical";
+    confidence: number;
+    evidenceReferences: EvidenceReference[];
+  }>;
+  recommendations: Array<{
+    action: string;
+    reason: string;
+    priority: string;
+    approvalRequired: boolean;
+  }>;
+  risks: Array<{
+    risk: string;
+    likelihood?: string;
+    consequence?: string;
+    treatment?: string;
+  }>;
+  assumptions: string[];
+  unresolvedQuestions: Array<{
+    question: string;
+    reason: string;
+    blocking: boolean;
+  }>;
+  requestedExternalActions: Array<{
+    actionType: string;
+    executionChannel: string;
+    toolCategory: string;
+    connectorCategory?: string;
+    approvalRequired: boolean;
+    riskLevel: string;
+  }>;
+  expectedOutputs: Array<{
+    outputType: string;
+    description: string;
+  }>;
+  confidence: number;
+  completedAt: string;
+}
+
+Reject invented evidence references.
+
+Evidence references must point to authorised records, messages, memories or documents.
+
+⸻
+
+9. Specialist Queue
+
+Create a durable database-backed specialist queue.
+
+Fields:
+
+* id
+* organization_id
+* specialist_run_id
+* priority
+* status
+* available_at
+* claimed_at, nullable
+* claimed_by, nullable
+* lease_expires_at, nullable
+* attempts
+* last_error, nullable
+* created_at
+* updated_at
+
+Statuses:
+
+waiting
+claimed
+running
+retrying
+blocked
+completed
+failed
+cancelled
+
+Support:
+
+* multiple workers
+* safe claiming
+* lease expiry
+* retries
+* idempotency
+* cancellation
+* tenant isolation
+* dependency blocking
+
+Do not use an in-memory queue as the source of truth.
+
+Keep the queue replaceable by Amazon SQS later.
+
+⸻
+
+10. Parallel and Sequential Runs
+
+Update specialist planning to support dependencies.
+
+Suggested step model:
+
+interface SpecialistPlanStep {
+  id: string;
+  capabilityCode: string;
+  workforceRoleCode: string;
+  workerProfileCode: string;
+  dependsOn: string[];
+  parallelGroup?: string;
+  failurePolicy: string;
+  status: string;
+}
+
+Support:
+
+Step 1
+↓
+Step 2A   Step 2B   Step 2C
+↓
+Step 3 waits for required outputs
+
+Independent specialists should execute in parallel.
+
+Dependent specialists must wait.
+
+Do not allow uncontrolled specialist-to-specialist conversations.
+
+All orchestration goes through the Chief of Staff service.
+
+⸻
+
+11. Chief of Staff Orchestrator
+
+Create or complete:
+
+interface ChiefOfStaffOrchestrator {
+  createSpecialistPlan(taskId: string): Promise<SpecialistPlan>;
+  dispatchReadyRuns(taskId: string): Promise<void>;
+  processRunCompletion(
+    specialistRunId: string
+  ): Promise<void>;
+  processRunFailure(
+    specialistRunId: string
+  ): Promise<void>;
+  pauseForClarification(
+    specialistRunId: string,
+    question: ClarificationQuestion
+  ): Promise<void>;
+  consolidateTaskResults(
+    taskId: string
+  ): Promise<ConsolidatedTaskResult>;
+}
+
+The orchestrator must:
+
+* validate capabilities
+* validate specialist eligibility
+* create work packages
+* dispatch eligible runs
+* run independent steps in parallel
+* wait for dependencies
+* handle retries
+* request clarification
+* record progress
+* consolidate completed outputs
+* identify external actions requiring OpenClaw
+
+The orchestrator must not directly call OpenAI.
+
+⸻
+
+12. Clarification Workflow
+
+When a specialist is blocked:
+
+1. move the run to awaiting_clarification
+2. create a structured clarification card in the Task Workroom
+3. explain why the answer is required
+4. identify the requesting specialist
+5. block only dependent runs
+6. allow unrelated runs to continue
+7. validate the user response
+8. update specialist context
+9. requeue the run
+10. resume dependent steps when ready
+
+Do not restart the entire task.
+
+⸻
+
+13. Specialist Working Memory
+
+Create specialist_run_memory.
+
+Fields:
+
+* id
+* organization_id
+* specialist_run_id
+* memory_type
+* content
+* structured_content
+* source_reference
+* status
+* created_at
+* updated_at
+
+Memory types:
+
+working_fact
+intermediate_finding
+open_question
+evidence_reference
+draft_recommendation
+dependency_output
+
+This memory belongs only to one specialist run.
+
+It must not automatically become organisation memory.
+
+Important facts may later be proposed through the existing organisation-memory approval workflow.
+
+⸻
+
+14. Conflict Handling
+
+Create specialist conflict records when specialists disagree.
+
+Fields:
+
+* id
+* organization_id
+* task_id
+* specialist_run_ids
+* conflicting_positions
+* evidence_references
+* risk
+* chief_of_staff_recommendation
+* resolution_required
+* resolution
+* resolved_by
+* resolved_at
+* created_at
+
+The Chief of Staff must not silently choose one specialist’s position.
+
+Show the conflict in the Task Workroom.
+
+⸻
+
+15. Consolidated Task Result
+
+After required runs complete, the Chief of Staff creates a structured consolidated result.
+
+Include:
+
+* task objective
+* participating specialists
+* specialist summaries
+* combined findings
+* combined recommendations
+* evidence references
+* risks
+* conflicts
+* unresolved questions
+* approval requirements
+* external actions still required
+* next recommended action
+
+Clearly distinguish:
+
+Analysis completed
+
+from:
+
+External action still awaiting OpenClaw execution
+
+⸻
+
+16. OpenClaw Handoff Package
+
+Create a stable package for later OpenClaw submission.
+
+interface OpenClawSpecialistExecutionPackage {
+  executionId: string;
+  specialistRunId: string;
+  organizationId: string;
+  conversationId?: string;
+  taskId: string;
+  capabilityCode: string;
+  workforceRoleCode: string;
+  workerProfileCode: string;
+  objective: string;
+  approvedSteps: ExecutionStep[];
+  allowedTools: string[];
+  allowedConnectorCategories: string[];
+  allowedExecutionChannels: string[];
+  prohibitedActions: string[];
+  approvalState: string;
+  clarificationState: string;
+  riskLevel: string;
+  inputReferences: SecureInputReference[];
+  outputRequirements: OutputRequirement[];
+  expiresAt: string;
+  correlationId: string;
+}
+
+Generate the package only when:
+
+* capability entitlement is allowed
+* specialist eligibility is allowed
+* Worker Profile is valid
+* approval requirements are satisfied
+* required runtime entitlement is present
+
+Do not submit to a live OpenClaw runtime during this sprint unless a safe development runtime is already configured.
+
+⸻
+
+17. Task Workroom
+
+Update the Task Workroom.
+
+Show real specialist runs:
+
+* assigned
+* queued
+* preparing
+* reasoning
+* awaiting clarification
+* awaiting approval
+* waiting for dependency
+* waiting for runtime
+* completed
+* failed
+
+Show:
+
+* Workforce Role
+* capability
+* Worker Profile
+* instruction version
+* current status
+* progress
+* findings
+* confidence
+* risks
+* clarification requests
+* retries
+* dependencies
+* external actions
+* final result
+
+Do not label a registry assignment as an active specialist run.
+
+⸻
+
+18. Platform Console
+
+Add Specialist Operations.
+
+Show:
+
+* active runs
+* queued runs
+* blocked runs
+* failed runs
+* completed runs
+* average duration
+* token usage
+* retries
+* clarification count
+* run success rate
+* usage by organisation
+* usage by Workforce Role
+* instruction versions
+* OpenClaw handoff status
+
+Do not show sensitive customer content by default.
+
+⸻
+
+19. Durable Usage Metering
+
+Record tenant-scoped usage for:
+
+* specialist runs
+* input tokens
+* output tokens
+* runtime duration
+* retries
+* clarification events
+* parallel run count
+* consolidation calls
+* external execution requests
+
+Do not rely only on the in-memory tracker.
+
+⸻
+
+20. Platform Console Capability CRUD
+
+Complete the deferred Capability Management UI.
+
+Allow authorised platform staff to:
+
+* create draft capability
+* edit capability metadata
+* version capability
+* activate capability
+* deprecate capability
+* map capability to Workforce Pack
+* map capability to Workforce Role
+* define supported capability level
+* define execution requirements
+* define connector requirements
+* define approval defaults
+
+Do not allow active capability history to be overwritten.
+
+Editing an active capability creates a new version.
+
+⸻
+
+21. Audit Events
+
+Add:
+
+specialist.eligibility_checked
+specialist.assignment_allowed
+specialist.assignment_blocked
+specialist.run_created
+specialist.run_queued
+specialist.run_started
+specialist.run_blocked
+specialist.run_completed
+specialist.run_failed
+specialist.run_retried
+specialist.run_cancelled
+specialist.work_package_created
+specialist.context_built
+specialist.output_validated
+specialist.clarification_requested
+specialist.clarification_resolved
+specialist.conflict_detected
+specialist.conflict_resolved
+chief_of_staff.specialists_dispatched
+chief_of_staff.consolidation_started
+chief_of_staff.consolidation_completed
+openclaw.handoff_package_created
+
+Do not store full prompts or sensitive outputs in platform-wide audit metadata.
+
+⸻
+
+22. Security
+
+Implement:
+
+* strict tenant isolation
+* RLS on all new tenant tables
+* specialist eligibility enforcement
+* capability entitlement enforcement
+* role-specific context filtering
+* Worker Profile enforcement
+* explicit-denial precedence
+* prompt injection protection
+* evidence-reference validation
+* no cross-task specialist memory
+* no cross-specialist restricted-data leakage
+* maximum token limits
+* maximum concurrent runs
+* safe retries
+* idempotency
+* cancellation
+* no LLM authority over permissions
+* no direct OpenAI imports outside the AI Gateway
+* no direct OpenClaw calls outside the execution layer
+
+⸻
+
+23. Configuration
+
+Add:
+
+SPECIALIST_MAX_CONCURRENT_RUNS_PER_TENANT=5
+SPECIALIST_MAX_CONCURRENT_RUNS_GLOBAL=50
+SPECIALIST_MAX_RETRIES=2
+SPECIALIST_RUN_TIMEOUT_MS=180000
+SPECIALIST_CONTEXT_TOKEN_BUDGET=
+SPECIALIST_QUEUE_LEASE_SECONDS=120
+
+Use entitlements and tenant overrides for organisation-specific limits.
+
+Do not use Stripe directly.
+
+⸻
+
+24. Tests
+
+Create comprehensive tests.
+
+Eligibility
+
+* Compliance Officer eligible for compliance capability
+* Compliance Officer rejected for accounting capability
+* Document Specialist eligible for document capability
+* Operations Manager eligible for operations capability
+* missing Workforce Pack blocks assignment
+* explicit denial blocks assignment
+* invalid Worker Profile blocks assignment
+* invented capability rejected
+
+Specialist runs
+
+* eligible plan step creates run
+* blocked eligibility creates no run
+* duplicate idempotency key creates no duplicate
+* run survives API restart
+* invalid transition rejected
+* tenant concurrency enforced
+* global concurrency enforced
+
+Specialist reasoning
+
+* each active specialist produces its own valid schema
+* provider timeout retries
+* invalid output fails safely
+* invented evidence rejected
+* model and instruction version recorded
+* deterministic test provider works
+
+Context boundaries
+
+* specialist receives only authorised context
+* Compliance Officer does not receive payroll data
+* Document Specialist does not receive irrelevant restricted records
+* Tenant A cannot access Tenant B specialist run
+* one task cannot read another task’s run memory
+
+Parallel execution
+
+* independent runs execute in parallel
+* dependent run waits
+* dependency completion releases waiting run
+* dependency failure follows failure policy
+* consolidation waits only for required runs
+
+Clarification
+
+* blocking question pauses one run
+* unrelated runs continue
+* valid reply requeues the run
+* wrong tenant cannot answer
+* duplicate answer is idempotent
+
+Consolidation
+
+* completed outputs consolidate
+* duplicate recommendations merge
+* conflicts are surfaced
+* external actions remain pending
+* Chief of Staff does not claim runtime execution occurred
+
+OpenClaw handoff
+
+* valid package created
+* ineligible package rejected
+* missing approval rejected
+* prohibited tools excluded
+* expired package rejected
+* cross-tenant package rejected
+
+Capability Console
+
+* active capability cannot be overwritten
+* editing active capability creates version
+* platform role required
+* customer user cannot access capability management
+
+All existing tests must continue to pass.
+
+⸻
+
+25. Completion Criteria
+
+This sprint is complete only when:
+
+* specialist eligibility is enforced inside task planning
+* ineligible specialists cannot be assigned
+* specialist_runs exists
+* real Compliance Officer runs work
+* real Document Specialist runs work
+* real Operations Manager runs work
+* specialist instructions are versioned
+* specialist context is role-scoped
+* specialist reasoning uses the AI Privacy Gateway
+* outputs are structured and validated
+* retries work
+* clarification works
+* parallel execution works
+* dependencies work
+* specialist conflicts are surfaced
+* Chief of Staff consolidation works
+* OpenClaw handoff packages are generated
+* Task Workroom shows genuine specialist runs
+* Platform Console shows specialist operations
+* Capability CRUD UI works
+* durable usage is recorded
+* tenant isolation tests pass
+* TypeScript passes
+* migrations pass
+* all tests pass
+* documentation is updated
+
+⸻
+
+Final Required Output
+
+Provide:
+
+SPRINT 9.5 COMPLETION REPORT
+Overall status:
+Complete / Incomplete
+Specialist eligibility:
+-
+Task-planning integration:
+-
+Specialist run model:
+-
+Compliance Officer:
+-
+Document Specialist:
+-
+Operations Manager:
+-
+Instruction versioning:
+-
+Specialist work packages:
+-
+Specialist context:
+-
+Specialist reasoning:
+-
+Structured outputs:
+-
+Queue:
+-
+Parallel execution:
+-
+Dependencies:
+-
+Clarification workflow:
+-
+Specialist working memory:
+-
+Conflict handling:
+-
+Chief of Staff consolidation:
+-
+OpenClaw handoff package:
+-
+Task Workroom:
+-
+Platform Specialist Operations:
+-
+Capability Console:
+-
+Durable usage:
+-
+Database changes:
+-
+RLS and tenant isolation:
+-
+API routes:
+-
+Audit events:
+-
+Tests passed:
+-
+Known issues:
+-
+Technical debt:
+-
+Ready for AWS OpenClaw integration:
+Yes / No
+
+Begin Sprint 9.5 now.
+
+Do not begin unrelated billing, local-device or connector work.
+
+Stop after producing the completion report.

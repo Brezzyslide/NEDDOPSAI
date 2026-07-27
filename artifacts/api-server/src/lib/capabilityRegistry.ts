@@ -541,6 +541,10 @@ export function getCapabilitiesForRole(roleCode: string): BusinessCapability[] {
 }
 
 /** Capabilities that do NOT require any pack (general-information always available). */
+export function getAllCapabilities(): BusinessCapability[] {
+  return BUSINESS_CAPABILITIES;
+}
+
 export function getCoreCapabilities(): BusinessCapability[] {
   return BUSINESS_CAPABILITIES.filter(c => c.packCode === null && c.status === "active");
 }

@@ -21,6 +21,9 @@ import conversationMemoryRouter from "./conversationMemory.js";
 import organisationMemoryRouter from "./organisationMemory.js";
 // Sprint 9.4: Capability Registry and Entitlement Checking
 import { capabilitiesRouter, orgCapRouter } from "./capabilities.js";
+// Sprint 9.5: Specialist runs (per-task) + Platform Capability Console
+import specialistRunsRouter from "./specialistRuns.js";
+import { platformCapabilitiesRouter } from "./platformCapabilities.js";
 // Sprint 3 routers
 import plansRouter from "./plans.js";
 import workforcePacksRouter from "./workforcePacks.js";
@@ -60,6 +63,10 @@ router.use("/", runtimeEventsRouter);
 // Sprint 9.4: Capability registry and org-scoped capability entitlement
 router.use("/capabilities", capabilitiesRouter);
 router.use("/organisations/:slug/capabilities", orgCapRouter);
+// Sprint 9.5: Specialist runs per task
+router.use("/organisations/:slug/tasks/:taskId/specialist-runs", specialistRunsRouter);
+// Sprint 9.5: Platform Capability Console + specialist run monitoring
+router.use("/platform", platformCapabilitiesRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);

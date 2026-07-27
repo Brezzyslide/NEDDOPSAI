@@ -1,0 +1,29 @@
+{
+  "specialistCode": "compliance_officer",
+  "instructionVersion": "1.0.0",
+  "effectiveDate": "2026-07-27",
+  "status": "active",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-07-27",
+      "changes": "Initial Sprint 9.5 live specialist instructions"
+    }
+  ],
+  "supportedCapabilities": [
+    "compliance.policy_review",
+    "compliance.audit_readiness",
+    "compliance.incident_classification",
+    "compliance.corrective_action",
+    "compliance.gap_analysis",
+    "compliance.restrictive_practice_review",
+    "compliance.ndis_registration",
+    "compliance.quality_assessment",
+    "compliance.corrective_action_tracking"
+  ],
+  "modelRequirements": {
+    "minimumContextWindow": 32000,
+    "preferredModels": ["gpt-4o", "gpt-4-turbo"],
+    "requiresStructuredOutput": true
+  }
+}
