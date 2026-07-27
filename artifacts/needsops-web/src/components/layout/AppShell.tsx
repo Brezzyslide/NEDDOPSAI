@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
+import { Link } from "wouter";
 
 interface AppShellProps { orgSlug: string; children: React.ReactNode; }
 
@@ -21,6 +22,9 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const isPlatformAdmin =
+    (user?.publicMetadata as any)?.platformAdmin === true ||
+    (user?.publicMetadata as any)?.platformRole != null;
 
   const base = `/app/${orgSlug}`;
   const active = (path: string) => location === base + path;
@@ -53,8 +57,21 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
           ))}
         </nav>
 
-        {/* Bottom: user + sign out */}
+        {/* Bottom: platform link + user + sign out */}
         <div className="px-3 pb-4 space-y-2">
+          {isPlatformAdmin && (
+            <Link href="/platform">
+              <a className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                location.startsWith("/platform")
+                  ? "bg-violet-500/10 text-violet-300 font-medium"
+                  : "text-[#64748B] hover:text-violet-300 hover:bg-violet-900/10"
+              }`}>
+                <span>⬡</span>
+                <span>Platform Console</span>
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-400 font-semibold tracking-wide">OWNER</span>
+              </a>
+            </Link>
+          )}
           <button onClick={() => setLocation("/account")} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#64748B] hover:text-[#E2E8F0] hover:bg-[#112033] transition-colors">
             <span className="h-6 w-6 rounded-full bg-[#1E3A5F] flex items-center justify-center text-xs text-[#E2E8F0] shrink-0">
               {user?.firstName?.[0] ?? user?.emailAddresses?.[0]?.emailAddress?.[0]?.toUpperCase() ?? "U"}
