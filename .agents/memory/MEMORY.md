@@ -6,3 +6,4 @@
 - [NeedsOps Sprint 9.2 Tenant-Aware CoS Memory](needsops-sprint92.md) — platform DB tables (not per-org), 10-layer prompt, 300-msg retrieval, pinned decisions, org memory approval workflow, REQUIRED_RLS_TABLES=28
 - [NeedsOps Sprint 9.4 Capability Gate](needsops-sprint94.md) — static registry allowlist, EntitlementResult uses .allowed not .granted, lib/db must be rebuilt after schema changes, partial-access also requires user confirmation
 - [NeedsOps Sprint 9.5 Specialist Runtime](needsops-sprint95.md) — eligibility 12-check, 3 active specialists, REQUIRED_RLS_TABLES=33, policy must be named tenant_isolation, queue worker not daemonized
+- [NeedsOps Sprint 9.6 Pack Commerce](needsops-sprint96.md) — DB-driven packs, Platform Pack Builder, landing page showcase, 4-step onboarding picker, Plan page marketplace

@@ -67,6 +67,9 @@ router.use("/organisations/:slug/capabilities", orgCapRouter);
 router.use("/organisations/:slug/tasks/:taskId/specialist-runs", specialistRunsRouter);
 // Sprint 9.5: Platform Capability Console + specialist run monitoring
 router.use("/platform", platformCapabilitiesRouter);
+// Sprint 9.6: Platform Pack Builder (CRUD for workforce packs + pricing)
+import platformPacksRouter from "./platformPacks.js";
+router.use("/platform/packs", platformPacksRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);

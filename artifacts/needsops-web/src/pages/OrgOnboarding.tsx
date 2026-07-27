@@ -1,27 +1,55 @@
-import { useState } from "react";
+/**
+ * Org Onboarding — Sprint 9.6
+ * 4-step wizard: org details → location → contact/compliance → choose workforce packs
+ */
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import { useAuthFetch } from "@/lib/api";
 
-type Step = 1 | 2 | 3;
+type Step = 1 | 2 | 3 | 4;
 
 interface FormData {
   name: string; type: string; industry: string;
   country: string; state: string; timezone: string;
   primaryContactName: string; primaryContactEmail: string;
   abn: string; ndisRegistrationNumber: string;
+  selectedPacks: string[];
+}
+
+interface Pack {
+  code: string;
+  name: string;
+  marketingTagline: string | null;
+  description: string | null;
+  iconEmoji: string | null;
+  colorHex: string | null;
+  tier: string;
+  priceMonthlyAud: string | null;
+  priceMonthly: number | null;
+  specialistCount: number;
+  featured: boolean;
 }
 
 const AU_STATES = ["ACT","NSW","NT","QLD","SA","TAS","VIC","WA"];
 const AU_TIMEZONES = ["Australia/Sydney","Australia/Melbourne","Australia/Brisbane","Australia/Perth","Australia/Adelaide","Australia/Darwin","Australia/Hobart"];
 const ORG_TYPES = [
-  { value: "ndis_provider", label: "NDIS Provider" },
+  { value: "ndis_provider",       label: "NDIS Provider" },
   { value: "disability_services", label: "Disability Services" },
-  { value: "aged_care", label: "Aged Care" },
-  { value: "healthcare", label: "Healthcare" },
-  { value: "other", label: "Other" },
+  { value: "aged_care",           label: "Aged Care" },
+  { value: "healthcare",          label: "Healthcare" },
+  { value: "other",               label: "Other" },
 ];
+
+const STEP_LABELS: Record<Step, string> = {
+  1: "Organisation details",
+  2: "Location",
+  3: "Contact & compliance",
+  4: "Choose your workforce",
+};
+
+const INPUT = "w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm transition-colors";
 
 export default function OrgOnboarding() {
   const [, setLocation] = useLocation();
@@ -32,18 +60,52 @@ export default function OrgOnboarding() {
     country: "AU", state: "", timezone: "Australia/Sydney",
     primaryContactName: "", primaryContactEmail: "",
     abn: "", ndisRegistrationNumber: "",
+    selectedPacks: [],
   });
+  const [packs, setPacks] = useState<Pack[]>([]);
+  const [packsLoading, setPacksLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const update = (k: keyof FormData, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const update = (k: keyof FormData, v: any) => setForm(f => ({ ...f, [k]: v }));
+
+  // Load packs when user reaches step 4
+  useEffect(() => {
+    if (step === 4 && packs.length === 0) {
+      setPacksLoading(true);
+      fetch("/v1/workforce-packs?status=available")
+        .then(r => r.json())
+        .then(d => {
+          const available: Pack[] = (d.packs ?? []).filter((p: Pack) => p.code !== "core");
+          setPacks(available);
+          // Pre-select featured packs
+          const preSelected = available.filter(p => p.featured).map(p => p.code);
+          setForm(f => ({ ...f, selectedPacks: preSelected }));
+        })
+        .catch(() => setPacks([]))
+        .finally(() => setPacksLoading(false));
+    }
+  }, [step]);
+
+  const togglePack = (code: string) => {
+    setForm(f => ({
+      ...f,
+      selectedPacks: f.selectedPacks.includes(code)
+        ? f.selectedPacks.filter(c => c !== code)
+        : [...f.selectedPacks, code],
+    }));
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true); setError("");
     try {
       const res = await apiFetch("/v1/organisations", {
         method: "POST",
-        body: JSON.stringify({ ...form, industry: form.type }),
+        body: JSON.stringify({
+          ...form,
+          industry: form.type,
+          initialWorkforcePacks: ["core", ...form.selectedPacks],
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error?.message ?? "Failed to create organisation"); return; }
@@ -52,91 +114,191 @@ export default function OrgOnboarding() {
     finally { setSubmitting(false); }
   };
 
+  const canAdvance = (): boolean => {
+    if (step === 1) return !!form.name.trim() && !!form.type;
+    if (step === 2) return !!form.state && !!form.timezone;
+    if (step === 3) return true;
+    return true;
+  };
+
   return (
     <>
       <Show when="signed-out"><Redirect to="/" /></Show>
       <Show when="signed-in">
         <div className="min-h-dvh bg-[#0B1829] flex flex-col items-center justify-center px-4 py-12">
-          <div className="w-full max-w-lg">
+          <div className={`w-full ${step === 4 ? "max-w-3xl" : "max-w-lg"}`}>
             {/* Progress */}
             <div className="flex gap-2 mb-8">
-              {([1,2,3] as Step[]).map(s => (
-                <div key={s} className={`flex-1 h-1 rounded-full ${s <= step ? "bg-[#00D4FF]" : "bg-[#1E3A5F]"}`}/>
+              {([1,2,3,4] as Step[]).map(s => (
+                <div key={s} className={`flex-1 h-1 rounded-full transition-all ${s <= step ? "bg-[#00D4FF]" : "bg-[#1E3A5F]"}`} />
               ))}
             </div>
-            <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl p-8">
-              <h1 className="text-2xl font-bold text-[#E2E8F0] mb-1">
-                {step === 1 ? "Organisation details" : step === 2 ? "Location" : "Contact & compliance"}
-              </h1>
-              <p className="text-[#64748B] text-sm mb-6">Step {step} of 3</p>
 
+            <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl p-8">
+              <h1 className="text-2xl font-bold text-[#E2E8F0] mb-1">{STEP_LABELS[step]}</h1>
+              <p className="text-[#64748B] text-sm mb-6">Step {step} of 4</p>
+
+              {/* ── Step 1: Org details ── */}
               {step === 1 && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm text-[#E2E8F0] mb-1">Organisation name *</label>
-                    <input value={form.name} onChange={e=>update("name",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm" placeholder="e.g. Horizon Support Services"/>
+                    <input value={form.name} onChange={e => update("name", e.target.value)} className={INPUT} placeholder="e.g. Horizon Support Services" />
                   </div>
                   <div>
                     <label className="block text-sm text-[#E2E8F0] mb-1">Organisation type *</label>
-                    <select value={form.type} onChange={e=>update("type",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm">
-                      {ORG_TYPES.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                    <select value={form.type} onChange={e => update("type", e.target.value)} className={INPUT}>
+                      {ORG_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                 </div>
               )}
 
+              {/* ── Step 2: Location ── */}
               {step === 2 && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">Country</label>
-                    <input value="Australia" readOnly className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#64748B] text-sm cursor-not-allowed"/>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">State / Territory *</label>
-                    <select value={form.state} onChange={e=>update("state",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm">
-                      <option value="">Select state...</option>
-                      {AU_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+                    <label className="block text-sm text-[#E2E8F0] mb-1">State</label>
+                    <select value={form.state} onChange={e => update("state", e.target.value)} className={INPUT}>
+                      <option value="">Select state…</option>
+                      {AU_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-sm text-[#E2E8F0] mb-1">Timezone</label>
-                    <select value={form.timezone} onChange={e=>update("timezone",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm">
-                      {AU_TIMEZONES.map(t=><option key={t} value={t}>{t.replace("Australia/","")}</option>)}
+                    <select value={form.timezone} onChange={e => update("timezone", e.target.value)} className={INPUT}>
+                      {AU_TIMEZONES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </div>
                 </div>
               )}
 
+              {/* ── Step 3: Contact ── */}
               {step === 3 && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">Contact name</label>
-                    <input value={form.primaryContactName} onChange={e=>update("primaryContactName",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm" placeholder="Jane Smith"/>
+                    <label className="block text-sm text-[#E2E8F0] mb-1">Primary contact name</label>
+                    <input value={form.primaryContactName} onChange={e => update("primaryContactName", e.target.value)} className={INPUT} placeholder="Full name" />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">Contact email</label>
-                    <input type="email" value={form.primaryContactEmail} onChange={e=>update("primaryContactEmail",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm" placeholder="jane@org.com.au"/>
+                    <label className="block text-sm text-[#E2E8F0] mb-1">Primary contact email</label>
+                    <input type="email" value={form.primaryContactEmail} onChange={e => update("primaryContactEmail", e.target.value)} className={INPUT} placeholder="email@example.com" />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">ABN <span className="text-[#64748B]">(optional)</span></label>
-                    <input value={form.abn} onChange={e=>update("abn",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm" placeholder="12 345 678 901"/>
+                    <label className="block text-sm text-[#E2E8F0] mb-1">ABN</label>
+                    <input value={form.abn} onChange={e => update("abn", e.target.value)} className={INPUT} placeholder="11 digits" />
                   </div>
                   <div>
-                    <label className="block text-sm text-[#E2E8F0] mb-1">NDIS registration number <span className="text-[#64748B]">(optional)</span></label>
-                    <input value={form.ndisRegistrationNumber} onChange={e=>update("ndisRegistrationNumber",e.target.value)} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF] text-sm" placeholder="4050000000"/>
+                    <label className="block text-sm text-[#E2E8F0] mb-1">NDIS registration number</label>
+                    <input value={form.ndisRegistrationNumber} onChange={e => update("ndisRegistrationNumber", e.target.value)} className={INPUT} placeholder="Optional" />
                   </div>
-                  {error && <p className="text-red-400 text-sm">{error}</p>}
                 </div>
               )}
 
+              {/* ── Step 4: Pack Picker ── */}
+              {step === 4 && (
+                <div>
+                  {/* Core pack — always included */}
+                  <div className="flex items-center gap-3 mb-5 p-4 rounded-xl border border-[#00D4FF]/30 bg-[#00D4FF]/5">
+                    <span className="text-2xl">⬡</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[#E2E8F0] font-semibold text-sm">Core Workforce</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-[#00D4FF]/10 text-[#00D4FF]">Always included</span>
+                      </div>
+                      <p className="text-[#64748B] text-xs mt-0.5">Your Chief of Staff and core AI specialists. Free with every plan.</p>
+                    </div>
+                    <span className="text-[#00D4FF] font-bold text-sm">Free</span>
+                  </div>
+
+                  <p className="text-[#94A3B8] text-sm mb-4">Add specialist workforce packs to your trial:</p>
+
+                  {packsLoading ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="h-28 rounded-xl bg-[#0B1829] border border-[#1E3A5F] animate-pulse" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {packs.map(p => {
+                        const color = p.colorHex ?? "#00D4FF";
+                        const selected = form.selectedPacks.includes(p.code);
+                        const isFree = p.priceMonthly === 0;
+                        return (
+                          <button
+                            key={p.code}
+                            onClick={() => togglePack(p.code)}
+                            className="text-left rounded-xl border p-4 transition-all"
+                            style={{
+                              borderColor: selected ? color : "#1E3A5F",
+                              background: selected ? `${color}08` : "#0B1829",
+                            }}
+                          >
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl">{p.iconEmoji ?? "📦"}</span>
+                                <span className="text-[#E2E8F0] font-semibold text-sm">{p.name}</span>
+                              </div>
+                              <div
+                                className="h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-all"
+                                style={{ borderColor: selected ? color : "#1E3A5F", background: selected ? color : "transparent" }}
+                              >
+                                {selected && <span className="text-[#0B1829] text-xs font-bold">✓</span>}
+                              </div>
+                            </div>
+                            <p className="text-[#64748B] text-xs leading-snug mb-2">{p.marketingTagline ?? p.description}</p>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-[#475569]">{p.specialistCount} specialists</span>
+                              <span className="text-xs font-semibold" style={{ color }}>
+                                {isFree ? "Free" : p.priceMonthlyAud ? `$${p.priceMonthlyAud}/mo` : ""}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {form.selectedPacks.length > 0 && (
+                    <p className="text-[#64748B] text-xs mt-4 text-center">
+                      {form.selectedPacks.length} pack{form.selectedPacks.length !== 1 ? "s" : ""} selected — you can change this any time in your portal.
+                    </p>
+                  )}
+
+                  {error && (
+                    <p className="text-red-400 text-sm mt-4 bg-red-900/10 border border-red-800/30 rounded-lg px-3 py-2">{error}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Navigation */}
               <div className="flex gap-3 mt-8">
                 {step > 1 && (
-                  <button onClick={()=>setStep(s=>(s-1) as Step)} className="flex-1 px-4 py-2.5 border border-[#1E3A5F] text-[#E2E8F0] rounded-lg hover:border-[#00D4FF] transition-colors text-sm">Back</button>
+                  <button
+                    onClick={() => setStep(s => (s - 1) as Step)}
+                    className="px-5 py-2.5 border border-[#1E3A5F] text-[#94A3B8] rounded-lg hover:border-[#00D4FF] transition-colors text-sm"
+                  >
+                    ← Back
+                  </button>
                 )}
-                {step < 3 ? (
-                  <button onClick={()=>{if(step===1&&!form.name.trim()){setError("Name required");return;}setError("");setStep(s=>(s+1) as Step);}} className="flex-1 px-4 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg hover:bg-[#00B8D9] transition-colors text-sm">Continue</button>
+                <div className="flex-1" />
+                {step < 4 ? (
+                  <button
+                    onClick={() => setStep(s => (s + 1) as Step)}
+                    disabled={!canAdvance()}
+                    className="px-6 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg hover:bg-[#00B8D9] disabled:opacity-40 transition-colors text-sm"
+                  >
+                    Continue →
+                  </button>
                 ) : (
-                  <button onClick={handleSubmit} disabled={submitting} className="flex-1 px-4 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg hover:bg-[#00B8D9] transition-colors text-sm disabled:opacity-50">{submitting ? "Creating..." : "Create Organisation"}</button>
+                  <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    className="px-6 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg hover:bg-[#00B8D9] disabled:opacity-50 transition-colors text-sm"
+                  >
+                    {submitting ? "Creating…" : "Create Organisation →"}
+                  </button>
                 )}
               </div>
             </div>

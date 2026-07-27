@@ -259,19 +259,50 @@ export default function PlanPage() {
 
                 {lockedPacks.length > 0 && (
                   <div>
-                    <p className="text-[#64748B] text-xs uppercase tracking-widest mb-3">Available on higher plans</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {lockedPacks.map((pack: any) => (
-                        <div key={pack.code} className="flex items-center gap-3 bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 opacity-50">
-                          <div className="h-8 w-8 rounded-lg bg-[#1E3A5F] flex items-center justify-center text-xs font-bold text-[#64748B] shrink-0">
-                            {pack.name?.charAt(0) ?? "?"}
+                    <p className="text-[#64748B] text-xs uppercase tracking-widest mb-3">Add to your plan</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {lockedPacks.map((pack: any) => {
+                        const colour = pack.colorHex ?? PACK_COLOURS[pack.code] ?? "#00D4FF";
+                        const isFree = pack.priceMonthly === 0;
+                        return (
+                          <div
+                            key={pack.code}
+                            className="rounded-xl border bg-[#0B1829] p-4 flex flex-col gap-3"
+                            style={{ borderColor: `${colour}25` }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className="h-10 w-10 rounded-lg flex items-center justify-center text-xl shrink-0"
+                                style={{ background: `${colour}15`, border: `1px solid ${colour}25` }}
+                              >
+                                {pack.iconEmoji ?? pack.name?.charAt(0) ?? "📦"}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[#E2E8F0] text-sm font-semibold truncate">{pack.name}</p>
+                                <p className="text-[#64748B] text-xs mt-0.5 line-clamp-2">{pack.marketingTagline ?? pack.description}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between mt-auto pt-1 border-t border-[#1E3A5F]">
+                              <div className="text-xs">
+                                {isFree ? (
+                                  <span className="text-[#00D4FF] font-bold">Free</span>
+                                ) : pack.priceMonthlyAud ? (
+                                  <span className="text-[#E2E8F0] font-bold">${pack.priceMonthlyAud}<span className="text-[#64748B] font-normal">/mo AUD</span></span>
+                                ) : (
+                                  <span className="text-[#64748B]">Contact for pricing</span>
+                                )}
+                              </div>
+                              <a
+                                href="mailto:sales@needsops.com.au"
+                                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                                style={{ background: `${colour}15`, color: colour, border: `1px solid ${colour}25` }}
+                              >
+                                Request access →
+                              </a>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[#64748B] text-sm font-medium truncate">{pack.name}</p>
-                          </div>
-                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-[#1E3A5F] text-[#64748B] shrink-0">🔒</span>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
