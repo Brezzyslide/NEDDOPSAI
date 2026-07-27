@@ -80,7 +80,10 @@ export interface StructuredContent {
     | "task_created"
     | "status_summary"
     | "result_summary"
-    | "follow_up_prompt";
+    | "follow_up_prompt"
+    // Sprint 9.4 — Capability gate cards
+    | "capability_blocked"
+    | "capability_partial";
   data: Record<string, unknown>;
 }
 

@@ -58,3 +58,6 @@ export * from "./messageReads";
 // Sprint 9.2 — Tenant-Aware Chief of Staff Memory
 export * from "./organisationMemory";
 export * from "./conversationMemory";
+// Sprint 9.4 — Capability Registry and Capability Decisions
+export * from "./businessCapabilities";
+export * from "./capabilityDecisions";

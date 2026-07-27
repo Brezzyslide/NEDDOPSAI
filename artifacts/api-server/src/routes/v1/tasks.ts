@@ -10,6 +10,10 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
 import type { TaskState, TaskPriority } from "@workspace/shared";
+// Sprint 9.4 — Capability gate
+import { identifyCapabilities } from "../../services/capabilityIdentificationService.js";
+import { decideMixedCapabilityAccess } from "../../services/capabilityAccessDecisionService.js";
+import { randomUUID } from "crypto";
 
 const router = Router({ mergeParams: true });
 
@@ -41,6 +45,65 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
     if (!title || typeof title !== "string" || title.trim().length < 3) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "title must be at least 3 characters." } });
       return;
+    }
+
+    // Sprint 9.4 — Capability gate: identify required capabilities and check entitlements
+    // before creating a task. Blocked capabilities must not become tasks.
+    const taskText = `${title}${description ? `. ${description}` : ""}`;
+    const correlationId = randomUUID();
+
+    const capIdResult = await identifyCapabilities({
+      organizationId: ctx.tenantId,
+      userId: user.id,
+      message: taskText,
+    }).catch(() => null);
+
+    if (capIdResult && capIdResult.requestedCapabilities.length > 0) {
+      const mixed = await decideMixedCapabilityAccess(
+        ctx.tenantId, user.id, capIdResult,
+        { correlationId },
+      ).catch(() => null);
+
+      // Hard block: required capabilities are fully blocked
+      if (mixed && !mixed.canProceedPartially && mixed.blockedCapabilities.length > 0) {
+        const primaryBlocked = mixed.blockedCapabilities[0]!;
+        await auditService.writeAuditEvent({
+          organizationId: ctx.tenantId,
+          actorUserId: user.id,
+          eventType: "specialist.assignment_blocked_by_entitlement",
+          resourceType: "task",
+          resourceId: "pending",
+          metadata: {
+            title: title.trim(),
+            blockedCapability: primaryBlocked.capabilityCode,
+            reasonCode: primaryBlocked.reasonCode,
+            requiredWorkforcePack: primaryBlocked.requiredWorkforcePack,
+          },
+          ...auditService.getRequestMeta(req),
+        }).catch(() => {});
+
+        res.status(403).json({
+          error: {
+            code: "CAPABILITY_NOT_ENTITLED",
+            message: `This task requires the ${primaryBlocked.requiredWorkforcePack ? primaryBlocked.requiredWorkforcePack.charAt(0).toUpperCase() + primaryBlocked.requiredWorkforcePack.slice(1) + " Workforce Pack" : "a Workforce Pack"} which is not included in your current plan.`,
+            capabilityDecision: {
+              capabilityCode: primaryBlocked.capabilityCode,
+              requestedLevel: primaryBlocked.requestedLevel,
+              reasonCode: primaryBlocked.reasonCode,
+              requiredWorkforcePack: primaryBlocked.requiredWorkforcePack,
+              upgradeOptions: primaryBlocked.upgradeOptions,
+            },
+            blockedCapabilities: mixed.blockedCapabilities.map(d => ({
+              capabilityCode: d.capabilityCode,
+              requestedLevel: d.requestedLevel,
+              reasonCode: d.reasonCode,
+              requiredWorkforcePack: d.requiredWorkforcePack,
+              upgradeOptions: d.upgradeOptions,
+            })),
+          },
+        });
+        return;
+      }
     }
 
     const result = await taskService.createTask({

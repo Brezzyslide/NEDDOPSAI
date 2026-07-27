@@ -19,6 +19,8 @@ import notificationsRouter from "./notifications.js";
 // Sprint 9.2: Tenant-Aware Chief of Staff Memory
 import conversationMemoryRouter from "./conversationMemory.js";
 import organisationMemoryRouter from "./organisationMemory.js";
+// Sprint 9.4: Capability Registry and Entitlement Checking
+import { capabilitiesRouter, orgCapRouter } from "./capabilities.js";
 // Sprint 3 routers
 import plansRouter from "./plans.js";
 import workforcePacksRouter from "./workforcePacks.js";
@@ -55,6 +57,9 @@ router.use("/plans", plansRouter);
 router.use("/workforce-packs", workforcePacksRouter);
 // Sprint 8: OpenClaw webhook receiver (raw body — no json() middleware)
 router.use("/", runtimeEventsRouter);
+// Sprint 9.4: Capability registry and org-scoped capability entitlement
+router.use("/capabilities", capabilitiesRouter);
+router.use("/organisations/:slug/capabilities", orgCapRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);

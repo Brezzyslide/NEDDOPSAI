@@ -37,6 +37,15 @@ import {
 import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
+// Sprint 9.4 — Capability gate
+import { identifyCapabilities } from "./capabilityIdentificationService.js";
+import { decideMixedCapabilityAccess } from "./capabilityAccessDecisionService.js";
+import {
+  buildBlockedCapabilityResponse,
+  buildMixedCapabilityResponse,
+  buildCapabilityBlockedCard,
+  buildMixedCapabilityCard,
+} from "./capabilityGateService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -413,11 +422,82 @@ export async function processUserMessage(
     permissions: [],
   });
 
+  // 3b. Capability gate — Sprint 9.4
+  // When the intent is task_intent or task_clarification, identify required capabilities
+  // and check organisation entitlements BEFORE routing to a specialist or creating a task.
+  // Deterministic check: LLM may propose intent; NeedsOps decides access.
+  let capabilityGateOverride: {
+    text: string;
+    structuredContent: StructuredContent;
+    messageType: InsertConversationMessage["messageType"];
+  } | null = null;
+
+  if (
+    understanding.conversationMode === "task_intent" ||
+    understanding.conversationMode === "task_clarification"
+  ) {
+    try {
+      const correlationId = randomUUID();
+      const capabilityIdResult = await identifyCapabilities({
+        organizationId,
+        userId,
+        conversationId,
+        taskId,
+        message: text,
+      });
+
+      if (capabilityIdResult.requestedCapabilities.length > 0) {
+        const mixed = await decideMixedCapabilityAccess(
+          organizationId, userId, capabilityIdResult,
+          { conversationId, taskId, correlationId },
+        );
+
+        if (!mixed.hasFullAccess) {
+          if (!mixed.canProceedPartially) {
+            // Fully blocked: replace task proposal with capability blocked card
+            const primaryBlocked = mixed.blockedCapabilities[0];
+            if (primaryBlocked) {
+              const blockedText = buildBlockedCapabilityResponse(primaryBlocked);
+              const blockedCard = buildCapabilityBlockedCard(
+                primaryBlocked,
+                ["general_guidance", "view_plan", "request_access"],
+              );
+              capabilityGateOverride = {
+                text: blockedText,
+                structuredContent: blockedCard,
+                messageType: "text",
+              };
+            }
+          } else if (mixed.requiresUserConfirmationForPartialWork) {
+            // Partial: replace with mixed capability card asking for confirmation
+            const mixedText = buildMixedCapabilityResponse(mixed);
+            const mixedCard = buildMixedCapabilityCard(mixed);
+            capabilityGateOverride = {
+              text: mixedText,
+              structuredContent: mixedCard,
+              messageType: "text",
+            };
+          }
+          // If canProceedPartially and no confirmation required, continue normally
+        }
+      }
+    } catch (err) {
+      // Capability gate errors must never break the conversation flow
+      console.warn("[ConversationService] Capability gate error (non-fatal):", err);
+    }
+  }
+
   // 4. Build structured content if applicable
   let structuredContent: StructuredContent | null = null;
   let messageType: InsertConversationMessage["messageType"] = "text";
 
-  if (understanding.conversationMode === "task_intent" && understanding.proposedTask) {
+  // Capability gate override takes precedence over normal task_proposal routing
+  if (capabilityGateOverride) {
+    structuredContent = capabilityGateOverride.structuredContent;
+    messageType = capabilityGateOverride.messageType;
+    // Override the CoS response text
+    understanding.customerResponse = capabilityGateOverride.text;
+  } else if (understanding.conversationMode === "task_intent" && understanding.proposedTask) {
     structuredContent = buildTaskProposalCard(understanding);
     messageType = "task_proposal";
   } else if (understanding.conversationMode === "task_clarification") {

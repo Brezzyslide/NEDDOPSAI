@@ -10,6 +10,7 @@ import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+import CapabilitiesSection from "@/components/plan/CapabilitiesSection";
 
 const PLAN_COLOURS: Record<string, string> = {
   foundation: "#64748B",
@@ -278,7 +279,7 @@ export default function PlanPage() {
 
               {/* Execution capabilities */}
               {execCapabilities.length > 0 && (
-                <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-6">
+                <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-6 mb-6">
                   <h3 className="text-[#E2E8F0] font-semibold mb-4">Execution Capabilities</h3>
                   <p className="text-[#64748B] text-sm mb-4">The actions your AI specialists can perform on your behalf.</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -295,6 +296,9 @@ export default function PlanPage() {
                   </div>
                 </div>
               )}
+
+              {/* Business Capabilities — Sprint 9.4 */}
+              <CapabilitiesSection orgSlug={slug ?? ""} />
             </>
           )}
         </div>

@@ -1,0 +1,868 @@
+NeedsOps AI+
+
+Sprint 9.4 — Capability Identification, Entitlement Enforcement and Upgrade Guidance
+
+Continue from the current Chief of Staff, organisation memory, Workforce Pack and entitlement architecture.
+
+The objective of this sprint is to ensure that every user request is classified into one or more required business capabilities before any specialist is assigned or any task is created.
+
+The Chief of Staff must recognise when an organisation requests work outside the capabilities included in its subscription.
+
+When a required capability is not purchased, the Chief of Staff must respond helpfully and politely, explain the boundary, offer any permitted partial assistance, and surface the correct upgrade path.
+
+Do not rely only on prompt wording.
+
+Capability access must be enforced deterministically by NeedsOps services.
+
+The AI identifies likely intent and capabilities.
+
+NeedsOps validates and decides access.
+
+⸻
+
+Core Flow
+
+Implement this flow:
+
+User request
+↓
+Chief of Staff understands intent
+↓
+Required business capabilities identified
+↓
+Capabilities validated against registry
+↓
+Organisation entitlements checked
+↓
+Available capabilities routed to specialists
+↓
+Unavailable capabilities blocked
+↓
+Chief of Staff explains the limitation and upgrade path
+
+No task, specialist run, execution package or OpenClaw submission may proceed for an unavailable capability.
+
+⸻
+
+Product Principle
+
+NeedsOps sells access to business capabilities through plans, Workforce Packs and add-ons.
+
+The customer is not buying unrestricted use of a named AI agent.
+
+A Workforce Role may only perform work within:
+
+* its registered capabilities
+* its Worker Profile
+* the organisation’s entitlements
+* the user’s permissions
+* current usage allowances
+* required approvals
+
+A Compliance Officer must not perform accounting simply because the user asks it to.
+
+⸻
+
+1. Capability Registry
+
+Create or complete a canonical capability registry.
+
+Every capability must include:
+
+* code
+* display name
+* description
+* capability category
+* capability level
+* owning Workforce Pack
+* eligible Workforce Roles
+* required Worker Profiles
+* required execution channels
+* required connector categories
+* default risk level
+* default approval requirement
+* information access allowed
+* analysis allowed
+* execution allowed
+* status
+* version
+* effective date
+
+Capability categories should include:
+
+compliance
+quality
+policy
+incident
+operations
+service_delivery
+roster
+human_resources
+staff_compliance
+learning
+finance
+accounting
+payroll
+invoicing
+budgeting
+reporting
+marketing
+communications
+documents
+research
+calendar
+administration
+
+Capability levels:
+
+general_information
+professional_analysis
+execution
+
+This distinction is important.
+
+Example:
+
+finance.bas.general_information
+finance.bas.analysis
+finance.bas.execution
+
+An organisation may be allowed to ask what BAS is without being entitled to prepare or execute BAS work.
+
+⸻
+
+2. Initial Capability Mapping
+
+Map the existing Workforce Packs and Workforce Roles.
+
+Examples:
+
+Compliance Workforce
+
+Capabilities:
+
+* compliance.audit_readiness
+* compliance.gap_analysis
+* compliance.evidence_review
+* compliance.corrective_actions
+* policy.review
+* incident.review
+* restrictive_practice.review
+* quality.practice_standard_review
+
+Finance Workforce
+
+Capabilities:
+
+* finance.invoice_review
+* finance.budget_analysis
+* finance.financial_reporting
+* accounting.reconciliation
+* accounting.bas_analysis
+* accounting.bas_preparation
+* payroll.review
+* payroll.schads_analysis
+* invoicing.create_draft
+
+HR Workforce
+
+Capabilities:
+
+* hr.recruitment
+* hr.onboarding
+* hr.performance
+* staff_compliance.qualification_review
+* learning.training_gap_analysis
+
+Operations Workforce
+
+Capabilities:
+
+* operations.workflow_review
+* operations.capacity_analysis
+* roster.review
+* service_delivery.review
+* asset.review
+
+Use granular capability codes.
+
+Do not use only broad labels such as finance or compliance.
+
+⸻
+
+3. Capability Identification Service
+
+Create a provider-independent service such as:
+
+interface CapabilityIdentificationService {
+  identifyCapabilities(input: {
+    organizationId: string;
+    userId: string;
+    conversationId?: string;
+    taskId?: string;
+    message: string;
+    conversationContext: ConversationContext;
+  }): Promise<CapabilityIdentificationResult>;
+}
+
+Suggested result:
+
+interface CapabilityIdentificationResult {
+  understoodIntent: string;
+  requestedCapabilities: Array<{
+    capabilityCode: string;
+    requestedLevel:
+      | "general_information"
+      | "professional_analysis"
+      | "execution";
+    confidence: number;
+    reason: string;
+    required: boolean;
+  }>;
+  ambiguous: boolean;
+  clarificationQuestions: string[];
+}
+
+The LLM may propose capability codes.
+
+NeedsOps must filter all capability codes against the canonical registry.
+
+Invented capabilities must be rejected.
+
+⸻
+
+4. Deterministic Capability Validation
+
+After capability identification, validate:
+
+1. capability exists
+2. capability is active
+3. requested level is valid
+4. capability belongs to an eligible Workforce Pack
+5. at least one Workforce Role can perform it
+6. Worker Profile permits the requested level
+7. required execution channel is valid
+8. required connector category is valid
+
+Return a structured validation result.
+
+⸻
+
+5. Capability Entitlement Decision
+
+Create or complete:
+
+interface CapabilityAccessDecision {
+  capabilityCode: string;
+  requestedLevel: string;
+  allowed: boolean;
+  partiallyAllowed: boolean;
+  allowedLevel?: string;
+  deniedLevel?: string;
+  reasonCode:
+    | "included_in_plan"
+    | "workforce_pack_included"
+    | "tenant_override"
+    | "trial_access"
+    | "general_information_allowed"
+    | "workforce_pack_not_included"
+    | "capability_not_included"
+    | "execution_not_included"
+    | "connector_not_eligible"
+    | "usage_limit_reached"
+    | "subscription_inactive"
+    | "explicitly_denied";
+  source: string;
+  requiredWorkforcePack?: string;
+  requiredPlanFeature?: string;
+  upgradeOptions: UpgradeOption[];
+}
+
+Use the existing:
+
+* tenant subscription state
+* plan version
+* plan features
+* plan Workforce Packs
+* tenant entitlements
+* tenant Workforce Packs
+* tenant add-ons
+* tenant overrides
+* usage limits
+* explicit denials
+
+Explicit denial always wins.
+
+Do not call Stripe.
+
+⸻
+
+6. Three-Level Access Model
+
+Implement the following default behaviour.
+
+General Information
+
+Example:
+
+What is a BAS?
+What does payroll reconciliation mean?
+What is an incident register?
+
+General educational answers may be provided where safe, even if the organisation does not own the corresponding Workforce Pack.
+
+The response must remain general.
+
+It must not use restricted organisation records or present itself as completed professional work.
+
+Professional Analysis
+
+Example:
+
+Review our BAS records.
+Analyse our payroll against SCHADS.
+Review our audit evidence.
+
+Requires the relevant Workforce Pack and capability entitlement.
+
+Execution
+
+Example:
+
+Prepare and lodge our BAS.
+Update payroll records.
+Submit the incident form.
+Create invoices in Xero.
+
+Requires:
+
+* relevant Workforce Pack
+* execution-level capability
+* required execution-channel entitlement
+* connector eligibility
+* usage allowance
+* Worker Profile permission
+* human approval where required
+* live runtime availability
+
+⸻
+
+7. Mixed-Capability Requests
+
+Support requests requiring multiple capabilities.
+
+Example:
+
+Review overtime compliance and calculate the financial impact.
+
+Identified capabilities:
+
+payroll.schads_analysis
+finance.cost_impact_analysis
+
+If the organisation owns Compliance but not Finance:
+
+* complete or propose the permitted compliance part
+* block the finance analysis
+* explain the split clearly
+* offer the relevant upgrade
+* do not present a partial result as complete
+
+Suggested result structure:
+
+interface MixedCapabilityDecision {
+  allowedCapabilities: CapabilityAccessDecision[];
+  blockedCapabilities: CapabilityAccessDecision[];
+  canProceedPartially: boolean;
+  requiresUserConfirmationForPartialWork: boolean;
+}
+
+Default behaviour:
+
+Ask the user before creating a partial task when a material part is unavailable.
+
+⸻
+
+8. Chief of Staff Response Behaviour
+
+The Chief of Staff response must be useful, calm and commercially clear.
+
+Do not use hostile wording such as:
+
+Access denied.
+You cannot use this agent.
+Payment required.
+
+Use wording such as:
+
+That request requires the Finance Workforce Pack, which is not currently included in your organisation’s plan.
+I can still explain the process at a general level, or I can complete the compliance portion of the request.
+To analyse or prepare the financial component using your organisation’s records, a Finance Workforce upgrade is required.
+
+For a fully blocked execution request:
+
+I cannot prepare or submit the BAS under the current plan.
+That work requires:
+- Finance Workforce Pack
+- Accounting execution capability
+- an approved accounting connector or browser session
+I can still help you outline the required documents and explain the process.
+
+The response should include:
+
+* what was requested
+* which capability is required
+* what access is currently available
+* what part, if any, can still be completed
+* which Workforce Pack or add-on is required
+* upgrade or trial action
+* no false claim that work started
+
+⸻
+
+9. Upgrade Guidance
+
+Create structured upgrade guidance.
+
+Suggested type:
+
+interface UpgradeOption {
+  type:
+    | "workforce_pack"
+    | "plan_upgrade"
+    | "capability_addon"
+    | "execution_addon"
+    | "connector_addon"
+    | "trial";
+  code: string;
+  displayName: string;
+  description: string;
+  available: boolean;
+  contactSalesRequired: boolean;
+}
+
+The Chief of Staff should not invent prices.
+
+Retrieve current commercial options from the existing plan and commercial services.
+
+If self-service purchase is not yet implemented, use:
+
+View plan options
+Request access
+Contact NeedsOps
+Start trial
+
+Do not claim an upgrade has occurred until the commercial service confirms it.
+
+⸻
+
+10. Task Creation Gate
+
+Before creating a formal task from conversation:
+
+1. identify capabilities
+2. validate capability codes
+3. evaluate access for each capability
+4. determine full, partial or blocked access
+5. ask clarification where capability intent is ambiguous
+6. obtain user confirmation for material partial work
+7. create only permitted task scope
+8. store blocked capability requirements on the task proposal
+9. prevent unavailable specialists from being assigned
+
+Do not create tasks that contain prohibited or unavailable execution steps.
+
+⸻
+
+11. Specialist Routing Gate
+
+The Chief of Staff must route only to specialists eligible for the allowed capabilities.
+
+Example:
+
+Request:
+Prepare BAS
+Required capability:
+accounting.bas_preparation
+Eligible Workforce Roles:
+Accounts Officer
+Financial Reporting Officer
+Organisation access:
+Finance Workforce not included
+Result:
+No specialist run created
+
+The Compliance Officer must not be selected as a substitute.
+
+Do not select the closest available agent merely to avoid an upgrade message.
+
+⸻
+
+12. Specialist Run Gate
+
+Before creating a specialist run, validate:
+
+* capability entitlement
+* capability level
+* Workforce Pack
+* role capability mapping
+* Worker Profile
+* usage
+* subscription state
+* approval requirement
+* runtime availability where execution is requested
+
+Store the capability decision ID on the specialist run.
+
+No specialist run may exist without an authorised capability decision.
+
+⸻
+
+13. OpenClaw Gate
+
+Before generating or submitting an OpenClaw handoff package:
+
+* validate execution-level capability
+* validate execution channel
+* validate connector eligibility
+* validate Worker Profile
+* validate approval
+* validate runtime
+* validate usage
+* validate package expiry
+
+A general-information or professional-analysis entitlement must never become execution access automatically.
+
+⸻
+
+14. Conversation Cards
+
+Add structured cards for unavailable capability requests.
+
+Example:
+
+Capability required
+Finance Workforce
+Requested work:
+Prepare BAS using organisation records
+Current access:
+General information only
+Available now:
+- Explain the BAS process
+- Provide a document checklist
+Requires upgrade:
+- Analyse organisation records
+- Prepare BAS
+- Submit through accounting system
+[View plan options]
+[Request access]
+[Continue with general guidance]
+
+For mixed work:
+
+Part of this task is available
+Available:
+SCHADS compliance review
+Not included:
+Financial impact analysis
+[Continue with compliance review only]
+[View Finance Workforce]
+[Continue discussing]
+
+⸻
+
+15. Customer Plan Page
+
+Update the customer Plan page to show capabilities by Workforce Pack.
+
+Display:
+
+* included capabilities
+* general-information capabilities
+* professional-analysis capabilities
+* execution capabilities
+* locked capabilities
+* required connector eligibility
+* required runtime eligibility
+
+Do not expose raw internal capability codes unless in an advanced details panel.
+
+⸻
+
+16. Platform Console
+
+Add capability management to the Commercial and Workforce sections.
+
+Allow authorised platform staff to manage:
+
+* capability definitions
+* capability versions
+* Workforce Pack mapping
+* Workforce Role mapping
+* capability level
+* execution requirements
+* connector requirements
+* plan inclusion
+* tenant overrides
+* explicit denials
+* trial access
+
+Every change must be audited.
+
+Historical capability versions must remain traceable.
+
+⸻
+
+17. Capability Decision Persistence
+
+Create a tenant-scoped capability decision record.
+
+Suggested fields:
+
+* id
+* organization_id
+* user_id
+* conversation_id, nullable
+* task_id, nullable
+* specialist_run_id, nullable
+* requested_capability_code
+* requested_level
+* decision
+* reason_code
+* source
+* required_workforce_pack
+* upgrade_options
+* evaluated_at
+* expires_at, nullable
+* correlation_id
+* created_at
+
+Decisions:
+
+allowed
+partially_allowed
+blocked
+clarification_required
+
+This provides an auditable explanation of why work did or did not proceed.
+
+⸻
+
+18. Analytics
+
+Track:
+
+* blocked capability requests
+* partial capability requests
+* most-requested unavailable capabilities
+* upgrade prompts shown
+* upgrade option selected
+* Workforce Pack demand
+* execution capability demand
+* connector demand
+
+Do not count a prompt as a sale.
+
+Use these analytics later to shape packaging and pricing.
+
+⸻
+
+19. Audit Events
+
+Add:
+
+capability.identification_started
+capability.identified
+capability.validation_failed
+capability.access_allowed
+capability.access_partially_allowed
+capability.access_blocked
+capability.clarification_requested
+capability.upgrade_prompt_shown
+capability.upgrade_option_selected
+task.scope_reduced_by_entitlement
+specialist.assignment_blocked_by_entitlement
+specialist.run_blocked_by_entitlement
+openclaw.submission_blocked_by_entitlement
+
+Do not place full customer message content in platform-wide audit metadata.
+
+⸻
+
+20. Security Rules
+
+Implement:
+
+* capability allowlist validation
+* no invented capabilities
+* no capability substitution
+* explicit denial precedence
+* tenant isolation
+* permission checks
+* entitlement checks
+* usage checks
+* Worker Profile checks
+* approval checks
+* runtime checks
+* no LLM authority over access
+* no client-side-only enforcement
+
+The UI may explain access.
+
+The server must enforce access.
+
+⸻
+
+21. Tests
+
+Create comprehensive tests.
+
+Capability identification
+
+* compliance task maps to compliance capability
+* BAS preparation maps to finance/accounting execution capability
+* general BAS question maps to general information
+* mixed request maps to multiple capabilities
+* invented capability rejected
+* ambiguous request asks clarification
+
+Entitlement behaviour
+
+* owned capability allowed
+* missing Workforce Pack blocked
+* general information permitted where configured
+* professional analysis blocked without pack
+* execution blocked without execution entitlement
+* explicit denial overrides plan access
+* tenant override grants temporary access
+* expired trial denied
+* usage hard limit denied
+
+Routing
+
+* Compliance Officer cannot receive accounting work
+* Finance role selected for accounting capability
+* unavailable role is not substituted
+* mixed request may route only allowed portion
+* partial task requires confirmation
+
+Task and specialist runs
+
+* blocked capability does not create task
+* partial task stores reduced scope
+* blocked specialist run is not created
+* capability decision links to specialist run
+* execution package not created without execution access
+
+Conversation response
+
+* polite blocked response is generated
+* response names required Workforce Pack
+* response offers permitted alternatives
+* response does not invent price
+* response does not claim work started
+* upgrade action uses real commercial data
+
+Security
+
+* client cannot bypass entitlement through API
+* Tenant A cannot use Tenant B override
+* LLM output cannot grant capability
+* direct task API enforces capability
+* direct specialist API enforces capability
+* direct OpenClaw API enforces capability
+
+All existing tests must continue to pass.
+
+⸻
+
+22. Completion Criteria
+
+This sprint is complete only when:
+
+* all requests are mapped to capabilities
+* capability codes are validated
+* capability levels are recognised
+* plans and Workforce Packs grant capabilities
+* Chief of Staff checks capability access before routing
+* unavailable capabilities are politely blocked
+* general information remains available where configured
+* mixed requests are split correctly
+* partial work requires appropriate confirmation
+* specialists cannot work outside their capabilities
+* tasks cannot bypass capability checks
+* specialist runs cannot bypass checks
+* OpenClaw submissions cannot bypass checks
+* upgrade options come from commercial services
+* Plan page shows capability access
+* Platform Console manages capability mappings
+* analytics and audit events work
+* tenant isolation tests pass
+* TypeScript passes
+* migrations pass
+* all tests pass
+* documentation is updated
+
+⸻
+
+Final Required Output
+
+Provide:
+
+SPRINT 9.4 COMPLETION REPORT
+Overall status:
+Complete / Incomplete
+Capability registry:
+-
+Capability identification:
+-
+Capability level model:
+-
+Entitlement decisions:
+-
+Mixed-capability handling:
+-
+Chief of Staff pushback:
+-
+General information access:
+-
+Task creation gating:
+-
+Specialist routing gating:
+-
+Specialist run gating:
+-
+OpenClaw execution gating:
+-
+Upgrade guidance:
+-
+Customer plan page:
+-
+Platform Console:
+-
+Capability analytics:
+-
+Database changes:
+-
+RLS and tenant isolation:
+-
+API routes:
+-
+Audit events:
+-
+Tests passed:
+-
+Known issues:
+-
+Technical debt:
+-
+Recommended next sprint:
+-
+Ready for live OpenClaw execution:
+Yes / No
+
+Begin this sprint now.
+
+Do not begin unrelated billing, local-device or connector work.
+
+Stop after producing the completion report.
