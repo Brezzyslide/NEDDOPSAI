@@ -271,11 +271,20 @@ export const AUDIT_EVENTS = [
   "platform.plan_version_archived",
   "platform.trial_started",
   "platform.trial_cancelled",
+  "platform.trial_convert",
   "platform.high_priority_flagged",
+  "platform.seat_override_created",
+  "platform.seat_override_revoked",
+  "platform.subscription_paused",
+  "platform.subscription_resumed",
+  "platform.subscription_cancelled",
+  "platform.subscription_created",
   "platform.feature_flag_updated",
   "platform.platform_setting_updated",
   "platform.platform_role_granted",
   "platform.platform_role_revoked",
+  // Sprint 9.7 — Staff management
+  "platform.platform_staff_suspended",
   // Sprint 9.4 — Capability management
   "capability.created",
   "capability.updated",
@@ -305,6 +314,17 @@ export const AUDIT_EVENTS = [
   "chief_of_staff.consolidation_started",
   "chief_of_staff.consolidation_completed",
   "openclaw.handoff_package_created",
+  // Sprint 9.7 — Owner Control Plane
+  "platform.organisation_updated",
+  "platform.organisation_closed",
+  "platform.execution_frozen",
+  "platform.execution_unfrozen",
+  "platform.logins_disabled",
+  "platform.logins_enabled",
+  "platform.pack_granted",
+  "platform.pack_revoked",
+  "platform.pack_trial_started",
+  "platform.pack_trial_extended",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
 
@@ -592,6 +612,12 @@ export const PLATFORM_ROLES = [
   // Sprint 4 additions
   "platform_auditor",
   "platform_developer",
+  // Sprint 9.7 additions — canonical role names from spec
+  "platform_admin",
+  "platform_commercial",
+  "platform_operations",
+  "platform_support",
+  "platform_security",
 ] as const;
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 
@@ -603,6 +629,11 @@ export const PLATFORM_ROLE_LABELS: Record<PlatformRole, string> = {
   platform_security_auditor: "Security Auditor",
   platform_auditor: "Auditor",
   platform_developer: "Developer",
+  platform_admin: "Admin",
+  platform_commercial: "Commercial",
+  platform_operations: "Operations",
+  platform_support: "Support",
+  platform_security: "Security",
 };
 
 // ─── Tenant override types (Sprint 3) ────────────────────────────────────────

@@ -69,3 +69,5 @@ export * from "./specialistConflicts";
 // Sprint 9.6 — Dynamic Workforce Pack Pricing
 export * from "./workforcePackPriceVersions";
 export * from "./workforcePackAccessRequests";
+// Sprint 9.7 — Owner Control Plane
+export * from "./seatOverrides";

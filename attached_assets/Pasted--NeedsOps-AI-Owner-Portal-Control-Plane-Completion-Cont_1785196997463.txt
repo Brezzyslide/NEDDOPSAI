@@ -1,0 +1,1387 @@
+# NeedsOps AI+
+
+## Owner Portal Control Plane Completion
+
+Continue from the current Platform Console, Pack Builder, commercial services, organisation administration, trials, workforce packs, capability system and specialist runtime.
+
+The objective of this sprint is to turn the current Owner Portal from a mostly read-only monitoring dashboard into the complete operating control plane for the NeedsOps business.
+
+After this sprint, an authorised platform owner must be able to manage organisations, plans, pricing, packs, trials, platform staff, commercial access, onboarding selections, execution access and support actions without manually editing the database or calling APIs outside the UI.
+
+Do not begin Stripe, AWS OpenClaw deployment, local-device access or unrelated connector work.
+
+---
+
+# Core Principle
+
+The Owner Portal must become the authoritative control surface for ordinary platform operations.
+
+The platform owner should not need a developer to:
+
+* grant a pack
+* revoke a pack
+* start or extend a trial
+* convert a trial
+* create a plan
+* publish pricing
+* suspend an organisation
+* change seats
+* approve an access request
+* grant a platform role
+* freeze execution
+* activate individual specialists
+* correct onboarding pack selection
+
+All actions must use existing service and API layers where possible.
+
+Do not implement direct database mutations from React components.
+
+---
+
+# Required Owner Experience
+
+The intended flow is:
+
+```text
+Platform owner signs in
+↓
+Opens Owner Portal
+↓
+Views organisations, subscriptions, trials and usage
+↓
+Changes commercial or operational settings
+↓
+NeedsOps validates permissions and state
+↓
+Change is persisted
+↓
+Tenant entitlements and capabilities recalculate
+↓
+Customer UI reflects the change
+↓
+Audit event records the action
+```
+
+---
+
+# 1. Owner Portal Roles and Permissions
+
+Use database-backed platform roles as the authoritative source.
+
+Support:
+
+```text
+platform_super_admin
+platform_admin
+platform_commercial
+platform_operations
+platform_support
+platform_security
+platform_auditor
+platform_developer
+```
+
+Create a clear permission matrix.
+
+Examples:
+
+## Super Admin
+
+May perform every platform action.
+
+## Platform Admin
+
+May manage organisations, packs, plans, trials and staff roles except super-admin grants.
+
+## Commercial
+
+May manage plans, pricing, trials, subscriptions, packs and access requests.
+
+## Operations
+
+May manage organisation status, runtime access, execution controls and specialist operations.
+
+## Support
+
+May view organisations, add support notes, review access issues and create escalation requests.
+
+## Security
+
+May suspend organisations, freeze execution, revoke sessions and manage security flags.
+
+## Auditor
+
+Read-only access to audit, security, commercial history and organisation records.
+
+Enforce permissions server-side.
+
+Do not rely only on hiding UI buttons.
+
+---
+
+# 2. Organisation Administration
+
+Update:
+
+```text
+/platform/organisations
+/platform/organisations/:id
+```
+
+Allow authorised platform staff to:
+
+* view organisation
+* edit organisation display name
+* edit legal name
+* edit trading name
+* edit status
+* suspend organisation
+* reactivate organisation
+* close organisation
+* reopen organisation where policy permits
+* freeze all AI execution
+* unfreeze AI execution
+* disable new logins
+* restore login access
+* change support status
+* add internal notes
+* flag security risk
+* assign account owner
+* set onboarding state
+* view pack selection history
+* view subscription history
+* view trial history
+* view seat history
+* view capability history
+* view specialist activation history
+* view runtime access state
+
+Every status-changing action must require:
+
+* reason
+* actor
+* timestamp
+* optional internal note
+* confirmation for high-impact actions
+
+Suspension should not silently delete data.
+
+---
+
+# 3. Organisation Status Model
+
+Support explicit statuses:
+
+```text
+onboarding
+trial
+active
+past_due
+restricted
+suspended
+closed
+```
+
+Create deterministic rules.
+
+Examples:
+
+## Restricted
+
+* users may log in
+* users may view previous work
+* new execution blocked
+* new specialist runs blocked
+* plan changes allowed
+
+## Suspended
+
+* organisation users cannot access the workspace
+* all execution blocked
+* runtime sessions revoked
+* data preserved
+* platform staff retain controlled access
+
+## Closed
+
+* no ordinary access
+* no new work
+* retention policy applies
+* reopening requires authorised platform action
+
+Do not let UI invent state transitions.
+
+Use a validated organisation state service.
+
+---
+
+# 4. Onboarding Pack Selection Consumption
+
+Fix the existing gap where:
+
+```text
+initialWorkforcePacks
+```
+
+is accepted but not consumed.
+
+During organisation creation:
+
+1. validate selected pack codes
+2. always grant Core Pack
+3. load current owner-controlled onboarding rules
+4. determine whether each selected pack becomes:
+
+   * included
+   * trial
+   * requested
+   * pending approval
+   * pending payment
+5. create tenant pack assignments
+6. create capability entitlements
+7. create trial records where applicable
+8. create access requests where applicable
+9. return the result to onboarding UI
+10. audit every assignment decision
+
+Do not trust client-supplied prices or trial lengths.
+
+Use server-side pack configuration only.
+
+The organisation creation transaction must roll back safely on partial failure.
+
+---
+
+# 5. Pack Grant and Revocation UI
+
+Complete Pack Builder organisation controls.
+
+From:
+
+```text
+/platform/packs
+```
+
+allow the owner to:
+
+* select a pack
+* view organisations with access
+* grant pack to organisation
+* start pack trial
+* approve pending access request
+* reject access request
+* revoke pack
+* cancel pack trial
+* extend pack trial
+* convert trial to active
+* assign custom commercial terms
+* assign price version
+* set effective date
+* set expiry date
+* view grant history
+
+Also allow the same actions from organisation detail.
+
+Use the existing grant API where appropriate.
+
+Do not create duplicate assignment services.
+
+---
+
+# 6. Pack Assignment Rules
+
+Before granting a pack, validate:
+
+* organisation exists
+* organisation is not closed
+* pack exists
+* pack is active
+* pack is not archived
+* required base plan is satisfied
+* required platform feature is enabled
+* incompatible pack rules
+* duplicate active assignment
+* trial eligibility
+* seat or usage restrictions where applicable
+* custom override authority
+
+Return a structured grant result.
+
+---
+
+# 7. Pack Access Requests
+
+Replace the current `mailto:` access flow.
+
+On the customer Plan page:
+
+```text
+Request access
+```
+
+must create a real request.
+
+Create or complete:
+
+```text
+workforce_pack_access_requests
+```
+
+Request fields:
+
+* id
+* organization_id
+* workforce_pack_id
+* requested_by_user_id
+* requested_at
+* request_reason
+* desired_start_date, nullable
+* requested_trial
+* status
+* reviewed_by, nullable
+* reviewed_at, nullable
+* review_notes, nullable
+* assigned_price_version_id, nullable
+* created_at
+* updated_at
+
+Statuses:
+
+```text
+pending
+approved
+rejected
+cancelled
+expired
+```
+
+The Owner Portal must show:
+
+* pending requests
+* organisation
+* pack
+* request reason
+* current plan
+* current packs
+* usage
+* requested trial
+* recommended action
+
+Actions:
+
+```text
+Approve
+Approve as trial
+Approve as active
+Reject
+Request more information
+```
+
+Every action must be audited.
+
+---
+
+# 8. Commercial Plan Builder
+
+Update:
+
+```text
+/platform/commercial
+```
+
+from read-only to full plan management.
+
+Allow authorised users to:
+
+* create plan
+* create draft plan version
+* edit draft version
+* define plan name
+* define plan code
+* define description
+* set monthly price
+* set annual price
+* set currency
+* set included seats
+* set additional seat price
+* set included packs
+* set available add-on packs
+* set included specialist add-ons
+* set available individual specialist add-ons
+* set included execution allowance
+* set usage limits
+* set fair-use configuration
+* set storage allowance
+* set browser execution allowance
+* set runtime entitlement
+* set trial length
+* set annual discount
+* set onboarding availability
+* set public visibility
+* set effective date
+* schedule future version
+* publish version
+* supersede version
+* archive version
+
+Do not edit active versions in place.
+
+Editing an active plan must create a new version.
+
+---
+
+# 9. Plan Versioning
+
+Use versioned commercial records.
+
+Every plan version must contain:
+
+* version number
+* effective date
+* expiry date
+* status
+* prices
+* currency
+* included seats
+* included packs
+* entitlements
+* usage allowances
+* trial rules
+* add-on eligibility
+* created by
+* approved by
+* published at
+* notes
+
+Statuses:
+
+```text
+draft
+scheduled
+active
+superseded
+archived
+```
+
+Existing customers remain on their assigned version unless explicitly migrated.
+
+Create an owner action:
+
+```text
+Migrate selected organisations to new plan version
+```
+
+This action must show:
+
+* affected organisations
+* price change
+* seat change
+* pack change
+* entitlement change
+* effective date
+* confirmation
+
+---
+
+# 10. Dynamic Pricing Controls
+
+Support owner-controlled pricing for:
+
+* base plans
+* Workforce Packs
+* individual specialists
+* additional seats
+* execution allowance
+* dedicated runtime
+* premium connectors
+* onboarding services
+* enterprise support
+
+Currency must be explicit.
+
+Default:
+
+```text
+AUD
+```
+
+Display as:
+
+```text
+A$499/month
+```
+
+Do not display ambiguous `$499`.
+
+Support pricing states:
+
+```text
+free
+priced
+contact_sales
+coming_soon
+custom
+```
+
+Do not seed live paid prices.
+
+Do not overwrite owner-configured pricing through seeds.
+
+---
+
+# 11. Individual Specialist Add-Ons
+
+Create the commercial foundation for individual specialist purchases.
+
+Allow the owner to configure:
+
+* specialist availability as add-on
+* monthly price
+* annual price
+* eligible plans
+* included capabilities
+* capability levels
+* execution entitlement
+* trial eligibility
+* dependency on Workforce Pack
+* standalone purchase allowed
+* status
+* effective date
+
+A customer buying an individual specialist must receive only the capabilities mapped to that specialist.
+
+Example:
+
+```text
+Payroll Officer add-on
+```
+
+must not unlock the entire Finance Workforce.
+
+The capability entitlement engine remains authoritative.
+
+---
+
+# 12. Seat Management
+
+Add seat controls to organisation detail and commercial settings.
+
+Allow the owner to:
+
+* view current seat allowance
+* view active users
+* view invited users
+* increase seat allowance
+* decrease future seat allowance
+* assign temporary seat override
+* set effective date
+* set expiry
+* apply custom additional-seat price
+* view seat usage history
+
+Do not automatically remove users when reducing seats.
+
+If current usage exceeds the new allowance:
+
+* block new invitations
+* show overage state
+* preserve existing users according to policy
+* require owner decision before forced removal
+
+---
+
+# 13. Trial Management
+
+Upgrade:
+
+```text
+/platform/trials
+```
+
+into an action centre.
+
+Allow:
+
+* view all trials
+* filter by expiring, expired, converted, cancelled
+* start trial
+* extend trial
+* shorten trial where policy allows
+* cancel trial
+* convert trial to active
+* convert one pack trial only
+* convert full organisation subscription
+* assign plan
+* assign packs
+* assign seats
+* assign price version
+* assign custom terms
+* record invoice or contract source
+* set activation date
+* add internal note
+
+Trial conversion must not require Stripe.
+
+Support commercial sources:
+
+```text
+manual
+invoice
+bank_transfer
+enterprise_contract
+pilot
+future_stripe
+reseller
+```
+
+---
+
+# 14. Subscription Management
+
+From organisation detail, allow:
+
+* create subscription
+* assign plan
+* change plan
+* schedule plan change
+* pause subscription
+* resume subscription
+* cancel subscription
+* renew subscription
+* set billing source
+* set renewal date
+* set contract end date
+* assign custom price
+* assign discount
+* assign packs
+* assign add-ons
+* assign seats
+* add commercial notes
+
+Execution must depend on subscription and entitlements, not Stripe.
+
+---
+
+# 15. Manual Trial-to-Paid Conversion
+
+Create a guided workflow.
+
+```text
+Convert trial
+```
+
+Step 1:
+Choose plan
+
+Step 2:
+Choose packs and individual specialists
+
+Step 3:
+Set seats and usage allowances
+
+Step 4:
+Choose commercial source
+
+Step 5:
+Choose price version or custom terms
+
+Step 6:
+Set activation and renewal dates
+
+Step 7:
+Review entitlements
+
+Step 8:
+Confirm conversion
+
+On confirmation:
+
+* update tenant subscription
+* activate packs
+* activate specialist add-ons
+* update seats
+* update entitlements
+* preserve trial history
+* create audit events
+* notify customer in-app
+* do not duplicate records
+
+---
+
+# 16. Platform Staff Management
+
+Create:
+
+```text
+/platform/staff
+```
+
+Allow super-admin and authorised admin users to:
+
+* search platform staff
+* invite staff
+* assign role
+* change role
+* suspend staff access
+* reactivate staff
+* revoke role
+* view last login
+* view MFA status where available
+* view privileged actions
+* require access review
+* add internal note
+
+Do not depend on Clerk public metadata as the long-term role authority.
+
+The database `platform_roles` table remains authoritative.
+
+If authentication remains with Clerk temporarily, Clerk proves identity only.
+
+NeedsOps proves authorisation.
+
+---
+
+# 17. First Super Admin Bootstrap
+
+Implement a documented bootstrap flow.
+
+Allow one controlled method:
+
+* environment-configured bootstrap user email or identity ID
+* one-time command
+* migration script
+* manual secure database grant
+
+After first bootstrap:
+
+* normal role administration must happen through the Owner Portal
+* bootstrap path should be disableable
+* every bootstrap event must be audited
+
+Do not leave an unrestricted permanent bypass.
+
+---
+
+# 18. Organisation Runtime Controls
+
+Before live OpenClaw execution, allow the owner to control:
+
+* runtime entitlement
+* runtime mode
+* cloud runtime access
+* local runtime access
+* hybrid runtime access
+* execution freeze
+* active runtime sessions
+* revoke runtime registration
+* disable new executions
+* cancel queued executions
+* set concurrency limit
+* set usage allowance
+* set allowed execution channels
+* view last heartbeat
+* view runtime failures
+
+High-impact actions require confirmation.
+
+---
+
+# 19. Specialist Controls
+
+From organisation detail and Specialist Ops, allow:
+
+* activate specialist
+* deactivate specialist
+* grant individual specialist add-on
+* revoke specialist
+* assign capability level
+* assign Worker Profile
+* set specialist concurrency limit
+* set specialist token allowance
+* view run history
+* cancel stuck run
+* retry failed run
+* pause specialist execution
+* inspect conflicts
+* view instruction version
+
+Do not allow the owner to bypass capability or Worker Profile rules.
+
+---
+
+# 20. Capability Overrides
+
+Allow authorised platform staff to:
+
+* grant capability
+* deny capability
+* grant temporary capability
+* set expiry
+* define allowed level
+* define execution access
+* revoke override
+* view source of access
+* view override history
+
+Explicit denial must always win.
+
+Every override requires:
+
+* reason
+* actor
+* expiry where temporary
+* audit event
+
+---
+
+# 21. Support Centre Actions
+
+Upgrade Support Centre.
+
+Allow:
+
+* open support case
+* assign case owner
+* set priority
+* add internal note
+* add customer-visible note
+* request customer information
+* link organisation
+* link task
+* link specialist run
+* link subscription
+* set status
+* escalate to security
+* escalate to billing
+* close case
+* reopen case
+
+Do not expose internal notes to customers.
+
+---
+
+# 22. Security Actions
+
+Upgrade Security page.
+
+Allow:
+
+* suspend organisation
+* freeze execution
+* revoke sessions
+* revoke runtime credentials
+* force password reset through identity provider where supported
+* flag user
+* flag organisation
+* record security incident
+* review suspicious logins
+* view cross-tenant guard status
+* disable integration
+* rotate runtime secret reference
+* start incident response workflow
+
+All security actions require a reason.
+
+---
+
+# 23. Audit and Change History
+
+Every owner action must record:
+
+* actor
+* platform role
+* organisation
+* affected entity
+* previous state
+* new state
+* reason
+* timestamp
+* correlation ID
+* source page
+* result
+
+Support filters by:
+
+* actor
+* organisation
+* event type
+* commercial action
+* security action
+* date range
+* affected plan
+* affected pack
+* affected specialist
+
+Do not log raw secrets.
+
+---
+
+# 24. Owner Dashboard
+
+Upgrade the Owner Portal dashboard to show actionable items.
+
+Include:
+
+* organisations awaiting approval
+* pending pack requests
+* trials expiring soon
+* organisations over seat limit
+* organisations near usage limits
+* failed specialist runs
+* runtime failures
+* suspended organisations
+* overdue support cases
+* scheduled pricing changes
+* plan migrations pending
+* recent privileged changes
+
+Every metric should link to the relevant action page.
+
+---
+
+# 25. Global Search
+
+Extend platform search to include:
+
+* organisations
+* users
+* packs
+* plans
+* subscriptions
+* access requests
+* specialist runs
+* support cases
+* audit events
+* capability overrides
+* platform staff
+
+Respect platform permissions.
+
+---
+
+# 26. Bulk Actions
+
+Support safe bulk actions where useful:
+
+* grant pack to selected organisations
+* extend selected trials
+* assign account owner
+* apply plan migration
+* export organisation data
+* suspend selected organisations in a confirmed security event
+
+Bulk actions must:
+
+* show preview
+* show count
+* show affected records
+* require confirmation
+* execute idempotently
+* produce per-record results
+* create audit events
+
+Do not permit bulk destructive actions without additional confirmation.
+
+---
+
+# 27. Customer-Side Reflection
+
+After owner actions, the customer application must reflect the result.
+
+Examples:
+
+* granted pack appears immediately
+* capabilities become available
+* revoked pack becomes locked
+* trial expiry updates
+* seat allowance updates
+* execution freeze shows clear notice
+* suspended organisation cannot continue
+* approved access request changes to active or trial
+* plan page shows assigned terms
+
+Do not require redeployment.
+
+Use cache invalidation where necessary.
+
+---
+
+# 28. API Requirements
+
+Create or complete APIs for:
+
+## Organisations
+
+```text
+PATCH /v1/platform/organisations/:id
+POST  /v1/platform/organisations/:id/suspend
+POST  /v1/platform/organisations/:id/reactivate
+POST  /v1/platform/organisations/:id/close
+POST  /v1/platform/organisations/:id/freeze-execution
+POST  /v1/platform/organisations/:id/unfreeze-execution
+```
+
+## Packs
+
+```text
+POST   /v1/platform/packs/:id/grant
+POST   /v1/platform/packs/:id/revoke
+POST   /v1/platform/packs/:id/start-trial
+POST   /v1/platform/packs/:id/extend-trial
+GET    /v1/platform/packs/:id/organisations
+```
+
+## Pack Requests
+
+```text
+GET    /v1/platform/pack-access-requests
+POST   /v1/platform/pack-access-requests/:id/approve
+POST   /v1/platform/pack-access-requests/:id/reject
+POST   /v1/organisations/:slug/pack-access-requests
+```
+
+## Plans
+
+```text
+GET    /v1/platform/plans
+POST   /v1/platform/plans
+POST   /v1/platform/plans/:id/versions
+PATCH  /v1/platform/plan-versions/:id
+POST   /v1/platform/plan-versions/:id/publish
+POST   /v1/platform/plan-versions/:id/archive
+```
+
+## Trials
+
+```text
+POST   /v1/platform/trials
+POST   /v1/platform/trials/:id/extend
+POST   /v1/platform/trials/:id/cancel
+POST   /v1/platform/trials/:id/convert
+```
+
+## Subscriptions
+
+```text
+POST   /v1/platform/organisations/:id/subscription
+PATCH  /v1/platform/organisations/:id/subscription
+POST   /v1/platform/organisations/:id/subscription/pause
+POST   /v1/platform/organisations/:id/subscription/resume
+POST   /v1/platform/organisations/:id/subscription/cancel
+```
+
+## Seats
+
+```text
+GET    /v1/platform/organisations/:id/seats
+POST   /v1/platform/organisations/:id/seats/override
+DELETE /v1/platform/organisations/:id/seats/override
+```
+
+## Platform Staff
+
+```text
+GET    /v1/platform/staff
+POST   /v1/platform/staff/invite
+POST   /v1/platform/staff/:id/roles
+DELETE /v1/platform/staff/:id/roles/:role
+POST   /v1/platform/staff/:id/suspend
+POST   /v1/platform/staff/:id/reactivate
+```
+
+Reuse existing APIs where already implemented.
+
+Do not create duplicate routes for the same domain.
+
+---
+
+# 29. Transaction and Idempotency Requirements
+
+Every owner mutation must:
+
+* validate permission
+* validate current state
+* use transaction where multiple tables change
+* use idempotency key where retry is possible
+* fail safely
+* return structured result
+* write audit event
+* invalidate relevant cache
+
+Examples requiring transactions:
+
+* trial conversion
+* plan assignment
+* pack grant
+* subscription change
+* organisation suspension
+* onboarding pack assignment
+* role grant
+
+---
+
+# 30. Security Requirements
+
+Implement:
+
+* server-side platform permission checks
+* tenant isolation
+* no customer access to owner APIs
+* no UI-only protection
+* high-risk action confirmation
+* CSRF protection where applicable
+* safe error messages
+* no raw secrets in responses
+* no direct database mutations from frontend
+* immutable audit trail
+* explicit-denial precedence
+* capability enforcement
+* Worker Profile enforcement
+* runtime freeze enforcement
+* role-grant restrictions
+* super-admin protection
+
+A platform admin must not be able to remove the last active super admin without a controlled recovery process.
+
+---
+
+# 31. Tests
+
+Create comprehensive tests.
+
+## Organisation control
+
+* authorised staff may suspend organisation
+* unauthorised staff may not suspend
+* suspended org loses access
+* data remains preserved
+* reactivation restores access
+* execution freeze blocks new execution
+* execution unfreeze restores access
+* invalid state transition rejected
+
+## Onboarding
+
+* initialWorkforcePacks consumed
+* Core Pack auto-granted
+* selected trial pack activated as trial
+* request-only pack creates request
+* client price ignored
+* partial failure rolls back
+* duplicate onboarding does not duplicate assignments
+
+## Pack management
+
+* owner grants pack
+* customer cannot grant pack
+* revoked pack removes entitlements
+* grant creates capabilities
+* trial extension updates expiry
+* access request approval activates pack
+* rejection preserves history
+
+## Plans
+
+* create draft plan
+* publish plan version
+* active version immutable
+* scheduled version activates correctly
+* existing customer remains on historical version
+* migration preview accurate
+
+## Trials
+
+* extend trial
+* cancel trial
+* convert trial to active
+* conversion updates subscription, packs, seats and entitlements atomically
+* conversion source may be invoice
+* Stripe is not required
+
+## Platform staff
+
+* super admin grants role
+* admin cannot grant super-admin unless authorised
+* suspended staff loses console access
+* last super admin cannot be removed
+* role changes audited
+
+## Seats
+
+* seat override works
+* expired override ignored
+* reducing allowance does not silently delete users
+* invitation blocked when over limit
+
+## Security
+
+* customer cannot access platform mutation routes
+* platform support cannot change pricing
+* platform auditor remains read-only
+* platform security may freeze execution
+* CSRF and auth checks applied
+* forged request rejected
+
+## Customer reflection
+
+* granted pack visible in customer Plan page
+* capability available after grant
+* revoked capability blocked
+* trial status displayed
+* suspended org sees correct notice
+* execution freeze shown
+
+All existing tests must continue to pass.
+
+---
+
+# 32. Completion Criteria
+
+This sprint is complete only when:
+
+* Owner Portal can manage organisations
+* Owner Portal can suspend and reactivate organisations
+* Owner Portal can freeze execution
+* Owner Portal consumes onboarding pack selections
+* Core Pack auto-grants
+* Owner Portal grants and revokes packs
+* customer access requests are real
+* Owner Portal approves and rejects requests
+* Commercial page creates and versions plans
+* owner controls plan pricing
+* owner controls pack pricing
+* owner controls individual specialist pricing
+* Owner Portal manages seats
+* Owner Portal converts trials
+* Owner Portal manages subscriptions
+* Owner Portal manages platform staff
+* database platform roles are authoritative
+* Owner Portal manages runtime access
+* Owner Portal manages specialist access
+* Owner Portal manages capability overrides
+* customer application reflects changes
+* all actions are audited
+* permissions are enforced server-side
+* TypeScript passes
+* migrations pass
+* seeds remain idempotent
+* all tests pass
+* documentation is updated
+
+---
+
+# Final Required Output
+
+Provide:
+
+```text
+OWNER PORTAL CONTROL PLANE COMPLETION REPORT
+
+Overall status:
+Complete / Incomplete
+
+Organisation management:
+-
+
+Organisation suspension:
+-
+
+Execution freeze:
+-
+
+Onboarding pack assignment:
+-
+
+Core Pack auto-grant:
+-
+
+Pack grant and revocation:
+-
+
+Pack access requests:
+-
+
+Commercial plan builder:
+-
+
+Plan versioning:
+-
+
+Dynamic pricing:
+-
+
+Individual specialist add-ons:
+-
+
+Seat management:
+-
+
+Trial management:
+-
+
+Trial-to-paid conversion:
+-
+
+Subscription management:
+-
+
+Platform staff management:
+-
+
+Platform role enforcement:
+-
+
+Runtime controls:
+-
+
+Specialist controls:
+-
+
+Capability overrides:
+-
+
+Support actions:
+-
+
+Security actions:
+-
+
+Owner dashboard:
+-
+
+Global search:
+-
+
+Bulk actions:
+-
+
+Customer-side reflection:
+-
+
+Database changes:
+-
+
+API routes:
+-
+
+Audit events:
+-
+
+Tests passed:
+-
+
+Known issues:
+-
+
+Technical debt:
+-
+
+Ready for live commercial operations:
+Yes / No
+```
+
+Begin this sprint now.
+
+Do not begin Stripe, AWS OpenClaw deployment, local-device access or unrelated connector work.
+
+Stop after producing the completion report.

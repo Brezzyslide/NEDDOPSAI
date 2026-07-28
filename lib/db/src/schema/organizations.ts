@@ -11,7 +11,10 @@ import { pgTable, text, integer, timestamp, pgEnum, boolean } from "drizzle-orm/
 
 export const orgStatusEnum = pgEnum("org_status", [
   "onboarding",
+  "trial",
   "active",
+  "past_due",
+  "restricted",
   "suspended",
   "closed",
 ]);
@@ -73,6 +76,45 @@ export const organizationsTable = pgTable("organizations", {
    * Use this field, not name matching, to identify org type.
    */
   environment: text("environment").notNull().default("production"),
+
+  // ── Sprint 9.7 Owner Control Plane ────────────────────────────────────────
+
+  /**
+   * When true: all new AI executions and specialist runs are blocked.
+   * Existing sessions are allowed to complete unless the org is also suspended.
+   * Managed via POST /platform/organisations/:id/freeze-execution and /unfreeze-execution.
+   */
+  executionFrozen: boolean("execution_frozen").notNull().default(false),
+
+  /** When true: no new logins allowed. Existing sessions remain valid. */
+  loginDisabled: boolean("login_disabled").notNull().default(false),
+
+  /** Reason recorded at the time of suspension, for audit and display. */
+  suspensionReason: text("suspension_reason"),
+
+  /** Reason recorded at the time of closure. */
+  closureReason: text("closure_reason"),
+
+  /** When the org was closed. Null if not closed. */
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+
+  /** UserId of the platform staff member who closed the org. */
+  closedBy: text("closed_by"),
+
+  /** Last time status changed — populated on every status transition. */
+  statusChangedAt: timestamp("status_changed_at", { withTimezone: true }),
+
+  /** UserId of the platform staff member who last changed status. */
+  statusChangedBy: text("status_changed_by"),
+
+  /** Legal name (separate from display name). */
+  legalName: text("legal_name"),
+
+  /** Trading name. */
+  tradingName: text("trading_name"),
+
+  /** Internal support status: normal | high_priority | vip | flagged */
+  supportStatus: text("support_status").notNull().default("normal"),
 
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

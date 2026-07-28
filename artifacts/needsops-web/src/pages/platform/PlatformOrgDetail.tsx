@@ -5,7 +5,7 @@
  *       Notes, Tasks, Approvals, Audit, Security, Placeholders
  */
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { usePlatformFetch } from "@/lib/platformApi";
 import PlatformShell from "@/components/layout/PlatformShell";
 
@@ -28,6 +28,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "placeholders",  label: "Pending" },
 ];
 
+const SOURCE_OPTIONS = [
+  { value: "manual", label: "Manual" },
+  { value: "invoice", label: "Invoice" },
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "enterprise_contract", label: "Enterprise Contract" },
+  { value: "pilot", label: "Pilot" },
+  { value: "reseller", label: "Reseller" },
+];
+
 interface OrgData {
   organisation: any;
   subscription: any;
@@ -44,7 +53,145 @@ interface OrgData {
   placeholders: Record<string, any>;
 }
 
-function ActionBar({ org, sub, fetch, onRefresh }: { org: any; sub: any; fetch: any; onRefresh: () => void }) {
+// ─── Convert Trial Modal ───────────────────────────────────────────────────────
+function ConvertTrialModal({ subId, fetch, onClose, onSuccess }: {
+  subId: string; fetch: any; onClose: () => void; onSuccess: () => void;
+}) {
+  const today = new Date().toISOString().split("T")[0];
+  const [source, setSource] = useState("manual");
+  const [activationDate, setActivationDate] = useState(today);
+  const [renewalDate, setRenewalDate] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`/trials/${subId}/convert`, {
+        method: "POST",
+        body: JSON.stringify({ source, activationDate, renewalDate: renewalDate || undefined, note }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error?.message ?? "Error converting trial."); }
+      else { onSuccess(); onClose(); }
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-[440px] rounded-2xl border border-[#1E3A5F] bg-[#0B1829] p-6 shadow-2xl">
+        <h3 className="mb-4 text-base font-semibold text-[#E2E8F0]">Convert Trial to Paid</h3>
+        {err && <p className="mb-3 rounded-lg border border-red-800 bg-red-950/20 px-3 py-2 text-xs text-red-400">{err}</p>}
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Source</label>
+            <select value={source} onChange={e => setSource(e.target.value)}
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0]">
+              {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Activation Date</label>
+            <input type="date" value={activationDate} onChange={e => setActivationDate(e.target.value)}
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0]" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Renewal Date (optional)</label>
+            <input type="date" value={renewalDate} onChange={e => setRenewalDate(e.target.value)}
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0]" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Note</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} rows={2}
+              placeholder="Optional internal note…"
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0] placeholder-[#4A5568]" />
+          </div>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button onClick={submit} disabled={busy}
+            className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">
+            {busy ? "Converting…" : "Convert to Paid"}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-[#1E3A5F] px-4 py-1.5 text-sm text-[#64748B]">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Grant Pack Panel ──────────────────────────────────────────────────────────
+function GrantPackPanel({ orgId, fetch, onClose, onSuccess }: {
+  orgId: string; fetch: any; onClose: () => void; onSuccess: () => void;
+}) {
+  const [packCode, setPackCode] = useState("");
+  const [reason, setReason] = useState("");
+  const [source, setSource] = useState("manual");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    if (!packCode.trim()) { setErr("Pack code is required."); return; }
+    if (!reason.trim()) { setErr("Reason is required."); return; }
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`/packs/${packCode.trim()}/grant`, {
+        method: "POST",
+        body: JSON.stringify({ organisationId: orgId, reason, source }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error?.message ?? "Error granting pack."); }
+      else { onSuccess(); onClose(); }
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-[400px] rounded-2xl border border-[#1E3A5F] bg-[#0B1829] p-6 shadow-2xl">
+        <h3 className="mb-4 text-base font-semibold text-[#E2E8F0]">Grant Workforce Pack</h3>
+        {err && <p className="mb-3 rounded-lg border border-red-800 bg-red-950/20 px-3 py-2 text-xs text-red-400">{err}</p>}
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Pack Code</label>
+            <input value={packCode} onChange={e => setPackCode(e.target.value)}
+              placeholder="e.g. PACK_WORKFORCE_BASIC"
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm font-mono text-[#E2E8F0] placeholder-[#4A5568]" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Source</label>
+            <select value={source} onChange={e => setSource(e.target.value)}
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0]">
+              {SOURCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[#64748B]">Reason (logged to audit)</label>
+            <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2}
+              placeholder="Reason for granting this pack…"
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-2 text-sm text-[#E2E8F0] placeholder-[#4A5568]" />
+          </div>
+        </div>
+        <div className="mt-4 flex gap-2">
+          <button onClick={submit} disabled={busy}
+            className="rounded-lg bg-[#00D4FF] px-4 py-1.5 text-sm font-semibold text-[#0B1829] hover:bg-[#00B8E0] disabled:opacity-50">
+            {busy ? "Granting…" : "Grant Pack"}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-[#1E3A5F] px-4 py-1.5 text-sm text-[#64748B]">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Action Bar ────────────────────────────────────────────────────────────────
+function ActionBar({ org, sub, fetch, onRefresh, platformRole, onNavigate }: {
+  org: any; sub: any; fetch: any; onRefresh: () => void;
+  platformRole?: string; onNavigate: (path: string) => void;
+}) {
   const [showSuspend, setShowSuspend] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,8 +206,30 @@ function ActionBar({ org, sub, fetch, onRefresh }: { org: any; sub: any; fetch: 
     } finally { setBusy(false); }
   };
 
+  const doFreezeExecution = async () => {
+    const r = window.prompt("Reason for freezing execution:");
+    if (!r) return;
+    const res = await fetch(`/organisations/${org.id}/freeze-execution`, { method: "POST", body: JSON.stringify({ reason: r }) });
+    if (res.ok) onRefresh(); else { const d = await res.json(); alert(d.error?.message ?? "Error freezing."); }
+  };
+
+  const doUnfreezeExecution = async () => {
+    const res = await fetch(`/organisations/${org.id}/unfreeze-execution`, { method: "POST" });
+    if (res.ok) onRefresh(); else { const d = await res.json(); alert(d.error?.message ?? "Error unfreezing."); }
+  };
+
+  const doCloseOrg = async () => {
+    if (!window.confirm("Are you sure? This is irreversible.")) return;
+    const r = window.prompt("Reason for closing this organisation:");
+    if (!r) return;
+    const res = await fetch(`/organisations/${org.id}/close`, { method: "POST", body: JSON.stringify({ reason: r }) });
+    if (res.ok) onNavigate("/platform/organisations");
+    else { const d = await res.json(); alert(d.error?.message ?? "Error closing organisation."); }
+  };
+
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {/* Suspend / Reactivate */}
       {org.status !== "suspended" && (
         <button onClick={() => setShowSuspend(true)}
           className="rounded-lg border border-yellow-800 px-3 py-1.5 text-sm text-yellow-400 hover:bg-yellow-950/30">
@@ -68,9 +237,30 @@ function ActionBar({ org, sub, fetch, onRefresh }: { org: any; sub: any; fetch: 
         </button>
       )}
       {org.status === "suspended" && (
-        <button onClick={() => { setShowSuspend(true); }}
+        <button onClick={() => setShowSuspend(true)}
           className="rounded-lg border border-emerald-800 px-3 py-1.5 text-sm text-emerald-400 hover:bg-emerald-950/30">
           Reactivate Org
+        </button>
+      )}
+
+      {/* Freeze / Unfreeze Execution */}
+      {!org.executionFrozen ? (
+        <button onClick={doFreezeExecution}
+          className="rounded-lg border border-amber-700 px-3 py-1.5 text-sm text-amber-400 hover:bg-amber-950/30">
+          🧊 Freeze Execution
+        </button>
+      ) : (
+        <button onClick={doUnfreezeExecution}
+          className="rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-400 hover:bg-emerald-950/30">
+          ▶ Unfreeze Execution
+        </button>
+      )}
+
+      {/* Close Organisation — super_admin only */}
+      {platformRole === "super_admin" && (
+        <button onClick={doCloseOrg}
+          className="rounded-lg border border-red-800 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/30">
+          ✕ Close Organisation
         </button>
       )}
 
@@ -115,11 +305,17 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default function PlatformOrgDetail() {
   const params = useParams<{ id: string }>();
+  const [, navigate] = useLocation();
   const fetch = usePlatformFetch();
   const [data, setData] = useState<OrgData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
+
+  // Platform role (stored in localStorage by auth layer)
+  const platformRole = typeof window !== "undefined"
+    ? (localStorage.getItem("platformRole") ?? undefined)
+    : undefined;
 
   // Note form
   const [noteContent, setNoteContent] = useState("");
@@ -127,6 +323,12 @@ export default function PlatformOrgDetail() {
   const [noteCategory, setNoteCategory] = useState("general");
   const [noteFlagged, setNoteFlagged] = useState(false);
   const [noteBusy, setNoteBusy] = useState(false);
+
+  // Trial modal
+  const [showConvertModal, setShowConvertModal] = useState(false);
+
+  // Pack panel
+  const [showGrantPack, setShowGrantPack] = useState(false);
 
   const load = useCallback(() => {
     if (!params.id) return;
@@ -152,6 +354,16 @@ export default function PlatformOrgDetail() {
     } finally { setNoteBusy(false); }
   };
 
+  const revokePackAction = async (packCode: string) => {
+    const reason = window.prompt(`Reason for revoking pack "${packCode}":`);
+    if (!reason) return;
+    const r = await fetch(`/packs/${packCode}/revoke`, {
+      method: "POST",
+      body: JSON.stringify({ organisationId: params.id, reason }),
+    });
+    if (r.ok) load(); else { const d = await r.json(); alert(d.error?.message ?? "Error revoking pack."); }
+  };
+
   const org = data?.organisation;
   const sub = data?.subscription;
 
@@ -163,6 +375,19 @@ export default function PlatformOrgDetail() {
           <a href="/platform/organisations" className="text-[#64748B] hover:text-[#00D4FF]">← Orgs</a>
           <h1 className="text-lg font-semibold text-[#E2E8F0]">{org?.name ?? "Loading…"}</h1>
           {org && <span className="text-xs text-[#4A5568]">/{org.slug}</span>}
+
+          {/* Status badges */}
+          {org?.executionFrozen && (
+            <span className="rounded-full border border-red-800 bg-red-950/30 px-2 py-0.5 text-xs font-medium text-red-400">
+              🧊 Execution Frozen
+            </span>
+          )}
+          {org?.loginDisabled && (
+            <span className="rounded-full border border-amber-800 bg-amber-950/30 px-2 py-0.5 text-xs font-medium text-amber-400">
+              🚫 Logins Disabled
+            </span>
+          )}
+
           {org && (
             <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
               org.status === "active" ? "bg-emerald-950/30 text-emerald-400" :
@@ -178,7 +403,14 @@ export default function PlatformOrgDetail() {
           <div className="flex flex-1 flex-col overflow-hidden">
             {/* Action Bar */}
             <div className="flex shrink-0 items-center gap-3 border-b border-[#1E3A5F] bg-[#0B1829] px-6 py-2">
-              <ActionBar org={org} sub={sub} fetch={fetch} onRefresh={load} />
+              <ActionBar
+                org={org}
+                sub={sub}
+                fetch={fetch}
+                onRefresh={load}
+                platformRole={platformRole}
+                onNavigate={navigate}
+              />
             </div>
 
             {/* Tabs */}
@@ -208,6 +440,16 @@ export default function PlatformOrgDetail() {
                   <InfoRow label="Slug" value={`/${org.slug}`} />
                   <InfoRow label="Status" value={org.status} />
                   <InfoRow label="Tier (legacy)" value={org.subscriptionTier} />
+                  <InfoRow label="Execution Frozen" value={
+                    org.executionFrozen
+                      ? <span className="text-red-400">Yes</span>
+                      : <span className="text-emerald-400">No</span>
+                  } />
+                  <InfoRow label="Logins Disabled" value={
+                    org.loginDisabled
+                      ? <span className="text-amber-400">Yes</span>
+                      : <span className="text-emerald-400">No</span>
+                  } />
                   <InfoRow label="Active Members" value={data.members.filter(m => m.membership.status === "active").length} />
                   <InfoRow label="Created" value={org.createdAt ? new Date(org.createdAt).toLocaleString() : "—"} />
                   <InfoRow label="Updated" value={org.updatedAt ? new Date(org.updatedAt).toLocaleString() : "—"} />
@@ -216,19 +458,81 @@ export default function PlatformOrgDetail() {
 
               {/* SUBSCRIPTION */}
               {activeTab === "subscription" && (
-                <div className="max-w-lg">
+                <div className="max-w-xl space-y-6">
                   {!sub && <p className="text-sm text-[#4A5568]">No subscription record.</p>}
                   {sub && (
-                    <dl>
-                      <InfoRow label="Status" value={sub.status} />
-                      <InfoRow label="Plan ID" value={sub.planId} />
-                      <InfoRow label="Billing Cycle" value={sub.billingCycle} />
-                      <InfoRow label="Period Start" value={sub.currentPeriodStart ? new Date(sub.currentPeriodStart).toLocaleDateString() : "—"} />
-                      <InfoRow label="Period End" value={sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—"} />
-                      <InfoRow label="Trial Start" value={sub.trialStartAt ? new Date(sub.trialStartAt).toLocaleDateString() : "—"} />
-                      <InfoRow label="Trial End" value={sub.trialEndAt ? new Date(sub.trialEndAt).toLocaleDateString() : "—"} />
-                      <InfoRow label="Note" value={sub.internalNote} />
-                    </dl>
+                    <>
+                      {/* Current subscription details */}
+                      <div>
+                        <h3 className="mb-3 text-sm font-semibold text-[#E2E8F0]">Subscription Details</h3>
+                        <dl>
+                          <InfoRow label="Subscription ID" value={<code className="text-xs text-[#94A3B8]">{sub.id}</code>} />
+                          <InfoRow label="Status" value={
+                            <span className={`capitalize ${
+                              sub.status === "active" ? "text-emerald-400" :
+                              sub.status === "trial" ? "text-[#00D4FF]" :
+                              sub.status === "trial_expired" ? "text-red-400" : "text-[#94A3B8]"
+                            }`}>{sub.status}</span>
+                          } />
+                          <InfoRow label="Plan ID" value={sub.planId} />
+                          <InfoRow label="Billing Cycle" value={sub.billingCycle} />
+                          <InfoRow label="Period Start" value={sub.currentPeriodStart ? new Date(sub.currentPeriodStart).toLocaleDateString() : "—"} />
+                          <InfoRow label="Period End" value={sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd).toLocaleDateString() : "—"} />
+                          <InfoRow label="Trial Start" value={sub.trialStartAt ? new Date(sub.trialStartAt).toLocaleDateString() : "—"} />
+                          <InfoRow label="Trial End" value={sub.trialEndAt ? new Date(sub.trialEndAt).toLocaleDateString() : "—"} />
+                          <InfoRow label="Note" value={sub.internalNote} />
+                        </dl>
+                      </div>
+
+                      {/* Trial Actions */}
+                      {sub.status === "trial" && (
+                        <div className="rounded-xl border border-[#00D4FF]/20 bg-[#00D4FF]/5 p-4">
+                          <h3 className="mb-3 text-sm font-semibold text-[#00D4FF]">Trial Actions</h3>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() => setShowConvertModal(true)}
+                              className="rounded-lg border border-emerald-700 px-3 py-1.5 text-sm text-emerald-400 hover:bg-emerald-950/30">
+                              ✓ Convert Trial to Paid
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const days = window.prompt("Extend trial by how many additional days?");
+                                if (!days || isNaN(Number(days)) || Number(days) <= 0) return;
+                                const r = await fetch(`/trials/${sub.id}/extend`, {
+                                  method: "POST",
+                                  body: JSON.stringify({ additionalDays: Number(days), reason: "Extended from platform console" }),
+                                });
+                                if (r.ok) load(); else { const d = await r.json(); alert(d.error?.message ?? "Error extending trial."); }
+                              }}
+                              className="rounded-lg border border-[#1E3A5F] px-3 py-1.5 text-sm text-[#00D4FF] hover:bg-[#1E3A5F]">
+                              + Extend Trial
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm("Cancel this trial? This will end the trial period.")) return;
+                                const r = await fetch(`/trials/${sub.id}/cancel`, {
+                                  method: "POST",
+                                  body: JSON.stringify({ reason: "Cancelled from platform console" }),
+                                });
+                                if (r.ok) load(); else { const d = await r.json(); alert(d.error?.message ?? "Error cancelling trial."); }
+                              }}
+                              className="rounded-lg border border-red-800 px-3 py-1.5 text-sm text-red-400 hover:bg-red-950/30">
+                              ✕ Cancel Trial
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Convert Trial Modal */}
+                  {showConvertModal && sub && (
+                    <ConvertTrialModal
+                      subId={sub.id}
+                      fetch={fetch}
+                      onClose={() => setShowConvertModal(false)}
+                      onSuccess={load}
+                    />
                   )}
                 </div>
               )}
@@ -258,15 +562,44 @@ export default function PlatformOrgDetail() {
 
               {/* WORKFORCE */}
               {activeTab === "workforce" && (
-                <div>
-                  {data.workforcePacks.length === 0 && <p className="text-sm text-[#4A5568]">No workforce packs granted.</p>}
-                  <div className="flex flex-wrap gap-2">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-[#E2E8F0]">Workforce Packs</h3>
+                    <button
+                      onClick={() => setShowGrantPack(true)}
+                      className="rounded-lg border border-[#00D4FF]/40 px-3 py-1.5 text-sm text-[#00D4FF] hover:bg-[#00D4FF]/10">
+                      + Grant Pack
+                    </button>
+                  </div>
+
+                  {data.workforcePacks.length === 0 && (
+                    <p className="text-sm text-[#4A5568]">No workforce packs granted.</p>
+                  )}
+                  <div className="space-y-2">
                     {data.workforcePacks.map((p, i) => (
-                      <span key={i} className="rounded-lg border border-[#1E3A5F] px-3 py-1.5 text-sm text-[#94A3B8]">
-                        {p.packCode}
-                      </span>
+                      <div key={i} className="flex items-center justify-between rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-4 py-3">
+                        <div>
+                          <span className="font-mono text-sm text-[#E2E8F0]">{p.packCode}</span>
+                          {p.source && <span className="ml-2 text-xs text-[#4A5568]">via {p.source}</span>}
+                          {p.grantedAt && <div className="text-xs text-[#4A5568]">Granted {new Date(p.grantedAt).toLocaleDateString()}</div>}
+                        </div>
+                        <button
+                          onClick={() => revokePackAction(p.packCode)}
+                          className="rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-950/20">
+                          Revoke
+                        </button>
+                      </div>
                     ))}
                   </div>
+
+                  {showGrantPack && (
+                    <GrantPackPanel
+                      orgId={org.id}
+                      fetch={fetch}
+                      onClose={() => setShowGrantPack(false)}
+                      onSuccess={load}
+                    />
+                  )}
                 </div>
               )}
 

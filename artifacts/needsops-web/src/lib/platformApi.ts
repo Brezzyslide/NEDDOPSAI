@@ -36,5 +36,6 @@ export const PLATFORM_NAV = [
   { label: "Runtime",           icon: "⚡", path: "/runtime" },
   { label: "Specialist Ops",    icon: "🧠", path: "/specialist-ops" },
   { label: "Pack Builder",      icon: "📦", path: "/packs" },
+  { label: "Staff",             icon: "👤", path: "/staff" },
   { label: "Platform Settings", icon: "⚙️", path: "/settings" },
 ] as const;

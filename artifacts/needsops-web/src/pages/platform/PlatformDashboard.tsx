@@ -1,7 +1,7 @@
 /**
  * Platform Dashboard — /platform
  * Real metrics: org counts, trial status, tasks, approvals, recent audit events.
- * No fake MRR. Charts for org growth (recharts).
+ * Pending Actions section at top. No fake MRR. Charts for org growth (recharts).
  */
 import { useEffect, useState } from "react";
 import { usePlatformFetch } from "@/lib/platformApi";
@@ -39,11 +39,65 @@ function StatCard({ label, value, sub, accent }: { label: string; value: number 
   );
 }
 
+// ─── Pending Actions Card ──────────────────────────────────────────────────────
+function ActionCard({
+  icon, title, count, description, linkLabel, linkHref, variant,
+}: {
+  icon: string; title: string; count: number | string; description: string;
+  linkLabel: string; linkHref: string; variant: "amber" | "blue" | "red";
+}) {
+  const colours = {
+    amber: {
+      border: "border-amber-800/60",
+      bg: "bg-amber-950/20",
+      icon: "text-amber-400",
+      count: "text-amber-400",
+      link: "text-amber-400 hover:text-amber-300 border-amber-700 hover:bg-amber-950/30",
+    },
+    blue: {
+      border: "border-[#00D4FF]/30",
+      bg: "bg-[#00D4FF]/5",
+      icon: "text-[#00D4FF]",
+      count: "text-[#00D4FF]",
+      link: "text-[#00D4FF] hover:text-[#00B8E0] border-[#00D4FF]/40 hover:bg-[#00D4FF]/10",
+    },
+    red: {
+      border: "border-red-800/60",
+      bg: "bg-red-950/20",
+      icon: "text-red-400",
+      count: "text-red-400",
+      link: "text-red-400 hover:text-red-300 border-red-800 hover:bg-red-950/30",
+    },
+  }[variant];
+
+  return (
+    <div className={`flex items-center gap-4 rounded-xl border px-5 py-4 ${colours.border} ${colours.bg}`}>
+      <span className={`text-2xl ${colours.icon}`}>{icon}</span>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className={`text-2xl font-bold ${colours.count}`}>{count}</span>
+          <span className="text-sm font-medium text-[#E2E8F0]">{title}</span>
+        </div>
+        <p className="text-xs text-[#4A5568]">{description}</p>
+      </div>
+      <a href={linkHref}
+        className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${colours.link}`}>
+        {linkLabel} →
+      </a>
+    </div>
+  );
+}
+
 export default function PlatformDashboard() {
   const fetch = usePlatformFetch();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Pending Actions data
+  const [packRequestCount, setPackRequestCount] = useState<number | null>(null);
+  const [expiringTrialsCount, setExpiringTrialsCount] = useState<number | null>(null);
+  const [onboardingOrgCount, setOnboardingOrgCount] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -52,6 +106,30 @@ export default function PlatformDashboard() {
       .then(setData)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
+
+    // Fetch pending pack access requests count
+    fetch("/pack-access-requests?status=pending")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setPackRequestCount(d.total ?? d.requests?.length ?? 0);
+      })
+      .catch(() => {});
+
+    // Fetch expiring trials count
+    fetch("/trials/expiring?days=7")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setExpiringTrialsCount(d.total ?? d.trials?.length ?? 0);
+      })
+      .catch(() => {});
+
+    // Fetch orgs — count those with status=onboarding
+    fetch("/organisations?status=onboarding&limit=1")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setOnboardingOrgCount(d.total ?? d.organisations?.length ?? 0);
+      })
+      .catch(() => {});
   }, []);
 
   const m = data?.metrics;
@@ -64,6 +142,11 @@ export default function PlatformDashboard() {
         { name: "Expired",   value: m.trialExpired,           color: "#F87171" },
       ]
     : [];
+
+  const hasPendingActions =
+    (packRequestCount !== null && packRequestCount > 0) ||
+    (expiringTrialsCount !== null && expiringTrialsCount > 0) ||
+    (onboardingOrgCount !== null && onboardingOrgCount > 0);
 
   return (
     <PlatformShell>
@@ -101,6 +184,55 @@ export default function PlatformDashboard() {
               </span>
               <span className="ml-auto text-xs text-[#4A5568]">{data.note}</span>
             </div>
+
+            {/* ─── Pending Actions ─────────────────────────────────────────── */}
+            {(hasPendingActions || packRequestCount !== null) && (
+              <div>
+                <h2 className="mb-3 text-sm font-semibold text-[#E2E8F0]">
+                  Pending Actions
+                  {hasPendingActions && (
+                    <span className="ml-2 rounded-full bg-amber-400/20 px-2 py-0.5 text-xs text-amber-400">
+                      Attention required
+                    </span>
+                  )}
+                </h2>
+                <div className="space-y-2">
+                  {packRequestCount !== null && (
+                    <ActionCard
+                      icon="📦"
+                      title="Pending Pack Requests"
+                      count={packRequestCount}
+                      description="Pack access requests awaiting approval"
+                      linkLabel="Review"
+                      linkHref="/platform/pack-access-requests"
+                      variant={packRequestCount > 0 ? "amber" : "blue"}
+                    />
+                  )}
+                  {expiringTrialsCount !== null && (
+                    <ActionCard
+                      icon="⏳"
+                      title="Trials Expiring in 7 Days"
+                      count={expiringTrialsCount}
+                      description="These trials need attention — convert or extend before they expire"
+                      linkLabel="View trials"
+                      linkHref="/platform/trials"
+                      variant={expiringTrialsCount > 0 ? "amber" : "blue"}
+                    />
+                  )}
+                  {onboardingOrgCount !== null && onboardingOrgCount > 0 && (
+                    <ActionCard
+                      icon="🏢"
+                      title="Organisations Awaiting Approval"
+                      count={onboardingOrgCount}
+                      description="Organisations in onboarding status pending review"
+                      linkLabel="View orgs"
+                      linkHref="/platform/organisations?status=onboarding"
+                      variant="blue"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Key Metrics */}
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -157,6 +289,29 @@ export default function PlatformDashboard() {
                     </div>
                   ))}
                 </div>
+                <a href="/platform/audit" className="mt-3 block text-xs text-[#00D4FF] hover:underline">
+                  View all audit events →
+                </a>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div className="rounded-xl border border-[#1E3A5F] bg-[#0B1829] p-5">
+              <h2 className="mb-3 text-sm font-semibold text-[#E2E8F0]">Quick Links</h2>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "All Organisations", href: "/platform/organisations" },
+                  { label: "Trials", href: "/platform/trials" },
+                  { label: "Pack Requests", href: "/platform/pack-access-requests" },
+                  { label: "Audit Log", href: "/platform/audit" },
+                  { label: "Platform Users", href: "/platform/users" },
+                  { label: "Feature Flags", href: "/platform/feature-flags" },
+                ].map(l => (
+                  <a key={l.href} href={l.href}
+                    className="rounded-lg border border-[#1E3A5F] px-3 py-1.5 text-xs text-[#94A3B8] hover:border-[#00D4FF]/40 hover:text-[#00D4FF]">
+                    {l.label}
+                  </a>
+                ))}
               </div>
             </div>
           </div>

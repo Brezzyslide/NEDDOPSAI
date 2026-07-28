@@ -48,6 +48,8 @@ import platformRuntimeRouter from "./platformRuntime.js";
 import platformExportRouter from "./platformExport.js";
 import platformAIRouter from "./platformAI.js";
 import { platformDatabaseRouter } from "./platformDatabase.js";
+import platformStaffRouter from "./platformStaff.js";
+import platformPackGrantsRouter from "./platformPackGrants.js";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -126,6 +128,10 @@ router.use("/export", platformExportRouter);
 router.use("/runtime", platformRuntimeRouter);
 // Sprint 9.1 — AI Operations dashboard
 router.use("/ai", platformAIRouter);
+// Sprint 9.7 — Platform Staff Management
+router.use("/staff", platformStaffRouter);
+// Sprint 9.7 — Pack grant/revoke from platform console
+router.use("/packs", platformPackGrantsRouter);
 // Sprint 6/7 — Organisation Database management
 router.use("/", platformDatabaseRouter);
 

@@ -45,6 +45,7 @@ import {
   tasksTable,
   approvalsTable,
   usagePeriodSummariesTable,
+  seatOverridesTable,
 } from "@workspace/db";
 import { eq, and, count, desc, like, or, isNull, gte, lte, ilike, sql } from "drizzle-orm";
 import { auditService } from "../../services/auditService.js";
@@ -518,6 +519,549 @@ router.get("/:id/members", ...auth, async (req, res, next) => {
       .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
       .where(eq(membershipsTable.organizationId, req.params.id!));
     res.json({ members, count: members.length });
+  } catch (err) { next(err); }
+});
+
+// ─── PATCH /:id — Edit org metadata (Sprint 9.7) ──────────────────────────────
+
+router.patch("/:id", ...auth, requirePlatformRole("platform_admin"), async (req, res, next) => {
+  try {
+    const { name, legalName, tradingName, displayName, supportStatus, internalNote } = req.body as {
+      name?: string;
+      legalName?: string;
+      tradingName?: string;
+      displayName?: string;
+      supportStatus?: string;
+      internalNote?: string;
+    };
+
+    const [org] = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const updateFields: Record<string, unknown> = { updatedAt: new Date() };
+    if (name !== undefined) updateFields.name = name;
+    if (legalName !== undefined) updateFields.legalName = legalName;
+    if (tradingName !== undefined) updateFields.tradingName = tradingName;
+    if (displayName !== undefined) updateFields.displayName = displayName;
+    if (supportStatus !== undefined) updateFields.supportStatus = supportStatus;
+
+    const [updatedOrg] = await db.update(organizationsTable)
+      .set(updateFields)
+      .where(eq(organizationsTable.id, org.id))
+      .returning();
+
+    // Add internal note if provided
+    if (internalNote) {
+      await db.insert(platformInternalNotesTable).values({
+        id: randomUUID(),
+        organizationId: org.id,
+        content: internalNote,
+        authorId: req.platformUserId!,
+        isInternal: true,
+        isFlagged: false,
+        priority: "medium",
+        category: "general",
+      });
+    }
+
+    await auditService.log({
+      eventType: "platform.organisation_updated",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { fields: Object.keys(updateFields).filter(k => k !== "updatedAt"), internalNote: !!internalNote },
+    });
+
+    res.json({ success: true, organisation: updatedOrg });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/close — Close an organisation (Sprint 9.7) ────────────────────
+
+router.post("/:id/close", ...auth, requirePlatformRole("platform_super_admin"), async (req, res, next) => {
+  try {
+    const { reason, note } = req.body as { reason: string; note?: string };
+    if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+    const [org] = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+    if (org.status === "closed") { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Organisation is already closed." } }); return; }
+
+    const now = new Date();
+    await db.update(organizationsTable).set({
+      status: "closed",
+      closedAt: now,
+      closedBy: req.platformUserId!,
+      closureReason: reason,
+      statusChangedAt: now,
+      statusChangedBy: req.platformUserId!,
+      loginDisabled: true,
+      executionFrozen: true,
+      updatedAt: now,
+    }).where(eq(organizationsTable.id, org.id));
+
+    // Add internal note if provided
+    if (note) {
+      await db.insert(platformInternalNotesTable).values({
+        id: randomUUID(),
+        organizationId: org.id,
+        content: note,
+        authorId: req.platformUserId!,
+        isInternal: true,
+        isFlagged: false,
+        priority: "critical",
+        category: "general",
+      });
+    }
+
+    await auditService.log({
+      eventType: "platform.organisation_closed",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { reason, note: note ?? null },
+    });
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/freeze-execution — Freeze AI execution (Sprint 9.7) ────────────
+
+router.post("/:id/freeze-execution", ...auth,
+  (req, res, next) => {
+    const role = req.platformRole;
+    if (role === "platform_super_admin" || role === "platform_operations" || role === "platform_security") {
+      return next();
+    }
+    return res.status(403).json({ error: { code: "PERMISSION_DENIED", message: "This action requires the 'platform_operations' or 'platform_security' platform role." } });
+  },
+  async (req, res, next) => {
+    try {
+      const { reason } = req.body as { reason: string };
+      if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+      const [org] = await db.select().from(organizationsTable)
+        .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+      if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+      await db.update(organizationsTable).set({
+        executionFrozen: true,
+        updatedAt: new Date(),
+      }).where(eq(organizationsTable.id, org.id));
+
+      // Store reason as internal note
+      await db.insert(platformInternalNotesTable).values({
+        id: randomUUID(),
+        organizationId: org.id,
+        content: `Execution frozen. Reason: ${reason}`,
+        authorId: req.platformUserId!,
+        isInternal: true,
+        isFlagged: true,
+        priority: "high",
+        category: "technical",
+      });
+
+      await auditService.log({
+        eventType: "platform.execution_frozen",
+        actorId: req.platformUserId,
+        organizationId: org.id,
+        metadata: { reason },
+      });
+
+      res.json({ success: true, message: `Execution frozen for ${org.name}` });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─── POST /:id/unfreeze-execution — Unfreeze AI execution (Sprint 9.7) ────────
+
+router.post("/:id/unfreeze-execution", ...auth, requirePlatformRole("platform_operations"), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason?: string };
+
+    const [org] = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+    if (org.status === "closed" || org.status === "suspended") {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `Cannot unfreeze execution for a ${org.status} organisation.` } }); return;
+    }
+
+    await db.update(organizationsTable).set({
+      executionFrozen: false,
+      updatedAt: new Date(),
+    }).where(eq(organizationsTable.id, org.id));
+
+    await auditService.log({
+      eventType: "platform.execution_unfrozen",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { reason: reason ?? null },
+    });
+
+    res.json({ success: true, message: `Execution unfrozen for ${org.name}` });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/disable-logins — Disable new logins (Sprint 9.7) ──────────────
+
+router.post("/:id/disable-logins", ...auth, requirePlatformRole("platform_security"), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason: string };
+    if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+    const [org] = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    await db.update(organizationsTable).set({
+      loginDisabled: true,
+      updatedAt: new Date(),
+    }).where(eq(organizationsTable.id, org.id));
+
+    await auditService.log({
+      eventType: "platform.logins_disabled",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { reason },
+    });
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/enable-logins — Re-enable logins (Sprint 9.7) ─────────────────
+
+router.post("/:id/enable-logins", ...auth, requirePlatformRole("platform_security"), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason?: string };
+
+    const [org] = await db.select().from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+    if (org.status === "closed") {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Cannot enable logins for a closed organisation." } }); return;
+    }
+
+    await db.update(organizationsTable).set({
+      loginDisabled: false,
+      updatedAt: new Date(),
+    }).where(eq(organizationsTable.id, org.id));
+
+    await auditService.log({
+      eventType: "platform.logins_enabled",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { reason: reason ?? null },
+    });
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7 — Subscription Management Routes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── POST /:id/subscription — Create or replace subscription ──────────────────
+
+router.post("/:id/subscription", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { planId, planVersionId, status, trialDays, note, billingSource } = req.body as {
+      planId: string;
+      planVersionId: string;
+      status?: string;
+      trialDays?: number;
+      note?: string;
+      billingSource?: string;
+    };
+    if (!planId || !planVersionId) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "planId and planVersionId are required." } });
+      return;
+    }
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    const resolvedStatus = (status ?? "active") as any;
+
+    let trialStartAt: Date | null = null;
+    let trialEndAt: Date | null = null;
+    if (resolvedStatus === "trial" && trialDays) {
+      trialStartAt = now;
+      trialEndAt = new Date(now.getTime() + trialDays * 86_400_000);
+    }
+
+    const [existingSub] = await db.select().from(tenantSubscriptionsTable)
+      .where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
+
+    let subscription: typeof tenantSubscriptionsTable.$inferSelect;
+
+    if (existingSub) {
+      const [updated] = await db.update(tenantSubscriptionsTable)
+        .set({
+          planId,
+          planVersionId,
+          status: resolvedStatus,
+          ...(trialStartAt ? { trialStartAt } : {}),
+          ...(trialEndAt ? { trialEndAt } : {}),
+          ...(note ? { internalNote: note } : {}),
+          changedBy: req.platformUserId!,
+          updatedAt: now,
+        })
+        .where(eq(tenantSubscriptionsTable.id, existingSub.id))
+        .returning();
+      subscription = updated!;
+    } else {
+      const [created] = await db.insert(tenantSubscriptionsTable).values({
+        id: randomUUID(),
+        organizationId: org.id,
+        planId,
+        planVersionId,
+        status: resolvedStatus,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000),
+        ...(trialStartAt ? { trialStartAt } : {}),
+        ...(trialEndAt ? { trialEndAt } : {}),
+        ...(note ? { internalNote: note } : {}),
+        changedBy: req.platformUserId!,
+        createdAt: now,
+        updatedAt: now,
+      }).returning();
+      subscription = created!;
+    }
+
+    await auditService.log({
+      eventType: "platform.subscription_created",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { planId, planVersionId, status: resolvedStatus, trialDays, billingSource, note },
+    }).catch(() => {});
+
+    res.json({ success: true, subscription });
+  } catch (err) { next(err); }
+});
+
+// ─── PATCH /:id/subscription — Update subscription status/plan ────────────────
+
+router.patch("/:id/subscription", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { planId, planVersionId, status, note } = req.body as {
+      planId?: string;
+      planVersionId?: string;
+      status?: string;
+      note?: string;
+    };
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const [existingSub] = await db.select().from(tenantSubscriptionsTable)
+      .where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
+    if (!existingSub) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } });
+      return;
+    }
+
+    const now = new Date();
+    const updates: Record<string, unknown> = { updatedAt: now, changedBy: req.platformUserId! };
+    if (planId !== undefined) updates.planId = planId;
+    if (planVersionId !== undefined) updates.planVersionId = planVersionId;
+    if (status !== undefined) updates.status = status;
+    if (note !== undefined) updates.internalNote = note;
+
+    const [subscription] = await db.update(tenantSubscriptionsTable)
+      .set(updates as any)
+      .where(eq(tenantSubscriptionsTable.id, existingSub.id))
+      .returning();
+
+    await auditService.log({
+      eventType: "platform.subscription_changed",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { planId, planVersionId, status, note },
+    }).catch(() => {});
+
+    res.json({ success: true, subscription });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/subscription/pause — Pause subscription ───────────────────────
+
+router.post("/:id/subscription/pause", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason: string };
+    if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    await db.update(tenantSubscriptionsTable)
+      .set({ status: "suspended", suspendedAt: now, changedBy: req.platformUserId!, updatedAt: now })
+      .where(eq(tenantSubscriptionsTable.organizationId, org.id));
+
+    await auditService.log({
+      eventType: "platform.subscription_paused",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { action: "paused", reason },
+    }).catch(() => {});
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/subscription/resume — Resume subscription ─────────────────────
+
+router.post("/:id/subscription/resume", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { reason } = req.body as { reason: string };
+    if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    await db.update(tenantSubscriptionsTable)
+      .set({ status: "active", suspendedAt: null, changedBy: req.platformUserId!, updatedAt: now })
+      .where(eq(tenantSubscriptionsTable.organizationId, org.id));
+
+    await auditService.log({
+      eventType: "platform.subscription_resumed",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { action: "resumed", reason },
+    }).catch(() => {});
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/subscription/cancel — Cancel subscription ─────────────────────
+
+router.post("/:id/subscription/cancel", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { reason, immediate } = req.body as { reason: string; immediate?: boolean };
+    if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    await db.update(tenantSubscriptionsTable)
+      .set({ status: "cancelled", cancelledAt: now, changedBy: req.platformUserId!, updatedAt: now })
+      .where(eq(tenantSubscriptionsTable.organizationId, org.id));
+
+    await auditService.log({
+      eventType: "platform.subscription_cancelled",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { action: "cancelled", reason, immediate: immediate ?? false },
+    }).catch(() => {});
+
+    res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Sprint 9.7 — Seat Override Routes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── GET /:id/seats — Get seat info and active override ───────────────────────
+
+router.get("/:id/seats", ...auth, async (req, res, next) => {
+  try {
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+
+    const [seatAllowance, history] = await Promise.all([
+      getSeatAllowance(org.id).catch(() => null),
+      db.select().from(seatOverridesTable)
+        .where(eq(seatOverridesTable.organizationId, org.id))
+        .orderBy(desc(seatOverridesTable.createdAt))
+        .limit(10),
+    ]);
+
+    const activeOverride = history.find(o =>
+      !o.revoked &&
+      o.effectiveFrom <= now &&
+      (o.effectiveTo === null || o.effectiveTo >= now),
+    ) ?? null;
+
+    res.json({ seatAllowance, activeOverride, history });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/seats/override — Create seat override ─────────────────────────
+
+router.post("/:id/seats/override", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const { seatAllowance, reason, effectiveTo } = req.body as {
+      seatAllowance: number | null;
+      reason: string;
+      effectiveTo?: string;
+    };
+    if (reason === undefined || reason === null || reason === "") {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } });
+      return;
+    }
+
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    const overrideId = randomUUID();
+
+    const [override] = await db.insert(seatOverridesTable).values({
+      id: overrideId,
+      organizationId: org.id,
+      seatAllowance: seatAllowance ?? null,
+      overrideReason: reason,
+      setBy: req.platformUserId!,
+      effectiveFrom: now,
+      effectiveTo: effectiveTo ? new Date(effectiveTo) : null,
+      revoked: false,
+      createdAt: now,
+    }).returning();
+
+    await auditService.log({
+      eventType: "platform.seat_override_created",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { overrideId, seatAllowance, reason },
+    }).catch(() => {});
+
+    res.status(201).json({ success: true, override });
+  } catch (err) { next(err); }
+});
+
+// ─── DELETE /:id/seats/override/:oid — Revoke a seat override ────────────────
+
+router.delete("/:id/seats/override/:oid", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
+  try {
+    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
+
+    const now = new Date();
+    await db.update(seatOverridesTable)
+      .set({ revoked: true, revokedAt: now, revokedBy: req.platformUserId! })
+      .where(and(
+        eq(seatOverridesTable.id, req.params.oid!),
+        eq(seatOverridesTable.organizationId, org.id),
+      ));
+
+    await auditService.log({
+      eventType: "platform.seat_override_revoked",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { overrideId: req.params.oid },
+    }).catch(() => {});
+
+    res.json({ success: true });
   } catch (err) { next(err); }
 });
 
