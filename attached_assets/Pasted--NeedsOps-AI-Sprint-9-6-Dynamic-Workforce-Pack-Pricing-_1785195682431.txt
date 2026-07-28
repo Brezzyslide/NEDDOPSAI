@@ -1,0 +1,928 @@
+# NeedsOps AI+
+
+## Sprint 9.6 — Dynamic Workforce Pack Pricing and Automatic Onboarding Assignment
+
+Continue from the current Pack Builder, public pack catalogue, onboarding pack picker and customer Plan page marketplace.
+
+The objective of this sprint is to remove seeded commercial prices, make Workforce Pack pricing fully owner-controlled through the Platform Console, ensure those prices display consistently across the landing page, onboarding and customer Plan page, and automatically assign selected packs during organisation creation.
+
+Do not begin Stripe, OpenClaw deployment, local-device access or unrelated connector work.
+
+---
+
+# Core Commercial Principle
+
+Workforce Pack pricing must be controlled from the NeedsOps Platform Console.
+
+Do not hard-code or seed live commercial prices such as:
+
+```text
+A$299 per month
+A$399 per month
+```
+
+The database may contain pack definitions, but commercial pricing must be created and maintained by an authorised platform owner.
+
+If a public pack has no active price configured, the public UI must display:
+
+```text
+Contact NeedsOps
+```
+
+or:
+
+```text
+Pricing coming soon
+```
+
+depending on the pack configuration.
+
+Do not display zero as a substitute for missing pricing unless the pack is explicitly marked as free.
+
+---
+
+# Required Customer Flow
+
+Implement this end-to-end flow:
+
+```text
+Platform owner creates or edits Workforce Pack
+↓
+Platform owner sets active monthly and annual price
+↓
+Platform owner publishes the pack
+↓
+Landing page reads published pack and active price from DB
+↓
+Customer selects pack during onboarding
+↓
+Organisation is created
+↓
+Core Pack is granted automatically
+↓
+Selected packs are granted according to onboarding commercial rules
+↓
+Tenant pack entitlements are created
+↓
+Pack capabilities become available
+↓
+Customer sees granted packs on the Plan page
+```
+
+The customer must not select a pack during onboarding and then find that it was ignored.
+
+---
+
+# 1. Remove Seeded Commercial Prices
+
+Update seeds so they do not define active live pricing for paid Workforce Packs.
+
+Seed only stable pack metadata where needed:
+
+* pack code
+* pack name
+* description
+* icon
+* colour
+* tagline
+* display order
+* status
+* specialist mappings
+* capability mappings
+
+Do not seed:
+
+* monthly price
+* annual price
+* promotional price
+* trial price
+* sale price
+
+unless the pack is explicitly free.
+
+The Core Pack may be seeded as:
+
+```text
+is_free = true
+monthly_price_cents = 0
+annual_price_cents = 0
+```
+
+All paid packs should begin with:
+
+```text
+pricing_status = not_configured
+```
+
+or the equivalent existing status.
+
+Do not overwrite prices already configured by the platform owner when seeds run again.
+
+All seeds must remain idempotent.
+
+---
+
+# 2. Pricing Source of Truth
+
+Create or confirm one authoritative pricing model.
+
+Do not allow pricing to be independently stored in multiple conflicting places.
+
+The source of truth should support:
+
+* Workforce Pack
+* price version
+* monthly price
+* annual price
+* currency
+* effective date
+* expiry date
+* status
+* created by
+* approved by
+* published at
+* archived at
+
+Preferred structure:
+
+## workforce_pack_price_versions
+
+Fields:
+
+* id
+* workforce_pack_id
+* version_number
+* monthly_price_cents, nullable
+* annual_price_cents, nullable
+* currency
+* pricing_status
+* effective_from
+* effective_to, nullable
+* is_current
+* notes, nullable
+* created_by
+* approved_by, nullable
+* created_at
+* updated_at
+
+Pricing statuses:
+
+```text
+draft
+scheduled
+active
+superseded
+archived
+```
+
+If the current schema already supports proper versioning, reuse it rather than duplicating the domain.
+
+---
+
+# 3. Owner-Controlled Pack Pricing
+
+Update `/platform/packs`.
+
+The platform owner must be able to:
+
+* create a pack
+* edit pack metadata
+* set pack as free or paid
+* create a draft price version
+* set monthly price
+* set annual price
+* set currency
+* set effective date
+* schedule future pricing
+* publish pricing
+* supersede old pricing
+* archive pricing
+* remove public price visibility
+* set fallback display text
+* preview the public customer display
+
+Do not allow active prices to be overwritten directly.
+
+Editing an active price must create a new version.
+
+Example:
+
+```text
+Compliance Workforce
+Price version 1
+A$249 monthly
+A$2,490 annually
+
+Price version 2
+A$299 monthly
+A$2,990 annually
+Effective from 1 January 2027
+```
+
+Existing customers should remain on their assigned commercial terms unless explicitly migrated.
+
+New customers should receive the active current price.
+
+---
+
+# 4. Currency Handling
+
+Default currency should be:
+
+```text
+AUD
+```
+
+Display as:
+
+```text
+A$299/month
+A$2,990/year
+```
+
+Do not display an ambiguous `$299`.
+
+Support future currencies, but do not convert currencies automatically.
+
+Every price must carry an explicit ISO currency code.
+
+---
+
+# 5. Public Pack Catalogue
+
+Update the public Workforce Pack API.
+
+The public endpoint must return only:
+
+* published packs
+* publicly visible packs
+* available packs
+* packs with current public metadata
+* active price version where available
+
+Suggested response:
+
+```typescript
+interface PublicWorkforcePack {
+  code: string;
+  name: string;
+  icon: string;
+  colour: string;
+  tagline: string;
+  description: string;
+  specialistCount: number;
+  featured: boolean;
+  availabilityStatus: string;
+
+  pricing: {
+    isFree: boolean;
+    currency?: string;
+    monthlyPriceCents?: number;
+    annualPriceCents?: number;
+    displayMode:
+      | "free"
+      | "priced"
+      | "contact_sales"
+      | "coming_soon";
+    fallbackText?: string;
+  };
+}
+```
+
+Do not return internal pricing notes or unpublished price versions.
+
+---
+
+# 6. Landing Page
+
+Update the live pack showcase.
+
+The landing page must read pricing only from the public Workforce Pack API.
+
+Display rules:
+
+## Free Pack
+
+```text
+Free
+Always included
+```
+
+## Paid Pack with Active Pricing
+
+```text
+A$299/month
+A$2,990/year
+```
+
+## Published Pack Without Price
+
+Display the configured fallback:
+
+```text
+Contact NeedsOps
+```
+
+or:
+
+```text
+Pricing coming soon
+```
+
+## Coming Soon Pack
+
+Display:
+
+```text
+Coming soon
+```
+
+Do not show an old seeded price.
+
+Do not show `A$0` for missing pricing.
+
+---
+
+# 7. Onboarding Pack Picker
+
+Update onboarding step 4.
+
+Each pack card must display:
+
+* name
+* icon
+* tagline
+* specialist count
+* availability
+* current active price
+* free status
+* trial eligibility
+* selection state
+
+The Core Pack must always be selected and cannot be removed.
+
+Display:
+
+```text
+Core Workforce
+Always included — Free
+```
+
+For paid packs with pricing:
+
+```text
+Compliance Workforce
+A$299/month after trial
+```
+
+For paid packs without pricing:
+
+```text
+Compliance Workforce
+Contact NeedsOps for pricing
+```
+
+Do not allow the customer to believe a pack is included permanently when they are only selecting a trial or access request.
+
+---
+
+# 8. Pack Selection Commercial States
+
+Create explicit onboarding selection modes:
+
+```text
+included
+trial
+requested
+pending_payment
+pending_approval
+```
+
+Determine the mode from owner-controlled pack configuration.
+
+Suggested pack onboarding settings:
+
+* autoGrantOnSignup
+* trialEligible
+* trialLengthDays
+* requiresManualApproval
+* requiresPayment
+* publiclySelectable
+* featuredByDefault
+* selectionMode
+
+The owner should manage these through the Pack Builder.
+
+---
+
+# 9. Consume `initialWorkforcePacks`
+
+Fix the current organisation creation gap.
+
+The organisation creation endpoint currently accepts:
+
+```text
+initialWorkforcePacks
+```
+
+but does not consume it.
+
+Update the authoritative organisation provisioning service.
+
+The flow must:
+
+1. validate every requested pack code
+2. reject unknown packs
+3. reject archived or unavailable packs
+4. always grant Core Pack
+5. evaluate onboarding configuration for each selected pack
+6. create tenant Workforce Pack records
+7. create capability entitlements
+8. create trial or request records where appropriate
+9. create audit events
+10. return granted, requested and rejected selections
+
+Do not trust client-supplied prices, trial lengths or entitlement levels.
+
+The server must load current pack configuration from the database.
+
+---
+
+# 10. Tenant Pack Assignment
+
+Use the existing tenant commercial tables where possible.
+
+For each selected pack create or update the correct records in:
+
+* tenant_workforce_packs
+* tenant_entitlements
+* tenant_addons
+* tenant_subscriptions
+* trial records
+* capability access records
+
+Suggested tenant pack fields:
+
+* organization_id
+* workforce_pack_id
+* status
+* access_source
+* price_version_id, nullable
+* granted_at
+* trial_started_at, nullable
+* trial_ends_at, nullable
+* activated_at, nullable
+* expires_at, nullable
+* requested_by
+* approved_by, nullable
+* created_at
+* updated_at
+
+Statuses:
+
+```text
+active
+trial
+requested
+pending_payment
+pending_approval
+expired
+cancelled
+revoked
+```
+
+Access sources:
+
+```text
+plan
+onboarding_trial
+manual_grant
+individual_purchase
+enterprise_contract
+tenant_override
+```
+
+---
+
+# 11. Trial Behaviour
+
+The platform owner must control trial rules.
+
+Per pack configure:
+
+* trial available
+* trial length
+* auto-grant on signup
+* capabilities available during trial
+* execution access during trial
+* connector access during trial
+* whether payment is required after trial
+* whether manual approval is required
+
+Do not assume every pack has the same trial length.
+
+When the trial expires:
+
+* professional analysis access should follow configured rules
+* execution access should stop unless activated
+* customer data and history must remain accessible according to retention policy
+* the customer should see upgrade guidance
+* no specialist run should continue after entitlement expiry unless already authorised by policy
+
+---
+
+# 12. In-App Plan Marketplace
+
+Update `/app/:slug/plan`.
+
+For each pack show:
+
+* current tenant access state
+* current public price
+* assigned price version
+* trial expiry
+* active capabilities
+* analysis access
+* execution access
+* included specialists
+* request or upgrade action
+
+States should display clearly:
+
+```text
+Included
+Active
+Trial
+Requested
+Pending approval
+Pending payment
+Locked
+Expired
+Coming soon
+```
+
+Do not display a price that differs from the customer’s assigned historical commercial terms without explanation.
+
+Where necessary display:
+
+```text
+Your current price
+```
+
+and:
+
+```text
+Current public price
+```
+
+separately.
+
+---
+
+# 13. Owner Console Pack Assignment Controls
+
+In Platform Console, allow authorised staff to:
+
+* grant pack
+* start trial
+* extend trial
+* approve request
+* reject request
+* activate pack
+* revoke pack
+* assign historical or current price version
+* assign custom commercial terms
+* view tenant pack history
+
+Every action must require a reason and be audited.
+
+---
+
+# 14. Pack Request Flow
+
+The existing “Request access” button should create a real request.
+
+Create:
+
+```text
+workforce_pack_access_requests
+```
+
+or reuse an existing suitable request structure.
+
+Fields:
+
+* id
+* organization_id
+* workforce_pack_id
+* requested_by
+* requested_at
+* status
+* reviewed_by, nullable
+* reviewed_at, nullable
+* review_notes, nullable
+* requested_price_version_id, nullable
+* source
+* created_at
+* updated_at
+
+Statuses:
+
+```text
+pending
+approved
+rejected
+cancelled
+expired
+```
+
+Platform staff should see pending requests in the Platform Console.
+
+---
+
+# 15. Individual Specialist Add-Ons Preparation
+
+Do not fully build individual specialist purchasing in this sprint unless already straightforward.
+
+However, ensure the commercial model supports future:
+
+```text
+Base plan
++
+Workforce Pack
++
+Individual specialist add-on
++
+Additional seats
++
+Execution allowance
+```
+
+Do not design pack pricing in a way that prevents later individual specialist add-ons.
+
+---
+
+# 16. Pricing Validation
+
+Implement server-side validation.
+
+Rules:
+
+* monthly price cannot be negative
+* annual price cannot be negative
+* free packs must have zero pricing
+* paid packs cannot be marked free
+* active price requires currency
+* active price requires effective date
+* only one active current public price per pack and currency
+* scheduled price cannot overlap another scheduled or active price
+* archived pack cannot publish new pricing
+* public pack with no active price must have a fallback display mode
+
+---
+
+# 17. Caching
+
+The landing page and pack marketplace should not require expensive pricing queries on every render.
+
+Introduce a safe cache behind an interface.
+
+The database remains authoritative.
+
+Invalidate cache when:
+
+* pack published
+* pack unpublished
+* price activated
+* price superseded
+* visibility changed
+* trial configuration changed
+
+Do not store pricing only in process memory.
+
+---
+
+# 18. Audit Events
+
+Add:
+
+```text
+workforce_pack.created
+workforce_pack.updated
+workforce_pack.published
+workforce_pack.unpublished
+workforce_pack.archived
+
+workforce_pack.price_created
+workforce_pack.price_scheduled
+workforce_pack.price_activated
+workforce_pack.price_superseded
+workforce_pack.price_archived
+
+workforce_pack.selected_during_onboarding
+workforce_pack.granted_during_onboarding
+workforce_pack.trial_started
+workforce_pack.access_requested
+workforce_pack.access_approved
+workforce_pack.access_rejected
+workforce_pack.revoked
+
+organisation.core_pack_granted
+organisation.initial_pack_assignment_completed
+```
+
+Do not place sensitive commercial notes in public or tenant audit metadata.
+
+---
+
+# 19. Tests
+
+Create comprehensive tests.
+
+## Pricing source
+
+* paid pack seed does not create live price
+* Core Pack remains free
+* seed rerun does not overwrite owner pricing
+* published price appears publicly
+* draft price does not appear publicly
+* future price does not appear before effective date
+* superseded price no longer appears as current
+* missing price uses fallback display
+
+## Landing page
+
+* public page shows DB-managed price
+* AUD displays as A$
+* free pack displays Free
+* missing price does not display A$0
+* unpublished pack does not display
+* archived pack does not display
+* coming-soon pack displays correct status
+
+## Onboarding
+
+* Core Pack always selected
+* unknown selected pack rejected
+* unavailable selected pack rejected
+* selected trial pack granted as trial
+* selected request-only pack creates request
+* selected paid pack does not become active without valid rule
+* client-supplied price is ignored
+* duplicate submission is idempotent
+
+## Organisation creation
+
+* initialWorkforcePacks is consumed
+* Core Pack is granted
+* selected packs create tenant records
+* capabilities activate correctly
+* trial dates follow pack configuration
+* audit events created
+* partial failure rolls back provisioning safely
+
+## Plan page
+
+* active pack shown correctly
+* trial expiry shown
+* locked pack shows public price
+* historical customer price remains traceable
+* request access creates real request
+
+## Platform Console
+
+* authorised owner can create price version
+* unauthorised platform role cannot change pricing
+* active price cannot be edited in place
+* new edit creates new version
+* overlapping price schedules rejected
+* price publication invalidates cache
+
+## Security
+
+* customer cannot manipulate pack price
+* customer cannot grant its own pack
+* Tenant A cannot view Tenant B pack assignment
+* tenant user cannot access internal price notes
+* frontend-only manipulation does not bypass server rules
+
+All existing tests must continue to pass.
+
+---
+
+# 20. Completion Criteria
+
+This sprint is complete only when:
+
+* seeded paid prices are removed
+* owner controls pack pricing in Platform Console
+* prices are versioned
+* AUD displays correctly
+* landing page reads active DB price
+* onboarding reads active DB price
+* customer Plan page reads active DB price
+* missing pricing has honest fallback
+* `initialWorkforcePacks` is consumed
+* Core Pack is automatically granted
+* selected packs receive correct access state
+* trial rules are owner-controlled
+* access requests are real records
+* tenant capabilities activate from granted packs
+* client cannot manipulate price or access
+* historical commercial terms remain traceable
+* TypeScript passes
+* migrations pass
+* seeds remain idempotent
+* all tests pass
+* documentation is updated
+
+---
+
+# Final Required Output
+
+Provide:
+
+```text
+SPRINT 9.6 COMPLETION REPORT
+
+Overall status:
+Complete / Incomplete
+
+Seeded price removal:
+-
+
+Pricing source of truth:
+-
+
+Pack price versioning:
+-
+
+Owner Console pricing controls:
+-
+
+Landing page pricing:
+-
+
+Onboarding pricing:
+-
+
+Plan page marketplace:
+-
+
+Initial pack assignment:
+-
+
+Core Pack auto-grant:
+-
+
+Trial pack behaviour:
+-
+
+Pack access requests:
+-
+
+Tenant entitlement creation:
+-
+
+Capability activation:
+-
+
+Currency handling:
+-
+
+Caching:
+-
+
+Database changes:
+-
+
+RLS and tenant isolation:
+-
+
+API routes:
+-
+
+Audit events:
+-
+
+Tests passed:
+-
+
+Known issues:
+-
+
+Technical debt:
+-
+
+Recommended next sprint:
+-
+
+Ready for live commercial onboarding:
+Yes / No
+```
+
+Begin this sprint now.
+
+Do not begin Stripe, OpenClaw deployment, local-device access or unrelated connector work.
+
+Stop after producing the completion report.

@@ -61,7 +61,7 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
         <div className="px-3 pb-4 space-y-2">
           {isPlatformAdmin && (
             <Link href="/platform">
-              <a className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              <div className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
                 location.startsWith("/platform")
                   ? "bg-violet-500/10 text-violet-300 font-medium"
                   : "text-[#64748B] hover:text-violet-300 hover:bg-violet-900/10"
@@ -69,7 +69,7 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
                 <span>⬡</span>
                 <span>Platform Console</span>
                 <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-violet-900/40 text-violet-400 font-semibold tracking-wide">OWNER</span>
-              </a>
+              </div>
             </Link>
           )}
           <button onClick={() => setLocation("/account")} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#64748B] hover:text-[#E2E8F0] hover:bg-[#112033] transition-colors">

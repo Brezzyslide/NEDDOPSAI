@@ -14,6 +14,7 @@ import {
 import { requirePermission } from "../../middlewares/requirePermission.js";
 import * as orgService from "../../services/orgService.js";
 import * as auditService from "../../services/auditService.js";
+import { provisionPacksForNewOrg } from "../../services/packProvisioningService.js";
 
 const router = Router();
 
@@ -41,6 +42,10 @@ router.post("/", requireAuth, async (req, res, next) => {
       return;
     }
 
+    const initialWorkforcePacks: string[] = Array.isArray(req.body.initialWorkforcePacks)
+      ? req.body.initialWorkforcePacks.filter((c: unknown) => typeof c === "string")
+      : [];
+
     const { org, membership } = await orgService.createOrg(
       { name: name.trim(), type, industry, country, state, timezone, abn, ndisRegistrationNumber, primaryContactName, primaryContactEmail },
       user.id,
@@ -57,7 +62,19 @@ router.post("/", requireAuth, async (req, res, next) => {
       ...meta,
     }).catch(() => {});
 
-    res.status(201).json({ organisation: org, membership });
+    // Provision workforce packs (Core auto-granted + selected packs)
+    const packProvisioningResult = await provisionPacksForNewOrg(
+      org.id,
+      user.id,
+      initialWorkforcePacks,
+      meta,
+    ).catch(err => {
+      // Non-fatal: org was created; log and continue
+      console.error("[packProvisioning] Failed during org creation:", err);
+      return null;
+    });
+
+    res.status(201).json({ organisation: org, membership, packProvisioning: packProvisioningResult });
   } catch (err) {
     next(err);
   }

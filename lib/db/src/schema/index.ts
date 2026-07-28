@@ -66,3 +66,6 @@ export * from "./specialistRuns";
 export * from "./specialistQueue";
 export * from "./specialistRunMemory";
 export * from "./specialistConflicts";
+// Sprint 9.6 — Dynamic Workforce Pack Pricing
+export * from "./workforcePackPriceVersions";
+export * from "./workforcePackAccessRequests";

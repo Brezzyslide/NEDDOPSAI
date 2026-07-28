@@ -61,6 +61,8 @@ export const REQUIRED_RLS_TABLES = [
   "specialist_queue",
   "specialist_run_memory",
   "specialist_conflicts",
+  // Sprint 9.6 — Pack Commerce access requests (org-scoped)
+  "workforce_pack_access_requests",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

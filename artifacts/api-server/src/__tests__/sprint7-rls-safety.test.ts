@@ -28,7 +28,7 @@ describe("Sprint 7 — RLS Safety", () => {
 
   describe("verifyRLS()", () => {
     it("REAL DB: REQUIRED_RLS_TABLES contains all 19 expected tables", () => {
-      expect(REQUIRED_RLS_TABLES).toHaveLength(33);
+      expect(REQUIRED_RLS_TABLES).toHaveLength(34);
       expect(REQUIRED_RLS_TABLES).toContain("tasks");
       expect(REQUIRED_RLS_TABLES).toContain("approvals");
       expect(REQUIRED_RLS_TABLES).toContain("approval_rules");

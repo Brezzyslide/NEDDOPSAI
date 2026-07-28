@@ -18,6 +18,14 @@ interface FormData {
   selectedPacks: string[];
 }
 
+interface PackPricing {
+  isFree: boolean;
+  currency?: string;
+  monthlyPriceCents?: number;
+  displayMode: "free" | "priced" | "contact_sales" | "coming_soon";
+  fallbackText?: string;
+}
+
 interface Pack {
   code: string;
   name: string;
@@ -26,10 +34,12 @@ interface Pack {
   iconEmoji: string | null;
   colorHex: string | null;
   tier: string;
-  priceMonthlyAud: string | null;
-  priceMonthly: number | null;
   specialistCount: number;
   featured: boolean;
+  trialEligible: boolean;
+  trialLengthDays: number | null;
+  selectionMode: string;
+  pricing: PackPricing;
 }
 
 const AU_STATES = ["ACT","NSW","NT","QLD","SA","TAS","VIC","WA"];
@@ -221,10 +231,20 @@ export default function OrgOnboarding() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {packs.map(p => {
+                      {packs.filter(p => p.selectionMode !== "included" && p.publiclySelectable !== false).map(p => {
                         const color = p.colorHex ?? "#00D4FF";
                         const selected = form.selectedPacks.includes(p.code);
-                        const isFree = p.priceMonthly === 0;
+                        const pricing = p.pricing;
+                        const priceLabel = (() => {
+                          if (pricing.displayMode === "free") return "Free";
+                          if (pricing.displayMode === "priced" && pricing.monthlyPriceCents != null) {
+                            const amt = `A$${Math.round(pricing.monthlyPriceCents / 100).toLocaleString("en-AU")}`;
+                            return p.trialEligible ? `${amt}/month after trial` : `${amt}/month`;
+                          }
+                          if (pricing.displayMode === "coming_soon") return "Coming soon";
+                          return "Contact NeedsOps for pricing";
+                        })();
+                        const selectionLabel = p.trialEligible ? `${p.trialLengthDays ?? 14}-day free trial` : p.selectionMode === "requested" ? "Request access" : "Select";
                         return (
                           <button
                             key={p.code}
@@ -250,9 +270,12 @@ export default function OrgOnboarding() {
                             <p className="text-[#64748B] text-xs leading-snug mb-2">{p.marketingTagline ?? p.description}</p>
                             <div className="flex items-center justify-between">
                               <span className="text-xs text-[#475569]">{p.specialistCount} specialists</span>
-                              <span className="text-xs font-semibold" style={{ color }}>
-                                {isFree ? "Free" : p.priceMonthlyAud ? `$${p.priceMonthlyAud}/mo` : ""}
-                              </span>
+                              <div className="text-right">
+                                <div className="text-xs font-semibold" style={{ color }}>{priceLabel}</div>
+                                {p.trialEligible && selected && (
+                                  <div className="text-xs text-[#475569]">{selectionLabel}</div>
+                                )}
+                              </div>
                             </div>
                           </button>
                         );

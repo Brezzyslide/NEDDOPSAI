@@ -5,6 +5,15 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 
+interface PackPricing {
+  isFree: boolean;
+  currency?: string;
+  monthlyPriceCents?: number;
+  annualPriceCents?: number;
+  displayMode: "free" | "priced" | "contact_sales" | "coming_soon";
+  fallbackText?: string;
+}
+
 interface Pack {
   code: string;
   name: string;
@@ -14,10 +23,9 @@ interface Pack {
   colorHex: string | null;
   tier: string;
   status: string;
-  priceMonthlyAud: string | null;
-  priceMonthly: number | null;
   featured: boolean;
   specialistCount: number;
+  pricing: PackPricing;
 }
 
 const FEATURES = [
@@ -210,10 +218,32 @@ export default function LandingPage() {
   );
 }
 
+function formatPackPrice(pricing: PackPricing): { primary: string; secondary?: string } {
+  switch (pricing.displayMode) {
+    case "free":
+      return { primary: "Free", secondary: "Always included" };
+    case "priced": {
+      const monthly = pricing.monthlyPriceCents != null
+        ? `A$${Math.round(pricing.monthlyPriceCents / 100).toLocaleString("en-AU")}/month`
+        : null;
+      const annual = pricing.annualPriceCents != null
+        ? `A$${Math.round(pricing.annualPriceCents / 100).toLocaleString("en-AU")}/year`
+        : null;
+      return { primary: monthly ?? annual ?? "Pricing available", secondary: annual && monthly ? annual : undefined };
+    }
+    case "coming_soon":
+      return { primary: pricing.fallbackText ?? "Coming soon" };
+    default:
+      return { primary: pricing.fallbackText ?? "Contact NeedsOps" };
+  }
+}
+
 function PackCard({ pack, large, onCta }: { pack: Pack; large?: boolean; onCta: () => void }) {
   const color = pack.colorHex ?? "#00D4FF";
-  const isFree = pack.priceMonthly === 0;
   const tierCls = TIER_BADGE[pack.tier] ?? TIER_BADGE.starter;
+  const priceDisplay = formatPackPrice(pack.pricing);
+  const isFree = pack.pricing.displayMode === "free";
+  const isPriced = pack.pricing.displayMode === "priced";
 
   return (
     <div
@@ -245,15 +275,11 @@ function PackCard({ pack, large, onCta }: { pack: Pack; large?: boolean; onCta: 
 
       <div className="flex items-center justify-between mt-auto">
         <div>
-          {isFree ? (
-            <span className="text-[#00D4FF] font-bold text-lg">Free</span>
-          ) : pack.priceMonthlyAud ? (
-            <div>
-              <span className="text-[#E2E8F0] font-bold text-lg">${pack.priceMonthlyAud}</span>
-              <span className="text-[#64748B] text-xs">/month AUD</span>
-            </div>
-          ) : (
-            <span className="text-[#64748B] text-sm">Contact for pricing</span>
+          <div className={`font-bold ${large ? "text-lg" : "text-base"} ${isFree ? "text-[#00D4FF]" : isPriced ? "text-[#E2E8F0]" : "text-[#64748B]"}`}>
+            {priceDisplay.primary}
+          </div>
+          {priceDisplay.secondary && (
+            <div className="text-[#64748B] text-xs mt-0.5">{priceDisplay.secondary}</div>
           )}
         </div>
         <button

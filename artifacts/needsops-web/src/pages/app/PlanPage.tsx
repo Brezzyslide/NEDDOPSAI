@@ -5,7 +5,8 @@
  */
 
 import { useParams, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Show } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
@@ -77,8 +78,8 @@ export default function PlanPage() {
   const planCode: string = sub?.plan?.code ?? "foundation";
   const planColour = PLAN_COLOURS[planCode] ?? "#64748B";
   const entitlements: string[] = entData?.features ?? [];
-  const activePacks: any[] = workforceData?.packs?.filter((p: any) => p.included) ?? [];
-  const lockedPacks: any[] = workforceData?.packs?.filter((p: any) => !p.included) ?? [];
+  const activePacks: any[] = workforceData?.packs?.filter((p: any) => p.isIncluded) ?? [];
+  const lockedPacks: any[] = workforceData?.packs?.filter((p: any) => !p.isIncluded) ?? [];
 
   const trialEnd = sub?.trialEndsAt ? new Date(sub.trialEndsAt) : null;
   const trialDaysLeft = trialEnd ? daysBetween(new Date(), trialEnd) : null;
@@ -258,53 +259,11 @@ export default function PlanPage() {
                 )}
 
                 {lockedPacks.length > 0 && (
-                  <div>
-                    <p className="text-[#64748B] text-xs uppercase tracking-widest mb-3">Add to your plan</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {lockedPacks.map((pack: any) => {
-                        const colour = pack.colorHex ?? PACK_COLOURS[pack.code] ?? "#00D4FF";
-                        const isFree = pack.priceMonthly === 0;
-                        return (
-                          <div
-                            key={pack.code}
-                            className="rounded-xl border bg-[#0B1829] p-4 flex flex-col gap-3"
-                            style={{ borderColor: `${colour}25` }}
-                          >
-                            <div className="flex items-start gap-3">
-                              <div
-                                className="h-10 w-10 rounded-lg flex items-center justify-center text-xl shrink-0"
-                                style={{ background: `${colour}15`, border: `1px solid ${colour}25` }}
-                              >
-                                {pack.iconEmoji ?? pack.name?.charAt(0) ?? "📦"}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[#E2E8F0] text-sm font-semibold truncate">{pack.name}</p>
-                                <p className="text-[#64748B] text-xs mt-0.5 line-clamp-2">{pack.marketingTagline ?? pack.description}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between mt-auto pt-1 border-t border-[#1E3A5F]">
-                              <div className="text-xs">
-                                {isFree ? (
-                                  <span className="text-[#00D4FF] font-bold">Free</span>
-                                ) : pack.priceMonthlyAud ? (
-                                  <span className="text-[#E2E8F0] font-bold">${pack.priceMonthlyAud}<span className="text-[#64748B] font-normal">/mo AUD</span></span>
-                                ) : (
-                                  <span className="text-[#64748B]">Contact for pricing</span>
-                                )}
-                              </div>
-                              <a
-                                href="mailto:sales@needsops.com.au"
-                                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
-                                style={{ background: `${colour}15`, color: colour, border: `1px solid ${colour}25` }}
-                              >
-                                Request access →
-                              </a>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <LockedPacksMarketplace
+                    packs={lockedPacks}
+                    orgSlug={slug ?? ""}
+                    apiFetch={apiFetch}
+                  />
                 )}
               </div>
 
@@ -335,5 +294,158 @@ export default function PlanPage() {
         </div>
       </AppShell>
     </>
+  );
+}
+
+// ─── Locked Packs Marketplace ─────────────────────────────────────────────────
+
+interface PackPricingDisplay {
+  isFree: boolean;
+  currency?: string;
+  monthlyPriceCents?: number;
+  displayMode: "free" | "priced" | "contact_sales" | "coming_soon";
+  fallbackText?: string;
+}
+
+function LockedPacksMarketplace({
+  packs,
+  orgSlug,
+  apiFetch,
+}: {
+  packs: any[];
+  orgSlug: string;
+  apiFetch: ReturnType<typeof useAuthFetch>;
+}) {
+  const queryClient = useQueryClient();
+  const [pricingMap, setPricingMap] = useState<Record<string, PackPricingDisplay>>({});
+  const [requestStates, setRequestStates] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
+
+  // Fetch public catalogue for pricing data
+  useEffect(() => {
+    fetch("/v1/workforce-packs?status=available")
+      .then(r => r.json())
+      .then(d => {
+        const map: Record<string, PackPricingDisplay> = {};
+        for (const p of d.packs ?? []) {
+          if (p.pricing) map[p.code] = p.pricing;
+        }
+        setPricingMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  const sendRequest = async (packCode: string) => {
+    setRequestStates(s => ({ ...s, [packCode]: "sending" }));
+    try {
+      const res = await apiFetch(`/v1/organisations/${orgSlug}/pack-access-requests`, {
+        method: "POST",
+        body: JSON.stringify({ packCode }),
+      });
+      if (res.ok) {
+        setRequestStates(s => ({ ...s, [packCode]: "sent" }));
+        queryClient.invalidateQueries({ queryKey: ["org-workforce", orgSlug] });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        const msg = d?.error?.message ?? "Request failed";
+        console.error("Pack request error:", msg);
+        setRequestStates(s => ({ ...s, [packCode]: "error" }));
+        setTimeout(() => setRequestStates(s => ({ ...s, [packCode]: "idle" })), 3000);
+      }
+    } catch {
+      setRequestStates(s => ({ ...s, [packCode]: "error" }));
+      setTimeout(() => setRequestStates(s => ({ ...s, [packCode]: "idle" })), 3000);
+    }
+  };
+
+  if (packs.length === 0) return null;
+
+  return (
+    <div>
+      <p className="text-[#64748B] text-xs uppercase tracking-widest mb-3">Add to your plan</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {packs.map((pack: any) => {
+          const colour = pack.colorHex ?? PACK_COLOURS[pack.code] ?? "#00D4FF";
+          const pricing: PackPricingDisplay | undefined = pricingMap[pack.code];
+          const reqState = requestStates[pack.code] ?? "idle";
+          const tenantStatus: string | undefined = pack.tenantStatus;
+
+          // Price label
+          const priceLabel = (() => {
+            if (!pricing) return "Contact NeedsOps";
+            if (pricing.displayMode === "free") return "Free";
+            if (pricing.displayMode === "priced" && pricing.monthlyPriceCents != null)
+              return `A$${Math.round(pricing.monthlyPriceCents / 100).toLocaleString("en-AU")}/month`;
+            if (pricing.displayMode === "coming_soon") return pricing.fallbackText ?? "Coming soon";
+            return pricing.fallbackText ?? "Contact NeedsOps";
+          })();
+
+          const isFree = pricing?.displayMode === "free";
+          const isPriced = pricing?.displayMode === "priced";
+
+          // Tenant status badge
+          const statusBadge = (() => {
+            if (!tenantStatus) return null;
+            const map: Record<string, { label: string; cls: string }> = {
+              trial:           { label: "Trial active",    cls: "bg-emerald-900/30 text-emerald-400" },
+              trial_expired:   { label: "Trial expired",   cls: "bg-amber-900/30 text-amber-400" },
+              requested:       { label: "Requested",       cls: "bg-blue-900/30 text-blue-400" },
+              pending_payment: { label: "Pending payment", cls: "bg-violet-900/30 text-violet-400" },
+              suspended:       { label: "Suspended",       cls: "bg-red-900/30 text-red-400" },
+            };
+            const info = map[tenantStatus];
+            if (!info) return null;
+            return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${info.cls}`}>{info.label}</span>;
+          })();
+
+          const btnDisabled = reqState === "sending" || reqState === "sent" || tenantStatus === "requested";
+          const btnLabel = reqState === "sending" ? "Requesting…"
+            : reqState === "sent" || tenantStatus === "requested" ? "Requested ✓"
+            : reqState === "error" ? "Try again"
+            : "Request access →";
+
+          return (
+            <div
+              key={pack.code}
+              className="rounded-xl border bg-[#0B1829] p-4 flex flex-col gap-3"
+              style={{ borderColor: `${colour}25` }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="h-10 w-10 rounded-lg flex items-center justify-center text-xl shrink-0"
+                  style={{ background: `${colour}15`, border: `1px solid ${colour}25` }}
+                >
+                  {pack.iconEmoji ?? pack.name?.charAt(0) ?? "📦"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <p className="text-[#E2E8F0] text-sm font-semibold">{pack.name}</p>
+                    {statusBadge}
+                  </div>
+                  <p className="text-[#64748B] text-xs line-clamp-2">{pack.marketingTagline ?? pack.description}</p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between mt-auto pt-2 border-t border-[#1E3A5F]">
+                <div className="text-xs">
+                  <span className={`font-semibold ${isFree ? "text-[#00D4FF]" : isPriced ? "text-[#E2E8F0]" : "text-[#64748B]"}`}>
+                    {priceLabel}
+                  </span>
+                </div>
+                <button
+                  onClick={() => sendRequest(pack.code)}
+                  disabled={btnDisabled}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                  style={btnDisabled
+                    ? { background: `${colour}08`, color: "#64748B", border: `1px solid #1E3A5F` }
+                    : { background: `${colour}15`, color: colour, border: `1px solid ${colour}25` }
+                  }
+                >
+                  {btnLabel}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

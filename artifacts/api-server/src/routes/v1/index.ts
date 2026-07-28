@@ -70,6 +70,10 @@ router.use("/platform", platformCapabilitiesRouter);
 // Sprint 9.6: Platform Pack Builder (CRUD for workforce packs + pricing)
 import platformPacksRouter from "./platformPacks.js";
 router.use("/platform/packs", platformPacksRouter);
+// Sprint 9.6: Pack access requests (tenant + platform)
+import { tenantPackRequestsRouter, platformPackRequestsRouter } from "./packAccessRequests.js";
+router.use("/organisations/:slug/pack-access-requests", tenantPackRequestsRouter);
+router.use("/platform/pack-access-requests", platformPackRequestsRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);
