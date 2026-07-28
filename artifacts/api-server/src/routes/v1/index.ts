@@ -30,6 +30,8 @@ import workforcePacksRouter from "./workforcePacks.js";
 import orgSubscriptionRouter from "./orgSubscription.js";
 import platformRouter from "./platform.js";
 import { apiErrorHandler } from "../../lib/errors.js";
+// Sprint 10: Execution intents
+import executionIntentsRouter from "./executionIntents.js";
 
 const router = Router();
 
@@ -67,6 +69,8 @@ router.use("/organisations/:slug/capabilities", orgCapRouter);
 router.use("/organisations/:slug/tasks/:taskId/specialist-runs", specialistRunsRouter);
 // Sprint 9.5: Platform Capability Console + specialist run monitoring
 router.use("/platform", platformCapabilitiesRouter);
+// Sprint 10: Execution intents (task-scoped GET + approve/reject actions)
+router.use("/", executionIntentsRouter);
 // Sprint 9.6: Platform Pack Builder (CRUD for workforce packs + pricing)
 import platformPacksRouter from "./platformPacks.js";
 router.use("/platform/packs", platformPacksRouter);

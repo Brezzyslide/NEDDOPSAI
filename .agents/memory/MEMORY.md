@@ -8,3 +8,4 @@
 - [NeedsOps Sprint 9.5 Specialist Runtime](needsops-sprint95.md) — eligibility 12-check, 3 active specialists, REQUIRED_RLS_TABLES=33, policy must be named tenant_isolation, queue worker not daemonized
 - [NeedsOps Sprint 9.6 Pack Commerce](needsops-sprint96.md) — versioned pricing, pack provisioning service, access requests, displayMode API contract, cache invalidation, REQUIRED_RLS_TABLES=34
 - [NeedsOps Sprint 9.7 Owner Control Plane](needsops-sprint97.md) — org freeze/close/login-disable, seat overrides, trial actions, pack grants, staff mgmt, 707 tests, seat_overrides has no RLS
+- [NeedsOps Sprint 10 Digital Workforce Intelligence](needsops-sprint10.md) — lib/workforce-dna package, 4 DNA profiles v1.0.0, version tracking columns, execution_intents, auto-dispatch on approval, queue worker, conflict LLM eval, 796 tests, REQUIRED_RLS_TABLES=35

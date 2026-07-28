@@ -17,7 +17,9 @@
 
 import { randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import { db, specialistRunsTable, specialistConflictsTable } from "@workspace/db";
+import { db, specialistRunsTable, specialistConflictsTable, conversationsTable, taskExecutionPlansTable, tasksTable } from "@workspace/db";
+import { createAIGateway } from "@workspace/ai-gateway";
+import type { AIGatewayContext } from "@workspace/ai-gateway";
 import {
   checkSpecialistEligibility,
   type SpecialistEligibilityDecision,
@@ -40,7 +42,9 @@ import { buildSpecialistContext } from "./specialistContextService.js";
 import { createSpecialistIntelligenceService } from "./specialistIntelligenceService.js";
 import { enqueue, markRunning, markCompleted, markFailed, markCancelled } from "./specialistQueueService.js";
 import { logOrgEvent } from "./auditService.js";
+import { addMessage } from "./conversationService.js";
 import type { SpecialistRunResult } from "./specialistIntelligenceService.js";
+import { persistExecutionIntents, type RequestedAction } from "./executionIntentService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -232,9 +236,63 @@ export async function dispatchReadyRuns(
   return dispatchedRunIds;
 }
 
+// ─── Specialist role display names ───────────────────────────────────────────
+
+const SPECIALIST_DISPLAY_NAMES: Record<string, string> = {
+  compliance_officer:  "Compliance Officer",
+  document_specialist: "Document Specialist",
+  operations_manager:  "Operations Manager",
+  chief_of_staff:      "Chief of Staff",
+  research_specialist: "Research Specialist",
+  executive_assistant: "Executive Assistant",
+  quality_officer:     "Quality Officer",
+  hr_officer:          "HR Officer",
+  finance_officer:     "Finance Officer",
+  operations_officer:  "Operations Officer",
+  marketing_officer:   "Marketing Officer",
+};
+
+/**
+ * Builds the markdown content for a specialist update message posted to the workroom.
+ */
+function buildSpecialistUpdateContent(result: SpecialistRunResult): string {
+  const roleLabel = SPECIALIST_DISPLAY_NAMES[result.workforceRoleCode]
+    ?? result.workforceRoleCode.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const confidencePct = Math.round(result.confidence * 100);
+
+  const lines: string[] = [];
+  lines.push(`**[${roleLabel}]** — Analysis complete (confidence: ${confidencePct}%)`);
+  lines.push("");
+
+  // 1-3 sentence summary from the result
+  const summary = (result as any).summary?.trim() as string | undefined;
+  if (summary) {
+    const sentences = summary.split(/(?<=[.!?])\s+/).slice(0, 3).join(" ");
+    lines.push(sentences);
+  } else if (result.findings.length > 0) {
+    const topFinding = result.findings[0]!;
+    lines.push(`Identified ${result.findings.length} finding${result.findings.length !== 1 ? "s" : ""}, including: ${topFinding.title}.`);
+    if (result.recommendations.length > 0) {
+      lines.push(`Top recommendation: ${result.recommendations[0]!.action}`);
+    }
+  } else {
+    lines.push("Analysis complete. No significant findings identified.");
+  }
+
+  // Unresolved questions note
+  if (result.unresolvedQuestions.length > 0) {
+    const firstQ = result.unresolvedQuestions[0]!;
+    lines.push("");
+    lines.push(`*Unresolved: ${firstQ.question}*`);
+  }
+
+  return lines.join("\n");
+}
+
 /**
  * Processes completion of a specialist run.
  * Saves result, updates memory, checks for conflicts, dispatches dependent steps.
+ * C2: Posts a specialist update message to the task workroom conversation.
  */
 export async function processRunCompletion(
   specialistRunId: string,
@@ -245,6 +303,32 @@ export async function processRunCompletion(
   await saveRunResult(specialistRunId, organizationId, result);
   await transitionRunStatus(specialistRunId, organizationId, "completed");
   await markCompleted(specialistRunId, organizationId);
+
+  // Persist execution intents produced by this run (fire and forget)
+  if (result.requestedExternalActions.length > 0) {
+    db.select({ taskId: specialistRunsTable.taskId })
+      .from(specialistRunsTable)
+      .where(and(eq(specialistRunsTable.id, specialistRunId), eq(specialistRunsTable.organizationId, organizationId)))
+      .limit(1)
+      .then(rows => {
+        const taskId = rows[0]?.taskId;
+        if (!taskId) return;
+        const actions: RequestedAction[] = result.requestedExternalActions.map(action => ({
+          actionType: action.actionType,
+          description: `${action.actionType} via ${action.executionChannel} (${action.toolCategory})`,
+          executionChannel: action.executionChannel,
+          toolCategory: action.toolCategory,
+          connectorCategory: action.connectorCategory,
+          riskLevel: action.riskLevel,
+          approvalRequired: action.approvalRequired,
+          parameters: {},
+        }));
+        return persistExecutionIntents(organizationId, specialistRunId, taskId, actions);
+      })
+      .catch(err => {
+        console.error("[CoS Orchestrator] Failed to persist execution intents:", err?.message);
+      });
+  }
 
   await logOrgEvent({
     eventType: "specialist.run_completed",
@@ -259,6 +343,63 @@ export async function processRunCompletion(
       hasBlockingQuestions: result.unresolvedQuestions.some(q => q.blocking),
     },
   });
+
+  // ── C2: Post specialist update to task workroom conversation ──────────────
+  try {
+    const runRow = await db
+      .select({ taskId: specialistRunsTable.taskId, conversationId: specialistRunsTable.conversationId })
+      .from(specialistRunsTable)
+      .where(and(eq(specialistRunsTable.id, specialistRunId), eq(specialistRunsTable.organizationId, organizationId)))
+      .limit(1)
+      .then(rows => rows[0]);
+
+    if (runRow?.taskId) {
+      let conversationId = runRow.conversationId ?? null;
+
+      if (!conversationId) {
+        // Find the workroom conversation for this task (do not create one)
+        const [workroom] = await db
+          .select({ id: conversationsTable.id })
+          .from(conversationsTable)
+          .where(
+            and(
+              eq(conversationsTable.organizationId, organizationId),
+              eq(conversationsTable.primaryTaskId, runRow.taskId),
+              eq(conversationsTable.conversationType, "task_workroom"),
+            ),
+          )
+          .limit(1);
+        conversationId = workroom?.id ?? null;
+      }
+
+      if (conversationId) {
+        const content = buildSpecialistUpdateContent(result);
+        await addMessage({
+          organizationId,
+          conversationId,
+          taskId: runRow.taskId,
+          senderType: "workforce_role",
+          workforceRoleCode: result.workforceRoleCode,
+          messageType: "result",
+          content,
+          structuredContent: {
+            type: "specialist_update",
+            data: {
+              specialistRole: result.workforceRoleCode,
+              confidence: result.confidence,
+              isSpecialistUpdate: true,
+              findingCount: result.findings.length,
+              hasUnresolvedQuestions: result.unresolvedQuestions.length > 0,
+            },
+          },
+          correlationId: specialistRunId,
+        });
+      }
+    }
+  } catch (err) {
+    // Must never break the completion flow
+    console.warn("[CoS Orchestrator] Failed to post specialist update to workroom:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 /**
@@ -616,6 +757,71 @@ export async function executeSpecialistStep(
   return result;
 }
 
+/**
+ * Dispatches all ready specialist runs for a task by loading the plan from the database.
+ * Use this as a fire-and-forget after task approval.
+ *
+ * @param taskId - The task whose specialists should be dispatched
+ * @param organizationId - The owning organisation (for tenant isolation)
+ */
+export async function dispatchReadyRunsByTask(
+  taskId: string,
+  organizationId: string,
+): Promise<string[]> {
+  // Load the stored execution plan for this task
+  const [planRow] = await db
+    .select()
+    .from(taskExecutionPlansTable)
+    .where(eq(taskExecutionPlansTable.taskId, taskId))
+    .limit(1);
+
+  if (!planRow) {
+    console.warn(`[CoS Orchestrator] No execution plan found for task ${taskId} — skipping dispatch`);
+    return [];
+  }
+
+  // Load task metadata for dispatch options
+  const [taskRow] = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
+    .limit(1);
+
+  if (!taskRow) {
+    console.warn(`[CoS Orchestrator] Task ${taskId} not found — skipping dispatch`);
+    return [];
+  }
+
+  // Reconstruct the specialist plan from stored planData
+  const storedPlan = planRow.planData as Record<string, unknown>;
+  const assignedSpecialists: string[] = Array.isArray(storedPlan.assignedSpecialists)
+    ? (storedPlan.assignedSpecialists as string[])
+    : [];
+
+  const steps = assignedSpecialists.map((roleCode, i) => ({
+    id: `${taskId}:${roleCode}:${i}`,
+    capabilityCode: "research.general",
+    workforceRoleCode: roleCode,
+    workerProfileCode: `${roleCode}_profile`,
+    dependsOn: [] as string[],
+    failurePolicy: "skip" as const,
+    status: "ready" as const,
+  }));
+
+  const plan: SpecialistPlan = {
+    planId: planRow.id,
+    taskId,
+    organizationId,
+    steps,
+    createdAt: planRow.createdAt?.toISOString() ?? new Date().toISOString(),
+  };
+
+  return dispatchReadyRuns(plan, {
+    taskTitle: taskRow.title,
+    taskDescription: taskRow.description ?? undefined,
+  });
+}
+
 // ─── Private helpers ───────────────────────────────────────────────────────────
 
 async function dispatchStep(
@@ -650,6 +856,103 @@ async function dispatchStep(
   return run.id;
 }
 
+// ─── C1: Conflict evaluator LLM prompt ───────────────────────────────────────
+
+const CONFLICT_EVALUATOR_SYSTEM_PROMPT = `You are an impartial conflict evaluator for an AI workforce management system.
+
+You will be given two specialist positions that conflict with each other. Evaluate which position prevails, or determine that neither prevails and human review is required.
+
+Output MUST be a single JSON object with exactly these fields:
+{
+  "acceptedPosition": one of ["A", "B", "unresolved"],
+  "reasoning": string (2-4 sentences explaining why),
+  "recommendation": string (1-2 sentences: concrete next step for the operations team)
+}
+
+Rules:
+- If one position has meaningfully higher confidence AND stronger evidence, prefer it.
+- If the risk level difference suggests one is more cautious/conservative, note that.
+- If genuinely uncertain, set acceptedPosition to "unresolved" — this is the safe default.
+- Keep reasoning concise and factual. Do not invent information.
+- recommendation should be actionable.`;
+
+interface ConflictEvaluation {
+  acceptedPosition: "A" | "B" | "unresolved";
+  reasoning: string;
+  recommendation: string;
+}
+
+async function evaluateConflictWithLLM(
+  organizationId: string,
+  positionA: { specialist: string; title: string; severity: string; confidence: number },
+  positionB: { specialist: string; title: string; severity: string; confidence: number },
+): Promise<ConflictEvaluation | null> {
+  const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
+  if (provider !== "openai") return null;
+
+  try {
+    const gatewayCtx: AIGatewayContext = {
+      userId: "system",
+      organizationId,
+      role: "administrator",
+      permissions: ["compliance_check"],
+      purpose: "compliance_check",
+      correlationId: randomUUID(),
+      provider: "openai",
+      retentionClass: "operational",
+      requiresHumanApproval: false,
+    };
+
+    const gateway = createAIGateway(gatewayCtx);
+
+    const userMessage =
+      `=== POSITION A ===\n` +
+      `Specialist: ${positionA.specialist}\n` +
+      `Finding: ${positionA.title}\n` +
+      `Severity: ${positionA.severity}\n` +
+      `Confidence: ${Math.round(positionA.confidence * 100)}%\n\n` +
+      `=== POSITION B ===\n` +
+      `Specialist: ${positionB.specialist}\n` +
+      `Finding: ${positionB.title}\n` +
+      `Severity: ${positionB.severity}\n` +
+      `Confidence: ${Math.round(positionB.confidence * 100)}%\n\n` +
+      `Evaluate which position prevails, or mark as unresolved.`;
+
+    gateway.validateRetrievedFields(["task.id", "task.title"]);
+
+    const response = await gateway.process({
+      systemPrompt: CONFLICT_EVALUATOR_SYSTEM_PROMPT,
+      userMessage,
+      retrievedFields: ["task.id", "task.title"],
+      maxTokens: 400,
+    });
+
+    if (response.usedFallback) return null;
+
+    let raw: Record<string, unknown>;
+    try {
+      raw = JSON.parse(response.content) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+
+    const acceptedPosition = raw.acceptedPosition as string;
+    if (!["A", "B", "unresolved"].includes(acceptedPosition)) return null;
+    const reasoning = typeof raw.reasoning === "string" ? raw.reasoning.trim() : "";
+    const recommendation = typeof raw.recommendation === "string" ? raw.recommendation.trim() : "";
+    if (!reasoning || !recommendation) return null;
+
+    return {
+      acceptedPosition: acceptedPosition as ConflictEvaluation["acceptedPosition"],
+      reasoning,
+      recommendation,
+    };
+  } catch (err) {
+    console.warn("[CoS Orchestrator] Conflict LLM evaluation failed:", err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
 async function detectAndRecordConflicts(
   taskId: string,
   organizationId: string,
@@ -678,6 +981,51 @@ async function detectAndRecordConflicts(
 
     if (conflicting) {
       const conflictId = randomUUID();
+
+      // ── C1: LLM-assisted conflict evaluation ──────────────────────────────
+      const positionA = {
+        specialist: high.specialist,
+        title: high.finding.title,
+        severity: high.finding.severity ?? "high",
+        confidence: high.finding.confidence,
+      };
+      const positionB = {
+        specialist: conflicting.specialist,
+        title: conflicting.finding.title,
+        severity: conflicting.finding.severity ?? "low",
+        confidence: conflicting.finding.confidence,
+      };
+
+      let chiefOfStaffRecommendation = "Human review recommended to resolve conflicting severity assessments";
+      let resolutionRequired = true;
+
+      const evaluation = await evaluateConflictWithLLM(organizationId, positionA, positionB).catch(err => {
+        console.warn("[CoS Orchestrator] evaluateConflictWithLLM error (falling back to heuristic):", err instanceof Error ? err.message : String(err));
+        return null;
+      });
+
+      if (evaluation) {
+        // LLM succeeded — build recommendation from evaluation
+        const accepted =
+          evaluation.acceptedPosition === "A"
+            ? `Position A (${high.specialist})`
+            : evaluation.acceptedPosition === "B"
+            ? `Position B (${conflicting.specialist})`
+            : null;
+
+        chiefOfStaffRecommendation = accepted
+          ? `Accepted: ${accepted}. ${evaluation.reasoning} ${evaluation.recommendation}`
+          : `Unresolved. ${evaluation.reasoning} ${evaluation.recommendation}`;
+
+        resolutionRequired = evaluation.acceptedPosition === "unresolved";
+      } else {
+        // Fallback heuristic: prefer higher confidence
+        const higherConfidenceA = high.finding.confidence >= conflicting.finding.confidence;
+        chiefOfStaffRecommendation = higherConfidenceA
+          ? `Heuristic: Position A (${high.specialist}) has higher or equal confidence (${Math.round(high.finding.confidence * 100)}% vs ${Math.round(conflicting.finding.confidence * 100)}%). Human review recommended.`
+          : `Heuristic: Position B (${conflicting.specialist}) has higher confidence (${Math.round(conflicting.finding.confidence * 100)}% vs ${Math.round(high.finding.confidence * 100)}%). Human review recommended.`;
+      }
+
       const [conflict] = await db
         .insert(specialistConflictsTable)
         .values({
@@ -691,8 +1039,8 @@ async function detectAndRecordConflicts(
           ],
           evidenceReferences: [],
           risk: "medium",
-          chiefOfStaffRecommendation: "Human review recommended to resolve conflicting severity assessments",
-          resolutionRequired: true,
+          chiefOfStaffRecommendation,
+          resolutionRequired,
         })
         .returning();
 
@@ -704,7 +1052,12 @@ async function detectAndRecordConflicts(
           actorType: "system",
           resourceType: "specialist_conflict",
           resourceId: conflictId,
-          metadata: { taskId, conflictingRuns: [high.runId, conflicting.runId] },
+          metadata: {
+            taskId,
+            conflictingRuns: [high.runId, conflicting.runId],
+            usedLLMEvaluation: evaluation !== null,
+            resolutionRequired,
+          },
         });
       }
     }

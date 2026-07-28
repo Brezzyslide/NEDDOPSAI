@@ -71,3 +71,5 @@ export * from "./workforcePackPriceVersions";
 export * from "./workforcePackAccessRequests";
 // Sprint 9.7 — Owner Control Plane
 export * from "./seatOverrides";
+// Sprint 10 — Digital Workforce Intelligence
+export * from "./executionIntents";

@@ -1,0 +1,643 @@
+# NeedsOps AI+
+
+# Sprint 10 — Digital Workforce Intelligence & Execution
+
+Continue from Sprint 9.7.
+
+Do **not** build additional Platform Console features unless they are required to support workforce execution.
+
+The objective of Sprint 10 is to transform the existing workforce from static role assignments into intelligent, professional specialists capable of independently reasoning, collaborating and preparing work for execution.
+
+This sprint is about building the **brains** of the workforce.
+
+OpenClaw remains the execution runtime and is **not** the focus of this sprint.
+
+---
+
+# Core Principle
+
+NeedsOps is **not** an AI chatbot.
+
+NeedsOps is a **digital workforce platform**.
+
+Every Workforce Role must behave like a genuine professional.
+
+Professional identity must be permanent.
+
+Specialist Runs must be temporary.
+
+OpenClaw remains only the execution layer.
+
+---
+
+# Architecture
+
+The architecture after this sprint must be:
+
+```text
+Conversation
+        ↓
+Chief of Staff
+        ↓
+Professional DNA
+        ↓
+Worker Profile
+        ↓
+Temporary Specialist Run
+        ↓
+Professional Reasoning
+        ↓
+Work Package
+        ↓
+Execution Queue
+        ↓
+(OpenClaw later)
+```
+
+The Professional DNA layer becomes the intellectual property of NeedsOps.
+
+---
+
+# 1. Professional DNA Framework
+
+Create a new domain:
+
+```text
+lib/workforce-dna
+```
+
+The framework must support:
+
+* DNA identity
+* DNA versioning
+* inheritance
+* specialist-specific methodology
+* communication style
+* evidence standards
+* reasoning framework
+* escalation framework
+* prohibited behaviour
+* output schema
+* confidence model
+
+Each DNA profile must be immutable once published.
+
+Editing creates a new version.
+
+---
+
+# 2. DNA Schema
+
+Every DNA profile must contain:
+
+Identity
+
+Mission
+
+Professional philosophy
+
+Core competencies
+
+Reasoning methodology
+
+Decision framework
+
+Evidence standards
+
+Risk tolerance
+
+Escalation rules
+
+Professional boundaries
+
+Communication style
+
+Preferred outputs
+
+Learning policy
+
+Memory policy
+
+Required capabilities
+
+Required Worker Profile
+
+Supported execution channels
+
+Confidence thresholds
+
+Conflict resolution rules
+
+Output schema
+
+Version history
+
+---
+
+# 3. Initial DNA Profiles
+
+Implement production-quality DNA for:
+
+Chief of Staff
+
+Compliance Officer
+
+Operations Manager
+
+Document Specialist
+
+These are the only active specialist brains.
+
+All remaining specialists continue to return:
+
+```text
+Specialist not yet activated.
+```
+
+---
+
+# 4. Chief of Staff Intelligence
+
+Replace simple routing.
+
+The Chief of Staff should now:
+
+analyse
+
+challenge assumptions
+
+identify missing information
+
+determine if clarification is required
+
+identify conflicting objectives
+
+identify dependencies
+
+identify required specialists
+
+prioritise work
+
+sequence work
+
+merge specialist recommendations
+
+produce executive summaries
+
+The Chief of Staff never performs specialist work.
+
+---
+
+# 5. Specialist Runs
+
+When:
+
+Task
+
+↓
+
+Approved
+
+Automatically call:
+
+dispatchReadyRuns()
+
+Every specialist run becomes an independent execution record.
+
+Specialists should receive only:
+
+their assigned work
+
+approved organisation memory
+
+required task context
+
+previous dependent specialist outputs
+
+never the full tenant database.
+
+---
+
+# 6. Professional Reasoning
+
+Every specialist must execute a structured reasoning methodology.
+
+Example:
+
+Compliance Officer
+
+↓
+
+Define scope
+
+↓
+
+Identify governing legislation
+
+↓
+
+Review evidence
+
+↓
+
+Identify gaps
+
+↓
+
+Assess risk
+
+↓
+
+Recommend corrective actions
+
+↓
+
+Escalate uncertainty
+
+Do not allow free-form reasoning.
+
+Each specialist follows its own methodology.
+
+---
+
+# 7. Work Package
+
+Every specialist returns:
+
+Findings
+
+Evidence
+
+Risks
+
+Recommendations
+
+Required approvals
+
+Required execution
+
+Confidence
+
+Outstanding questions
+
+Next specialist
+
+The output becomes a Work Package.
+
+---
+
+# 8. Specialist Collaboration
+
+Allow specialists to consume outputs from earlier specialists.
+
+Example:
+
+Compliance
+
+↓
+
+Operations
+
+↓
+
+Document
+
+↓
+
+Chief of Staff
+
+Dependency ordering must already exist.
+
+No circular dependencies.
+
+---
+
+# 9. Queue Worker
+
+Replace manual queue invocation.
+
+Implement a long-running worker.
+
+Requirements:
+
+poll queue
+
+claim work atomically
+
+respect concurrency
+
+recover after restart
+
+heartbeat
+
+retry policy
+
+dead-letter state
+
+idempotency
+
+Future deployment target:
+
+AWS ECS/Fargate.
+
+Do not hard-code Replit assumptions.
+
+---
+
+# 10. Execution Dispatch
+
+When every dependency is satisfied:
+
+Chief of Staff
+
+↓
+
+Dispatch specialist
+
+↓
+
+Receive Work Package
+
+↓
+
+Dispatch dependent specialist
+
+↓
+
+Repeat
+
+↓
+
+Final executive summary
+
+Execution remains internal.
+
+Do not invoke OpenClaw yet.
+
+---
+
+# 11. Memory
+
+Professional reasoning must use:
+
+organisation memory
+
+conversation summary
+
+last 300 relevant messages
+
+task context
+
+previous Work Packages
+
+Do not reload unnecessary data.
+
+Continue relevance ranking.
+
+---
+
+# 12. Conversation
+
+The Task Workroom must now display:
+
+Chief of Staff messages
+
+Specialist reasoning
+
+Clarification requests
+
+Professional findings
+
+Recommendations
+
+Execution preparation
+
+Final summary
+
+The user should clearly understand which specialist is speaking.
+
+---
+
+# 13. Conflict Resolution
+
+If specialists disagree:
+
+Create:
+
+Specialist Conflict
+
+Chief of Staff evaluates:
+
+confidence
+
+evidence
+
+risk
+
+policy
+
+Produces:
+
+accepted position
+
+rejected position
+
+reasoning
+
+Audit every conflict.
+
+---
+
+# 14. Runtime Preparation
+
+Every completed Work Package must produce:
+
+Execution Intent
+
+Example:
+
+Open browser
+
+Navigate
+
+Download file
+
+Upload document
+
+Submit form
+
+Read table
+
+Generate report
+
+Do not execute.
+
+Only prepare.
+
+These intents will be consumed by OpenClaw later.
+
+---
+
+# 15. OpenClaw Boundary
+
+Do not move reasoning into OpenClaw.
+
+OpenClaw remains responsible only for:
+
+browser
+
+desktop
+
+terminal
+
+API
+
+documents
+
+mouse
+
+keyboard
+
+All judgement remains inside NeedsOps.
+
+---
+
+# 16. Professional DNA Versioning
+
+Every specialist run records:
+
+DNA version
+
+Worker Profile version
+
+Capability version
+
+Reasoning version
+
+Output schema version
+
+Model version
+
+This guarantees reproducibility.
+
+---
+
+# 17. Tests
+
+Create comprehensive tests covering:
+
+DNA inheritance
+
+DNA versioning
+
+Chief of Staff orchestration
+
+automatic dispatch
+
+queue worker
+
+specialist collaboration
+
+dependency ordering
+
+conflict resolution
+
+Work Package generation
+
+memory assembly
+
+conversation updates
+
+runtime intent generation
+
+idempotency
+
+restart recovery
+
+All existing tests must continue to pass.
+
+---
+
+# Completion Criteria
+
+Sprint 10 is complete only when:
+
+✓ Approved tasks automatically dispatch specialist runs
+
+✓ Queue worker processes work automatically
+
+✓ Chief of Staff orchestrates specialist collaboration
+
+✓ Professional DNA exists for Chief of Staff, Compliance Officer, Operations Manager and Document Specialist
+
+✓ Specialists follow structured reasoning methodologies
+
+✓ Specialists exchange Work Packages
+
+✓ Work Packages produce Execution Intents
+
+✓ Conversation displays specialist reasoning
+
+✓ Conflict resolution is operational
+
+✓ Every run records DNA and methodology versions
+
+✓ OpenClaw remains completely decoupled
+
+✓ No specialist performs browser automation directly
+
+✓ API server starts cleanly
+
+✓ All tests pass
+
+---
+
+# Final Report
+
+Provide:
+
+SPRINT 10 COMPLETION REPORT
+
+Overall status
+
+DNA Framework
+
+Chief of Staff intelligence
+
+Professional reasoning
+
+Specialist collaboration
+
+Automatic dispatch
+
+Queue worker
+
+Work Package generation
+
+Execution intent generation
+
+Conversation improvements
+
+Memory usage
+
+Conflict resolution
+
+Versioning
+
+Database changes
+
+API changes
+
+Frontend changes
+
+Tests passed
+
+Known limitations
+
+Technical debt
+
+Ready for AWS OpenClaw integration: Yes / No
+
+Stop after producing the completion report.
+
+Do not begin AWS deployment or Stripe integration.

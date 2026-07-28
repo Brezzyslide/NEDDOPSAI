@@ -92,6 +92,57 @@ const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400",              icon: "✕" },
 };
 
+// ─── Specialist role badge colours (C3) ──────────────────────────────────────
+
+const SPECIALIST_BADGE_CLASSES: Record<string, string> = {
+  compliance_officer:  "bg-red-900/40 border-red-700/40 text-red-300",
+  operations_manager:  "bg-blue-900/40 border-blue-700/40 text-blue-300",
+  document_specialist: "bg-purple-900/40 border-purple-700/40 text-purple-300",
+  chief_of_staff:      "bg-emerald-900/40 border-emerald-700/40 text-emerald-300",
+  research_specialist: "bg-cyan-900/40 border-cyan-700/40 text-cyan-300",
+  executive_assistant: "bg-indigo-900/40 border-indigo-700/40 text-indigo-300",
+  quality_officer:     "bg-pink-900/40 border-pink-700/40 text-pink-300",
+  hr_officer:          "bg-amber-900/40 border-amber-700/40 text-amber-300",
+  finance_officer:     "bg-teal-900/40 border-teal-700/40 text-teal-300",
+  operations_officer:  "bg-sky-900/40 border-sky-700/40 text-sky-300",
+  marketing_officer:   "bg-rose-900/40 border-rose-700/40 text-rose-300",
+};
+
+const SPECIALIST_ROLE_LABELS: Record<string, string> = {
+  compliance_officer:  "Compliance Officer",
+  operations_manager:  "Operations Manager",
+  document_specialist: "Document Specialist",
+  chief_of_staff:      "Chief of Staff",
+  research_specialist: "Research Specialist",
+  executive_assistant: "Executive Assistant",
+  quality_officer:     "Quality Officer",
+  hr_officer:          "HR Officer",
+  finance_officer:     "Finance Officer",
+  operations_officer:  "Operations Officer",
+  marketing_officer:   "Marketing Officer",
+};
+
+// Specialist update metadata — present in structuredContent.data for specialist messages
+interface SpecialistUpdateData {
+  specialistRole: string;
+  confidence: number;
+  isSpecialistUpdate: boolean;
+}
+
+function SpecialistBadge({ roleCode, confidence }: { roleCode: string; confidence: number }) {
+  const roleLabel = SPECIALIST_ROLE_LABELS[roleCode]
+    ?? roleCode.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const classes = SPECIALIST_BADGE_CLASSES[roleCode] ?? "bg-[#1E3A5F] border-[#1E3A5F] text-[#94A3B8]";
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-semibold mb-2 ${classes}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70 shrink-0" />
+      {roleLabel}
+      <span className="opacity-60">·</span>
+      <span>{Math.round(confidence * 100)}% confidence</span>
+    </div>
+  );
+}
+
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
 function SenderLabel({ senderType, workforceRoleCode }: { senderType: MessageSenderType; workforceRoleCode?: string }) {
@@ -249,6 +300,33 @@ function MessageBubble({
   const sc = msg.structuredContent as Record<string, unknown> | null | undefined;
   const scType = sc?.type as string | undefined;
   const scData = sc?.data as Record<string, unknown> | undefined;
+
+  // ── C3: Detect specialist update messages ──────────────────────────────────
+  const isSpecialistUpdate = scType === "specialist_update" && scData?.isSpecialistUpdate === true;
+
+  if (isSpecialistUpdate && scData) {
+    const updateData = scData as unknown as SpecialistUpdateData;
+    const contentLines = msg.content.split("\n");
+    const headerLine = contentLines[0] ?? "";
+    const bodyLines = contentLines.slice(1).join("\n").trim();
+
+    return (
+      <div className="flex justify-start mb-4">
+        <div className="max-w-[82%]">
+          <SpecialistBadge roleCode={updateData.specialistRole} confidence={updateData.confidence} />
+          <div className="bg-[#0D1829] border border-[#1E3A5F] rounded-2xl px-4 py-3 text-sm leading-relaxed">
+            <p className="text-[#E2E8F0] font-semibold text-sm mb-2">{headerLine.replace(/\*\*/g, "")}</p>
+            {bodyLines && (
+              <p className="text-[#94A3B8] text-xs leading-relaxed whitespace-pre-wrap">{bodyLines}</p>
+            )}
+          </div>
+          <p className="text-[#475569] text-xs mt-1 px-1">
+            {new Date(msg.createdAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const approvalId = scData?.approvalId as string | undefined;
 

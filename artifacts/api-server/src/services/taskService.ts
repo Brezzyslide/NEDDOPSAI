@@ -15,6 +15,7 @@ import {
   type InsertTask,
 } from "@workspace/db";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
+import { dispatchReadyRunsByTask } from "./chiefOfStaffOrchestrator.js";
 import type { TaskState, TaskPriority } from "@workspace/shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -117,6 +118,13 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     .where(eq(tasksTable.id, taskId))
     .returning();
 
+  // Fire-and-forget specialist dispatch when task moves directly to approved
+  if (nextState === "approved") {
+    dispatchReadyRunsByTask(taskId, input.organizationId).catch(err =>
+      console.error("[taskService] dispatchReadyRuns failed after approval:", err),
+    );
+  }
+
   return { task: updatedTask!, plan, specialists };
 }
 
@@ -174,6 +182,13 @@ export async function transitionTaskState(
     .set({ currentState: to, updatedAt: new Date() })
     .where(eq(tasksTable.id, taskId))
     .returning();
+
+  // Fire-and-forget specialist dispatch on approval transition
+  if (to === "approved") {
+    dispatchReadyRunsByTask(taskId, organizationId).catch(err =>
+      console.error("[taskService] dispatchReadyRuns failed after approval:", err),
+    );
+  }
 
   return updated!;
 }

@@ -83,7 +83,9 @@ export interface StructuredContent {
     | "follow_up_prompt"
     // Sprint 9.4 — Capability gate cards
     | "capability_blocked"
-    | "capability_partial";
+    | "capability_partial"
+    // Sprint 10 — Specialist updates posted to workroom
+    | "specialist_update";
   data: Record<string, unknown>;
 }
 

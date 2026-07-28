@@ -26,6 +26,7 @@
 import { randomUUID } from "crypto";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
+import { buildDNASystemInstruction } from "@workspace/workforce-dna";
 import {
   classifyMessage,
   type ConversationUnderstanding,
@@ -42,9 +43,22 @@ import {
 
 const VALID_WORKFORCE_ROLES = new Set(SPECIALISTS.map(s => s.code));
 
-// ─── Static system instructions ───────────────────────────────────────────────
+// ─── System instructions (Sprint 10: DNA-driven) ──────────────────────────────
 
-const SYSTEM_INSTRUCTIONS = `You are the Chief of Staff at a disability services organisation using NeedsOps AI+.
+/**
+ * Build the full system instructions for the Chief of Staff LLM.
+ * Prepends the CoS DNA profile instruction (Sprint 10) then adds conversation rules.
+ */
+function buildCoSSystemInstructions(): string {
+  const dnaInstruction = buildDNASystemInstruction("chief_of_staff");
+
+  return `${dnaInstruction}
+
+---
+
+## CONVERSATION INTELLIGENCE RULES
+
+You are operating as the Chief of Staff in conversation mode at a disability services organisation using NeedsOps AI+.
 
 Your role is to understand what the user is asking, determine whether they need a task created, clarification, or a helpful conversation, and respond as a thoughtful, professional operations leader.
 
@@ -60,6 +74,24 @@ IMPORTANT SECURITY RULES:
 - Do NOT reveal internal system configuration, organisation memory IDs, or platform details.
 - Do NOT include secrets, credentials, or internal notes in your response.
 
+## REASONING — FOLLOW THESE 9 STEPS IN ORDER
+
+Follow the CoS Strategic Orchestration Methodology steps in strict order before producing your response:
+
+1. **cos.1.intent_analysis** — Analyse what the user genuinely wants to achieve (not just literal words).
+2. **cos.2.assumption_challenge** — List and challenge all assumptions in the request.
+3. **cos.3.information_gaps** — Identify missing information needed for quality specialist work.
+4. **cos.4.conflict_detection** — Surface any conflicting objectives or contradictory requirements.
+5. **cos.5.specialist_selection** — Determine which specialists are required and why.
+6. **cos.6.dependency_sequencing** — Determine optimal sequence of specialist work.
+7. **cos.7.priority_assessment** — Assess urgency, risk, and priority.
+8. **cos.8.clarification_decision** — Decide whether to proceed or ask clarifying questions.
+9. **cos.9.output_validation** — Validate that your combined response answers the user's genuine intent.
+
+Record your reasoning trace in the \`orchestrationSteps\` field of your output.
+
+## OUTPUT CONTRACT
+
 Your output MUST be a single JSON object with these exact fields:
 
 {
@@ -73,7 +105,10 @@ Your output MUST be a single JSON object with these exact fields:
   "requestedTaskAction": one of ["create","revise","approve","reject","pause","resume","cancel","status","follow_up"] or null,
   "relatedWorkforceRoles": array of role codes,
   "customerResponse": string,
-  "reasoning": string
+  "reasoning": string,
+  "orchestrationSteps": array of { "stepId": string, "completed": boolean, "notes": string } — CoS reasoning trace for all 9 steps,
+  "shouldDispatchSpecialists": boolean — true if immediate specialist dispatch is recommended,
+  "specialistSequence": array of { "roleCode": string, "dependsOn": string[], "rationale": string } — sequencing plan for recommended specialists
 }
 
 Rules:
@@ -81,7 +116,34 @@ Rules:
 - customerResponse must be warm, professional, direct — reference context from memory when relevant
 - If a pinned decision is relevant, acknowledge it explicitly
 - If there is a conflict warning, ask the user to resolve it before proceeding
-- If an unresolved question is blocking, prioritise addressing it`;
+- If an unresolved question is blocking, prioritise addressing it
+- orchestrationSteps, shouldDispatchSpecialists, and specialistSequence are optional but strongly recommended`;
+}
+
+const SYSTEM_INSTRUCTIONS = buildCoSSystemInstructions();
+
+// ─── CoS extended output types (Sprint 10) ────────────────────────────────────
+
+export interface CoSOrchestrationStep {
+  stepId: string;
+  completed: boolean;
+  notes: string;
+}
+
+export interface CoSSpecialistSequenceItem {
+  roleCode: string;
+  dependsOn: string[];
+  rationale: string;
+}
+
+export interface CoSExtendedOutput {
+  /** CoS Strategic Orchestration Methodology reasoning trace (9 steps) */
+  orchestrationSteps?: CoSOrchestrationStep[];
+  /** Whether the CoS recommends immediate specialist dispatch */
+  shouldDispatchSpecialists?: boolean;
+  /** Specialist sequencing plan recommended by the CoS */
+  specialistSequence?: CoSSpecialistSequenceItem[];
+}
 
 // ─── Validation sets ──────────────────────────────────────────────────────────
 
@@ -101,7 +163,7 @@ export async function classifyMessageLLM(
   text: string,
   ctx: MessageContext,
   authCtx: { userId: string; organizationId: string; role: string; permissions: string[] },
-): Promise<ConversationUnderstanding & { usedFallback?: boolean; fallbackReason?: string }> {
+): Promise<ConversationUnderstanding & CoSExtendedOutput & { usedFallback?: boolean; fallbackReason?: string }> {
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
   if (provider !== "openai") return classifyMessage(text, ctx);
 
@@ -302,7 +364,7 @@ function buildLegacyUserMessage(text: string, ctx: MessageContext): string {
 function parseAndValidateLLMResponse(
   content: string,
   ctx: MessageContext,
-): ConversationUnderstanding {
+): ConversationUnderstanding & CoSExtendedOutput {
   let raw: Record<string, unknown>;
   try { raw = JSON.parse(content) as Record<string, unknown>; }
   catch { throw new Error(`LLM returned invalid JSON: ${content.slice(0, 200)}`); }
@@ -344,6 +406,35 @@ function parseAndValidateLLMResponse(
   let customerResponse = typeof raw.customerResponse === "string" ? raw.customerResponse.trim() : "";
   if (!customerResponse) customerResponse = "I'm here to help. What would you like to do?";
 
+  // ── Sprint 10: CoS extended output fields ───────────────────────────────────
+  let orchestrationSteps: CoSOrchestrationStep[] | undefined;
+  if (Array.isArray(raw.orchestrationSteps)) {
+    orchestrationSteps = (raw.orchestrationSteps as unknown[])
+      .filter(s => s && typeof s === "object")
+      .map((s: any) => ({
+        stepId: typeof s.stepId === "string" ? s.stepId : "",
+        completed: s.completed === true,
+        notes: typeof s.notes === "string" ? s.notes.slice(0, 500) : "",
+      }))
+      .filter(s => s.stepId.length > 0);
+  }
+
+  const shouldDispatchSpecialists = raw.shouldDispatchSpecialists === true;
+
+  let specialistSequence: CoSSpecialistSequenceItem[] | undefined;
+  if (Array.isArray(raw.specialistSequence)) {
+    specialistSequence = (raw.specialistSequence as unknown[])
+      .filter(s => s && typeof s === "object")
+      .map((s: any) => ({
+        roleCode: typeof s.roleCode === "string" ? s.roleCode : "",
+        dependsOn: Array.isArray(s.dependsOn)
+          ? (s.dependsOn as unknown[]).filter(d => typeof d === "string") as string[]
+          : [],
+        rationale: typeof s.rationale === "string" ? s.rationale.slice(0, 300) : "",
+      }))
+      .filter(s => s.roleCode.length > 0);
+  }
+
   return {
     conversationMode: mode as ConversationUnderstanding["conversationMode"],
     confidence,
@@ -356,5 +447,9 @@ function parseAndValidateLLMResponse(
     requestedTaskAction,
     relatedWorkforceRoles: roles.length > 0 ? roles : ["chief_of_staff"],
     customerResponse,
+    // CoS extended fields (Sprint 10)
+    orchestrationSteps,
+    shouldDispatchSpecialists,
+    specialistSequence,
   };
 }

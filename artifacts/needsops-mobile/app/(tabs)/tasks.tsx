@@ -1,7 +1,8 @@
 /**
- * Tasks screen — Sprint 9
+ * Tasks screen — Sprint 9 / Sprint 10 (C4)
  * Replaced placeholder data with real API calls via the workspace API client.
  * Org slug is read from the org selection stored in the organisations screen.
+ * Sprint 10 C4: Expanded task cards show specialist update messages with role badges.
  */
 import React, { useState } from 'react';
 import {
@@ -17,6 +18,11 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch';
+import {
+  SpecialistMessageBubble,
+  isSpecialistUpdateMessage,
+  type ConversationMessage,
+} from '@/components/SpecialistMessageBubble';
 
 const STATE_COLOUR: Record<string, string> = {
   draft:             '#64748B',
@@ -37,9 +43,66 @@ const STATE_ICON: Record<string, string> = {
 
 const STATES = ['queued', 'planning', 'awaiting_approval', 'executing', 'completed'];
 
+// ─── C4: Specialist messages sub-component ────────────────────────────────────
+
+function TaskSpecialistMessages({ orgSlug, taskId }: { orgSlug: string; taskId: string }) {
+  const apiFetch = useAuthenticatedFetch();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['task-workroom-messages', orgSlug, taskId],
+    queryFn: async () => {
+      const res = await apiFetch(`/v1/organisations/${orgSlug}/tasks/${taskId}/workroom`);
+      if (!res.ok) return { messages: [] };
+      const d = await res.json();
+      return { messages: (d.messages ?? []) as ConversationMessage[] };
+    },
+    staleTime: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <View style={{ paddingVertical: 8 }}>
+        <ActivityIndicator size="small" color="#64748B" />
+      </View>
+    );
+  }
+
+  const specialistMessages = (data?.messages ?? []).filter(isSpecialistUpdateMessage);
+  if (specialistMessages.length === 0) return null;
+
+  return (
+    <View style={specialistMsgStyles.container}>
+      <Text style={specialistMsgStyles.sectionLabel}>SPECIALIST UPDATES</Text>
+      {specialistMessages.slice(-3).map((msg) => (
+        <SpecialistMessageBubble key={msg.id} msg={msg} />
+      ))}
+    </View>
+  );
+}
+
+const specialistMsgStyles = StyleSheet.create({
+  container: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1E3A5F',
+    gap: 8,
+  },
+  sectionLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    color: '#475569',
+    marginBottom: 4,
+  },
+});
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
+
 export default function TasksScreen() {
   const colors = useColors();
   const [activeState, setActiveState] = useState<string | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const apiFetch = useAuthenticatedFetch();
 
   // Read selected org slug from global store (set in organisations screen)
@@ -122,41 +185,57 @@ export default function TasksScreen() {
               </View>
             ) : (
               <View style={styles.taskList}>
-                {tasks.map((task: any) => (
-                  <View key={task.id} style={[styles.taskCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                    <View style={styles.taskRow}>
-                      <Text style={[styles.stateIcon, { color: STATE_COLOUR[task.currentState] ?? colors.primary }]}>
-                        {STATE_ICON[task.currentState] ?? '◎'}
-                      </Text>
-                      <View style={styles.taskInfo}>
-                        <Text style={[styles.taskTitle, { color: colors.foreground }]}>{task.title}</Text>
-                        <View style={styles.taskMeta}>
-                          <Text style={[styles.taskState, { color: STATE_COLOUR[task.currentState] ?? colors.mutedForeground }]}>
-                            {task.currentState.replace(/_/g, ' ')}
-                          </Text>
-                          <Text style={[styles.taskDot, { color: colors.mutedForeground }]}> · </Text>
-                          <Text style={[styles.taskPriority, {
-                            color: task.priority === 'urgent' ? '#F87171'
-                              : task.priority === 'high' ? '#FCD34D'
-                              : colors.mutedForeground
-                          }]}>
-                            {task.priority}
+                {tasks.map((task: any) => {
+                  const isExpanded = expandedTaskId === task.id;
+                  const showMessages = ['executing', 'completed', 'planning', 'approved'].includes(task.currentState);
+                  return (
+                    <TouchableOpacity
+                      key={task.id}
+                      activeOpacity={0.9}
+                      onPress={() => setExpandedTaskId(isExpanded ? null : task.id)}
+                      style={[styles.taskCard, { backgroundColor: colors.card, borderColor: isExpanded ? '#1E3A5F' : colors.border }]}
+                    >
+                      <View style={styles.taskRow}>
+                        <Text style={[styles.stateIcon, { color: STATE_COLOUR[task.currentState] ?? colors.primary }]}>
+                          {STATE_ICON[task.currentState] ?? '◎'}
+                        </Text>
+                        <View style={styles.taskInfo}>
+                          <Text style={[styles.taskTitle, { color: colors.foreground }]}>{task.title}</Text>
+                          <View style={styles.taskMeta}>
+                            <Text style={[styles.taskState, { color: STATE_COLOUR[task.currentState] ?? colors.mutedForeground }]}>
+                              {task.currentState.replace(/_/g, ' ')}
+                            </Text>
+                            <Text style={[styles.taskDot, { color: colors.mutedForeground }]}> · </Text>
+                            <Text style={[styles.taskPriority, {
+                              color: task.priority === 'urgent' ? '#F87171'
+                                : task.priority === 'high' ? '#FCD34D'
+                                : colors.mutedForeground
+                            }]}>
+                              {task.priority}
+                            </Text>
+                          </View>
+                          <Text style={[styles.taskDate, { color: colors.mutedForeground }]}>
+                            {new Date(task.createdAt).toLocaleDateString('en-AU')}
                           </Text>
                         </View>
-                        <Text style={[styles.taskDate, { color: colors.mutedForeground }]}>
-                          {new Date(task.createdAt).toLocaleDateString('en-AU')}
+                        <Text style={{ color: '#475569', fontSize: 10, marginTop: 2 }}>
+                          {isExpanded ? '▲' : '▼'}
                         </Text>
                       </View>
-                    </View>
-                    {task.currentState === 'awaiting_approval' && (
-                      <View style={[styles.approvalBadge, { backgroundColor: '#FCD34D22', borderColor: '#FCD34D44' }]}>
-                        <Text style={{ color: '#FCD34D', fontSize: 11, fontWeight: '600' }}>
-                          ⚠ Awaiting your approval — open web portal to review
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                ))}
+                      {task.currentState === 'awaiting_approval' && (
+                        <View style={[styles.approvalBadge, { backgroundColor: '#FCD34D22', borderColor: '#FCD34D44' }]}>
+                          <Text style={{ color: '#FCD34D', fontSize: 11, fontWeight: '600' }}>
+                            ⚠ Awaiting your approval — open web portal to review
+                          </Text>
+                        </View>
+                      )}
+                      {/* C4: Specialist update messages shown when expanded */}
+                      {isExpanded && orgSlug && showMessages && (
+                        <TaskSpecialistMessages orgSlug={orgSlug} taskId={task.id} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             )}
           </>

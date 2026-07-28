@@ -245,6 +245,9 @@ importers:
       '@workspace/validation':
         specifier: workspace:*
         version: link:../../lib/validation
+      '@workspace/workforce-dna':
+        specifier: workspace:*
+        version: link:../../lib/workforce-dna
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -1008,6 +1011,15 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/workforce-dna:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.9.5
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   scripts:
     dependencies:

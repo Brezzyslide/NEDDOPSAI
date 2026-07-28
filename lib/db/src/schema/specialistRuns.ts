@@ -70,6 +70,21 @@ export const specialistRunsTable = pgTable(
     lastError: text("last_error"),
     runtimeExecutionId: text("runtime_execution_id"),
     idempotencyKey: text("idempotency_key").notNull(),
+
+    // ── Sprint 10: Version record for full reproducibility ───────────────────
+    /** DNA profile version used for this run */
+    dnaVersion: text("dna_version").notNull().default("N/A"),
+    /** Worker profile version */
+    workerProfileVersion: text("worker_profile_version").notNull().default("1.0.0"),
+    /** Capability registry version */
+    capabilityVersion: text("capability_version").notNull().default("1.0.0"),
+    /** Reasoning methodology version from the DNA profile */
+    reasoningVersion: text("reasoning_version").notNull().default("N/A"),
+    /** Output schema version from the DNA profile */
+    outputSchemaVersion: text("output_schema_version").notNull().default("N/A"),
+    /** AI model version (e.g. "gpt-4o-2024-08-06") */
+    modelVersion: text("model_version").notNull().default("internal"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`NOW()`),
   },
