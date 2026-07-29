@@ -228,6 +228,27 @@ export function buildEmployeeSystemInstruction(
 
 // ─── Validation utilities ─────────────────────────────────────────────────────
 
+// ─── Prohibited direct resource references ────────────────────────────────────
+
+/**
+ * Direct technology, vendor, and location references that must never appear in
+ * Employee File text fields. Employees must use resource abstractions instead.
+ */
+const PROHIBITED_DIRECT_REFS = [
+  "sharepoint",
+  "google drive",
+  "google docs",
+  "onedrive",
+  "dropbox",
+  "chrome",
+  "firefox",
+  "edge",
+  "openclaw",
+  "http://",
+  "https://",
+  "file://",
+];
+
 /**
  * Validates that an Employee File has been correctly constructed.
  * Returns an array of validation errors (empty = valid).
@@ -275,6 +296,40 @@ export function validateEmployeeFile(file: EmployeeFile): string[] {
   // Identity role code must be present
   if (!file.identity.roleCode) {
     errors.push("identity.roleCode must not be empty");
+  }
+
+  // Resource requirements must be present
+  if (!file.resourceRequirements) {
+    errors.push("resourceRequirements section is missing — all Employee Files must declare their resource requirements");
+  }
+
+  // Check for prohibited direct references in responsibilities text
+  const allResponsibilityText = file.responsibilities.responsibilities.join(" ").toLowerCase();
+  for (const ref of PROHIBITED_DIRECT_REFS) {
+    if (allResponsibilityText.includes(ref)) {
+      errors.push(
+        `responsibilities contains a prohibited direct resource reference: "${ref}". Use resource abstractions instead.`,
+      );
+    }
+  }
+
+  // Check for prohibited direct references in authority text
+  const allAuthorityMayText = file.authority.may.join(" ").toLowerCase();
+  for (const ref of PROHIBITED_DIRECT_REFS) {
+    if (allAuthorityMayText.includes(ref)) {
+      errors.push(
+        `authority.may contains a prohibited direct resource reference: "${ref}". Use resource abstractions instead.`,
+      );
+    }
+  }
+
+  const allAuthorityMayNotText = file.authority.mayNot.join(" ").toLowerCase();
+  for (const ref of PROHIBITED_DIRECT_REFS) {
+    if (allAuthorityMayNotText.includes(ref)) {
+      errors.push(
+        `authority.mayNot contains a prohibited direct resource reference: "${ref}". Use resource abstractions instead.`,
+      );
+    }
   }
 
   return errors;

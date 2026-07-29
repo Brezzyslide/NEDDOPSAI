@@ -1,0 +1,541 @@
+Sprint XX — Organisation Resource Architecture (Platform Foundation)
+Objective
+
+Design and implement the Organisation Resource Architecture as a core NeedsOps platform component.
+
+This architecture enables AI Employees to securely discover and access organisational resources without requiring knowledge of where those resources are physically stored or how they are accessed.
+
+This is a platform architecture sprint.
+
+Do not modify the NeedsOps Constitution.
+
+Do not redesign Employee Files.
+
+Do not activate any draft DNA.
+
+Maintain backward compatibility.
+
+Background
+
+Current Employee Files assume documents, browser applications and business systems can be accessed directly.
+
+This assumption is incorrect.
+
+AI Employees must remain independent of storage technologies, browser implementations and vendor platforms.
+
+The customer's existing systems remain the source of truth.
+
+NeedsOps provides organisational understanding and orchestration.
+
+Architecture Overview
+
+Introduce the following platform architecture.
+
+AI Employee
+        │
+        ▼
+Capability Engine
+        │
+        ▼
+Organisation Resource Registry
+        │
+        ▼
+Resource Manager
+        │
+        ▼
+Connector
+        │
+        ▼
+Execution Runtime
+(OpenClaw / Desktop Agent / API)
+        │
+        ▼
+Organisation Resource
+
+Each component has a single responsibility.
+
+1. Organisation Resource Registry
+
+Create a new core platform service:
+
+Organisation Resource Registry
+
+Purpose:
+
+Maintain an inventory of every organisational resource available to NeedsOps.
+
+The Registry is descriptive, not operational.
+
+It knows:
+
+what resources exist
+where they are located
+who owns them
+which connector is required
+which employees may access them
+
+It never executes work.
+
+Every registered resource must contain
+resourceId
+displayName
+resourceType
+connectorType
+sourceOfTruth
+physicalLocation
+owner
+permittedEmployees
+readPermissions
+writePermissions
+sensitivityClassification
+indexingStatus
+lastVerified
+auditEnabled
+
+Example:
+
+resourceId: policies
+
+displayName: Organisation Policies
+
+resourceType: document_library
+
+sourceOfTruth: SharePoint
+
+connectorType: sharepoint_file_connector
+
+physicalLocation:
+https://company.sharepoint.com/sites/policies
+
+owner:
+Compliance Manager
+
+permittedEmployees:
+- chief_of_staff
+- compliance_manager
+- knowledge_specialist
+2. Resource Manager
+
+Create a Resource Manager.
+
+Purpose:
+
+Resolve resource requests made by AI Employees.
+
+Responsibilities:
+
+locate requested resources
+validate permissions
+determine connector
+initiate connector execution
+return requested resource
+maintain audit records
+cache metadata where appropriate
+
+The Resource Manager must never contain implementation logic for browser or file access.
+
+Resource Resolution Flow
+Employee
+
+↓
+
+Need Resource
+
+↓
+
+Resource Manager
+
+↓
+
+Organisation Resource Registry
+
+↓
+
+Permission Validation
+
+↓
+
+Connector Selection
+
+↓
+
+Connector Execution
+
+↓
+
+Resource Returned
+3. Connector Architecture
+
+Create connector abstractions.
+
+File Connector
+
+Purpose:
+
+Provide access to organisational files regardless of storage technology.
+
+Supported resource locations include:
+
+SharePoint
+OneDrive
+Google Drive
+Dropbox
+Local folders
+Network drives
+NAS
+File servers
+
+Supported operations:
+
+search()
+
+locate()
+
+open()
+
+read()
+
+write()
+
+copy()
+
+move()
+
+delete()
+
+metadata()
+
+watch()
+
+The File Connector retrieves documents.
+
+It does not interpret them.
+
+Browser Connector
+
+Purpose:
+
+Provide controlled access to browser-only systems.
+
+Execution runtime:
+
+OpenClaw.
+
+Supported operations:
+
+openBrowser()
+
+login()
+
+navigate()
+
+click()
+
+type()
+
+upload()
+
+download()
+
+captureScreenshot()
+
+extractContent()
+
+logout()
+
+close()
+
+Browser automation must remain entirely inside the Browser Connector.
+
+Employees must never perform browser automation directly.
+
+API Connector
+
+Create a common abstraction for API-enabled systems.
+
+Examples:
+
+Xero
+Microsoft Graph
+Google Workspace
+Deputy
+Employment Hero
+Lumary
+ShiftCare
+
+The API Connector exposes business operations without exposing API implementation details.
+
+4. Resource Descriptor
+
+Every resource returned to an employee must be represented using a standard Resource Descriptor.
+
+Example:
+
+resourceId: policies
+
+displayName: Organisation Policies
+
+resourceType: document_library
+
+connectorType: sharepoint_file_connector
+
+sourceOfTruth: SharePoint
+
+classification: organisational
+
+availableOperations:
+- read
+- search
+
+employeePermissions:
+read
+
+Employees must never receive:
+
+URLs
+network paths
+authentication details
+implementation metadata
+
+Employees operate only on Resource Descriptors.
+
+5. Organisation Memory
+
+Distinguish between:
+
+Organisation Resource
+
+The original customer-owned resource.
+
+Examples:
+
+SharePoint document
+Outlook mailbox
+Google Drive folder
+Local document
+Browser application
+
+The Organisation Resource remains the source of truth.
+
+Organisation Memory
+
+Structured organisational knowledge extracted from organisational resources.
+
+Examples:
+
+Policy owner
+
+Review date
+
+Key obligations
+
+Reporting requirements
+
+Business rules
+
+Relationships
+
+Operational procedures
+
+NeedsOps stores understanding.
+
+It does not become a duplicate document repository.
+
+6. Shared Capability
+
+Create a new platform capability.
+
+resource.locate
+
+Description:
+
+Locate organisational resources without requiring knowledge of physical storage technology.
+
+Employees requiring documents or systems inherit this capability automatically.
+
+7. Employee Framework Changes
+
+Update the Employee File template.
+
+Every future AI Employee must include a mandatory Resource Requirements section.
+
+Include:
+
+Required organisational resources
+Permitted resource types
+Required permissions
+Source-of-truth behaviour
+Resource discovery rules
+Resource sensitivity
+Approval requirements
+
+These sections become mandatory.
+
+Employee Files without Resource Requirements must fail validation.
+
+8. Future Employee Generation
+
+Update the employee generation framework.
+
+When a new AI Employee is created, automatically determine:
+
+required organisational resources
+read permissions
+write permissions
+browser requirements
+file requirements
+API requirements
+connector dependencies
+approval requirements
+
+These become part of the generated Employee File.
+
+9. Source of Truth Rule
+
+Introduce a permanent architectural rule.
+
+Customer systems remain the source of truth.
+
+NeedsOps stores organisational understanding.
+
+NeedsOps must never require customers to duplicate existing document repositories or business systems unless explicitly requested.
+10. Validation
+
+Reject Employee Files if they:
+
+reference SharePoint directly
+reference Google Drive directly
+reference Chrome directly
+reference OpenClaw directly
+assume physical storage locations
+hard-code URLs
+hard-code folder paths
+
+Require all resource access to occur through:
+
+Organisation Resource Registry
+
+↓
+
+Resource Manager
+
+↓
+
+Connector
+
+11. Runtime Manifest
+
+Update Runtime Manifest generation.
+
+Expose only:
+
+available resources
+permitted operations
+authority
+execution constraints
+
+Do not expose:
+
+physical locations
+connector implementation
+browser implementation
+credentials
+API endpoints
+12. Executive Assistant Migration
+
+Update the Executive Assistant Employee File.
+
+Replace any direct assumptions regarding:
+
+documents
+calendars
+email
+templates
+reports
+
+with Organisation Resource requests.
+
+The Executive Assistant must request resources through the Resource Manager.
+
+No implementation details should appear within the Employee File.
+
+13. Platform Standard
+
+Add a permanent platform rule.
+
+All organisational resources must be registered before AI Employees may access them.
+
+All resource requests must be resolved through the Organisation Resource Registry and Resource Manager.
+
+All browser, file and API access must occur exclusively through approved Connectors.
+
+No Employee File may reference storage technologies or execution runtimes directly.
+
+This rule applies to every current and future AI Employee.
+
+Tests
+
+Add tests covering:
+
+Organisation Resource Registry
+Resource registration
+Resource discovery
+Permission validation
+Resource Manager orchestration
+File Connector routing
+Browser Connector routing
+API Connector routing
+Resource Descriptor generation
+Organisation Memory extraction
+Executive Assistant migration
+Employee template generation
+Validation failures for direct storage references
+Runtime Manifest abstraction
+Backward compatibility
+
+All existing tests must continue to pass.
+
+Completion Report
+
+Produce:
+
+ORGANISATION RESOURCE ARCHITECTURE IMPLEMENTATION REPORT
+
+Overall status:
+
+Organisation Resource Registry:
+
+Resource Manager:
+
+File Connector:
+
+Browser Connector:
+
+API Connector:
+
+Resource Descriptor:
+
+Organisation Memory integration:
+
+Shared resource capability:
+
+Employee template updated:
+
+Executive Assistant migrated:
+
+Future employee framework updated:
+
+Validation rules:
+
+Runtime Manifest updated:
+
+Tests added:
+
+Total tests passing:
+
+Known issues:
+
+Technical debt:
+
+Ready for adoption across all AI Employees:
+Yes / No

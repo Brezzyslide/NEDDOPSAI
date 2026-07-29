@@ -286,6 +286,93 @@ export interface RuntimeTaskContext {
   organisationalContext: string;
 }
 
+// ─── Organisation Resource Requirements ──────────────────────────────────────
+
+/**
+ * Permitted resource types for an AI Employee.
+ * Employees may only access resource types listed here.
+ */
+export type PermittedResourceType =
+  | "document_library"
+  | "document_file"
+  | "calendar"
+  | "email"
+  | "contacts"
+  | "task_management"
+  | "reporting"
+  | "forms"
+  | "browser_application"
+  | "api_service"
+  | "database_view"
+  | "communication_channel";
+
+/**
+ * Resource sensitivity classification.
+ */
+export type ResourceSensitivity =
+  | "public"
+  | "organisational"
+  | "restricted"
+  | "confidential"
+  | "highly_confidential";
+
+/**
+ * A single resource requirement entry for an AI Employee.
+ */
+export interface ResourceRequirementItem {
+  /** Human-readable name of the required resource (e.g. "Organisational Policies") */
+  resourceName: string;
+  /** Logical resource type — must not reference a specific vendor or technology */
+  resourceType: PermittedResourceType;
+  /** Operations this employee requires on this resource */
+  requiredPermissions: Array<"read" | "write" | "search" | "create" | "delete" | "metadata">;
+  /** Sensitivity classification of this resource */
+  sensitivity: ResourceSensitivity;
+  /** Whether approval is required before accessing this resource */
+  approvalRequired: boolean;
+  /** Description of how this resource is used */
+  purpose: string;
+}
+
+/**
+ * Mandatory Resource Requirements section for an AI Employee File.
+ *
+ * Every Employee File must declare which organisational resources it requires.
+ * Employees must not assume physical storage locations or vendor implementations.
+ * All resource access occurs through the Organisation Resource Registry and Resource Manager.
+ *
+ * Platform rule: No Employee File may reference storage technologies or execution
+ * runtimes directly (SharePoint, Google Drive, Chrome, OpenClaw, URLs, folder paths).
+ */
+export interface EmployeeResourceRequirements {
+  /**
+   * Resources this employee requires to perform its work.
+   * Described abstractly — vendor implementations resolved by the Resource Manager.
+   */
+  requiredResources: ResourceRequirementItem[];
+  /**
+   * Resource types this employee is permitted to access.
+   * Access to other types must be explicitly added.
+   */
+  permittedResourceTypes: PermittedResourceType[];
+  /**
+   * Whether this employee may initiate browser automation through the Browser Connector.
+   */
+  browserAutomationPermitted: boolean;
+  /**
+   * Source-of-truth behaviour: the employee must treat registered resources as
+   * the authoritative source and must not duplicate them in organisation memory.
+   */
+  sourceOfTruthBehaviour: string;
+  /**
+   * How this employee discovers resources it does not know about.
+   * e.g. "Request through Resource Manager with resource type and purpose"
+   */
+  resourceDiscoveryRule: string;
+  /** Version of this Resource Requirements section */
+  version: string;
+}
+
 // ─── Employee File (master assembly) ─────────────────────────────────────────
 
 /**
@@ -320,6 +407,13 @@ export interface EmployeeFile {
   professionalDNA: EmployeeProfessionalDNA;
   // Expanded worker profile
   workerProfile: ExpandedWorkerProfile;
+  /**
+   * Organisation Resource Requirements — MANDATORY.
+   * Declares which organisational resources this employee requires.
+   * Employee Files without this section fail validation.
+   * No physical storage locations, vendor names, or URLs may appear here.
+   */
+  resourceRequirements?: EmployeeResourceRequirements;
   // File metadata
   fileVersion: string;
   createdAt: string;

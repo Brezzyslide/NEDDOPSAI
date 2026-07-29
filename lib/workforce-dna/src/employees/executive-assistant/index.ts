@@ -23,6 +23,7 @@ import { EA_COMMUNICATION } from "./communication.js";
 import { EA_RESPONSIBILITIES } from "./responsibilities.js";
 import { EA_PROFESSIONAL_DNA } from "./professional-dna.js";
 import { EA_WORKER_PROFILE } from "./worker-profile.js";
+import { EA_RESOURCE_REQUIREMENTS } from "./resource-requirements.js";
 
 // Re-export DNA v1 and professional oath so tests and consumers can import them from this module
 export { EXECUTIVE_ASSISTANT_DNA_V1, EXECUTIVE_ASSISTANT_PROFESSIONAL_OATH } from "../../profiles/executiveAssistant.js";
@@ -41,6 +42,7 @@ export const EXECUTIVE_ASSISTANT_EMPLOYEE_FILE: EmployeeFile = {
   responsibilities: EA_RESPONSIBILITIES,
   professionalDNA: EA_PROFESSIONAL_DNA,
   workerProfile: EA_WORKER_PROFILE,
+  resourceRequirements: EA_RESOURCE_REQUIREMENTS,
   fileVersion: "1.0.0",
   createdAt: "2026-07-29T00:00:00.000Z",
   updatedAt: "2026-07-29T00:00:00.000Z",
@@ -69,3 +71,4 @@ export { EA_COMMUNICATION } from "./communication.js";
 export { EA_RESPONSIBILITIES } from "./responsibilities.js";
 export { EA_PROFESSIONAL_DNA } from "./professional-dna.js";
 export { EA_WORKER_PROFILE } from "./worker-profile.js";
+export { EA_RESOURCE_REQUIREMENTS } from "./resource-requirements.js";

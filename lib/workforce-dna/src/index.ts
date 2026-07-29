@@ -103,6 +103,10 @@ export type {
   EmploymentType,
   RoleLevel,
   AuthorityLevel,
+  EmployeeResourceRequirements,
+  ResourceRequirementItem,
+  PermittedResourceType,
+  ResourceSensitivity,
 } from "./employee/types.js";
 
 // ─── Employee File utilities ──────────────────────────────────────────────────

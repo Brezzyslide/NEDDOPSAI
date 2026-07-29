@@ -47,7 +47,8 @@ export type CapabilityCategory =
   | "administration"
   | "meeting"
   | "actions"
-  | "contacts";
+  | "contacts"
+  | "resource";
 
 export type CapabilityLevel =
   | "general_information"
@@ -690,6 +691,31 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
     description: "Analyse marketing performance, reach, and return on investment",
     category: "reporting", packCode: "marketing",
     eligibleRoles: ["marketing_communications_manager"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── RESOURCE ───────────────────────────────────────────────────────────────
+  {
+    code: "resource.locate",
+    displayName: "Resource Location",
+    description: "Locate organisational resources through the Organisation Resource Registry without requiring knowledge of physical storage technology",
+    category: "resource", packCode: null,
+    eligibleRoles: [
+      "chief_of_staff",
+      "executive_assistant",
+      "compliance_quality_manager",
+      "operations_manager",
+      "knowledge_documentation_specialist",
+      "policy_governance_specialist",
+      "incident_safeguarding_specialist",
+      "workforce_compliance_specialist",
+      "finance_officer",
+      "marketing_communications_manager",
+      "service_delivery_coordinator",
+    ],
     requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
     defaultRiskLevel: "low", defaultApprovalRequired: false,
     informationAllowed: true, analysisAllowed: true, executionAllowed: false,
