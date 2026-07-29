@@ -1,0 +1,334 @@
+Architectural Review Request – Organisation Environment & Runtime Assessment
+
+Before implementing any further architectural changes, I would like you to perform a comprehensive architectural review of the current NeedsOps platform.
+
+This is not an implementation task.
+
+This is an assessment and recommendation exercise.
+
+Over the past several sprints we have introduced:
+
+* NeedsOps Constitution
+* Employee Files
+* Professional DNA
+* Worker Profiles
+* Runtime Manifest generation
+* AI Workforce architecture
+* Organisation Resource Registry
+* Resource Manager
+* Connector architecture
+* Organisation Memory
+* Organisation Resource descriptors
+* Browser and File Connector abstractions
+* Execution Runtime abstraction (OpenClaw/Desktop Agent/API)
+* Capability Engine
+
+I now want you to evaluate whether we have implicitly or explicitly already created what could be considered an Organisation Environment.
+
+⸻
+
+Part 1 – Current Architecture Review
+
+Review the existing codebase and architecture.
+
+Determine whether the current implementation already caters for (either directly or indirectly):
+
+Organisation Runtime
+
+Examples:
+
+* AI Workforce lifecycle
+* runtime orchestration
+* execution queues
+* scheduling
+* approval workflows
+* audit execution
+* connector orchestration
+* runtime state
+
+Is there already an Organisation Runtime emerging?
+
+Or is it still only a collection of individual components?
+
+⸻
+
+Organisation Identity
+
+Does the platform already support:
+
+* organisation identity
+* organisation profile
+* organisation metadata
+* branding
+* registration information
+* organisation-specific settings
+
+If yes:
+
+Where?
+
+If no:
+
+What is missing?
+
+⸻
+
+Organisation Configuration
+
+Determine whether we already support organisation-specific configuration such as:
+
+* communication style
+* document formatting
+* writing preferences
+* organisation terminology
+* branding
+* naming conventions
+* date formats
+* report preferences
+
+Have these already emerged naturally through previous implementation?
+
+Or should they become a dedicated platform component?
+
+⸻
+
+Business Rules
+
+Assess whether organisation-specific operational rules currently exist.
+
+Examples:
+
+* approval limits
+* escalation paths
+* document approvals
+* authority delegations
+* payroll rules
+* reporting rules
+* notification rules
+
+Are these already represented?
+
+Or should they become their own architectural layer?
+
+⸻
+
+Organisation Structure
+
+Assess whether the architecture currently understands:
+
+* departments
+* reporting lines
+* organisational hierarchy
+* managers
+* delegations
+* teams
+
+If partially implemented, explain where.
+
+⸻
+
+Organisation Governance
+
+Assess whether we already support:
+
+* delegation of authority
+* governance policies
+* approval matrices
+* review cycles
+* compliance obligations
+* retention rules
+* organisational risk settings
+
+⸻
+
+Resource Environment
+
+Review our recently implemented architecture.
+
+Determine whether the following are now adequately covered:
+
+* Organisation Resource Registry
+* Resource Manager
+* Connector architecture
+* Resource discovery
+* source-of-truth behaviour
+
+Identify any remaining gaps.
+
+⸻
+
+Security & Permissions
+
+Review current support for:
+
+* employee permissions
+* resource permissions
+* authority levels
+* execution permissions
+* browser approvals
+* connector permissions
+
+⸻
+
+Integrations
+
+Assess our connector model.
+
+Can it already support:
+
+* API integrations
+* browser automation
+* local files
+* cloud resources
+
+Is anything fundamental missing?
+
+⸻
+
+Organisation Memory
+
+Review the current implementation.
+
+Does it already represent:
+
+* organisational knowledge
+* business understanding
+* extracted policy knowledge
+* operational memory
+
+Or is it still document-centric?
+
+⸻
+
+Operational Preferences
+
+Assess whether the platform currently supports:
+
+* business hours
+* notification preferences
+* report schedules
+* operational defaults
+* service preferences
+
+⸻
+
+Part 2 – Overall Architectural Assessment
+
+After reviewing the implementation, answer the following.
+
+Question 1
+
+Do we already have the foundations of an Organisation Environment?
+
+Or are these simply individual components that have not yet been formalised?
+
+⸻
+
+Question 2
+
+Would introducing a formal Organisation Environment improve the architecture?
+
+Or would it merely rename concepts that already exist?
+
+⸻
+
+Question 3
+
+Would introducing an Organisation Runtime be architecturally beneficial?
+
+If so:
+
+What responsibilities should it own?
+
+What responsibilities should remain elsewhere?
+
+⸻
+
+Question 4
+
+Should Organisation Configuration be separated from Employee DNA?
+
+My current thinking is:
+
+Employee DNA should always remain professionally consistent.
+
+Organisation Configuration should contain customer-specific behaviour such as:
+
+* terminology
+* branding
+* communication preferences
+* writing style
+* document formatting
+* approval preferences
+
+Please critique this approach.
+
+⸻
+
+Question 5
+
+Should AI Employees interact directly with databases?
+
+Or should all interaction continue to occur through platform services such as:
+
+* Resource Manager
+* Knowledge Service
+* Audit Service
+* Finance Service
+* Memory Service
+
+Please explain the architectural trade-offs.
+
+⸻
+
+Question 6
+
+Is there anything we are over-engineering?
+
+Please identify:
+
+* unnecessary abstractions
+* duplicated responsibilities
+* concepts that should merge
+* concepts that should split
+
+Be critical.
+
+⸻
+
+Question 7
+
+Is there anything significant missing from the platform architecture before we continue implementing additional AI Employees?
+
+If so, explain why it should be addressed now rather than later.
+
+⸻
+
+Part 3 – Recommendations
+
+Provide your opinion on the current architectural direction.
+
+Specifically assess:
+
+* scalability
+* maintainability
+* separation of concerns
+* multi-tenant suitability
+* security
+* future enterprise readiness
+
+Highlight both strengths and weaknesses.
+
+Do not simply agree with the proposed direction.
+
+Critically evaluate whether these concepts genuinely improve the architecture or whether the existing implementation already satisfies the same goals under different names.
+
+Finally, recommend whether we should:
+
+1. Continue with the current architecture unchanged.
+2. Introduce a formal Organisation Environment layer.
+3. Introduce an Organisation Runtime layer.
+4. Defer these concepts until later.
+5. Refactor before building additional AI Employees.
+
+Provide a reasoned recommendation rather than assuming additional architecture is always beneficial.
