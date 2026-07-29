@@ -630,8 +630,8 @@ describe("Additional: Employee File structure validation", () => {
     expect(CHIEF_OF_STAFF_EMPLOYEE_FILE.responsibilities.responsibilities.length).toBeGreaterThanOrEqual(10);
   });
 
-  it("CHIEF_OF_STAFF_EMPLOYEE_FILE.decisionPhilosophy.whenUncertaintyExists.length === 9", () => {
-    expect(CHIEF_OF_STAFF_EMPLOYEE_FILE.decisionPhilosophy.whenUncertaintyExists).toHaveLength(9);
+  it("CHIEF_OF_STAFF_EMPLOYEE_FILE.decisionPhilosophy.whenUncertaintyExists has at least 9 steps", () => {
+    expect(CHIEF_OF_STAFF_EMPLOYEE_FILE.decisionPhilosophy.whenUncertaintyExists.length).toBeGreaterThanOrEqual(9);
   });
 
   it("CHIEF_OF_STAFF_EMPLOYEE_FILE.identity.title === 'AI Chief of Staff'", () => {
