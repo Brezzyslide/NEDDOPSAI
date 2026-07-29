@@ -19,41 +19,170 @@
 import { describe, it, expect, beforeEach } from "vitest";
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
+// Uses a stateful in-memory store for orgResourcesTable so that
+// Groups 5 & 6 (which test the DB-backed registry service) work without a
+// real database. All other tables use the simple passthrough mock.
 
 import { vi } from "vitest";
 
-vi.mock("@workspace/db", () => {
-  const mockInsert = vi.fn();
-  const mockSelect = vi.fn();
-  const mockUpdate = vi.fn();
-  const mockWhere = vi.fn();
-  const mockReturning = vi.fn();
-  const mockValues = vi.fn();
-  const mockFrom = vi.fn();
-  const mockLimit = vi.fn();
-  const mockSet = vi.fn();
+// Mock drizzle-orm so eq/and return custom objects that filterStore can parse.
+// The service imports eq/and directly from drizzle-orm, not from @workspace/db.
+vi.mock("drizzle-orm", () => ({
+  eq: (col: unknown, val: unknown) => ({ __eq__: true, col, val }),
+  and: (...conditions: unknown[]) => ({ __and__: true, conditions }),
+  isNull: (col: unknown) => ({ __isNull__: true, col }),
+  sql: (strings: TemplateStringsArray) => ({ __sql__: true, strings }),
+}));
 
-  const chainable: any = {
-    insert: mockInsert,
-    select: mockSelect,
-    update: mockUpdate,
+vi.mock("@workspace/db", () => {
+  // ── Stateful store: org_resources rows keyed by "orgId::resourceId" ───────
+  const orgResourcesStore = new Map<string, Map<string, Record<string, unknown>>>();
+
+  function getOrgStore(orgId: string): Map<string, Record<string, unknown>> {
+    if (!orgResourcesStore.has(orgId)) orgResourcesStore.set(orgId, new Map());
+    return orgResourcesStore.get(orgId)!;
+  }
+
+  // ── Column tokens — encode the field name into the column reference so
+  //    eq() can recover which field is being compared. ───────────────────────
+  const ORG_RES_PREFIX = "__ORG_RES__";
+  const orgResourcesTable: Record<string, string> = {
+    __tableName__: "org_resources",
+    id: `${ORG_RES_PREFIX}id`,
+    organizationId: `${ORG_RES_PREFIX}organizationId`,
+    resourceId: `${ORG_RES_PREFIX}resourceId`,
+    isActive: `${ORG_RES_PREFIX}isActive`,
+    displayName: `${ORG_RES_PREFIX}displayName`,
+    resourceType: `${ORG_RES_PREFIX}resourceType`,
+    connectorType: `${ORG_RES_PREFIX}connectorType`,
+    sourceOfTruth: `${ORG_RES_PREFIX}sourceOfTruth`,
+    physicalLocation: `${ORG_RES_PREFIX}physicalLocation`,
+    owner: `${ORG_RES_PREFIX}owner`,
+    permittedEmployees: `${ORG_RES_PREFIX}permittedEmployees`,
+    readPermissions: `${ORG_RES_PREFIX}readPermissions`,
+    writePermissions: `${ORG_RES_PREFIX}writePermissions`,
+    sensitivityClassification: `${ORG_RES_PREFIX}sensitivityClassification`,
+    indexingStatus: `${ORG_RES_PREFIX}indexingStatus`,
+    lastVerified: `${ORG_RES_PREFIX}lastVerified`,
+    auditEnabled: `${ORG_RES_PREFIX}auditEnabled`,
+    healthStatus: `${ORG_RES_PREFIX}healthStatus`,
+    connectorMetadata: `${ORG_RES_PREFIX}connectorMetadata`,
+    updatedAt: `${ORG_RES_PREFIX}updatedAt`,
+    createdAt: `${ORG_RES_PREFIX}createdAt`,
   };
 
-  mockInsert.mockReturnValue({ values: mockValues });
-  mockValues.mockReturnValue({ returning: mockReturning });
-  mockReturning.mockResolvedValue([]);
+  function isOrgResourcesTable(t: unknown): boolean {
+    return typeof t === "object" && t !== null && (t as any).__tableName__ === "org_resources";
+  }
 
-  mockSelect.mockReturnValue({ from: mockFrom });
-  mockFrom.mockReturnValue({ where: mockWhere });
-  mockWhere.mockReturnValue({ limit: mockLimit });
-  mockLimit.mockResolvedValue([]);
+  // ── Condition helpers ─────────────────────────────────────────────────────
+  function eq(col: unknown, val: unknown) {
+    return { __eq__: true, col, val };
+  }
+  function and(...conditions: unknown[]) {
+    return { __and__: true, conditions };
+  }
 
-  mockUpdate.mockReturnValue({ set: mockSet });
-  mockSet.mockReturnValue({ where: mockWhere });
-  mockWhere.mockReturnValue({ returning: mockReturning });
+  function extractConditions(cond: unknown): Record<string, unknown> {
+    if (!cond || typeof cond !== "object") return {};
+    const c = cond as Record<string, unknown>;
+    if (c.__eq__) {
+      const token = String(c.col);
+      const field = token.startsWith(ORG_RES_PREFIX) ? token.slice(ORG_RES_PREFIX.length) : null;
+      return field ? { [field]: c.val } : {};
+    }
+    if (c.__and__) {
+      const result: Record<string, unknown> = {};
+      for (const sub of (c.conditions as unknown[])) Object.assign(result, extractConditions(sub));
+      return result;
+    }
+    return {};
+  }
 
+  function filterStore(cond: unknown): Record<string, unknown>[] {
+    const conditions = extractConditions(cond);
+    const orgId = conditions.organizationId as string | undefined;
+    const resourceId = conditions.resourceId as string | undefined;
+    const isActiveFilter = conditions.isActive;
+
+    let candidates: Record<string, unknown>[] = [];
+    if (orgId) {
+      const orgStore = orgResourcesStore.get(orgId);
+      if (!orgStore) return [];
+      candidates = resourceId
+        ? (orgStore.has(resourceId) ? [orgStore.get(resourceId)!] : [])
+        : Array.from(orgStore.values());
+    } else {
+      for (const os of orgResourcesStore.values()) candidates.push(...os.values());
+    }
+
+    if (isActiveFilter === true) candidates = candidates.filter(r => r.isActive !== false);
+    return candidates;
+  }
+
+  // ── Stateful DB object ────────────────────────────────────────────────────
+  const db = {
+    select: (_projection?: unknown) => ({
+      from: (table: unknown) => ({
+        where: (cond: unknown) => ({
+          limit: (_n: number): Promise<Record<string, unknown>[]> => {
+            if (isOrgResourcesTable(table)) return Promise.resolve(filterStore(cond).slice(0, _n));
+            return Promise.resolve([]);
+          },
+          then: (resolve: (v: Record<string, unknown>[]) => void, reject: (e: unknown) => void) => {
+            // select without explicit .limit() — awaited directly
+            if (isOrgResourcesTable(table)) return Promise.resolve(filterStore(cond)).then(resolve, reject);
+            return Promise.resolve([]).then(resolve, reject);
+          },
+        }),
+      }),
+    }),
+
+    insert: (table: unknown) => ({
+      values: (data: Record<string, unknown>) => {
+        if (isOrgResourcesTable(table)) {
+          const orgId = data.organizationId as string;
+          const resId = data.resourceId as string;
+          if (orgId && resId) getOrgStore(orgId).set(resId, { isActive: true, ...data });
+        }
+        return {
+          returning: (): Promise<Record<string, unknown>[]> =>
+            Promise.resolve([{ id: "mock-uuid", ...data }]),
+          then: (resolve: (v: void) => void) => Promise.resolve().then(resolve),
+        };
+      },
+    }),
+
+    update: (table: unknown) => ({
+      set: (data: Record<string, unknown>) => ({
+        where: (cond: unknown) => {
+          if (isOrgResourcesTable(table)) {
+            const conditions = extractConditions(cond);
+            const orgId = conditions.organizationId as string | undefined;
+            const resId = conditions.resourceId as string | undefined;
+            if (orgId && resId) {
+              const existing = orgResourcesStore.get(orgId)?.get(resId);
+              if (existing) {
+                const updated = { ...existing, ...data };
+                getOrgStore(orgId).set(resId, updated);
+              }
+            }
+          }
+          return {
+            returning: (): Promise<Record<string, unknown>[]> => Promise.resolve([]),
+            then: (resolve: (v: void) => void) => Promise.resolve().then(resolve),
+          };
+        },
+      }),
+    }),
+  };
+
+  // ── Simple passthrough mocks for other tables ─────────────────────────────
   return {
-    db: chainable,
+    db,
+    eq,
+    and,
+    orgResourcesTable,
     tasksTable: { id: "tasks.id", organizationId: "tasks.organization_id", currentState: "tasks.current_state" },
     specialistRunsTable: { id: "runs.id", organizationId: "runs.organization_id" },
     specialistQueueTable: {
@@ -70,6 +199,17 @@ vi.mock("@workspace/db", () => {
     taskExecutionPlansTable: {},
     taskSpecialistsTable: {},
     organizationsTable: {},
+    executionGraphNodesTable: {},
+    executionHistoryTable: {},
+    organisationMemoryTable: {},
+    orgConfigurationTable: {},
+    orgDepartmentsTable: {},
+    orgTeamsTable: {},
+    orgPositionsTable: {},
+    orgReportingLinesTable: {},
+    orgDelegatedAuthorityTable: {},
+    orgEscalationPathsTable: {},
+    organizations: {},
   };
 });
 
@@ -668,25 +808,25 @@ describe("Group 5: Organisation Resource Registry service", () => {
     writePermissions: [],
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Register a fresh resource for each test
-    registerResource(testOrgId, testEntry);
+    await registerResource(testOrgId, testEntry);
   });
 
-  it("test 35: registerResource + getResource — registered resource is retrievable", () => {
-    const retrieved = getResource(testOrgId, "policies-g5");
+  it("test 35: registerResource + getResource — registered resource is retrievable", async () => {
+    const retrieved = await getResource(testOrgId, "policies-g5");
     expect(retrieved).not.toBeNull();
     expect(retrieved?.resourceId).toBe("policies-g5");
     expect(retrieved?.displayName).toBe("Organisation Policies");
   });
 
-  it("test 36: getResource — unknown resourceId returns null", () => {
-    const result = getResource(testOrgId, "nonexistent-resource-g5");
+  it("test 36: getResource — unknown resourceId returns null", async () => {
+    const result = await getResource(testOrgId, "nonexistent-resource-g5");
     expect(result).toBeNull();
   });
 
-  it("test 37: buildDescriptor — output never contains physicalLocation field value", () => {
-    const resource = getResource(testOrgId, "policies-g5");
+  it("test 37: buildDescriptor — output never contains physicalLocation field value", async () => {
+    const resource = await getResource(testOrgId, "policies-g5");
     expect(resource).not.toBeNull();
     const descriptor = buildDescriptor(resource!, "chief_of_staff");
     const keys = Object.keys(descriptor);
@@ -695,8 +835,8 @@ describe("Group 5: Organisation Resource Registry service", () => {
     expect(descriptorStr).not.toContain("sharepoint.com");
   });
 
-  it("test 38: buildDescriptor — output matches ResourceDescriptor shape", () => {
-    const resource = getResource(testOrgId, "policies-g5");
+  it("test 38: buildDescriptor — output matches ResourceDescriptor shape", async () => {
+    const resource = await getResource(testOrgId, "policies-g5");
     const descriptor = buildDescriptor(resource!, "chief_of_staff");
     expect(descriptor).toHaveProperty("resourceId");
     expect(descriptor).toHaveProperty("displayName");
@@ -710,8 +850,8 @@ describe("Group 5: Organisation Resource Registry service", () => {
     expect(Array.isArray(descriptor.employeePermissions)).toBe(true);
   });
 
-  it("test 39: hasPermission — read permission check works", () => {
-    const resource = getResource(testOrgId, "policies-g5");
+  it("test 39: hasPermission — read permission check works", async () => {
+    const resource = await getResource(testOrgId, "policies-g5");
     expect(resource).not.toBeNull();
     const canRead = hasPermission(resource!, "chief_of_staff", "read");
     expect(canRead).toBe(true);
@@ -719,15 +859,15 @@ describe("Group 5: Organisation Resource Registry service", () => {
     expect(canWrite).toBe(false);
   });
 
-  it("test 40: getResourcesForEmployee — filters by permittedEmployees", () => {
-    const cosResources = getResourcesForEmployee(testOrgId, "chief_of_staff");
-    const eaResources = getResourcesForEmployee(testOrgId, "executive_assistant");
+  it("test 40: getResourcesForEmployee — filters by permittedEmployees", async () => {
+    const cosResources = await getResourcesForEmployee(testOrgId, "chief_of_staff");
+    const eaResources = await getResourcesForEmployee(testOrgId, "executive_assistant");
     expect(cosResources.map(r => r.resourceId)).toContain("policies-g5");
     // executive_assistant is not in permittedEmployees for policies-g5
     expect(eaResources.map(r => r.resourceId)).not.toContain("policies-g5");
   });
 
-  it("test 41: listResources — returns all resources for an organisation", () => {
+  it("test 41: listResources — returns all resources for an organisation", async () => {
     const resourceB = makeServiceResourceEntry({
       resourceId: "calendar-g5",
       displayName: "Calendar",
@@ -737,17 +877,17 @@ describe("Group 5: Organisation Resource Registry service", () => {
       readPermissions: ["executive_assistant"],
       writePermissions: ["executive_assistant"],
     });
-    registerResource(testOrgId, resourceB);
+    await registerResource(testOrgId, resourceB);
 
-    const all = listResources(testOrgId);
+    const all = await listResources(testOrgId);
     const ids = all.map(r => r.resourceId);
     expect(ids).toContain("policies-g5");
     expect(ids).toContain("calendar-g5");
   });
 
-  it("test 42: getResourcesForEmployee — different organisation returns no results for the other org's resources", () => {
+  it("test 42: getResourcesForEmployee — different organisation returns no results for the other org's resources", async () => {
     // The policies-g5 resource is registered under testOrgId, not otherOrgId
-    const otherOrgResources = getResourcesForEmployee(otherOrgId, "chief_of_staff");
+    const otherOrgResources = await getResourcesForEmployee(otherOrgId, "chief_of_staff");
     const ids = otherOrgResources.map(r => r.resourceId);
     expect(ids).not.toContain("policies-g5");
   });
@@ -779,9 +919,9 @@ describe("Group 6: Resource Manager service", () => {
     sensitivityClassification: "highly_confidential",
   });
 
-  beforeEach(() => {
-    registerResource(testOrgId, testEntry);
-    registerResource(testOrgId, highlyConfidentialEntry);
+  beforeEach(async () => {
+    await registerResource(testOrgId, testEntry);
+    await registerResource(testOrgId, highlyConfidentialEntry);
   });
 
   it("test 43: resolveResourceRequest — granted for valid employee and resource", async () => {

@@ -73,3 +73,14 @@ export * from "./workforcePackAccessRequests";
 export * from "./seatOverrides";
 // Sprint 10 — Digital Workforce Intelligence
 export * from "./executionIntents";
+// Platform Completion Sprint — Org Structure, Configuration, Resources, Execution Graph
+export * from "./orgDepartments";
+export * from "./orgTeams";
+export * from "./orgPositions";
+export * from "./orgReportingLines";
+export * from "./orgDelegatedAuthority";
+export * from "./orgEscalationPaths";
+export * from "./orgConfiguration";
+export * from "./orgResources";
+export * from "./executionGraphNodes";
+export * from "./executionHistory";

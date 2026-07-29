@@ -1,8 +1,11 @@
 /**
- * Organisation Resource Registry Service
+ * Organisation Resource Registry Service — Platform Completion Sprint
+ *
+ * Persistent storage via org_resources table. Replaces Sprint XX in-memory Map.
  *
  * Runtime service wrapper for the Organisation Resource Registry.
- * Maintains a per-organisation resource registry (in-memory).
+ * All resource entries are persisted in the platform DB via the org_resources
+ * table — no in-memory state is maintained between requests.
  *
  * Source of Truth Rule:
  * Customer systems remain the source of truth. NeedsOps stores organisational
@@ -11,13 +14,26 @@
  * Employees access resources through this registry. Physical storage locations,
  * connector implementations, and vendor-specific details are never exposed to
  * AI Employees — only abstract resource descriptors are returned.
+ *
+ * NOTE: ResourceDescriptor is also defined in @workspace/organisation-resource.
+ * TODO: Consolidate with the canonical type once import resolution is stable
+ *       across the full monorepo build graph.
  */
+
+import { randomUUID } from "crypto";
+import { db, orgResourcesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 // ─── Resource Entry (internal) ────────────────────────────────────────────────
 
 /**
  * Full resource entry stored in the registry.
  * Contains physical location and credentials — NEVER sent to AI Employees.
+ *
+ * Maps to OrganisationResource from @workspace/organisation-resource.
+ * Kept as a local type to avoid breaking the service layer before the
+ * package is fully wired into the api-server dependency graph.
+ * TODO: Replace with `import type { OrganisationResource } from '@workspace/organisation-resource'`
  */
 export interface ResourceEntry {
   resourceId: string;
@@ -46,6 +62,10 @@ export interface ResourceEntry {
  * NOTE: Never includes physicalLocation, URLs, credentials, or implementation
  * details. Employees receive only what they need to request access — not how
  * to reach the underlying system directly.
+ *
+ * NOTE: ResourceDescriptor is also defined in resourceManagerService.ts.
+ * TODO: Consolidate both into a single import from @workspace/organisation-resource
+ *       once that package is fully wired into the api-server dependency graph.
  */
 export interface ResourceDescriptor {
   resourceId: string;
@@ -58,74 +78,147 @@ export interface ResourceDescriptor {
   employeePermissions: string[];
 }
 
-// ─── In-memory store ──────────────────────────────────────────────────────────
+// ─── Row mapper ───────────────────────────────────────────────────────────────
 
-/**
- * Per-organisation resource registry.
- * Map<organisationId, Map<resourceId, ResourceEntry>>
- */
-const registryStore = new Map<string, Map<string, ResourceEntry>>();
-
-// ─── Internal helpers ─────────────────────────────────────────────────────────
-
-function getOrgRegistry(organisationId: string): Map<string, ResourceEntry> {
-  let org = registryStore.get(organisationId);
-  if (!org) {
-    org = new Map<string, ResourceEntry>();
-    registryStore.set(organisationId, org);
-  }
-  return org;
+function mapRow(r: typeof orgResourcesTable.$inferSelect): ResourceEntry {
+  return {
+    resourceId: r.resourceId,
+    displayName: r.displayName,
+    resourceType: r.resourceType,
+    connectorType: r.connectorType,
+    sourceOfTruth: r.sourceOfTruth,
+    physicalLocation: r.physicalLocation,
+    owner: r.owner,
+    permittedEmployees: (r.permittedEmployees as string[]) ?? [],
+    readPermissions: (r.readPermissions as string[]) ?? [],
+    writePermissions: (r.writePermissions as string[]) ?? [],
+    sensitivityClassification: r.sensitivityClassification,
+    indexingStatus: r.indexingStatus,
+    lastVerified: r.lastVerified,
+    auditEnabled: r.auditEnabled,
+  };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
  * Register a resource in the organisation's registry.
- * Replaces any existing entry with the same resourceId.
+ * Upserts on (organization_id, resource_id) — replaces any existing entry.
  */
-export function registerResource(
+export async function registerResource(
   organisationId: string,
   resource: ResourceEntry,
-): void {
-  const org = getOrgRegistry(organisationId);
-  org.set(resource.resourceId, resource);
+): Promise<void> {
+  // Check if record exists
+  const [existing] = await db
+    .select({ id: orgResourcesTable.id })
+    .from(orgResourcesTable)
+    .where(
+      and(
+        eq(orgResourcesTable.organizationId, organisationId),
+        eq(orgResourcesTable.resourceId, resource.resourceId),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(orgResourcesTable)
+      .set({
+        displayName: resource.displayName,
+        resourceType: resource.resourceType,
+        connectorType: resource.connectorType,
+        sourceOfTruth: resource.sourceOfTruth,
+        physicalLocation: resource.physicalLocation,
+        owner: resource.owner,
+        permittedEmployees: resource.permittedEmployees,
+        readPermissions: resource.readPermissions,
+        writePermissions: resource.writePermissions,
+        sensitivityClassification: resource.sensitivityClassification,
+        indexingStatus: resource.indexingStatus,
+        lastVerified: resource.lastVerified,
+        auditEnabled: resource.auditEnabled,
+        isActive: true,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(orgResourcesTable.organizationId, organisationId),
+          eq(orgResourcesTable.resourceId, resource.resourceId),
+        ),
+      );
+  } else {
+    await db.insert(orgResourcesTable).values({
+      id: randomUUID(),
+      organizationId: organisationId,
+      resourceId: resource.resourceId,
+      displayName: resource.displayName,
+      resourceType: resource.resourceType,
+      connectorType: resource.connectorType,
+      sourceOfTruth: resource.sourceOfTruth,
+      physicalLocation: resource.physicalLocation,
+      owner: resource.owner,
+      permittedEmployees: resource.permittedEmployees,
+      readPermissions: resource.readPermissions,
+      writePermissions: resource.writePermissions,
+      sensitivityClassification: resource.sensitivityClassification,
+      indexingStatus: resource.indexingStatus,
+      lastVerified: resource.lastVerified,
+      auditEnabled: resource.auditEnabled,
+      isActive: true,
+    });
+  }
 }
 
 /**
  * Retrieve a resource entry by ID.
- * Returns null if not found.
+ * Returns null if not found or inactive.
  */
-export function getResource(
+export async function getResource(
   organisationId: string,
   resourceId: string,
-): ResourceEntry | null {
-  const org = registryStore.get(organisationId);
-  if (!org) return null;
-  return org.get(resourceId) ?? null;
+): Promise<ResourceEntry | null> {
+  const [row] = await db
+    .select()
+    .from(orgResourcesTable)
+    .where(
+      and(
+        eq(orgResourcesTable.organizationId, organisationId),
+        eq(orgResourcesTable.resourceId, resourceId),
+        eq(orgResourcesTable.isActive, true),
+      ),
+    )
+    .limit(1);
+  return row ? mapRow(row) : null;
 }
 
 /**
  * Get all resources an employee role is permitted to access.
  * Filtered by permittedEmployees or by read/write permission arrays.
  */
-export function getResourcesForEmployee(
+export async function getResourcesForEmployee(
   organisationId: string,
   employeeRoleCode: string,
-): ResourceEntry[] {
-  const org = registryStore.get(organisationId);
-  if (!org) return [];
+): Promise<ResourceEntry[]> {
+  const rows = await db
+    .select()
+    .from(orgResourcesTable)
+    .where(
+      and(
+        eq(orgResourcesTable.organizationId, organisationId),
+        eq(orgResourcesTable.isActive, true),
+      ),
+    );
 
-  const results: ResourceEntry[] = [];
-  for (const resource of org.values()) {
-    if (
-      resource.permittedEmployees.includes(employeeRoleCode) ||
-      resource.readPermissions.includes(employeeRoleCode) ||
-      resource.writePermissions.includes(employeeRoleCode)
-    ) {
-      results.push(resource);
-    }
-  }
-  return results;
+  // Filter in JS by JSONB arrays — the arrays are already parsed by Drizzle
+  return rows
+    .map(mapRow)
+    .filter(
+      (r) =>
+        r.permittedEmployees.includes(employeeRoleCode) ||
+        r.readPermissions.includes(employeeRoleCode) ||
+        r.writePermissions.includes(employeeRoleCode),
+    );
 }
 
 /**
@@ -139,7 +232,10 @@ export function buildDescriptor(
   employeeRoleCode: string,
 ): ResourceDescriptor {
   const availableOperations: string[] = [];
-  if (resource.readPermissions.includes(employeeRoleCode) || resource.permittedEmployees.includes(employeeRoleCode)) {
+  if (
+    resource.readPermissions.includes(employeeRoleCode) ||
+    resource.permittedEmployees.includes(employeeRoleCode)
+  ) {
     availableOperations.push("read", "search");
   }
   if (resource.writePermissions.includes(employeeRoleCode)) {
@@ -195,8 +291,15 @@ export function hasPermission(
  * List all resources registered for an organisation.
  * Returns the full ResourceEntry array (internal use only).
  */
-export function listResources(organisationId: string): ResourceEntry[] {
-  const org = registryStore.get(organisationId);
-  if (!org) return [];
-  return Array.from(org.values());
+export async function listResources(organisationId: string): Promise<ResourceEntry[]> {
+  const rows = await db
+    .select()
+    .from(orgResourcesTable)
+    .where(
+      and(
+        eq(orgResourcesTable.organizationId, organisationId),
+        eq(orgResourcesTable.isActive, true),
+      ),
+    );
+  return rows.map(mapRow);
 }

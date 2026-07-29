@@ -1,0 +1,440 @@
+Sprint XX – Platform Completion Sprint (Pre-OpenClaw Integration)
+
+Objective
+
+The platform architecture has now reached the point where the remaining work is not additional abstractions, but completing and connecting the existing foundations.
+
+This sprint must NOT implement OpenClaw or browser automation.
+
+Instead, prepare the platform so that the next sprint can simply connect OpenClaw into an already complete runtime.
+
+This is an implementation sprint, not a redesign.
+
+Preserve all existing architecture unless specifically instructed otherwise.
+
+⸻
+
+Goals
+
+Complete the organisational platform foundation by implementing the remaining architectural gaps identified during the architecture review.
+
+At the end of this sprint the platform should have:
+
+* a complete Organisation Runtime (minus OpenClaw dispatch)
+* a complete Organisation Environment
+* structured Organisation Configuration
+* structured Organisation Structure
+* persistent Resource Registry
+* inter-employee communication contract
+* runtime orchestration
+* one complete mocked end-to-end workflow
+
+⸻
+
+Part 1 — Organisation Structure
+
+Implement a first-class Organisation Structure model.
+
+Support:
+
+* Departments
+* Teams
+* Positions
+* Reporting Lines
+* Managers
+* Delegated Authority
+* Escalation Paths
+
+Employees should never infer organisational structure from conversational memory.
+
+Create appropriate database tables, models and services.
+
+The structure should support future enterprise organisations with multiple departments and hundreds of staff.
+
+⸻
+
+Part 2 — Organisation Configuration
+
+Create a structured Organisation Configuration model.
+
+Do NOT store these values as free-text Organisation Memory.
+
+Configuration should support:
+
+Communication
+
+* writing style
+* tone
+* plain English preferences
+* Australian English
+* communication formality
+
+Terminology
+
+Example:
+
+Participant
+
+Client
+
+Customer
+
+Support Worker
+
+Care Worker
+
+Employee
+
+etc.
+
+Employees should automatically adopt organisation terminology.
+
+⸻
+
+Documents
+
+Support:
+
+* date format
+* document naming conventions
+* report footer
+* report header
+* branding
+* document templates
+
+⸻
+
+Operational Preferences
+
+Support:
+
+* business hours
+* timezone
+* notification preferences
+* report schedules
+* preferred communication channels
+
+⸻
+
+Approval Preferences
+
+Support configurable values such as:
+
+* approval thresholds
+* escalation role
+* financial limits
+
+These should become structured configuration fields rather than conversational memory.
+
+⸻
+
+Part 3 — Organisation Runtime
+
+Introduce a formal Organisation Runtime coordinator.
+
+Do NOT redesign existing runtime services.
+
+Instead coordinate them.
+
+The runtime should own:
+
+* execution graph
+* runtime state
+* specialist orchestration
+* work package routing
+* execution visibility
+* retry preparation
+* runtime recovery preparation
+* scheduling preparation
+
+Do NOT implement scheduling yet.
+
+Only prepare the runtime architecture.
+
+⸻
+
+Part 4 — Runtime Context Assembly
+
+Implement a single Organisation Runtime Context.
+
+Employees should receive one assembled context object instead of independently querying multiple services.
+
+The runtime context should include:
+
+Organisation Identity
+
+Organisation Configuration
+
+Organisation Memory
+
+Organisation Structure
+
+Available Resources
+
+Permissions
+
+Available Connectors
+
+Enabled Workforce
+
+Runtime State
+
+Operational Preferences
+
+The runtime context becomes the single source of organisational knowledge during execution.
+
+⸻
+
+Part 5 — Specialist Output Contract
+
+Implement a formal inter-employee contract.
+
+Every specialist should return a consistent structure regardless of role.
+
+The contract should support:
+
+Task metadata
+
+Summary
+
+Findings
+
+Recommendations
+
+Approvals Required
+
+Execution Intents
+
+Evidence References
+
+Outstanding Questions
+
+Confidence
+
+Errors
+
+Warnings
+
+Execution Metadata
+
+The Chief of Staff should consume this contract rather than employee-specific formats.
+
+⸻
+
+Part 6 — Resource Registry Persistence
+
+Move the Organisation Resource Registry from in-memory storage to persistent database storage.
+
+Support:
+
+registration
+
+lookup
+
+health status
+
+connector metadata
+
+availability
+
+resource ownership
+
+source of truth
+
+Ensure existing interfaces continue to work.
+
+Avoid breaking changes.
+
+⸻
+
+Part 7 — Runtime Preparation
+
+Prepare the runtime for future execution.
+
+Do NOT integrate OpenClaw.
+
+Instead implement:
+
+Runtime execution coordinator
+
+Execution graph tracking
+
+Intent dispatcher interface
+
+Execution state tracking
+
+Connector invocation pipeline
+
+Execution event publishing
+
+Execution history
+
+Retry metadata
+
+Recovery metadata
+
+The runtime should be capable of dispatching work.
+
+The actual OpenClaw dispatch implementation will occur in the following sprint.
+
+⸻
+
+Part 8 — Connector Preparation
+
+Do not implement production connectors.
+
+Instead create realistic mock implementations.
+
+Provide mocked:
+
+File Connector
+
+Browser Connector
+
+API Connector
+
+Each should satisfy existing interfaces and allow complete end-to-end testing.
+
+⸻
+
+Part 9 — End-to-End Workflow
+
+Implement one fully functioning mocked workflow.
+
+Example:
+
+User submits task
+
+↓
+
+Chief of Staff analyses request
+
+↓
+
+Specialist selected
+
+↓
+
+Work Package generated
+
+↓
+
+Specialist executes
+
+↓
+
+Mock connector invoked
+
+↓
+
+Specialist Output Contract returned
+
+↓
+
+Chief of Staff consolidates
+
+↓
+
+Audit recorded
+
+↓
+
+User receives response
+
+Every stage should be observable.
+
+No browser automation required.
+
+⸻
+
+Part 10 — Technical Debt
+
+Address the following architectural issues:
+
+Remove duplicate ResourceDescriptor definitions.
+
+Import canonical shared types from the organisation-resource package.
+
+Avoid parallel type systems.
+
+Review runtime services for duplicated responsibilities.
+
+Simplify where appropriate without changing behaviour.
+
+⸻
+
+Part 11 — Validation
+
+Ensure:
+
+No regression of existing tests.
+
+Add comprehensive tests for:
+
+Organisation Structure
+
+Organisation Configuration
+
+Organisation Runtime
+
+Runtime Context
+
+Specialist Output Contract
+
+Persistent Resource Registry
+
+Mock Connector pipeline
+
+End-to-end mocked execution
+
+⸻
+
+Part 12 — Explicitly Out of Scope
+
+Do NOT implement:
+
+OpenClaw integration
+
+Desktop Agent
+
+Browser automation
+
+Playwright
+
+Node runtime
+
+Real connector implementations
+
+Scheduling
+
+Retry execution
+
+Recovery execution
+
+These are intentionally deferred to the next sprint.
+
+⸻
+
+Deliverables
+
+At completion provide:
+
+1. Organisation Runtime overview
+2. Organisation Environment overview
+3. Database schema additions
+4. Runtime flow diagram
+5. Specialist Output Contract specification
+6. Organisation Configuration specification
+7. Organisation Structure specification
+8. Resource Registry persistence summary
+9. Mock execution demonstration
+10. Test summary
+11. Remaining work required before OpenClaw integration
+
+⸻
+
+Success Criteria
+
+The platform should be in a state where the only major remaining execution task is wiring the Organisation Runtime’s intent dispatcher into the Browser Connector/OpenClaw execution engine.
+
+No further architectural refactoring should be required before that integration begins.

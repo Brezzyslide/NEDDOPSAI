@@ -14,3 +14,4 @@
 - [NeedsOps Sprint 13 Executive Assistant Employee File](needsops-sprint13.md) — EA 12-section file, DNA v1.0.0 draft, oath export pattern, validateEmployeeFile patch for activeVersion="none", 1039 tests
 - [NeedsOps Sprint 13b CoS Behaviour Correction](needsops-sprint13b.md) — LLM service switched to Employee File instruction, executive ownership rules, prohibited phrases, cosResponseValidatorService, 1094 tests
 - [NeedsOps Sprint XX Organisation Resource Architecture](needsops-sprint-xx-ora.md) — lib/organisation-resource package, Registry/ResourceManager/Connectors, resourceRequirements mandatory, EA/CoS migrated, resource.locate capability, 1164 tests
+- [NeedsOps Platform Completion Sprint](needsops-sprint-pcs.md) — 10 new DB tables, 7 new services, drizzle-orm must be mocked separately from @workspace/db in service tests, runtimeContextService structure/config wiring stubbed, 1254 tests

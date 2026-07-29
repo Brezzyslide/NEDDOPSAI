@@ -6,6 +6,14 @@
  *
  * AI Employees never receive physical storage locations, URLs, or connector
  * implementation details — only abstract ResourceDescriptors.
+ *
+ * TODO (Technical Debt): ResourceRequest and ResourceResolutionResult defined
+ * below duplicate canonical types in @workspace/organisation-resource (ResourceRequest
+ * and ResourceResponse). Once @workspace/organisation-resource is fully wired into
+ * the api-server dependency graph, replace these inline definitions with:
+ *   import type { ResourceRequest, ResourceResponse } from '@workspace/organisation-resource';
+ * The local types are kept intentionally to avoid import resolution failures before
+ * the package is built.
  */
 
 import type { ResourceDescriptor } from "./organisationResourceRegistryService.js";
@@ -18,6 +26,10 @@ import {
 
 // ─── Request / Result types ───────────────────────────────────────────────────
 
+/**
+ * TODO: Consolidate with ResourceRequest from @workspace/organisation-resource.
+ * See file header for details.
+ */
 export interface ResourceRequest {
   requestId: string;
   requestingEmployee: string;
@@ -32,6 +44,10 @@ export interface ResourceRequest {
   taskId?: string;
 }
 
+/**
+ * TODO: Consolidate with ResourceResponse from @workspace/organisation-resource.
+ * See file header for details.
+ */
 export interface ResourceResolutionResult {
   requestId: string;
   status: "granted" | "denied" | "pending_approval" | "not_found";
@@ -73,10 +89,10 @@ export async function resolveResourceRequest(
   let resource = null;
 
   if (request.resourceId) {
-    resource = getResource(request.organisationId, request.resourceId);
+    resource = await getResource(request.organisationId, request.resourceId);
   } else if (request.resourceType) {
     // Search by type — return the first matching resource the employee can access
-    const candidateResources = getResourcesForEmployee(
+    const candidateResources = await getResourcesForEmployee(
       request.organisationId,
       request.requestingEmployee,
     );
