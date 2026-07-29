@@ -35,11 +35,28 @@ router.get("/packs/:code", (req, res) => {
 });
 
 // GET /v1/workforce/specialists
+// By default only returns active catalogue entries (available + dna_pending).
+// Pass ?includeDeprecated=true (platform admin use) to see all statuses.
 router.get("/specialists", (req, res) => {
-  const { pack, status } = req.query as { pack?: string; status?: string };
+  const { pack, status, includeDeprecated } = req.query as {
+    pack?: string;
+    status?: string;
+    includeDeprecated?: string;
+  };
+
   let list = SPECIALISTS;
+
+  // Default filter: exclude deprecated and archived unless caller opts in
+  if (includeDeprecated !== "true") {
+    list = list.filter(s =>
+      s.executionStatus !== "deprecated" &&
+      s.executionStatus !== "archived",
+    );
+  }
+
   if (pack) list = list.filter(s => s.packCode === pack);
   if (status) list = list.filter(s => s.executionStatus === status);
+
   res.json({ specialists: list, total: list.length });
 });
 

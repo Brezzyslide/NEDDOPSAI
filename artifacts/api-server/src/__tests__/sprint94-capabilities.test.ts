@@ -81,8 +81,9 @@ describe("Capability Registry", () => {
     }
   });
 
-  it("getCapabilitiesForRole returns capabilities for compliance_officer", () => {
-    const caps = getCapabilitiesForRole("compliance_officer");
+  it("getCapabilitiesForRole returns capabilities for compliance_quality_manager (Sprint 11 replacement for compliance_officer)", () => {
+    // Sprint 11: compliance_officer merged → compliance_quality_manager
+    const caps = getCapabilitiesForRole("compliance_quality_manager");
     const codes = caps.map(c => c.code);
     expect(codes).toContain("compliance.audit_readiness");
     expect(codes).toContain("incident.review");
@@ -448,32 +449,36 @@ describe("Mixed-Capability Decisions", () => {
 // ── Specialist Routing Gate ────────────────────────────────────────────────────
 
 describe("Specialist Routing Gate", () => {
-  it("compliance_officer is eligible for compliance.audit_readiness", () => {
-    expect(validateSpecialistEligibility("compliance_officer", "compliance.audit_readiness")).toBe(true);
+  // Sprint 11: compliance_officer merged → compliance_quality_manager
+  it("compliance_quality_manager is eligible for compliance.audit_readiness", () => {
+    expect(validateSpecialistEligibility("compliance_quality_manager", "compliance.audit_readiness")).toBe(true);
   });
 
-  it("accounts_officer is eligible for accounting.bas_preparation", () => {
-    expect(validateSpecialistEligibility("accounts_officer", "accounting.bas_preparation")).toBe(true);
+  // Sprint 11: accounts_officer merged → finance_officer
+  it("finance_officer is eligible for accounting.bas_preparation", () => {
+    expect(validateSpecialistEligibility("finance_officer", "accounting.bas_preparation")).toBe(true);
   });
 
-  it("compliance_officer is NOT eligible for accounting.bas_preparation", () => {
-    expect(validateSpecialistEligibility("compliance_officer", "accounting.bas_preparation")).toBe(false);
+  it("compliance_quality_manager is NOT eligible for accounting.bas_preparation", () => {
+    expect(validateSpecialistEligibility("compliance_quality_manager", "accounting.bas_preparation")).toBe(false);
   });
 
-  it("compliance_officer is NOT eligible for payroll.schads_analysis", () => {
-    expect(validateSpecialistEligibility("compliance_officer", "payroll.schads_analysis")).toBe(false);
+  it("compliance_quality_manager is NOT eligible for payroll.schads_analysis", () => {
+    expect(validateSpecialistEligibility("compliance_quality_manager", "payroll.schads_analysis")).toBe(false);
   });
 
-  it("hr_officer is NOT eligible for compliance.audit_readiness", () => {
-    expect(validateSpecialistEligibility("hr_officer", "compliance.audit_readiness")).toBe(false);
+  // Sprint 11: hr_officer merged → people_culture_manager
+  it("people_culture_manager is NOT eligible for compliance.audit_readiness", () => {
+    expect(validateSpecialistEligibility("people_culture_manager", "compliance.audit_readiness")).toBe(false);
   });
 
-  it("hr_officer is eligible for staff_compliance.qualification_review", () => {
-    expect(validateSpecialistEligibility("hr_officer", "staff_compliance.qualification_review")).toBe(true);
+  // Sprint 11: hr_officer → people_culture_manager; staff_compliance → workforce_compliance_specialist
+  it("workforce_compliance_specialist is eligible for staff_compliance.qualification_review", () => {
+    expect(validateSpecialistEligibility("workforce_compliance_specialist", "staff_compliance.qualification_review")).toBe(true);
   });
 
-  it("compliance_officer is also eligible for staff_compliance.qualification_review", () => {
-    expect(validateSpecialistEligibility("compliance_officer", "staff_compliance.qualification_review")).toBe(true);
+  it("compliance_quality_manager is also eligible for staff_compliance.qualification_review", () => {
+    expect(validateSpecialistEligibility("compliance_quality_manager", "staff_compliance.qualification_review")).toBe(true);
   });
 
   it("unknown specialist code returns false", () => {
@@ -481,7 +486,7 @@ describe("Specialist Routing Gate", () => {
   });
 
   it("unknown capability code returns false", () => {
-    expect(validateSpecialistEligibility("compliance_officer", "invented.capability")).toBe(false);
+    expect(validateSpecialistEligibility("compliance_quality_manager", "invented.capability")).toBe(false);
   });
 });
 

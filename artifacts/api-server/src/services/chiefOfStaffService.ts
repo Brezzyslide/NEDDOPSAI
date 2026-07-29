@@ -11,6 +11,7 @@ import {
   SPECIALISTS,
   CAPABILITIES,
   getSpecialistsByCapability,
+  resolveAlias,
   type RegistrySpecialist,
 } from "../lib/workforceRegistry.js";
 import type { ApprovalType } from "@workspace/shared";
@@ -88,6 +89,22 @@ const ROUTING_RULES: RouteRule[] = [
   { keywords: ["summarise", "summary", "overview", "brief"], capabilities: ["summarise"], weight: 4 },
 ];
 
+// ─── Alias resolution ─────────────────────────────────────────────────────────
+
+/**
+ * Sprint 11: Resolves a role code to its current replacement if it has been deprecated.
+ * Returns the input unchanged if it is already a current role code or has no direct alias.
+ * Uses the resolveAlias() helper from workforceRegistry.
+ *
+ * @example
+ *   resolveSpecialistAlias("compliance_officer") // → "compliance_quality_manager"
+ *   resolveSpecialistAlias("operations_manager") // → "operations_manager"
+ */
+export function resolveSpecialistAlias(code: string): string {
+  // resolveAlias returns null if not deprecated or has no direct replacement
+  return resolveAlias(code) ?? code;
+}
+
 // ─── Intent classification ────────────────────────────────────────────────────
 
 interface IntentScore {
@@ -122,13 +139,20 @@ function selectSpecialists(intentScores: IntentScore[]): RegistrySpecialist[] {
   for (const { capabilityCode } of intentScores.slice(0, 5)) {
     const specialists = getSpecialistsByCapability(capabilityCode)
       .filter(s => s.executionStatus === "available" || s.executionStatus === "beta");
-      // Sprint 9.5: Full async eligibility enforcement happens in chiefOfStaffOrchestrator.
-      // planTask() uses the legacy workforce registry for intent routing only.
+      // Sprint 11: Full async eligibility enforcement happens in chiefOfStaffOrchestrator.
+      // planTask() uses the workforce registry for intent routing only.
+      // Deprecated role codes are resolved via resolveSpecialistAlias before dispatch.
 
     for (const s of specialists) {
-      if (!seen.has(s.code) && selected.length < 4) {
-        seen.add(s.code);
-        selected.push(s);
+      // Resolve alias: if this role has been deprecated, route to its replacement
+      const resolvedCode = resolveSpecialistAlias(s.code);
+      if (!seen.has(resolvedCode) && selected.length < 4) {
+        seen.add(resolvedCode);
+        // Use the resolved specialist if different, otherwise use original
+        const resolvedSpecialist = resolvedCode !== s.code
+          ? (SPECIALISTS.find(sp => sp.code === resolvedCode) ?? s)
+          : s;
+        selected.push(resolvedSpecialist);
       }
     }
   }

@@ -1,5 +1,5 @@
 /**
- * Workforce Registry — Sprint 2
+ * Workforce Registry — Sprint 11 (Catalogue Streamlining: 32 → 17 AI Employees)
  *
  * Static metadata describing every Workforce Role (customer-facing: "AI Specialist")
  * and the supporting catalogue of capabilities and packs.
@@ -12,6 +12,9 @@
  * No AI, no LLM, no live execution. Pure metadata.
  *
  * Used to seed the database and serve the /v1/workforce/* endpoints.
+ *
+ * catalogueVersion "2" = current 17-employee catalogue (Sprint 11+)
+ * catalogueVersion "1" = deprecated legacy roles
  */
 
 export interface RegistryCapability {
@@ -42,7 +45,7 @@ export interface RegistrySpecialist {
   requiredPermissions: string[];
   requiredEntitlements: string[];
   approvalRequirements: string;
-  executionStatus: "available" | "beta" | "coming_soon" | "deprecated";
+  executionStatus: "available" | "beta" | "coming_soon" | "deprecated" | "dna_pending" | "archived";
   version: string;
   /**
    * Worker Profile codes this Workforce Role may execute through.
@@ -50,6 +53,23 @@ export interface RegistrySpecialist {
    * Empty until Sprint 2 Architecture Correction seeding.
    */
   workerProfileCodes: string[];
+  // ── Sprint 11 catalogue fields ──────────────────────────────────────────────
+  /** Department grouping code */
+  departmentCode: 'executive' | 'compliance_governance' | 'operations' | 'finance' | 'people_culture' | 'marketing' | 'shared_professional_services';
+  /** DNA design sign-off status */
+  dnaStatus: 'approved' | 'pending_design' | 'not_applicable';
+  /** Display position within department (global ordering proxy) */
+  displayOrder: number;
+  /** '1' = legacy catalogue, '2' = Sprint 11 streamlined catalogue */
+  catalogueVersion: '1' | '2';
+  /** For deprecated roles: the new role code that replaces this one (null = capability distributed) */
+  replacementRoleCode?: string | null;
+  /** How this role was absorbed into the new catalogue */
+  replacementType: 'merged' | 'renamed' | 'capability_distribution' | 'none';
+  /** ISO date string when this role was deprecated */
+  deprecatedAt?: string;
+  /** Human-readable deprecation reason */
+  deprecationReason?: string;
 }
 
 export interface RegistryPack {
@@ -110,9 +130,17 @@ export const CAPABILITIES: RegistryCapability[] = [
 ];
 
 // ─── Specialists ──────────────────────────────────────────────────────────────
+// Catalogue v2: 17 active AI employees, grouped by department.
+// Catalogue v1: 28 deprecated legacy roles, grouped at the bottom.
 
 export const SPECIALISTS: RegistrySpecialist[] = [
-  // ── Core Workforce ───────────────────────────────────────────────────────────
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // CATALOGUE v2 — 17 Current AI Employees (Sprint 11)
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── EXECUTIVE DEPARTMENT ───────────────────────────────────────────────────
+
   {
     id: "spec_chief_of_staff",
     code: "chief_of_staff",
@@ -126,25 +154,377 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredEntitlements: [],
     approvalRequirements: "no_approval",
     executionStatus: "available",
-    version: "1.0.0",
+    version: "2.0.0",
     workerProfileCodes: ["chief_of_staff_profile"],
+    departmentCode: "executive",
+    dnaStatus: "approved",
+    displayOrder: 1,
+    catalogueVersion: "2",
+    replacementType: "none",
   },
   {
     id: "spec_executive_assistant",
     code: "executive_assistant",
     displayName: "Executive Assistant",
     packCode: "core",
-    description: "Manages scheduling, communications, and administrative tasks on behalf of leadership.",
+    description: "Manages calendars, schedules meetings, drafts professional communications, prepares briefing notes, and supports leadership administration.",
     icon: "📅",
     colour: "#4A90D9",
-    capabilities: ["manage_calendar", "draft_communication", "schedule_meeting", "summarise"],
+    capabilities: ["manage_calendar", "draft_communication", "schedule_meeting", "summarise", "research"],
     requiredPermissions: [],
     requiredEntitlements: [],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
-    version: "1.0.0",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
     workerProfileCodes: ["executive_assistant_profile"],
+    departmentCode: "executive",
+    dnaStatus: "pending_design",
+    displayOrder: 2,
+    catalogueVersion: "2",
+    replacementType: "none",
   },
+
+  // ── COMPLIANCE & GOVERNANCE DEPARTMENT ────────────────────────────────────
+
+  {
+    id: "spec_compliance_quality_manager",
+    code: "compliance_quality_manager",
+    displayName: "Compliance & Quality Manager",
+    packCode: "compliance",
+    description: "Reviews policies, prepares for audits, manages quality reviews, and develops corrective action plans to ensure NDIS regulatory compliance.",
+    icon: "⚖️",
+    colour: "#E05C00",
+    capabilities: ["review_policy", "audit_preparation", "review_incident", "quality_review", "corrective_action"],
+    requiredPermissions: ["compliance:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "manager_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["compliance_quality_manager_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "pending_design",
+    displayOrder: 3,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_incident_safeguarding_specialist",
+    code: "incident_safeguarding_specialist",
+    displayName: "Incident & Safeguarding Specialist",
+    packCode: "compliance",
+    description: "Investigates incidents, reviews and documents restrictive practice use, and ensures safeguarding obligations are met under NDIS requirements.",
+    icon: "🚨",
+    colour: "#C0143C",
+    capabilities: ["review_incident", "restrictive_practice_review", "audit_preparation", "draft_document"],
+    requiredPermissions: ["compliance:read", "incidents:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "compliance_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["incident_safeguarding_specialist_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "pending_design",
+    displayOrder: 4,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_policy_governance_specialist",
+    code: "policy_governance_specialist",
+    displayName: "Policy & Governance Specialist",
+    packCode: "compliance",
+    description: "Drafts, reviews, and maintains organisational policies aligned to NDIS standards and governance frameworks.",
+    icon: "📜",
+    colour: "#7B5A14",
+    capabilities: ["draft_policy", "review_policy", "research", "draft_document"],
+    requiredPermissions: ["compliance:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "administrator_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["policy_governance_specialist_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "pending_design",
+    displayOrder: 5,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ── OPERATIONS DEPARTMENT ─────────────────────────────────────────────────
+
+  {
+    id: "spec_operations_manager",
+    code: "operations_manager",
+    displayName: "Operations Manager",
+    packCode: "operations",
+    description: "Oversees operational workflows, resource allocation, service capacity planning, and service delivery performance.",
+    icon: "⚙️",
+    colour: "#1E90FF",
+    capabilities: ["review_roster", "create_workflow", "capacity_analysis", "service_delivery_review"],
+    requiredPermissions: ["operations:read"],
+    requiredEntitlements: ["operations_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "available",
+    version: "2.0.0",
+    workerProfileCodes: ["operations_manager_profile"],
+    departmentCode: "operations",
+    dnaStatus: "approved",
+    displayOrder: 6,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_service_delivery_coordinator",
+    code: "service_delivery_coordinator",
+    displayName: "Service Delivery Coordinator",
+    packCode: "operations",
+    description: "Coordinates service delivery activities, monitors participant outcomes, and creates supporting workflows.",
+    icon: "🚀",
+    colour: "#00CED1",
+    capabilities: ["service_delivery_review", "create_workflow", "summarise"],
+    requiredPermissions: ["operations:read"],
+    requiredEntitlements: ["operations_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["service_delivery_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "pending_design",
+    displayOrder: 7,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_workforce_rostering_coordinator",
+    code: "workforce_rostering_coordinator",
+    displayName: "Workforce Rostering Coordinator",
+    packCode: "operations",
+    description: "Manages staff rosters, shift allocations, scheduling conflicts, and workforce capacity planning.",
+    icon: "📊",
+    colour: "#B8860B",
+    capabilities: ["review_roster", "capacity_analysis", "manage_calendar", "draft_document"],
+    requiredPermissions: ["operations:read", "roster:read"],
+    requiredEntitlements: ["operations_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["workforce_rostering_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "pending_design",
+    displayOrder: 8,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_process_asset_coordinator",
+    code: "process_asset_coordinator",
+    displayName: "Process & Asset Coordinator",
+    packCode: "operations",
+    description: "Designs, documents, and optimises business processes, operational workflows, and tracks organisational assets.",
+    icon: "🔄",
+    colour: "#5B8C5A",
+    capabilities: ["create_workflow", "service_delivery_review", "asset_management", "draft_document"],
+    requiredPermissions: ["operations:read"],
+    requiredEntitlements: ["operations_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["process_asset_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "pending_design",
+    displayOrder: 9,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ── FINANCE DEPARTMENT ────────────────────────────────────────────────────
+
+  {
+    id: "spec_finance_officer",
+    code: "finance_officer",
+    displayName: "Finance Officer",
+    packCode: "finance",
+    description: "Manages accounts payable/receivable, reviews and validates invoices, performs account reconciliation, and prepares financial reports.",
+    icon: "💰",
+    colour: "#1A7A32",
+    capabilities: ["accounts_reconciliation", "review_invoice", "financial_reporting", "draft_document"],
+    requiredPermissions: ["finance:read"],
+    requiredEntitlements: ["finance_workforce"],
+    approvalRequirements: "manager_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["finance_officer_profile"],
+    departmentCode: "finance",
+    dnaStatus: "pending_design",
+    displayOrder: 10,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_payroll_workforce_cost_officer",
+    code: "payroll_workforce_cost_officer",
+    displayName: "Payroll & Workforce Cost Officer",
+    packCode: "finance",
+    description: "Reviews payroll data, processes pay runs, ensures award compliance, and reconciles workforce cost accounts.",
+    icon: "💳",
+    colour: "#1E3A8A",
+    capabilities: ["payroll_review", "accounts_reconciliation", "draft_document"],
+    requiredPermissions: ["finance:read", "payroll:read"],
+    requiredEntitlements: ["finance_workforce"],
+    approvalRequirements: "administrator_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["payroll_workforce_cost_officer_profile"],
+    departmentCode: "finance",
+    dnaStatus: "pending_design",
+    displayOrder: 11,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_financial_planning_reporting_manager",
+    code: "financial_planning_reporting_manager",
+    displayName: "Financial Planning & Reporting Manager",
+    packCode: "finance",
+    description: "Analyses budgets, identifies variances, prepares financial statements, management reports, and board-level financial summaries.",
+    icon: "📈",
+    colour: "#6B2A2A",
+    capabilities: ["budget_summary", "financial_reporting", "research", "draft_document"],
+    requiredPermissions: ["finance:read"],
+    requiredEntitlements: ["finance_workforce"],
+    approvalRequirements: "administrator_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["financial_planning_reporting_manager_profile"],
+    departmentCode: "finance",
+    dnaStatus: "pending_design",
+    displayOrder: 12,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ── PEOPLE & CULTURE DEPARTMENT ───────────────────────────────────────────
+
+  {
+    id: "spec_people_culture_manager",
+    code: "people_culture_manager",
+    displayName: "People & Culture Manager",
+    packCode: "hr",
+    description: "Manages HR administration, policy review, employee relations, and facilitates performance review cycles and development planning.",
+    icon: "👥",
+    colour: "#DB2777",
+    capabilities: ["hr_policy_review", "performance_review", "draft_document", "summarise"],
+    requiredPermissions: ["hr:read"],
+    requiredEntitlements: ["hr_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["people_culture_manager_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "pending_design",
+    displayOrder: 13,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_talent_learning_specialist",
+    code: "talent_learning_specialist",
+    displayName: "Talent & Learning Specialist",
+    packCode: "hr",
+    description: "Supports candidate screening, job posting, onboarding documentation, and coordinates staff training programs and development activities.",
+    icon: "🎓",
+    colour: "#7C3AED",
+    capabilities: ["recruitment_support", "learning_coordination", "draft_communication", "research"],
+    requiredPermissions: ["hr:read"],
+    requiredEntitlements: ["hr_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["talent_learning_specialist_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "pending_design",
+    displayOrder: 14,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_workforce_compliance_specialist",
+    code: "workforce_compliance_specialist",
+    displayName: "Workforce Compliance Specialist",
+    packCode: "hr",
+    description: "Verifies staff credentials, NDIS worker screening, regulatory compliance requirements, and prepares audit documentation.",
+    icon: "🛡️",
+    colour: "#0369A1",
+    capabilities: ["staff_compliance_check", "audit_preparation", "draft_document"],
+    requiredPermissions: ["hr:read", "compliance:read"],
+    requiredEntitlements: ["hr_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["workforce_compliance_specialist_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "pending_design",
+    displayOrder: 15,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ── MARKETING DEPARTMENT ──────────────────────────────────────────────────
+
+  {
+    id: "spec_marketing_communications_manager",
+    code: "marketing_communications_manager",
+    displayName: "Marketing & Communications Manager",
+    packCode: "marketing",
+    description: "Leads marketing strategy, brand positioning, campaign oversight, content planning, social media management, and marketing performance reporting.",
+    icon: "📣",
+    colour: "#D97706",
+    capabilities: ["campaign_planning", "content_strategy", "brand_management", "social_media", "marketing_reporting", "draft_communication"],
+    requiredPermissions: ["marketing:read"],
+    requiredEntitlements: ["marketing_workforce"],
+    approvalRequirements: "manager_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["marketing_communications_manager_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "pending_design",
+    displayOrder: 16,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ── SHARED PROFESSIONAL SERVICES DEPARTMENT ───────────────────────────────
+
+  {
+    id: "spec_knowledge_documentation_specialist",
+    code: "knowledge_documentation_specialist",
+    displayName: "Knowledge & Documentation Specialist",
+    packCode: "core",
+    description: "Creates, formats, and reviews organisational documents to professional standards; summarises long documents and conducts research.",
+    icon: "📚",
+    colour: "#0D9488",
+    capabilities: ["draft_document", "summarise", "review_policy", "research"],
+    requiredPermissions: [],
+    requiredEntitlements: [],
+    approvalRequirements: "no_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: ["knowledge_documentation_specialist_profile"],
+    departmentCode: "shared_professional_services",
+    dnaStatus: "pending_design",
+    displayOrder: 17,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // CATALOGUE v1 — 28 Deprecated Legacy Roles (Sprint 11 consolidation)
+  // These are retained for audit trail, API backwards-compatibility, and migration.
+  // DO NOT surface these in the active catalogue UI.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Deprecated: Executive / Core ─────────────────────────────────────────
+
   {
     id: "spec_research_specialist",
     code: "research_specialist",
@@ -157,25 +537,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: [],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["research_specialist_profile"],
-  },
-  {
-    id: "spec_document_specialist",
-    code: "document_specialist",
-    displayName: "Document Specialist",
-    packCode: "core",
-    description: "Creates, formats, and reviews organisational documents to professional standards.",
-    icon: "📄",
-    colour: "#20B2AA",
-    capabilities: ["draft_document", "summarise", "review_policy"],
-    requiredPermissions: [],
-    requiredEntitlements: [],
-    approvalRequirements: "no_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["document_specialist_profile"],
+    departmentCode: "shared_professional_services",
+    dnaStatus: "not_applicable",
+    displayOrder: 100,
+    catalogueVersion: "1",
+    replacementRoleCode: null,
+    replacementType: "capability_distribution",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Research capability distributed across compliance, policy, finance, marketing, and talent roles.",
   },
   {
     id: "spec_calendar_specialist",
@@ -189,9 +561,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: [],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["calendar_specialist_profile"],
+    departmentCode: "executive",
+    dnaStatus: "not_applicable",
+    displayOrder: 101,
+    catalogueVersion: "1",
+    replacementRoleCode: "executive_assistant",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Executive Assistant (executive_assistant).",
   },
   {
     id: "spec_communication_specialist",
@@ -205,11 +585,45 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: [],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["communication_specialist_profile"],
+    departmentCode: "executive",
+    dnaStatus: "not_applicable",
+    displayOrder: 102,
+    catalogueVersion: "1",
+    replacementRoleCode: "executive_assistant",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Executive Assistant (executive_assistant).",
   },
-  // ── Compliance Workforce ─────────────────────────────────────────────────────
+  {
+    id: "spec_document_specialist",
+    code: "document_specialist",
+    displayName: "Document Specialist",
+    packCode: "core",
+    description: "Creates, formats, and reviews organisational documents to professional standards.",
+    icon: "📄",
+    colour: "#20B2AA",
+    capabilities: ["draft_document", "summarise", "review_policy"],
+    requiredPermissions: [],
+    requiredEntitlements: [],
+    approvalRequirements: "no_approval",
+    executionStatus: "deprecated",
+    version: "1.0.0",
+    workerProfileCodes: ["document_specialist_profile"],
+    departmentCode: "shared_professional_services",
+    dnaStatus: "not_applicable",
+    displayOrder: 103,
+    catalogueVersion: "1",
+    replacementRoleCode: "knowledge_documentation_specialist",
+    replacementType: "renamed",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Renamed and expanded into Knowledge & Documentation Specialist (knowledge_documentation_specialist).",
+  },
+
+  // ── Deprecated: Compliance ────────────────────────────────────────────────
+
   {
     id: "spec_compliance_officer",
     code: "compliance_officer",
@@ -222,9 +636,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["compliance:read"],
     requiredEntitlements: ["compliance_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["compliance_officer_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 104,
+    catalogueVersion: "1",
+    replacementRoleCode: "compliance_quality_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Compliance & Quality Manager (compliance_quality_manager).",
   },
   {
     id: "spec_quality_officer",
@@ -238,41 +660,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["compliance:read"],
     requiredEntitlements: ["compliance_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["quality_officer_profile"],
-  },
-  {
-    id: "spec_policy_officer",
-    code: "policy_officer",
-    displayName: "Policy Officer",
-    packCode: "compliance",
-    description: "Drafts, reviews, and maintains organisational policies aligned to NDIS standards.",
-    icon: "📜",
-    colour: "#8B6914",
-    capabilities: ["draft_policy", "review_policy", "research"],
-    requiredPermissions: ["compliance:read"],
-    requiredEntitlements: ["compliance_workforce"],
-    approvalRequirements: "administrator_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["policy_officer_profile"],
-  },
-  {
-    id: "spec_incident_review_officer",
-    code: "incident_review_officer",
-    displayName: "Incident Review Officer",
-    packCode: "compliance",
-    description: "Investigates incidents, documents findings, and ensures reportable events are handled correctly.",
-    icon: "🚨",
-    colour: "#DC143C",
-    capabilities: ["review_incident", "draft_document", "audit_preparation"],
-    requiredPermissions: ["compliance:read", "incidents:read"],
-    requiredEntitlements: ["compliance_workforce"],
-    approvalRequirements: "manager_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["incident_review_officer_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 105,
+    catalogueVersion: "1",
+    replacementRoleCode: "compliance_quality_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Compliance & Quality Manager (compliance_quality_manager).",
   },
   {
     id: "spec_corrective_action_officer",
@@ -286,9 +684,41 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["compliance:read"],
     requiredEntitlements: ["compliance_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["corrective_action_officer_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 106,
+    catalogueVersion: "1",
+    replacementRoleCode: "compliance_quality_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Compliance & Quality Manager (compliance_quality_manager).",
+  },
+  {
+    id: "spec_incident_review_officer",
+    code: "incident_review_officer",
+    displayName: "Incident Review Officer",
+    packCode: "compliance",
+    description: "Investigates incidents, documents findings, and ensures reportable events are handled correctly.",
+    icon: "🚨",
+    colour: "#DC143C",
+    capabilities: ["review_incident", "draft_document", "audit_preparation"],
+    requiredPermissions: ["compliance:read", "incidents:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "manager_approval",
+    executionStatus: "deprecated",
+    version: "1.0.0",
+    workerProfileCodes: ["incident_review_officer_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 107,
+    catalogueVersion: "1",
+    replacementRoleCode: "incident_safeguarding_specialist",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Incident & Safeguarding Specialist (incident_safeguarding_specialist).",
   },
   {
     id: "spec_restrictive_practice_officer",
@@ -302,43 +732,45 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["compliance:read", "restrictive_practices:read"],
     requiredEntitlements: ["compliance_workforce"],
     approvalRequirements: "compliance_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["restrictive_practice_officer_profile"],
-  },
-  // ── Operations Workforce ─────────────────────────────────────────────────────
-  {
-    id: "spec_operations_manager",
-    code: "operations_manager",
-    displayName: "Operations Manager",
-    packCode: "operations",
-    description: "Oversees operational workflows, resource allocation, and service capacity planning.",
-    icon: "⚙️",
-    colour: "#1E90FF",
-    capabilities: ["review_roster", "create_workflow", "capacity_analysis"],
-    requiredPermissions: ["operations:read"],
-    requiredEntitlements: ["operations_workforce"],
-    approvalRequirements: "no_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["operations_manager_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 108,
+    catalogueVersion: "1",
+    replacementRoleCode: "incident_safeguarding_specialist",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Incident & Safeguarding Specialist (incident_safeguarding_specialist).",
   },
   {
-    id: "spec_service_delivery_coordinator",
-    code: "service_delivery_coordinator",
-    displayName: "Service Delivery Coordinator",
-    packCode: "operations",
-    description: "Coordinates service delivery activities and monitors participant outcomes.",
-    icon: "🚀",
-    colour: "#00CED1",
-    capabilities: ["service_delivery_review", "create_workflow", "summarise"],
-    requiredPermissions: ["operations:read"],
-    requiredEntitlements: ["operations_workforce"],
-    approvalRequirements: "no_approval",
-    executionStatus: "available",
+    id: "spec_policy_officer",
+    code: "policy_officer",
+    displayName: "Policy Officer",
+    packCode: "compliance",
+    description: "Drafts, reviews, and maintains organisational policies aligned to NDIS standards.",
+    icon: "📜",
+    colour: "#8B6914",
+    capabilities: ["draft_policy", "review_policy", "research"],
+    requiredPermissions: ["compliance:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "administrator_approval",
+    executionStatus: "deprecated",
     version: "1.0.0",
-    workerProfileCodes: ["service_delivery_coordinator_profile"],
+    workerProfileCodes: ["policy_officer_profile"],
+    departmentCode: "compliance_governance",
+    dnaStatus: "not_applicable",
+    displayOrder: 109,
+    catalogueVersion: "1",
+    replacementRoleCode: "policy_governance_specialist",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Policy & Governance Specialist (policy_governance_specialist).",
   },
+
+  // ── Deprecated: Operations ────────────────────────────────────────────────
+
   {
     id: "spec_roster_coordinator",
     code: "roster_coordinator",
@@ -351,9 +783,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["operations:read", "roster:read"],
     requiredEntitlements: ["operations_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["roster_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "not_applicable",
+    displayOrder: 110,
+    catalogueVersion: "1",
+    replacementRoleCode: "workforce_rostering_coordinator",
+    replacementType: "renamed",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Renamed and expanded into Workforce Rostering Coordinator (workforce_rostering_coordinator).",
   },
   {
     id: "spec_asset_coordinator",
@@ -367,9 +807,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["operations:read"],
     requiredEntitlements: ["operations_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["asset_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "not_applicable",
+    displayOrder: 111,
+    catalogueVersion: "1",
+    replacementRoleCode: "process_asset_coordinator",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Process & Asset Coordinator (process_asset_coordinator).",
   },
   {
     id: "spec_workflow_coordinator",
@@ -383,11 +831,21 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["operations:read"],
     requiredEntitlements: ["operations_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["workflow_coordinator_profile"],
+    departmentCode: "operations",
+    dnaStatus: "not_applicable",
+    displayOrder: 112,
+    catalogueVersion: "1",
+    replacementRoleCode: "process_asset_coordinator",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Process & Asset Coordinator (process_asset_coordinator).",
   },
-  // ── Finance Workforce ────────────────────────────────────────────────────────
+
+  // ── Deprecated: Finance ───────────────────────────────────────────────────
+
   {
     id: "spec_accounts_officer",
     code: "accounts_officer",
@@ -400,25 +858,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["finance:read"],
     requiredEntitlements: ["finance_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["accounts_officer_profile"],
-  },
-  {
-    id: "spec_payroll_officer",
-    code: "payroll_officer",
-    displayName: "Payroll Officer",
-    packCode: "finance",
-    description: "Reviews payroll data, processes pay runs, and ensures award compliance.",
-    icon: "💳",
-    colour: "#4169E1",
-    capabilities: ["payroll_review", "accounts_reconciliation"],
-    requiredPermissions: ["finance:read", "payroll:read"],
-    requiredEntitlements: ["finance_workforce"],
-    approvalRequirements: "administrator_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["payroll_officer_profile"],
+    departmentCode: "finance",
+    dnaStatus: "not_applicable",
+    displayOrder: 113,
+    catalogueVersion: "1",
+    replacementRoleCode: "finance_officer",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Finance Officer (finance_officer).",
   },
   {
     id: "spec_invoice_specialist",
@@ -432,9 +882,41 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["finance:read"],
     requiredEntitlements: ["finance_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["invoice_specialist_profile"],
+    departmentCode: "finance",
+    dnaStatus: "not_applicable",
+    displayOrder: 114,
+    catalogueVersion: "1",
+    replacementRoleCode: "finance_officer",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Finance Officer (finance_officer).",
+  },
+  {
+    id: "spec_payroll_officer",
+    code: "payroll_officer",
+    displayName: "Payroll Officer",
+    packCode: "finance",
+    description: "Reviews payroll data, processes pay runs, and ensures award compliance.",
+    icon: "💳",
+    colour: "#4169E1",
+    capabilities: ["payroll_review", "accounts_reconciliation"],
+    requiredPermissions: ["finance:read", "payroll:read"],
+    requiredEntitlements: ["finance_workforce"],
+    approvalRequirements: "administrator_approval",
+    executionStatus: "deprecated",
+    version: "1.0.0",
+    workerProfileCodes: ["payroll_officer_profile"],
+    departmentCode: "finance",
+    dnaStatus: "not_applicable",
+    displayOrder: 115,
+    catalogueVersion: "1",
+    replacementRoleCode: "payroll_workforce_cost_officer",
+    replacementType: "renamed",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Renamed and expanded into Payroll & Workforce Cost Officer (payroll_workforce_cost_officer).",
   },
   {
     id: "spec_budget_analyst",
@@ -448,9 +930,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["finance:read"],
     requiredEntitlements: ["finance_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["budget_analyst_profile"],
+    departmentCode: "finance",
+    dnaStatus: "not_applicable",
+    displayOrder: 116,
+    catalogueVersion: "1",
+    replacementRoleCode: "financial_planning_reporting_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Financial Planning & Reporting Manager (financial_planning_reporting_manager).",
   },
   {
     id: "spec_financial_reporting_officer",
@@ -464,11 +954,21 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["finance:read"],
     requiredEntitlements: ["finance_workforce"],
     approvalRequirements: "administrator_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["financial_reporting_officer_profile"],
+    departmentCode: "finance",
+    dnaStatus: "not_applicable",
+    displayOrder: 117,
+    catalogueVersion: "1",
+    replacementRoleCode: "financial_planning_reporting_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Financial Planning & Reporting Manager (financial_planning_reporting_manager).",
   },
-  // ── HR Workforce ─────────────────────────────────────────────────────────────
+
+  // ── Deprecated: HR ────────────────────────────────────────────────────────
+
   {
     id: "spec_hr_officer",
     code: "hr_officer",
@@ -481,41 +981,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["hr:read"],
     requiredEntitlements: ["hr_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["hr_officer_profile"],
-  },
-  {
-    id: "spec_recruitment_officer",
-    code: "recruitment_officer",
-    displayName: "Recruitment Officer",
-    packCode: "hr",
-    description: "Supports candidate screening, job posting, and onboarding documentation.",
-    icon: "🤝",
-    colour: "#9370DB",
-    capabilities: ["recruitment_support", "draft_communication", "research"],
-    requiredPermissions: ["hr:read"],
-    requiredEntitlements: ["hr_workforce"],
-    approvalRequirements: "no_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["recruitment_officer_profile"],
-  },
-  {
-    id: "spec_learning_coordinator",
-    code: "learning_coordinator",
-    displayName: "Learning Coordinator",
-    packCode: "hr",
-    description: "Coordinates staff training programs, tracks certifications, and manages compliance learning.",
-    icon: "📚",
-    colour: "#3CB371",
-    capabilities: ["learning_coordination", "staff_compliance_check", "schedule_meeting"],
-    requiredPermissions: ["hr:read"],
-    requiredEntitlements: ["hr_workforce"],
-    approvalRequirements: "no_approval",
-    executionStatus: "available",
-    version: "1.0.0",
-    workerProfileCodes: ["learning_coordinator_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "not_applicable",
+    displayOrder: 118,
+    catalogueVersion: "1",
+    replacementRoleCode: "people_culture_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into People & Culture Manager (people_culture_manager).",
   },
   {
     id: "spec_performance_officer",
@@ -529,9 +1005,65 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["hr:read"],
     requiredEntitlements: ["hr_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["performance_officer_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "not_applicable",
+    displayOrder: 119,
+    catalogueVersion: "1",
+    replacementRoleCode: "people_culture_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into People & Culture Manager (people_culture_manager).",
+  },
+  {
+    id: "spec_recruitment_officer",
+    code: "recruitment_officer",
+    displayName: "Recruitment Officer",
+    packCode: "hr",
+    description: "Supports candidate screening, job posting, and onboarding documentation.",
+    icon: "🤝",
+    colour: "#9370DB",
+    capabilities: ["recruitment_support", "draft_communication", "research"],
+    requiredPermissions: ["hr:read"],
+    requiredEntitlements: ["hr_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "deprecated",
+    version: "1.0.0",
+    workerProfileCodes: ["recruitment_officer_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "not_applicable",
+    displayOrder: 120,
+    catalogueVersion: "1",
+    replacementRoleCode: "talent_learning_specialist",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Talent & Learning Specialist (talent_learning_specialist).",
+  },
+  {
+    id: "spec_learning_coordinator",
+    code: "learning_coordinator",
+    displayName: "Learning Coordinator",
+    packCode: "hr",
+    description: "Coordinates staff training programs, tracks certifications, and manages compliance learning.",
+    icon: "📚",
+    colour: "#3CB371",
+    capabilities: ["learning_coordination", "staff_compliance_check", "schedule_meeting"],
+    requiredPermissions: ["hr:read"],
+    requiredEntitlements: ["hr_workforce"],
+    approvalRequirements: "no_approval",
+    executionStatus: "deprecated",
+    version: "1.0.0",
+    workerProfileCodes: ["learning_coordinator_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "not_applicable",
+    displayOrder: 121,
+    catalogueVersion: "1",
+    replacementRoleCode: "talent_learning_specialist",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Talent & Learning Specialist (talent_learning_specialist).",
   },
   {
     id: "spec_staff_compliance_officer",
@@ -545,11 +1077,21 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: ["hr:read", "compliance:read"],
     requiredEntitlements: ["hr_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "available",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["staff_compliance_officer_profile"],
+    departmentCode: "people_culture",
+    dnaStatus: "not_applicable",
+    displayOrder: 122,
+    catalogueVersion: "1",
+    replacementRoleCode: "workforce_compliance_specialist",
+    replacementType: "renamed",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Renamed into Workforce Compliance Specialist (workforce_compliance_specialist).",
   },
-  // ── Marketing Workforce ───────────────────────────────────────────────────────
+
+  // ── Deprecated: Marketing ─────────────────────────────────────────────────
+
   {
     id: "spec_marketing_director",
     code: "marketing_director",
@@ -562,9 +1104,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: ["marketing_workforce"],
     approvalRequirements: "administrator_approval",
-    executionStatus: "coming_soon",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["marketing_director_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "not_applicable",
+    displayOrder: 123,
+    catalogueVersion: "1",
+    replacementRoleCode: "marketing_communications_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Marketing & Communications Manager (marketing_communications_manager).",
   },
   {
     id: "spec_content_strategist",
@@ -578,9 +1128,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: ["marketing_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "coming_soon",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["content_strategist_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "not_applicable",
+    displayOrder: 124,
+    catalogueVersion: "1",
+    replacementRoleCode: "marketing_communications_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Marketing & Communications Manager (marketing_communications_manager).",
   },
   {
     id: "spec_campaign_manager",
@@ -594,9 +1152,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: ["marketing_workforce"],
     approvalRequirements: "manager_approval",
-    executionStatus: "coming_soon",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["campaign_manager_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "not_applicable",
+    displayOrder: 125,
+    catalogueVersion: "1",
+    replacementRoleCode: "marketing_communications_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Marketing & Communications Manager (marketing_communications_manager).",
   },
   {
     id: "spec_brand_manager",
@@ -610,9 +1176,17 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: ["marketing_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "coming_soon",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["brand_manager_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "not_applicable",
+    displayOrder: 126,
+    catalogueVersion: "1",
+    replacementRoleCode: "marketing_communications_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Marketing & Communications Manager (marketing_communications_manager).",
   },
   {
     id: "spec_social_media_specialist",
@@ -626,24 +1200,40 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     requiredPermissions: [],
     requiredEntitlements: ["marketing_workforce"],
     approvalRequirements: "no_approval",
-    executionStatus: "coming_soon",
+    executionStatus: "deprecated",
     version: "1.0.0",
     workerProfileCodes: ["social_media_specialist_profile"],
+    departmentCode: "marketing",
+    dnaStatus: "not_applicable",
+    displayOrder: 127,
+    catalogueVersion: "1",
+    replacementRoleCode: "marketing_communications_manager",
+    replacementType: "merged",
+    deprecatedAt: "2026-07-28",
+    deprecationReason: "Merged into Marketing & Communications Manager (marketing_communications_manager).",
   },
 ];
 
 // ─── Workforce Packs ──────────────────────────────────────────────────────────
+// Pack specialist lists are derived from active (v2) specialists only.
+
+/** Active v2 specialist codes for a given pack */
+function _v2SpecialistsForPack(packCode: string): string[] {
+  return SPECIALISTS
+    .filter(s => s.packCode === packCode && s.catalogueVersion === "2")
+    .map(s => s.code);
+}
 
 export const WORKFORCE_PACKS: RegistryPack[] = [
   {
     id: "pack_core",
     code: "core",
     name: "Core Workforce",
-    description: "The essential AI workforce for every NeedsOps AI+ organisation. Contains the Chief of Staff and core specialist roles.",
+    description: "The essential AI workforce for every NeedsOps AI+ organisation. Contains the Chief of Staff, Executive Assistant, and Knowledge & Documentation Specialist.",
     industry: "ndis_provider",
     tier: "starter",
     status: "available",
-    specialists: SPECIALISTS.filter(s => s.packCode === "core").map(s => s.code),
+    specialists: _v2SpecialistsForPack("core"),
   },
   {
     id: "pack_compliance",
@@ -653,7 +1243,7 @@ export const WORKFORCE_PACKS: RegistryPack[] = [
     industry: "ndis_provider",
     tier: "professional",
     status: "available",
-    specialists: SPECIALISTS.filter(s => s.packCode === "compliance").map(s => s.code),
+    specialists: _v2SpecialistsForPack("compliance"),
   },
   {
     id: "pack_operations",
@@ -663,7 +1253,7 @@ export const WORKFORCE_PACKS: RegistryPack[] = [
     industry: "ndis_provider",
     tier: "professional",
     status: "available",
-    specialists: SPECIALISTS.filter(s => s.packCode === "operations").map(s => s.code),
+    specialists: _v2SpecialistsForPack("operations"),
   },
   {
     id: "pack_finance",
@@ -673,17 +1263,17 @@ export const WORKFORCE_PACKS: RegistryPack[] = [
     industry: "ndis_provider",
     tier: "professional",
     status: "available",
-    specialists: SPECIALISTS.filter(s => s.packCode === "finance").map(s => s.code),
+    specialists: _v2SpecialistsForPack("finance"),
   },
   {
     id: "pack_hr",
     code: "hr",
-    name: "HR Workforce",
-    description: "Specialist AI workers for human resources including recruitment, performance, learning, and staff compliance.",
+    name: "People and Culture Workforce",
+    description: "Specialist AI workers for people and culture including talent, performance, learning, and workforce compliance.",
     industry: "ndis_provider",
     tier: "professional",
     status: "available",
-    specialists: SPECIALISTS.filter(s => s.packCode === "hr").map(s => s.code),
+    specialists: _v2SpecialistsForPack("hr"),
   },
   {
     id: "pack_marketing",
@@ -692,8 +1282,8 @@ export const WORKFORCE_PACKS: RegistryPack[] = [
     description: "Specialist AI workers for marketing strategy, content, campaigns, brand, and social media.",
     industry: "ndis_provider",
     tier: "enterprise",
-    status: "coming_soon",
-    specialists: SPECIALISTS.filter(s => s.packCode === "marketing").map(s => s.code),
+    status: "available",
+    specialists: _v2SpecialistsForPack("marketing"),
   },
 ];
 
@@ -722,4 +1312,56 @@ export function getSpecialistCapabilities(specialistCode: string): RegistryCapab
   return specialist.capabilities
     .map(code => getCapabilityByCode(code))
     .filter((c): c is RegistryCapability => !!c);
+}
+
+// ── Sprint 11 new helpers ─────────────────────────────────────────────────────
+
+/**
+ * Sprint 11: Alias map for deprecated role codes to their current replacements.
+ * Used by the CoS routing layer to transparently reroute legacy role codes.
+ * Only includes roles with a direct single replacement (replacementType: "renamed").
+ */
+export const DEPRECATED_ROLE_ALIASES: Record<string, string> = {
+  compliance_officer: "compliance_quality_manager",
+  document_specialist: "knowledge_documentation_specialist",
+};
+
+/**
+ * Returns all active catalogue v2 specialists (status: available or dna_pending).
+ * Use this for the active workforce catalogue UI.
+ */
+export function getCurrentSpecialists(): RegistrySpecialist[] {
+  return SPECIALISTS.filter(
+    s => s.catalogueVersion === "2" &&
+      (s.executionStatus === "available" || s.executionStatus === "dna_pending")
+  );
+}
+
+/**
+ * Returns all deprecated legacy specialists (catalogue v1).
+ * Use this for migration tooling, audit trails, and backwards-compatible API responses.
+ */
+export function getDeprecatedSpecialists(): RegistrySpecialist[] {
+  return SPECIALISTS.filter(s => s.executionStatus === "deprecated");
+}
+
+/**
+ * Returns all catalogue v2 specialists in a given department.
+ * @param dept — one of the departmentCode values
+ */
+export function getSpecialistsByDepartment(dept: string): RegistrySpecialist[] {
+  return SPECIALISTS.filter(
+    s => s.departmentCode === dept && s.catalogueVersion === "2"
+  );
+}
+
+/**
+ * Given a deprecated (v1) role code, returns the replacement role code,
+ * or null if capabilities were distributed rather than consolidated.
+ * Returns null for unknown codes.
+ */
+export function resolveAlias(code: string): string | null {
+  const specialist = SPECIALISTS.find(s => s.code === code && s.catalogueVersion === "1");
+  if (!specialist) return null;
+  return specialist.replacementRoleCode ?? null;
 }

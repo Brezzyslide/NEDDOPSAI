@@ -14,7 +14,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
-import { WORKFORCE_PACKS, SPECIALISTS, getSpecialistCapabilities } from "../../lib/workforceRegistry.js";
+import { WORKFORCE_PACKS, SPECIALISTS, getSpecialistCapabilities, DEPRECATED_ROLE_ALIASES } from "../../lib/workforceRegistry.js";
 import { db, tenantWorkforcePacksTable, organizationsTable, workforcePacksTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 
@@ -48,10 +48,14 @@ router.get("/packs/:code", ...auth, (req, res) => {
   res.json({ ...pack, specialists });
 });
 
-router.get("/specialists", ...auth, (_req, res) => {
-  const specialists = SPECIALISTS.map(s => ({
+router.get("/specialists", ...auth, (req, res) => {
+  const { status } = req.query as { status?: string };
+  let list = SPECIALISTS;
+  if (status) list = list.filter(s => s.executionStatus === status);
+  const specialists = list.map(s => ({
     ...s,
     resolvedCapabilities: getSpecialistCapabilities(s.code),
+    replacementRoleCode: DEPRECATED_ROLE_ALIASES[s.code] ?? null,
   }));
   res.json({ specialists, total: specialists.length });
 });

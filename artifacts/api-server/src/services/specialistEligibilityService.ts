@@ -1,5 +1,5 @@
 /**
- * Specialist Eligibility Service — Sprint 9.5
+ * Specialist Eligibility Service — Sprint 11
  *
  * Performs all 12 eligibility checks before a specialist may be assigned to a run.
  * No specialist may be assigned without an allowed eligibility decision.
@@ -18,7 +18,7 @@
  * 10. required execution channel
  * 11. required connector category
  * 12. approval requirement (from registry)
- * 13. specialist activation status
+ * 13. specialist activation status (deprecated / dna_pending / archived / coming_soon)
  */
 
 import { randomUUID } from "crypto";
@@ -65,10 +65,13 @@ export interface EligibilityCheckContext {
 }
 
 // ─── Active specialists with real intelligence ────────────────────────────────
+// Sprint 11: Only specialists with approved DNA are active.
+// compliance_officer was deprecated and merged into compliance_quality_manager.
+// document_specialist was renamed to knowledge_documentation_specialist.
+// Neither compliance_quality_manager nor knowledge_documentation_specialist have
+// approved DNA yet — they are dna_pending and not yet dispatchable.
 
 const ACTIVE_SPECIALISTS = new Set([
-  "compliance_officer",
-  "document_specialist",
   "operations_manager",
 ]);
 
@@ -90,18 +93,21 @@ export async function checkSpecialistEligibility(
   const reasons: string[] = [];
   let workerProfileCode: string | undefined;
 
-  const deny = (reasonCode: string): SpecialistEligibilityDecision => ({
-    decisionId,
-    workforceRoleCode,
-    capabilityCode,
-    requestedLevel,
-    eligible: false,
-    reasonCode,
-    reasons,
-    workerProfileCode,
-    approvalRequired: false,
-    evaluatedAt: new Date().toISOString(),
-  });
+  const deny = (reasonCode: string, message?: string): SpecialistEligibilityDecision => {
+    if (message) reasons.push(message);
+    return {
+      decisionId,
+      workforceRoleCode,
+      capabilityCode,
+      requestedLevel,
+      eligible: false,
+      reasonCode,
+      reasons,
+      workerProfileCode,
+      approvalRequired: false,
+      evaluatedAt: new Date().toISOString(),
+    };
+  };
 
   // ── Check 1: Capability exists ─────────────────────────────────────────────
   if (!isKnownCapabilityCode(capabilityCode)) {
@@ -158,6 +164,15 @@ export async function checkSpecialistEligibility(
   if (specialist.executionStatus === "deprecated") {
     reasons.push(`Specialist "${specialist.displayName}" has been deprecated`);
     return deny("specialist_deprecated");
+  }
+  if (specialist.executionStatus === "dna_pending") {
+    return deny(
+      "dna_design_pending",
+      "This AI employee's professional profile is being designed. It will be available soon.",
+    );
+  }
+  if (specialist.executionStatus === "archived") {
+    return deny("specialist_archived");
   }
   if (specialist.executionStatus === "coming_soon") {
     reasons.push(`Specialist "${specialist.displayName}" is not yet available — coming soon`);
@@ -264,7 +279,12 @@ export function validateSpecialistEligibilitySync(
   if (cap.eligibleRoles.length > 0 && !cap.eligibleRoles.includes(workforceRoleCode)) return false;
   const specialist = getSpecialistByCode(workforceRoleCode);
   if (!specialist) return false;
-  if (specialist.executionStatus === "deprecated" || specialist.executionStatus === "coming_soon") return false;
+  if (
+    specialist.executionStatus === "deprecated" ||
+    specialist.executionStatus === "coming_soon" ||
+    specialist.executionStatus === "dna_pending" ||
+    specialist.executionStatus === "archived"
+  ) return false;
   return true;
 }
 
@@ -275,6 +295,7 @@ export function getEligibleSpecialists(capabilityCode: string): string[] {
   if (!cap) return [];
   if (cap.eligibleRoles.length > 0) return cap.eligibleRoles;
   // Fall back to workforce registry capability mapping
+  // Exclude deprecated, dna_pending, archived, and coming_soon statuses
   return getSpecialistsByCapability(capabilityCode)
     .filter(s => s.executionStatus === "available" || s.executionStatus === "beta")
     .map(s => s.code);

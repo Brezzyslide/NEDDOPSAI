@@ -9,3 +9,4 @@
 - [NeedsOps Sprint 9.6 Pack Commerce](needsops-sprint96.md) — versioned pricing, pack provisioning service, access requests, displayMode API contract, cache invalidation, REQUIRED_RLS_TABLES=34
 - [NeedsOps Sprint 9.7 Owner Control Plane](needsops-sprint97.md) — org freeze/close/login-disable, seat overrides, trial actions, pack grants, staff mgmt, 707 tests, seat_overrides has no RLS
 - [NeedsOps Sprint 10 Digital Workforce Intelligence](needsops-sprint10.md) — lib/workforce-dna package, 4 DNA profiles v1.0.0, version tracking columns, execution_intents, auto-dispatch on approval, queue worker, conflict LLM eval, 796 tests, REQUIRED_RLS_TABLES=35
+- [NeedsOps Sprint 11 Workforce Catalogue Streamlining](needsops-sprint11.md) — 32→17 AI employees, dna_pending/archived enum added, department_code/dna_status columns, 869 tests, ACTIVE_SPECIALISTS now only chief_of_staff+operations_manager

@@ -1,6 +1,7 @@
 /**
  * Workforce Explorer — /app/:slug/workforce
- * Browse every workforce pack and specialist.
+ * Sprint 11: 17 AI employees across 6 departments.
+ * Shows Available and DNA Design Pending employees; excludes deprecated/archived.
  */
 
 import { useState } from "react";
@@ -18,12 +19,33 @@ const PACK_COLOURS: Record<string, string> = {
   marketing: "#FF1493",
 };
 
+/** Sprint 11 department display names */
+const DEPARTMENT_NAMES: Record<string, string> = {
+  core: "Core",
+  compliance: "Compliance",
+  operations: "Operations",
+  finance: "Finance",
+  hr: "Human Resources",
+  marketing: "Marketing",
+};
+
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   available: { label: "Available", cls: "bg-emerald-900/30 text-emerald-400" },
   beta: { label: "Beta", cls: "bg-blue-900/30 text-blue-400" },
   coming_soon: { label: "Coming Soon", cls: "bg-[#1E3A5F] text-[#64748B]" },
+  dna_pending: { label: "DNA Design Pending", cls: "bg-amber-900/30 text-amber-400" },
   deprecated: { label: "Deprecated", cls: "bg-red-900/20 text-red-400" },
+  archived: { label: "Archived", cls: "bg-gray-900/20 text-gray-500" },
 };
+
+/** Returns the effective status badge for a specialist */
+function getStatusBadge(s: any): { label: string; cls: string } {
+  // Show "DNA Design Pending" if executionStatus is dna_pending OR dnaStatus is pending_design
+  if (s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design") {
+    return STATUS_BADGE.dna_pending!;
+  }
+  return STATUS_BADGE[s.executionStatus as string] ?? STATUS_BADGE.coming_soon!;
+}
 
 export default function WorkforcePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -38,6 +60,7 @@ export default function WorkforcePage() {
 
   const { data: specialistsData, isLoading: specialistsLoading } = useQuery({
     queryKey: ["workforce-specialists", selectedPack],
+    // Sprint 11: API now excludes deprecated/archived by default; dna_pending included
     queryFn: () =>
       apiFetch(`/v1/workforce/specialists${selectedPack ? `?pack=${selectedPack}` : ""}`).then(r => r.json()),
   });
@@ -55,22 +78,33 @@ export default function WorkforcePage() {
     );
   });
 
+  // Group filtered specialists by department (packCode)
+  const departmentOrder = ["core", "compliance", "operations", "finance", "hr", "marketing"];
+  const byDepartment = departmentOrder
+    .map(dept => ({
+      dept,
+      specialists: filtered.filter((s: any) => s.packCode === dept),
+    }))
+    .filter(({ specialists }) => specialists.length > 0);
+
   return (
     <AppShell orgSlug={slug ?? ""}>
       <div className="p-8">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[#E2E8F0]">AI Workforce</h1>
-          <p className="text-[#64748B] text-sm mt-1">Browse your available specialists and workforce packs</p>
+          <p className="text-[#64748B] text-sm mt-1">
+            17 AI employees across 6 departments — browse your available specialists and workforce packs
+          </p>
         </div>
 
-        {/* Pack selector */}
+        {/* Pack / Department selector */}
         <div className="mb-6">
-          <h2 className="text-[#E2E8F0] font-semibold mb-3 text-sm uppercase tracking-widest">Workforce Packs</h2>
+          <h2 className="text-[#E2E8F0] font-semibold mb-3 text-sm uppercase tracking-widest">Departments</h2>
           {packsLoading ? (
-            <div className="text-[#64748B] text-sm">Loading packs…</div>
+            <div className="text-[#64748B] text-sm">Loading departments…</div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
               <button
                 onClick={() => setSelectedPack(null)}
                 className={`flex flex-col items-center p-3 rounded-xl border text-center transition-colors ${
@@ -80,8 +114,8 @@ export default function WorkforcePage() {
                 }`}
               >
                 <span className="text-2xl mb-1">🌐</span>
-                <span className="text-[#E2E8F0] text-xs font-medium">All Packs</span>
-                <span className="text-[#64748B] text-xs">{packs.length} packs</span>
+                <span className="text-[#E2E8F0] text-xs font-medium">All</span>
+                <span className="text-[#64748B] text-xs">17 employees</span>
               </button>
               {packs.map((pack: any) => (
                 <button
@@ -99,8 +133,10 @@ export default function WorkforcePage() {
                   >
                     {pack.name.charAt(0)}
                   </div>
-                  <span className="text-[#E2E8F0] text-xs font-medium leading-tight">{pack.name.replace(" Workforce", "")}</span>
-                  <span className="text-[#64748B] text-xs">{pack.specialists?.length ?? 0} specialists</span>
+                  <span className="text-[#E2E8F0] text-xs font-medium leading-tight">
+                    {DEPARTMENT_NAMES[pack.code] ?? pack.name.replace(" Workforce", "")}
+                  </span>
+                  <span className="text-[#64748B] text-xs">{pack.specialists?.length ?? 0}</span>
                   {pack.status === "coming_soon" && (
                     <span className="mt-1 text-[10px] bg-[#1E3A5F] text-[#64748B] px-1.5 py-0.5 rounded-full">Soon</span>
                   )}
@@ -116,73 +152,116 @@ export default function WorkforcePage() {
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search specialists or capabilities…"
+            placeholder="Search AI employees or capabilities…"
             className="w-full md:w-80 bg-[#112033] border border-[#1E3A5F] rounded-lg px-4 py-2 text-sm text-[#E2E8F0] placeholder-[#64748B] focus:outline-none focus:border-[#00D4FF]/50"
           />
         </div>
 
-        {/* Specialists grid */}
+        {/* Specialists grouped by department */}
         {specialistsLoading ? (
-          <div className="text-[#64748B] text-sm">Loading specialists…</div>
+          <div className="text-[#64748B] text-sm">Loading AI employees…</div>
         ) : (
           <>
-            <p className="text-[#64748B] text-xs mb-3">{filtered.length} specialist{filtered.length !== 1 ? "s" : ""}</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map((s: any) => {
-                const badge = STATUS_BADGE[s.executionStatus] ?? STATUS_BADGE.coming_soon!;
-                const packColour = PACK_COLOURS[s.packCode] ?? "#00D4FF";
-                return (
+            <p className="text-[#64748B] text-xs mb-5">
+              {filtered.length} AI employee{filtered.length !== 1 ? "s" : ""}
+              {selectedPack ? ` in ${DEPARTMENT_NAMES[selectedPack] ?? selectedPack} department` : " across all departments"}
+            </p>
+
+            {byDepartment.map(({ dept, specialists }) => (
+              <div key={dept} className="mb-8">
+                {/* Department heading */}
+                <div className="flex items-center gap-3 mb-4">
                   <div
-                    key={s.code}
-                    className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 flex flex-col gap-3 hover:border-[#00D4FF]/30 transition-colors"
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: PACK_COLOURS[dept] ?? "#00D4FF" }}
+                  />
+                  <h3
+                    className="text-sm font-semibold uppercase tracking-widest"
+                    style={{ color: PACK_COLOURS[dept] ?? "#00D4FF" }}
                   >
-                    {/* Top row */}
-                    <div className="flex items-start gap-3">
+                    {DEPARTMENT_NAMES[dept] ?? dept}
+                  </h3>
+                  <span className="text-[#64748B] text-xs">
+                    {specialists.length} employee{specialists.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {specialists.map((s: any) => {
+                    const badge = getStatusBadge(s);
+                    const packColour = PACK_COLOURS[s.packCode] ?? "#00D4FF";
+                    const isDnaPending = s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design";
+                    return (
                       <div
-                        className="h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0"
-                        style={{ backgroundColor: packColour + "22" }}
+                        key={s.code}
+                        className={`bg-[#112033] border rounded-xl p-5 flex flex-col gap-3 transition-colors ${
+                          isDnaPending
+                            ? "border-amber-900/40 hover:border-amber-700/40"
+                            : "border-[#1E3A5F] hover:border-[#00D4FF]/30"
+                        }`}
                       >
-                        {s.icon}
+                        {/* Top row */}
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${isDnaPending ? "opacity-60" : ""}`}
+                            style={{ backgroundColor: packColour + "22" }}
+                          >
+                            {s.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-semibold text-sm ${isDnaPending ? "text-[#94A3B8]" : "text-[#E2E8F0]"}`}>
+                              {s.displayName}
+                            </p>
+                            <p className="text-[#64748B] text-xs capitalize">
+                              {DEPARTMENT_NAMES[s.packCode] ?? s.packCode} department
+                            </p>
+                          </div>
+                          <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
+                            {badge.label}
+                          </span>
+                        </div>
+
+                        {/* Description */}
+                        <p className={`text-xs leading-relaxed line-clamp-2 ${isDnaPending ? "text-[#64748B]" : "text-[#94A3B8]"}`}>
+                          {s.description}
+                        </p>
+
+                        {/* DNA pending notice */}
+                        {isDnaPending && (
+                          <p className="text-[10px] text-amber-400/70 bg-amber-900/10 border border-amber-900/30 rounded px-2 py-1">
+                            🧬 Professional profile is being designed — available soon
+                          </p>
+                        )}
+
+                        {/* Capabilities */}
+                        <div className="flex flex-wrap gap-1.5">
+                          {(s.capabilities ?? []).slice(0, 4).map((cap: string) => (
+                            <span
+                              key={cap}
+                              className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]"
+                            >
+                              {cap.replace(/_/g, " ")}
+                            </span>
+                          ))}
+                          {s.capabilities?.length > 4 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]">
+                              +{s.capabilities.length - 4} more
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Approval requirement */}
+                        {s.approvalRequirements && s.approvalRequirements !== "no_approval" && (
+                          <p className="text-[10px] text-amber-400/80">
+                            ⚠ Requires {s.approvalRequirements.replace(/_/g, " ")}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[#E2E8F0] font-semibold text-sm">{s.displayName}</p>
-                        <p className="text-[#64748B] text-xs capitalize">{s.packCode} workforce</p>
-                      </div>
-                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-[#94A3B8] text-xs leading-relaxed line-clamp-2">{s.description}</p>
-
-                    {/* Capabilities */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {(s.capabilities ?? []).slice(0, 4).map((cap: string) => (
-                        <span
-                          key={cap}
-                          className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]"
-                        >
-                          {cap.replace(/_/g, " ")}
-                        </span>
-                      ))}
-                      {s.capabilities?.length > 4 && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]">
-                          +{s.capabilities.length - 4} more
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Approval requirement */}
-                    {s.approvalRequirements && s.approvalRequirements !== "no_approval" && (
-                      <p className="text-[10px] text-amber-400/80">
-                        ⚠ Requires {s.approvalRequirements.replace(/_/g, " ")}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </>
         )}
       </div>

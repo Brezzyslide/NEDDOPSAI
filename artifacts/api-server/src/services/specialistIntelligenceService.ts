@@ -1,11 +1,12 @@
 /**
- * Specialist Intelligence Service — Sprint 9.5
+ * Specialist Intelligence Service — Sprint 11
  *
  * Provider-independent AI execution for active specialists.
  * ALL AI calls go through the AI Privacy Gateway.
  * No direct OpenAI SDK imports permitted here.
  *
- * Active specialists: compliance_officer, document_specialist, operations_manager
+ * Active specialists (approved DNA): chief_of_staff, operations_manager
+ * DNA Pending (not yet dispatchable): compliance_quality_manager, knowledge_documentation_specialist
  * Inactive specialists: return "Specialist intelligence not yet activated."
  */
 
@@ -120,11 +121,11 @@ export interface SpecialistContext {
 }
 
 // ─── Active specialist configuration ─────────────────────────────────────────
+// Sprint 11: Only specialists with approved DNA are listed here.
+// compliance_quality_manager and knowledge_documentation_specialist are dna_pending — not yet dispatchable.
 
 const ACTIVE_SPECIALIST_VERSIONS: Record<string, string> = {
   chief_of_staff: "1.0.0",
-  compliance_officer: "1.0.0",
-  document_specialist: "1.0.0",
   operations_manager: "1.0.0",
 };
 

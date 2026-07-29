@@ -1,0 +1,1128 @@
+NeedsOps AI+
+Workforce Catalogue Streamlining — 32 Specialists to 17 AI Employees
+
+Continue from Sprint 10 without changing the existing Professional DNA framework, dispatch engine, eligibility checks, specialist-run architecture or capability enforcement.
+
+The purpose of this implementation is to restructure the existing specialist catalogue so it reflects a realistic digital workforce for Australian NDIS providers.
+
+This is a catalogue and capability-remapping sprint only.
+
+Do not generate new DNA content yet.
+
+Do not activate OpenClaw.
+
+Do not create new reasoning methodologies.
+
+Core Design Principle
+
+NeedsOps must represent realistic professional employees—not create a separate agent for every individual task.
+
+A standalone AI employee should represent a professional role an NDIS provider could reasonably recruit.
+
+Narrow responsibilities such as:
+
+calendar management
+communication drafting
+policy drafting
+corrective-action tracking
+invoice review
+social-media management
+research
+workflow design
+
+must generally be represented as capabilities or competencies belonging to an appropriate AI employee.
+
+The model is:
+
+Organisation
+    ↓
+Department
+    ↓
+AI Employee
+    ↓
+Responsibilities and competencies
+    ↓
+Capabilities
+    ↓
+Tools and connectors
+    ↓
+Runtime
+
+Do not treat every capability as an employee.
+
+Approved Workforce Catalogue
+
+The final catalogue contains 17 AI employees.
+
+1. Executive Workforce
+Chief of Staff
+
+Role code:
+
+chief_of_staff
+
+Functions:
+
+analyse incoming requests
+understand user intent
+identify missing information
+challenge assumptions
+determine required employees
+sequence and prioritise work
+manage dependencies
+resolve specialist conflicts
+review work quality
+synthesise employee outputs
+produce executive summaries
+request clarification
+supervise the AI workforce
+
+The Chief of Staff must not perform specialist domain work or execute external actions.
+
+Executive Assistant
+
+Role code:
+
+executive_assistant
+
+Absorb the former:
+
+Calendar Specialist
+Communication Specialist
+
+Functions:
+
+manage calendars
+schedule and reschedule meetings
+coordinate multi-party availability
+prepare meeting agendas
+draft routine professional communications
+prepare follow-up correspondence
+summarise meetings and correspondence
+maintain action lists
+organise executive administrative work
+prepare briefing notes
+coordinate reminders and deadlines
+support leadership administration
+2. Compliance and Governance Workforce
+Compliance and Quality Manager
+
+Role code:
+
+compliance_quality_manager
+
+Absorb the former:
+
+Compliance Officer
+Quality Officer
+Corrective Action Officer
+
+Functions:
+
+interpret applicable NDIS compliance requirements
+review evidence against NDIS Practice Standards
+prepare for audits
+conduct quality reviews
+identify non-conformances
+assess compliance risk
+recommend corrective actions
+create corrective-action plans
+monitor corrective-action progress
+review organisational controls
+review policy implementation
+support continuous improvement
+analyse regulatory gaps
+escalate serious compliance concerns
+
+This role may coordinate with the Incident and Safeguarding Specialist but must not replace specialised safeguarding review.
+
+Incident and Safeguarding Specialist
+
+Role code:
+
+incident_safeguarding_specialist
+
+Absorb the former:
+
+Incident Review Officer
+Restrictive Practice Officer
+
+Functions:
+
+review incidents
+classify incident severity
+identify potential reportable incidents
+assess participant safety concerns
+review incident evidence
+identify missing incident information
+review incident-response timelines
+review restrictive-practice documentation
+identify unauthorised restrictive practices
+assess behaviour-support documentation
+identify safeguarding risks
+recommend immediate protective action
+prepare investigation findings
+prepare regulator-ready information for human review
+escalate possible abuse, neglect, exploitation or serious harm
+
+This employee must never approve restrictive practices, make final legal determinations or submit regulatory notifications autonomously.
+
+Policy and Governance Specialist
+
+Role code:
+
+policy_governance_specialist
+
+Absorb:
+
+Policy Officer
+governance-related work previously assigned to Research Specialist
+
+Functions:
+
+draft organisational policies
+review existing policies
+maintain policy registers
+map policies to NDIS Practice Standards
+identify policy gaps
+research regulatory and governance requirements
+compare organisational policies with authoritative requirements
+develop governance frameworks
+draft procedures supporting approved policies
+maintain document-review schedules
+identify policy dependencies
+recommend policy updates
+prepare board and governance materials
+support governance reviews
+
+Research remains a general capability and is not a standalone employee.
+
+3. Operations Workforce
+Operations Manager
+
+Role code:
+
+operations_manager
+
+Functions:
+
+oversee operational performance
+assess service capacity
+analyse resource allocation
+identify operational risk
+coordinate operational priorities
+review cross-department dependencies
+improve service-delivery systems
+oversee workforce planning
+review utilisation
+assess operational sustainability
+supervise operational specialists
+present operational recommendations
+escalate systemic service-delivery concerns
+
+Avoid duplicating the detailed work assigned to subordinate operational employees.
+
+Service Delivery Coordinator
+
+Role code:
+
+service_delivery_coordinator
+
+Functions:
+
+coordinate participant service-delivery activities
+review service-delivery records
+monitor service commencement
+monitor service continuity
+identify missed or delayed supports
+track participant-service outcomes
+coordinate internal service actions
+identify delivery gaps
+prepare service-delivery summaries
+monitor action completion
+coordinate transitions and handovers
+escalate participant-impacting service failures
+
+Do not allow this employee to make clinical decisions or alter participant plans without authority.
+
+Workforce and Rostering Coordinator
+
+Role code:
+
+workforce_rostering_coordinator
+
+Absorb:
+
+Roster Coordinator
+operational workforce-capacity scheduling responsibilities
+
+Functions:
+
+review staff rosters
+identify scheduling conflicts
+assess workforce coverage
+match workforce availability to service demand
+identify overtime and fatigue risks
+detect potential SCHADS scheduling issues
+assess shift continuity
+identify unfilled shifts
+recommend roster changes
+support capacity forecasting
+coordinate employee availability
+prepare workforce-coverage reports
+identify workforce shortages
+prepare approved rostering execution intents
+
+This employee may review award-related scheduling conditions but must not calculate payroll.
+
+Process and Asset Coordinator
+
+Role code:
+
+process_asset_coordinator
+
+Absorb:
+
+Workflow Coordinator
+Asset Coordinator
+
+Functions:
+
+map organisational workflows
+design improved processes
+identify duplicated or unnecessary steps
+document standard operating procedures
+identify process bottlenecks
+track assets
+maintain asset registers
+monitor maintenance schedules
+assess equipment and resource requirements
+coordinate procurement needs
+identify expiring or unavailable assets
+connect operational workflows to required resources
+prepare process-improvement recommendations
+produce approved workflow and asset execution intents
+4. Finance Workforce
+Finance Officer
+
+Role code:
+
+finance_officer
+
+Absorb:
+
+Accounts Officer
+Invoice Specialist
+
+Functions:
+
+review accounts payable
+review accounts receivable
+reconcile transaction records
+review supplier invoices
+review NDIS claims and invoices
+identify billing discrepancies
+detect duplicate or incomplete invoices
+prepare reconciliation reports
+monitor outstanding accounts
+prepare routine financial summaries
+identify missing financial evidence
+prepare approved finance-system execution intents
+escalate unusual or potentially fraudulent transactions
+
+This employee must not initiate banking transactions or approve its own financial work.
+
+Payroll and Workforce Cost Officer
+
+Role code:
+
+payroll_workforce_cost_officer
+
+Functions:
+
+review payroll input data
+review timesheets
+identify payroll anomalies
+check shift data against configured employment conditions
+review allowances and penalties
+identify possible SCHADS payroll issues
+calculate workforce-cost projections
+reconcile roster and payroll records
+prepare payroll exception reports
+identify missing approvals
+prepare payroll data for authorised human approval
+analyse labour-cost trends
+escalate underpayment or overpayment risks
+
+This employee must not release payroll, transfer funds or modify banking details autonomously.
+
+Financial Planning and Reporting Manager
+
+Role code:
+
+financial_planning_reporting_manager
+
+Absorb:
+
+Budget Analyst
+Financial Reporting Officer
+
+Functions:
+
+prepare budgets
+prepare forecasts
+analyse actuals against budget
+identify financial variances
+perform scenario analysis
+analyse cash-flow projections
+prepare management reports
+prepare board-level financial summaries
+analyse service profitability
+assess financial sustainability
+identify cost trends
+produce financial-performance insights
+coordinate financial reporting
+recommend budget adjustments
+escalate material financial risks
+5. People and Culture Workforce
+People and Culture Manager
+
+Role code:
+
+people_culture_manager
+
+Absorb:
+
+HR Officer
+Performance Officer
+
+Functions:
+
+support human-resources administration
+review HR policies
+support employee relations
+coordinate performance-review cycles
+support goal setting
+develop performance-improvement plans
+prepare HR correspondence
+review workforce trends
+analyse retention and turnover
+support disciplinary documentation
+support role and responsibility design
+coordinate employee wellbeing actions
+review organisational culture indicators
+escalate high-risk HR matters
+
+The employee must not terminate staff, make binding disciplinary decisions or provide final legal advice.
+
+Talent and Learning Specialist
+
+Role code:
+
+talent_learning_specialist
+
+Absorb:
+
+Recruitment Officer
+Learning Coordinator
+
+Functions:
+
+draft position descriptions
+prepare recruitment materials
+support candidate screening
+prepare structured interview questions
+coordinate candidate communication
+prepare onboarding plans
+maintain training matrices
+identify training gaps
+coordinate mandatory learning
+monitor certification and training expiry
+develop learning plans
+prepare induction materials
+track employee-development actions
+support succession and capability planning
+Workforce Compliance Specialist
+
+Role code:
+
+workforce_compliance_specialist
+
+Rename from:
+
+staff_compliance_officer
+
+Functions:
+
+review worker screening status
+verify required credentials
+monitor registration and certification expiry
+review employment compliance records
+maintain worker-compliance registers
+identify missing mandatory checks
+assess role-specific qualification requirements
+monitor onboarding-compliance completion
+review contractor compliance
+prepare audit evidence for workforce files
+escalate expired or invalid screening
+recommend temporary access restrictions
+coordinate with Compliance and Quality Manager
+coordinate with Talent and Learning Specialist
+
+This remains separate because worker screening and workforce credential compliance are significant NDIS operational risks.
+
+6. Marketing and Communications Workforce
+Marketing and Communications Manager
+
+Role code:
+
+marketing_communications_manager
+
+Absorb the former:
+
+Marketing Director
+Content Strategist
+Campaign Manager
+Brand Manager
+Social Media Specialist
+
+Functions:
+
+develop marketing strategy
+maintain brand positioning
+maintain brand guidelines
+plan campaigns
+create content strategies
+manage editorial calendars
+draft website content
+draft social-media content
+prepare email campaigns
+prepare stakeholder communications
+support community engagement
+analyse campaign performance
+monitor marketing channels
+prepare marketing reports
+research audience and market trends
+coordinate campaign execution
+protect ethical NDIS marketing standards
+identify potentially misleading claims
+collaborate with the Compliance and Quality Manager for regulated claims
+collaborate with the Knowledge and Documentation Specialist for major documents
+
+Do not create separate marketing employees at this stage.
+
+7. Shared Professional Services
+Knowledge and Documentation Specialist
+
+Role code:
+
+knowledge_documentation_specialist
+
+Rename from:
+
+document_specialist
+
+Functions:
+
+draft professional documents
+draft reports
+draft procedures
+produce templates
+review documents for completeness
+improve document structure
+convert complex content into plain English
+consolidate outputs from multiple employees
+maintain knowledge articles
+structure organisational information
+create reusable document templates
+support document lifecycle management
+identify missing or conflicting content
+apply document metadata and versioning
+prepare audit-ready documentation
+create summaries and briefing documents
+preserve approved organisational knowledge
+mark assumptions and missing information clearly
+collaborate with Policy and Governance Specialist on controlled policies
+
+This role does not independently determine policy requirements. It structures and produces documentation using approved subject-matter input.
+
+Remove the Standalone Research Specialist
+
+Remove:
+
+research_specialist
+
+Research must become a shared capability available to employees where appropriate.
+
+Examples:
+
+Compliance and Quality Manager researches NDIS requirements.
+Policy and Governance Specialist researches governance obligations.
+Marketing and Communications Manager researches markets and audiences.
+Financial Planning and Reporting Manager researches financial assumptions.
+Talent and Learning Specialist researches workforce-development options.
+
+Create or retain a shared capability such as:
+
+research
+
+Access must still be controlled by:
+
+pack entitlement
+capability level
+connector access
+execution channel
+worker-profile mapping
+approval requirements
+Specialist Consolidation Map
+
+Implement this canonical migration map:
+
+calendar_specialist
+communication_specialist
+    → executive_assistant
+
+compliance_officer
+quality_officer
+corrective_action_officer
+    → compliance_quality_manager
+
+incident_review_officer
+restrictive_practice_officer
+    → incident_safeguarding_specialist
+
+policy_officer
+    → policy_governance_specialist
+
+roster_coordinator
+    → workforce_rostering_coordinator
+
+workflow_coordinator
+asset_coordinator
+    → process_asset_coordinator
+
+accounts_officer
+invoice_specialist
+    → finance_officer
+
+payroll_officer
+    → payroll_workforce_cost_officer
+
+budget_analyst
+financial_reporting_officer
+    → financial_planning_reporting_manager
+
+hr_officer
+performance_officer
+    → people_culture_manager
+
+recruitment_officer
+learning_coordinator
+    → talent_learning_specialist
+
+staff_compliance_officer
+    → workforce_compliance_specialist
+
+marketing_director
+content_strategist
+campaign_manager
+brand_manager
+social_media_specialist
+    → marketing_communications_manager
+
+document_specialist
+    → knowledge_documentation_specialist
+
+research_specialist
+    → no employee replacement; distribute research capability
+
+Roles retained without consolidation:
+
+chief_of_staff
+executive_assistant
+operations_manager
+service_delivery_coordinator
+
+Where a retained role receives merged capabilities, update its mappings accordingly.
+
+Data Migration Requirements
+
+Do not delete historical specialist records.
+
+Implement safe lifecycle states:
+
+active
+deprecated
+archived
+
+For every retired role:
+
+mark it as deprecated
+set replacement_role_code where applicable
+record the consolidation reason
+prevent new assignments
+prevent new specialist runs
+preserve historical runs
+preserve audit records
+preserve prior DNA-version references
+preserve historical pack and capability mappings
+display the replacement role in platform administration
+
+The standalone Research Specialist should have:
+
+replacement_role_code = null
+replacement_type = capability_distribution
+
+Do not rewrite historical runs to appear as though the replacement employee performed them.
+
+Required Schema Changes
+
+Extend the specialist registry as required with fields equivalent to:
+
+status
+deprecated_at
+deprecated_by
+deprecation_reason
+replacement_role_code
+replacement_type
+department_code
+display_order
+catalogue_version
+
+Suggested replacement types:
+
+merged
+renamed
+capability_distribution
+none
+
+Create migrations that are:
+
+idempotent
+transaction-safe
+reversible where practical
+safe for existing specialist-run foreign keys
+safe for existing pack assignments
+safe for existing audit records
+Capability Remapping
+
+Capabilities from deprecated roles must be transferred to the approved replacement roles.
+
+Do not simply copy every capability without review.
+
+Each mapping must specify:
+
+role_code
+capability_code
+minimum_level
+maximum_level
+default_level
+requires_approval
+required_pack
+allowed_execution_channels
+allowed_connector_categories
+
+Important distinctions must remain enforced.
+
+Examples:
+
+The Finance Officer may review invoices but cannot release payments.
+The Payroll and Workforce Cost Officer may prepare payroll analysis but cannot transfer funds.
+The Incident and Safeguarding Specialist may identify a possible reportable incident but cannot submit the notification autonomously.
+The Workforce and Rostering Coordinator may recommend roster changes but cannot calculate final payroll.
+The Marketing and Communications Manager may draft public content but regulated or sensitive claims require approval.
+The Knowledge and Documentation Specialist may draft policies only when supplied with approved policy requirements or subject-matter input.
+
+Explicit denials must continue to win.
+
+Workforce Pack Remapping
+
+Update Workforce Pack membership to use the approved catalogue.
+
+Core Workforce
+
+Include:
+
+Chief of Staff
+Executive Assistant
+Knowledge and Documentation Specialist
+Compliance Workforce
+
+Include:
+
+Compliance and Quality Manager
+Incident and Safeguarding Specialist
+Policy and Governance Specialist
+Operations Workforce
+
+Include:
+
+Operations Manager
+Service Delivery Coordinator
+Workforce and Rostering Coordinator
+Process and Asset Coordinator
+Finance Workforce
+
+Include:
+
+Finance Officer
+Payroll and Workforce Cost Officer
+Financial Planning and Reporting Manager
+People and Culture Workforce
+
+Include:
+
+People and Culture Manager
+Talent and Learning Specialist
+Workforce Compliance Specialist
+Marketing Workforce
+
+Include:
+
+Marketing and Communications Manager
+
+Do not automatically change customer commercial terms.
+
+Where an organisation owns a pack containing deprecated specialists, it must receive the approved replacement specialists without additional charge.
+
+Record the entitlement migration.
+
+Existing Active DNA Profiles
+
+The system currently has active DNA v1.0.0 profiles for:
+
+Chief of Staff
+Compliance Officer
+Operations Manager
+Document Specialist
+
+Handle them as follows.
+
+Chief of Staff
+
+Retain existing role code and DNA version.
+
+Do not rewrite DNA during this sprint.
+
+Operations Manager
+
+Retain existing role code and DNA version.
+
+Do not rewrite DNA during this sprint.
+
+Compliance Officer
+
+Deprecate the old role only after creating:
+
+compliance_quality_manager
+
+Do not automatically claim the old Compliance Officer DNA is the final DNA of the new merged employee.
+
+The new role should remain:
+
+dna_status = pending_design
+
+until its approved identity and DNA are supplied.
+
+Preserve old DNA v1.0.0 for historical reproducibility.
+
+Document Specialist
+
+Rename to:
+
+knowledge_documentation_specialist
+
+Preserve the old DNA as a historical source version, but mark the new employee's DNA:
+
+dna_status = pending_design
+
+The broader new role requires an approved Employee File and DNA before activation.
+
+Availability Rules
+
+After migration:
+
+Chief of Staff may remain active.
+Operations Manager may remain active.
+All newly consolidated or materially expanded employees should be visible in the catalogue but marked DNA design pending.
+They must not process live specialist runs until approved DNA and Worker Profiles exist.
+Deprecated roles must not appear as available for new selection.
+Historical pages may still display deprecated roles with a clear badge.
+
+Use distinct statuses such as:
+
+available
+dna_pending
+coming_soon
+deprecated
+archived
+
+Do not label a role “Available” merely because its catalogue row exists.
+
+Customer Catalogue UI
+
+Update the specialist catalogue to show exactly 17 current employees.
+
+Each card should display:
+
+employee title
+department
+concise professional description
+included Workforce Pack
+activation status
+selected core functions
+approval requirements where relevant
+DNA design pending where applicable
+
+Remove deprecated specialists from the normal customer catalogue.
+
+Do not show 32 specialists.
+
+The catalogue heading must use:
+
+17 AI employees
+
+or:
+
+17 specialists
+
+Use “AI employee” in explanatory product copy, while retaining “specialist” where existing domain terminology requires it.
+
+Platform Console
+
+Allow platform owners to view:
+
+active employees
+pending-DNA employees
+deprecated roles
+replacement mappings
+capability migrations
+pack migrations
+affected organisations
+historical run counts
+migration status
+
+Add filters:
+
+Current workforce
+DNA pending
+Deprecated
+Archived
+
+Do not allow deprecated roles to be granted to an organisation.
+
+Routing and Dispatch
+
+Update Chief of Staff routing so it selects only:
+
+status = active
+
+and:
+
+dna_status = approved
+
+Employees with dna_pending, deprecated or archived status must never be dispatched.
+
+If no approved employee exists for required work, return a clear result such as:
+
+The appropriate NeedsOps employee has been identified, but that role is not yet activated.
+
+Do not silently route work to a deprecated role.
+
+Search and References
+
+Update search indexes, selectors, filters and references so:
+
+new titles are searchable
+old titles may resolve to their replacement
+historical records retain old titles
+current task creation uses only current roles
+conversation labels use current titles for new work
+reports distinguish historical and current roles
+
+Examples:
+
+A search for:
+
+Roster Coordinator
+
+may suggest:
+
+Workforce and Rostering Coordinator
+
+A search for:
+
+Social Media Specialist
+
+may suggest:
+
+Marketing and Communications Manager
+Tests
+
+Add tests covering:
+
+Catalogue
+exactly 17 current employees exist
+deprecated employees are excluded from the customer catalogue
+all approved titles and role codes are present
+Research Specialist is removed as an employee
+research remains a capability
+Knowledge and Documentation Specialist appears under its new name
+Migration
+historical runs retain old role references
+deprecated roles have correct replacements
+no historical audit data is deleted
+current organisation entitlements migrate correctly
+pack ownership is preserved
+migration is idempotent
+migration rolls back safely on failure
+Dispatch
+deprecated roles cannot be dispatched
+DNA-pending roles cannot be dispatched
+approved active roles can be dispatched
+aliases resolve to current roles
+missing approved role produces a clear unavailable response
+Capability boundaries
+Finance Officer cannot release payments
+Payroll and Workforce Cost Officer cannot access banking
+Incident and Safeguarding Specialist cannot submit regulator notifications without approval
+Knowledge and Documentation Specialist cannot invent policy requirements
+Marketing and Communications Manager requires approval for regulated claims
+Executive Assistant receives calendar and communication capabilities
+research capability is available only to mapped employees
+Packs
+Core Pack maps to three approved employees
+Compliance Pack maps to three approved employees
+Operations Pack maps to four approved employees
+Finance Pack maps to three approved employees
+People and Culture Pack maps to three approved employees
+Marketing Pack maps to one approved employee
+existing customers do not lose equivalent access
+UI
+customer catalogue shows 17 employees
+deprecated cards are absent from customer view
+Platform Console displays replacement mappings
+DNA-pending status is displayed correctly
+old role names redirect or suggest replacements where appropriate
+
+All existing tests must continue to pass.
+
+Documentation
+
+Create:
+
+docs/workforce/
+approved-workforce-catalogue-v1.md
+specialist-consolidation-map.md
+workforce-capability-boundaries.md
+dna-design-status.md
+
+approved-workforce-catalogue-v1.md must list the 17 employees, their departments, functions and Workforce Packs.
+
+specialist-consolidation-map.md must document all 32 previous roles and their final destination.
+
+Do not create final Employee Files or DNA documents during this sprint.
+
+Completion Criteria
+
+This implementation is complete only when:
+
+the current catalogue contains exactly 17 AI employees
+the former 32-role structure is no longer shown to customers
+all deprecated roles are preserved historically
+replacement mappings are recorded
+capabilities are remapped
+Workforce Packs are remapped
+customer entitlements are preserved
+Research Specialist is replaced by a shared capability
+Document Specialist is renamed Knowledge and Documentation Specialist
+narrow marketing roles are merged into Marketing and Communications Manager
+new or materially changed employees are marked DNA pending
+pending employees cannot be dispatched
+existing historical runs remain reproducible
+Platform Console exposes migration status
+migrations pass
+TypeScript passes
+API server starts cleanly
+all tests pass
+documentation is complete
+Final Required Report
+
+Provide:
+
+WORKFORCE CATALOGUE STREAMLINING REPORT
+
+Overall status:
+Complete / Incomplete
+
+Previous specialist count:
+32
+
+Current AI employee count:
+17
+
+Current workforce:
+-
+
+Roles retained:
+-
+
+Roles renamed:
+-
+
+Roles merged:
+-
+
+Roles deprecated:
+-
+
+Research capability distribution:
+-
+
+Capability remapping:
+-
+
+Workforce Pack remapping:
+-
+
+Organisation entitlement migration:
+-
+
+Historical record preservation:
+-
+
+DNA status changes:
+-
+
+Dispatch protections:
+-
+
+Database changes:
+-
+
+API changes:
+-
+
+Frontend changes:
+-
+
+Tests added:
+-
+
+Total tests passing:
+-
+
+Known issues:
+-
+
+Technical debt:
+-
+
+Ready to commence Employee File and DNA design:
+Yes / No
+
+Stop after producing the report.
+
+Do not generate Employee Files, identity, soul, personality, Worker Profiles or final DNA in this implementation.
+
+Do not begin OpenClaw integration.
