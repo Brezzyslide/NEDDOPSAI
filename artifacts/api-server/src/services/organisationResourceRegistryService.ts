@@ -15,14 +15,14 @@
  * connector implementations, and vendor-specific details are never exposed to
  * AI Employees — only abstract resource descriptors are returned.
  *
- * NOTE: ResourceDescriptor is also defined in @workspace/organisation-resource.
- * TODO: Consolidate with the canonical type once import resolution is stable
- *       across the full monorepo build graph.
+ * ResourceDescriptor is the canonical type from @workspace/organisation-resource.
+ * There is ONE definition across the platform — do not redeclare it locally.
  */
 
 import { randomUUID } from "crypto";
 import { db, orgResourcesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import type { ResourceDescriptor } from "@workspace/organisation-resource";
 
 // ─── Resource Entry (internal) ────────────────────────────────────────────────
 
@@ -54,29 +54,8 @@ export interface ResourceEntry {
   auditEnabled: boolean;
 }
 
-// ─── Resource Descriptor (employee-facing) ────────────────────────────────────
-
-/**
- * Abstract resource descriptor returned to AI Employees.
- *
- * NOTE: Never includes physicalLocation, URLs, credentials, or implementation
- * details. Employees receive only what they need to request access — not how
- * to reach the underlying system directly.
- *
- * NOTE: ResourceDescriptor is also defined in resourceManagerService.ts.
- * TODO: Consolidate both into a single import from @workspace/organisation-resource
- *       once that package is fully wired into the api-server dependency graph.
- */
-export interface ResourceDescriptor {
-  resourceId: string;
-  displayName: string;
-  resourceType: string;
-  connectorType: string;
-  sourceOfTruth: string;
-  classification: string;
-  availableOperations: string[];
-  employeePermissions: string[];
-}
+// ResourceDescriptor is imported from @workspace/organisation-resource above.
+// It is the canonical, platform-wide definition. Do not redeclare it here.
 
 // ─── Row mapper ───────────────────────────────────────────────────────────────
 
@@ -226,12 +205,19 @@ export async function getResourcesForEmployee(
  *
  * CRITICAL: physicalLocation is NEVER included in the descriptor.
  * Only abstract identifiers and permission summaries are returned.
+ *
+ * Casts resourceType, connectorType, classification, and permission arrays
+ * to their canonical string-literal-union types from @workspace/organisation-resource.
+ * Values are stored as valid string literals in the DB so casts are safe.
  */
 export function buildDescriptor(
   resource: ResourceEntry,
   employeeRoleCode: string,
 ): ResourceDescriptor {
-  const availableOperations: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type P = ResourceDescriptor["availableOperations"][number];
+
+  const availableOperations: P[] = [];
   if (
     resource.readPermissions.includes(employeeRoleCode) ||
     resource.permittedEmployees.includes(employeeRoleCode)
@@ -242,21 +228,23 @@ export function buildDescriptor(
     availableOperations.push("write");
   }
 
-  const employeePermissions: string[] = [];
+  const employeePermissions: P[] = [];
   if (resource.readPermissions.includes(employeeRoleCode)) employeePermissions.push("read");
   if (resource.writePermissions.includes(employeeRoleCode)) employeePermissions.push("write");
-  if (resource.permittedEmployees.includes(employeeRoleCode)) employeePermissions.push("access");
 
   return {
     resourceId: resource.resourceId,
     displayName: resource.displayName,
-    resourceType: resource.resourceType,
-    connectorType: resource.connectorType,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resourceType: resource.resourceType as ResourceDescriptor["resourceType"],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    connectorType: resource.connectorType as ResourceDescriptor["connectorType"],
     sourceOfTruth: resource.sourceOfTruth,
-    classification: resource.sensitivityClassification,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    classification: resource.sensitivityClassification as ResourceDescriptor["classification"],
     availableOperations,
     employeePermissions,
-    // physicalLocation is intentionally omitted
+    // physicalLocation is intentionally omitted — NEVER sent to employees
   };
 }
 

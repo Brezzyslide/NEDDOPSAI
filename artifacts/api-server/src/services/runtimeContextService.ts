@@ -13,6 +13,15 @@ import {
   listResources,
   buildDescriptor,
 } from "./organisationResourceRegistryService.js";
+import {
+  getConfiguration,
+  getDefaultConfiguration,
+  type OrgConfigurationData,
+} from "./organisationConfigurationService.js";
+import {
+  getOrgStructureSummary,
+  getEscalationPaths,
+} from "./organisationStructureService.js";
 import { getCurrentSpecialists } from "../lib/workforceRegistry.js";
 
 // ─── Context Types ────────────────────────────────────────────────────────────
@@ -65,6 +74,8 @@ export interface OrganisationRuntimeContext {
     departmentCount: number;
     teamCount: number;
     positionCount: number;
+    reportingLineCount: number;
+    activeDelegationCount: number;
     escalationPaths: Array<{ name: string; triggerType: string }>;
   };
 
@@ -101,16 +112,9 @@ export interface OrganisationRuntimeContext {
   };
 }
 
-// ─── OrgConfigurationData stub ────────────────────────────────────────────────
-// Defined here as a minimal stub. When organisationConfigurationService exists,
-// this should be replaced with: import type { OrgConfigurationData } from './organisationConfigurationService.js';
-
-export interface OrgConfigurationData {
-  businessHoursStart?: string;
-  businessHoursEnd?: string;
-  notificationPreference?: string;
-  [key: string]: unknown;
-}
+// OrgConfigurationData is imported from organisationConfigurationService.js above.
+// Re-export it so callers that import from this module continue to work.
+export type { OrgConfigurationData };
 
 // ─── Assembly ─────────────────────────────────────────────────────────────────
 
@@ -152,19 +156,17 @@ export async function assembleRuntimeContext(
     status: org.status,
   };
 
-  // ── 2. Configuration (stub — organisationConfigurationService pending) ─────
+  // ── 2. Organisation Configuration ─────────────────────────────────────────
   let configuration: OrgConfigurationData | null = null;
   try {
-    // When organisationConfigurationService is available:
-    // const { getConfiguration, getDefaultConfiguration } = await import('./organisationConfigurationService.js');
-    // configuration = await getConfiguration(organisationId) ?? await getDefaultConfiguration();
-    configuration = {
-      businessHoursStart: '09:00',
-      businessHoursEnd: '17:00',
-      notificationPreference: 'email',
-    };
+    configuration = await getConfiguration(organisationId) ?? getDefaultConfiguration();
   } catch {
-    configuration = null;
+    // Configuration unavailable — fall back to NDIS defaults
+    try {
+      configuration = getDefaultConfiguration();
+    } catch {
+      configuration = null;
+    }
   }
 
   // ── 3. Organisation Memory ─────────────────────────────────────────────────
@@ -195,24 +197,32 @@ export async function assembleRuntimeContext(
     }
   }
 
-  // ── 4. Organisation Structure (stub — organisationStructureService pending) ─
+  // ── 4. Organisation Structure ──────────────────────────────────────────────
   const structure = {
     departmentCount: 0,
     teamCount: 0,
     positionCount: 0,
+    reportingLineCount: 0,
+    activeDelegationCount: 0,
     escalationPaths: [] as Array<{ name: string; triggerType: string }>,
   };
 
   try {
-    // When organisationStructureService is available:
-    // const { getOrgStructureSummary, getEscalationPaths } = await import('./organisationStructureService.js');
-    // const summary = await getOrgStructureSummary(organisationId);
-    // structure.departmentCount = summary.departmentCount;
-    // structure.teamCount = summary.teamCount;
-    // structure.positionCount = summary.positionCount;
-    // structure.escalationPaths = await getEscalationPaths(organisationId);
+    const [summary, escalationPathList] = await Promise.all([
+      getOrgStructureSummary(organisationId),
+      getEscalationPaths(organisationId),
+    ]);
+    structure.departmentCount = summary.departmentCount;
+    structure.teamCount = summary.teamCount;
+    structure.positionCount = summary.positionCount;
+    structure.reportingLineCount = summary.reportingLineCount;
+    structure.activeDelegationCount = summary.activeDelegationCount;
+    structure.escalationPaths = escalationPathList.map((ep) => ({
+      name: ep.name,
+      triggerType: ep.triggerType,
+    }));
   } catch {
-    // Service not yet available
+    // Structure queries failed — leave zero defaults
   }
 
   // ── 5. Available Resources ─────────────────────────────────────────────────
@@ -312,7 +322,7 @@ export async function assembleRuntimeContext(
     businessHoursStart: configuration?.businessHoursStart ?? '09:00',
     businessHoursEnd: configuration?.businessHoursEnd ?? '17:00',
     timezone: org.timezone ?? 'Australia/Sydney',
-    notificationPreference: (configuration?.notificationPreference as string) ?? 'email',
+    notificationPreference: configuration?.notificationPreference ?? 'email',
   };
 
   return {
@@ -375,6 +385,8 @@ export function runtimeContextToPromptBlocks(context: OrganisationRuntimeContext
     `Departments: ${context.structure.departmentCount}`,
     `Teams: ${context.structure.teamCount}`,
     `Positions: ${context.structure.positionCount}`,
+    `Reporting Lines: ${context.structure.reportingLineCount}`,
+    `Active Delegations: ${context.structure.activeDelegationCount}`,
     ...(context.structure.escalationPaths.length > 0
       ? [
           'Escalation Paths:',

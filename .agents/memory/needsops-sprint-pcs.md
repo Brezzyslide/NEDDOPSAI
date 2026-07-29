@@ -43,6 +43,20 @@ The service has commented-out dynamic imports for both. `assembleRuntimeContext`
 
 **How to apply:** When wiring these in a future sprint, uncomment the dynamic imports in `assembleRuntimeContext` (around line 198–230 of `runtimeContextService.ts`).
 
+### runtimeContextService.ts — now fully wired (PCS Close-Out)
+`assembleRuntimeContext` now calls the real `getConfiguration`, `getOrgStructureSummary`, and `getEscalationPaths`. The stub `OrgConfigurationData` interface was removed; the canonical one is imported from `organisationConfigurationService.ts` and re-exported. `structure` type now includes `reportingLineCount` and `activeDelegationCount`.
+
+### ResourceDescriptor — single canonical definition
+Removed local `ResourceDescriptor` from `organisationResourceRegistryService.ts`. Both that service and `resourceManagerService.ts` now import it from `@workspace/organisation-resource`. `buildDescriptor` casts string DB values to typed enum fields via `as ResourceDescriptor["resourceType"]` etc. `"access"` permission removed (not a valid `ResourcePermission`).
+
+### getOrgStructureSummary — extended in PCS Close-Out
+Now returns `reportingLineCount` and `activeDelegationCount` in addition to dept/team/position/escalation counts. The Promise.all fetches 6 tables simultaneously (orgDepartments, orgTeams, orgPositions, orgEscalationPaths, orgReportingLines, orgDelegatedAuthority). All scoped by `organizationId`.
+
+### drizzle-orm mock: use importOriginal for services with real synchronous functions
+When mocking a service module that has both sync (non-DB) and async (DB) functions, use `importOriginal` and spread `...actual` — then override only the async DB functions. Otherwise sync functions like `buildDescriptor` and `hasPermission` become mocks that return wrong values.
+
+**Why:** Tests 41, 43, 49 in the close-out suite failed because `buildDescriptor` was mocked to always return "policies" descriptor — breaking classification and permission tests that pass different entries.
+
 ### Test counts
 - Before PCS: 1164 tests
-- After PCS: 1254 tests (+90 new in `sprint-pcs-platform-completion.test.ts`)
+- After PCS close-out: 1339 tests (+85 new in `sprint-pcs-closeout.test.ts`)

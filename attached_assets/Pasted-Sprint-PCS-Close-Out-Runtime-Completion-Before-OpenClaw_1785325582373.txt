@@ -1,0 +1,194 @@
+Sprint PCS Close-Out – Runtime Completion Before OpenClaw Integration
+
+The Platform Completion Sprint has produced an excellent foundation. Before we begin integrating OpenClaw, complete the remaining implementation tasks so the Browser Connector can be swapped from a mock implementation to a production implementation with no architectural changes.
+
+This is the final task for today.
+
+⸻
+
+Objective
+
+Finish the remaining runtime wiring and eliminate the final architectural gaps before tomorrow’s OpenClaw integration.
+
+This is not an OpenClaw sprint.
+
+Do not begin browser automation.
+
+Do not implement Desktop Agent functionality.
+
+Do not modify the execution architecture.
+
+⸻
+
+Task 1 — Complete Runtime Context Wiring
+
+The runtime context is currently partially assembled.
+
+Complete the implementation by wiring in:
+
+* Organisation Structure
+* Organisation Configuration
+
+Replace the deferred commented dynamic imports with the production implementation.
+
+The assembled runtime context should include:
+
+* Organisation Identity
+* Organisation Configuration
+* Organisation Structure
+* Organisation Memory
+* Organisation Resources
+* Active Workforce
+* Runtime State
+* Operational Preferences
+
+The Runtime Context must become the single object supplied to AI Employees during execution.
+
+⸻
+
+Task 2 — Verify Runtime Context
+
+Add tests proving the Runtime Context correctly contains:
+
+* Organisation terminology
+* Communication preferences
+* Writing style
+* Timezone
+* Business hours
+* Approval thresholds
+* Department hierarchy
+* Reporting lines
+* Delegated authority
+* Escalation configuration
+* Resource registry
+* Workforce summary
+
+Ensure all tests pass.
+
+⸻
+
+Task 3 — Consolidate ResourceDescriptor
+
+Remove duplicate ResourceDescriptor definitions.
+
+Create a single canonical definition within the shared organisation-resource package.
+
+Update all services to reference the shared type.
+
+There should only be one ResourceDescriptor definition across the platform.
+
+⸻
+
+Task 4 — Verify Resource Registry
+
+Confirm:
+
+* No in-memory registry remains.
+* All Resource Registry operations use persistent storage.
+* All Resource Manager operations use asynchronous registry calls.
+* Resource lookup behaviour remains unchanged.
+
+⸻
+
+Task 5 — Freeze Browser Connector Contract
+
+The Browser Connector interface must now be treated as stable.
+
+Verify that MockBrowserConnector fully implements the production interface.
+
+The production OpenClaw connector must be able to replace MockBrowserConnector without requiring any changes to:
+
+* Organisation Runtime
+* Resource Manager
+* Runtime Context
+* AI Employees
+* Specialist Output Contract
+
+Only dependency injection should change.
+
+⸻
+
+Task 6 — Verify Tenant Isolation
+
+Perform a tenancy audit across all new tables.
+
+Confirm every query is constrained by organisationId.
+
+This includes:
+
+* Organisation Structure
+* Organisation Configuration
+* Resource Registry
+* Execution Graph
+* Execution History
+
+Verify there is no possibility of cross-organisation access.
+
+Provide a short tenancy verification summary.
+
+⸻
+
+Task 7 — Interface Verification
+
+Verify the execution pipeline remains:
+
+User
+
+↓
+
+Chief of Staff
+
+↓
+
+Organisation Runtime
+
+↓
+
+Runtime Context
+
+↓
+
+Execution Intent
+
+↓
+
+Resource Manager
+
+↓
+
+Browser Connector Interface
+
+↓
+
+MockBrowserConnector
+
+No architectural changes should be required when MockBrowserConnector is replaced by OpenClawBrowserConnector.
+
+⸻
+
+Deliverables
+
+Provide:
+
+1. Runtime Context completion summary.
+2. Browser Connector interface specification.
+3. ResourceDescriptor consolidation summary.
+4. Tenant isolation verification.
+5. Test results.
+6. Final execution flow diagram.
+7. Confirmation that the platform is ready for OpenClaw integration.
+
+⸻
+
+Success Criteria
+
+The sprint is complete when:
+
+* Runtime Context is fully wired.
+* Runtime Context tests pass.
+* ResourceDescriptor duplication is eliminated.
+* Resource Registry is fully persistent.
+* Browser Connector interface is frozen.
+* Tenant isolation is verified.
+* All tests pass.
+* No architectural refactoring is required before integrating OpenClaw.

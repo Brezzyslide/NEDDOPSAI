@@ -7,16 +7,15 @@
  * AI Employees never receive physical storage locations, URLs, or connector
  * implementation details — only abstract ResourceDescriptors.
  *
- * TODO (Technical Debt): ResourceRequest and ResourceResolutionResult defined
- * below duplicate canonical types in @workspace/organisation-resource (ResourceRequest
- * and ResourceResponse). Once @workspace/organisation-resource is fully wired into
- * the api-server dependency graph, replace these inline definitions with:
- *   import type { ResourceRequest, ResourceResponse } from '@workspace/organisation-resource';
- * The local types are kept intentionally to avoid import resolution failures before
- * the package is built.
+ * ResourceDescriptor is the canonical type from @workspace/organisation-resource.
+ *
+ * NOTE: ResourceRequest and ResourceResolutionResult are defined locally because
+ * they extend the platform request/response pattern with service-layer ergonomics.
+ * They are structurally compatible with the canonical ResourceRequest and
+ * ResourceResponse from @workspace/organisation-resource.
  */
 
-import type { ResourceDescriptor } from "./organisationResourceRegistryService.js";
+import type { ResourceDescriptor } from "@workspace/organisation-resource";
 import {
   getResource,
   getResourcesForEmployee,

@@ -469,35 +469,53 @@ export async function getOrgStructureSummary(organizationId: string): Promise<{
   teamCount: number;
   positionCount: number;
   escalationPathCount: number;
+  reportingLineCount: number;
+  activeDelegationCount: number;
 }> {
-  const [departments, teams, positions, escalationPaths] = await Promise.all([
-    db
-      .select()
-      .from(orgDepartmentsTable)
-      .where(eq(orgDepartmentsTable.organizationId, organizationId)),
-    db
-      .select()
-      .from(orgTeamsTable)
-      .where(eq(orgTeamsTable.organizationId, organizationId)),
-    db
-      .select()
-      .from(orgPositionsTable)
-      .where(eq(orgPositionsTable.organizationId, organizationId)),
-    db
-      .select()
-      .from(orgEscalationPathsTable)
-      .where(
-        and(
-          eq(orgEscalationPathsTable.organizationId, organizationId),
-          eq(orgEscalationPathsTable.isActive, true),
+  const [departments, teams, positions, escalationPaths, reportingLines, delegations] =
+    await Promise.all([
+      db
+        .select()
+        .from(orgDepartmentsTable)
+        .where(eq(orgDepartmentsTable.organizationId, organizationId)),
+      db
+        .select()
+        .from(orgTeamsTable)
+        .where(eq(orgTeamsTable.organizationId, organizationId)),
+      db
+        .select()
+        .from(orgPositionsTable)
+        .where(eq(orgPositionsTable.organizationId, organizationId)),
+      db
+        .select()
+        .from(orgEscalationPathsTable)
+        .where(
+          and(
+            eq(orgEscalationPathsTable.organizationId, organizationId),
+            eq(orgEscalationPathsTable.isActive, true),
+          ),
         ),
-      ),
-  ]);
+      db
+        .select()
+        .from(orgReportingLinesTable)
+        .where(eq(orgReportingLinesTable.organizationId, organizationId)),
+      db
+        .select()
+        .from(orgDelegatedAuthorityTable)
+        .where(
+          and(
+            eq(orgDelegatedAuthorityTable.organizationId, organizationId),
+            eq(orgDelegatedAuthorityTable.status, "active"),
+          ),
+        ),
+    ]);
 
   return {
     departmentCount: departments.length,
     teamCount: teams.length,
     positionCount: positions.length,
     escalationPathCount: escalationPaths.length,
+    reportingLineCount: reportingLines.length,
+    activeDelegationCount: delegations.length,
   };
 }
