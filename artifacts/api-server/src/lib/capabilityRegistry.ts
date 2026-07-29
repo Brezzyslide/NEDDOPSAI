@@ -44,7 +44,10 @@ export type CapabilityCategory =
   | "documents"
   | "research"
   | "calendar"
-  | "administration";
+  | "administration"
+  | "meeting"
+  | "actions"
+  | "contacts";
 
 export type CapabilityLevel =
   | "general_information"
@@ -151,6 +154,183 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
     requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
     defaultRiskLevel: "low", defaultApprovalRequired: false,
     informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── CALENDAR (EA-specific) ────────────────────────────────────────────────
+  {
+    code: "calendar.read",
+    displayName: "Read Calendar",
+    description: "Read and review calendar events, availability and scheduling information",
+    category: "calendar", packCode: null,
+    eligibleRoles: ["executive_assistant", "chief_of_staff"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: ["calendar"],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "calendar.propose_times",
+    displayName: "Propose Meeting Times",
+    description: "Identify and propose available meeting times based on attendee calendars",
+    category: "calendar", packCode: null,
+    eligibleRoles: ["executive_assistant", "chief_of_staff"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: ["calendar"],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── COMMUNICATIONS (EA-specific) ──────────────────────────────────────────
+  {
+    code: "communications.summarise",
+    displayName: "Summarise Communications",
+    description: "Summarise correspondence threads, identify commitments and extract key information",
+    category: "communications", packCode: null,
+    eligibleRoles: ["executive_assistant", "chief_of_staff"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "communications.send",
+    displayName: "Send Communications",
+    description: "Send approved communications via email or messaging connectors",
+    category: "communications", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: ["email_connector"], requiredConnectorCategories: ["email"],
+    defaultRiskLevel: "medium", defaultApprovalRequired: true,
+    informationAllowed: false, analysisAllowed: false, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── MEETING (EA-specific) ─────────────────────────────────────────────────
+  {
+    code: "meeting.prepare_agenda",
+    displayName: "Prepare Meeting Agenda",
+    description: "Prepare structured meeting agendas with topics, owners and time allocations",
+    category: "meeting", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "meeting.prepare_brief",
+    displayName: "Prepare Meeting Brief",
+    description: "Compile background information and briefing packs for scheduled meetings",
+    category: "meeting", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "meeting.capture_notes",
+    displayName: "Capture Meeting Notes",
+    description: "Record structured meeting notes from provided conversation or transcript context",
+    category: "meeting", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "meeting.extract_actions",
+    displayName: "Extract Meeting Actions",
+    description: "Extract action items, owners and due dates from meeting notes or transcripts",
+    category: "meeting", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "meeting.prepare_follow_up",
+    displayName: "Prepare Meeting Follow-up",
+    description: "Prepare post-meeting summaries and draft follow-up communications",
+    category: "meeting", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── ACTIONS (EA-specific) ─────────────────────────────────────────────────
+  {
+    code: "actions.create",
+    displayName: "Create Action Items",
+    description: "Create and register action items with owner, due date and description",
+    category: "actions", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "actions.track",
+    displayName: "Track Action Items",
+    description: "Monitor and report on outstanding action items and their completion status",
+    category: "actions", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "actions.escalate",
+    displayName: "Escalate Overdue Actions",
+    description: "Identify and escalate overdue or blocked action items to the appropriate person",
+    category: "actions", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── DOCUMENTS (EA-specific) ───────────────────────────────────────────────
+  {
+    code: "documents.read",
+    displayName: "Read Documents",
+    description: "Read and retrieve authorised documents from connected document storage",
+    category: "documents", packCode: null,
+    eligibleRoles: ["executive_assistant", "chief_of_staff"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: ["document_storage"],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+  {
+    code: "documents.organise",
+    displayName: "Organise Documents",
+    description: "Organise and file documents in authorised document storage locations",
+    category: "documents", packCode: null,
+    eligibleRoles: ["executive_assistant"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: ["document_storage"],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
+    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+  },
+
+  // ── CONTACTS (EA-specific) ────────────────────────────────────────────────
+  {
+    code: "contacts.lookup",
+    displayName: "Look Up Contacts",
+    description: "Look up contact details from authorised contact directories",
+    category: "contacts", packCode: null,
+    eligibleRoles: ["executive_assistant", "chief_of_staff"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: ["contacts"],
+    defaultRiskLevel: "low", defaultApprovalRequired: false,
+    informationAllowed: true, analysisAllowed: false, executionAllowed: false,
     status: "active", version: "1.0", effectiveDate: "2025-01-01",
   },
 

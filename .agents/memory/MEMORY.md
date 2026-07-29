@@ -11,3 +11,4 @@
 - [NeedsOps Sprint 10 Digital Workforce Intelligence](needsops-sprint10.md) — lib/workforce-dna package, 4 DNA profiles v1.0.0, version tracking columns, execution_intents, auto-dispatch on approval, queue worker, conflict LLM eval, 796 tests, REQUIRED_RLS_TABLES=35
 - [NeedsOps Sprint 11 Workforce Catalogue Streamlining](needsops-sprint11.md) — 32→17 AI employees, dna_pending/archived enum added, department_code/dna_status columns, 869 tests, ACTIVE_SPECIALISTS now only chief_of_staff+operations_manager
 - [NeedsOps Sprint 12 Chief of Staff Employee File](needsops-sprint12.md) — Constitution v1.0, Employee File architecture, CoS 12-section file, DNA v2.0.0 draft, Runtime Manifest, 955 tests
+- [NeedsOps Sprint 13 Executive Assistant Employee File](needsops-sprint13.md) — EA 12-section file, DNA v1.0.0 draft, oath export pattern, validateEmployeeFile patch for activeVersion="none", 1039 tests

@@ -1,9 +1,10 @@
-# DNA Design Status — Sprint 11 Workforce
+# DNA Design Status — Sprint 13 Workforce
 
-**As of:** Sprint 11  
+**As of:** Sprint 13  
 **Total Active Employees:** 17  
 **DNA Approved:** 2  
-**DNA Pending Design:** 15
+**DNA Draft (awaiting approval):** 1  
+**DNA Pending Design:** 14
 
 This document tracks the DNA design status for every active employee in the NeedsOps AI+ v2 workforce catalogue. It also notes what DNA design work is required for pending employees, and which historical DNA versions (if any) can be used as a starting point.
 
@@ -14,7 +15,7 @@ This document tracks the DNA design status for every active employee in the Need
 | Employee Code | Display Name | DNA Status | Historical Reference |
 |--------------|-------------|------------|---------------------|
 | `chief_of_staff` | Chief of Staff | ✅ Approved (v1.0.0) | — |
-| `executive_assistant` | Executive Assistant | ⏳ Pending Design | — |
+| `executive_assistant` | AI Executive Assistant | 📝 Draft (v1.0.0) — Sprint 13 | — |
 | `compliance_quality_manager` | Compliance and Quality Manager | ⏳ Pending Design | compliance_officer DNA v1.0.0 (starting point) |
 | `incident_safeguarding_specialist` | Incident and Safeguarding Specialist | ⏳ Pending Design | — |
 | `policy_governance_specialist` | Policy and Governance Specialist | ⏳ Pending Design | — |
@@ -30,6 +31,18 @@ This document tracks the DNA design status for every active employee in the Need
 | `workforce_compliance_specialist` | Workforce Compliance Specialist | ⏳ Pending Design | — |
 | `marketing_communications_manager` | Marketing and Communications Manager | ⏳ Pending Design | — |
 | `knowledge_documentation_specialist` | Knowledge and Documentation Specialist | ⏳ Pending Design | document_specialist DNA v1.0.0 (starting point) |
+
+---
+
+## Draft DNA Profiles — Design Complete, Awaiting Approval
+
+### Executive Assistant (`executive_assistant`)
+
+- **DNA Version:** 1.0.0  
+- **Status:** 📝 Draft — awaiting human review and explicit approval  
+- **Sprint:** 13  
+- **Capabilities:** Calendar coordination, communications drafting and sending, meeting preparation and briefing, action register management, correspondence analysis, executive briefing preparation  
+- **DNA Notes:** Full DNA profile with 10-step Executive Support Coordination Methodology (EA.1 Intent through EA.10 Follow-through), 10 competencies (Authority/Expert/Practitioner levels), high-risk communication approval gate (10 categories), confidence thresholds (minimumFindingConfidence: 0.60, minimumRunConfidence: 0.60, blockThreshold: 0.35), 8 output types, and full execution intent schema. Absorbs `calendar_specialist` and `communication_specialist`. Not available for execution until approval record is created.
 
 ---
 
@@ -52,20 +65,6 @@ This document tracks the DNA design status for every active employee in the Need
 ---
 
 ## Pending DNA Profiles — Design Work Required
-
-### Executive Assistant (`executive_assistant`)
-
-- **DNA Status:** ⏳ Pending Design  
-- **Historical Reference:** None  
-- **Design Work Required:**
-  - Define identity and domain: executive support for NDIS provider leadership
-  - Specify reasoning methodology for calendar management and scheduling
-  - Define hard stops: cannot send external communications without human review, cannot make commitments on behalf of leadership
-  - Draft evidence standards for communications drafting
-  - Define security constraints: access to calendar data, communications channels
-  - Expand scope to cover absorbed Calendar Specialist and Communication Specialist capabilities
-
----
 
 ### Compliance and Quality Manager (`compliance_quality_manager`)
 
@@ -275,7 +274,7 @@ Based on business impact and activation urgency:
 
 | Priority | Employee Code | Rationale |
 |----------|--------------|-----------|
-| 1 | `executive_assistant` | Core pack — needed for every organisation |
+| 1 | `executive_assistant` | Core pack — needed for every organisation — **DNA designed Sprint 13, awaiting approval** |
 | 2 | `compliance_quality_manager` | High-demand compliance capability, reference DNA available |
 | 3 | `knowledge_documentation_specialist` | Core pack — reference DNA available |
 | 4 | `incident_safeguarding_specialist` | Critical safety function, high regulatory risk |

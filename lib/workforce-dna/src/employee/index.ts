@@ -261,8 +261,9 @@ export function validateEmployeeFile(file: EmployeeFile): string[] {
     errors.push("authority.mayNot must not be empty");
   }
 
-  // DNA v1 must be published
-  if (file.professionalDNA.v1.status !== "published") {
+  // DNA v1 must be published, unless this employee has no active version yet
+  // (new employees with draft-only DNA have activeVersion === "none")
+  if (file.professionalDNA.activeVersion !== "none" && file.professionalDNA.v1.status !== "published") {
     errors.push("professionalDNA.v1.status must be 'published'");
   }
 

@@ -27,6 +27,9 @@ import { buildEmployeeSystemInstruction } from "./employee/index.js";
 import {
   CHIEF_OF_STAFF_EMPLOYEE_FILE,
 } from "./employees/chief-of-staff/index.js";
+import {
+  EXECUTIVE_ASSISTANT_EMPLOYEE_FILE,
+} from "./employees/executive-assistant/index.js";
 
 // ─── Active DNA registry ──────────────────────────────────────────────────────
 
@@ -50,6 +53,7 @@ const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
  */
 export const EMPLOYEE_FILE_REGISTRY: ReadonlyMap<string, EmployeeFile> = new Map([
   ["chief_of_staff", CHIEF_OF_STAFF_EMPLOYEE_FILE],
+  ["executive_assistant", EXECUTIVE_ASSISTANT_EMPLOYEE_FILE],
 ]);
 
 // ─── Public API — DNA ─────────────────────────────────────────────────────────
@@ -247,3 +251,4 @@ export function buildSystemInstructionForEmployee(roleCode: string): string {
 // ─── Convenience re-exports ────────────────────────────────────────────────────
 
 export { CHIEF_OF_STAFF_EMPLOYEE_FILE } from "./employees/chief-of-staff/index.js";
+export { EXECUTIVE_ASSISTANT_EMPLOYEE_FILE } from "./employees/executive-assistant/index.js";

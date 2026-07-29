@@ -1,9 +1,9 @@
-# Approved Workforce Catalogue — v1 (Sprint 11)
+# Approved Workforce Catalogue — v1 (Sprint 13)
 
-**Effective:** Sprint 11  
+**Effective:** Sprint 13  
 **Status:** Active  
 **Total Active Employees:** 17  
-**Catalogue Version:** 2
+**Catalogue Version:** 3
 
 This document lists all 17 approved AI employees in the NeedsOps AI+ workforce following the Sprint 11 consolidation from 32 to 17 specialist roles.
 
@@ -14,11 +14,26 @@ This document lists all 17 approved AI employees in the NeedsOps AI+ workforce f
 | Code | Display Name | Workforce Pack | DNA Status | Activation |
 |------|-------------|----------------|------------|------------|
 | `chief_of_staff` | Chief of Staff | Core | ✅ Approved | Available |
-| `executive_assistant` | Executive Assistant | Core | ⏳ Pending Design | Available |
+| `executive_assistant` | AI Executive Assistant | Core | 📝 Draft v1.0.0 | employee_file_draft |
 
 **Primary Functions:**
 - **Chief of Staff:** Central orchestrator. Every task enters through this role. Analyses intent, routes work, coordinates the workforce. No approval required for routing decisions.
-- **Executive Assistant:** Absorbs calendar management, communications drafting, and scheduling. Consolidates former Calendar Specialist and Communication Specialist capabilities.
+- **AI Executive Assistant:** Protects executive time, commitments, and professional relationships. Manages calendars, coordinates meetings, drafts professional communications, maintains action registers. Absorbs `calendar_specialist` and `communication_specialist`. DNA v1.0.0 designed Sprint 13 — awaiting human review and approval before execution dispatch is available.
+
+**Executive Assistant Detail:**
+
+| Field | Value |
+|---|---|
+| **Title** | AI Executive Assistant |
+| **Dept** | Executive |
+| **Pack** | Core |
+| **Auth Level** | Intermediate |
+| **Role Level** | Specialist |
+| **DNA** | v1.0.0 (draft — awaiting approval) |
+| **Status** | `employee_file_draft` |
+| **Absorbs** | `calendar_specialist`, `communication_specialist` |
+| **Sprint** | 13 |
+| **Employee File** | [`docs/workforce/executive-assistant/employee-file.md`](./executive-assistant/employee-file.md) |
 
 ---
 
@@ -111,7 +126,8 @@ This document lists all 17 approved AI employees in the NeedsOps AI+ workforce f
 | DNA Status | Count | Employees |
 |------------|-------|-----------|
 | ✅ Approved | 2 | `chief_of_staff`, `operations_manager` |
-| ⏳ Pending Design | 15 | All others |
+| 📝 Draft (awaiting approval) | 1 | `executive_assistant` |
+| ⏳ Pending Design | 14 | All others |
 
 ---
 
@@ -128,4 +144,4 @@ This document lists all 17 approved AI employees in the NeedsOps AI+ workforce f
 
 ---
 
-*Catalogue Version 2. Supersedes Catalogue Version 1 (32-role catalogue). All v1 entries are preserved with `executionStatus: "deprecated"`.*
+*Catalogue Version 3. Updated Sprint 13: executive_assistant Employee File and DNA v1.0.0 (draft) created; calendar_specialist and communication_specialist absorbed. Supersedes Catalogue Version 2.*

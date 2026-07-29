@@ -3,6 +3,7 @@
  *
  * Sprint 10: Digital Workforce Intelligence & Execution
  * Sprint 12: Employee File Architecture & Constitution
+ * Sprint 13: Executive Assistant Employee File
  *
  * This package contains the intellectual property core of NeedsOps AI+.
  * Every specialist's professional identity, reasoning methodology,
@@ -130,6 +131,8 @@ export {
   getEmployeeFile,
   buildSystemInstructionForEmployee,
   CHIEF_OF_STAFF_EMPLOYEE_FILE,
+  // Sprint 13 additions
+  EXECUTIVE_ASSISTANT_EMPLOYEE_FILE,
 } from "./registry.js";
 
 // ─── Profiles (direct access — prefer registry for runtime use) ────────────────
@@ -138,3 +141,7 @@ export { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
 export { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
+export { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";
+
+// ─── Runtime Manifests ─────────────────────────────────────────────────────────
+export { EXECUTIVE_ASSISTANT_RUNTIME_MANIFEST } from "./employees/executive-assistant/index.js";
