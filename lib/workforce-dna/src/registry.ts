@@ -1,8 +1,13 @@
 /**
- * DNA Registry — Sprint 10
+ * DNA Registry — Sprint 10 / Sprint 12
  *
  * Central registry of all published Professional DNA profiles.
  * Access DNA by role code. Returns null for unactivated specialists.
+ *
+ * Sprint 12 additions:
+ * - Employee File registry (EMPLOYEE_FILE_REGISTRY)
+ * - getEmployeeFile(roleCode): EmployeeFile | null
+ * - buildSystemInstructionForEmployee(roleCode): string
  *
  * Adding a new specialist requires:
  *  1. Creating a profile file in src/profiles/
@@ -16,6 +21,12 @@ import { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
 import { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
 import { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 import { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
+
+import type { EmployeeFile } from "./employee/types.js";
+import { buildEmployeeSystemInstruction } from "./employee/index.js";
+import {
+  CHIEF_OF_STAFF_EMPLOYEE_FILE,
+} from "./employees/chief-of-staff/index.js";
 
 // ─── Active DNA registry ──────────────────────────────────────────────────────
 
@@ -31,7 +42,17 @@ const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
   ["document_specialist", DOCUMENT_SPECIALIST_DNA],
 ]);
 
-// ─── Public API ───────────────────────────────────────────────────────────────
+// ─── Employee File registry ───────────────────────────────────────────────────
+
+/**
+ * All Employee Files, keyed by workforce role code.
+ * Only roles with a complete Sprint 12 Employee File appear here.
+ */
+export const EMPLOYEE_FILE_REGISTRY: ReadonlyMap<string, EmployeeFile> = new Map([
+  ["chief_of_staff", CHIEF_OF_STAFF_EMPLOYEE_FILE],
+]);
+
+// ─── Public API — DNA ─────────────────────────────────────────────────────────
 
 /**
  * Returns the active DNA profile for a workforce role code.
@@ -195,3 +216,34 @@ export function getDNASummary(): Array<{
     isActive: p.currentVersion.isActive,
   }));
 }
+
+// ─── Public API — Employee File ────────────────────────────────────────────────
+
+/**
+ * Returns the Employee File for a workforce role code.
+ * Returns null if the role does not yet have an Employee File.
+ */
+export function getEmployeeFile(roleCode: string): EmployeeFile | null {
+  return EMPLOYEE_FILE_REGISTRY.get(roleCode) ?? null;
+}
+
+/**
+ * Builds a system instruction for an AI Employee.
+ *
+ * If the role has an Employee File, uses the full Employee File architecture
+ * (Constitution preamble + soul + mission + authority + DNA reasoning methodology).
+ *
+ * Falls back to the legacy DNA-only system instruction for roles without
+ * an Employee File.
+ */
+export function buildSystemInstructionForEmployee(roleCode: string): string {
+  const employeeFile = getEmployeeFile(roleCode);
+  if (employeeFile) {
+    return buildEmployeeSystemInstruction(employeeFile, null);
+  }
+  return buildDNASystemInstruction(roleCode);
+}
+
+// ─── Convenience re-exports ────────────────────────────────────────────────────
+
+export { CHIEF_OF_STAFF_EMPLOYEE_FILE } from "./employees/chief-of-staff/index.js";

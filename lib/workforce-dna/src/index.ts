@@ -2,22 +2,35 @@
  * @workspace/workforce-dna — Professional DNA Framework
  *
  * Sprint 10: Digital Workforce Intelligence & Execution
+ * Sprint 12: Employee File Architecture & Constitution
  *
  * This package contains the intellectual property core of NeedsOps AI+.
  * Every specialist's professional identity, reasoning methodology,
  * evidence standards, and operational boundaries are defined here.
  *
  * Architecture position:
- *   Conversation → Chief of Staff → Professional DNA → Worker Profile
- *       → Specialist Run → Professional Reasoning → Work Package
- *       → Execution Queue → (OpenClaw later)
+ *   NeedsOps Constitution
+ *           ↓
+ *   Employee File
+ *           ↓
+ *   Professional DNA
+ *           ↓
+ *   Worker Profile
+ *           ↓
+ *   Runtime Manifest
+ *           ↓
+ *   Execution Runtime
  *
  * Usage:
  *   import { getDNAProfile, buildDNASystemInstruction } from "@workspace/workforce-dna";
+ *   import { CHIEF_OF_STAFF_EMPLOYEE_FILE, getEmployeeFile } from "@workspace/workforce-dna";
  *
  *   const profile = getDNAProfile("compliance_officer");
  *   const systemInstruction = buildDNASystemInstruction("compliance_officer");
  *   const versions = captureSpecialistRunVersions("compliance_officer", "gpt-4o");
+ *
+ *   const file = getEmployeeFile("chief_of_staff");
+ *   const fullInstruction = buildSystemInstructionForEmployee("chief_of_staff");
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,6 +68,51 @@ export type {
 
 export { captureRunVersions } from "./types.js";
 
+// ─── Constitution ─────────────────────────────────────────────────────────────
+export {
+  NEEDSOPS_CONSTITUTION,
+  CONSTITUTION_VERSION,
+  CONSTITUTION_PUBLISHED_AT,
+  CONSTITUTION_PUBLISHED_BY,
+  getConstitutionStatements,
+  getConstitutionalPrinciple,
+  buildConstitutionPreamble,
+  validateConstitutionInheritance,
+} from "./constitution.js";
+export type { ConstitutionalPrinciple } from "./constitution.js";
+
+// ─── Employee File types ──────────────────────────────────────────────────────
+export type {
+  EmployeeIdentity,
+  EmployeeSoul,
+  EmployeeMission,
+  EmployeeValues,
+  EmployeePersonality,
+  EmployeeAuthority,
+  EmployeeDecisionPhilosophy,
+  EmployeeCommunicationStyle,
+  EmployeeResponsibilities,
+  EmployeeProfessionalDNA,
+  EmployeeDNAVersion,
+  DNAVersionStatus,
+  ExpandedWorkerProfile,
+  RuntimeManifest,
+  RuntimeTaskContext,
+  EmployeeFile,
+  EmploymentType,
+  RoleLevel,
+  AuthorityLevel,
+} from "./employee/types.js";
+
+// ─── Employee File utilities ──────────────────────────────────────────────────
+export {
+  compileRuntimeManifest,
+  buildEmployeeSystemInstruction,
+  validateEmployeeFile,
+  getRuntimeManifestSections,
+  getSensitiveEmployeeFileSections,
+} from "./employee/index.js";
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 export {
   getDNAProfile,
@@ -67,6 +125,11 @@ export {
   buildDNASystemInstruction,
   getActivatedRoleCodes,
   getDNASummary,
+  // Sprint 12 additions
+  EMPLOYEE_FILE_REGISTRY,
+  getEmployeeFile,
+  buildSystemInstructionForEmployee,
+  CHIEF_OF_STAFF_EMPLOYEE_FILE,
 } from "./registry.js";
 
 // ─── Profiles (direct access — prefer registry for runtime use) ────────────────
@@ -74,3 +137,4 @@ export { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
 export { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
 export { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
+export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
