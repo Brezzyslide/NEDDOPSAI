@@ -1,0 +1,102 @@
+Next Sprint: NeedsOps AI Plus Onboarding and Installer
+
+First, do not make changes yet.
+
+Inspect the existing NeedsOps onboarding process and produce a detailed report covering:
+
+1. Landing page and signup flow
+2. Company/workspace creation
+3. Agent selection
+4. Subscription tier selection
+5. Payment success and post-payment experience
+6. Current setup or installation steps
+7. Existing company discovery questions
+8. Existing permissions flow
+9. Existing runtime, desktop connector, or downloadable package
+10. Gaps between the current implementation and the target journey below
+
+Target NeedsOps journey:
+
+A customer:
+
+1. Lands on the NeedsOps website
+2. Creates an account and company workspace
+3. Selects the AI agents they want
+4. Selects a subscription tier
+5. Completes signup/payment
+6. Is prompted to install NeedsOps AI Plus
+7. Downloads one branded installer for macOS, Windows, or Linux
+8. Installs the complete local runtime without needing to understand OpenClaw, the Runtime Broker, Docker, ports, tokens, or configuration files
+9. Signs in or enters a one-time company activation code
+10. Grants required permissions for:
+   - browser access
+   - selected folders and files
+   - notifications
+   - other permissions only when required
+11. Completes guided business onboarding, including:
+   - Where do you keep your company policies?
+   - Which browser do you use for your CRM and work systems?
+   - Which CRM do you use?
+   - Where are contracts stored?
+   - Which email platform do you use?
+   - Which accounting system do you use?
+   - Where does your team normally find company information?
+   - Who approves purchases, leave, contracts, and other controlled actions?
+12. NeedsOps detects available systems and documents, asks the user to confirm them, and prepares the selected agents
+13. The user reaches a ready screen with preconfigured agents and can start immediately
+
+Product branding:
+
+- Customer-facing name: NeedsOps AI Plus
+- OpenClaw must remain an internal implementation detail
+- Runtime Broker must remain an internal implementation detail
+- Do not expose technical terminology to normal customers
+- The installer and installed application must use NeedsOps branding, icons, wording, and version information
+
+Installer/package requirements:
+
+- One downloadable installer per operating system
+- Includes the runtime engine, broker, updater, health monitor, secure registration, browser support, and required dependencies
+- No manual .env editing
+- No terminal commands for normal customers
+- No customer-managed port configuration
+- Secure company registration using a short-lived activation code or signed enrolment token
+- Automatic startup after installation
+- Automatic updates
+- Repair and uninstall options
+- Clear permission prompts
+- Local health checks
+- Connection status shown inside NeedsOps
+- Diagnostic logs that exclude secrets
+- A support bundle the customer can export
+- Safe failure recovery and retry
+- Signed installers and release versioning must be included in the design
+
+Enterprise and scalability requirements:
+
+- Tenant isolation
+- Device registration
+- User and company binding
+- Revocable device credentials
+- Audit logging
+- Role-based permissions
+- Admin approval policies
+- Multiple devices per company
+- Agent-level access controls
+- Browser and folder access restricted to user-approved resources
+- No secret values in installer files or logs
+
+Deliverables for the inspection stage:
+
+1. Current onboarding flow diagram
+2. Current relevant routes, pages, components, APIs, database tables, and services
+3. Gap analysis against the target journey
+4. Recommended implementation phases
+5. Files that would need modification
+6. New components and endpoints required
+7. Risks and security concerns
+8. Proposed acceptance criteria
+9. Proposed automated tests
+10. Questions or decisions that must be resolved before implementation
+
+Stop after producing the report. Do not implement until the report is reviewed and approved.
