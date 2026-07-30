@@ -1,0 +1,240 @@
+Paste this into Replit Agent:
+
+```text
+You are working inside the NeedsOps repository in Replit.
+
+Goal:
+Complete the OpenClaw integration so this Replit-hosted NeedsOps API can submit browser automation jobs to my OpenClaw runtime running on my Mac.
+
+Current confirmed state:
+
+1. NeedsOps contains:
+- lib/openclaw/src/config.ts
+- lib/openclaw/src/runtimeBrokerClient.ts
+- lib/openclaw/src/openClawExecutionEngine.ts
+- artifacts/api-server/src/services/executionService.ts
+- artifacts/api-server/src/routes/v1/runtimeEvents.ts
+
+2. runtimeBrokerClient.ts expects a Runtime Broker with:
+- GET /v1/health
+- POST /v1/executions
+- GET /v1/executions/:executionId?tenantId=...
+- POST /v1/executions/:executionId/cancel
+- POST /v1/executions/:executionId/pause
+- POST /v1/executions/:executionId/resume
+
+3. The environment variables currently missing are:
+- OPENCLAW_RUNTIME_URL
+- OPENCLAW_AUTH_TOKEN_REF
+- OPENCLAW_AUTH_TOKEN
+- OPENCLAW_WEBHOOK_SECRET
+- OPENCLAW_CALLBACK_BASE_URL
+
+4. My local OpenClaw dev gateway runs on:
+- 127.0.0.1:19001
+- profile: dev
+- its browser relay is on 127.0.0.1:19011
+- /v1/health on 19001 returns 404
+- therefore the OpenClaw gateway itself is not the Runtime Broker API expected by NeedsOps
+
+5. The local OpenClaw source repository is separate from this Replit project.
+
+Your task:
+
+First, inspect the full repository and determine whether a Runtime Broker implementation already exists under a different name, package, service, branch, generated artifact, test fixture, or deployment folder.
+
+Do not assume it is missing until you have searched:
+- package.json files
+- workspace packages
+- artifacts
+- apps
+- deploy
+- docs
+- tests
+- Docker and compose files
+- server entry points
+- routes
+- any references to OpenClaw, broker, gateway, execution submission, webhooks, runtime events, and callback URLs
+
+If a broker already exists:
+- identify its startup command
+- wire it into the project
+- add or correct its routes
+- ensure it can communicate with the OpenClaw dev gateway
+- document all required environment variables
+- add a health-check command
+- add a local and production runbook
+
+If no broker exists:
+Design and implement one as a separate service in this repository.
+
+Requirements for the new Runtime Broker:
+
+A. API contract
+Implement:
+- GET /v1/health
+- POST /v1/executions
+- GET /v1/executions/:executionId
+- POST /v1/executions/:executionId/cancel
+- POST /v1/executions/:executionId/pause
+- POST /v1/executions/:executionId/resume
+
+B. Authentication
+- Support Bearer authentication
+- Read the broker token from environment variables or the project secret system
+- Never hard-code secrets
+- Return 401 for missing or invalid credentials
+- Use constant-time token comparison where practical
+
+C. Execution validation
+- Validate execution packages
+- Require executionId and tenantId
+- Enforce tenant isolation
+- Reject duplicate execution IDs safely
+- Reject expired packages
+- validate callback URLs
+- prevent localhost or private-network callback abuse in production unless explicitly allowed by config
+- place sensible payload size limits
+
+D. OpenClaw adapter
+Inspect the installed or documented OpenClaw gateway API in this repository or official package code and create a real adapter to submit jobs to the gateway.
+
+Do not invent undocumented OpenClaw endpoints.
+
+If the OpenClaw gateway does not expose a suitable HTTP execution API:
+- implement a local companion bridge that runs beside OpenClaw on the Mac
+- communicate with OpenClaw using its supported CLI, SDK, WebSocket, RPC, plugin, or gateway protocol
+- document exactly how to run it on the Mac
+- keep the public broker in Replit and the companion bridge local if that is the correct architecture
+
+E. Connectivity
+Replit cannot directly reach 127.0.0.1 on my Mac.
+
+Provide a supported secure connection design using one of:
+- Cloudflare Tunnel
+- Tailscale Funnel or Serve
+- ngrok
+- another secure tunnel already supported by this project
+
+Prefer Cloudflare Tunnel or Tailscale if no project preference exists.
+
+The design must clearly state which service is exposed:
+- the broker
+- the local bridge
+- or the OpenClaw gateway
+
+Do not expose the browser relay port publicly.
+
+F. Webhooks
+- Send execution lifecycle events back to:
+  ${OPENCLAW_CALLBACK_BASE_URL}/v1/runtime/events
+- Sign webhook bodies with HMAC-SHA256 using OPENCLAW_WEBHOOK_SECRET
+- Match the verification logic already present in NeedsOps
+- include event IDs, execution IDs, tenant IDs, timestamps, status, error data, and result metadata
+- support retries with exponential backoff
+- make webhook delivery idempotent
+
+G. Persistence
+- Store execution state durably
+- Use the existing repository database abstraction if available
+- otherwise implement a clearly isolated persistence adapter
+- do not rely only on in-memory Maps for production
+- support queued, running, paused, succeeded, failed, cancelled, and timed-out states
+- persist event history and timestamps
+
+H. Reliability
+- request timeouts
+- retries only for safe transient failures
+- structured logging
+- graceful shutdown
+- idempotent submission
+- stale execution cleanup
+- recovery after restart
+- clear error responses
+- no swallowed exceptions
+
+I. Configuration
+Create or update .env.example with:
+- OPENCLAW_RUNTIME_URL
+- OPENCLAW_AUTH_TOKEN_REF
+- OPENCLAW_AUTH_TOKEN
+- OPENCLAW_WEBHOOK_SECRET
+- OPENCLAW_CALLBACK_BASE_URL
+- any broker-specific variables
+- any local bridge variables
+- timeout, retry, and tunnel configuration
+
+Explain whether OPENCLAW_RUNTIME_URL should point to:
+- the Replit broker
+- a tunneled local bridge
+- or another service
+
+J. Tests
+Add:
+- unit tests for auth
+- unit tests for package validation
+- unit tests for tenant isolation
+- unit tests for webhook signatures
+- tests for duplicate and expired execution packages
+- integration tests for health, submit, status, cancel, pause, resume
+- one end-to-end test using a mocked OpenClaw gateway or bridge
+- no tests should require real secrets
+
+K. Developer workflow
+Provide exact commands labelled as:
+
+Shell
+For commands run in Replit.
+
+Terminal
+For commands run on my Mac.
+
+Include:
+- install commands
+- database migration commands
+- service startup commands
+- tunnel startup commands
+- health checks
+- test commands
+- first execution test
+- shutdown commands
+
+L. Safety
+Before changing architecture, inspect the existing code and preserve existing interfaces where possible.
+
+Do not delete the current RuntimeBrokerClient or OpenClawExecutionEngine unless there is a compelling reason.
+
+Do not make unrelated changes.
+
+Do not overwrite existing secrets.
+
+Do not expose:
+- 127.0.0.1:19011
+- browser debugging ports
+- local Chrome profiles
+- secret values
+
+M. Deliverables
+At the end:
+1. Summarise what already existed.
+2. Summarise what you added or changed.
+3. List every changed file.
+4. Show the final architecture diagram in text.
+5. List all environment variables.
+6. Give exact Shell and Terminal commands.
+7. Show how to verify each component.
+8. Show how to run one real NeedsOps execution.
+9. State any assumptions or remaining blockers.
+10. Do not claim success unless tests and health checks actually pass.
+
+Work in phases:
+Phase 1: inspect and report
+Phase 2: propose architecture
+Phase 3: implement
+Phase 4: test
+Phase 5: provide runbook
+
+Start with Phase 1 and do not make changes until you have reported what you found.
+```
+
+This prompt deliberately makes Replit inspect first, rather than merrily building a second broker on top of a broker that might already be hiding in a cupboard.
