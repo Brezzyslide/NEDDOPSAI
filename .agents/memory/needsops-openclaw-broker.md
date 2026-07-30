@@ -1,74 +1,78 @@
 ---
 name: NeedsOps OpenClaw Runtime Broker
-description: Runtime Broker implementation inside artifacts/desktop-connector — architecture, constraints, and Phase 4 gateway adapter pending state
+description: Phase 3 + Phase 4 — broker inside artifacts/desktop-connector, LiveGatewayAdapter transport modes, test patterns
 ---
 
-# NeedsOps OpenClaw Runtime Broker
+## Runtime Broker location
 
-## What was built
-
-`artifacts/desktop-connector` was transformed from a Sprint 0 heartbeat shell into a full Runtime Broker:
-
-- Express HTTP server on `BROKER_PORT` (default 19002)
-- Bearer-token auth (`BROKER_AUTH_TOKEN`) with constant-time comparison
-- 6 routes matching `RuntimeBrokerClient` in `lib/openclaw/src/runtimeBrokerClient.ts`
-- Zod package validation: UUID, expiry, HTTPS (prod), private-network callback blocking
-- SQLite persistence via `better-sqlite3` at `~/needsops-broker.db` (`:memory:` in tests)
-- `SimulatedGatewayAdapter` — state machine (queued→running→completed) used by all automated tests
-- `WebhookDeliveryWorker` — HMAC-SHA256 signed, exponential backoff, 5 attempts max
-- Stale execution cleanup loop (marks timed_out for expired packages)
-- 102 automated tests (6 files, all passing)
-
-## Architecture rule
-
-The Runtime Broker runs on the Mac (NOT in Replit). Only `BROKER_PORT` (19002) is tunneled via Cloudflare Tunnel. Ports 19001 and 19011 are NEVER exposed.
-
-```
-Replit → OPENCLAW_RUNTIME_URL (tunnel) → Mac broker :19002 → IGatewayAdapter → OpenClaw :19001
-```
+`artifacts/desktop-connector/` — Mac-side Express HTTP server, port 19002 (Cloudflare tunnel only, never 19001/19011).
 
 ## IGatewayAdapter interface (frozen)
 
-All gateway interaction goes through `IGatewayAdapter` in `artifacts/desktop-connector/src/broker/gatewayAdapter.ts`. Two implementations:
-- `SimulatedGatewayAdapter` — for automated tests, no OpenClaw needed
-- `LiveGatewayAdapter` — throws "not implemented" until Phase 4
+`artifacts/desktop-connector/src/broker/types.ts` — all adapters must implement:
+- `healthCheck()`, `submit()`, `getStatus()`, `cancel()`, `pause()`, `resume()`
+- Both adapters also implement `destroy()` (not on interface — duck-typed in index.ts shutdown)
 
-Swap by setting `OPENCLAW_GATEWAY_MODE=live`.
+## Adapter implementations
 
-## Phase 4 blocker
+`artifacts/desktop-connector/src/broker/gatewayAdapter.ts`
 
-`LiveGatewayAdapter` is a stub. Before implementing it, the operator must run:
+**SimulatedGatewayAdapter** — tests only. In-process state machine (queued → running → completed). `transitionDelayMs` + `runDurationMs` config. Call `destroy()` after each test or on shutdown.
 
-```bash
-cd /Users/tayephilipajao/Development/needsops-browser/OpenClaw-NeedsOps
-node /path/to/needsops-repo/scripts/inspect-openclaw.mjs
+**LiveGatewayAdapter** — Phase 4. Two sub-modes:
+
+### spawn mode (default, `OPENCLAW_LIVE_MODE=spawn`)
+- `spawn("openclaw", ["agent", "--mode", "rpc", "--json"])` — one process per execution
+- Discovered from: `openclaw/package.json` bin + `scripts.openclaw:rpc`
+- JSON lines on stdin/stdout
+- **DO NOT call `proc.stdin.end()` after the initial request** — keep stdin open so `pause()`, `resume()`, `cancel()` can send control messages. `_closeSpawnStdin()` called from `_setStatus()` on terminal states.
+- Event normalisation: handles both `type` and `event` field names; aliases: started/running/begin → running; completed/done/success/finish → completed; failed/error/failure → failed; cancelled/aborted/abort → cancelled
+- Process exit fallback: exit 0 → completed, SIGTERM/SIGKILL → cancelled, non-zero → failed
+
+### bridge-http mode (`OPENCLAW_LIVE_MODE=bridge-http`)
+- Connects to OpenClaw browser bridge at `OPENCLAW_GATEWAY_URL` (default `http://127.0.0.1:19001`)
+- Discovered from: `extensions/browser/src/browser/bridge-server.ts`
+- Routes: `GET /basic` (health), `POST /agent/act` (submit), `GET /agent/snapshot` (poll), `POST /agent/act/hooks` (cancel/abort)
+- **pause and resume NOT supported** in bridge-http — throws "not supported in bridge-http mode"
+- Polls every `initialPollDelayMs` (default 2000ms), exponential backoff to 10s
+
+## Factory
+
+```typescript
+createGatewayAdapter(mode, { gatewayUrl, liveMode, openclawBin, gatewayTimeoutMs }, onStatusChange)
 ```
 
-The script writes `openclaw-inspection-report.json` and prints a paste-ready summary. Paste back to get the real gateway adapter implemented (HTTP, WebSocket, CLI spawn, or RPC — unknown until inspection).
+`index.ts` shutdown uses duck-typing: `if ("destroy" in gateway) gateway.destroy()`
 
-## Environment variables (two sides)
+## New config fields (Phase 4)
 
-**Replit secrets:**
-- `OPENCLAW_RUNTIME_URL` — Cloudflare tunnel URL pointing to Mac broker
-- `OPENCLAW_AUTH_TOKEN_REF=OPENCLAW_AUTH_TOKEN` — env var name holding the token
-- `OPENCLAW_AUTH_TOKEN` — actual bearer token (must match `BROKER_AUTH_TOKEN` on Mac)
-- `OPENCLAW_WEBHOOK_SECRET` — HMAC secret (must match broker's `OPENCLAW_WEBHOOK_SECRET`)
-- `OPENCLAW_CALLBACK_BASE_URL` — Replit dev domain for webhook callbacks
+`BrokerConfig` now includes: `liveMode`, `openclawBin`, `gatewayTimeoutMs` — all read by `loadBrokerConfig()`.
 
-**Mac broker `.env`:**
-- `BROKER_PORT=19002`
-- `BROKER_AUTH_TOKEN` — must equal `OPENCLAW_AUTH_TOKEN` in Replit
-- `OPENCLAW_WEBHOOK_SECRET` — must equal Replit's `OPENCLAW_WEBHOOK_SECRET`
-- `OPENCLAW_GATEWAY_MODE=simulated` (change to `live` after Phase 4)
-- `OPENCLAW_GATEWAY_URL=http://127.0.0.1:19001`
+`loadBrokerConfig()` defaults: `OPENCLAW_LIVE_MODE=spawn`, `OPENCLAW_BIN_PATH=openclaw`, `OPENCLAW_GATEWAY_TIMEOUT_MS=30000`.
 
-## better-sqlite3 requires build approval
+## Test patterns
 
-`pnpm-workspace.yaml` `onlyBuiltDependencies` must include `better-sqlite3` or the native module won't compile. Already added.
+**Spawn tests** — mock `node:child_process` with `vi.mock`. Create fake process using PassThrough streams + EventEmitter. Spy on `fakeProc.stdin.write` (not reading from stream after end — stream is kept open now).
 
-**Why:** better-sqlite3 is a native Node addon (C++) and requires `node-gyp` compilation at install time. pnpm's security model requires explicit approval.
+**Bridge-http tests** — `vi.stubGlobal("fetch", vi.fn())`. Polling tests: pass `initialPollDelayMs: 50` to `LiveAdapterConfig` and wait `300ms` in the test.
 
-## Test count
+**`initialPollDelayMs`** is a `LiveAdapterConfig` field (not on `BrokerConfig`). Override in tests; production gets the 2000ms default.
 
-- Before this sprint: 1339 (api-server tests only)
-- After: 1441 (1339 api-server + 102 desktop-connector)
+## Test counts
+
+Phase 3 completed: 102 broker tests  
+Phase 4 added: 41 new `liveAdapter.test.ts` tests  
+**Total broker tests: 143/143 passing**  
+**Total project tests: 1339 (api-server) + 143 (broker) = 1482**
+
+## Env vars
+
+See `artifacts/desktop-connector/.env.example` for the full runbook.
+Key: `BROKER_PORT=19002`, `OPENCLAW_GATEWAY_MODE=live`, `OPENCLAW_LIVE_MODE=spawn|bridge-http`, `OPENCLAW_BIN_PATH`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TIMEOUT_MS`.
+
+## What remains before production live execution
+
+- Validate actual `openclaw agent --mode rpc --json` JSON event field names against a real binary
+- Confirm `/agent/snapshot?sessionId=...` query param name vs body param in bridge-http mode
+- Confirm `/agent/act/hooks` abort payload shape
+- Cloudflare tunnel setup on the operator's Mac

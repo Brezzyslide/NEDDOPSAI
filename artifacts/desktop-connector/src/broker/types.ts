@@ -167,10 +167,42 @@ export interface BrokerConfig {
   staleCleanupIntervalMs: number;
   /** Gateway adapter mode */
   gatewayMode: "simulated" | "live";
-  /** URL of the local OpenClaw gateway (used by live adapter) */
+  /** URL of the local OpenClaw gateway (used by live adapter bridge-http mode) */
   gatewayUrl: string | null;
   /** OpenClaw version to report in health responses */
   brokerVersion: string;
+
+  // ─── Live adapter specific ───────────────────────────────────────────────────
+
+  /**
+   * How the live adapter communicates with OpenClaw.
+   *
+   * "spawn"       — spawn `openclaw agent --mode rpc --json` as a child process
+   *                 per execution; communicate via JSON lines on stdin/stdout.
+   *                 Requires the openclaw binary on PATH (or OPENCLAW_BIN_PATH).
+   *                 No pre-running OpenClaw server needed.
+   *
+   * "bridge-http" — connect to the OpenClaw browser bridge HTTP server at
+   *                 OPENCLAW_GATEWAY_URL (default http://127.0.0.1:19001).
+   *                 Requires OpenClaw to be running with the bridge enabled.
+   *                 Routes: /basic (health), /agent/act (submit), /agent/snapshot (status).
+   */
+  liveMode: "spawn" | "bridge-http";
+
+  /**
+   * Absolute path to the openclaw CLI binary.
+   * Only used in spawn mode.
+   * Default: "openclaw" (resolved from PATH).
+   * Override with OPENCLAW_BIN_PATH env var.
+   */
+  openclawBin: string;
+
+  /**
+   * Maximum milliseconds to wait for a gateway operation (health check, HTTP
+   * request, or process startup).
+   * Default: 30000 (30 s).
+   */
+  gatewayTimeoutMs: number;
 }
 
 export function loadBrokerConfig(): BrokerConfig {
@@ -184,18 +216,25 @@ export function loadBrokerConfig(): BrokerConfig {
     throw new Error("OPENCLAW_WEBHOOK_SECRET is required");
   }
 
+  const rawLiveMode = process.env.OPENCLAW_LIVE_MODE ?? "spawn";
+  const liveMode: "spawn" | "bridge-http" =
+    rawLiveMode === "bridge-http" ? "bridge-http" : "spawn";
+
   return {
     port: parseInt(process.env.BROKER_PORT ?? "19002", 10),
     authToken,
     webhookSecret,
     dbPath: process.env.BROKER_DB_PATH ?? `${process.env.HOME ?? "."}/needsops-broker.db`,
-    maxBodyBytes: parseInt(process.env.BROKER_MAX_BODY_BYTES ?? String(1 * 1024 * 1024), 10), // 1 MB
+    maxBodyBytes: parseInt(process.env.BROKER_MAX_BODY_BYTES ?? String(1 * 1024 * 1024), 10),
     webhookRetryAttempts: parseInt(process.env.BROKER_WEBHOOK_RETRY_ATTEMPTS ?? "5", 10),
     webhookRetryBaseMs: parseInt(process.env.BROKER_WEBHOOK_RETRY_BASE_MS ?? "2000", 10),
     webhookWorkerIntervalMs: parseInt(process.env.BROKER_WEBHOOK_WORKER_INTERVAL_MS ?? "5000", 10),
     staleCleanupIntervalMs: parseInt(process.env.BROKER_STALE_CLEANUP_INTERVAL_MS ?? "60000", 10),
     gatewayMode: (process.env.OPENCLAW_GATEWAY_MODE ?? "simulated") === "live" ? "live" : "simulated",
-    gatewayUrl: process.env.OPENCLAW_GATEWAY_URL ?? null,
+    gatewayUrl: process.env.OPENCLAW_GATEWAY_URL ?? "http://127.0.0.1:19001",
     brokerVersion: "1.0.0",
+    liveMode,
+    openclawBin: process.env.OPENCLAW_BIN_PATH ?? "openclaw",
+    gatewayTimeoutMs: parseInt(process.env.OPENCLAW_GATEWAY_TIMEOUT_MS ?? "30000", 10),
   };
 }

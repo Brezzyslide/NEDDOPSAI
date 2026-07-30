@@ -112,8 +112,17 @@ async function main() {
     }
   }
 
-  const gateway = createGatewayAdapter(config.gatewayMode, config.gatewayUrl, onStatusChange);
-  logger.info({ adapter: gateway.name }, "Gateway adapter created");
+  const gateway = createGatewayAdapter(
+    config.gatewayMode,
+    {
+      gatewayUrl:      config.gatewayUrl,
+      liveMode:        config.liveMode,
+      openclawBin:     config.openclawBin,
+      gatewayTimeoutMs: config.gatewayTimeoutMs,
+    },
+    onStatusChange,
+  );
+  logger.info({ adapter: gateway.name, liveMode: config.liveMode }, "Gateway adapter created");
 
   // 6. Verify gateway health before accepting traffic
   const gwHealth = await gateway.healthCheck().catch(() => ({ ok: false, version: "unknown" }));
@@ -167,8 +176,9 @@ async function main() {
     clearInterval(staleCleanupTimer);
     webhookWorker.stop();
 
-    if (gateway instanceof SimulatedGatewayAdapter) {
-      gateway.destroy();
+    // Both SimulatedGatewayAdapter and LiveGatewayAdapter expose destroy()
+    if ("destroy" in gateway && typeof (gateway as { destroy(): void }).destroy === "function") {
+      (gateway as { destroy(): void }).destroy();
     }
 
     await new Promise<void>((resolve) => server.close(() => resolve()));
