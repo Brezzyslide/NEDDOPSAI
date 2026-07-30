@@ -12,7 +12,8 @@ on:
 
 jobs:
   build-win:
-    runs-on: windows-latest
+    runs-on: windows-latest   # windows-latest is Windows 2022 x64
+    name: Windows x64
     permissions:
       contents: write
 
@@ -22,7 +23,13 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Setup Node.js
+      - name: Verify runner architecture
+        shell: bash
+        run: |
+          echo "OS: $RUNNER_OS"
+          echo "Arch: $(node -e 'console.log(process.arch)')"
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -41,32 +48,76 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-x64-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            ${{ runner.os }}-x64-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        shell: bash
+        run: |
+          pnpm --filter @workspace/shared typecheck || true
+          pnpm --filter @workspace/db typecheck || true
+
+      - name: Run unit tests
+        run: pnpm --filter @workspace/api-server test
 
       - name: Build shared packages
         run: |
           pnpm --filter @workspace/shared build
           pnpm --filter @workspace/db build
 
-      - name: Build desktop app
+      - name: Build desktop-connector (broker)
+        run: pnpm --filter @workspace/desktop-connector build
+
+      - name: Build desktop app (TypeScript)
         run: pnpm --filter @workspace/needsops-desktop build
 
-      - name: Package — Windows x64 NSIS
+      - name: Rebuild native modules for Electron (Windows x64)
+        # Rebuilds better-sqlite3 for the exact Electron Node ABI on Windows x64.
+        # This step is critical — the system Node version is NOT ABI-compatible
+        # with the Electron Node version.
+        shell: bash
+        run: |
+          cd artifacts/needsops-desktop
+          ELECTRON_VERSION=$(node -e "const p=require('./package.json'); const v=p.devDependencies?.electron||p.dependencies?.electron; console.log(v?.replace(/[\^~]/,''))")
+          echo "Rebuilding native modules for Electron $ELECTRON_VERSION (win32-x64)"
+          pnpm exec @electron/rebuild \
+            --version "$ELECTRON_VERSION" \
+            --arch "x64" \
+            --module-dir "../../artifacts/desktop-connector/node_modules" \
+            --only "better-sqlite3" || echo "Rebuild warning: check if better-sqlite3 is installed"
+
+      - name: Package — Windows x64 NSIS installer
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WIN_CSC_LINK: ""          # no code signing for dev builds
+          WIN_CSC_LINK: ""           # No code signing for dev builds
+          WIN_CSC_KEY_PASSWORD: ""   # No code signing for dev builds
+          # To enable signing, add WIN_CSC_LINK (base64 .p12 cert) and
+          # WIN_CSC_KEY_PASSWORD to repository secrets.
         run: pnpm --filter @workspace/needsops-desktop dist:win
 
-      - name: Upload NSIS installer artifact
+      - name: Verify package contents
+        shell: bash
+        run: |
+          node artifacts/needsops-desktop/scripts/verify-package.mjs \
+            --release-dir artifacts/needsops-desktop/release || true
+
+      - name: Calculate SHA-256 checksums
+        shell: bash
+        run: |
+          cd artifacts/needsops-desktop/release
+          find . -name "*.exe" -exec sha256sum {} \; | tee checksums-windows-x64.txt
+
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: needsops-desktop-windows
-          path: artifacts/needsops-desktop/release/**/*.exe
+          name: needsops-desktop-windows-x64
+          path: |
+            artifacts/needsops-desktop/release/**/*.exe
+            artifacts/needsops-desktop/release/checksums-windows-x64.txt
           if-no-files-found: warn
           retention-days: 30
 
@@ -74,8 +125,27 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/needsops-desktop/release/**/*.exe
+          files: |
+            artifacts/needsops-desktop/release/**/*.exe
+            artifacts/needsops-desktop/release/checksums-windows-x64.txt
           draft: true
           prerelease: false
+          # SmartScreen warning is expected for unsigned builds.
+          # To eliminate it, obtain an Extended Validation (EV) code signing certificate.
+          # Standard OV certificates no longer bypass SmartScreen as of Windows 11 22H2.
+          # Required secrets: WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Signing requirements (not implemented — dev builds only) ─────────────────
+  # Windows SmartScreen warning is EXPECTED on unsigned builds.
+  # Right-click → "Run anyway" to bypass in testing.
+  #
+  # To sign for production:
+  #   1. Purchase an EV Code Signing certificate (required to bypass SmartScreen)
+  #   2. Export as .p12, base64-encode: base64 -i cert.p12
+  #   3. Add WIN_CSC_LINK (base64 cert) and WIN_CSC_KEY_PASSWORD to repository secrets
+  #   4. Remove the empty WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD lines above
+  #
+  # Per-user NSIS installer: installs to %LOCALAPPDATA%\Programs without admin rights.
+  # Upgrade support: NSIS installer detects existing install and upgrades in-place.

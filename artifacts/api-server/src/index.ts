@@ -1,3 +1,5 @@
+import { createServer } from "http";
+import { WebSocketServer } from "ws";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { drainAllPools, startPoolReaper } from "@workspace/org-db";
@@ -7,6 +9,7 @@ import {
   type BackupStorageProvider,
 } from "@workspace/org-db";
 import { runRLSStartupCheck } from "./startup/rlsStartupCheck";
+import { attachRelayService } from "./services/deviceRelayService.js";
 
 const rawPort = process.env["PORT"];
 
@@ -43,8 +46,6 @@ async function start(): Promise<void> {
   logger.info("[startup] Organisation connection pool reaper started");
 
   // 3. Start backup scheduler.
-  //    Uses ObjectStorageBackupProvider (GCS via Replit Object Storage) when
-  //    DEFAULT_OBJECT_STORAGE_BUCKET_ID is configured; falls back to filesystem.
   let backupProvider: BackupStorageProvider;
   if (process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]) {
     backupProvider = new ObjectStorageBackupProvider();
@@ -56,16 +57,32 @@ async function start(): Promise<void> {
 
   startBackupScheduler({
     provider: backupProvider,
-    intervalMs: 5 * 60 * 1000, // 5 minutes
+    intervalMs: 5 * 60 * 1000,
   });
 
-  // 4. Start listening
-  const server = app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
-    logger.info({ port }, "Server listening");
+  // 4. Create HTTP server (wraps Express app so WS can share the same port)
+  const server = createServer(app);
+
+  // 5. Attach WebSocket relay server
+  //    Path-restricted to /v1/devices/relay — all other WS upgrade requests are rejected
+  const wss = new WebSocketServer({
+    server,
+    path: "/v1/devices/relay",
+    maxPayload: 512 * 1024, // 512 KB — matches relayProtocol.ts MAX_MESSAGE_SIZE
+    clientTracking: true,
+  });
+
+  attachRelayService(wss);
+  logger.info("[startup] WebSocket relay server attached at /v1/devices/relay");
+
+  // 6. Start listening
+  server.listen(port, () => {
+    logger.info({ port }, "Server listening (HTTP + WS relay)");
+  });
+
+  server.on("error", (err) => {
+    logger.error({ err }, "Error starting server");
+    process.exit(1);
   });
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
@@ -76,7 +93,12 @@ async function start(): Promise<void> {
     // Stop backup scheduler
     stopBackupScheduler();
 
-    // Stop accepting new requests
+    // Close WS relay — all device connections will be terminated
+    await new Promise<void>((resolve) => {
+      wss.close(() => resolve());
+    });
+
+    // Stop accepting new HTTP requests
     server.close(async () => {
       try {
         await drainAllPools();
@@ -88,7 +110,6 @@ async function start(): Promise<void> {
       process.exit(0);
     });
 
-    // Force exit if graceful shutdown takes too long
     setTimeout(() => {
       logger.error("Shutdown timeout — forcing exit");
       process.exit(1);

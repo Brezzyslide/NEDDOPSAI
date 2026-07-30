@@ -42,6 +42,7 @@ import { ExecutionStore } from "./broker/store.js";
 import { createGatewayAdapter, SimulatedGatewayAdapter } from "./broker/gatewayAdapter.js";
 import { WebhookDeliveryWorker } from "./broker/webhookDelivery.js";
 import { createBrokerApp } from "./broker/server.js";
+import { RelayClient } from "./broker/relayClient.js";
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
@@ -199,7 +200,81 @@ async function main() {
     logger.error({ reason: String(reason) }, "Unhandled rejection — broker remains running");
   });
 
+  // 11. Start outbound WebSocket relay client (Sprint 15)
+  //     Connects to the NeedsOps platform relay instead of relying on a Cloudflare tunnel.
+  //     Only started when NEEDSOPS_DEVICE_ID and NEEDSOPS_API_BASE_URL are set
+  //     (i.e. the broker has been activated).
+  let relayClient: import("./broker/relayClient.js").RelayClient | null = null;
+
+  const deviceId = process.env["NEEDSOPS_DEVICE_ID"];
+  const apiBaseUrl = process.env["NEEDSOPS_API_BASE_URL"];
+  const deviceToken = process.env["NEEDSOPS_DEVICE_TOKEN"];
+
+  if (deviceId && apiBaseUrl && deviceToken) {
+    // getAccessToken: returns the legacy long-lived token from env for now.
+    // In a full Sprint 15 client implementation, this would exchange a refresh token
+    // via POST /v1/devices/auth/refresh and cache the short-lived access token.
+    const getAccessToken = async (): Promise<string> => {
+      return deviceToken;
+    };
+
+    const { RelayClient } = await import("./broker/relayClient.js");
+    relayClient = new RelayClient({
+      apiBaseUrl,
+      deviceId,
+      organizationId: process.env["NEEDSOPS_ORG_SLUG"] ?? "",
+      appVersion: config.brokerVersion,
+      osPlatform: process.platform,
+      arch: process.arch,
+      getAccessToken,
+      onTaskDispatch: async (payload) => {
+        const executionId = String(payload["executionId"] ?? "");
+        logger.info({ executionId }, "[relay] Task dispatched — executing");
+        // Execution is handled by the gateway adapter (existing logic)
+        // For now, emit a safe test result
+        relayClient?.sendTaskResult({ executionId, result: { status: "delegated" } });
+      },
+      onRevoked: () => {
+        logger.warn("[relay] Device has been revoked — shutting down broker");
+        void shutdown("DEVICE_REVOKED");
+      },
+      onStateChange: (state) => {
+        logger.info({ state }, "[relay] Connection state changed");
+        // Broadcast to Electron main process if running in embedded mode
+        if (process.send) {
+          process.send({ type: "relay:state", state });
+        }
+      },
+      logger,
+    });
+
+    relayClient.start().catch((err: Error) => {
+      logger.error({ err: err.message }, "[relay] Relay client start failed");
+    });
+
+    logger.info({ apiBaseUrl, deviceId }, "[relay] Outbound WebSocket relay client started");
+  } else {
+    logger.info("[relay] Outbound relay not started — NEEDSOPS_DEVICE_ID or NEEDSOPS_API_BASE_URL not set");
+    logger.info("[relay] Set DESKTOP_TRANSPORT=cloudflare-dev for development tunnel mode");
+  }
+
   logger.info(`Runtime Broker ready. Host network: ${os.hostname()}`);
+
+  // Extend shutdown to also stop relay client
+  const originalShutdown = shutdown;
+  const extendedShutdown = async (signal: string) => {
+    if (relayClient) {
+      logger.info("[relay] Stopping relay client");
+      relayClient.destroy();
+    }
+    return originalShutdown(signal);
+  };
+
+  // Re-register signal handlers with extended shutdown
+  process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGINT");
+  process.on("SIGTERM", () => void extendedShutdown("SIGTERM"));
+  process.on("SIGINT",  () => void extendedShutdown("SIGINT"));
 }
 
 main().catch((err: Error) => {

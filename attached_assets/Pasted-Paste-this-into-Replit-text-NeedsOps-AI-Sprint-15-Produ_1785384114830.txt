@@ -1,0 +1,1047 @@
+Paste this into Replit:
+
+```text
+NeedsOps AI+ — Sprint 15: Production Transport, Native Packaging, Real Installers, and Clean-Machine Validation
+
+Proceed with implementation.
+
+Use the completed Sprint 14 work and the Sprint 14 Verification Report as the starting point.
+
+This sprint is not for adding new product features.
+
+The purpose of this sprint is to turn the existing onboarding, desktop application, device enrolment, and Business Discovery work into a genuinely installable and testable release candidate for:
+
+- Windows 11 x64
+- Windows 10 x64 where practical
+- macOS Apple Silicon arm64
+- macOS Intel x64 where practical
+
+The sprint must focus on:
+
+1. Implementing the real persistent outbound WebSocket transport
+2. Removing Cloudflare Quick Tunnels from the normal customer path
+3. Correctly packaging all local runtime components
+4. Fixing native Electron module builds
+5. Producing real Windows and macOS installers
+6. Running full clean-machine acceptance tests
+7. Fixing all blocking defects found during those tests
+
+Do not begin:
+
+- Stripe integration
+- Linux support
+- enterprise MSI deployment
+- new AI employee features
+- new Business Discovery questions
+- unrelated portal features
+- cosmetic redesigns unrelated to setup or installation
+
+────────────────────────────────────────
+SPRINT SUCCESS DEFINITION
+────────────────────────────────────────
+
+This sprint is complete only when all of the following are true:
+
+- A real Windows installer has been built
+- A real macOS arm64 installer has been built
+- The complete local runtime is included
+- No customer needs Node.js, pnpm, Git, Docker, PowerShell, Terminal, Homebrew, or manual environment configuration
+- The desktop app connects through a persistent outbound secure WebSocket
+- Cloudflare Quick Tunnels are not used in the normal customer path
+- Device activation works end-to-end
+- Device authentication uses short-lived credentials with refresh or rotation
+- The portal reports real device status
+- A clean Windows 11 test has passed
+- A clean macOS Apple Silicon test has passed
+- Restart and automatic reconnection have passed
+- Uninstall and device revocation have passed
+- All blocking defects discovered during clean-machine tests have been fixed or clearly documented as release blockers
+
+Do not describe the sprint as complete based only on unit tests or build configuration.
+
+────────────────────────────────────────
+PHASE 1 — IMPLEMENT THE OUTBOUND WEBSOCKET RELAY
+────────────────────────────────────────
+
+The current implementation uses Cloudflare Quick Tunnels and an inbound HTTP broker.
+
+The current OutboundWebSocketAdapter is a stub and must be replaced with a real implementation.
+
+Required target architecture:
+
+NeedsOps AI+ desktop app
+        │
+        │ outbound WSS connection
+        ▼
+NeedsOps API / relay
+        │
+        │ task dispatch over the existing socket
+        ▼
+Local runtime execution
+        │
+        │ result / progress / error messages
+        ▼
+NeedsOps API / relay
+
+The customer device must initiate the connection.
+
+The customer must not need:
+
+- inbound firewall rules
+- port forwarding
+- router changes
+- public local URLs
+- Cloudflare accounts
+- tunnel tokens
+- manual tunnel configuration
+
+Implement a production transport behind the existing transport abstraction.
+
+Suggested interface responsibilities:
+
+- connect()
+- disconnect()
+- reconnect()
+- send()
+- acknowledge()
+- reportHeartbeat()
+- reportStatus()
+- receiveTask()
+- sendTaskProgress()
+- sendTaskResult()
+- sendTaskError()
+- refreshAuthentication()
+- getConnectionState()
+
+The transport must support:
+
+- authenticated WSS
+- reconnection
+- exponential backoff
+- heartbeat
+- stale connection detection
+- task acknowledgement
+- idempotent task handling
+- result correlation
+- graceful shutdown
+- token refresh
+- device revocation
+- duplicate connection handling
+- offline state reporting
+- bounded message queues
+- safe failure when the API is unavailable
+
+Do not put business execution logic directly into the WebSocket handler.
+
+Maintain separation between:
+
+- connection transport
+- task dispatch
+- runtime execution
+- status reporting
+- device authentication
+
+────────────────────────────────────────
+WEBSOCKET SERVER REQUIREMENTS
+────────────────────────────────────────
+
+Add a relay endpoint such as:
+
+wss://<api-host>/v1/devices/relay
+
+or another route consistent with the existing API architecture.
+
+Do not require a device ID in the URL unless the authentication model safely validates it.
+
+On connection:
+
+1. Device presents a short-lived access token
+2. Server validates:
+   - token signature
+   - device status
+   - organisation
+   - expiry
+   - revocation state
+   - token audience
+3. Server associates the socket with the device
+4. Server marks the device as connected
+5. Server records:
+   - connected_at
+   - last_seen_at
+   - app version
+   - OS
+   - architecture
+   - transport type
+6. Server sends the current configuration version
+7. Device acknowledges readiness
+
+Support message types such as:
+
+- auth
+- auth_ok
+- auth_error
+- heartbeat
+- heartbeat_ack
+- task_dispatch
+- task_ack
+- task_progress
+- task_result
+- task_error
+- config_update
+- reconnect_required
+- token_expiring
+- device_revoked
+- shutdown
+
+Use a versioned protocol envelope:
+
+{
+  "protocolVersion": 1,
+  "type": "task_dispatch",
+  "messageId": "...",
+  "deviceId": "...",
+  "timestamp": "...",
+  "payload": {}
+}
+
+Validate all inbound and outbound messages with schemas.
+
+Do not trust renderer input or arbitrary JSON.
+
+────────────────────────────────────────
+TASK DELIVERY AND IDEMPOTENCY
+────────────────────────────────────────
+
+Task dispatch must be durable enough to tolerate reconnection.
+
+Implement:
+
+- unique task execution ID
+- device acknowledgement
+- task status transitions
+- delivery attempt counter
+- sent_at
+- acknowledged_at
+- started_at
+- completed_at
+- failed_at
+- result reference
+- error code
+- last delivery error
+
+If a device disconnects before acknowledging a task:
+
+- return it to a pending or retryable state
+- retry only according to policy
+- do not execute duplicates silently
+
+If a duplicate task arrives:
+
+- identify it by execution ID
+- return the previously known state or result
+- do not execute twice
+
+Do not persist sensitive business payloads longer than necessary.
+
+────────────────────────────────────────
+CLOUDFLARE REMOVAL
+────────────────────────────────────────
+
+Cloudflare Quick Tunnels must not be part of the normal production customer flow.
+
+Required changes:
+
+- make outbound WebSocket the default transport
+- remove startDevTunnel() from normal startup
+- remove the requirement for cloudflared on customer machines
+- remove tunnel URL registration from the normal device lifecycle
+- remove customer-facing tunnel errors
+- remove cloudflared from installer resources unless retained strictly for internal development
+- keep a development-only Cloudflare adapter only if useful
+- guard it behind an explicit development flag
+- clearly label it non-production
+
+Suggested flag:
+
+DESKTOP_TRANSPORT=websocket
+
+Optional internal development value:
+
+DESKTOP_TRANSPORT=cloudflare-dev
+
+When not explicitly set in development, default to websocket.
+
+Production must reject cloudflare-dev mode.
+
+Report all files changed to remove Cloudflare from the customer path.
+
+────────────────────────────────────────
+PHASE 2 — SHORT-LIVED DEVICE AUTHENTICATION
+────────────────────────────────────────
+
+The current implementation uses long-lived device credentials with a 90-day rotation date.
+
+Replace or upgrade this model.
+
+Required model:
+
+- device identity based on local public/private key pair
+- short-lived access token
+- refresh mechanism or signed challenge flow
+- revocation
+- rotation
+- audit events
+
+Preferred access-token lifetime:
+
+- 10 to 30 minutes
+
+Refresh credentials must:
+
+- be device-specific
+- be revocable
+- be rotated on use where practical
+- be stored only in secure OS storage
+- never be written in plaintext configuration
+- be hashed in the database where applicable
+
+Alternative acceptable approach:
+
+- device signs a server-issued nonce with its private key
+- server validates the registered public key
+- server issues a new short-lived access token
+
+Implement one clear model rather than mixing several incomplete approaches.
+
+Required endpoints may include:
+
+- POST /v1/devices/auth/challenge
+- POST /v1/devices/auth/exchange
+- POST /v1/devices/auth/refresh
+- POST /v1/devices/:id/revoke
+
+On revocation:
+
+- close the current WebSocket
+- reject future token refresh
+- reject future challenge exchange
+- mark the device revoked in the portal
+- write an audit event
+
+Add automated tests for:
+
+- valid token
+- expired token
+- wrong audience
+- wrong device
+- revoked device
+- refresh rotation
+- reused refresh credential
+- invalid signature
+- changed public key
+- concurrent refresh attempt
+
+────────────────────────────────────────
+PHASE 3 — RUNTIME PACKAGING
+────────────────────────────────────────
+
+The current report confirms that the desktop runtime is not yet fully packaged.
+
+Audit every runtime dependency and package it correctly.
+
+Required packaged components:
+
+- Electron runtime
+- NeedsOps desktop main process
+- renderer UI
+- preload bridge
+- local runtime broker
+- runtime execution dependencies
+- OpenClaw runtime or the exact required local agent runtime
+- browser bridge where required
+- better-sqlite3 native binary
+- updater
+- process supervision
+- icons and branded assets
+- platform-specific helper binaries
+
+For every component document:
+
+- source path
+- build step
+- packaged path
+- runtime start method
+- runtime stop method
+- health check
+- update method
+- failure recovery
+
+No packaged application may reference:
+
+- repository-relative development paths
+- local workspace paths
+- Replit paths
+- developer home directories
+- pnpm store paths
+- source TypeScript paths
+- local .env files
+
+Add a packaged-runtime verification script that inspects the final application bundle and fails when required resources are missing.
+
+────────────────────────────────────────
+BETTER-SQLITE3 FIX
+────────────────────────────────────────
+
+better-sqlite3 is a production blocker.
+
+Implement the correct Electron-compatible native build process.
+
+Required:
+
+- identify the Electron Node ABI
+- rebuild better-sqlite3 for each target platform and architecture
+- include the rebuilt binary in the packaged app
+- verify it loads inside the packaged Electron application
+- fail CI if the native module cannot be loaded
+
+Targets:
+
+- Windows x64
+- macOS arm64
+- macOS x64 where supported
+
+Use an appropriate supported tool such as:
+
+- @electron/rebuild
+- electron-builder native dependency rebuild
+- another documented native module build step
+
+Do not assume the system Node version is ABI-compatible with Electron.
+
+Add a runtime smoke test:
+
+- launch packaged app
+- initialise SQLite
+- create a temporary database
+- create a table
+- insert a row
+- read the row
+- close database
+- remove temporary database
+
+The build must fail if this test fails.
+
+────────────────────────────────────────
+KEYTAR OR SAFESTORAGE DECISION
+────────────────────────────────────────
+
+The current report says keytar native builds were skipped and are unverified.
+
+Make a final implementation decision.
+
+Preferred approach for this sprint:
+
+Use Electron safeStorage unless there is a strong technical reason to retain keytar.
+
+Requirements:
+
+- Windows: encrypted using the user’s Windows security context
+- macOS: protected through the macOS security system
+- no plaintext secrets
+- no renderer access to raw credentials
+- credentials survive restart
+- credentials can be explicitly cleared
+- uninstall/reset flow can remove credentials when requested
+
+If retaining keytar:
+
+- configure native rebuild for all targets
+- prove keytar loads in packaged builds
+- add CI smoke tests
+- document why keytar is preferable
+
+Do not leave both systems partially active.
+
+Update credentialStore.ts behind the existing abstraction.
+
+Add tests for:
+
+- save
+- load
+- update
+- clear
+- corrupted data
+- unavailable secure store
+- logout
+- device revocation
+- uninstall reset
+
+────────────────────────────────────────
+PHASE 4 — INSTALLER BUILD PIPELINE
+────────────────────────────────────────
+
+Connect and use a real GitHub repository.
+
+Create or correct GitHub Actions workflows for:
+
+Windows:
+- runs-on: windows-latest
+- build Windows x64 NSIS installer
+- rebuild native modules
+- run packaged smoke tests
+- calculate SHA-256
+- upload installer artifact
+
+macOS:
+- runs-on: macos-latest
+- build macOS arm64 DMG
+- build macOS x64 if supported
+- rebuild native modules
+- run packaged smoke tests
+- calculate SHA-256
+- upload DMG artifacts
+
+Do not assume macos-latest is an arm64 runner.
+
+Inspect the actual runner architecture.
+
+Use appropriate runners or cross-build configuration for:
+
+- macOS arm64
+- macOS x64
+
+If separate runner types are needed, configure them explicitly.
+
+CI must run:
+
+1. dependency installation
+2. type check
+3. unit tests
+4. API tests where possible
+5. desktop build
+6. native module rebuild
+7. packaged runtime inspection
+8. packaged app smoke test
+9. checksum generation
+10. artifact upload
+
+Tag format:
+
+desktop-v0.1.0
+
+or use the current versioning convention if one already exists.
+
+Do not publish a release merely because compilation succeeds.
+
+Only publish after smoke tests pass.
+
+────────────────────────────────────────
+WINDOWS INSTALLER REQUIREMENTS
+────────────────────────────────────────
+
+Produce:
+
+NeedsOps-AI-Plus-Setup-<version>.exe
+
+Requirements:
+
+- Windows x64
+- NSIS
+- per-user installation where possible
+- no administrator permission unless genuinely needed
+- branded application name
+- branded icon
+- launch after install
+- detect existing installation
+- upgrade support
+- repair or reinstall path
+- uninstall
+- remove startup entry
+- stop local processes on uninstall
+- prompt whether to retain or remove device registration
+- remove secure credentials when the user chooses full removal
+- no orphan processes
+- no development console window
+- no Node.js requirement
+- no PowerShell or Command Prompt requirement
+
+Unsigned internal builds are acceptable only for testing.
+
+Clearly report:
+
+- SmartScreen warning expected
+- exact signing work required before production
+- whether the installer was actually installed successfully
+
+────────────────────────────────────────
+MACOS INSTALLER REQUIREMENTS
+────────────────────────────────────────
+
+Produce at minimum:
+
+NeedsOps-AI-Plus-<version>-arm64.dmg
+
+Also produce x64 if supported and testable:
+
+NeedsOps-AI-Plus-<version>-x64.dmg
+
+Requirements:
+
+- valid .app bundle
+- valid .dmg
+- correct bundle identifier
+- branded icon
+- hardened runtime configuration ready
+- entitlements valid
+- all helper executables packaged
+- all native modules built for the correct architecture
+- launch after install or clear launch instructions
+- login item configured after successful setup
+- uninstall instructions
+- secure credential removal option
+- no Terminal or Homebrew requirement
+
+Unsigned internal builds are acceptable for testing only.
+
+Report:
+
+- Gatekeeper behaviour
+- whether right-click Open is required
+- whether arm64 app launches natively
+- whether x64 app launches on Intel if tested
+- whether Rosetta is involved
+- exact signing and notarisation work remaining
+
+────────────────────────────────────────
+PHASE 5 — PUBLISH INSTALLER RELEASES
+────────────────────────────────────────
+
+Once real artifacts exist:
+
+- calculate checksum
+- calculate file size
+- record architecture
+- record platform
+- record version
+- record minimum OS version
+- record release channel
+- publish release notes
+- upload to GitHub Releases or configured object storage
+- call the installer release API
+- update the portal download URLs
+
+Only now add:
+
+PLATFORM_ADMIN_KEY
+
+Requirements:
+
+- create it as a secret
+- do not print it
+- do not commit it
+- restrict its use to installer release publishing
+- rotate it after accidental exposure
+- audit all release-publishing calls
+
+The release publishing API must validate:
+
+- platform
+- architecture
+- semantic version
+- HTTPS URL
+- checksum format
+- file size
+- release channel
+- supported status
+
+Do not seed placeholder installer URLs once real artifacts are available.
+
+────────────────────────────────────────
+PHASE 6 — END-TO-END ACTIVATION TEST
+────────────────────────────────────────
+
+Implement a real HTTP and WebSocket integration test.
+
+Do not test only service methods.
+
+Test:
+
+1. Create or authenticate an organisation owner
+2. Select AI employees
+3. Select a plan
+4. Enable payment bypass
+5. Mark as paid
+6. Confirm entitlements
+7. Generate activation code
+8. Confirm plaintext code is not stored
+9. Install or run the packaged desktop app
+10. Redeem activation code through the real API
+11. Register public key
+12. Obtain short-lived device credentials
+13. Open real outbound WebSocket
+14. Confirm server marks device connected
+15. Send heartbeat
+16. Dispatch a safe test task
+17. Device acknowledges task
+18. Device runs safe test
+19. Device sends result
+20. Portal receives completed status
+21. Reconnect after simulated network drop
+22. Refresh credentials
+23. Revoke device
+24. Confirm WebSocket closes
+25. Confirm reconnect is rejected
+26. Confirm audit events exist
+
+Secrets must be redacted from logs.
+
+Report actual status codes and message types.
+
+────────────────────────────────────────
+PHASE 7 — CLEAN WINDOWS ACCEPTANCE TEST
+────────────────────────────────────────
+
+Perform on a separate clean Windows 11 x64 computer or VM.
+
+The machine must not contain:
+
+- NeedsOps repository
+- Node.js
+- pnpm
+- Git
+- Docker
+- OpenClaw
+- Runtime Broker
+- previous NeedsOps installation
+- development environment variables
+
+Test the complete journey:
+
+1. Open public NeedsOps web application
+2. Sign up
+3. Verify email
+4. Create organisation
+5. Select AI employees
+6. Select plan
+7. Click “Mark as paid and continue”
+8. Download the Windows installer
+9. Install without Command Prompt or PowerShell
+10. Launch NeedsOps AI+
+11. Enter activation code
+12. Register device
+13. Establish outbound WebSocket
+14. Select Edge or Chrome
+15. Select approved folders
+16. Complete Business Discovery
+17. Run safe first test
+18. Reach “Your AI employees are ready”
+19. Confirm portal shows Connected
+20. Close and reopen app
+21. Disconnect network temporarily
+22. Restore network and confirm reconnection
+23. Restart Windows
+24. Confirm automatic startup
+25. Confirm credentials survive restart
+26. Revoke device from portal
+27. Confirm desktop app loses access
+28. Re-enrol if supported
+29. Uninstall
+30. Confirm no orphan processes
+31. Confirm startup entry removed
+32. Confirm device status updates appropriately
+
+Also test:
+
+- expired activation code
+- reused activation code
+- wrong organisation
+- denied folder access
+- unsupported browser
+- API outage
+- WebSocket interruption
+- runtime crash
+- duplicate task
+- duplicate installer execution
+- reinstall
+- uninstall with credentials retained
+- uninstall with credentials removed
+- SmartScreen warning behaviour
+
+Record:
+
+- Passed
+- Failed
+- Blocked
+- Not performed
+
+Do not infer success.
+
+────────────────────────────────────────
+PHASE 8 — CLEAN MACOS ACCEPTANCE TEST
+────────────────────────────────────────
+
+Perform on a clean Apple Silicon Mac.
+
+The machine must not contain:
+
+- NeedsOps repository
+- Node.js
+- pnpm
+- Git
+- Docker
+- Homebrew dependencies required by NeedsOps
+- OpenClaw
+- Runtime Broker
+- previous NeedsOps installation
+- development environment variables
+
+Test:
+
+1. Open public NeedsOps web application
+2. Sign up
+3. Verify email
+4. Create organisation
+5. Select AI employees
+6. Select plan
+7. Click “Mark as paid and continue”
+8. Download arm64 DMG
+9. Install without Terminal
+10. Launch NeedsOps AI+
+11. Complete expected unsigned-build Gatekeeper step if necessary
+12. Enter activation code
+13. Register device
+14. Establish outbound WebSocket
+15. Select Chrome or Edge
+16. Grant required browser permission
+17. Select approved folders
+18. Grant notifications
+19. Complete Business Discovery
+20. Run safe first test
+21. Reach “Your AI employees are ready”
+22. Confirm portal shows Connected
+23. Close and reopen app
+24. Disconnect network temporarily
+25. Restore network and confirm reconnection
+26. Restart macOS
+27. Confirm automatic startup
+28. Confirm credentials survive restart
+29. Revoke device
+30. Confirm desktop app loses access
+31. Uninstall
+32. Confirm login item removed
+33. Confirm no orphan processes
+34. Confirm device status updates appropriately
+
+Also test:
+
+- expired activation code
+- reused activation code
+- wrong organisation
+- denied folder permission
+- denied browser automation
+- unsupported browser
+- API outage
+- WebSocket interruption
+- runtime crash
+- duplicate task
+- reinstall
+- uninstall credential removal
+- Gatekeeper behaviour
+- arm64 native execution
+
+If macOS x64 is built, test it separately on Intel hardware or a valid Intel test environment.
+
+Do not claim x64 success from build output alone.
+
+────────────────────────────────────────
+PHASE 9 — DEFECT FIXING
+────────────────────────────────────────
+
+Create a defect log from the clean-machine tests.
+
+For every defect include:
+
+- ID
+- platform
+- severity
+- reproduction steps
+- expected behaviour
+- actual behaviour
+- logs
+- root cause
+- fix
+- regression test
+- status
+
+Fix all Severity 1 and Severity 2 defects before declaring a release candidate.
+
+Severity examples:
+
+Severity 1:
+- installer will not launch
+- activation impossible
+- broker crashes
+- credentials exposed
+- cross-tenant access
+- app cannot reconnect
+- destructive action occurs unexpectedly
+
+Severity 2:
+- browser integration fails for a supported browser
+- startup fails after restart
+- uninstall leaves active processes
+- device status is materially wrong
+- discovery cannot complete
+- safe task fails
+
+Lower-severity issues may remain only if documented.
+
+────────────────────────────────────────
+AUTOMATED TEST REQUIREMENTS
+────────────────────────────────────────
+
+Add tests for:
+
+WebSocket protocol:
+- authentication success
+- authentication failure
+- expired token
+- revoked device
+- heartbeat
+- disconnect
+- reconnect
+- duplicate connection
+- invalid message schema
+- oversized message
+- duplicate task
+- task acknowledgement
+- task result
+- task error
+- stale connection
+- server restart
+
+Device auth:
+- challenge
+- signed exchange
+- token issue
+- token expiry
+- refresh
+- rotation
+- reuse rejection
+- revocation
+
+Packaging:
+- required resource presence
+- no repository path references
+- native module load
+- SQLite smoke test
+- secure storage smoke test
+- broker process start
+- broker process stop
+- local runtime health
+
+Installer:
+- build succeeds
+- expected artifact exists
+- checksum generated
+- expected architecture
+- application bundle launches
+- upgrade path where possible
+
+Do not report unit-test totals without categorising:
+
+- unit
+- integration
+- HTTP API
+- WebSocket
+- Electron main
+- renderer
+- packaging
+- installer
+- clean-machine manual tests
+
+────────────────────────────────────────
+REQUIRED DELIVERABLES
+────────────────────────────────────────
+
+At completion provide:
+
+1. Implemented architecture diagram
+2. WebSocket protocol specification
+3. Device authentication design
+4. List of Cloudflare code removed or disabled
+5. List of files modified
+6. List of files added
+7. Database migration summary
+8. API endpoint summary
+9. WebSocket endpoint summary
+10. Runtime packaging manifest
+11. Native module build details
+12. Secure storage decision
+13. Windows CI result
+14. macOS CI result
+15. Exact Windows installer location
+16. Exact macOS arm64 installer location
+17. Exact macOS x64 installer location if built
+18. Installer checksums
+19. Installer file sizes
+20. Release URLs
+21. Clean Windows test report
+22. Clean macOS test report
+23. Defect log
+24. Automated test breakdown
+25. Security limitations
+26. Signing and notarisation status
+27. Known production blockers
+28. Release-candidate recommendation
+
+────────────────────────────────────────
+IMPLEMENTATION RULES
+────────────────────────────────────────
+
+- Inspect existing Sprint 14 code before changing it.
+- Preserve the working onboarding and Business Discovery journey.
+- Do not replace Clerk.
+- Do not weaken RLS.
+- Do not expose internal runtime terminology to customers.
+- Do not commit secrets.
+- Do not claim an installer exists until the file exists.
+- Do not claim a build passed until CI reports success.
+- Do not claim native modules work until they load inside the packaged app.
+- Do not claim clean-machine success until manually tested.
+- Do not report Cloudflare Quick Tunnels as production-ready.
+- Do not hide incomplete transport logic behind a connected UI state.
+- Do not use fake device heartbeats.
+- Do not use mocked task results for clean-machine acceptance.
+- Do not publish placeholder installer URLs after real builds exist.
+- Stop and clearly report any external blocker requiring:
+  - GitHub connection
+  - Windows hardware
+  - Mac hardware
+  - Apple Developer credentials
+  - Windows signing certificate
+- Continue all source work that can be completed without those external resources.
+- Clearly distinguish:
+  - implemented
+  - built
+  - tested
+  - manually verified
+  - blocked
+
+Begin by creating a Sprint 15 checklist mapped directly to these requirements.
+
+Then implement phases sequentially.
+
+After every phase:
+
+- run relevant tests
+- fix failures
+- list files changed
+- report what is genuinely complete
+- report blockers
+- do not proceed with false assumptions
+
+Proceed with Sprint 15 now.
+```
+
+This is grounded in the verification report’s actual blockers: the outbound adapter is still a stub, Cloudflare remains required, `better-sqlite3` is not packaged, secure storage is unverified, and no real installer or clean-machine test exists yet. 

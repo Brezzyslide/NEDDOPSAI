@@ -92,6 +92,9 @@ router.use("/", devicesRouter);
 router.use("/", paymentBypassRouter);
 router.use("/", installerReleasesRouter);
 router.use("/", orgDiscoveryRouter);
+// Sprint 15 — Short-lived device auth (challenge / exchange / refresh)
+import deviceAuthRouter from "./deviceAuth.js";
+router.use("/devices", deviceAuthRouter);
 
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);

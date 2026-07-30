@@ -99,3 +99,9 @@ export * from "./orgApprovalRulesDiscovery";
 export * from "./orgDiscoveryAnswers";
 export * from "./orgDiscoveryStatus";
 export * from "./agentConfigurations";
+// Sprint 15 — Production Transport, Auth, WS Relay
+export * from "./deviceAuthChallenges";
+export * from "./deviceAccessTokens";
+export * from "./deviceRefreshTokens";
+export * from "./deviceWsSessions";
+export * from "./deviceTaskDispatch";

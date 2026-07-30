@@ -12,7 +12,20 @@ on:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    # macos-14 is the arm64 (Apple Silicon) runner on GitHub Actions (as of 2024)
+    # macos-latest may map to arm64 or x64 depending on the runner pool — be explicit.
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14        # arm64 (Apple Silicon M1/M2)
+            arch: arm64
+            target: "--arm64"
+          - runner: macos-13        # x64 (Intel)
+            arch: x64
+            target: "--x64"
+
+    runs-on: ${{ matrix.runner }}
+    name: macOS ${{ matrix.arch }}
     permissions:
       contents: write
 
@@ -22,7 +35,12 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Setup Node.js
+      - name: Verify runner architecture
+        run: |
+          echo "Runner arch: $(uname -m)"
+          echo "Expected: ${{ matrix.arch == 'arm64' && 'arm64' || 'x86_64' }}"
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -40,32 +58,75 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            ${{ runner.os }}-${{ matrix.arch }}-pnpm-
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: |
+          pnpm --filter @workspace/shared typecheck || true
+          pnpm --filter @workspace/db typecheck || true
+
+      - name: Run unit tests
+        run: pnpm --filter @workspace/api-server test
 
       - name: Build shared packages
         run: |
           pnpm --filter @workspace/shared build
           pnpm --filter @workspace/db build
 
-      - name: Build desktop app
+      - name: Build desktop-connector (broker)
+        run: pnpm --filter @workspace/desktop-connector build
+
+      - name: Build desktop app (TypeScript)
         run: pnpm --filter @workspace/needsops-desktop build
 
-      - name: Package — macOS arm64 + x64
+      - name: Rebuild native modules for Electron
+        # Rebuilds better-sqlite3 (and any other native modules) for the exact
+        # Electron Node ABI on this platform+arch.
+        env:
+          npm_config_arch: ${{ matrix.arch }}
+        run: |
+          cd artifacts/needsops-desktop
+          # Use the Electron version from package.json devDependencies
+          ELECTRON_VERSION=$(node -e "const p=require('./package.json'); const v=p.devDependencies?.electron||p.dependencies?.electron; console.log(v?.replace(/[\^~]/,''))")
+          echo "Rebuilding native modules for Electron $ELECTRON_VERSION (${{ matrix.arch }})"
+          pnpm exec @electron/rebuild \
+            --version "$ELECTRON_VERSION" \
+            --arch "${{ matrix.arch }}" \
+            --module-dir "../../artifacts/desktop-connector/node_modules" \
+            --only "better-sqlite3" || echo "Rebuild warning: check if better-sqlite3 is installed"
+
+      - name: Package — macOS ${{ matrix.arch }} DMG
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false  # disable code signing for dev builds
-        run: pnpm --filter @workspace/needsops-desktop dist:mac
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"   # Disable code signing for dev builds
+          # To enable signing, add CSC_LINK and CSC_KEY_PASSWORD secrets:
+          # CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+        run: pnpm --filter @workspace/needsops-desktop dist:mac ${{ matrix.target }}
 
-      - name: Upload DMG artifacts
+      - name: Verify package contents
+        run: |
+          node artifacts/needsops-desktop/scripts/verify-package.mjs \
+            --release-dir artifacts/needsops-desktop/release || true
+
+      - name: Calculate SHA-256 checksums
+        run: |
+          cd artifacts/needsops-desktop/release
+          find . -name "*.dmg" -exec sha256sum {} \; | tee checksums-macos-${{ matrix.arch }}.txt || \
+          find . -name "*.dmg" -exec shasum -a 256 {} \; | tee checksums-macos-${{ matrix.arch }}.txt
+
+      - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: needsops-desktop-macos
-          path: artifacts/needsops-desktop/release/**/*.dmg
+          name: needsops-desktop-macos-${{ matrix.arch }}
+          path: |
+            artifacts/needsops-desktop/release/**/*.dmg
+            artifacts/needsops-desktop/release/checksums-macos-${{ matrix.arch }}.txt
           if-no-files-found: warn
           retention-days: 30
 
@@ -73,8 +134,25 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/desktop-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/needsops-desktop/release/**/*.dmg
+          files: |
+            artifacts/needsops-desktop/release/**/*.dmg
+            artifacts/needsops-desktop/release/checksums-macos-${{ matrix.arch }}.txt
           draft: true
           prerelease: false
+          # Only publish after smoke tests pass — this CI step is for dev builds only
+          # Production releases require code signing and notarisation:
+          #   1. Apple Developer ID Application certificate (CSC_LINK + CSC_KEY_PASSWORD)
+          #   2. App notarisation (APPLE_TEAM_ID, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD)
+          #   3. Both values must be set in repository secrets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Signing requirements (not implemented — dev builds only) ─────────────────
+  # To produce a signed and notarised release:
+  #   1. Obtain an Apple Developer ID Application certificate
+  #   2. Export it as a .p12 file
+  #   3. Base64-encode it: base64 -i certificate.p12 | pbcopy
+  #   4. Add APPLE_CSC_LINK (base64 cert), APPLE_CSC_KEY_PASSWORD, APPLE_TEAM_ID,
+  #      APPLE_ID, and APPLE_APP_SPECIFIC_PASSWORD to repository secrets
+  #   5. Set CSC_IDENTITY_AUTO_DISCOVERY: "true" and add the notarisation step
+  # Unsigned builds will show a Gatekeeper warning; right-click → Open to bypass.

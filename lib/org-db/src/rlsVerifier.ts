@@ -76,6 +76,12 @@ export const REQUIRED_RLS_TABLES = [
   "org_discovery_answers",
   "org_discovery_status",
   "agent_configurations",
+  // Sprint 15 — Production Transport, Auth, WS Relay
+  "device_auth_challenges",
+  "device_access_tokens",
+  "device_refresh_tokens",
+  "device_ws_sessions",
+  "device_task_dispatch",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
