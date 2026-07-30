@@ -40,6 +40,7 @@ const STORE_FILE_NAME = "credentials.enc.json";
 /** Keys in the credential store */
 const KEYS = {
   deviceId: "needsops.device-id",
+  deviceToken: "needsops.device-token",
   orgSlug: "needsops.org-slug",
   apiBaseUrl: "needsops.api-base-url",
   legacyToken: "needsops.legacy-token",
@@ -53,6 +54,7 @@ const KEYS = {
 export type CredentialKey = (typeof KEYS)[keyof typeof KEYS];
 
 export interface StoredCredentials {
+  deviceToken: string | null;
   deviceId: string | null;
   orgSlug: string | null;
   apiBaseUrl: string | null;
@@ -123,6 +125,7 @@ export async function loadCredentials(): Promise<StoredCredentials> {
   };
 
   return {
+    deviceToken: get(KEYS.deviceToken),
     deviceId: get(KEYS.deviceId),
     orgSlug: get(KEYS.orgSlug),
     apiBaseUrl: get(KEYS.apiBaseUrl),

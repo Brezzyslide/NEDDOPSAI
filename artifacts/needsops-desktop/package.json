@@ -32,6 +32,7 @@
     "@types/ws": "^8.5.14",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^8.2.2",
+    "electron": "^43.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "typescript": "^5.7.3",
@@ -54,13 +55,21 @@
       {
         "from": "../../artifacts/desktop-connector/dist",
         "to": "broker",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
       "category": "public.app-category.business",
       "target": [
-        { "target": "dmg", "arch": ["arm64", "x64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -69,7 +78,12 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "nsis": {

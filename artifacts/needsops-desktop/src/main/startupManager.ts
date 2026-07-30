@@ -25,7 +25,7 @@ export async function configureStartup(enable = true): Promise<void> {
 }
 
 export function getStartupEnabled(): boolean {
-  const settings = app.getLoginItemSettings({ name: "NeedsOps AI+" });
+  const settings = app.getLoginItemSettings();
   return settings.openAtLogin;
 }
 
