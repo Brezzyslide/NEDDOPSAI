@@ -1,0 +1,107 @@
+Phase 1 and Phase 2 are approved with one major condition:
+
+Do not consider a simulated adapter or a TODO-only LiveGatewayAdapter to be completion of the OpenClaw integration.
+
+The final goal is a real NeedsOps → Runtime Broker → OpenClaw execution.
+
+Proceed with Phase 3, but follow this order:
+
+1. Implement the broker foundation inside artifacts/desktop-connector:
+   - Express HTTP server on BROKER_PORT, default 19002
+   - Bearer-token authentication
+   - GET /v1/health
+   - POST /v1/executions
+   - GET /v1/executions/:id?tenantId=...
+   - POST /v1/executions/:id/cancel
+   - POST /v1/executions/:id/pause
+   - POST /v1/executions/:id/resume
+   - package validation
+   - tenant isolation
+   - duplicate execution protection
+   - expiry checks
+   - payload limits
+   - SQLite persistence
+   - structured logging
+   - graceful shutdown
+   - HMAC-signed webhook delivery
+   - retries and idempotency
+
+2. Keep a SimulatedGatewayAdapter for automated tests only.
+
+3. Do not invent OpenClaw gateway endpoints.
+
+4. Create an inspection script and exact Terminal commands that I can run in my local OpenClaw source repository:
+
+   /Users/tayephilipajao/Development/needsops-browser/OpenClaw-NeedsOps
+
+   Note: despite the folder name, this is the official OpenClaw source repository:
+   https://github.com/openclaw/openclaw.git
+
+5. The inspection must search the OpenClaw source for:
+   - gateway HTTP routes
+   - WebSocket routes and message types
+   - RPC methods
+   - execution or agent submission
+   - session creation
+   - task/run/job APIs
+   - CLI programmatic invocation
+   - plugin APIs
+   - SDK exports
+   - gateway authentication
+   - pause, resume, cancel support
+   - event streaming
+   - browser automation execution entry points
+
+6. Produce one small diagnostic script that I can run locally and paste the output back into Replit. It must avoid huge recursive output and should write its complete findings to a file, while printing only a concise summary.
+
+7. After receiving those findings, implement a real OpenClawGatewayAdapter based only on supported interfaces found in the OpenClaw source.
+
+8. If the only supported integration is spawning the OpenClaw CLI:
+   - use child_process.spawn, not shell-concatenated commands
+   - pass arguments as an array
+   - prevent command injection
+   - capture stdout and stderr
+   - map exit codes to broker states
+   - support cancellation by tracking the child process
+   - persist enough state for restart recovery
+   - document limitations for pause/resume if unsupported
+
+9. If OpenClaw exposes WebSocket or RPC:
+   - implement reconnect handling
+   - request correlation IDs
+   - timeouts
+   - authentication
+   - event mapping
+   - cancellation
+   - recovery after disconnect
+
+10. Do not expose ports 19001, 19011, 19012, Chrome debugging, or browser relay services publicly.
+
+11. Only the broker on 127.0.0.1:19002 may be tunneled.
+
+12. Add all automated tests using SimulatedGatewayAdapter, but clearly distinguish:
+   - automated broker tests
+   - live OpenClaw smoke test
+
+13. Add a live smoke-test command that submits one harmless execution through the real adapter. It must not claim success unless OpenClaw actually accepts and completes it.
+
+14. Do not overwrite artifacts/desktop-connector blindly. Preserve useful existing logging, heartbeat, configuration, and shutdown behaviour.
+
+15. Before writing code, show:
+   - proposed changed-file list
+   - proposed package dependencies
+   - database choice and schema
+   - how the broker process will be started
+   - how the broker will locate and communicate with OpenClaw
+
+After showing that plan, proceed with implementation of the broker foundation and tests. Stop before implementing the live adapter until the OpenClaw source inspection results are available.
+
+The key outcome should be:
+
+Replit NeedsOps
+      ↓ HTTPS tunnel
+Mac Runtime Broker :19002
+      ↓ local supported protocol
+OpenClaw Gateway :19001
+      ↓
+Browser automation
