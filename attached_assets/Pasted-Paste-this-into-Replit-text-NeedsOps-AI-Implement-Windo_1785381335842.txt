@@ -1,0 +1,1527 @@
+Paste this into Replit:
+
+```text
+NeedsOps AI+ — Implement Windows and macOS Customer Onboarding and Installer Experience
+
+Proceed with implementation.
+
+Use the previously completed inspection report and technical design document as the architectural basis, but apply the revised decisions and scope in this prompt.
+
+The goal is to create a complete, testable customer journey:
+
+Landing page
+→ Sign up
+→ Create company
+→ Select AI employees
+→ Select subscription plan
+→ Simulated payment confirmation
+→ Install NeedsOps AI+
+→ Activate the device
+→ Grant permissions
+→ Complete Business Discovery
+→ Confirm runtime connection
+→ Reach the “AI employees are ready” screen
+
+This sprint must deliver installers and first-run experiences for both:
+
+- Windows
+- macOS
+
+Do not integrate a real payment provider yet.
+
+Instead, implement a clearly labelled temporary development payment bypass so the complete post-payment customer journey can be tested.
+
+────────────────────────────────────────
+PRIMARY IMPLEMENTATION DECISIONS
+────────────────────────────────────────
+
+1. Windows and macOS are both required in this sprint.
+
+Supported targets:
+
+Windows:
+- Windows 11 x64
+- Windows 10 x64 compatibility where practical
+- Microsoft Edge
+- Google Chrome
+
+macOS:
+- Current supported macOS versions
+- Apple Silicon arm64
+- Intel x64 where practical
+- Google Chrome
+- Microsoft Edge
+- Safari only if the existing runtime can support it reliably without significant architectural changes
+
+Both platforms must support:
+
+- branded installation
+- device activation
+- secure credential storage
+- automatic startup
+- local runtime supervision
+- browser selection
+- approved-folder selection
+- Business Discovery
+- connected-device status
+- first safe test
+- ready screen
+- uninstall
+- reinstall
+- restart and reconnection
+
+Do not implement Linux in this sprint.
+
+2. Customer-facing product name:
+
+NeedsOps AI+
+
+Normal customers must not see these internal terms:
+
+- OpenClaw
+- Runtime Broker
+- cloudflared
+- tunnel
+- broker port
+- browser bridge port
+- environment variables
+- internal authentication tokens
+- internal service names
+
+Internal terminology may remain visible in developer logs and platform-admin-only tools.
+
+3. Do not implement Stripe or any other real payment integration.
+
+The user must still experience:
+
+- plan selection
+- order summary
+- checkout-style confirmation page
+- payment-success state
+- entitlement creation
+- transition to the installer page
+
+Add a temporary development-only button:
+
+“Mark as paid and continue”
+
+This button simulates a successful payment and activates the selected plan.
+
+It must:
+
+- be clearly marked as a development or testing payment bypass
+- only appear when an explicit server-side feature flag is enabled
+- call a server-side API
+- create or update the tenant subscription
+- provision the appropriate plan and pack entitlements
+- update the organisation onboarding state
+- record an audit event
+- redirect to the installer page
+
+Do not implement this as a client-only state change.
+
+Suggested feature flag:
+
+ENABLE_PAYMENT_BYPASS=true
+
+When the flag is false:
+
+- the bypass button must not render
+- the bypass API must reject requests
+- the interface should show that payment is not currently available
+
+────────────────────────────────────────
+TARGET CUSTOMER EXPERIENCE
+────────────────────────────────────────
+
+Implement this complete flow.
+
+1. Landing page
+
+The existing landing page remains the public entry point.
+
+Primary calls to action:
+
+- Start Free Trial
+- Get Started
+- Sign In
+
+2. Account creation
+
+Continue using Clerk.
+
+After signup and email verification, send users without an organisation into onboarding.
+
+3. Company creation
+
+Retain and improve the existing organisation onboarding fields:
+
+- company name
+- organisation type
+- state
+- timezone
+- primary contact
+- ABN
+- NDIS registration where relevant
+
+Do not remove existing validation.
+
+4. AI employee selection
+
+Replace the current pack-only presentation with a clearer AI employee selection experience.
+
+The underlying commercial entitlement may continue to use workforce packs, but the customer-facing interface must explain the AI employees included in each pack.
+
+Each selectable pack should show:
+
+- pack name
+- short purpose
+- included AI employees
+- one-sentence description for each employee
+- common tasks they can perform
+- whether the pack is included or adds cost
+- selected state
+
+Examples may include:
+
+- Chief of Staff
+- Compliance Manager
+- HR Coordinator
+- Operations Coordinator
+- Finance Assistant
+
+Use the actual specialist and workforce-pack data already present in the repository.
+
+Do not invent permanent specialist records unless the required data is genuinely missing.
+
+The Core pack should remain automatically included where current business rules require it.
+
+5. Subscription selection
+
+Add a plan-selection step using the existing plans and plan_versions data model.
+
+Display:
+
+- Foundation
+- Professional
+- Business
+- Enterprise
+
+Use actual active plan data from the API.
+
+Each card should show:
+
+- plan name
+- price in AUD if available
+- billing period
+- included packs or entitlements
+- key features
+- selected state
+
+Enterprise may show “Contact us” if it cannot be activated through the test flow.
+
+6. Simulated checkout
+
+Create a checkout-style review page showing:
+
+- selected company
+- selected AI employees or packs
+- selected subscription
+- price summary
+- trial information where applicable
+- billing summary
+- terms acknowledgement
+
+Include the temporary button:
+
+“Mark as paid and continue”
+
+On click:
+
+- require confirmation
+- call the server-side development payment bypass endpoint
+- activate the subscription
+- provision entitlements
+- set the organisation to the correct state
+- save onboarding progress
+- create an audit record
+- display a payment-success screen
+
+The success screen should say:
+
+“Your NeedsOps AI+ subscription is ready.”
+
+Then continue to the installation step.
+
+7. Installer page
+
+Create a route such as:
+
+/app/:slug/install
+
+or an equivalent route consistent with the current application.
+
+The install page must:
+
+- detect Windows or macOS
+- show the recommended installer for the current operating system
+- allow manual switching between Windows and macOS downloads
+- show the current installer version
+- show system requirements
+- generate a short-lived activation code
+- allow generation of a replacement code
+- explain that the code expires
+- show installation and connection progress after activation
+- allow the user to skip installation and return later
+- keep an installation reminder visible in the dashboard until at least one device is connected
+
+Download buttons:
+
+- Download NeedsOps AI+ for Windows
+- Download NeedsOps AI+ for macOS
+
+Do not serve installer binaries directly through the Replit web process.
+
+The API should return configured release URLs.
+
+For development, release URLs may point to:
+
+- GitHub Releases
+- object storage
+- another configured release host
+
+The Replit application should provide metadata and redirects, not proxy the full installer binary.
+
+────────────────────────────────────────
+DESKTOP APPLICATION ARCHITECTURE
+────────────────────────────────────────
+
+Create or complete:
+
+artifacts/needsops-desktop/
+
+Use:
+
+- Electron
+- TypeScript
+- React renderer
+- electron-builder
+
+Maintain a clear separation between:
+
+- Electron main process
+- renderer UI
+- preload bridge
+- local runtime manager
+- connection transport
+- credential storage
+- device identity
+- update manager
+- diagnostics
+- permissions
+- Business Discovery client
+- operating-system-specific adapters
+
+Recommended structure:
+
+artifacts/needsops-desktop/
+├── src/
+│   ├── main/
+│   │   ├── index.ts
+│   │   ├── tray.ts
+│   │   ├── brokerManager.ts
+│   │   ├── runtimeManager.ts
+│   │   ├── connectionManager.ts
+│   │   ├── deviceIdentity.ts
+│   │   ├── credentialStore.ts
+│   │   ├── permissionManager.ts
+│   │   ├── browserManager.ts
+│   │   ├── approvedResourceManager.ts
+│   │   ├── startupManager.ts
+│   │   ├── updateManager.ts
+│   │   ├── supportBundle.ts
+│   │   ├── ipcHandlers.ts
+│   │   └── platform/
+│   │       ├── windows.ts
+│   │       └── macos.ts
+│   ├── preload/
+│   │   └── preload.ts
+│   └── renderer/
+│       ├── App.tsx
+│       ├── screens/
+│       │   ├── Welcome.tsx
+│       │   ├── ActivationCode.tsx
+│       │   ├── SignIn.tsx
+│       │   ├── Permissions.tsx
+│       │   ├── BrowserSelect.tsx
+│       │   ├── FolderSelect.tsx
+│       │   ├── Discovery.tsx
+│       │   ├── Connecting.tsx
+│       │   ├── Ready.tsx
+│       │   └── Settings.tsx
+│       └── components/
+├── resources/
+│   ├── windows/
+│   ├── macos/
+│   └── icons/
+├── scripts/
+│   ├── build-windows.ts
+│   ├── build-macos.ts
+│   ├── notarise-macos.ts
+│   └── sign-windows.ts
+└── electron-builder.yml
+
+Requirements:
+
+- contextIsolation enabled
+- nodeIntegration disabled in the renderer
+- narrow typed preload API
+- Content Security Policy
+- no secrets exposed to the renderer unless strictly required
+- no arbitrary shell execution
+- validate every IPC request
+- safe custom URL scheme handling
+- structured logs with secret redaction
+- system tray or menu-bar support
+- auto-start after successful setup
+- local runtime supervision
+- graceful shutdown
+- crash recovery
+- repair or reinstall behaviour
+- uninstall support
+- operating-system-specific behaviour behind interfaces rather than scattered conditionals
+
+────────────────────────────────────────
+WINDOWS INSTALLER
+────────────────────────────────────────
+
+Produce a Windows x64 development installer.
+
+Expected output:
+
+NeedsOps-AI-Plus-Setup-<version>.exe
+
+Recommended packaging:
+
+- electron-builder
+- NSIS
+- per-user installation where possible
+
+Windows installer requirements:
+
+- supports Windows 11 x64
+- supports Windows 10 x64 where practical
+- does not require administrator rights unless genuinely necessary
+- launches NeedsOps AI+ after installation
+- detects an existing installation
+- supports reinstall
+- supports uninstall
+- removes startup entries on uninstall
+- does not leave orphan processes
+- offers to preserve or reset device registration during reinstall
+- prompts before removing local settings
+- does not require Command Prompt or PowerShell
+- does not require Node.js, pnpm, Git, Docker, or manual configuration
+
+Development builds may be unsigned.
+
+Clearly document:
+
+- Windows SmartScreen may warn on unsigned builds
+- the app is not production-ready without code signing
+- how Authenticode signing will later be configured using CI secrets or environment variables
+- no signing certificate or private key may be committed to the repository
+
+Windows secure storage:
+
+- use Windows Credential Manager, DPAPI, Electron safeStorage, or another appropriate secure mechanism
+- do not store device private keys, refresh tokens, or long-lived credentials in plaintext files
+
+Windows startup:
+
+- use an appropriate per-user startup mechanism
+- remove the startup configuration during uninstall
+
+Windows browser support:
+
+- detect Microsoft Edge
+- detect Google Chrome
+- allow explicit browser choice
+- verify browser integration
+- do not silently install browser extensions
+- explain any extension or browser bridge requirement
+- require explicit user confirmation
+- provide recovery guidance when installation or detection fails
+
+────────────────────────────────────────
+MACOS INSTALLER
+────────────────────────────────────────
+
+Produce macOS development installers for:
+
+- Apple Silicon arm64
+- Intel x64 where practical
+
+Preferred deliverables:
+
+NeedsOps-AI-Plus-<version>-arm64.dmg
+NeedsOps-AI-Plus-<version>-x64.dmg
+
+A universal binary may be produced if technically practical and reliable:
+
+NeedsOps-AI-Plus-<version>-universal.dmg
+
+Do not delay a working arm64 build solely to create a universal binary.
+
+macOS installer requirements:
+
+- branded .app bundle
+- distributed through a .dmg
+- drag-to-Applications or another standard macOS installation experience
+- launches NeedsOps AI+ after installation or provides clear launch guidance
+- detects an existing installation
+- supports reinstall
+- supports uninstall
+- removes startup entries during uninstall
+- does not leave orphan processes
+- does not require Terminal, Homebrew, Node.js, pnpm, Git, Docker, or manual configuration
+
+For internal testing:
+
+- unsigned or ad hoc signed builds may be acceptable
+- clearly document Gatekeeper warnings
+- clearly document how testers open an unsigned development build
+- do not describe unsigned builds as production-ready
+
+Prepare the project for production signing and notarisation:
+
+- Developer ID Application certificate
+- hardened runtime
+- entitlements configuration
+- Apple notarisation using notarytool
+- stapling of notarisation ticket
+- signing of all bundled executables and helper processes
+- no certificates, Apple credentials, or private keys committed to the repository
+
+macOS secure storage:
+
+- use macOS Keychain, Electron safeStorage, or another appropriate native mechanism
+- do not store device private keys, refresh tokens, or long-lived credentials in plaintext files
+
+macOS startup:
+
+- use a supported login-item or launch-agent mechanism
+- prefer Electron’s supported login-item API where reliable
+- remove startup configuration during uninstall
+
+macOS permissions:
+
+Request permissions only when needed and explain each one in plain language.
+
+Potential permissions include:
+
+- notifications
+- selected folder access
+- browser automation
+- Accessibility, only if the runtime genuinely requires it
+- Automation access for Chrome or Edge, only when needed
+
+Do not request Full Disk Access by default.
+
+Folder access must use the native macOS folder picker.
+
+Where persistent folder access requires security-scoped bookmarks or equivalent behaviour, implement or document the correct mechanism.
+
+macOS browser support:
+
+- detect Google Chrome
+- detect Microsoft Edge
+- assess Safari separately
+- only claim Safari support if it works with the runtime and can be tested
+- do not silently install extensions
+- explain any browser extension or automation permission
+- require user confirmation
+- provide a clear route to System Settings when permission is denied
+
+────────────────────────────────────────
+DESKTOP FIRST-RUN FLOW
+────────────────────────────────────────
+
+After installation, launch NeedsOps AI+ automatically or guide the user to open it.
+
+Implement the same customer-facing flow on Windows and macOS, while using platform-specific permission handling.
+
+A. Welcome
+
+Message:
+
+“Welcome to NeedsOps AI+”
+
+Explain that setup will connect the computer to the customer’s NeedsOps workspace.
+
+B. Activation
+
+Allow:
+
+- activation code
+- secure browser-based sign-in
+
+Activation-code flow is required for this sprint.
+
+C. Device registration
+
+Register the device against:
+
+- authenticated user
+- organisation
+- hostname
+- operating system
+- operating-system version
+- architecture
+- desktop-app version
+- generated device identifier
+- device public key
+
+D. Permissions
+
+Request only necessary permissions in plain language.
+
+Include:
+
+- notifications
+- browser selection
+- approved folders
+- startup after sign-in
+
+Do not request unrestricted file-system access.
+
+E. Browser selection
+
+Detect supported browsers.
+
+Windows:
+
+- Microsoft Edge
+- Google Chrome
+
+macOS:
+
+- Google Chrome
+- Microsoft Edge
+- Safari only when genuinely supported
+
+Allow the user to choose the browser normally used for work.
+
+Do not silently install browser extensions.
+
+If an extension or browser bridge is required:
+
+- explain why
+- show an explicit installation step
+- require user confirmation
+- verify installation
+- provide recovery instructions
+
+F. Approved folders
+
+Use the operating system’s native folder picker.
+
+Allow selection of folders such as:
+
+- policies
+- contracts
+- HR documents
+- company knowledge
+- templates
+
+Only approved folders may be accessed.
+
+Store folder permissions and identifiers securely.
+
+G. Business Discovery
+
+Launch or resume the Business Discovery flow.
+
+H. Runtime connection
+
+Start required local components automatically.
+
+Show customer-friendly statuses:
+
+- Starting NeedsOps AI+
+- Connecting securely
+- Checking your browser
+- Checking approved folders
+- Preparing your AI employees
+- Running final checks
+
+Do not expose ports, process names, tunnel URLs, or technical runtime terminology.
+
+I. First safe test
+
+Run a test that proves:
+
+- the device is connected
+- the local runtime responds
+- the cloud platform and device can exchange messages
+- selected browser integration is available where required
+- approved resource metadata can be read without exposing file contents unnecessarily
+
+The first test must not:
+
+- send email
+- modify customer records
+- approve transactions
+- write into business systems
+- upload business documents
+- perform destructive actions
+
+J. Ready screen
+
+Show:
+
+“Your AI employees are ready.”
+
+Include:
+
+- connected device name
+- operating system
+- selected AI employees
+- selected browser
+- approved folders
+- connection status
+- button to open the NeedsOps dashboard
+- button to view settings
+- button to run a safe sample task
+
+────────────────────────────────────────
+BUSINESS DISCOVERY
+────────────────────────────────────────
+
+Implement a shared Business Discovery flow accessible from:
+
+- the web portal
+- the Windows desktop application
+- the macOS desktop application
+
+All clients must use the same API and save to the same organisation profile.
+
+Use a conversational, one-screen-at-a-time experience.
+
+Collect:
+
+1. Company overview
+
+- what the company does
+- services provided
+- approximate number of staff
+- approximate number of clients
+
+2. Work systems
+
+- primary browser
+- CRM
+- email platform
+- accounting system
+- HR system
+- project or task-management system
+
+3. Company information
+
+- where policies are stored
+- where contracts are stored
+- where HR documents are stored
+- where staff normally find company knowledge
+- where templates are stored
+
+4. Approvals
+
+- who approves purchases
+- who approves leave
+- who approves contracts
+- which actions always require approval
+- purchase approval thresholds where applicable
+
+5. Operations
+
+- business hours
+- timezone
+- office or service locations
+- important teams
+- important managers
+
+6. AI employee goals
+
+- what the customer wants each selected AI employee to achieve during the first week
+
+Support:
+
+- save and resume
+- skip with optional reason
+- edit previous answers
+- completion percentage
+- user-confirmed versus detected values
+- last-confirmed timestamp
+- source of each answer
+- organisation-level separation
+- user-level separation
+- device-level separation
+- agent-level separation
+
+Use the data model proposed in the technical design where appropriate, but adapt naming to existing repository conventions.
+
+────────────────────────────────────────
+DEVICE SECURITY
+────────────────────────────────────────
+
+Do not use a permanent shared bearer token as the only device identity.
+
+Implement a stronger enrolment foundation.
+
+At minimum:
+
+- generate a device-specific public/private key pair locally
+- retain the private key on the device
+- store private material using native secure storage
+- register the public key with the NeedsOps API
+- issue short-lived device access tokens
+- support token refresh
+- rotate credentials where practical
+- support device revocation
+- bind activation to an organisation and authenticated user
+- prevent activation-code reuse
+- rate-limit activation attempts
+- record enrolment, refresh, and revocation audit events
+
+Activation codes must:
+
+- use cryptographically secure randomness
+- contain substantially more entropy than the earlier short-code proposal
+- avoid ambiguous characters
+- expire after 15 minutes
+- be single-use
+- be stored as a hash, not plaintext
+- be bound to an organisation
+- be generated only by an authorised owner or administrator
+- be revocable before use
+
+The displayed code may be grouped for usability, but must not be reduced to approximately 24 bits of security.
+
+Do not return permanent webhook secrets or permanent broker secrets directly in the activation response unless absolutely necessary.
+
+Document any temporary security compromise required for the development build.
+
+────────────────────────────────────────
+CONNECTIVITY ARCHITECTURE
+────────────────────────────────────────
+
+Do not use changing Cloudflare Quick Tunnel URLs as the intended production architecture.
+
+Prefer a device-initiated outbound connection.
+
+Recommended order:
+
+1. Persistent outbound WebSocket from the desktop application to the NeedsOps API or relay
+2. Authenticated managed relay
+3. Persistent named tunnel as a temporary alternative
+
+The device should initiate the outbound connection so the customer does not require:
+
+- inbound firewall configuration
+- port forwarding
+- router changes
+- public local endpoints
+
+If a production-grade relay cannot be completed in this sprint:
+
+- create a clean transport interface
+- implement a development transport behind that interface
+- clearly mark it as development-only
+- do not spread temporary transport assumptions throughout the codebase
+- document what remains before production
+
+The portal must display device states:
+
+- Connected
+- Connecting
+- Offline
+- Needs attention
+- Revoked
+
+Connectivity behaviour must work on both Windows and macOS.
+
+────────────────────────────────────────
+DATABASE WORK
+────────────────────────────────────────
+
+Implement migrations following existing Drizzle conventions and tenant-isolation rules.
+
+At minimum assess and implement appropriate forms of:
+
+- devices
+- device_public_keys or device_identities
+- device_activation_tokens
+- device_sessions or device_refresh_tokens
+- device_runtime_status
+- installer_releases
+- installer_download_events
+- onboarding_sessions
+- organisation company profile
+- connected systems
+- approved device resources
+- approval rules
+- discovery answers
+- discovery status
+- agent configurations
+- audit events
+
+Requirements:
+
+- tenant ownership on every organisation-scoped record
+- foreign keys
+- indexes
+- uniqueness constraints
+- created_at and updated_at
+- revocation timestamps where applicable
+- soft deletion where appropriate
+- platform and architecture fields for installer releases and devices
+- no plaintext activation codes
+- no plaintext long-term secrets
+- new tenant tables added to all existing row-level security invariants
+- cross-tenant access tests
+
+Do not create duplicate tables where an existing table can safely be extended.
+
+────────────────────────────────────────
+API WORK
+────────────────────────────────────────
+
+Implement APIs for:
+
+Commercial onboarding:
+
+- listing active plans
+- loading AI employee and pack details
+- saving onboarding progress
+- selecting a plan
+- development payment bypass
+- entitlement provisioning
+
+Installer releases:
+
+- retrieving the latest Windows installer
+- retrieving the latest macOS arm64 installer
+- retrieving the latest macOS x64 installer
+- recording installer downloads
+- checking minimum supported desktop version
+
+Activation:
+
+- generating activation codes
+- revoking unused activation codes
+- redeeming activation codes
+- registering device identity
+- issuing short-lived credentials
+- refreshing device credentials
+- revoking devices
+
+Devices:
+
+- listing organisation devices
+- renaming devices
+- reporting runtime health
+- retrieving device configuration
+- retrieving selected-agent configuration
+- reporting operating system and architecture
+- reporting desktop-app version
+
+Business Discovery:
+
+- save answer
+- bulk save screen
+- retrieve current progress
+- resume discovery
+- update Company Profile
+- confirm detected values
+- mark discovery complete
+
+First-run:
+
+- report permission status
+- report browser status
+- report approved folders
+- report setup progress
+- mark first-run complete
+- record safe-test result
+
+All write APIs must include:
+
+- authentication
+- authorisation
+- validation
+- tenant isolation
+- audit logging
+- rate limiting where appropriate
+- idempotency where retries are likely
+- safe customer-facing error messages
+
+────────────────────────────────────────
+WEB UI WORK
+────────────────────────────────────────
+
+Modify the existing web application rather than rebuilding it.
+
+Expected pages and components include:
+
+- extended organisation onboarding
+- AI employee selector
+- subscription-plan selector
+- simulated checkout review
+- payment-success screen
+- installer download page
+- operating-system detector
+- Windows download card
+- macOS download card
+- activation-code panel
+- installation-progress panel
+- device-status card
+- installation-reminder banner
+- Business Discovery wizard
+- Company Profile review page
+- connected-devices page
+- device revoke action
+- resume-onboarding banner
+
+Keep styling consistent with the current NeedsOps interface.
+
+Ensure the journey works on desktop and remains readable on mobile.
+
+On mobile, explain that NeedsOps AI+ must be installed on a Windows or macOS computer.
+
+────────────────────────────────────────
+LOCAL RUNTIME PACKAGING
+────────────────────────────────────────
+
+The normal customer must not need:
+
+- PowerShell
+- Command Prompt
+- Terminal
+- Homebrew
+- Node.js
+- pnpm
+- Git
+- Docker
+- manual environment files
+- manual port configuration
+- manual Cloudflare setup
+- technical knowledge of OpenClaw
+
+Bundle or automatically install all required runtime components.
+
+Assess the existing desktop-connector carefully before packaging.
+
+Refactor where necessary:
+
+- environment-variable configuration
+- secret handling
+- process supervision
+- logging
+- runtime health
+- IPC
+- startup behaviour
+- platform-specific paths
+- packaging of native modules
+- clean shutdown
+- recovery after crash
+
+Do not ship repository source code as the runtime installation.
+
+Use a packaging approach compatible with:
+
+- Windows x64
+- macOS arm64
+- macOS x64 where included
+- native modules such as better-sqlite3
+
+Do not use pkg unless a build spike proves it works with all native modules and bundled resources.
+
+Prefer one clearly documented runtime packaging strategy.
+
+────────────────────────────────────────
+INSTALLER RELEASES AND HOSTING
+────────────────────────────────────────
+
+Expected release artifacts:
+
+Windows:
+- NeedsOps-AI-Plus-Setup-<version>.exe
+
+macOS:
+- NeedsOps-AI-Plus-<version>-arm64.dmg
+- NeedsOps-AI-Plus-<version>-x64.dmg where supported
+- or one universal .dmg if successfully produced and tested
+
+The Replit deployment should host:
+
+- web application
+- API
+- onboarding
+- installer metadata
+- release lookup
+- device status
+
+The installer binaries should be hosted outside the Replit web process.
+
+Use:
+
+- GitHub Releases for development, or
+- configured object storage
+
+Create installer release records containing:
+
+- platform
+- architecture
+- version
+- release channel
+- URL
+- checksum
+- file size
+- minimum OS version
+- published status
+- release notes
+
+The installer page must choose the appropriate release based on:
+
+- operating system
+- processor architecture where detectable
+- stable or development release channel
+
+────────────────────────────────────────
+AUTO-START AND PROCESS MANAGEMENT
+────────────────────────────────────────
+
+Windows:
+
+- configure startup after user sign-in
+- use a per-user mechanism where possible
+- remove startup registration during uninstall
+
+macOS:
+
+- configure login-item or launch-agent startup
+- use a supported mechanism
+- remove startup registration during uninstall
+
+On both platforms, supervise:
+
+- the NeedsOps local runtime
+- the outbound connection process
+- any required browser bridge
+
+If a process crashes:
+
+- restart with bounded exponential backoff
+- report the failure to the desktop UI
+- report status to the NeedsOps API when possible
+- avoid infinite rapid restart loops
+- provide a customer-friendly recovery option
+
+────────────────────────────────────────
+LOGGING AND DIAGNOSTICS
+────────────────────────────────────────
+
+Implement platform-appropriate log directories.
+
+Windows example:
+
+%APPDATA%\NeedsOps AI+\logs\
+
+macOS example:
+
+~/Library/Logs/NeedsOps AI+/
+
+Logs must:
+
+- be structured
+- rotate
+- redact secrets
+- exclude browser history
+- exclude cookies
+- exclude document contents
+- exclude device private keys
+- exclude activation codes
+- exclude refresh tokens
+
+Implement a support-bundle export containing:
+
+- redacted logs
+- app version
+- runtime version
+- operating-system version
+- architecture
+- device status
+- browser integration status
+- permission status
+- safe health diagnostics
+
+Do not include business document contents or secrets.
+
+────────────────────────────────────────
+TESTING REQUIREMENTS
+────────────────────────────────────────
+
+Add automated tests for:
+
+- onboarding state transitions
+- AI employee and pack selection
+- plan selection
+- payment bypass disabled
+- payment bypass enabled
+- entitlement provisioning
+- activation-code generation
+- activation-code expiry
+- activation-code reuse prevention
+- activation rate limiting
+- device identity registration
+- short-lived token issuance
+- token refresh
+- device revocation
+- cross-tenant access prevention
+- discovery save and resume
+- Company Profile updates
+- device status reporting
+- installer release selection
+- Windows release selection
+- macOS arm64 release selection
+- macOS x64 release selection
+- unsupported platform handling
+- safe first-test execution
+- permission-state reporting
+- browser-selection behaviour
+
+Add integration tests for:
+
+- signup-to-install-page flow where practical
+- simulated payment-to-entitlement flow
+- activation-to-device-registration flow
+- Windows first-run completion
+- macOS first-run completion
+- device reconnect after restart
+- revoked-device rejection
+
+Do not break existing tests.
+
+────────────────────────────────────────
+MANDATORY CLEAN WINDOWS TEST
+────────────────────────────────────────
+
+Perform the primary Windows acceptance test on:
+
+- a separate Windows 11 computer, or
+- a clean Windows 11 virtual machine
+
+It must not contain:
+
+- the NeedsOps repository
+- Node.js
+- pnpm
+- Git
+- Docker
+- OpenClaw
+- Runtime Broker
+- previous NeedsOps configuration
+
+Test journey:
+
+1. Open the public Replit-hosted NeedsOps site
+2. Create a new user
+3. Verify email
+4. Create a new company
+5. Select AI employees
+6. Select a plan
+7. Click “Mark as paid and continue”
+8. See subscription-success screen
+9. Download the Windows installer
+10. Install without Command Prompt or PowerShell
+11. Launch NeedsOps AI+
+12. Enter activation code
+13. Register device
+14. Select Chrome or Edge
+15. Select approved folders
+16. Complete Business Discovery
+17. Confirm device is connected
+18. Run safe first test
+19. Reach “Your AI employees are ready”
+20. Restart Windows
+21. Confirm NeedsOps AI+ starts and reconnects
+22. Confirm portal shows device online
+23. Uninstall NeedsOps AI+
+24. Confirm device becomes inactive or revoked
+
+Also test:
+
+- expired activation code
+- reused activation code
+- wrong organisation
+- internet interruption
+- denied folder selection
+- no supported browser
+- app restart during setup
+- runtime crash
+- duplicate installer execution
+- reinstall
+- revoked device
+- payment bypass disabled
+- temporary API outage
+
+────────────────────────────────────────
+MANDATORY CLEAN MACOS TEST
+────────────────────────────────────────
+
+Perform the macOS acceptance test on:
+
+- a separate Mac, or
+- a clean macOS virtual machine where legally and technically supported
+
+The device must not contain:
+
+- the NeedsOps repository
+- Node.js
+- pnpm
+- Git
+- Docker
+- Homebrew dependencies required by NeedsOps
+- OpenClaw
+- Runtime Broker
+- previous NeedsOps configuration
+
+Test both Apple Silicon and Intel builds where hardware or suitable testing infrastructure is available.
+
+At minimum, Apple Silicon must be tested if that is the primary build produced.
+
+Test journey:
+
+1. Open the public Replit-hosted NeedsOps site
+2. Create a new user
+3. Verify email
+4. Create a new company
+5. Select AI employees
+6. Select a plan
+7. Click “Mark as paid and continue”
+8. See subscription-success screen
+9. Download the correct macOS installer
+10. Install without Terminal
+11. Launch NeedsOps AI+
+12. Complete any expected development-build Gatekeeper step
+13. Enter activation code
+14. Register device
+15. Select Chrome or Edge
+16. Grant required browser permission
+17. Select approved folders
+18. Grant notifications where requested
+19. Complete Business Discovery
+20. Confirm device is connected
+21. Run safe first test
+22. Reach “Your AI employees are ready”
+23. Restart macOS
+24. Confirm NeedsOps AI+ starts and reconnects
+25. Confirm portal shows device online
+26. Uninstall NeedsOps AI+
+27. Confirm device becomes inactive or revoked
+
+Also test:
+
+- expired activation code
+- reused activation code
+- wrong organisation
+- internet interruption
+- denied folder access
+- denied browser automation permission
+- no supported browser
+- app restart during setup
+- runtime crash
+- duplicate installation
+- reinstall
+- revoked device
+- payment bypass disabled
+- temporary API outage
+- Gatekeeper behaviour for unsigned development build
+- login-item persistence after restart
+
+Do not claim Intel macOS success unless it was actually built and tested.
+
+────────────────────────────────────────
+IMPLEMENTATION ORDER
+────────────────────────────────────────
+
+Implement in this order:
+
+Phase 1 — Shared database and API foundations
+
+- onboarding progress
+- plan selection
+- development payment bypass
+- entitlements
+- device identity
+- activation codes
+- device registration
+- discovery storage
+- audit logging
+- installer release model
+
+Phase 2 — Shared web customer journey
+
+- extended onboarding
+- AI employee selection
+- plan selection
+- checkout review
+- payment bypass
+- success screen
+- install page
+- activation-code display
+- platform download selection
+- device-status UI
+
+Phase 3 — Shared Electron desktop shell
+
+- Electron application
+- secure preload bridge
+- activation UI
+- device identity
+- secure storage abstraction
+- system tray or menu bar
+- platform abstraction
+- first-run state management
+
+Phase 4 — Windows installer and platform integration
+
+- Windows secure storage
+- Windows browser detection
+- Windows approved-folder selection
+- Windows startup
+- NSIS installer
+- uninstall and reinstall
+- Windows development build
+
+Phase 5 — macOS installer and platform integration
+
+- macOS Keychain or secure storage
+- macOS browser detection
+- macOS folder permissions
+- macOS notification permissions
+- macOS browser automation permissions where required
+- macOS login item
+- .app and .dmg packaging
+- arm64 build
+- x64 build where practical
+- signing and notarisation configuration
+- macOS development build
+
+Phase 6 — Shared runtime integration
+
+- local runtime packaging
+- process supervision
+- outbound connectivity abstraction
+- device status
+- safe-test execution
+- crash recovery
+
+Phase 7 — Business Discovery and first-run completion
+
+- shared discovery APIs
+- web discovery UI
+- Windows discovery UI
+- macOS discovery UI
+- browser selection
+- approved folders
+- ready screen
+
+Phase 8 — Clean-machine validation
+
+- deploy web and API on Replit
+- publish Windows installer artifact
+- publish macOS installer artifacts
+- configure release URLs
+- complete clean Windows test
+- complete clean macOS test
+- fix blocking defects
+- produce a final test report
+
+Do not begin Linux, real payment integration, enterprise MSI deployment, or mobile desktop-runtime functionality during this implementation.
+
+────────────────────────────────────────
+DELIVERABLES
+────────────────────────────────────────
+
+At completion provide:
+
+1. Summary of implemented functionality
+2. Architecture diagram of the implemented system
+3. List of modified files
+4. List of new files
+5. Database migration summary
+6. API endpoint summary
+7. Environment variables required
+8. Instructions for enabling the payment bypass
+9. Instructions for disabling the payment bypass
+10. Windows build instructions
+11. macOS arm64 build instructions
+12. macOS x64 build instructions where supported
+13. Location of generated Windows installer
+14. Location of generated macOS installer files
+15. Replit deployment instructions
+16. Release-hosting configuration
+17. Clean Windows testing instructions
+18. Clean macOS testing instructions
+19. Security limitations remaining before production
+20. Windows signing requirements
+21. macOS signing and notarisation requirements
+22. Known defects
+23. Automated test results
+24. Manual Windows acceptance-test results
+25. Manual macOS acceptance-test results
+26. Unsupported or untested architecture disclosures
+
+────────────────────────────────────────
+IMPLEMENTATION RULES
+────────────────────────────────────────
+
+- Inspect the existing code before modifying it.
+- Reuse existing architecture and conventions.
+- Do not replace Clerk.
+- Do not duplicate existing subscription or pack-provisioning logic.
+- Do not expose internal runtime names to customers.
+- Do not implement fake client-only device status.
+- Do not hard-code successful setup states.
+- Do not commit secrets.
+- Do not weaken tenant isolation.
+- Do not make the payment bypass available without its feature flag.
+- Do not claim a Windows installer works until it has been built successfully.
+- Do not claim a macOS installer works until it has been built successfully.
+- Do not claim a clean-machine test passed unless it was actually performed.
+- Do not claim code signing or notarisation succeeded unless it actually succeeded.
+- Do not claim Intel macOS support unless the x64 build was produced and tested.
+- Stop and report clearly if the Replit environment cannot build Windows or macOS installers.
+- Replit may run on Linux and may be unable to natively build or test both operating systems.
+- In that case, still complete the source implementation and provide exact GitHub Actions or external-machine build instructions.
+- Configure CI workflows for Windows and macOS builds when native Replit builds are unavailable.
+- Do not hide incomplete work behind simulated success states.
+
+Begin by inspecting the relevant existing files, database schema, desktop connector, tests, packaging configuration, and current CI setup.
+
+Then implement the phases sequentially.
+
+After each phase:
+
+- run all relevant tests
+- fix failures
+- summarise what changed
+- list files modified
+- identify blockers
+- distinguish completed work from untested work
+
+Proceed with implementation now.
+```
+
+This keeps Windows as the primary business-user target while requiring macOS in the same sprint. The macOS work is separated into its own implementation phase so platform-specific permissions and packaging do not contaminate the shared desktop architecture. Replit should also create GitHub Actions workflows because a Linux-hosted Replit environment generally cannot fully produce and validate both native installer formats itself.

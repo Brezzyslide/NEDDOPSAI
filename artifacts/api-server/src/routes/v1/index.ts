@@ -81,6 +81,17 @@ router.use("/platform/pack-access-requests", platformPackRequestsRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
 router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);
+// Sprint 14 — NeedsOps AI+ Installer, Device Management, Business Discovery
+import activationCodesRouter from "./activationCodes.js";
+import devicesRouter from "./devices.js";
+import paymentBypassRouter from "./paymentBypass.js";
+import installerReleasesRouter from "./installerReleases.js";
+import orgDiscoveryRouter from "./orgDiscovery.js";
+router.use("/", activationCodesRouter);
+router.use("/", devicesRouter);
+router.use("/", paymentBypassRouter);
+router.use("/", installerReleasesRouter);
+router.use("/", orgDiscoveryRouter);
 
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);

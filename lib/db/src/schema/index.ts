@@ -84,3 +84,18 @@ export * from "./orgConfiguration";
 export * from "./orgResources";
 export * from "./executionGraphNodes";
 export * from "./executionHistory";
+// Sprint 14 — NeedsOps AI+ Installer, Device Management, Business Discovery
+export * from "./devices";
+export * from "./deviceCredentials";
+export * from "./deviceActivationTokens";
+export * from "./deviceRuntimeStatus";
+export * from "./installerReleases";
+export * from "./installerDownloadEvents";
+export * from "./onboardingSessions";
+export * from "./orgCompanyProfile";
+export * from "./orgConnectedSystems";
+export * from "./deviceApprovedResources";
+export * from "./orgApprovalRulesDiscovery";
+export * from "./orgDiscoveryAnswers";
+export * from "./orgDiscoveryStatus";
+export * from "./agentConfigurations";

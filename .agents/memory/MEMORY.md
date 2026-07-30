@@ -16,3 +16,4 @@
 - [NeedsOps Sprint XX Organisation Resource Architecture](needsops-sprint-xx-ora.md) — lib/organisation-resource package, Registry/ResourceManager/Connectors, resourceRequirements mandatory, EA/CoS migrated, resource.locate capability, 1164 tests
 - [NeedsOps Platform Completion Sprint](needsops-sprint-pcs.md) — 10 new DB tables, 7 new services, drizzle-orm must be mocked separately from @workspace/db in service tests, runtimeContextService structure/config wiring stubbed, 1254 tests
 - [NeedsOps OpenClaw Runtime Broker](needsops-openclaw-broker.md) — broker inside artifacts/desktop-connector, Mac-local, tunneled via Cloudflare, IGatewayAdapter interface frozen, LiveGatewayAdapter pending inspection, 1441 tests total
+- [NeedsOps Sprint 14 Installer & Desktop](needsops-sprint14.md) — Electron app, activation codes, payment bypass, Business Discovery (6 screens), REQUIRED_RLS_TABLES=46, sprint7 RLS test needs count updated on each sprint

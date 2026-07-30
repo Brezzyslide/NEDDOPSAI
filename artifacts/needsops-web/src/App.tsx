@@ -44,6 +44,10 @@ import ApprovalsPage from "@/pages/app/ApprovalsPage";
 import OrgMemoryPage from "@/pages/app/OrgMemoryPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
+// Sprint 14 — Installer, Devices, Discovery
+import InstallPage from "@/pages/app/InstallPage";
+import DevicesPage from "@/pages/app/DevicesPage";
+import DiscoveryPage from "@/pages/app/DiscoveryPage";
 // Platform Console — Sprint 4
 import PlatformDashboard from "@/pages/platform/PlatformDashboard";
 import PlatformOrgs from "@/pages/platform/PlatformOrgs";
@@ -221,6 +225,10 @@ function AppRouter() {
             <Route path="/app/:slug/settings" component={OrgSettings} />
             <Route path="/app/:slug/audit" component={AuditPage} />
             <Route path="/app/:slug/memory" component={OrgMemoryPage} />
+            {/* Sprint 14 — Installer, Devices, Discovery */}
+            <Route path="/app/:slug/install" component={InstallPage} />
+            <Route path="/app/:slug/devices" component={DevicesPage} />
+            <Route path="/app/:slug/discover" component={DiscoveryPage} />
             <Route path="/app/:slug" component={AppDashboard} />
             <Route path="/account" component={AccountSettings} />
             {/* Platform Console — Sprint 4 */}

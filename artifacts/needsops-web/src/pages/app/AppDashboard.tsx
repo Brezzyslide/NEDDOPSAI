@@ -81,6 +81,17 @@ export default function AppDashboard() {
     enabled: !!slug,
   });
 
+  // Sprint 14 — device connectivity
+  const { data: devicesData } = useQuery({
+    queryKey: ["devices", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/devices`).then(r => r.json()),
+    enabled: !!slug,
+    refetchInterval: 30_000,
+  });
+  const deviceList: any[] = devicesData?.devices ?? [];
+  const hasConnectedDevice = deviceList.some((d: any) => d.status === "connected");
+  const devicesLoaded = devicesData !== undefined;
+
   const org = orgData?.organisation;
   const members = membersData?.members ?? [];
   const packs: any[] = packsData?.packs ?? [];
@@ -120,6 +131,25 @@ export default function AppDashboard() {
               <span className="text-[#64748B] text-sm">{org?.subscriptionTier} plan</span>
             </div>
           </div>
+
+          {/* Sprint 14: Install reminder banner — shown when org has no connected device */}
+          {devicesLoaded && !hasConnectedDevice && (
+            <div className="mb-6 flex items-center gap-4 p-4 rounded-xl border border-[#00D4FF]/30 bg-[#00D4FF]/5">
+              <span className="text-2xl shrink-0">💻</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[#E2E8F0] font-semibold text-sm">Connect a device to get started</p>
+                <p className="text-[#64748B] text-xs mt-0.5">
+                  Install NeedsOps AI+ on your computer so your AI employees can work on your behalf.
+                </p>
+              </div>
+              <button
+                onClick={() => setLocation(`/app/${slug}/install`)}
+                className="shrink-0 px-4 py-2 bg-[#00D4FF] text-[#0B1829] font-semibold text-sm rounded-lg hover:bg-[#00B8D9] transition-colors"
+              >
+                Install now →
+              </button>
+            </div>
+          )}
 
           {/* Sprint 3: Plan + Usage summary strip */}
           {sub && (

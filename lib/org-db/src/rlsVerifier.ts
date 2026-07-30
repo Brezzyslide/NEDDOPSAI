@@ -63,6 +63,19 @@ export const REQUIRED_RLS_TABLES = [
   "specialist_conflicts",
   // Sprint 9.6 — Pack Commerce access requests (org-scoped)
   "workforce_pack_access_requests",
+  // Sprint 14 — NeedsOps AI+ Installer, Device Management, Business Discovery
+  "devices",
+  "device_credentials",
+  "device_activation_tokens",
+  "device_runtime_status",
+  "onboarding_sessions",
+  "org_company_profile",
+  "org_connected_systems",
+  "device_approved_resources",
+  "org_approval_rules_discovery",
+  "org_discovery_answers",
+  "org_discovery_status",
+  "agent_configurations",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

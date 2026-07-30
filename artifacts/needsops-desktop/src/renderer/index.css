@@ -1,0 +1,33 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-deep: #0B1829;
+  --bg-card: #112033;
+  --border: #1E3A5F;
+  --cyan: #00D4FF;
+  --text: #E2E8F0;
+  --muted: #64748B;
+  --subtle: #475569;
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: "Outfit", system-ui, -apple-system, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Drag region for macOS titlebar */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 2px; }

@@ -1,0 +1,84 @@
+{
+  "name": "@workspace/needsops-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NeedsOps AI+ Desktop App — Electron wrapper with embedded broker",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"pnpm run dev:renderer\" \"pnpm run dev:main\"",
+    "dev:renderer": "vite --port 5174",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "build": "pnpm run build:renderer && pnpm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "dist:mac": "pnpm run build && electron-builder --mac --arm64 --x64",
+    "dist:win": "pnpm run build && electron-builder --win --x64",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9",
+    "keytar": "^7.9.0",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/keytar": "^4.4.2",
+    "@types/node": "^20.17.30",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.5.14",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^8.2.2",
+    "electron": "^32.2.7",
+    "electron-builder": "^25.1.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vite-plugin-electron": "^0.28.8",
+    "vitest": "^3.0.5"
+  },
+  "build": {
+    "appId": "com.needsops.desktop",
+    "productName": "NeedsOps AI+",
+    "copyright": "Copyright © 2026 NeedsOps",
+    "directories": {
+      "buildResources": "assets",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    },
+    "dmg": {
+      "sign": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "needsops",
+      "repo": "needsops-desktop"
+    }
+  }
+}
