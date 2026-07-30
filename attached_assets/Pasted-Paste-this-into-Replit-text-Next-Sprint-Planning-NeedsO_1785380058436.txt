@@ -1,0 +1,481 @@
+Paste this into Replit:
+
+```text
+Next Sprint Planning — NeedsOps AI+ Technical Design Only
+
+Do not implement any code yet.
+
+Using the onboarding and installer inspection report you just produced, create a detailed technical design document for the next sprint.
+
+The design must cover these four epics:
+
+1. Commercial Journey
+2. NeedsOps AI+ Installer
+3. Business Discovery
+4. First-Run Experience
+
+The goal is to define the architecture, user flow, database changes, APIs, security model, packaging approach, and implementation sequence before development begins.
+
+────────────────────────────────────────
+PRODUCT JOURNEY TO DESIGN
+────────────────────────────────────────
+
+The target customer journey is:
+
+1. User lands on the NeedsOps website
+2. User creates an account
+3. User creates a company workspace
+4. User selects AI agents or workforce packs
+5. User selects a subscription tier
+6. User completes checkout or activates a trial
+7. User sees a success screen
+8. User is prompted to install NeedsOps AI+
+9. User downloads the correct installer for macOS, Windows, or Linux
+10. User installs everything without using Terminal, editing environment files, configuring ports, installing Docker, or understanding OpenClaw
+11. User signs in or enters a short-lived activation code
+12. The installed device is securely registered to the user and company
+13. The installer requests only the required permissions
+14. The user completes Business Discovery
+15. NeedsOps confirms detected systems, folders, browsers, and knowledge sources
+16. Selected agents receive the company configuration
+17. The user reaches a ready screen and runs their first agent task
+
+Customer-facing product name:
+
+NeedsOps AI+
+
+OpenClaw, Runtime Broker, ports, tokens, tunnels, environment variables, and internal runtime terminology must remain hidden from normal customers.
+
+────────────────────────────────────────
+EPIC 1 — COMMERCIAL JOURNEY
+────────────────────────────────────────
+
+Design the updated web onboarding flow:
+
+Company Creation
+→ Agent Selection
+→ Subscription Selection
+→ Checkout or Trial
+→ Success
+→ Install NeedsOps AI+
+
+The design must cover:
+
+- Whether to extend or replace the current OrgOnboarding wizard
+- How workforce pack selection should relate to individual agent selection
+- How users see what each agent does
+- Subscription tier selection
+- Trial behaviour
+- Payment provider integration boundaries
+- Checkout success and cancellation handling
+- Entitlement creation
+- Pack and agent access rules
+- How existing users and organisations migrate
+- Behaviour for invited users versus company owners
+- Behaviour when a user skips installation
+- Resume-onboarding support
+- Mobile versus desktop web behaviour
+
+Identify:
+
+- Existing files to modify
+- New pages and components
+- New API endpoints
+- New database fields or tables
+- State transitions for organisations and subscriptions
+- Required tests
+
+────────────────────────────────────────
+EPIC 2 — NEEDSOPS AI+ INSTALLER
+────────────────────────────────────────
+
+Design a branded installation system for:
+
+- macOS
+- Windows
+- Linux
+
+For the first implementation phase, recommend which operating system should be built first and explain why.
+
+The installer must package or install:
+
+- NeedsOps AI+ desktop application
+- Runtime Broker
+- OpenClaw execution engine
+- Browser support
+- Secure device registration
+- Health monitoring
+- Automatic startup
+- Automatic updates
+- Diagnostics
+- Repair and uninstall support
+
+The normal customer must not need:
+
+- Terminal commands
+- Git
+- Node.js
+- pnpm
+- Docker
+- manual .env files
+- manual port configuration
+- Cloudflare Tunnel setup
+- technical knowledge of OpenClaw
+
+The design must specify:
+
+- Recommended desktop packaging framework
+- Installer format for each operating system
+- Bundled-runtime versus dependency-download strategy
+- Versioning model
+- Release channel model
+- Code signing and notarisation requirements
+- Automatic update architecture
+- Rollback strategy
+- Repair process
+- Uninstall process
+- Startup service design
+- Local process supervision
+- Local health checks
+- Crash recovery
+- Log locations
+- Secret redaction
+- Support bundle export
+- Offline and interrupted-install behaviour
+- Architecture support such as Apple Silicon, Intel, and Windows x64
+- How releases are built and hosted
+- How Replit serves or links to installer downloads
+- What should remain on Replit and what should use object storage or a release service
+
+Do not assume the existing desktop-connector is already suitable for customer packaging. Assess what must be refactored.
+
+────────────────────────────────────────
+EPIC 3 — BUSINESS DISCOVERY
+────────────────────────────────────────
+
+Design a guided Business Discovery experience.
+
+This should feel like NeedsOps is learning how the company operates, not like a long compliance form.
+
+The discovery flow should cover:
+
+- What does the company do?
+- Which browser is used for work?
+- Which browser contains the CRM login?
+- Which CRM is used?
+- Which email platform is used?
+- Which accounting system is used?
+- Where are company policies stored?
+- Where are contracts stored?
+- Where are HR documents stored?
+- Where does the team normally find company information?
+- Who approves purchases?
+- Who approves leave?
+- Who approves contracts?
+- Which actions always require human approval?
+- Business hours
+- Locations
+- Important teams and managers
+- First-week goals for selected agents
+
+Design a structured Company Profile that agents can use.
+
+Propose a schema for:
+
+- company profile
+- connected systems
+- browser preferences
+- approved folders
+- knowledge sources
+- policy sources
+- approval rules
+- business hours
+- organisational contacts
+- agent configuration
+- discovery answers
+- discovery completion status
+- provenance and last-confirmed timestamps
+
+The design must explain:
+
+- Which answers belong at organisation level
+- Which answers belong at device level
+- Which answers belong at user level
+- Which answers belong at agent level
+- How changes are versioned
+- How users review and correct discovered information
+- How conflicting sources are handled
+- How agents consume the profile
+- How access is restricted by role and tenant
+- How future integrations can reuse this model
+
+────────────────────────────────────────
+EPIC 4 — FIRST-RUN EXPERIENCE
+────────────────────────────────────────
+
+Design the complete first-run journey after installation:
+
+1. NeedsOps AI+ opens
+2. User signs in or enters an activation code
+3. Device registration completes
+4. Runtime components start
+5. Browser support is detected
+6. Required permissions are requested
+7. Folder access is selected
+8. Business Discovery resumes or begins
+9. Selected agents are configured
+10. Connectivity and runtime checks pass
+11. A first test task is run
+12. User reaches the ready screen
+
+The design must include:
+
+- Activation link and activation-code flows
+- Expiry and one-time use
+- Device credential exchange
+- Credential storage using native OS secure storage
+- Device revocation
+- Multiple devices per company
+- Device naming
+- Device ownership
+- Reinstallation behaviour
+- Browser-extension installation or browser bridge setup
+- Browser selection
+- File and folder permission handling
+- Permission-denied recovery
+- Connectivity checks
+- Runtime status reporting
+- Progress UI
+- Retry behaviour
+- Failure messages written for non-technical users
+- Resume after restart
+- First test execution
+- Ready-state criteria
+- Dashboard device-status display
+
+────────────────────────────────────────
+SECURITY REQUIREMENTS
+────────────────────────────────────────
+
+The design must explicitly address:
+
+- Tenant isolation
+- Short-lived activation tokens
+- Revocable device credentials
+- No permanent secrets embedded in installers
+- Native secure credential storage
+- Token rotation
+- Least-privilege access
+- User-approved file and folder access
+- Browser access boundaries
+- Agent-level permissions
+- Role-based administration
+- Approval policies
+- Audit logging
+- Signed webhook delivery
+- Replay protection
+- Rate limiting
+- Device compromise response
+- Lost or stolen device handling
+- Secret-free diagnostic logs
+- Secure automatic updates
+- Installer signature verification
+- Supply-chain security
+- Data retention and deletion
+
+Include a threat model covering at least:
+
+- Stolen activation link
+- Installer tampering
+- Compromised device
+- Cross-tenant access
+- Malicious local user
+- Token leakage
+- Browser-session misuse
+- Unauthorised file access
+- Webhook spoofing
+- Downgrade attack
+- Replayed enrolment request
+
+────────────────────────────────────────
+DATA MODEL AND API DESIGN
+────────────────────────────────────────
+
+Propose all required database changes.
+
+At minimum, assess the need for tables or models for:
+
+- devices
+- device_credentials
+- device_activation_tokens
+- device_runtime_status
+- installer_releases
+- installer_downloads
+- company_profiles
+- connected_systems
+- approved_resources
+- approval_rules
+- agent_configurations
+- onboarding_sessions
+- discovery_answers
+- audit_events
+
+For every proposed table include:
+
+- purpose
+- key fields
+- tenant ownership
+- relationships
+- indexes
+- lifecycle
+- retention
+- sensitive fields
+- encryption requirements
+
+Propose API endpoints for:
+
+- creating activation tokens
+- redeeming activation tokens
+- registering devices
+- refreshing credentials
+- revoking devices
+- reporting runtime health
+- retrieving device configuration
+- retrieving agent configuration
+- installer release lookup
+- Business Discovery save and resume
+- permission status reporting
+- first-run completion
+- support bundle metadata
+
+For every endpoint include:
+
+- method and route
+- authentication method
+- request shape
+- response shape
+- authorisation rules
+- important errors
+- idempotency requirements
+- audit events created
+
+────────────────────────────────────────
+IMPLEMENTATION PLAN
+────────────────────────────────────────
+
+Provide a phased implementation plan.
+
+Do not suggest building all operating systems and every feature simultaneously.
+
+Recommend a sequence such as:
+
+Phase 0 — architecture and security foundations
+Phase 1 — web onboarding and device enrolment APIs
+Phase 2 — first installer operating system
+Phase 3 — first-run and Business Discovery
+Phase 4 — end-to-end clean-machine test
+Phase 5 — additional operating systems
+Phase 6 — payment, updates, diagnostics, and enterprise hardening
+
+For every phase include:
+
+- scope
+- dependencies
+- files to modify
+- new files or services
+- database migrations
+- tests
+- acceptance criteria
+- risks
+- estimated implementation complexity: small, medium, large, or very large
+
+────────────────────────────────────────
+CLEAN-MACHINE ACCEPTANCE TEST
+────────────────────────────────────────
+
+Define a mandatory end-to-end acceptance test using a completely different computer that has never had the NeedsOps repository or development tools installed.
+
+The test must include:
+
+- public Replit-hosted site
+- new user
+- new company
+- agent selection
+- plan selection
+- checkout or trial
+- installer download
+- installation without Terminal
+- activation
+- permission prompts
+- Business Discovery
+- browser connection
+- approved folder access
+- device visible online
+- first real agent execution
+- restart and auto-reconnect
+- uninstall
+- device revocation or inactive status
+
+Also define failure tests for:
+
+- expired activation code
+- activation code reuse
+- internet disconnection
+- permission denial
+- installer interruption
+- duplicate installation
+- runtime crash
+- browser unavailable
+- invalid subscription entitlement
+- uninstall and reinstall
+- website temporarily unavailable
+
+────────────────────────────────────────
+REQUIRED OUTPUT FORMAT
+────────────────────────────────────────
+
+Produce one structured technical design document with these sections:
+
+1. Executive summary
+2. Current architecture constraints
+3. Proposed target architecture
+4. Updated customer journey diagram
+5. Epic 1 technical design
+6. Epic 2 technical design
+7. Epic 3 technical design
+8. Epic 4 technical design
+9. Database design
+10. API design
+11. Security and threat model
+12. Installer and release architecture
+13. Implementation phases
+14. Clean-machine test plan
+15. Automated test strategy
+16. Migration and backwards compatibility
+17. Risks and unresolved decisions
+18. Recommended decisions
+19. Detailed file-by-file change map
+20. Sprint acceptance criteria
+
+Clearly distinguish:
+
+- existing functionality
+- changes to existing functionality
+- entirely new functionality
+- assumptions
+- unresolved decisions
+
+Where multiple architecture options exist, compare them and recommend one.
+
+Stop after producing the technical design document.
+
+Do not edit files.
+Do not create migrations.
+Do not install dependencies.
+Do not implement UI.
+Do not implement APIs.
+Do not package an installer.
+Do not change the current application.
+```
+
+The response should give us enough detail to approve the architecture and then issue smaller implementation prompts one phase at a time.
