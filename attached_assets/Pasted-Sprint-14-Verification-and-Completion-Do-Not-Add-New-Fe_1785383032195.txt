@@ -1,0 +1,296 @@
+Sprint 14 Verification and Completion — Do Not Add New Features
+
+The implementation report says Sprint 14 is complete, but the acceptance requirements have not yet been demonstrated.
+
+Do not add unrelated features.
+
+Perform a strict verification of the work already implemented and complete any missing requirements.
+
+────────────────────────────────────────
+1. CONNECTIVITY ARCHITECTURE VERIFICATION
+────────────────────────────────────────
+
+You reported that a “Cloudflare tunnel adapter” was implemented.
+
+Inspect the implementation and answer precisely:
+
+- Is this using Cloudflare Quick Tunnels?
+- Does the public URL change after restart?
+- Is Cloudflare required for the desktop app to connect?
+- Is the tunnel implementation behind a transport interface?
+- Is there a persistent outbound WebSocket or relay implementation?
+- Which transport is currently used by default?
+- Which environment variables control the transport?
+- What happens when Cloudflare is unavailable?
+- Does any customer need to configure Cloudflare manually?
+
+The approved architecture does not allow Cloudflare Quick Tunnels to be the intended production transport.
+
+Required outcome:
+
+- Prefer a device-initiated persistent outbound WebSocket connection.
+- Keep any Cloudflare implementation development-only and behind a clean transport abstraction.
+- Clearly label temporary transports.
+- Do not expose tunnel URLs or terminology to customers.
+- Do not report this requirement as complete unless the approved transport works.
+
+Provide the exact files and classes implementing the connection transport.
+
+────────────────────────────────────────
+2. INSTALLER BUILD VERIFICATION
+────────────────────────────────────────
+
+Do not report packaging configuration as a completed installer.
+
+Attempt to build the actual release artifacts.
+
+Required Windows artifact:
+
+NeedsOps-AI-Plus-Setup-<version>.exe
+
+Required macOS artifact:
+
+NeedsOps-AI-Plus-<version>-arm64.dmg
+
+Also attempt macOS x64 only if the current build system supports it.
+
+For every artifact report:
+
+- exact file path
+- file name
+- file size
+- checksum
+- build command
+- build environment
+- build log
+- whether the artifact is signed
+- whether the artifact is notarised
+- whether it has been opened and installed successfully
+
+If Replit cannot natively build Windows or macOS artifacts:
+
+- do not claim they were built
+- run the GitHub Actions workflows
+- report the workflow URL or run identifier
+- report success or failure
+- provide the exact build error
+- fix CI configuration errors where possible
+
+────────────────────────────────────────
+3. RUNTIME PACKAGING VERIFICATION
+────────────────────────────────────────
+
+Inspect the generated installer contents and verify whether they include everything required on a clean computer.
+
+Confirm whether each of these is actually bundled or installed automatically:
+
+- Electron runtime
+- NeedsOps desktop application
+- local execution runtime
+- OpenClaw runtime
+- browser bridge
+- Runtime Broker implementation
+- better-sqlite3 native binary
+- required browser integration assets
+- updater
+- process supervisor
+
+For every component provide:
+
+- source location
+- packaged destination
+- platform and architecture
+- how it is started
+- how it is stopped
+- how it is updated
+- how failure is detected
+
+A clean customer computer must not require:
+
+- Node.js
+- pnpm
+- Git
+- Docker
+- PowerShell
+- Command Prompt
+- Terminal
+- Homebrew
+- manual .env files
+
+Run an inspection of the packaged application and confirm there are no unresolved development paths or dependencies on the repository.
+
+────────────────────────────────────────
+4. KEYTAR AND SECURE STORAGE VERIFICATION
+────────────────────────────────────────
+
+You reported that keytar is being used.
+
+Verify:
+
+- whether keytar compiles successfully for Electron on Windows
+- whether keytar compiles successfully for Electron on macOS arm64
+- whether keytar compiles successfully for macOS x64 if supported
+- whether Electron rebuild is configured
+- whether native binaries are packaged correctly
+- whether credentials survive restart
+- whether credentials are removed or retained according to uninstall choices
+
+If keytar causes native-module packaging failures, assess Electron safeStorage as an alternative.
+
+Do not store private keys, refresh tokens, activation codes, or long-lived credentials in plaintext files.
+
+────────────────────────────────────────
+5. ACTIVATION FLOW END-TO-END TEST
+────────────────────────────────────────
+
+Run an end-to-end activation integration test using real APIs and database records.
+
+Test:
+
+1. Create an organisation.
+2. Enable the development payment bypass.
+3. Select a plan.
+4. Mark the subscription as paid.
+5. Generate an activation code.
+6. Confirm only the code hash is stored.
+7. Redeem the activation code.
+8. Register a device public key.
+9. Issue a short-lived access token.
+10. Refresh the access token.
+11. Prevent activation-code reuse.
+12. Reject an expired code.
+13. Reject a code from the wrong organisation.
+14. Revoke the device.
+15. Reject further device authentication.
+16. Confirm audit events exist.
+
+Report actual request and response statuses with secrets redacted.
+
+────────────────────────────────────────
+6. CUSTOMER JOURNEY VERIFICATION
+────────────────────────────────────────
+
+Run the complete web journey in a deployed environment:
+
+Landing page
+→ Clerk signup
+→ email verification
+→ company creation
+→ AI employee selection
+→ plan selection
+→ review page
+→ “Mark as paid and continue”
+→ payment-success page
+→ installer page
+→ activation-code generation
+
+Verify:
+
+- onboarding resumes after browser refresh
+- payment bypass is hidden when disabled
+- payment bypass API rejects requests when disabled
+- selected packs and agents are provisioned correctly
+- the dashboard shows the installer reminder
+- the reminder disappears only after a real connected device exists
+- invited members do not incorrectly receive owner onboarding
+- cross-tenant access is rejected
+
+Provide screenshots or test evidence where the environment supports it.
+
+────────────────────────────────────────
+7. BUSINESS DISCOVERY VERIFICATION
+────────────────────────────────────────
+
+Test Business Discovery from both:
+
+- web portal
+- Electron desktop renderer
+
+Verify:
+
+- answers save
+- progress resumes
+- skipped questions save correctly
+- organisation-level answers are not stored as device-level data
+- folder paths are stored as device-approved resources
+- selected browser is device-specific
+- approval rules are organisation-specific
+- first-week goals are agent-specific
+- profile version increments
+- source and last-confirmed fields are populated
+- cross-tenant reads and writes are rejected
+
+Confirm that the desktop UI uses the real API rather than mocked data.
+
+────────────────────────────────────────
+8. CLEAN-MACHINE TEST STATUS
+────────────────────────────────────────
+
+State clearly whether these tests were actually performed:
+
+- clean Windows 11 machine
+- clean macOS Apple Silicon machine
+- clean macOS Intel machine
+
+For each platform, use one of these statuses:
+
+- Passed
+- Failed
+- Not performed
+- Blocked
+
+Do not label a test as passed based only on automated unit tests.
+
+If not performed, provide exact manual test instructions and identify what physical machine or CI environment is still required.
+
+────────────────────────────────────────
+9. TEST COVERAGE CLARIFICATION
+────────────────────────────────────────
+
+You reported 1,339 passing tests.
+
+Provide a categorized breakdown:
+
+- existing tests
+- newly added Sprint 14 tests
+- unit tests
+- API integration tests
+- database and RLS tests
+- Electron main-process tests
+- renderer tests
+- installer build tests
+- activation end-to-end tests
+- clean-machine tests
+
+Clearly distinguish simulated tests from tests involving real packaged applications.
+
+────────────────────────────────────────
+10. COMPLETION REPORT
+────────────────────────────────────────
+
+Produce a corrected completion report containing:
+
+1. Fully implemented and verified
+2. Implemented but not externally tested
+3. Partially implemented
+4. Configuration only
+5. Not implemented
+6. Blocked by Replit environment
+7. Security limitations
+8. Production blockers
+9. Exact installer artifact locations
+10. Exact CI workflow results
+11. Actual clean-machine test results
+12. Recommended next action
+
+Do not describe Sprint 14 as fully complete unless:
+
+- the Windows installer was successfully built
+- the macOS arm64 installer was successfully built
+- both installers contain the complete local runtime
+- device activation works end-to-end
+- the device reports connected through the approved transport
+- at least one clean Windows test has passed
+- at least one clean macOS test has passed
+
+Begin verification now.

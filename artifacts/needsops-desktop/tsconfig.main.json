@@ -8,7 +8,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist/main",
-    "rootDir": "src/main",
+    "rootDir": "src",
     "declaration": false
   },
   "include": ["src/main/**/*", "src/preload/**/*"],

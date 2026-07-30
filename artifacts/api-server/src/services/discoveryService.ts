@@ -234,7 +234,7 @@ export async function completeDiscovery(
   // Update org discovery_completed_at
   await db
     .update(organizationsTable)
-    .set({ discoveryCompletedAt: now, updatedAt: now } as any)
+    .set({ discoveryCompletedAt: now, updatedAt: now })
     .where(eq(organizationsTable.id, organizationId))
     .catch(() => {});
 

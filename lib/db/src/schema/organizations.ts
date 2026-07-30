@@ -116,6 +116,20 @@ export const organizationsTable = pgTable("organizations", {
   /** Internal support status: normal | high_priority | vip | flagged */
   supportStatus: text("support_status").notNull().default("normal"),
 
+  // ── Sprint 14 — Installer & Onboarding ────────────────────────────────────
+
+  /**
+   * Current onboarding wizard step (0–6).
+   * 6 = onboarding complete. Existing orgs seeded at 6 via migration.
+   */
+  onboardingStep: integer("onboarding_step").notNull().default(0),
+
+  /** Set when the first desktop device connects and sends a heartbeat. */
+  installerConnectedAt: timestamp("installer_connected_at", { withTimezone: true }),
+
+  /** Set when the org completes Business Discovery. */
+  discoveryCompletedAt: timestamp("discovery_completed_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

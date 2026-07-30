@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Required for Hardened Runtime -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- Required for Electron's V8 JIT -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Network client access (API calls to NeedsOps platform) -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <!-- Accessibility API (for browser automation) -->
+  <key>com.apple.security.temporary-exception.apple-events</key>
+  <true/>
+</dict>
+</plist>
