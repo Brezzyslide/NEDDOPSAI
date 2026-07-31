@@ -1,0 +1,4 @@
+owner: needsops
+repo: needsops-desktop
+provider: github
+updaterCacheDirName: '@workspaceneedsops-desktop-updater'

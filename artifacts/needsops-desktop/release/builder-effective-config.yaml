@@ -1,0 +1,42 @@
+directories:
+  output: release
+  buildResources: assets
+appId: com.needsops.desktop
+productName: NeedsOps AI+
+copyright: Copyright © 2026 NeedsOps
+files:
+  - filter:
+      - dist/**/*
+      - assets/**/*
+extraResources:
+  - from: ../../artifacts/desktop-connector/dist
+    to: broker
+    filter:
+      - '**/*'
+mac:
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: assets/entitlements.mac.plist
+  entitlementsInherit: assets/entitlements.mac.plist
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+dmg:
+  sign: false
+publish:
+  provider: github
+  owner: needsops
+  repo: needsops-desktop
+electronVersion: 43.2.0
