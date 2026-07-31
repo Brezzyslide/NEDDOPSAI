@@ -11,7 +11,7 @@
     "build": "pnpm run build:renderer && pnpm run build:main",
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
-    "dist:mac": "pnpm run build && electron-builder --mac --arm64 --x64",
+    "dist:mac": "pnpm run build && electron-builder --mac --arm64 --x64 --publish never",
     "dist:win": "pnpm run build && electron-builder --win --x64 --publish never",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
