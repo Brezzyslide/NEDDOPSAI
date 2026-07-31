@@ -49,6 +49,7 @@
       "output": "release"
     },
     "files": [
+      "package.json",
       {
         "from": "dist",
         "to": "dist",
