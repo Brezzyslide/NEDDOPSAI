@@ -70,6 +70,7 @@ jobs:
           pnpm --filter @workspace/shared typecheck || true
           pnpm --filter @workspace/db typecheck || true
 
+      - name: Build shared packages
         run: |
           pnpm --filter @workspace/shared build
           pnpm --filter @workspace/db build
