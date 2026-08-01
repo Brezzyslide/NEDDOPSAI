@@ -53,6 +53,115 @@ export interface RuntimeHealth {
   message?: string;
 }
 
+// ─── Specialist Runtime Manifest (NeedsOps → Runtime) ────────────────────────
+//
+// Carries the compiled specialist identity, behaviour, and skills from the
+// active DNA profile. This is the sole authoritative identity signal for the
+// runtime — no separate specialist file should exist inside OpenClaw.
+//
+// IMPORTANT separation of concerns:
+//   - SpecialistRuntimeManifest  → who the specialist is and how they behave
+//   - WorkerProfileConstraints   → what the specialist is technically permitted to do
+//   - ExecutionStep[]            → what the specialist must do right now
+//
+// The manifest must NEVER contain credentials, API keys, secrets, bearer tokens,
+// database IDs, subscription metadata, or anything that enlarges permissions
+// beyond what WorkerProfileConstraints explicitly grants.
+
+export interface SpecialistManifestCompetency {
+  /** Canonical competency code from the DNA profile */
+  code: string;
+  /** Human-readable competency name */
+  name: string;
+  /** Proficiency level */
+  level: string;
+  /** Competency description */
+  description: string;
+  /**
+   * Version string — competencies are versioned with the DNA profile.
+   * Individual competencies do not carry separate version numbers.
+   */
+  version: string;
+}
+
+export interface SpecialistRuntimeManifest {
+  // ── Identity ──────────────────────────────────────────────────────────────
+  /** Canonical workforce role code, e.g. "chief_of_staff" */
+  specialistId: string;
+  /** Matches ExecutionPackage.workforceRole — must be identical */
+  workforceRole: string;
+  /** Human-readable display name from the DNA profile */
+  displayName: string;
+  /** Professional domain, e.g. "Strategic Operations" */
+  domain: string;
+  /** Stable canonical DNA profile identifier (same as specialistId) */
+  dnaProfileId: string;
+  /** Semver string of the DNA version this manifest was compiled from */
+  dnaVersion: string;
+  /**
+   * Manifest format version.
+   * Increment this when the shape of SpecialistRuntimeManifest changes.
+   * Old packages carrying a different version must be rejected.
+   */
+  manifestVersion: 1;
+
+  // ── Purpose ───────────────────────────────────────────────────────────────
+  /** One-sentence professional mission statement */
+  mission: string;
+  /** 3-5 core professional objectives */
+  objectives: string[];
+  /** What this specialist is authorised to do (identity layer, not enforcement) */
+  responsibilities: string[];
+  /** Non-negotiable professional values and guiding principles */
+  operatingPrinciples: string[];
+
+  // ── Communication ─────────────────────────────────────────────────────────
+  communicationStyle: {
+    /** Tone of voice, e.g. "authoritative_professional" */
+    tone: string;
+    /** Language register, e.g. "formal" */
+    detailLevel: string;
+    /** How the specialist labels itself in conversation */
+    language: string;
+  };
+
+  // ── Skills / competencies ─────────────────────────────────────────────────
+  competencies: SpecialistManifestCompetency[];
+
+  // ── Behaviour ─────────────────────────────────────────────────────────────
+  /**
+   * Conditions that trigger escalation or refusal.
+   * Behavioural description only — hard stops are enforced structurally
+   * by the broker and tool layer via WorkerProfileConstraints.
+   */
+  escalationRules: string[];
+  /**
+   * Behaviours this specialist must refuse on principle.
+   * Does NOT replace workerProfile.prohibitedActions — that is the
+   * technical enforcement layer.
+   */
+  prohibitedBehaviours: string[];
+
+  // ── Memory ────────────────────────────────────────────────────────────────
+  memoryPolicy: {
+    /** Memory scopes this specialist reads and writes */
+    allowedScopes: string[];
+    /** Memory scopes this specialist must not access */
+    prohibitedScopes: string[];
+  };
+
+  // ── Audit ─────────────────────────────────────────────────────────────────
+  /**
+   * SHA-256 hex digest of the canonical JSON serialisation of this manifest,
+   * computed with this field set to an empty string.
+   * Allows NeedsOps to prove which exact specialist instructions were used
+   * for any given execution.
+   */
+  manifestHash: string;
+  /** ISO 8601 timestamp of manifest compilation */
+  generatedAt: string;
+}
+
 // ─── Execution package (NeedsOps → Runtime) ───────────────────────────────────
 
 export interface WorkerProfileConstraints {
@@ -89,6 +198,12 @@ export interface ExecutionPackage {
   tenantId: string;
   /** Workforce Role code (specialist identifier) */
   workforceRole: string;
+  /**
+   * Compiled specialist identity from the active DNA profile.
+   * Required for all new execution packages (manifestVersion must be 1).
+   * Packages without this field will be rejected with UNSUPPORTED_PACKAGE_VERSION.
+   */
+  specialistManifest: SpecialistRuntimeManifest;
   /** Worker Profile constraints the runtime must enforce */
   workerProfile: WorkerProfileConstraints;
   /** Ordered execution steps from the task plan */

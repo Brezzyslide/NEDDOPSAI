@@ -31,6 +31,12 @@ import {
 } from "@workspace/openclaw";
 import { getActiveWorkerProfilesForRole } from "../lib/workerProfileRegistry.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
+import {
+  compileSpecialistManifest,
+  buildManifestAuditRecord,
+  MissingDNAError,
+  InactiveDNAError,
+} from "./specialistRuntimeManifestService.js";
 
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
@@ -178,11 +184,17 @@ function buildExecutionPackage(
     now.getTime() + config.executionTtlSeconds * 1000,
   ).toISOString();
 
+  // Compile the Specialist Runtime Manifest from the active DNA profile.
+  // This must happen AFTER the eligibility/entitlement check in submitTaskExecution.
+  // Throws MissingDNAError or InactiveDNAError — callers must handle these.
+  const specialistManifest = compileSpecialistManifest(primaryRole);
+
   return {
     executionId,
     taskId: task.id,
     tenantId: task.organizationId,
     workforceRole: primaryRole,
+    specialistManifest,
     workerProfile: workerProfileConstraints,
     steps,
     requestedTools: workerProfileConstraints.allowedChannels.includes("api")
@@ -237,8 +249,24 @@ export async function submitTaskExecution(
     );
   }
 
-  // 3. Build the package
-  const pkg = buildExecutionPackage(task, planRow, config);
+  // 3. Build the package (compiles specialist manifest from DNA)
+  let pkg: ReturnType<typeof buildExecutionPackage>;
+  try {
+    pkg = buildExecutionPackage(task, planRow, config);
+  } catch (err) {
+    if (err instanceof MissingDNAError || err instanceof InactiveDNAError) {
+      throw Object.assign(
+        new Error(
+          `Cannot compile execution package: ${(err as Error).message}`,
+        ),
+        { code: "SPECIALIST_DNA_UNAVAILABLE", cause: err },
+      );
+    }
+    throw err;
+  }
+
+  // 3a. Record manifest audit event
+  const auditRecord = buildManifestAuditRecord(pkg.specialistManifest, pkg.executionId);
 
   // 4. Transition task to executing
   await db
@@ -256,7 +284,10 @@ export async function submitTaskExecution(
       runtimeName: "openclaw",
       currentStatus: "pending",
       executionPackage: pkg as unknown as Record<string, unknown>,
-      metadata: { note: "Runtime not configured. Session pending runtime connection." },
+      metadata: {
+        note: "Runtime not configured. Session pending runtime connection.",
+        manifestAudit: auditRecord,
+      },
       createdAt: new Date(),
       updatedAt: new Date(),
     });

@@ -53,10 +53,54 @@ const constraintsSchema = z.object({
   allowedDataCategories: z.array(z.string()),
 });
 
+// ─── Specialist Runtime Manifest schema ───────────────────────────────────────
+// Sprint SRM: all new packages must carry a compiled manifest.
+// Old packages without specialistManifest are rejected with UNSUPPORTED_PACKAGE_VERSION.
+
+const competencySchema = z.object({
+  code:        z.string().min(1),
+  name:        z.string().min(1),
+  level:       z.string().min(1),
+  description: z.string(),
+  version:     z.string().min(1),
+});
+
+const specialistManifestSchema = z.object({
+  specialistId:       z.string().min(1),
+  workforceRole:      z.string().min(1),
+  displayName:        z.string().min(1),
+  domain:             z.string().min(1),
+  dnaProfileId:       z.string().min(1),
+  dnaVersion:         z.string().min(1),
+  manifestVersion:    z.literal(1),
+  mission:            z.string().min(1),
+  objectives:         z.array(z.string()),
+  responsibilities:   z.array(z.string()),
+  operatingPrinciples: z.array(z.string()),
+  communicationStyle: z.object({
+    tone:        z.string(),
+    detailLevel: z.string(),
+    language:    z.string(),
+  }),
+  competencies:        z.array(competencySchema),
+  escalationRules:     z.array(z.string()),
+  prohibitedBehaviours: z.array(z.string()),
+  memoryPolicy: z.object({
+    allowedScopes:    z.array(z.string()),
+    prohibitedScopes: z.array(z.string()),
+  }),
+  manifestHash: z.string().min(1),
+  generatedAt:  z.string().datetime(),
+});
+
 export const executionPackageSchema = z.object({
   executionId: uuidSchema,
   tenantId: uuidSchema,
   workforceRole: z.string().min(1).max(64),
+  // Sprint SRM: optional at the Zod level so parsing succeeds on old packages.
+  // The post-parse backward-compat check below rejects absent manifests with
+  // UNSUPPORTED_PACKAGE_VERSION instead of a generic schema error.
+  specialistManifest: specialistManifestSchema.optional(),
   workerProfile: workerProfileSchema,
   steps: z.array(stepSchema).min(1).max(100),
   requestedTools: z.array(z.string()),
@@ -116,6 +160,37 @@ export function validateInboundPackage(
 
   const pkg = parsed.data;
   const errors: ValidationError[] = [];
+
+  // 2. Backward compatibility: reject packages without a specialist manifest.
+  //    Old packages compiled before Sprint SRM must not be re-submitted.
+  //    They must not silently produce an unversioned persona.
+  if (!pkg.specialistManifest) {
+    return {
+      valid: false,
+      errors: [{
+        code: "UNSUPPORTED_PACKAGE_VERSION",
+        message:
+          "Execution package is missing specialistManifest. " +
+          "This package was compiled before Sprint SRM and is no longer accepted. " +
+          "Re-submit with a compiled SpecialistRuntimeManifest (manifestVersion: 1).",
+        field: "specialistManifest",
+      }],
+    };
+  }
+
+  // 3. workforceRole must match manifest
+  if (pkg.specialistManifest.workforceRole !== pkg.workforceRole) {
+    return {
+      valid: false,
+      errors: [{
+        code: "MANIFEST_ROLE_MISMATCH",
+        message:
+          `specialistManifest.workforceRole (${pkg.specialistManifest.workforceRole}) ` +
+          `does not match workforceRole (${pkg.workforceRole})`,
+        field: "specialistManifest.workforceRole",
+      }],
+    };
+  }
 
   // 2. Expiry check
   const now = Date.now();

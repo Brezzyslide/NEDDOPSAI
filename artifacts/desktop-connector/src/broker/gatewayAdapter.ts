@@ -276,12 +276,16 @@ export interface LiveAdapterConfig {
 
 interface OpenClawRpcRequest {
   action: "execute" | "cancel" | "pause" | "resume";
-  sessionId:     string;
-  executionId:   string;
-  tenantId:      string;
-  workforceRole: string;
-  steps:         GatewayJobRequest["steps"];
-  constraints:   GatewayJobRequest["constraints"];
+  sessionId:          string;
+  executionId:        string;
+  tenantId:           string;
+  workforceRole:      string;
+  /** Sprint SRM: compiled specialist identity from NeedsOps DNA */
+  specialistManifest: GatewayJobRequest["specialistManifest"];
+  /** Hard execution permissions — enforced structurally, not by prompt */
+  workerProfile:      GatewayJobRequest["workerProfile"];
+  steps:              GatewayJobRequest["steps"];
+  constraints:        GatewayJobRequest["constraints"];
 }
 
 interface OpenClawRpcEvent {
@@ -316,9 +320,13 @@ interface BridgeActRequest {
   executionId: string;
   tenantId:    string;
   task:        {
-    workforceRole: string;
-    steps:         GatewayJobRequest["steps"];
-    constraints:   GatewayJobRequest["constraints"];
+    workforceRole:      string;
+    /** Sprint SRM: compiled specialist identity from NeedsOps DNA */
+    specialistManifest: GatewayJobRequest["specialistManifest"];
+    /** Hard execution permissions — enforced structurally, not by prompt */
+    workerProfile:      GatewayJobRequest["workerProfile"];
+    steps:              GatewayJobRequest["steps"];
+    constraints:        GatewayJobRequest["constraints"];
   };
 }
 
@@ -492,13 +500,15 @@ export class LiveGatewayAdapter implements IGatewayAdapter {
     state: LiveJobState,
   ): void {
     const request: OpenClawRpcRequest = {
-      action:        "execute",
-      sessionId:     gatewaySessionId,
-      executionId:   job.executionId,
-      tenantId:      job.tenantId,
-      workforceRole: job.workforceRole,
-      steps:         job.steps,
-      constraints:   job.constraints,
+      action:            "execute",
+      sessionId:         gatewaySessionId,
+      executionId:       job.executionId,
+      tenantId:          job.tenantId,
+      workforceRole:     job.workforceRole,
+      specialistManifest: job.specialistManifest,
+      workerProfile:     job.workerProfile,
+      steps:             job.steps,
+      constraints:       job.constraints,
     };
 
     const maxMs = job.constraints.maxDurationSeconds * 1_000;
@@ -648,9 +658,11 @@ export class LiveGatewayAdapter implements IGatewayAdapter {
       executionId: job.executionId,
       tenantId:    job.tenantId,
       task: {
-        workforceRole: job.workforceRole,
-        steps:         job.steps,
-        constraints:   job.constraints,
+        workforceRole:      job.workforceRole,
+        specialistManifest: job.specialistManifest,
+        workerProfile:      job.workerProfile,
+        steps:              job.steps,
+        constraints:        job.constraints,
       },
     };
 

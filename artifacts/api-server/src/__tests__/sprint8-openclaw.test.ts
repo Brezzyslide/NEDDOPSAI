@@ -44,6 +44,43 @@ import { randomUUID } from "crypto";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Minimal SpecialistRuntimeManifest stub for Sprint 8 package fixtures */
+const STUB_MANIFEST_OPS_MANAGER = {
+  specialistId:        "operations_manager",
+  workforceRole:       "operations_manager",
+  displayName:         "Operations Manager",
+  domain:              "Operations",
+  dnaProfileId:        "operations_manager",
+  dnaVersion:          "1.0.0",
+  manifestVersion:     1 as const,
+  mission:             "Manage operational workflows.",
+  objectives:          ["Ensure operational continuity"],
+  responsibilities:    ["Coordinate tasks", "Monitor progress"],
+  operatingPrinciples: ["Efficiency", "Reliability"],
+  communicationStyle: {
+    tone:        "collaborative_advisor",
+    detailLevel: "semi_formal",
+    language:    "Operations Manager",
+  },
+  competencies: [
+    {
+      code:        "OPS_COORD",
+      name:        "Operational Coordination",
+      level:       "expert",
+      description: "Coordinates cross-functional operations.",
+      version:     "1.0.0",
+    },
+  ],
+  escalationRules:      ["Escalate regulatory risk immediately"],
+  prohibitedBehaviours: ["Commit resources without authorisation"],
+  memoryPolicy: {
+    allowedScopes:    ["task_context"],
+    prohibitedScopes: [],
+  },
+  manifestHash: "0".repeat(64), // determinism not required in Sprint 8 fixtures
+  generatedAt:  new Date().toISOString(),
+};
+
 function makeExecutionPackage(overrides: Partial<ExecutionPackage> = {}): ExecutionPackage {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
@@ -53,6 +90,8 @@ function makeExecutionPackage(overrides: Partial<ExecutionPackage> = {}): Execut
     taskId: randomUUID(),
     tenantId: randomUUID(),
     workforceRole: "operations_manager",
+    // Sprint SRM: all new packages require a compiled specialist manifest.
+    specialistManifest: STUB_MANIFEST_OPS_MANAGER,
     workerProfile: {
       allowedChannels: ["api", "internal"],
       allowedBrowserDomains: [],

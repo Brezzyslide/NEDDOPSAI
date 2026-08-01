@@ -102,10 +102,23 @@ export function createExecutionRouter(
         store.updateStatus(pkg.executionId, "submitted");
 
         const accepted = await gateway.submit({
-          executionId: pkg.executionId,
-          tenantId: pkg.tenantId,
-          workforceRole: pkg.workforceRole,
-          steps: pkg.steps,
+          executionId:    pkg.executionId,
+          tenantId:       pkg.tenantId,
+          workforceRole:  pkg.workforceRole,
+          // Sprint SRM: manifest and workerProfile must travel to the gateway.
+          // pkg.specialistManifest is guaranteed present — the backward-compat
+          // check above would have returned early if it were absent.
+          specialistManifest: pkg.specialistManifest as Record<string, unknown>,
+          workerProfile: {
+            allowedChannels:             pkg.workerProfile.allowedChannels,
+            allowedBrowserDomains:       pkg.workerProfile.allowedBrowserDomains,
+            allowedLocalPathCategories:  pkg.workerProfile.allowedLocalPathCategories,
+            allowedApplicationCategories: pkg.workerProfile.allowedApplicationCategories,
+            prohibitedActions:           pkg.workerProfile.prohibitedActions,
+            riskLevel:                   pkg.workerProfile.riskLevel,
+            requiresApprovalFor:         pkg.workerProfile.requiresApprovalFor,
+          },
+          steps:       pkg.steps,
           constraints: { maxDurationSeconds: pkg.constraints.maxDurationSeconds },
         });
 

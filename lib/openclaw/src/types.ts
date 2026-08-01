@@ -14,6 +14,12 @@
 /**
  * The execution package sent to the OpenClaw Runtime Broker.
  * Contains only what the runtime needs — no internal platform metadata.
+ *
+ * Four distinct layers (Sprint SRM):
+ *   specialistManifest — who the specialist is (identity + behaviour)
+ *   workerProfile      — what the specialist is technically permitted to do
+ *   steps              — what the specialist must do right now
+ *   requestedTools/connectors — how the work may be carried out
  */
 export interface OpenClawExecutionPackage {
   /** NeedsOps execution session ID — broker must echo this in all events */
@@ -22,6 +28,13 @@ export interface OpenClawExecutionPackage {
   tenantId: string;
   /** Workforce Role code identifying the primary specialist */
   workforceRole: string;
+  /**
+   * Compiled specialist identity from the active DNA profile.
+   * Present on all packages with manifestVersion === 1.
+   * Must not be absent — packages without this field must be rejected
+   * with UNSUPPORTED_PACKAGE_VERSION.
+   */
+  specialistManifest: import("@workspace/agent-runtime").SpecialistRuntimeManifest;
   /** Permitted execution surfaces for this specialist */
   workerProfile: {
     allowedChannels: string[];

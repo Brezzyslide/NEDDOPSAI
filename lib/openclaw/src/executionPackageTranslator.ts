@@ -55,6 +55,11 @@ export class ExecutionPackageValidationError extends Error {
 /**
  * Validate a NeedsOps ExecutionPackage before translation.
  * Throws ExecutionPackageValidationError if any required field is missing or invalid.
+ *
+ * Backward compatibility (Sprint SRM):
+ *   Packages without specialistManifest are rejected with code "UNSUPPORTED_PACKAGE_VERSION".
+ *   All new packages must include a compiled manifest (manifestVersion: 1).
+ *   Old stored packages without a manifest must not be silently re-submitted.
  */
 export function validateExecutionPackage(pkg: ExecutionPackage): void {
   if (!pkg.executionId || pkg.executionId.trim().length === 0) {
@@ -67,6 +72,39 @@ export function validateExecutionPackage(pkg: ExecutionPackage): void {
 
   if (!pkg.workforceRole || pkg.workforceRole.trim().length === 0) {
     throw new ExecutionPackageValidationError("workforceRole is required", "workforceRole");
+  }
+
+  // Sprint SRM: specialistManifest is required for all new packages.
+  // Old packages stored before this sprint are rejected with UNSUPPORTED_PACKAGE_VERSION
+  // rather than silently creating an unversioned persona.
+  if (!pkg.specialistManifest) {
+    throw Object.assign(
+      new ExecutionPackageValidationError(
+        "specialistManifest is required. Packages compiled before Sprint SRM are no longer " +
+        "accepted — re-submit with a compiled SpecialistRuntimeManifest (manifestVersion: 1).",
+        "specialistManifest",
+      ),
+      { code: "UNSUPPORTED_PACKAGE_VERSION" },
+    );
+  }
+
+  if (pkg.specialistManifest.manifestVersion !== 1) {
+    throw Object.assign(
+      new ExecutionPackageValidationError(
+        `Unsupported manifest version: ${pkg.specialistManifest.manifestVersion}. ` +
+        "Only manifestVersion 1 is supported.",
+        "specialistManifest.manifestVersion",
+      ),
+      { code: "UNSUPPORTED_PACKAGE_VERSION" },
+    );
+  }
+
+  if (pkg.specialistManifest.workforceRole !== pkg.workforceRole) {
+    throw new ExecutionPackageValidationError(
+      `specialistManifest.workforceRole (${pkg.specialistManifest.workforceRole}) ` +
+      `must match workforceRole (${pkg.workforceRole})`,
+      "specialistManifest.workforceRole",
+    );
   }
 
   if (!pkg.workerProfile) {
@@ -113,6 +151,10 @@ export function translateToOpenClawPackage(
     executionId: pkg.executionId,
     tenantId: pkg.tenantId,
     workforceRole: pkg.workforceRole,
+
+    // Sprint SRM: specialist manifest travels through the translation layer
+    // unchanged. It must not be reduced back to workforceRole alone.
+    specialistManifest: pkg.specialistManifest,
 
     workerProfile: {
       allowedChannels: pkg.workerProfile.allowedChannels,

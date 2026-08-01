@@ -112,12 +112,34 @@ export interface GatewayJobRequest {
   tenantId: string;
   /** Workforce role of the primary specialist */
   workforceRole: string;
+  /**
+   * Compiled specialist identity from the active DNA profile.
+   * Must be passed through unchanged to the OpenClaw gateway.
+   * Do not drop or reduce this field — OpenClaw needs the full manifest.
+   */
+  specialistManifest: Record<string, unknown>;
+  /**
+   * Hard execution permissions.
+   * Enforced structurally by the broker and tool layer — independent of
+   * the specialist manifest's behavioural descriptions.
+   */
+  workerProfile: {
+    allowedChannels: string[];
+    allowedBrowserDomains: string[];
+    allowedLocalPathCategories: string[];
+    allowedApplicationCategories: string[];
+    prohibitedActions: string[];
+    riskLevel: string;
+    requiresApprovalFor: string[];
+  };
   /** Ordered execution steps */
   steps: Array<{
     sequence: number;
     specialist: string;
     action: string;
     description: string;
+    requiresApproval?: boolean;
+    estimatedDurationSeconds?: number;
   }>;
   /** Execution constraints */
   constraints: {
