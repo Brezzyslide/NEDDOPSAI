@@ -13,7 +13,7 @@
  * All runtime communication goes through the ExecutionEngine.
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { eq, and, desc } from "drizzle-orm";
 import {
   db,
@@ -22,7 +22,8 @@ import {
   executionSessionsTable,
   executionEventsTable,
 } from "@workspace/db";
-import type { ExecutionPackage, ExecutionSessionInfo } from "@workspace/agent-runtime";
+import type { ExecutionPackage, ExecutionSessionInfo, CompiledRuntimeInstructions } from "@workspace/agent-runtime";
+import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
 import {
   OpenClawExecutionEngine,
   loadOpenClawConfig,
@@ -32,7 +33,7 @@ import {
 import { getActiveWorkerProfilesForRole } from "../lib/workerProfileRegistry.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
 import {
-  compileSpecialistManifest,
+  resolveAndCompileManifest,
   buildManifestAuditRecord,
   MissingDNAError,
   InactiveDNAError,
@@ -112,11 +113,11 @@ async function getTaskPlan(taskId: string) {
 
 // ─── Package builder ──────────────────────────────────────────────────────────
 
-function buildExecutionPackage(
+async function buildExecutionPackage(
   task: typeof tasksTable.$inferSelect,
   planRow: typeof taskExecutionPlansTable.$inferSelect,
   config: ReturnType<typeof loadOpenClawConfig>,
-): ExecutionPackage {
+): Promise<ExecutionPackage & { dnaSource: "database" | "static_fallback" }> {
   const executionId = randomUUID();
   const now = new Date();
 
@@ -185,9 +186,45 @@ function buildExecutionPackage(
   ).toISOString();
 
   // Compile the Specialist Runtime Manifest from the active DNA profile.
+  // Uses the DB-first resolver (resolveAndCompileManifest) with the static
+  // registry as a fallback when ALLOW_STATIC_DNA_FALLBACK=true.
+  //
   // This must happen AFTER the eligibility/entitlement check in submitTaskExecution.
   // Throws MissingDNAError or InactiveDNAError — callers must handle these.
-  const specialistManifest = compileSpecialistManifest(primaryRole);
+  const { dnaSource, ...specialistManifest } = await resolveAndCompileManifest(
+    primaryRole,
+    task.organizationId,
+  );
+
+  const constraints: ExecutionPackage["constraints"] = {
+    maxDurationSeconds: 300,
+    requireHumanApprovalBeforeSubmit: planData.requiresApproval ?? false,
+    allowedDataCategories: ["task_context", "internal"],
+  };
+
+  // ── Phase 1 (SRM Hardening): Assemble runtime instructions ──────────────
+  // This is the ACTIVE instruction string passed to OpenClaw.
+  // It is generated immediately before the OpenClaw call from:
+  //   - specialistManifest (identity + behaviour layer)
+  //   - steps             (current task)
+  //   - constraints       (hard limits)
+  //
+  // The raw specialistManifest is also retained in the package for auditability.
+  // The workerProfile is NOT included in the instruction text — it is enforced
+  // structurally by the broker and tool layer.
+  const assembled = assembleRuntimeInstructions(specialistManifest, steps, constraints);
+  const instructionHash = createHash("sha256")
+    .update(assembled.instruction, "utf8")
+    .digest("hex");
+
+  const runtimeInstructions: CompiledRuntimeInstructions = {
+    instruction:     assembled.instruction,
+    instructionHash,
+    manifestHash:    specialistManifest.manifestHash,
+    dnaVersion:      specialistManifest.dnaVersion,
+    specialistId:    specialistManifest.specialistId,
+    compiledAt:      new Date().toISOString(),
+  };
 
   return {
     executionId,
@@ -195,6 +232,7 @@ function buildExecutionPackage(
     tenantId: task.organizationId,
     workforceRole: primaryRole,
     specialistManifest,
+    runtimeInstructions,
     workerProfile: workerProfileConstraints,
     steps,
     requestedTools: workerProfileConstraints.allowedChannels.includes("api")
@@ -203,14 +241,11 @@ function buildExecutionPackage(
     requestedChannels: workerProfileConstraints.allowedChannels,
     requestedConnectorCategories: [],
     approvalState: task.approvalState,
-    constraints: {
-      maxDurationSeconds: 300,
-      requireHumanApprovalBeforeSubmit: planData.requiresApproval ?? false,
-      allowedDataCategories: ["task_context", "internal"],
-    },
+    constraints,
     callbackUrl: "", // resolved by engine from OPENCLAW_CALLBACK_BASE_URL
     expiresAt,
     issuedAt: now.toISOString(),
+    dnaSource,
   };
 }
 
@@ -249,10 +284,10 @@ export async function submitTaskExecution(
     );
   }
 
-  // 3. Build the package (compiles specialist manifest from DNA)
-  let pkg: ReturnType<typeof buildExecutionPackage>;
+  // 3. Build the package (compiles specialist manifest from DNA + assembles runtime instructions)
+  let pkg: Awaited<ReturnType<typeof buildExecutionPackage>>;
   try {
-    pkg = buildExecutionPackage(task, planRow, config);
+    pkg = await buildExecutionPackage(task, planRow, config);
   } catch (err) {
     if (err instanceof MissingDNAError || err instanceof InactiveDNAError) {
       throw Object.assign(
@@ -265,8 +300,15 @@ export async function submitTaskExecution(
     throw err;
   }
 
-  // 3a. Record manifest audit event
-  const auditRecord = buildManifestAuditRecord(pkg.specialistManifest, pkg.executionId);
+  // 3a. Record manifest + instruction audit event
+  const auditRecord = buildManifestAuditRecord(
+    pkg.specialistManifest,
+    pkg.executionId,
+    {
+      instructionHash: pkg.runtimeInstructions.instructionHash,
+      dnaSource: pkg.dnaSource,
+    },
+  );
 
   // 4. Transition task to executing
   await db

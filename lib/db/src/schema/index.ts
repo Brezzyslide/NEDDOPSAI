@@ -105,3 +105,7 @@ export * from "./deviceAccessTokens";
 export * from "./deviceRefreshTokens";
 export * from "./deviceWsSessions";
 export * from "./deviceTaskDispatch";
+// Sprint SRM Hardening — Centralised DNA and Organisation Specialist Configuration
+export * from "./specialistDnaProfiles";
+export * from "./specialistDnaCompetencies";
+export * from "./organisationSpecialistConfig";

@@ -35,6 +35,17 @@ export interface OpenClawExecutionPackage {
    * with UNSUPPORTED_PACKAGE_VERSION.
    */
   specialistManifest: import("@workspace/agent-runtime").SpecialistRuntimeManifest;
+  /**
+   * Assembled runtime instruction string compiled immediately before submission.
+   * This is the ACTIVE instruction field passed to OpenClaw — not the raw manifest.
+   *
+   * instructionHash allows audit to prove exactly which instructions were sent
+   * without retaining the full text.
+   *
+   * Must not be absent — packages without this field must be rejected
+   * with UNSUPPORTED_PACKAGE_VERSION.
+   */
+  runtimeInstructions: import("@workspace/agent-runtime").CompiledRuntimeInstructions;
   /** Permitted execution surfaces for this specialist */
   workerProfile: {
     allowedChannels: string[];

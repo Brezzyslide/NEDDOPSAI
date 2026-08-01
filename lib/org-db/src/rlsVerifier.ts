@@ -82,6 +82,8 @@ export const REQUIRED_RLS_TABLES = [
   "device_refresh_tokens",
   "device_ws_sessions",
   "device_task_dispatch",
+  // Sprint SRM Hardening — Organisation Specialist Configuration
+  "organisation_specialist_configuration",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

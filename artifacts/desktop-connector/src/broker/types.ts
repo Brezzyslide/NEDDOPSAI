@@ -119,6 +119,22 @@ export interface GatewayJobRequest {
    */
   specialistManifest: Record<string, unknown>;
   /**
+   * Assembled runtime instruction string compiled from specialistManifest + steps + constraints.
+   * This is the ACTIVE instruction field passed to OpenClaw.
+   * The raw specialistManifest is also retained for auditability.
+   *
+   * instruction must NOT be logged in production.
+   * instructionHash is safe for audit records and logs.
+   */
+  runtimeInstructions: {
+    instruction: string;
+    instructionHash: string;
+    manifestHash: string;
+    dnaVersion: string;
+    specialistId: string;
+    compiledAt: string;
+  };
+  /**
    * Hard execution permissions.
    * Enforced structurally by the broker and tool layer — independent of
    * the specialist manifest's behavioural descriptions.

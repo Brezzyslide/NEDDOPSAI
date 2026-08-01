@@ -27,8 +27,9 @@ import type {
   RuntimeCapabilities,
   RuntimeEvent,
   SubmissionResult,
+  ExecutionChannel,
+  ExecutionStatus,
 } from "@workspace/agent-runtime";
-import type { ExecutionStatus } from "@workspace/agent-runtime";
 import { RuntimeBrokerClient } from "./runtimeBrokerClient.js";
 import type { OpenClawConfig } from "./config.js";
 import { isOpenClawConfigured } from "./config.js";
@@ -99,7 +100,7 @@ export class OpenClawExecutionEngine implements ExecutionEngine {
       capabilities: {
         name: "OpenClaw",
         version: health.version,
-        supportedChannels: health.capabilities.supportedChannels as Parameters<typeof this.getCapabilities>[0] extends undefined ? never[] : any[],
+        supportedChannels: health.capabilities.supportedChannels as ExecutionChannel[],
         supportedToolCategories: health.capabilities.supportedToolCategories,
         maxConcurrentExecutions: health.capabilities.maxConcurrentExecutions,
       },
@@ -405,7 +406,7 @@ export class OpenClawExecutionEngine implements ExecutionEngine {
         await db
           .update(tasksTable)
           .set({
-            currentState: taskStateUpdate as Parameters<typeof tasksTable.currentState.notNull>[0],
+            currentState: taskStateUpdate as "draft" | "queued" | "planning" | "awaiting_approval" | "approved" | "executing" | "completed" | "cancelled" | "failed",
             updatedAt: new Date(),
           })
           .where(

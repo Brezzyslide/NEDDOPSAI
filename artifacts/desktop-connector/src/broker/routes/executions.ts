@@ -101,14 +101,23 @@ export function createExecutionRouter(
       try {
         store.updateStatus(pkg.executionId, "submitted");
 
+        // pkg.specialistManifest and pkg.runtimeInstructions are guaranteed present —
+        // the backward-compat checks in validateInboundPackage return early if absent.
         const accepted = await gateway.submit({
           executionId:    pkg.executionId,
           tenantId:       pkg.tenantId,
           workforceRole:  pkg.workforceRole,
-          // Sprint SRM: manifest and workerProfile must travel to the gateway.
-          // pkg.specialistManifest is guaranteed present — the backward-compat
-          // check above would have returned early if it were absent.
+          // Sprint SRM: raw manifest retained for auditability
           specialistManifest: pkg.specialistManifest as Record<string, unknown>,
+          // Sprint SRM Hardening: assembled instruction string — the ACTIVE field OpenClaw reads
+          runtimeInstructions: {
+            instruction:     pkg.runtimeInstructions!.instruction,
+            instructionHash: pkg.runtimeInstructions!.instructionHash,
+            manifestHash:    pkg.runtimeInstructions!.manifestHash,
+            dnaVersion:      pkg.runtimeInstructions!.dnaVersion,
+            specialistId:    pkg.runtimeInstructions!.specialistId,
+            compiledAt:      pkg.runtimeInstructions!.compiledAt,
+          },
           workerProfile: {
             allowedChannels:             pkg.workerProfile.allowedChannels,
             allowedBrowserDomains:       pkg.workerProfile.allowedBrowserDomains,

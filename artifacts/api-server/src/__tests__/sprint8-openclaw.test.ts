@@ -44,6 +44,9 @@ import { randomUUID } from "crypto";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
+import { createHash } from "crypto";
+
 /** Minimal SpecialistRuntimeManifest stub for Sprint 8 package fixtures */
 const STUB_MANIFEST_OPS_MANAGER = {
   specialistId:        "operations_manager",
@@ -81,6 +84,25 @@ const STUB_MANIFEST_OPS_MANAGER = {
   generatedAt:  new Date().toISOString(),
 };
 
+/** Stub CompiledRuntimeInstructions derived from STUB_MANIFEST_OPS_MANAGER */
+function makeStubRuntimeInstructions(steps?: ExecutionPackage["steps"]) {
+  const stubSteps = steps ?? [
+    { sequence: 1, specialist: "operations_manager", action: "analyse_request", description: "Analyse the incoming request", requiresApproval: false },
+    { sequence: 2, specialist: "operations_manager", action: "produce_output",  description: "Produce the requested output",  requiresApproval: false },
+  ];
+  const stubConstraints = { maxDurationSeconds: 300, requireHumanApprovalBeforeSubmit: false, allowedDataCategories: ["task_context"] };
+  const assembled = assembleRuntimeInstructions(STUB_MANIFEST_OPS_MANAGER, stubSteps, stubConstraints);
+  const instructionHash = createHash("sha256").update(assembled.instruction, "utf8").digest("hex");
+  return {
+    instruction:     assembled.instruction,
+    instructionHash,
+    manifestHash:    STUB_MANIFEST_OPS_MANAGER.manifestHash,
+    dnaVersion:      "1.0.0",
+    specialistId:    "operations_manager",
+    compiledAt:      new Date().toISOString(),
+  };
+}
+
 function makeExecutionPackage(overrides: Partial<ExecutionPackage> = {}): ExecutionPackage {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
@@ -92,6 +114,8 @@ function makeExecutionPackage(overrides: Partial<ExecutionPackage> = {}): Execut
     workforceRole: "operations_manager",
     // Sprint SRM: all new packages require a compiled specialist manifest.
     specialistManifest: STUB_MANIFEST_OPS_MANAGER,
+    // Sprint SRM Hardening: all new packages require compiled runtime instructions.
+    runtimeInstructions: makeStubRuntimeInstructions(),
     workerProfile: {
       allowedChannels: ["api", "internal"],
       allowedBrowserDomains: [],

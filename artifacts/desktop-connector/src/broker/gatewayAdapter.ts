@@ -280,9 +280,16 @@ interface OpenClawRpcRequest {
   executionId:        string;
   tenantId:           string;
   workforceRole:      string;
-  /** Sprint SRM: compiled specialist identity from NeedsOps DNA */
+  /** Sprint SRM: compiled specialist identity from NeedsOps DNA — retained for auditability */
   specialistManifest: GatewayJobRequest["specialistManifest"];
-  /** Hard execution permissions — enforced structurally, not by prompt */
+  /**
+   * Sprint SRM Hardening: assembled runtime instruction string.
+   * This is the ACTIVE field OpenClaw reads as its instructions.
+   * Compiled from specialistManifest + steps + constraints immediately before this call.
+   * instruction must NOT be logged in production; use instructionHash for audit.
+   */
+  runtimeInstructions: GatewayJobRequest["runtimeInstructions"];
+  /** Hard execution permissions — enforced structurally by the broker, not via prompt */
   workerProfile:      GatewayJobRequest["workerProfile"];
   steps:              GatewayJobRequest["steps"];
   constraints:        GatewayJobRequest["constraints"];
@@ -321,9 +328,14 @@ interface BridgeActRequest {
   tenantId:    string;
   task:        {
     workforceRole:      string;
-    /** Sprint SRM: compiled specialist identity from NeedsOps DNA */
+    /** Sprint SRM: compiled specialist identity — retained for auditability */
     specialistManifest: GatewayJobRequest["specialistManifest"];
-    /** Hard execution permissions — enforced structurally, not by prompt */
+    /**
+     * Sprint SRM Hardening: assembled runtime instruction string.
+     * This is the ACTIVE field OpenClaw reads as its instructions.
+     */
+    runtimeInstructions: GatewayJobRequest["runtimeInstructions"];
+    /** Hard execution permissions — enforced structurally, not via prompt */
     workerProfile:      GatewayJobRequest["workerProfile"];
     steps:              GatewayJobRequest["steps"];
     constraints:        GatewayJobRequest["constraints"];
@@ -500,16 +512,29 @@ export class LiveGatewayAdapter implements IGatewayAdapter {
     state: LiveJobState,
   ): void {
     const request: OpenClawRpcRequest = {
-      action:            "execute",
-      sessionId:         gatewaySessionId,
-      executionId:       job.executionId,
-      tenantId:          job.tenantId,
-      workforceRole:     job.workforceRole,
-      specialistManifest: job.specialistManifest,
-      workerProfile:     job.workerProfile,
-      steps:             job.steps,
-      constraints:       job.constraints,
+      action:              "execute",
+      sessionId:           gatewaySessionId,
+      executionId:         job.executionId,
+      tenantId:            job.tenantId,
+      workforceRole:       job.workforceRole,
+      specialistManifest:  job.specialistManifest,
+      runtimeInstructions: job.runtimeInstructions,
+      workerProfile:       job.workerProfile,
+      steps:               job.steps,
+      constraints:         job.constraints,
     };
+
+    // ── Structured audit log (Sprint SRM Hardening) ────────────────────────
+    // Log identity and instruction proof — NOT the full instruction text.
+    this._logger?.info({
+      executionId:    job.executionId,
+      specialistId:   job.runtimeInstructions.specialistId,
+      dnaVersion:     job.runtimeInstructions.dnaVersion,
+      manifestHash:   job.runtimeInstructions.manifestHash,
+      instructionHash: job.runtimeInstructions.instructionHash,
+      instructionLength: job.runtimeInstructions.instruction.length,
+      transport:      "spawn",
+    }, "[SRM] Dispatching execution to OpenClaw (spawn mode)");
 
     const maxMs = job.constraints.maxDurationSeconds * 1_000;
 
@@ -658,13 +683,25 @@ export class LiveGatewayAdapter implements IGatewayAdapter {
       executionId: job.executionId,
       tenantId:    job.tenantId,
       task: {
-        workforceRole:      job.workforceRole,
-        specialistManifest: job.specialistManifest,
-        workerProfile:      job.workerProfile,
-        steps:              job.steps,
-        constraints:        job.constraints,
+        workforceRole:       job.workforceRole,
+        specialistManifest:  job.specialistManifest,
+        runtimeInstructions: job.runtimeInstructions,
+        workerProfile:       job.workerProfile,
+        steps:               job.steps,
+        constraints:         job.constraints,
       },
     };
+
+    // ── Structured audit log (Sprint SRM Hardening) ────────────────────────
+    this._logger?.info({
+      executionId:    job.executionId,
+      specialistId:   job.runtimeInstructions.specialistId,
+      dnaVersion:     job.runtimeInstructions.dnaVersion,
+      manifestHash:   job.runtimeInstructions.manifestHash,
+      instructionHash: job.runtimeInstructions.instructionHash,
+      instructionLength: job.runtimeInstructions.instruction.length,
+      transport:      "bridge-http",
+    }, "[SRM] Dispatching execution to OpenClaw (bridge-http mode)");
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);

@@ -1,6 +1,6 @@
 {
   "name": "@workspace/needsops-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "NeedsOps AI+ Desktop App \u2014 Electron wrapper with embedded broker",
   "main": "dist/main/index.js",

@@ -88,6 +88,20 @@ export function validateExecutionPackage(pkg: ExecutionPackage): void {
     );
   }
 
+  // Sprint SRM Hardening: runtimeInstructions is required for all new packages.
+  // The assembled instruction string must be present so OpenClaw receives a compiled
+  // identity expression — not just the raw manifest JSON.
+  if (!pkg.runtimeInstructions) {
+    throw Object.assign(
+      new ExecutionPackageValidationError(
+        "runtimeInstructions is required. Packages compiled before Sprint SRM Hardening are no " +
+        "longer accepted — re-submit with CompiledRuntimeInstructions (assembled from the manifest).",
+        "runtimeInstructions",
+      ),
+      { code: "UNSUPPORTED_PACKAGE_VERSION" },
+    );
+  }
+
   if (pkg.specialistManifest.manifestVersion !== 1) {
     throw Object.assign(
       new ExecutionPackageValidationError(
@@ -155,6 +169,10 @@ export function translateToOpenClawPackage(
     // Sprint SRM: specialist manifest travels through the translation layer
     // unchanged. It must not be reduced back to workforceRole alone.
     specialistManifest: pkg.specialistManifest,
+
+    // Sprint SRM Hardening: assembled instruction string travels with the manifest.
+    // instructionHash (not the full text) is what belongs in audit records.
+    runtimeInstructions: pkg.runtimeInstructions,
 
     workerProfile: {
       allowedChannels: pkg.workerProfile.allowedChannels,

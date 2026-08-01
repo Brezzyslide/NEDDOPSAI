@@ -16,6 +16,7 @@
  */
 
 import { z } from "zod";
+import { createHash } from "crypto";
 
 // ─── UUID helper ──────────────────────────────────────────────────────────────
 
@@ -93,6 +94,19 @@ const specialistManifestSchema = z.object({
   generatedAt:  z.string().datetime(),
 });
 
+// ─── Runtime instructions schema ──────────────────────────────────────────────
+// Sprint SRM Hardening: all new packages must carry assembled runtime instructions.
+// Old packages without runtimeInstructions are rejected with UNSUPPORTED_PACKAGE_VERSION.
+
+const runtimeInstructionsSchema = z.object({
+  instruction:     z.string().min(1),
+  instructionHash: z.string().regex(/^[0-9a-f]{64}$/, "instructionHash must be a 64-char hex SHA-256"),
+  manifestHash:    z.string().min(1),
+  dnaVersion:      z.string().min(1),
+  specialistId:    z.string().min(1),
+  compiledAt:      z.string().datetime(),
+});
+
 export const executionPackageSchema = z.object({
   executionId: uuidSchema,
   tenantId: uuidSchema,
@@ -101,6 +115,8 @@ export const executionPackageSchema = z.object({
   // The post-parse backward-compat check below rejects absent manifests with
   // UNSUPPORTED_PACKAGE_VERSION instead of a generic schema error.
   specialistManifest: specialistManifestSchema.optional(),
+  // Sprint SRM Hardening: optional at Zod level; post-parse check rejects absent.
+  runtimeInstructions: runtimeInstructionsSchema.optional(),
   workerProfile: workerProfileSchema,
   steps: z.array(stepSchema).min(1).max(100),
   requestedTools: z.array(z.string()),
@@ -178,6 +194,40 @@ export function validateInboundPackage(
     };
   }
 
+  // 2b. Sprint SRM Hardening: reject packages without runtimeInstructions.
+  //     The assembled instruction string must be present — OpenClaw must not
+  //     receive only a raw manifest and be left to produce its own instructions.
+  if (!pkg.runtimeInstructions) {
+    return {
+      valid: false,
+      errors: [{
+        code: "UNSUPPORTED_PACKAGE_VERSION",
+        message:
+          "Execution package is missing runtimeInstructions. " +
+          "This package was compiled before Sprint SRM Hardening and is no longer accepted. " +
+          "Re-submit with CompiledRuntimeInstructions (assembled from the specialist manifest).",
+        field: "runtimeInstructions",
+      }],
+    };
+  }
+
+  // 2c. instructionHash must match the instruction content (integrity check)
+  const expectedInstructionHash = createHash("sha256")
+    .update(pkg.runtimeInstructions.instruction, "utf8")
+    .digest("hex");
+  if (expectedInstructionHash !== pkg.runtimeInstructions.instructionHash) {
+    return {
+      valid: false,
+      errors: [{
+        code: "INSTRUCTION_HASH_MISMATCH",
+        message:
+          "runtimeInstructions.instructionHash does not match the SHA-256 of instruction. " +
+          "The instruction content may have been tampered with in transit.",
+        field: "runtimeInstructions.instructionHash",
+      }],
+    };
+  }
+
   // 3. workforceRole must match manifest
   if (pkg.specialistManifest.workforceRole !== pkg.workforceRole) {
     return {
@@ -188,6 +238,34 @@ export function validateInboundPackage(
           `specialistManifest.workforceRole (${pkg.specialistManifest.workforceRole}) ` +
           `does not match workforceRole (${pkg.workforceRole})`,
         field: "specialistManifest.workforceRole",
+      }],
+    };
+  }
+
+  // 3b. runtimeInstructions.specialistId must match workforceRole
+  if (pkg.runtimeInstructions.specialistId !== pkg.workforceRole) {
+    return {
+      valid: false,
+      errors: [{
+        code: "INSTRUCTION_ROLE_MISMATCH",
+        message:
+          `runtimeInstructions.specialistId (${pkg.runtimeInstructions.specialistId}) ` +
+          `does not match workforceRole (${pkg.workforceRole})`,
+        field: "runtimeInstructions.specialistId",
+      }],
+    };
+  }
+
+  // 3c. manifestHash in instructions must match manifest's own hash
+  if (pkg.runtimeInstructions.manifestHash !== pkg.specialistManifest.manifestHash) {
+    return {
+      valid: false,
+      errors: [{
+        code: "MANIFEST_HASH_MISMATCH",
+        message:
+          "runtimeInstructions.manifestHash does not match specialistManifest.manifestHash. " +
+          "The manifest or instructions may have been modified after compilation.",
+        field: "runtimeInstructions.manifestHash",
       }],
     };
   }

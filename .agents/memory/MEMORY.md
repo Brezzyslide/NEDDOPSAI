@@ -19,3 +19,4 @@
 - [NeedsOps Sprint 14 Installer & Desktop](needsops-sprint14.md) — Electron app, activation codes, payment bypass, Business Discovery (6 screens), REQUIRED_RLS_TABLES=46, sprint7 RLS test needs count updated on each sprint
 - [NeedsOps Sprint 15 Production Transport](needsops-sprint15.md) — outbound WSS relay, challenge/exchange auth, safeStorage, Ed25519 crypto.sign(null,...) gotcha, REQUIRED_RLS_TABLES=51, 1382 tests
 - [NeedsOps Specialist Runtime Manifest](needsops-sprint-srm.md) — four-layer ExecutionPackage, manifest required (UNSUPPORTED_PACKAGE_VERSION if absent), SHA-256 hash, full passthrough to OpenClaw spawn+bridge, 1436 tests
+- [NeedsOps Sprint SRM Hardening](needsops-sprint-srm-hardening.md) — assembler wired, DB-first DNA, org context, broker enforcement, vitest alias for agent-runtime, desktop 0.1.1, REQUIRED_RLS_TABLES=52, 1475 tests

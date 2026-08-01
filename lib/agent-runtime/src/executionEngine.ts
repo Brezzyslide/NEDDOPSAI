@@ -150,6 +150,34 @@ export interface SpecialistRuntimeManifest {
     prohibitedScopes: string[];
   };
 
+  // ── Organisation context (Phase 5 — SRM Hardening) ───────────────────────
+  /**
+   * Organisation-specific context included for the selected specialist.
+   * Loaded from org_company_profile and agent_configurations at runtime.
+   *
+   * This section MUST NOT contain credentials, tokens, passwords, private keys,
+   * cross-tenant data, or anything that enlarges workerProfile permissions.
+   * It is redacted from logs and must not appear in audit records.
+   */
+  organisationContext?: {
+    /** Opaque version hash for the org profile snapshot used */
+    organisationProfileVersion: string;
+    /** Business type / industry description */
+    businessType?: string;
+    /** Primary services the organisation provides */
+    services?: string[];
+    /** Human-readable operating hours description */
+    operatingHours?: string;
+    /** Timezone string, e.g. "Australia/Sydney" */
+    timezone?: string;
+    /** Connected system names (never URLs or credentials) */
+    systems?: string[];
+    /** First-week goals seeded from Business Discovery */
+    firstWeekGoals?: string[];
+    /** Named escalation contacts (names only — never email/phone) */
+    escalationContacts?: string[];
+  };
+
   // ── Audit ─────────────────────────────────────────────────────────────────
   /**
    * SHA-256 hex digest of the canonical JSON serialisation of this manifest,
@@ -160,6 +188,39 @@ export interface SpecialistRuntimeManifest {
   manifestHash: string;
   /** ISO 8601 timestamp of manifest compilation */
   generatedAt: string;
+}
+
+// ─── Compiled Runtime Instructions (Phase 1 — SRM Hardening) ─────────────────
+//
+// Produced by runtimeInstructionAssembler immediately before each OpenClaw call.
+// This is the instruction string that OpenClaw actually consumes.
+//
+// The raw specialistManifest remains in the package for auditability.
+// runtimeInstructions is what is injected into the OpenClaw payload.
+
+export interface CompiledRuntimeInstructions {
+  /**
+   * The full assembled instruction string sent to OpenClaw as its active
+   * runtime instructions. Built from: specialistManifest + steps + constraints.
+   * Produced by runtimeInstructionAssembler immediately before submission.
+   *
+   * NOT logged in production (use instructionHash for audit instead).
+   */
+  instruction: string;
+  /**
+   * SHA-256 hex digest of the instruction string.
+   * Allows audit to prove exactly which instructions were sent to OpenClaw
+   * without storing the full text.
+   */
+  instructionHash: string;
+  /** Source manifest hash — matches specialistManifest.manifestHash */
+  manifestHash: string;
+  /** DNA version used in instruction compilation */
+  dnaVersion: string;
+  /** Specialist role code */
+  specialistId: string;
+  /** ISO timestamp of instruction compilation */
+  compiledAt: string;
 }
 
 // ─── Execution package (NeedsOps → Runtime) ───────────────────────────────────
@@ -204,6 +265,17 @@ export interface ExecutionPackage {
    * Packages without this field will be rejected with UNSUPPORTED_PACKAGE_VERSION.
    */
   specialistManifest: SpecialistRuntimeManifest;
+  /**
+   * Assembled runtime instruction string (compiled from specialistManifest +
+   * steps + constraints immediately before OpenClaw submission).
+   *
+   * This is the ACTIVE instruction field passed to OpenClaw.
+   * The raw specialistManifest is also retained for auditability.
+   *
+   * Required for all new execution packages — packages without this field
+   * will be rejected with UNSUPPORTED_PACKAGE_VERSION.
+   */
+  runtimeInstructions: CompiledRuntimeInstructions;
   /** Worker Profile constraints the runtime must enforce */
   workerProfile: WorkerProfileConstraints;
   /** Ordered execution steps from the task plan */

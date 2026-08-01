@@ -1,0 +1,562 @@
+Paste this into Replit Agent:
+
+```text
+Sprint SRM Hardening — Complete OpenClaw Instruction Consumption, Dynamic DNA Resolution, and Release Rebuild Accuracy
+
+Proceed with implementation.
+
+Use the completed Specialist Runtime Manifest sprint as the starting point.
+
+Do not redesign the whole execution architecture.
+
+The purpose of this follow-up is to close three gaps:
+
+1. Prove that OpenClaw actually uses the specialist manifest as active runtime instructions, not merely receives it as JSON.
+2. Replace the static in-process DNA registry as the final production source of truth with a versioned, centrally resolved DNA model.
+3. Correct release and installer rebuild behaviour so the new broker logic is actually shipped to customer machines.
+
+────────────────────────────────────────
+CURRENT STATE TO PRESERVE
+────────────────────────────────────────
+
+The current system now has these four layers:
+
+- specialistManifest = who the specialist is
+- workerProfile = what the specialist is permitted to do
+- steps = what the specialist must do now
+- requestedTools/connectors = how the specialist may do it
+
+Preserve this separation.
+
+Do not merge permissions into the specialist prompt.
+
+Do not allow the manifest to expand workerProfile permissions.
+
+Do not remove:
+
+- manifestVersion validation
+- missing-manifest rejection
+- manifest hashing
+- audit metadata
+- tenant checks
+- old-package rejection
+- broker validation
+- spawn payload inclusion
+- bridge-http payload inclusion
+
+────────────────────────────────────────
+PHASE 1 — VERIFY LIVE INSTRUCTION CONSUMPTION
+────────────────────────────────────────
+
+Inspect the current implementation of:
+
+- lib/agent-runtime/src/runtimeInstructionAssembler.ts
+- artifacts/desktop-connector/src/broker/gatewayAdapter.ts
+- spawn-mode OpenClaw RPC payload
+- bridge-http payload
+- OpenClaw CLI/RPC interface
+- OpenClaw browser bridge interface
+- any system prompt, persona, instruction, context or session bootstrap fields used by OpenClaw
+
+Determine whether the current runtimeInstructionAssembler output is actually consumed during live execution.
+
+Do not infer this from tests alone.
+
+Trace the exact path:
+
+specialistManifest
+→ runtimeInstructionAssembler
+→ OpenClaw request
+→ OpenClaw active system/persona instructions
+
+Required outcome:
+
+- The assembled specialist instruction string must be passed into the actual field OpenClaw uses for its active agent instructions.
+- The runtime must not merely receive the raw manifest and ignore it.
+- The raw specialistManifest should still remain in the execution payload for auditability.
+- The compiled instruction string should be generated immediately before the OpenClaw call from:
+  - specialistManifest
+  - current steps
+  - current constraints
+- The workerProfile must remain separate and must not be flattened into prose as the only enforcement mechanism.
+
+If OpenClaw’s RPC or bridge API has a supported field such as:
+
+- systemPrompt
+- instructions
+- persona
+- context
+- agentConfig
+- sessionInstructions
+
+use the documented real field.
+
+If the interface does not support a dedicated instruction field:
+
+- implement the cleanest supported injection point
+- document the exact OpenClaw behaviour
+- do not invent a field that OpenClaw ignores
+- do not claim live consumption without proof
+
+For spawn mode, the request should contain something like:
+
+{
+  action: "execute",
+  sessionId,
+  executionId,
+  tenantId,
+  workforceRole,
+  specialistManifest,
+  runtimeInstructions,
+  workerProfile,
+  steps,
+  constraints
+}
+
+For bridge-http mode, include the same effective runtime instructions in the real field consumed by the bridge.
+
+Add explicit logging with secrets redacted showing:
+
+- executionId
+- specialistId
+- dnaVersion
+- manifestHash
+- instructionHash
+- instructionLength
+- transport mode
+
+Do not log the full instructions in production.
+
+────────────────────────────────────────
+PHASE 2 — ADD INSTRUCTION HASHING AND AUDIT
+────────────────────────────────────────
+
+Add a deterministic SHA-256 hash for the final compiled runtime instruction string.
+
+Record:
+
+- manifestHash
+- instructionHash
+- specialistId
+- DNA profile ID
+- DNA version
+- manifestVersion
+- executionId
+- compiledAt
+
+The instruction hash must reflect the exact instruction text sent to OpenClaw.
+
+Use canonical assembly so identical inputs produce identical instruction text and hash.
+
+Add tests for:
+
+- deterministic instruction output
+- deterministic instruction hash
+- changed DNA changes instruction hash
+- changed task step changes instruction hash
+- changed constraint changes instruction hash
+- workerProfile permissions do not silently alter specialist identity text
+- no secret values appear in the compiled instructions
+- instruction hash stored in audit metadata
+
+────────────────────────────────────────
+PHASE 3 — CENTRALISE DNA AS THE SOURCE OF TRUTH
+────────────────────────────────────────
+
+The current report says Specialist Runtime Manifest is compiled from a static in-process DNA registry.
+
+That may remain as a fallback seed or development fixture, but it must not be the final production source of truth.
+
+Inspect existing schemas and services for:
+
+- specialist DNA profiles
+- DNA versions
+- specialist roles
+- specialist competencies
+- specialist instructions
+- workforce packs
+- active version status
+- tenant-specific specialist configuration
+- organisation-specific agent settings
+- Business Discovery answers
+- agent goals
+
+Do not create duplicate tables if equivalent tables already exist.
+
+Implement a centrally resolved active-DNA model.
+
+Preferred resolution order:
+
+1. Load active canonical specialist DNA version from the database or versioned central store.
+2. Apply tenant-specific specialist configuration where permitted.
+3. Apply organisation profile and Business Discovery context.
+4. Apply agent-specific first-week goals or customer configuration.
+5. Compile the final Specialist Runtime Manifest.
+6. Record all source version identifiers used.
+
+The base DNA must remain platform-controlled.
+
+Tenant configuration may customise:
+
+- goals
+- tone within allowed bounds
+- organisation context
+- preferred procedures
+- escalation contacts
+- approved knowledge sources
+
+Tenant configuration must not override:
+
+- prohibited behaviours
+- hard compliance boundaries
+- platform safety rules
+- workerProfile permissions
+- approval requirements
+- entitlement rules
+
+If the database already has DNA tables:
+
+- use them
+- add only missing fields or indexes
+- preserve current versioning patterns
+
+If the database does not have suitable DNA storage:
+
+create the smallest appropriate versioned model, such as:
+
+specialist_dna_profiles
+- id
+- specialist_id
+- workforce_role
+- version
+- status
+- mission
+- objectives
+- responsibilities
+- operating_principles
+- communication_style
+- escalation_rules
+- prohibited_behaviours
+- memory_policy
+- created_at
+- published_at
+- retired_at
+
+specialist_dna_competencies
+- dna_profile_id
+- competency_code
+- name
+- level
+- description
+- version
+
+organisation_specialist_configuration
+- organisation_id
+- specialist_id
+- goals
+- preferred_style
+- escalation_contacts
+- additional_context
+- source
+- last_confirmed_at
+- created_at
+- updated_at
+
+Adapt names to existing conventions.
+
+Requirements:
+
+- tenant isolation
+- RLS where required
+- version uniqueness
+- only one active published DNA version per specialist
+- immutable published versions where practical
+- audit logging for publishing and retirement
+- no direct tenant modification of platform-controlled safety fields
+
+────────────────────────────────────────
+PHASE 4 — STATIC REGISTRY TRANSITION
+────────────────────────────────────────
+
+Do not delete the static registry immediately.
+
+Refactor it into one of these roles only:
+
+- seed source for initial database population
+- test fixture
+- development fallback when an explicit flag is enabled
+
+Suggested flag:
+
+ALLOW_STATIC_DNA_FALLBACK=false
+
+Production behaviour:
+
+- database or central version store is required
+- missing active DNA causes execution rejection
+- static fallback must not silently activate
+
+Development behaviour:
+
+- static fallback may be enabled explicitly
+- fallback usage must be logged
+- manifest audit metadata must record source = "static_fallback"
+
+Add a migration or seed script that imports the current static DNA definitions into the central store.
+
+Ensure the imported DNA version matches current manifest expectations.
+
+────────────────────────────────────────
+PHASE 5 — TENANT AND ORGANISATION CONTEXT
+────────────────────────────────────────
+
+Extend the compiler so the manifest can include organisation-specific context without polluting the canonical DNA.
+
+Add a clearly separated section, for example:
+
+organisationContext: {
+  organisationProfileVersion: string;
+  businessType?: string;
+  services?: string[];
+  operatingHours?: string;
+  timezone?: string;
+  systems?: string[];
+  firstWeekGoals?: string[];
+  escalationContacts?: string[];
+}
+
+Do not include:
+
+- credentials
+- tokens
+- passwords
+- private keys
+- unrestricted file paths
+- unnecessary personal information
+- cross-tenant data
+
+Only include organisation context relevant to the selected specialist and current task.
+
+The manifest must record source version identifiers for any organisation profile data used.
+
+Add tests for:
+
+- correct organisation context inclusion
+- irrelevant context exclusion
+- wrong-tenant rejection
+- redaction of sensitive fields
+- organisation context changing the manifest hash
+- canonical DNA remaining unchanged
+
+────────────────────────────────────────
+PHASE 6 — BROKER STRUCTURAL ENFORCEMENT
+────────────────────────────────────────
+
+Confirm that workerProfile remains structurally enforced.
+
+Verify and, where missing, implement:
+
+- disallowed browser domains blocked before tool invocation
+- unapproved folder paths never exposed to OpenClaw
+- prohibited tools not registered for the execution
+- approval-required actions paused outside the prompt layer
+- revoked device or entitlement stops execution
+- tenant mismatch rejected before runtime dispatch
+- manifest cannot request extra tools
+- runtimeInstructions cannot override workerProfile
+
+Add tests that attempt to place expanded permissions inside:
+
+- specialistManifest
+- runtimeInstructions
+- steps
+- tool requests
+
+and confirm the broker still enforces workerProfile.
+
+────────────────────────────────────────
+PHASE 7 — RELEASE AND INSTALLER REBUILD CORRECTION
+────────────────────────────────────────
+
+Correct the prior sprint statement that desktop installers did not need rebuilding.
+
+The desktop connector is bundled into the Electron installer.
+
+Therefore:
+
+- source-only changes do not update already-built installers
+- artifacts/desktop-connector must be rebuilt
+- Windows installer must be rebuilt
+- macOS arm64 installer must be rebuilt
+- macOS x64 installer must be rebuilt if Intel support remains in scope
+
+Update the release documentation to state:
+
+“No native dependency change is required solely because of the Specialist Runtime Manifest, but the desktop connector and installers must be rebuilt because the compiled broker bundle contains the new validation and OpenClaw payload logic.”
+
+Bump desktop version from:
+
+0.1.0 → 0.1.1
+
+or use the next valid version according to repository conventions.
+
+Update:
+
+- artifacts/needsops-desktop/package.json
+- installer metadata
+- release notes
+- CI artifact names if version-dependent
+- installer release records
+- checksums after build
+
+Do not reuse the old 0.1.0 installers for SRM testing.
+
+────────────────────────────────────────
+PHASE 8 — CI AND INSTALLER BUILDS
+────────────────────────────────────────
+
+After implementation:
+
+1. Run all tests.
+2. Build desktop connector.
+3. Build desktop app.
+4. Run Windows installer workflow.
+5. Run macOS arm64 installer workflow.
+6. Run macOS x64 workflow if still supported.
+7. Verify package contents.
+8. Calculate checksums.
+9. Confirm broker bundle contains the new manifest and instruction code.
+
+The package verification script must confirm the bundled broker contains references to:
+
+- specialistManifest
+- runtimeInstructions
+- manifestVersion
+- instructionHash
+- UNSUPPORTED_PACKAGE_VERSION
+
+Do not log or expose full production instructions.
+
+Required artifacts:
+
+- NeedsOps AI+ Windows 0.1.1 installer
+- NeedsOps AI+ macOS arm64 0.1.1 installer
+- NeedsOps AI+ macOS x64 0.1.1 installer if built
+
+────────────────────────────────────────
+PHASE 9 — LIVE EXECUTION PROOF
+────────────────────────────────────────
+
+Add an integration test or controlled development execution proving:
+
+1. Chief of Staff selects a specialist.
+2. Active DNA is resolved from the central store.
+3. Specialist Runtime Manifest is compiled.
+4. Runtime instructions are assembled.
+5. Instruction hash is generated.
+6. Execution package is translated.
+7. Broker persists the package.
+8. Spawn or bridge adapter receives:
+   - specialistManifest
+   - runtimeInstructions
+   - workerProfile
+   - steps
+   - constraints
+9. OpenClaw receives the actual instruction field it consumes.
+10. A runtime event records:
+   - specialistId
+   - dnaVersion
+   - manifestHash
+   - instructionHash
+11. A deliberately changed DNA version produces a different instruction hash.
+12. A disallowed action is still blocked by workerProfile.
+
+If a real OpenClaw runtime is unavailable in CI:
+
+- use a contract-level fake that records the exact received field
+- clearly label the proof as contract-level
+- still perform one local live smoke test before production release
+- do not claim real OpenClaw instruction consumption based only on mocked transport
+
+────────────────────────────────────────
+TEST REQUIREMENTS
+────────────────────────────────────────
+
+Add or update tests for:
+
+- active DNA loaded from central store
+- missing DNA rejection
+- static fallback disabled in production
+- static fallback explicit in development
+- deterministic manifest output
+- deterministic instruction output
+- deterministic manifest hash
+- deterministic instruction hash
+- tenant-specific context included
+- sensitive context excluded
+- manifest reaches translator
+- manifest reaches broker
+- runtimeInstructions reach spawn payload
+- runtimeInstructions reach bridge payload
+- instruction hash persisted
+- workerProfile remains separate
+- manifest cannot expand permissions
+- instructions cannot expand permissions
+- old installer version rejected or marked unsupported where appropriate
+- desktop version 0.1.1 reported correctly
+- packaged broker contains SRM handling
+
+Do not weaken existing tests.
+
+────────────────────────────────────────
+DELIVERABLES
+────────────────────────────────────────
+
+At completion provide:
+
+1. Exact proof of where runtimeInstructionAssembler is called
+2. Exact OpenClaw field receiving the assembled instructions
+3. Example final OpenClaw request
+4. Manifest hash and instruction hash example
+5. DNA source-of-truth design
+6. Static registry transition plan
+7. Database schema and migration summary
+8. Tenant configuration model
+9. Permission enforcement confirmation
+10. Files added
+11. Files modified
+12. Test results
+13. Desktop version bump
+14. Windows installer build result
+15. macOS arm64 build result
+16. macOS x64 build result if applicable
+17. Artifact names and paths
+18. Checksums
+19. Whether live OpenClaw consumption was tested or only contract-tested
+20. Remaining production risks
+
+────────────────────────────────────────
+IMPLEMENTATION RULES
+────────────────────────────────────────
+
+- Inspect current SRM code before modifying it.
+- Do not duplicate specialist identity inside OpenClaw.
+- NeedsOps remains the canonical author.
+- OpenClaw receives a compiled runtime expression.
+- Keep identity and permissions separate.
+- Do not use prompt text as the only permission control.
+- Do not silently use static DNA in production.
+- Do not invent unsupported OpenClaw request fields.
+- Do not claim runtime consumption without tracing the actual field OpenClaw reads.
+- Do not claim installers are updated until new installer files exist.
+- Do not reuse 0.1.0 installers for SRM testing.
+- Do not add secrets to manifests, logs or audit metadata.
+- Run all relevant tests after each phase.
+- Clearly distinguish implemented, built, tested and manually verified work.
+
+Begin by inspecting the current SRM implementation and tracing the exact live OpenClaw instruction path.
+
+Proceed now.
+```
+
+The most important correction is this: **the new source code does require new installers** because the broker bundle inside the old installers cannot update itself from GitHub. The prompt above also forces Replit to prove the assembled instructions are truly consumed by OpenClaw, not merely carried through the payload.

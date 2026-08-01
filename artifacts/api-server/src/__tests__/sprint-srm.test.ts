@@ -24,6 +24,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHash } from "crypto";
 
+// ─── Mock dnaStorageService (prevents DB import at module load time) ──────────
+// Must come before any import of specialistRuntimeManifestService.
+
+vi.mock("../services/dnaStorageService.js", () => ({
+  loadDNAFromDatabase:      vi.fn().mockResolvedValue(null),
+  loadDNAWithStaticFallback: vi.fn().mockResolvedValue(null),
+  loadOrgSpecialistConfig:  vi.fn().mockResolvedValue(null),
+  seedDNAFromStaticRegistry: vi.fn().mockResolvedValue("created"),
+}));
+
 // ─── Mock DNA registry ────────────────────────────────────────────────────────
 // Must be mocked before importing specialistRuntimeManifestService,
 // which imports from @workspace/workforce-dna at module load time.
@@ -206,7 +216,8 @@ import {
   MissingDNAError,
   InactiveDNAError,
 } from "../services/specialistRuntimeManifestService.js";
-import type { SpecialistRuntimeManifest } from "@workspace/agent-runtime";
+import type { SpecialistRuntimeManifest, CompiledRuntimeInstructions } from "@workspace/agent-runtime";
+import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
 import { validateExecutionPackage } from "@workspace/openclaw";
 
 // Note: validateInboundPackage from the desktop-connector broker is tested
@@ -222,6 +233,23 @@ function makeManifest(overrides: Partial<SpecialistRuntimeManifest> = {}): Speci
     SpecialistRuntimeManifest ? SpecialistRuntimeManifest : never;
 }
 
+function makeRuntimeInstructions(manifest: SpecialistRuntimeManifest): CompiledRuntimeInstructions {
+  const steps = [
+    { sequence: 1, specialist: manifest.workforceRole, action: "execute", description: "Orchestrate the task.", requiresApproval: false },
+  ];
+  const constraints = { maxDurationSeconds: 300, requireHumanApprovalBeforeSubmit: false, allowedDataCategories: ["task_context", "internal"] };
+  const assembled = assembleRuntimeInstructions(manifest, steps, constraints);
+  const instructionHash = createHash("sha256").update(assembled.instruction, "utf8").digest("hex");
+  return {
+    instruction:     assembled.instruction,
+    instructionHash,
+    manifestHash:    manifest.manifestHash,
+    dnaVersion:      manifest.dnaVersion,
+    specialistId:    manifest.specialistId,
+    compiledAt:      new Date().toISOString(),
+  };
+}
+
 function makePkg(manifest: SpecialistRuntimeManifest) {
   const expiresAt = new Date(Date.now() + 300_000).toISOString();
   return {
@@ -230,6 +258,7 @@ function makePkg(manifest: SpecialistRuntimeManifest) {
     tenantId:    "660e8400-e29b-41d4-a716-446655440001",
     workforceRole: "chief_of_staff",
     specialistManifest: manifest,
+    runtimeInstructions: makeRuntimeInstructions(manifest),
     workerProfile: {
       allowedChannels:             ["api", "internal"] as const,
       allowedBrowserDomains:       [],
