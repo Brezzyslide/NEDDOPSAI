@@ -7,6 +7,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/react";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
 
@@ -164,6 +165,7 @@ function MessageBubble({
 export default function WorkforceChatPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, setLocation] = useLocation();
+  const { isSignedIn } = useAuth();
   const apiFetch = useAuthFetch();
   const qc = useQueryClient();
 
@@ -178,9 +180,9 @@ export default function WorkforceChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Create or reuse the general conversation on mount
+  // Create or reuse the general conversation — only after Clerk auth is ready
   useEffect(() => {
-    if (!slug) return;
+    if (!slug || !isSignedIn) return;
     apiFetch(`/v1/organisations/${slug}/conversations`, {
       method: "POST",
       body: JSON.stringify({ conversationType: "general_workforce", title: "Workforce Chat" }),
@@ -199,7 +201,7 @@ export default function WorkforceChatPage() {
         }
       })
       .catch(() => setError("Failed to start conversation."));
-  }, [slug]);
+  }, [slug, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
