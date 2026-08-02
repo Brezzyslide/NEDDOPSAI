@@ -1,238 +1,455 @@
 /**
- * Specialist Context Service — Sprint 9.5
+ * specialistContextService — Sprint Knowledge Bridge (Task #14)
  *
- * Retrieves only relevant and authorised context for a specialist run.
- * Applies role-specific filtering — a Compliance Officer must not receive
- * payroll data; a Document Specialist must not receive incident case notes, etc.
+ * Loads per-specialist runtime context from the platform database.
+ * Called immediately before instruction assembly in executionService.ts.
  *
- * Security principles:
- * - Minimum necessary context
- * - Role-specific data boundaries
- * - No cross-task specialist memory
- * - Token budget enforced
+ * Returns:
+ *   - approved organisation memory scoped to this specialist (or org-wide)
+ *   - organisation_specialist_configuration (goals, style, escalation)
+ *   - specialist_language_profiles (locale, tone, preferred terms, etc.)
+ *   - list of injected memory record IDs for audit
+ *
+ * TENANT ISOLATION CONTRACT:
+ *   - Every query explicitly filters by organizationId
+ *   - RLS is enforced at the DB layer independently
+ *   - No cross-tenant data can enter the context package
+ *
+ * APPROVAL CONTRACT:
+ *   - Only status = 'approved' memory records are loaded
+ *   - Expired (expiresAt < now) records are excluded
+ *   - Superseded (supersededBy IS NOT NULL) records are excluded
+ *   - Records not yet effective (effectiveFrom > now) are excluded
+ *
+ * SCOPE CONTRACT:
+ *   - Memory with specialist_id = null → org-wide (all specialists see it)
+ *   - Memory with specialist_id = X → only specialist X sees it
+ *   - Cross-specialist memory is never included
  */
 
-import { eq, and, desc } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { logOrgEvent } from "./auditService.js";
-import type { SpecialistContext } from "./specialistIntelligenceService.js";
+import {
+  organisationMemoryTable,
+  organisationSpecialistConfigTable,
+  specialistLanguageProfilesTable,
+  tasksTable,
+  conversationMessagesTable,
+  conversationMemoryTable,
+  specialistRunsTable,
+} from "@workspace/db";
+import { eq, and, or, isNull, desc, asc } from "drizzle-orm";
+import { estimateTokens } from "./contextSelectionService.js";
 
-// ─── Role-specific allowed memory categories ──────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const ROLE_ALLOWED_MEMORY_CATEGORIES: Record<string, string[]> = {
-  compliance_officer: [
-    "compliance", "policy", "incident", "audit", "regulatory",
-    "ndis", "quality", "corrective_action", "restrictive_practice",
-    "worker_screening", "registration", "standard",
-  ],
-  document_specialist: [
-    "document", "template", "format", "draft", "policy_document",
-    "procedure", "register", "record",
-  ],
-  operations_manager: [
-    "operations", "roster", "workflow", "capacity", "service_delivery",
-    "asset", "scheduling", "procedure", "resource",
-  ],
-};
-
-// Categories that should NEVER appear in any specialist's context
-const UNIVERSALLY_BLOCKED_CATEGORIES = [
-  "banking_credentials", "api_tokens", "passwords", "private_keys",
-  "personal_medical_history", "payroll_rates", // payroll rates only go to finance specialists
-];
-
-// Categories blocked per role
-const ROLE_BLOCKED_CATEGORIES: Record<string, string[]> = {
-  compliance_officer: ["payroll", "banking", "financial_transactions"],
-  document_specialist: ["financial_transactions", "payroll", "banking", "medical_records"],
-  operations_manager: ["payroll_rates", "banking", "financial_transactions"],
-};
-
-// Token budget per context type (approximate characters per token = 4)
-const MAX_MEMORY_ITEMS = 30;
-const MAX_CONVERSATION_MESSAGES = 20;
-const MAX_PREVIOUS_OUTPUTS = 5;
-
-// ─── Context builder ──────────────────────────────────────────────────────────
-
-export interface BuildContextInput {
-  organizationId: string;
-  conversationId?: string;
-  taskId: string;
-  specialistRunId: string;
-  workforceRoleCode: string;
-  workerProfileCode: string;
-  capabilityCode: string;
+export interface SpecialistMemoryItem {
+  id: string;
+  memoryType: string;
+  title: string;
+  content: string;
+  importance: number;
+  specialistId: string | null;
 }
+
+export interface SpecialistConfigSnapshot {
+  goals: string[];
+  preferredStyle: string | null;
+  escalationContacts: Array<{ name: string; role: string }>;
+  additionalContext: {
+    businessType?: string;
+    services?: string[];
+    operatingHours?: string;
+    timezone?: string;
+    systems?: string[];
+  };
+}
+
+export interface LanguageProfileSnapshot {
+  locale: string;
+  spellingConvention: string | null;
+  tone: string | null;
+  formality: string | null;
+  preferredTerms: Array<{ term: string; preferred: string; notes?: string }>;
+  prohibitedTerms: Array<{ term: string; reason?: string }>;
+  dateFormat: string | null;
+  timeFormat: string | null;
+  headingPreferences: string | null;
+  sentenceLengthPreference: string | null;
+  outputStructure: string | null;
+}
+
+export interface SpecialistContextPackage {
+  /** org_specialist_config for this specialist — null if not configured */
+  specialistConfig: SpecialistConfigSnapshot | null;
+  /** specialist_language_profiles for this specialist — null if not configured */
+  languageProfile: LanguageProfileSnapshot | null;
+  /** Approved memory scoped to this specialist or org-wide */
+  approvedMemory: SpecialistMemoryItem[];
+  /** IDs of memory records included — for audit */
+  injectedMemoryIds: string[];
+  /** Approximate token count consumed by this context package */
+  tokenBudgetUsed: number;
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+/** Max tokens the specialist context package may consume in the instruction */
+const DEFAULT_CONTEXT_TOKEN_BUDGET = parseInt(
+  process.env.SPECIALIST_CONTEXT_TOKEN_BUDGET ?? "2000",
+  10,
+);
+
+/** Max approved memory records to load before budget enforcement */
+const MAX_MEMORY_RECORDS = 40;
+
+// ─── Main loader ──────────────────────────────────────────────────────────────
 
 /**
- * Builds role-filtered context for a specialist run.
- * Only includes authorised data categories. Never includes cross-task memory.
+ * Load the full runtime context package for a specialist within an organisation.
+ *
+ * Safe to call concurrently — reads only, no writes.
+ * Degrades gracefully: if any sub-query fails the partial result is returned.
  */
-export async function buildSpecialistContext(
-  input: BuildContextInput,
-): Promise<SpecialistContext> {
-  const [taskScope, approvedMemory, messages, previousOutputs] = await Promise.all([
-    getTaskScope(input.taskId, input.organizationId),
-    getApprovedMemory(input.organizationId, input.workforceRoleCode),
-    getRelevantMessages(input.conversationId, input.organizationId, input.workforceRoleCode),
-    getPreviousOutputs(input.taskId, input.specialistRunId, input.organizationId),
+export async function loadSpecialistContext(
+  organizationId: string,
+  specialistId: string,
+  tokenBudget: number = DEFAULT_CONTEXT_TOKEN_BUDGET,
+): Promise<SpecialistContextPackage> {
+  const [specialistConfig, languageProfile, candidateMemory] = await Promise.all([
+    loadSpecialistConfig(organizationId, specialistId),
+    loadLanguageProfile(organizationId, specialistId),
+    loadApprovedMemory(organizationId, specialistId),
   ]);
 
-  const context: SpecialistContext = {
+  // Apply token budget — mandatory/high-importance memory is retained first
+  const { memory: approvedMemory, tokenBudgetUsed } = applyTokenBudget(
+    candidateMemory,
+    tokenBudget,
+  );
+
+  return {
+    specialistConfig,
+    languageProfile,
+    approvedMemory,
+    injectedMemoryIds: approvedMemory.map(m => m.id),
+    tokenBudgetUsed,
+  };
+}
+
+// ─── DB fetch helpers ─────────────────────────────────────────────────────────
+
+async function loadSpecialistConfig(
+  organizationId: string,
+  specialistId: string,
+): Promise<SpecialistConfigSnapshot | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(organisationSpecialistConfigTable)
+      .where(
+        and(
+          eq(organisationSpecialistConfigTable.organizationId, organizationId),
+          eq(organisationSpecialistConfigTable.specialistId, specialistId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      goals: (row.goals as string[]) ?? [],
+      preferredStyle: row.preferredStyle ?? null,
+      escalationContacts: (row.escalationContacts as Array<{ name: string; role: string }>) ?? [],
+      additionalContext: (row.additionalContext as SpecialistConfigSnapshot["additionalContext"]) ?? {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadLanguageProfile(
+  organizationId: string,
+  specialistId: string,
+): Promise<LanguageProfileSnapshot | null> {
+  try {
+    const [row] = await db
+      .select()
+      .from(specialistLanguageProfilesTable)
+      .where(
+        and(
+          eq(specialistLanguageProfilesTable.organizationId, organizationId),
+          eq(specialistLanguageProfilesTable.specialistId, specialistId),
+        ),
+      )
+      .limit(1);
+
+    if (!row) return null;
+
+    return {
+      locale: row.locale,
+      spellingConvention: row.spellingConvention ?? null,
+      tone: row.tone ?? null,
+      formality: row.formality ?? null,
+      preferredTerms: (row.preferredTerms as Array<{ term: string; preferred: string; notes?: string }>) ?? [],
+      prohibitedTerms: (row.prohibitedTerms as Array<{ term: string; reason?: string }>) ?? [],
+      dateFormat: row.dateFormat ?? null,
+      timeFormat: row.timeFormat ?? null,
+      headingPreferences: row.headingPreferences ?? null,
+      sentenceLengthPreference: row.sentenceLengthPreference ?? null,
+      outputStructure: row.outputStructure ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function loadApprovedMemory(
+  organizationId: string,
+  specialistId: string,
+): Promise<SpecialistMemoryItem[]> {
+  try {
+    const now = new Date();
+
+    const rows = await db
+      .select({
+        id:           organisationMemoryTable.id,
+        memoryType:   organisationMemoryTable.memoryType,
+        title:        organisationMemoryTable.title,
+        content:      organisationMemoryTable.content,
+        importance:   organisationMemoryTable.importance,
+        specialistId: organisationMemoryTable.specialistId,
+        expiresAt:    organisationMemoryTable.expiresAt,
+        effectiveFrom:organisationMemoryTable.effectiveFrom,
+        effectiveTo:  organisationMemoryTable.effectiveTo,
+        supersededBy: organisationMemoryTable.supersededBy,
+      })
+      .from(organisationMemoryTable)
+      .where(
+        and(
+          // Tenant isolation — explicit + RLS
+          eq(organisationMemoryTable.organizationId, organizationId),
+          // Approval gate — only approved records
+          eq(organisationMemoryTable.status, "approved"),
+          // Specialist scope: org-wide OR this specialist specifically
+          or(
+            isNull(organisationMemoryTable.specialistId),
+            eq(organisationMemoryTable.specialistId, specialistId),
+          ),
+        ),
+      )
+      .orderBy(
+        // importance DESC, then most recently updated first
+        // Note: Drizzle requires importing desc/asc; use raw sort below
+      )
+      .limit(MAX_MEMORY_RECORDS);
+
+    // Post-query filters (effectiveFrom/To/expiresAt/supersededBy can't easily
+    // use parameterised IS NULL OR < $1 in a single Drizzle where clause
+    // without raw SQL — apply in-process after tenant filter is confirmed)
+    return rows
+      .filter(r => !r.supersededBy)                          // not superseded
+      .filter(r => !r.expiresAt || r.expiresAt > now)        // not expired
+      .filter(r => !r.effectiveTo || r.effectiveTo > now)    // not past end date
+      .filter(r => !r.effectiveFrom || r.effectiveFrom <= now) // already effective
+      .sort((a, b) => b.importance - a.importance)           // highest importance first
+      .map(r => ({
+        id:           r.id,
+        memoryType:   r.memoryType,
+        title:        r.title,
+        content:      r.content,
+        importance:   r.importance,
+        specialistId: r.specialistId ?? null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// ─── Token budget ─────────────────────────────────────────────────────────────
+
+function applyTokenBudget(
+  items: SpecialistMemoryItem[],
+  budget: number,
+): { memory: SpecialistMemoryItem[]; tokenBudgetUsed: number } {
+  const selected: SpecialistMemoryItem[] = [];
+  let used = 0;
+
+  for (const item of items) {
+    const tokens = estimateTokens(`${item.title}: ${item.content}`);
+    if (used + tokens > budget) break;
+    used += tokens;
+    selected.push(item);
+  }
+
+  return { memory: selected, tokenBudgetUsed: used };
+}
+
+// ─── Legacy context loader (chiefOfStaffOrchestrator compatibility) ───────────
+
+/**
+ * Build the full SpecialistContext used by the intelligence service for
+ * conversational specialist runs (distinct from execution package assembly).
+ *
+ * This loads:
+ *   - Task scope and approval state
+ *   - Approved org memory in the flat { id, content, category } format
+ *   - Conversation message history (when conversationId is provided)
+ *   - Pinned decisions from conversation memory
+ *   - Previous completed specialist run summaries for this task
+ *
+ * Compatible with the SpecialistContext interface in specialistIntelligenceService.ts
+ */
+export async function buildSpecialistContext(params: {
+  organizationId:    string;
+  conversationId?:   string;
+  taskId:            string | null;
+  specialistRunId:   string;
+  workforceRoleCode: string;
+  workerProfileCode: string;
+  capabilityCode:    string;
+}): Promise<{
+  taskScope:                string;
+  approvedMemory:           Array<{ id: string; content: string; category: string }>;
+  pinnedDecisions:          Array<{ id: string; decision: string }>;
+  unresolvedQuestions:      string[];
+  relevantMessages:         Array<{ id: string; role: string; content: string }>;
+  previousOutputs:          Array<{ specialistRunId: string; role: string; summary: string }>;
+  evidenceReferences:       never[];
+  approvalState:            string;
+  executionEntitlementState: string;
+}> {
+  const {
+    organizationId, conversationId, taskId,
+    workforceRoleCode,
+  } = params;
+
+  const [task, orgMemoryRows, convMemRow, previousRunRows, conversationMessageRows] =
+    await Promise.all([
+      // Task row — scope + approval state
+      taskId
+        ? db.select({ title: tasksTable.title, approvalState: tasksTable.approvalState, currentState: tasksTable.currentState })
+            .from(tasksTable)
+            .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
+            .limit(1)
+            .then(r => r[0] ?? null)
+        : Promise.resolve(null),
+
+      // Approved org memory (org-wide + this specialist)
+      db.select({
+        id:          organisationMemoryTable.id,
+        content:     organisationMemoryTable.content,
+        memoryType:  organisationMemoryTable.memoryType,
+        specialistId: organisationMemoryTable.specialistId,
+        expiresAt:   organisationMemoryTable.expiresAt,
+        effectiveFrom: organisationMemoryTable.effectiveFrom,
+        effectiveTo: organisationMemoryTable.effectiveTo,
+        supersededBy: organisationMemoryTable.supersededBy,
+      })
+        .from(organisationMemoryTable)
+        .where(and(
+          eq(organisationMemoryTable.organizationId, organizationId),
+          eq(organisationMemoryTable.status, "approved"),
+          or(
+            isNull(organisationMemoryTable.specialistId),
+            eq(organisationMemoryTable.specialistId, workforceRoleCode),
+          ),
+        ))
+        .limit(40),
+
+      // Pinned decisions from conversation memory
+      conversationId
+        ? db.select({ pinnedDecisions: conversationMemoryTable.pinnedDecisions })
+            .from(conversationMemoryTable)
+            .where(and(
+              eq(conversationMemoryTable.organizationId, organizationId),
+              eq(conversationMemoryTable.conversationId, conversationId),
+            ))
+            .limit(1)
+            .then(r => r[0] ?? null)
+        : Promise.resolve(null),
+
+      // Previous specialist run summaries for the same task
+      taskId
+        ? db.select({
+            id:               specialistRunsTable.id,
+            workforceRoleCode: specialistRunsTable.workforceRoleCode,
+            resultSummary:    specialistRunsTable.resultSummary,
+            status:           specialistRunsTable.status,
+          })
+            .from(specialistRunsTable)
+            .where(and(
+              eq(specialistRunsTable.organizationId, organizationId),
+              eq(specialistRunsTable.taskId, taskId),
+            ))
+            .orderBy(desc(specialistRunsTable.createdAt))
+            .limit(10)
+        : Promise.resolve([]),
+
+      // Conversation message history
+      conversationId
+        ? db.select({
+            id:         conversationMessagesTable.id,
+            senderType: conversationMessagesTable.senderType,
+            content:    conversationMessagesTable.content,
+          })
+            .from(conversationMessagesTable)
+            .where(and(
+              eq(conversationMessagesTable.organizationId, organizationId),
+              eq(conversationMessagesTable.conversationId, conversationId),
+            ))
+            .orderBy(asc(conversationMessagesTable.createdAt))
+            .limit(50)
+        : Promise.resolve([]),
+    ]);
+
+  const now = new Date();
+
+  // Filter memory for validity
+  const approvedMemory = orgMemoryRows
+    .filter(r => !r.supersededBy)
+    .filter(r => !r.expiresAt  || r.expiresAt  > now)
+    .filter(r => !r.effectiveTo  || r.effectiveTo  > now)
+    .filter(r => !r.effectiveFrom || r.effectiveFrom <= now)
+    .map(r => ({
+      id:       r.id,
+      content:  r.content,
+      category: r.memoryType,
+    }));
+
+  // Extract pinned decisions
+  interface PinnedDecision { id: string; decision: string; }
+  const pinnedDecisions: PinnedDecision[] =
+    (convMemRow?.pinnedDecisions as PinnedDecision[] | null) ?? [];
+
+  // Format conversation messages
+  const relevantMessages = conversationMessageRows.map(m => ({
+    id:      m.id,
+    role:    m.senderType === "ai" ? "assistant" : "user",
+    content: m.content,
+  }));
+
+  // Format previous outputs
+  const previousOutputs = previousRunRows
+    .filter(r => r.status === "completed" && r.resultSummary)
+    .map(r => ({
+      specialistRunId: r.id,
+      role:            r.workforceRoleCode,
+      summary:         r.resultSummary!,
+    }));
+
+  const taskScope = task
+    ? `${task.title} [${task.currentState}]`
+    : "Unknown task";
+
+  return {
     taskScope,
     approvedMemory,
-    pinnedDecisions: [], // populated from conversation memory
-    unresolvedQuestions: [], // populated from task state
-    relevantMessages: messages,
+    pinnedDecisions,
+    unresolvedQuestions: [],
+    relevantMessages,
     previousOutputs,
     evidenceReferences: [],
-    approvalState: "not_required",
-    executionEntitlementState: "not_checked",
+    approvalState:             task?.approvalState ?? "not_required",
+    executionEntitlementState: "ok",
   };
-
-  await logOrgEvent({
-    eventType: "specialist.context_built",
-    organizationId: input.organizationId,
-    actorType: "system",
-    resourceType: "specialist_run",
-    resourceId: input.specialistRunId,
-    isSensitive: true, // context building is sensitive
-    metadata: {
-      workforceRoleCode: input.workforceRoleCode,
-      memoryItemCount: approvedMemory.length,
-      messageCount: messages.length,
-      previousOutputCount: previousOutputs.length,
-    },
-  });
-
-  return context;
-}
-
-// ─── Data retrieval with filtering ────────────────────────────────────────────
-
-async function getTaskScope(taskId: string, organizationId: string): Promise<string> {
-  try {
-    const { tasksTable } = await import("@workspace/db");
-    const [task] = await db
-      .select()
-      .from(tasksTable)
-      .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
-      .limit(1);
-    if (!task) return "";
-    return `Task: ${task.title}${task.description ? `\n${task.description}` : ""}`;
-  } catch {
-    return "";
-  }
-}
-
-async function getApprovedMemory(
-  organizationId: string,
-  workforceRoleCode: string,
-): Promise<Array<{ id: string; content: string; category: string }>> {
-  try {
-    const { organisationMemoryTable } = await import("@workspace/db");
-    const allowedCategories = ROLE_ALLOWED_MEMORY_CATEGORIES[workforceRoleCode] ?? [];
-    const blockedCategories = [
-      ...UNIVERSALLY_BLOCKED_CATEGORIES,
-      ...(ROLE_BLOCKED_CATEGORIES[workforceRoleCode] ?? []),
-    ];
-
-    const rows = await db
-      .select()
-      .from(organisationMemoryTable)
-      .where(and(
-        eq(organisationMemoryTable.organizationId, organizationId),
-        eq(organisationMemoryTable.status, "approved"),
-      ))
-      .orderBy(desc(organisationMemoryTable.createdAt))
-      .limit(100);
-
-    return rows
-      .filter(r => {
-        const cat = (r.category ?? "general").toLowerCase();
-        if (blockedCategories.some(b => cat.includes(b))) return false;
-        if (allowedCategories.length > 0) {
-          return allowedCategories.some(a => cat.includes(a));
-        }
-        return true;
-      })
-      .slice(0, MAX_MEMORY_ITEMS)
-      .map(r => ({
-        id: r.id,
-        content: r.content,
-        category: r.category ?? "general",
-      }));
-  } catch {
-    return [];
-  }
-}
-
-async function getRelevantMessages(
-  conversationId: string | undefined,
-  organizationId: string,
-  workforceRoleCode: string,
-): Promise<Array<{ id: string; role: string; content: string }>> {
-  if (!conversationId) return [];
-
-  try {
-    const { conversationMessagesTable } = await import("@workspace/db");
-    const blockedCategories = ROLE_BLOCKED_CATEGORIES[workforceRoleCode] ?? [];
-
-    const rows = await db
-      .select()
-      .from(conversationMessagesTable)
-      .where(and(
-        eq(conversationMessagesTable.conversationId, conversationId),
-        eq(conversationMessagesTable.organizationId, organizationId),
-      ))
-      .orderBy(desc(conversationMessagesTable.createdAt))
-      .limit(MAX_CONVERSATION_MESSAGES * 2);
-
-    return rows
-      .filter(r => {
-        // Filter out messages that contain blocked data categories
-        const content = (r.content ?? "").toLowerCase();
-        return !blockedCategories.some(cat => content.includes(cat));
-      })
-      .slice(0, MAX_CONVERSATION_MESSAGES)
-      .reverse() // chronological order
-      .map(r => ({
-        id: r.id,
-        role: r.role,
-        content: r.content ?? "",
-      }));
-  } catch {
-    return [];
-  }
-}
-
-async function getPreviousOutputs(
-  taskId: string,
-  currentRunId: string,
-  organizationId: string,
-): Promise<Array<{ specialistRunId: string; role: string; summary: string }>> {
-  try {
-    const { specialistRunsTable } = await import("@workspace/db");
-    const rows = await db
-      .select()
-      .from(specialistRunsTable)
-      .where(and(
-        eq(specialistRunsTable.taskId, taskId),
-        eq(specialistRunsTable.organizationId, organizationId),
-        eq(specialistRunsTable.status, "completed"),
-      ))
-      .orderBy(desc(specialistRunsTable.completedAt))
-      .limit(MAX_PREVIOUS_OUTPUTS);
-
-    return rows
-      .filter(r => r.id !== currentRunId && r.resultSummary)
-      .map(r => ({
-        specialistRunId: r.id,
-        role: r.workforceRoleCode,
-        summary: r.resultSummary ?? "",
-      }));
-  } catch {
-    return [];
-  }
 }

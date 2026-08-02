@@ -38,6 +38,7 @@ import {
   MissingDNAError,
   InactiveDNAError,
 } from "./specialistRuntimeManifestService.js";
+import { loadSpecialistContext } from "./specialistContextService.js";
 
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
@@ -113,11 +114,17 @@ async function getTaskPlan(taskId: string) {
 
 // ─── Package builder ──────────────────────────────────────────────────────────
 
+interface ContextAudit {
+  injectedMemoryIds: string[];
+  hasOrganisationContext: boolean;
+  tokenBudgetUsed: number;
+}
+
 async function buildExecutionPackage(
   task: typeof tasksTable.$inferSelect,
   planRow: typeof taskExecutionPlansTable.$inferSelect,
   config: ReturnType<typeof loadOpenClawConfig>,
-): Promise<ExecutionPackage & { dnaSource: "database" | "static_fallback" }> {
+): Promise<ExecutionPackage & { dnaSource: "database" | "static_fallback"; contextAudit: ContextAudit }> {
   const executionId = randomUUID();
   const now = new Date();
 
@@ -202,17 +209,32 @@ async function buildExecutionPackage(
     allowedDataCategories: ["task_context", "internal"],
   };
 
+  // ── Phase A (Knowledge Bridge): Load per-specialist organisation context ──
+  // Retrieves approved org memory (scoped to this specialist or org-wide),
+  // specialist config (goals, style, escalation), and language profile.
+  // Degrades gracefully — never blocks execution if context load fails.
+  const specialistContext = await loadSpecialistContext(
+    task.organizationId,
+    primaryRole,
+  );
+
   // ── Phase 1 (SRM Hardening): Assemble runtime instructions ──────────────
   // This is the ACTIVE instruction string passed to OpenClaw.
   // It is generated immediately before the OpenClaw call from:
-  //   - specialistManifest (identity + behaviour layer)
-  //   - steps             (current task)
-  //   - constraints       (hard limits)
+  //   - specialistManifest   (identity + behaviour layer)
+  //   - steps                (current task)
+  //   - constraints          (hard limits)
+  //   - specialistContext    (organisation-specific context — Task #14)
   //
   // The raw specialistManifest is also retained in the package for auditability.
   // The workerProfile is NOT included in the instruction text — it is enforced
   // structurally by the broker and tool layer.
-  const assembled = assembleRuntimeInstructions(specialistManifest, steps, constraints);
+  const assembled = assembleRuntimeInstructions(
+    specialistManifest,
+    steps,
+    constraints,
+    specialistContext,
+  );
   const instructionHash = createHash("sha256")
     .update(assembled.instruction, "utf8")
     .digest("hex");
@@ -246,6 +268,11 @@ async function buildExecutionPackage(
     expiresAt,
     issuedAt: now.toISOString(),
     dnaSource,
+    contextAudit: {
+      injectedMemoryIds: assembled.injectedMemoryIds,
+      hasOrganisationContext: assembled.hasOrganisationContext,
+      tokenBudgetUsed: specialistContext.tokenBudgetUsed,
+    },
   };
 }
 
@@ -300,13 +327,15 @@ export async function submitTaskExecution(
     throw err;
   }
 
-  // 3a. Record manifest + instruction audit event
+  // 3a. Record manifest + instruction audit event (including injected context IDs)
   const auditRecord = buildManifestAuditRecord(
     pkg.specialistManifest,
     pkg.executionId,
     {
       instructionHash: pkg.runtimeInstructions.instructionHash,
       dnaSource: pkg.dnaSource,
+      injectedMemoryIds: pkg.contextAudit?.injectedMemoryIds ?? [],
+      hasOrganisationContext: pkg.contextAudit?.hasOrganisationContext ?? false,
     },
   );
 

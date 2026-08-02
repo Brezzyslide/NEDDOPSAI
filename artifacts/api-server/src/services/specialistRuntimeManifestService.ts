@@ -270,6 +270,10 @@ export interface ManifestAuditRecord {
   instructionHash?: string;
   /** Whether this manifest was compiled from the database or the static fallback */
   dnaSource?: "database" | "static_fallback";
+  /** IDs of organisation memory records injected into the instruction (Task #14) */
+  injectedMemoryIds?: string[];
+  /** Whether organisation context sections were present in the instruction (Task #14) */
+  hasOrganisationContext?: boolean;
   generatedAt: string;
   executionId: string;
 }
@@ -277,17 +281,24 @@ export interface ManifestAuditRecord {
 export function buildManifestAuditRecord(
   manifest: SpecialistRuntimeManifest,
   executionId: string,
-  options?: { instructionHash?: string; dnaSource?: "database" | "static_fallback" },
+  options?: {
+    instructionHash?: string;
+    dnaSource?: "database" | "static_fallback";
+    injectedMemoryIds?: string[];
+    hasOrganisationContext?: boolean;
+  },
 ): ManifestAuditRecord {
   return {
-    specialistId:    manifest.specialistId,
-    dnaProfileId:    manifest.dnaProfileId,
-    dnaVersion:      manifest.dnaVersion,
-    manifestVersion: manifest.manifestVersion,
-    manifestHash:    manifest.manifestHash,
-    instructionHash: options?.instructionHash,
-    dnaSource:       options?.dnaSource,
-    generatedAt:     manifest.generatedAt,
+    specialistId:           manifest.specialistId,
+    dnaProfileId:           manifest.dnaProfileId,
+    dnaVersion:             manifest.dnaVersion,
+    manifestVersion:        manifest.manifestVersion,
+    manifestHash:           manifest.manifestHash,
+    instructionHash:        options?.instructionHash,
+    dnaSource:              options?.dnaSource,
+    injectedMemoryIds:      options?.injectedMemoryIds,
+    hasOrganisationContext: options?.hasOrganisationContext,
+    generatedAt:            manifest.generatedAt,
     executionId,
   };
 }

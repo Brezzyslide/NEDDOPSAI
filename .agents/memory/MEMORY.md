@@ -20,3 +20,4 @@
 - [NeedsOps Sprint 15 Production Transport](needsops-sprint15.md) — outbound WSS relay, challenge/exchange auth, safeStorage, Ed25519 crypto.sign(null,...) gotcha, REQUIRED_RLS_TABLES=51, 1382 tests
 - [NeedsOps Specialist Runtime Manifest](needsops-sprint-srm.md) — four-layer ExecutionPackage, manifest required (UNSUPPORTED_PACKAGE_VERSION if absent), SHA-256 hash, full passthrough to OpenClaw spawn+bridge, 1436 tests
 - [NeedsOps Sprint SRM Hardening](needsops-sprint-srm-hardening.md) — assembler wired, DB-first DNA, org context, broker enforcement, vitest alias for agent-runtime, desktop 0.1.1, REQUIRED_RLS_TABLES=52, 1475 tests
+- [NeedsOps Sprint Knowledge Bridge (Task #14)](needsops-sprint14-knowledge-bridge.md) — loadSpecialistContext+buildSpecialistContext must coexist, specialist_language_profiles table, specialist_id on org_memory, SpecialistOrganisationContext in assembler, REQUIRED_RLS_TABLES=53, 1498 tests

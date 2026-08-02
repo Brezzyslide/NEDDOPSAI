@@ -25,6 +25,13 @@ export const organisationMemoryTable = pgTable("organisation_memory", {
   effectiveFrom:    timestamp("effective_from",  { withTimezone: true }),
   effectiveTo:      timestamp("effective_to",    { withTimezone: true }),
   expiresAt:        timestamp("expires_at",      { withTimezone: true }),
+  /**
+   * Specialist scope for this memory record.
+   * NULL  = org-wide (available to any authorised specialist).
+   * value = workforce role code — only that specialist receives this memory.
+   * Example: "incident_management", "chief_of_staff"
+   */
+  specialistId:     text("specialist_id"),
   createdBy:        text("created_by").notNull(),
   approvedBy:       text("approved_by"),
   approvedAt:       timestamp("approved_at", { withTimezone: true }),

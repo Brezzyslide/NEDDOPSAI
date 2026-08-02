@@ -109,3 +109,5 @@ export * from "./deviceTaskDispatch";
 export * from "./specialistDnaProfiles";
 export * from "./specialistDnaCompetencies";
 export * from "./organisationSpecialistConfig";
+// Sprint Knowledge Bridge (Task #14) — Specialist Language Profiles
+export * from "./specialistLanguageProfiles";

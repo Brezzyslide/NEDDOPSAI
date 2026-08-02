@@ -84,6 +84,8 @@ export const REQUIRED_RLS_TABLES = [
   "device_task_dispatch",
   // Sprint SRM Hardening — Organisation Specialist Configuration
   "organisation_specialist_configuration",
+  // Sprint Knowledge Bridge (Task #14) — Specialist Language Profiles
+  "specialist_language_profiles",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
