@@ -1,0 +1,1303 @@
+NeedsOps AI+ — Implement Specialist Training, Organisational Knowledge, and RAG
+
+Proceed with implementation.
+
+Use the existing NeedsOps architecture as the foundation. Do not rebuild the specialist runtime, Business Discovery, organisation memory, or specialist configuration systems from scratch.
+
+The purpose of this sprint is to let each SaaS customer properly teach its AI workforce how the organisation works, including:
+
+- organisational language and terminology
+- writing tone and style
+- internal policies
+- procedures and playbooks
+- approved examples
+- escalation rules
+- specialist responsibilities
+- approval requirements
+- current and superseded document versions
+- specialist-specific knowledge
+
+The target experience is:
+
+Choose specialist
+→ define responsibilities and boundaries
+→ define language and writing style
+→ add approved knowledge sources
+→ upload policies, procedures, playbooks, and examples
+→ choose who may use each source
+→ process and index the material
+→ test the specialist
+→ review retrieved evidence
+→ approve the specialist as ready
+
+The first end-to-end reference specialist must be:
+
+Incident Management Specialist
+
+The architecture must remain reusable for every NeedsOps specialist.
+
+────────────────────────────────────────
+CURRENT STATE TO PRESERVE
+────────────────────────────────────────
+
+The current codebase already contains:
+
+- organisation_specialist_configuration
+- preferredStyle
+- goals
+- escalationContacts
+- additionalContext
+- organisation_memory
+- approved memory status
+- contextSelectionService.ts
+- runtimeInstructionAssembler.ts
+- specialist execution manifests
+- tenant-aware database architecture
+- Business Discovery
+- Company Profile
+- device and organisation permission models
+
+Current limitations already identified:
+
+- organisation memory is mainly wired into the Chief of Staff path
+- other specialists receive only organisation_specialist_configuration
+- there is no document upload and ingestion pipeline
+- there is no chunking
+- there are no embeddings
+- there is no vector search
+- there is no hybrid retrieval
+- there is no specialist-scoped knowledge
+- runtimeInstructionAssembler.ts does not fully render organisation context and approved memory for every specialist
+- there are no source citations in specialist outputs
+- there is no policy version, effective-date, or superseded-document governance
+
+Extend these systems. Do not duplicate them unnecessarily.
+
+────────────────────────────────────────
+PRIMARY DESIGN PRINCIPLES
+────────────────────────────────────────
+
+1. Separate structured configuration from retrieved knowledge.
+
+Structured configuration includes:
+
+- preferred writing style
+- role instructions
+- escalation contacts
+- approval rules
+- business hours
+- language conventions
+- authorised systems
+- specialist goals
+
+Retrieved knowledge includes:
+
+- policy sections
+- procedure steps
+- playbook content
+- approved examples
+- templates
+- internal guidance
+- legislation references
+- previous approved work products
+
+Do not put all knowledge into one large JSON field.
+
+2. Knowledge must be scoped.
+
+Do not solve specialist knowledge by adding only one nullable specialistId field.
+
+Support these scope types:
+
+- organisation
+- workforce
+- specialist
+- department
+- location
+- task_type
+
+Use a durable scope model such as:
+
+- scopeType
+- scopeId
+
+A knowledge source may have more than one scope where appropriate.
+
+3. Retrieval must be permission-aware and version-aware.
+
+The most semantically similar passage is not automatically the correct passage.
+
+Every retrieval must filter by:
+
+- organisation
+- authorised specialist or workforce
+- user role and permission
+- source approval status
+- document lifecycle status
+- effective date
+- superseded status
+- sensitivity classification
+- task purpose
+- location or department where relevant
+
+4. Preserve lexical retrieval.
+
+Do not discard the existing deterministic keyword retrieval.
+
+Build hybrid retrieval combining:
+
+- lexical keyword relevance
+- semantic vector similarity
+- importance
+- recency
+- pinned or mandatory knowledge
+- authoritative source priority
+
+5. Outputs must be grounded.
+
+When a specialist uses retrieved knowledge, the output must retain source references.
+
+Example:
+
+“Based on Incident Management Policy v3.2, section 6.4, effective 12 June 2026…”
+
+Do not allow the specialist to present unsupported statements as company policy.
+
+────────────────────────────────────────
+PHASE 0 — INSPECTION AND IMPLEMENTATION PLAN
+────────────────────────────────────────
+
+Before modifying code, inspect:
+
+- organisation_specialist_configuration schema and services
+- organisation_memory schema and services
+- contextSelectionService.ts
+- runtimeInstructionAssembler.ts
+- execution manifest construction
+- specialist invocation flow
+- current storage providers
+- current upload handling
+- current audit logging
+- current role and tenant authorisation
+- PostgreSQL extensions available in the current environment
+- migration conventions
+- RLS verifier and REQUIRED_RLS_TABLES
+- current model-provider abstraction
+- current token-budget handling
+
+Produce a short implementation map, then proceed.
+
+Do not stop after the inspection.
+
+────────────────────────────────────────
+PHASE 1 — FIX THE EXISTING RUNTIME CONTEXT BRIDGE
+────────────────────────────────────────
+
+Before adding document RAG, close the current context gap.
+
+Update runtimeInstructionAssembler.ts and the relevant execution-manifest pipeline so every supported specialist can receive:
+
+- approved organisation-level memory
+- workforce-scoped memory
+- specialist-scoped memory
+- organisation_specialist_configuration
+- preferred style
+- language rules
+- goals
+- escalation contacts
+- approval boundaries
+- relevant Company Profile data
+
+This must not remain Chief-of-Staff-only.
+
+Requirements:
+
+- tenant isolation
+- specialist scope filtering
+- token-budget enforcement
+- deterministic ordering
+- clear section headings in assembled instructions
+- no accidental inclusion of unapproved memory
+- no inclusion of revoked or superseded memory
+- no access to knowledge outside the tenant
+- audit visibility into which context records were injected
+
+Add tests proving that:
+
+- Incident Management receives its scoped memory
+- another specialist does not receive Incident Management-only memory
+- organisation-wide memory reaches authorised specialists
+- unapproved memory is excluded
+- cross-tenant memory is excluded
+- token budgets are respected
+- pinned mandatory instructions are retained
+
+────────────────────────────────────────
+PHASE 2 — KNOWLEDGE AND SCOPE DATA MODEL
+────────────────────────────────────────
+
+Create or extend the data model using existing Drizzle and RLS conventions.
+
+Assess existing tables before creating duplicates.
+
+At minimum implement appropriate forms of:
+
+1. knowledge_sources
+
+Purpose:
+
+Represents an uploaded document, connected source, manually entered playbook, style guide, approved example, or external reference.
+
+Suggested fields:
+
+- id
+- organizationId
+- title
+- description
+- sourceType
+- originalFileName
+- mimeType
+- storageProvider
+- storageKey
+- externalSourceId
+- checksum
+- fileSize
+- language
+- status
+- authorityLevel
+- sensitivityClassification
+- effectiveFrom
+- effectiveTo
+- versionLabel
+- isCurrent
+- supersededBySourceId
+- uploadedByUserId
+- approvedByUserId
+- approvedAt
+- revokedAt
+- createdAt
+- updatedAt
+
+Suggested source types:
+
+- policy
+- procedure
+- playbook
+- style_guide
+- approved_example
+- template
+- legislation_reference
+- manual_note
+- connected_document
+
+Suggested statuses:
+
+- uploaded
+- processing
+- review_required
+- approved
+- failed
+- revoked
+- superseded
+- archived
+
+Suggested authority levels:
+
+- mandatory
+- authoritative
+- supporting
+- example_only
+- reference_only
+
+2. knowledge_scopes
+
+Purpose:
+
+Controls where a source or memory item applies.
+
+Fields:
+
+- id
+- organizationId
+- knowledgeSourceId or memoryId
+- scopeType
+- scopeId
+- createdAt
+
+Supported scope types:
+
+- organisation
+- workforce
+- specialist
+- department
+- location
+- task_type
+
+Avoid invalid polymorphic references. Use a sound relational design.
+
+3. knowledge_source_versions
+
+Purpose:
+
+Maintains version history and source lineage.
+
+Fields should cover:
+
+- source identity
+- version number or label
+- checksum
+- effective date
+- status
+- supersedes version
+- extracted-text reference
+- ingestion metadata
+- createdBy
+- approvedBy
+- timestamps
+
+4. knowledge_chunks
+
+Purpose:
+
+Stores extracted and chunked text.
+
+Suggested fields:
+
+- id
+- organizationId
+- knowledgeSourceId
+- sourceVersionId
+- chunkIndex
+- sectionTitle
+- pageNumber
+- headingPath
+- text
+- tokenCount
+- lexicalSearchVector
+- embedding
+- embeddingModel
+- embeddingDimensions
+- contentHash
+- createdAt
+- deletedAt
+
+5. specialist_language_profiles
+
+Purpose:
+
+Stores structured language and style settings separately from document knowledge.
+
+Fields should cover:
+
+- organizationId
+- specialistId
+- locale
+- spellingConvention
+- tone
+- formality
+- preferredTerms
+- prohibitedTerms
+- dateFormat
+- timeFormat
+- headingPreferences
+- sentenceLengthPreference
+- outputStructure
+- approvedExampleSourceIds where appropriate
+- createdAt
+- updatedAt
+- lastConfirmedAt
+
+6. specialist_training_status
+
+Purpose:
+
+Tracks readiness and testing.
+
+Fields:
+
+- organizationId
+- specialistId
+- status
+- configurationComplete
+- knowledgeSourcesApproved
+- retrievalTestPassed
+- sampleTaskPassed
+- approvedByUserId
+- approvedAt
+- lastTestedAt
+- notes
+
+Suggested statuses:
+
+- not_started
+- configuring
+- knowledge_processing
+- review_required
+- testing
+- ready
+- needs_attention
+- suspended
+
+7. retrieval_audit_events
+
+Purpose:
+
+Records what knowledge was retrieved and injected.
+
+Store metadata such as:
+
+- executionId
+- organizationId
+- specialistId
+- task summary or hash
+- source IDs
+- chunk IDs
+- ranking scores
+- retrieval method
+- filter decisions
+- token count
+- timestamp
+
+Do not store unnecessary sensitive task content.
+
+All tenant tables must:
+
+- have RLS
+- be added to REQUIRED_RLS_TABLES
+- have foreign keys
+- have appropriate indexes
+- be covered by cross-tenant tests
+- use soft deletion where appropriate
+- preserve audit history
+
+────────────────────────────────────────
+PHASE 3 — DOCUMENT STORAGE AND UPLOAD
+────────────────────────────────────────
+
+Implement secure document upload.
+
+Supported initial file types:
+
+- PDF
+- DOCX
+- TXT
+- Markdown
+
+Do not add spreadsheets in this first version unless the existing extraction system already supports them reliably.
+
+Requirements:
+
+- authenticated organisation member
+- owner/admin upload permission by default
+- configurable specialist trainer role if an existing role model supports it
+- file size limits
+- MIME type validation
+- extension validation
+- checksum calculation
+- malware-scanning interface
+- safe generated storage names
+- no executable uploads
+- no direct public object URLs
+- tenant-specific storage paths
+- audit logging
+- upload cancellation
+- retry
+- delete or revoke
+- reprocess
+- version replacement
+
+For development:
+
+- use the existing storage abstraction where possible
+- implement a local or configured development storage provider
+
+For AWS production readiness:
+
+- provide an S3-compatible storage adapter
+- use private buckets
+- use server-side encryption
+- use short-lived signed upload/download URLs
+- do not expose permanent AWS credentials
+- keep dev, staging, and production buckets separate
+
+Environment separation must support:
+
+- local development
+- AWS development
+- AWS staging
+- AWS production
+
+Do not mix knowledge documents between environments.
+
+────────────────────────────────────────
+PHASE 4 — TEXT EXTRACTION AND INGESTION
+────────────────────────────────────────
+
+Build an asynchronous ingestion pipeline.
+
+Pipeline:
+
+Upload
+→ validate
+→ extract text
+→ classify sections
+→ normalise
+→ chunk
+→ calculate lexical index
+→ generate embeddings
+→ store chunks
+→ mark review required
+→ human approval
+→ available for retrieval
+
+Requirements:
+
+- idempotent ingestion
+- retryable jobs
+- ingestion status
+- failure reason
+- cancellation
+- source checksum
+- no duplicate reprocessing for identical versions
+- document page and heading metadata
+- removal of repeated headers and footers where practical
+- preservation of section titles
+- safe handling of empty or scanned PDFs
+- OCR must be behind a separate optional adapter
+- do not silently claim OCR success when only image pages were found
+
+Initial extraction libraries should be well-maintained and suitable for server use.
+
+Keep the extraction interface provider-neutral.
+
+Chunking requirements:
+
+- preserve logical policy sections
+- prefer heading-aware and paragraph-aware chunking
+- retain modest overlap
+- store source offsets or page references
+- respect model token limits
+- do not split tables or numbered procedures carelessly where avoidable
+- assign stable chunk hashes
+- support re-chunking when the strategy changes
+
+Do not mark content as retrievable until an authorised user approves the source or version.
+
+────────────────────────────────────────
+PHASE 5 — EMBEDDINGS AND VECTOR STORAGE
+────────────────────────────────────────
+
+Implement semantic embeddings behind a provider interface.
+
+Do not hard-code one AI provider throughout the application.
+
+Required abstraction:
+
+- generateEmbedding(text)
+- generateEmbeddings(texts)
+- model name
+- dimensions
+- provider health
+- retry
+- rate-limit handling
+- cost metadata where available
+
+Preferred first vector store:
+
+PostgreSQL with pgvector, if the current PostgreSQL environment supports it reliably.
+
+Requirements:
+
+- migration enabling pgvector where allowed
+- correctly sized vector column
+- vector index suitable for expected scale
+- tenant-aware query filters applied before final results
+- embedding model and dimension recorded
+- re-embedding support when models change
+- no cross-model comparisons
+- no embeddings generated for revoked content
+- delete embeddings when content is permanently deleted according to retention policy
+
+If pgvector cannot be enabled in the current development database:
+
+- implement the vector-store interface
+- provide a development fallback
+- document the exact blocker
+- do not pretend semantic retrieval is active when it is not
+
+────────────────────────────────────────
+PHASE 6 — HYBRID RETRIEVAL
+────────────────────────────────────────
+
+Create a SpecialistKnowledgeRetrievalService or equivalent.
+
+Inputs should include:
+
+- organizationId
+- specialistId
+- workforceId where applicable
+- userId
+- deviceId where relevant
+- task type
+- task description
+- requested output type
+- token budget
+- current date and timezone
+
+Retrieval stages:
+
+1. Authorisation and tenant filter
+2. Scope filter
+3. Lifecycle and effective-date filter
+4. Sensitivity and role filter
+5. Mandatory and pinned knowledge selection
+6. Lexical retrieval
+7. Semantic vector retrieval
+8. Ranking and score normalisation
+9. Deduplication
+10. Diversity across sources
+11. Token-budget packing
+12. Citation metadata creation
+
+Combine scoring from:
+
+- semantic similarity
+- lexical relevance
+- authority level
+- importance
+- recency
+- effective-date validity
+- specialist scope match
+- workforce scope match
+- task-type scope match
+- pinned status
+
+Mandatory sources must not be displaced merely by semantic scores.
+
+Exclude:
+
+- drafts
+- unapproved sources
+- revoked sources
+- superseded versions
+- expired policies
+- unauthorised sensitivity levels
+- cross-tenant sources
+
+Return:
+
+- selected chunks
+- source metadata
+- score breakdown
+- citations
+- warnings
+- conflicting sources
+- token usage
+
+Implement conflict detection.
+
+Examples:
+
+- two current policies with contradictory instructions
+- an organisation memory contradicting an authoritative policy
+- an approved example using superseded terminology
+
+When a material conflict exists:
+
+- warn the runtime
+- require human review where appropriate
+- prefer mandatory or authoritative current sources
+- never silently merge contradictory policy rules
+
+────────────────────────────────────────
+PHASE 7 — RUNTIME INSTRUCTION INTEGRATION
+────────────────────────────────────────
+
+Wire retrieval into every specialist execution path.
+
+Before spawning the runtime:
+
+1. Load structured specialist configuration
+2. Load language profile
+3. Retrieve approved memory
+4. Retrieve relevant document chunks
+5. Load approval and escalation rules
+6. Construct the final instruction
+7. Record retrieval audit metadata
+8. execute the task
+
+Use clearly separated instruction sections:
+
+- Specialist Role
+- Responsibilities
+- Prohibited Actions
+- Organisation Context
+- Language and Writing Style
+- Approval and Escalation Rules
+- Mandatory Knowledge
+- Retrieved Supporting Knowledge
+- Approved Examples
+- Current Task
+- Source References
+
+Do not dump raw JSON into the model prompt.
+
+Do not inject full documents when selected passages are sufficient.
+
+Do not let retrieved text override platform safety instructions or system-level constraints.
+
+Protect against prompt injection in uploaded documents.
+
+Treat uploaded documents as untrusted content.
+
+Add protections such as:
+
+- clear source delimiters
+- instruction hierarchy
+- removal or neutralisation of embedded prompt-like instructions where appropriate
+- explicit instruction that retrieved content is evidence, not system instruction
+- prompt-injection detection or warning interface
+- audit logging of flagged sources
+
+Outputs should include structured provenance:
+
+- source title
+- source version
+- section
+- page where available
+- effective date
+- chunk ID or citation ID
+
+The API and UI must be able to render citations.
+
+────────────────────────────────────────
+PHASE 8 — CUSTOMER-FACING SPECIALIST TRAINING UI
+────────────────────────────────────────
+
+Add a customer-facing area such as:
+
+/app/:slug/ai-workforce/:specialistId/training
+
+or another route consistent with the current application.
+
+Use customer language, not internal RAG terminology.
+
+Suggested navigation title:
+
+Training & Knowledge
+
+The experience should include:
+
+1. Specialist overview
+
+Show:
+
+- specialist name
+- responsibilities
+- current readiness
+- selected workforce
+- knowledge-source count
+- last tested date
+- needs-attention warnings
+
+2. Responsibilities and boundaries
+
+Allow authorised users to define:
+
+- responsibilities
+- prohibited actions
+- approval-required actions
+- escalation conditions
+- escalation contacts
+- allowed systems
+- first-week goals
+
+3. Language and writing style
+
+Allow configuration of:
+
+- English variant
+- organisation terminology
+- preferred terms
+- terms to avoid
+- tone
+- formality
+- concise or detailed style
+- date and time format
+- headings
+- output templates
+
+4. Knowledge sources
+
+Allow:
+
+- upload document
+- add manual note
+- add playbook
+- add approved example
+- assign scope
+- choose authority level
+- enter effective date
+- enter version
+- mark sensitivity
+- review extraction
+- approve
+- revoke
+- supersede
+- replace with new version
+- reprocess
+- delete where policy permits
+
+5. Processing status
+
+Show customer-friendly stages:
+
+- Uploading
+- Reading document
+- Organising sections
+- Preparing knowledge
+- Ready for review
+- Approved
+- Needs attention
+- Failed
+
+Do not show embeddings, chunk IDs, vector dimensions, or internal pipeline terminology to normal customers.
+
+6. Knowledge review
+
+Allow users to:
+
+- inspect extracted sections
+- correct the title or metadata
+- confirm effective date
+- confirm authority level
+- inspect source pages
+- approve or reject
+- flag sensitive information
+- identify superseded policies
+
+7. Test the specialist
+
+Provide a test task interface.
+
+For Incident Management, examples:
+
+- “How should a moderate-severity incident be escalated?”
+- “Draft an incident summary using our approved style.”
+- “Which approval is required before external reporting?”
+
+Show:
+
+- specialist answer
+- sources used
+- highlighted retrieved passages
+- warnings
+- conflicting information
+- whether approval is required
+
+8. Readiness approval
+
+Do not automatically mark a specialist ready merely because documents were uploaded.
+
+Readiness should require configurable checks such as:
+
+- responsibilities confirmed
+- style confirmed
+- required knowledge sources approved
+- retrieval test passed
+- sample task reviewed
+- owner/admin approval
+
+Final status:
+
+“Incident Management Specialist is ready.”
+
+────────────────────────────────────────
+PHASE 9 — INCIDENT MANAGEMENT REFERENCE IMPLEMENTATION
+────────────────────────────────────────
+
+Build a complete reference training pack for the Incident Management Specialist without embedding customer policy content.
+
+Provide configurable categories:
+
+- incident definitions
+- severity classifications
+- immediate response
+- internal notification
+- external reporting
+- investigation
+- corrective action
+- closure
+- participant communication
+- escalation
+- approval requirements
+- writing examples
+
+The specialist must support:
+
+- organisational incident policy
+- incident procedure
+- severity matrix
+- reporting template
+- approved incident-summary examples
+- escalation contacts
+- prohibited actions
+- human approval before external submission
+
+Safe test behaviour:
+
+- may draft
+- may classify with confidence and source evidence
+- may recommend escalation
+- may not submit externally
+- may not alter production incident records
+- may not notify regulators without approval
+- may not conceal uncertainty
+
+Add acceptance tests using fictional policy documents and fictional incidents only.
+
+────────────────────────────────────────
+PHASE 10 — API DESIGN
+────────────────────────────────────────
+
+Implement APIs consistent with the existing route conventions.
+
+At minimum assess endpoints for:
+
+Knowledge sources:
+
+- list sources
+- create upload
+- complete upload
+- retrieve source
+- update metadata
+- revoke source
+- supersede source
+- delete source
+- reprocess source
+- retrieve ingestion status
+- preview extracted content
+- approve or reject source
+
+Scopes:
+
+- list scopes
+- assign scope
+- remove scope
+
+Specialist profile:
+
+- get language profile
+- update language profile
+- get responsibilities and boundaries
+- update responsibilities and boundaries
+- get readiness
+- approve readiness
+- suspend readiness
+
+Retrieval and testing:
+
+- test retrieval
+- test specialist
+- show source evidence
+- report conflict
+- retrieve retrieval audit
+
+Every write endpoint must have:
+
+- authentication
+- tenant authorisation
+- role checks
+- validation
+- audit logging
+- idempotency where retries are likely
+- rate limiting where appropriate
+- safe errors
+- no cross-tenant leakage
+
+Upload APIs must use signed URLs or the existing secure upload abstraction where appropriate.
+
+────────────────────────────────────────
+PHASE 11 — SECURITY AND GOVERNANCE
+────────────────────────────────────────
+
+Implement protections for:
+
+- cross-tenant retrieval
+- unauthorised specialist access
+- malicious uploaded documents
+- prompt injection
+- document poisoning
+- superseded policies
+- conflicting policies
+- over-broad folder or source access
+- accidental exposure through citations
+- embedding sensitive information
+- deleted-source retention
+- audit tampering
+- model-provider leakage
+- excessive retrieval
+- data residency and environment separation
+
+Normal users must never see knowledge from another tenant.
+
+A specialist must never retrieve a source solely because its vector is similar.
+
+Permission filters must happen before final context injection.
+
+Add audit events for:
+
+- upload
+- extraction
+- processing
+- approval
+- rejection
+- scope assignment
+- retrieval
+- specialist test
+- readiness approval
+- revocation
+- supersession
+- deletion
+- reprocessing
+
+Data lifecycle:
+
+- development data remains in development
+- staging data remains in staging
+- production data remains in production
+- knowledge sources and embeddings are not copied between environments unless through an authorised migration or sanitised test fixture
+- deleting a tenant must trigger a documented knowledge and embedding deletion process
+
+────────────────────────────────────────
+PHASE 12 — TESTING
+────────────────────────────────────────
+
+Add comprehensive tests.
+
+Data model and RLS:
+
+- all new tenant tables protected
+- cross-tenant reads rejected
+- cross-tenant writes rejected
+- scope isolation
+- specialist isolation
+- version lineage
+- superseded-source exclusion
+
+Ingestion:
+
+- PDF extraction
+- DOCX extraction
+- TXT extraction
+- Markdown extraction
+- empty document
+- corrupted document
+- duplicate checksum
+- retry
+- failure status
+- revoke during processing
+- reprocess
+- version replacement
+
+Retrieval:
+
+- organisation scope
+- workforce scope
+- specialist scope
+- task-type scope
+- mandatory source selection
+- lexical match
+- semantic match
+- hybrid ranking
+- token budget
+- effective dates
+- expired source exclusion
+- superseded source exclusion
+- sensitivity filter
+- user-role filter
+- conflict detection
+- citation generation
+- prompt-injection warning
+- duplicate chunk suppression
+
+Runtime:
+
+- all specialists receive authorised organisation context
+- Incident Management receives its scoped knowledge
+- another specialist cannot receive Incident Management-only knowledge
+- no unapproved source enters the prompt
+- provenance is retained
+- uploaded text cannot replace system instructions
+- retrieval audit created
+- safe task remains non-destructive
+
+UI and API:
+
+- upload
+- processing status
+- review
+- approve
+- scope assignment
+- language profile
+- test task
+- readiness approval
+- revoked-source handling
+- errors in plain language
+
+Add true integration tests where possible, not only mocked service tests.
+
+────────────────────────────────────────
+PHASE 13 — MIGRATION AND BACKWARDS COMPATIBILITY
+────────────────────────────────────────
+
+Preserve existing:
+
+- organisation_specialist_configuration
+- organisation_memory
+- Chief of Staff memory behaviour
+- existing specialist manifests
+- existing API consumers
+
+Provide a migration path:
+
+- existing approved organisation memory defaults to organisation scope
+- existing CoS memory remains available to CoS
+- existing preferredStyle remains effective
+- no tenant loses current configuration
+- new specialist-scoped retrieval is additive
+- old records receive safe defaults
+
+Do not silently change existing memory visibility.
+
+Document any behaviour change.
+
+────────────────────────────────────────
+PHASE 14 — ENVIRONMENT AND AWS READINESS
+────────────────────────────────────────
+
+Support these environments:
+
+1. Local development
+2. AWS development
+3. AWS staging
+4. AWS production
+
+Each environment must use separate:
+
+- PostgreSQL database
+- vector index
+- object storage bucket
+- secrets
+- API URL
+- logging
+- model-provider credentials
+- background-job queues
+
+Configuration must use environment variables and secret references.
+
+Do not hard-code Replit URLs, AWS identifiers, bucket names, model credentials, or database addresses.
+
+Provide an AWS-ready deployment outline using:
+
+- PostgreSQL/RDS with pgvector where supported
+- private S3 buckets
+- Secrets Manager
+- separate dev, staging, and production resources
+- background processing suitable for ingestion jobs
+
+Do not migrate production during this sprint unless explicitly instructed.
+
+────────────────────────────────────────
+IMPLEMENTATION ORDER
+────────────────────────────────────────
+
+Implement in this order:
+
+Phase A — inspection and context bridge
+Phase B — knowledge and scope schema
+Phase C — secure upload and storage
+Phase D — extraction and ingestion
+Phase E — embeddings and vector store
+Phase F — hybrid retrieval
+Phase G — runtime integration
+Phase H — customer training UI
+Phase I — Incident Management reference flow
+Phase J — governance, testing, and migration
+Phase K — environment and AWS-readiness documentation
+
+After each phase:
+
+- run relevant tests
+- fix failures
+- list files changed
+- distinguish implemented from configured
+- report blockers honestly
+- do not hide incomplete functionality behind successful UI states
+
+────────────────────────────────────────
+REQUIRED DELIVERABLES
+────────────────────────────────────────
+
+At completion provide:
+
+1. Implemented architecture diagram
+2. Customer training journey
+3. Data model summary
+4. Migration summary
+5. RLS and tenant-isolation report
+6. Upload and storage design
+7. Ingestion pipeline design
+8. Chunking strategy
+9. Embedding provider design
+10. Vector-store design
+11. Hybrid-ranking formula and rules
+12. Scope and permission model
+13. Runtime instruction layout
+14. Prompt-injection protections
+15. Citation format
+16. Conflict-handling rules
+17. API endpoint summary
+18. Web UI summary
+19. Incident Management reference test
+20. Existing-memory migration behaviour
+21. Environment-variable list
+22. AWS development, staging, and production readiness
+23. Automated test breakdown
+24. Known limitations
+25. Production blockers
+26. File-by-file change list
+27. Manual acceptance-test instructions
+
+────────────────────────────────────────
+ACCEPTANCE CRITERIA
+────────────────────────────────────────
+
+Do not call the sprint complete unless all of these are demonstrated:
+
+- an authorised user can upload a fictional Incident Management policy
+- the document is securely stored
+- text is extracted
+- the source is chunked
+- embeddings are generated
+- lexical and semantic retrieval both operate
+- the source is reviewed and approved
+- it is scoped to the Incident Management Specialist
+- another specialist cannot retrieve it
+- the Incident Management Specialist receives relevant passages at execution time
+- the answer cites the source and section
+- a superseded policy is excluded
+- an unapproved source is excluded
+- a cross-tenant source is excluded
+- a conflicting-policy warning is produced where appropriate
+- an uploaded prompt-injection attempt cannot override system instructions
+- the retrieval event is audited
+- the customer can run a test task and review evidence
+- the specialist can be marked ready only after the required checks pass
+- all relevant existing tests remain green
+
+Begin by inspecting the existing implementation and producing a short phase-by-phase implementation checklist.
+
+Then implement the sprint sequentially.
+
+Proceed now.
