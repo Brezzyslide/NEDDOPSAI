@@ -122,7 +122,9 @@ router.get("/", async (req, res) => {
   try {
     // Check cache (no status filter bypass cache)
     const statusFilter = req.query.status as string | undefined;
-    if (!statusFilter) {
+    const includeSpecialists = req.query.includeSpecialists === "true";
+    // Only use cache for plain requests (no status filter, no specialist expansion)
+    if (!statusFilter && !includeSpecialists) {
       const cached = getPublicPacksFromCache<any[]>();
       if (cached) {
         res.json({ packs: cached, source: "cache" });
@@ -149,9 +151,10 @@ router.get("/", async (req, res) => {
     let visible = packs.filter(p => p.isPubliclyVisible && p.status !== "archived");
     if (statusFilter) visible = visible.filter(p => p.status === statusFilter);
 
-    const result = visible.map(p => formatPublicPack(p, priceMap.get(p.id)));
+    const result = visible.map(p => formatPublicPack(p, priceMap.get(p.id), includeSpecialists));
 
-    if (!statusFilter) setPublicPacksCache(result);
+    // Only cache plain pack list (no specialist expansion, no status filter)
+    if (!statusFilter && !includeSpecialists) setPublicPacksCache(result);
 
     res.json({ packs: result });
   } catch (err: any) {

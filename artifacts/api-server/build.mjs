@@ -5,6 +5,26 @@ import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
 
+const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+/**
+ * Resolve workspace packages that export TypeScript source (no compiled dist).
+ * These packages use `emitDeclarationOnly: true` so esbuild cannot find their
+ * default export. We redirect them to the TypeScript source entry point so
+ * esbuild can bundle them directly.
+ */
+const workspaceSourcePlugin = {
+  name: "workspace-source",
+  setup(build) {
+    // Match any @workspace/* import that esbuild cannot resolve normally
+    build.onResolve({ filter: /^@workspace\// }, (args) => {
+      const pkgName = args.path.replace("@workspace/", "");
+      const srcEntry = path.join(workspaceRoot, "lib", pkgName, "src", "index.ts");
+      return { path: srcEntry };
+    });
+  },
+};
+
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
 
@@ -100,12 +120,13 @@ async function buildAll() {
       "puppeteer",
       "puppeteer-core",
       "electron",
-      "@workspace/*",
     ],
     sourcemap: "linked",
     plugins: [
+      // Resolve @workspace/* packages that ship TypeScript source (no compiled dist)
+      workspaceSourcePlugin,
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {

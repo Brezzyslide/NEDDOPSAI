@@ -28,8 +28,10 @@ description: Instruction assembler wired, DB-first DNA, org context, broker enfo
 - Do NOT re-export agent-runtime from openclaw to solve this — vitest can't follow the chain anyway
 
 **API server build**
-- `@workspace/*` added to esbuild `external` in `artifacts/api-server/build.mjs`
+- Do NOT add `@workspace/*` to esbuild `external` — workspace packages export `.ts` source; marking them external causes Node.js ESM to fail at runtime (cannot resolve `.ts` without extension).
+- Instead, use the `workspaceSourcePlugin` in `build.mjs`: it intercepts `@workspace/*` imports and redirects them to `lib/<pkgName>/src/index.ts` so esbuild bundles the TypeScript source directly.
 - `dnaStorageService.ts` imports `db` directly from `@workspace/db` (no `getPlatformDb` helper)
+- Cache key for `/v1/workforce-packs`: skip cache when `includeSpecialists=true` (cache only stores the base shape without specialist detail)
 
 **Desktop version**
 - `artifacts/needsops-desktop/package.json` → `"version": "0.1.1"`
