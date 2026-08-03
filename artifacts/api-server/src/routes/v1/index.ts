@@ -100,6 +100,9 @@ import knowledgeSourcesRouter from "./knowledgeSources.js";
 import specialistTrainingRouter from "./specialistTraining.js";
 router.use("/", knowledgeSourcesRouter);
 router.use("/", specialistTrainingRouter);
+// Task #16 — Document Ingestion & Embedding Pipeline
+import ingestionRouter from "./ingestion.js";
+router.use("/", ingestionRouter);
 
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);

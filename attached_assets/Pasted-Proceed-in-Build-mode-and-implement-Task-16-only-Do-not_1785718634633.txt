@@ -1,0 +1,552 @@
+Proceed in Build mode and implement Task #16 only.
+
+Do not start hybrid retrieval, runtime retrieval injection, specialist training UI, Completed Work, web search, desktop file access, or task chat uploads beyond the ingestion foundation required here. Those belong to later tasks.
+
+Task #16 goal:
+
+Build the document ingestion and embedding pipeline for the NeedsOps Knowledge Hub so approved organisational knowledge can be securely extracted, normalised, chunked, embedded, reviewed, and prepared for later retrieval.
+
+Preserve all Task #14 and Task #15 behaviour.
+
+────────────────────────────────────────
+1. INSPECT BEFORE MODIFYING
+────────────────────────────────────────
+
+Inspect:
+
+- knowledge_sources
+- knowledge_source_versions
+- knowledge_chunks
+- knowledge_source_scopes
+- organisation_memory
+- current GCS storage adapter
+- current background job patterns
+- current model-provider abstractions
+- current PostgreSQL capabilities
+- whether pgvector and tsvector are available
+- current API error conventions
+- audit logging
+- RLS verifier
+- object storage environment configuration
+
+Produce a short checklist, then proceed.
+
+────────────────────────────────────────
+2. INGESTION ARCHITECTURE
+────────────────────────────────────────
+
+Implement an asynchronous ingestion pipeline:
+
+Upload completed
+→ validate source and current version
+→ create ingestion job
+→ fetch object privately
+→ extract text
+→ normalise content
+→ detect headings and sections
+→ chunk content
+→ calculate lexical index
+→ generate embeddings
+→ store chunks
+→ mark source as review_required
+→ authorised user reviews and approves
+→ only then may the source become retrievable in Task #17
+
+Required properties:
+
+- idempotent
+- retryable
+- cancellable
+- resumable where practical
+- auditable
+- tenant-isolated
+- version-aware
+- no duplicate processing for the same checksum and version
+- safe failure state
+- no silent success
+- no retrieval before approval
+
+Create an ingestion service and job abstraction rather than running all work inside a request handler.
+
+────────────────────────────────────────
+3. SUPPORTED FILE TYPES
+────────────────────────────────────────
+
+Initial supported formats:
+
+- PDF
+- DOCX
+- TXT
+- Markdown
+
+Do not implement XLSX yet unless there is already reliable extraction support in the repository.
+
+Requirements:
+
+PDF:
+- extract page-level text where possible
+- retain page numbers
+- detect empty or scanned PDFs
+- do not claim OCR was performed unless an OCR adapter actually ran
+
+DOCX:
+- preserve headings and paragraphs where possible
+- identify tables and numbered procedures where possible
+
+TXT and Markdown:
+- preserve headings and paragraph structure
+- normalise line endings
+- preserve list structure where practical
+
+Reject:
+
+- encrypted files that cannot be opened
+- unsupported formats
+- corrupted files
+- executable content
+- unexpectedly huge extracted text
+- suspicious archive payloads
+
+────────────────────────────────────────
+4. EXTRACTION PROVIDER INTERFACE
+────────────────────────────────────────
+
+Create a provider-neutral extraction interface.
+
+Suggested methods:
+
+- canHandle(mimeType, extension)
+- extract(buffer, metadata)
+- getProviderName()
+- getProviderVersion()
+
+Return structured extraction results:
+
+- rawText
+- pages
+- sections
+- headings
+- tables metadata where available
+- warnings
+- detectedLanguage
+- extractionMethod
+- isScanned
+- requiresOcr
+- characterCount
+- tokenEstimate
+
+Do not hard-code extraction logic into API routes.
+
+────────────────────────────────────────
+5. NORMALISATION
+────────────────────────────────────────
+
+Implement deterministic normalisation:
+
+- Unicode normalisation
+- line-ending normalisation
+- excessive whitespace removal
+- repeated page-header/footer reduction where practical
+- preservation of headings
+- preservation of numbered procedures
+- preservation of bullet lists
+- preservation of section boundaries
+- safe removal of binary artefacts
+- stable text hashing
+
+Do not rewrite the meaning of policies or care documents.
+
+Do not use an LLM to silently “improve” source text.
+
+────────────────────────────────────────
+6. CHUNKING STRATEGY
+────────────────────────────────────────
+
+Implement heading-aware, paragraph-aware chunking.
+
+Requirements:
+
+- prefer complete sections
+- retain heading path
+- retain page number where available
+- use modest overlap
+- respect token limits
+- avoid splitting numbered procedures where practical
+- avoid splitting tables carelessly
+- stable chunk ordering
+- stable content hashes
+- configurable chunk size and overlap
+- support re-chunking when strategy version changes
+
+Record:
+
+- chunkIndex
+- sectionTitle
+- headingPath
+- pageNumber
+- text
+- tokenCount
+- contentHash
+- chunkingStrategy
+- chunkingStrategyVersion
+
+Add missing schema fields through a migration if necessary.
+
+────────────────────────────────────────
+7. PGVECTOR AND LEXICAL SEARCH
+────────────────────────────────────────
+
+Inspect the current PostgreSQL environment.
+
+Preferred implementation:
+
+- enable pgvector
+- use a proper vector column
+- record embedding model
+- record embedding dimensions
+- add an appropriate vector index
+- add tsvector or equivalent lexical index
+- ensure tenant and lifecycle filters are compatible with later retrieval
+
+If pgvector is unavailable:
+
+- implement a vector-store interface
+- retain lexical indexing
+- store embedding data only through a clearly marked development fallback
+- report semantic retrieval as disabled
+- do not claim RAG is active
+- document exactly what must change in AWS RDS development and staging
+
+Do not leave JSONB embeddings as the intended production design.
+
+────────────────────────────────────────
+8. EMBEDDING PROVIDER INTERFACE
+────────────────────────────────────────
+
+Implement a provider abstraction.
+
+Required methods:
+
+- generateEmbedding(text)
+- generateEmbeddings(texts)
+- getModelName()
+- getDimensions()
+- getProviderName()
+- healthCheck()
+
+Requirements:
+
+- batch support
+- retries
+- rate-limit handling
+- timeout
+- model and dimension validation
+- cost metadata where available
+- no cross-model comparisons
+- re-embedding support
+- secret-safe logging
+- provider configuration through environment variables
+
+Do not hard-code OpenAI throughout the codebase.
+
+A first provider may use OpenAI if already supported, but the interface must remain replaceable.
+
+────────────────────────────────────────
+9. SENSITIVE DOCUMENT HANDLING
+────────────────────────────────────────
+
+Add stronger controls for high-sensitivity content such as:
+
+- care plans
+- Behaviour Support Plans
+- participant files
+- clinical records
+- incident details
+- HR files
+- legal documents
+
+Requirements:
+
+- sensitivity classification carried into every chunk
+- no embedding generation if the organisation has disabled external embedding for that sensitivity level
+- provider policy checks before sending text externally
+- future support for private/self-hosted embeddings
+- audit event for every embedding batch
+- no raw document text in ordinary logs
+- no participant names or identifiers in diagnostic logs
+- configurable retention
+- source revocation deletes or disables derived chunks and embeddings
+
+Do not assume every source may be sent to a third-party model provider.
+
+────────────────────────────────────────
+10. PROMPT-INJECTION AND DOCUMENT-POISONING PRECHECK
+────────────────────────────────────────
+
+Task #17 will enforce runtime protections, but Task #16 must add ingestion-time analysis hooks.
+
+Detect and flag likely instruction-like content such as:
+
+- “ignore previous instructions”
+- “system prompt”
+- “send data to”
+- “reveal secrets”
+- hidden or suspicious embedded text
+- unusual repeated prompt patterns
+
+Requirements:
+
+- flag, do not silently rewrite
+- store warning metadata
+- require human review for high-risk flags
+- do not automatically approve flagged sources
+- keep the source available for authorised inspection
+- no claim that detection is perfect
+
+────────────────────────────────────────
+11. INGESTION STATUS MODEL
+────────────────────────────────────────
+
+Support statuses such as:
+
+- queued
+- fetching
+- extracting
+- normalising
+- chunking
+- embedding
+- review_required
+- approved
+- failed
+- cancelled
+- revoked
+
+Store:
+
+- attempt count
+- last error code
+- safe error message
+- provider versions
+- chunk count
+- embedding count
+- startedAt
+- completedAt
+- cancelledAt
+- lastAttemptAt
+
+Add an ingestion_jobs table if the existing version model is not sufficient.
+
+All tenant-scoped tables must have RLS and tests.
+
+────────────────────────────────────────
+12. API ENDPOINTS
+────────────────────────────────────────
+
+Implement routes consistent with existing conventions for:
+
+- start ingestion
+- get ingestion status
+- retry ingestion
+- cancel ingestion
+- preview extracted text
+- preview chunks
+- list warnings
+- approve processed source
+- reject processed source
+- request reprocessing
+- request re-embedding
+
+Every write route must include:
+
+- authentication
+- tenant authorisation
+- role checks
+- validation
+- audit logging
+- idempotency
+- safe errors
+- rate limiting if a suitable middleware is introduced
+
+Do not expose raw storage keys or permanent object URLs.
+
+────────────────────────────────────────
+13. BACKGROUND EXECUTION
+────────────────────────────────────────
+
+Use a background-job abstraction suitable for:
+
+- local development
+- Replit development
+- AWS development
+- AWS staging
+- AWS production
+
+Do not lock the system permanently to one queue provider.
+
+Suggested interface:
+
+- enqueue(job)
+- claimNext()
+- heartbeat(jobId)
+- complete(jobId)
+- fail(jobId, error)
+- retry(jobId)
+- cancel(jobId)
+
+For local development, a database-backed worker is acceptable.
+
+For AWS readiness, document how the same abstraction maps to SQS and worker services.
+
+Do not perform large extraction and embedding work synchronously in the API request.
+
+────────────────────────────────────────
+14. AWS ENVIRONMENT READINESS
+────────────────────────────────────────
+
+Support:
+
+- local development
+- AWS development
+- AWS staging
+- AWS production
+
+Each environment must use separate:
+
+- database
+- vector index
+- storage bucket
+- embedding credentials
+- worker queue
+- logs
+- secrets
+
+Provide configuration for:
+
+- RDS PostgreSQL with pgvector where supported
+- private S3 buckets
+- Secrets Manager
+- SQS-compatible job execution
+- App Runner, ECS, or worker deployment notes
+- environment-specific ingestion limits
+
+Do not migrate production in this task.
+
+────────────────────────────────────────
+15. TESTING
+────────────────────────────────────────
+
+Add tests for:
+
+Extraction:
+- valid PDF
+- valid DOCX
+- valid TXT
+- valid Markdown
+- empty document
+- corrupted file
+- unsupported file
+- scanned PDF detection
+- encrypted file
+- oversized extracted text
+
+Normalisation:
+- whitespace
+- line endings
+- heading preservation
+- numbered-list preservation
+- stable hash
+- repeated header reduction
+
+Chunking:
+- heading-aware chunks
+- paragraph boundaries
+- overlap
+- token budget
+- stable ordering
+- page retention
+- numbered procedure handling
+- chunk hash
+- re-chunk strategy version
+
+Embedding:
+- batching
+- dimensions
+- retries
+- timeout
+- provider failure
+- model mismatch
+- external embedding disabled for sensitive source
+- audit event creation
+
+Ingestion:
+- status transitions
+- retry
+- cancel
+- idempotency
+- duplicate version
+- source revoked during processing
+- failed extraction
+- failed embedding
+- review-required state
+- no retrieval before approval
+
+Security:
+- tenant isolation
+- cross-tenant access denied
+- no raw content in logs
+- prompt-injection flag
+- flagged source cannot auto-approve
+- revoked source disables chunks
+
+Database:
+- RLS on new tables
+- pgvector migration if supported
+- lexical index
+- chunk uniqueness
+- job isolation
+
+Do not break the existing 1,574 tests.
+
+Run the full test suite.
+
+────────────────────────────────────────
+16. COMPLETION REPORT
+────────────────────────────────────────
+
+At completion provide:
+
+- files added
+- files modified
+- migrations
+- RLS count
+- supported extraction formats
+- extraction libraries
+- chunking strategy
+- embedding provider
+- vector-store status
+- whether pgvector is genuinely active
+- lexical indexing status
+- ingestion workflow
+- background-job design
+- sensitive-document protections
+- prompt-injection precheck
+- API endpoints
+- tests added
+- full test result
+- AWS development/staging/production notes
+- known limitations
+- confirmation that Task #17 hybrid retrieval has not started
+- confirmation that no customer-facing training UI was added
+
+Do not mark Task #16 complete unless:
+
+- extraction works
+- chunks are persisted
+- embeddings are generated or semantic mode is honestly reported as unavailable
+- lexical indexing works
+- no source becomes retrievable before approval
+- tenant isolation is tested
+- sensitive-source restrictions work
+- all tests pass
+
+Begin Task #16 now.

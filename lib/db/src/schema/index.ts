@@ -120,3 +120,5 @@ export * from "./knowledgeSourceVersions";
 export * from "./knowledgeChunks";
 export * from "./specialistTrainingStatus";
 export * from "./retrievalAuditEvents";
+// Task #16 — Document Ingestion & Embedding Pipeline
+export * from "./ingestionJobs";

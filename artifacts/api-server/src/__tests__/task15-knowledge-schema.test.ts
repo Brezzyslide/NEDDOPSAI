@@ -145,7 +145,7 @@ describe("Task #15 — REQUIRED_RLS_TABLES", () => {
   });
 
   it("REQUIRED_RLS_TABLES count is 59 after Task #15", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(59);
+    expect(REQUIRED_RLS_TABLES).toHaveLength(60); // Task #16: +1 ingestion_jobs
   });
 });
 

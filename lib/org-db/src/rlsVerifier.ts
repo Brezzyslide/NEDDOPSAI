@@ -93,6 +93,8 @@ export const REQUIRED_RLS_TABLES = [
   "knowledge_chunks",
   "specialist_training_status",
   "retrieval_audit_events",
+  // Task #16 — Document Ingestion & Embedding Pipeline
+  "ingestion_jobs",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

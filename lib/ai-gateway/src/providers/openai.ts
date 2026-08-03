@@ -176,6 +176,96 @@ export function getOpenAIModel(): string {
   return getConfig().model;
 }
 
+// ─── Embeddings ───────────────────────────────────────────────────────────────
+// Knowledge Hub — embedding support.
+// All OpenAI SDK calls are confined to THIS file per platform convention.
+
+export interface OpenAIEmbeddingResult {
+  embeddings: number[][];
+  model: string;
+  dimensions: number;
+  totalInputTokens: number;
+}
+
+const EMBEDDING_MODEL   = "text-embedding-3-small";
+const EMBEDDING_DIMS    = 1536;
+const EMBEDDING_BATCH   = 96;  // OpenAI limit is 2048 inputs, but keep batches small
+const EMBEDDING_TIMEOUT = 30_000;
+
+/**
+ * Generate embeddings for a batch of texts using OpenAI.
+ * Splits into batches of EMBEDDING_BATCH automatically.
+ * Never logs raw text content.
+ *
+ * @throws OpenAIProviderError on unrecoverable failure
+ */
+export async function callOpenAIEmbeddings(
+  texts: string[],
+  model = EMBEDDING_MODEL,
+): Promise<OpenAIEmbeddingResult> {
+  const client = getClient(); // reuses the shared client
+  const allEmbeddings: number[][] = [];
+  let totalTokens = 0;
+
+  // Process in batches
+  for (let i = 0; i < texts.length; i += EMBEDDING_BATCH) {
+    const batch = texts.slice(i, i + EMBEDDING_BATCH);
+    let lastErr: unknown = null;
+
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      try {
+        const timer = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("embedding timeout")), EMBEDDING_TIMEOUT),
+        );
+
+        const call = client.embeddings.create({
+          model,
+          input: batch,
+          encoding_format: "float",
+        });
+
+        const res = await Promise.race([call, timer]) as Awaited<typeof call>;
+
+        for (const item of res.data) {
+          allEmbeddings.push(item.embedding);
+        }
+        totalTokens += res.usage?.prompt_tokens ?? 0;
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err instanceof OpenAI.APIError && err.status === 429 && attempt < 2) {
+          await sleep(1000 * Math.pow(2, attempt));
+          continue;
+        }
+        if (isTimeoutError(err) && attempt < 2) {
+          await sleep(500);
+          continue;
+        }
+        break;
+      }
+    }
+
+    if (lastErr) {
+      const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+      throw new OpenAIProviderError(
+        `Embedding request failed: ${msg.slice(0, 200)}`,
+        isTimeoutError(lastErr) ? "timeout" : "api_error",
+      );
+    }
+  }
+
+  return {
+    embeddings: allEmbeddings,
+    model,
+    dimensions: EMBEDDING_DIMS,
+    totalInputTokens: totalTokens,
+  };
+}
+
+/** Returns configured embedding dimensions for the default model */
+export function getEmbeddingDimensions(): number { return EMBEDDING_DIMS; }
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function sleep(ms: number): Promise<void> {

@@ -1,32 +1,58 @@
 /**
- * knowledge_chunks — Task #15 (Knowledge Schema, Scopes & Secure Upload)
- *
- * PLACEHOLDER TABLE — Task #16 populates this; Task #15 only defines the schema.
+ * knowledge_chunks — Task #15 schema, Task #16 implementation
  *
  * Stores extracted text chunks from knowledge source documents.
- * Each chunk is a retrievable unit of the Organisation Library.
- *
- * Extraction, chunking, and embedding are NOT implemented until Task #16.
- * All rows in this table will have:
- *   - NULL embedding (to be populated by Task #16 with a pgvector float[])
- *   - NULL lexicalSearchVector (to be converted to tsvector by Task #16)
+ * Each chunk is a retrievable unit of the Organisation Library (Knowledge Hub).
  *
  * CITATION SUPPORT:
  *   (knowledgeSourceId, sourceVersionId, chunkIndex, pageNumber, headingPath)
  *   provides the citation key for the future Completed Work module.
  *   Retrieval audit events reference specific chunk IDs for attribution.
  *
- * EMBEDDING COMPATIBILITY:
- *   The embedding column stores a JSON array of floats as a placeholder.
- *   Task #16 will ALTER the column to vector(N) when pgvector is enabled,
- *   or keep jsonb if using a separate embeddings table pattern.
+ * VECTOR SEARCH:
+ *   embedding: vector(1536) — enabled in Task #16 via pgvector migration
+ *   lexicalSearchVector: generated tsvector stored column (auto-updated by Postgres)
+ *
+ * CHUNKING STRATEGY:
+ *   chunkingStrategy + chunkingStrategyVersion enable re-chunking when the
+ *   strategy changes; only chunks with matching versions are used for retrieval.
  *
  * Tenant isolation enforced by RLS on organization_id.
  */
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, customType } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations.js";
 import { knowledgeSourcesTable } from "./knowledgeSources.js";
 import { knowledgeSourceVersionsTable } from "./knowledgeSourceVersions.js";
+
+// ─── Custom pgvector type ─────────────────────────────────────────────────────
+
+/**
+ * pgVector — Drizzle custom type wrapping PostgreSQL vector(N).
+ *
+ * Requires pgvector extension (enabled in Task #16 migration).
+ * TypeScript: number[] | null
+ * Driver format: "[0.1,0.2,...]"
+ */
+const pgVector = customType<{
+  data: number[] | null;
+  driverData: string | null;
+  config: { dimensions: number };
+}>({
+  dataType(config) {
+    return `vector(${config?.dimensions ?? 1536})`;
+  },
+  toDriver(value: number[] | null): string | null {
+    if (value === null || value === undefined) return null;
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: string | null): number[] | null {
+    if (!value) return null;
+    // Postgres returns "[0.1,0.2,...]"
+    return value.slice(1, -1).split(",").map(Number);
+  },
+});
+
+// ─── Table definition ─────────────────────────────────────────────────────────
 
 export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   id: text("id").primaryKey(),
@@ -65,19 +91,20 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
   tokenCount: integer("token_count"),
 
   /**
-   * Lexical search vector placeholder.
-   * Task #16 will populate as tsvector for full-text search.
-   * Column type will be changed to tsvector in the Task #16 migration.
+   * Lexical (full-text) search vector.
+   * DB type: tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED
+   * Defined as text here for Drizzle compatibility; never write from application.
+   * Task #17 uses this column for lexical retrieval via GIN index.
    */
   lexicalSearchVector: text("lexical_search_vector"),
 
   /**
-   * Embedding vector placeholder — compatible with pgvector.
-   * Task #16 will populate with float[] from the configured embedding model.
-   * Stored as jsonb until pgvector extension is enabled.
-   * Column type: ALTER to vector(dimensions) in Task #16 migration.
+   * Embedding vector — vector(1536) in the database (pgvector).
+   * Enabled by Task #16 migration. TypeScript type: number[] | null.
+   * Model: typically "text-embedding-3-small" (1536 dims).
+   * NULL when embedding was skipped (sensitivity restriction, provider disabled).
    */
-  embedding: jsonb("embedding"),
+  embedding: pgVector("embedding", { dimensions: 1536 }),
 
   /** Embedding model used e.g. "text-embedding-3-small", "text-embedding-ada-002" */
   embeddingModel: text("embedding_model"),
@@ -87,6 +114,19 @@ export const knowledgeChunksTable = pgTable("knowledge_chunks", {
 
   /** SHA-256 hex of this chunk's text — for change detection on re-ingestion */
   contentHash: text("content_hash"),
+
+  /**
+   * Chunking strategy identifier.
+   * e.g. "heading_aware_v1"
+   * Allows re-chunking when the strategy changes without invalidating other chunks.
+   */
+  chunkingStrategy: text("chunking_strategy").notNull().default("heading_aware_v1"),
+
+  /**
+   * Semver version of the chunking strategy implementation.
+   * Bump when chunk boundaries change to trigger re-embedding.
+   */
+  chunkingStrategyVersion: text("chunking_strategy_version").notNull().default("1.0.0"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 

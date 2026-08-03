@@ -57,4 +57,9 @@ export {
 export {
   isOpenAIConfigured,
   getOpenAIModel,
+  // Knowledge Hub embedding support (Task #16)
+  callOpenAIEmbeddings,
+  getEmbeddingDimensions,
+  OpenAIProviderError,
+  type OpenAIEmbeddingResult,
 } from "./providers/openai.js";
