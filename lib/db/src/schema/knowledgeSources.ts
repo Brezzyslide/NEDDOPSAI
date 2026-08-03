@@ -197,26 +197,41 @@ export type InsertKnowledgeSource = typeof knowledgeSourcesTable.$inferInsert;
 // ─── Enum constants (authoritative lists — used in service validation) ────────
 
 export const KNOWLEDGE_SOURCE_TYPES = [
+  // ── Governance & Compliance ─────────────────────────────────────────────
   "policy",
   "procedure",
   "playbook",
-  "style_guide",
-  "approved_example",
-  "template",
+  "compliance_document",
   "legislation_reference",
-  "manual_note",
-  "connected_document",
+  "legislation",
+  "standards",
+  // ── Work Execution Assets (Sprint 22) ────────────────────────────────────
+  "template",
+  "form",
+  "approved_example",
+  // ── Style & Communication ───────────────────────────────────────────────
+  "style_guide",
+  "communication_guide",
+  "training_material",
+  // ── Clinical & Support ───────────────────────────────────────────────────
   "care_plan",
   "behaviour_support_plan",
   "risk_assessment",
-  "compliance_document",
+  "incident_report",
+  "participant_document",
+  // ── Operational ─────────────────────────────────────────────────────────
   "hr_manual",
   "onboarding_guide",
   "meeting_pack",
   "operational_manual",
   "contract",
-  "participant_document",
   "finance_procedure",
+  "spreadsheet",
+  // ── Reference & Uploads ─────────────────────────────────────────────────
+  "manual_note",
+  "connected_document",
+  "reference_material",
+  "task_upload",
 ] as const;
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
 

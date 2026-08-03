@@ -123,3 +123,10 @@ export * from "./retrievalAuditEvents";
 // Task #16 — Document Ingestion & Embedding Pipeline
 export * from "./ingestionJobs";
 export * from "./knowledgeCurationJobs";
+// Sprint 22 — Work Execution Engine & Completed Work
+export * from "./workBlueprints";
+export * from "./workPackageManifests";
+export * from "./completedWork";
+export * from "./completedWorkVersions";
+export * from "./completedWorkComments";
+export * from "./completedWorkAssets";

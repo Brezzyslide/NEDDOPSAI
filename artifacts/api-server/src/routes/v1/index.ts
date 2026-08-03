@@ -111,6 +111,14 @@ router.use("/platform", knowledgeWorkerHealthRouter);
 import curationRouter from "./curation.js";
 router.use("/", curationRouter);
 
+// Sprint 22: Work Execution Engine — Blueprints, Executions, Completed Work, Task Uploads
+import workBlueprintsRouter from "./workBlueprints.js";
+import completedWorkRouter from "./completedWork.js";
+import taskUploadsRouter from "./taskUploads.js";
+router.use("/", workBlueprintsRouter);
+router.use("/", completedWorkRouter);
+router.use("/", taskUploadsRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 

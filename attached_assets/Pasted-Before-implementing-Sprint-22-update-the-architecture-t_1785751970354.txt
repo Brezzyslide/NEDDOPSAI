@@ -1,0 +1,210 @@
+Before implementing Sprint 22, update the architecture to reflect the long-term product vision.
+
+Do not begin coding until these architectural changes have been incorporated into the Sprint 22 implementation plan.
+
+Sprint 22 is no longer called:
+
+"Professional Work Engine & Task Blueprints"
+
+Rename it everywhere to:
+
+"Work Execution Engine & Completed Work"
+
+This is an architectural change, not merely a naming change.
+
+NeedsOps is building an AI Workforce.
+
+The platform is not a document generator.
+
+Documents are only one possible work output.
+
+The architecture must therefore be centred around executing professional work rather than generating documents.
+
+────────────────────────────────────────
+
+Architectural Principles
+
+Every request should become a Work Execution.
+
+The Chief of Staff should think like an executive assigning work to an employee.
+
+Execution should follow this lifecycle:
+
+User Request
+
+↓
+
+Chief of Staff understands intent
+
+↓
+
+Select Work Blueprint
+
+↓
+
+Assemble Work Package
+
+↓
+
+Validate prerequisites
+
+↓
+
+Execute specialist
+
+↓
+
+Self Review
+
+↓
+
+Completed Work
+
+↓
+
+Approval
+
+↓
+
+Export / Continue / Promote
+
+Completed Work becomes the permanent record of the execution.
+
+────────────────────────────────────────
+
+Work Blueprints
+
+Expand Blueprints beyond templates.
+
+Each Blueprint should define:
+
+• objective
+• primary specialist
+• supporting specialists
+• required Organisation Library knowledge
+• required entity knowledge
+• required memories
+• required approvals
+• validation rules
+• quality rules
+• success criteria
+• output types
+• escalation rules
+• mandatory citations
+
+Blueprints should function like organisational SOPs.
+
+────────────────────────────────────────
+
+Work Package Manifest
+
+Before execution create an immutable manifest recording:
+
+• organisation
+• requester
+• execution id
+• blueprint
+• specialist
+• supporting specialists
+• Organisation Library sources
+• Chief of Staff memories
+• specialist memories
+• entity knowledge
+• task uploads
+• desktop sources (future)
+• cloud sources (future)
+• web sources (future)
+• model version
+• prompt version
+• execution timestamp
+
+This manifest must support complete auditability and reproducibility.
+
+────────────────────────────────────────
+
+Self Review
+
+Replace a simple quality score with structured evaluation.
+
+Evaluate:
+
+• instruction adherence
+• organisational policy compliance
+• writing style compliance
+• source coverage
+• completeness
+• confidence
+• missing information
+• approval requirements
+• safety
+• consistency
+
+Generate actionable improvement feedback.
+
+Permit one automatic revision where appropriate.
+
+────────────────────────────────────────
+
+Completed Work
+
+Completed Work becomes a first-class platform module.
+
+Every work item supports:
+
+• Draft
+• Awaiting Approval
+• Approved
+• Rejected
+• Archived
+• Superseded
+• Reopened
+
+Each work item stores:
+
+• version history
+• approval history
+• comments
+• specialists involved
+• execution manifest
+• citations
+• sources used
+• quality review
+• audit trail
+• downloads
+• export history
+
+Completed Work is distinct from the Organisation Library.
+
+However authorised users may promote suitable Completed Work into the Organisation Library as:
+
+• approved examples
+• templates
+• policies
+• procedures
+
+using the existing approval workflow.
+
+────────────────────────────────────────
+
+Scope
+
+This sprint should implement the backend architecture and APIs.
+
+Do not build the Blueprint Library UI or Completed Work UI in this sprint.
+
+The UI will be implemented later once the architecture is stable.
+
+────────────────────────────────────────
+
+If these architectural changes are understood and incorporated, proceed immediately into Sprint 22 implementation.
+
+At completion provide:
+
+• updated architecture
+• implementation summary
+• files added
+• files modified
+• migrations
+• APIs
+• tests
+• confirmation that the backend now supports work execution rather than only document generation.

@@ -145,7 +145,7 @@ describe("Task #15 — REQUIRED_RLS_TABLES", () => {
   });
 
   it("REQUIRED_RLS_TABLES count is 59 after Task #15", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(61); // Sprint 21: +1 knowledge_curation_jobs
+    expect(REQUIRED_RLS_TABLES).toHaveLength(67); // Sprint 22: +6 work execution tables
   });
 });
 

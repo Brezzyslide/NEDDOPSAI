@@ -97,6 +97,13 @@ export const REQUIRED_RLS_TABLES = [
   "ingestion_jobs",
   // Sprint 21 — Knowledge Curation Jobs
   "knowledge_curation_jobs",
+  // Sprint 22 — Work Execution Engine & Completed Work
+  "work_blueprints",
+  "work_package_manifests",
+  "completed_work",
+  "completed_work_versions",
+  "completed_work_comments",
+  "completed_work_assets",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
