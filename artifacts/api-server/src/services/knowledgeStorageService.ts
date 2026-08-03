@@ -33,7 +33,7 @@
  */
 
 import { randomUUID, createHash } from "crypto";
-import { ObjectStorageService } from "../lib/objectStorage.js";
+import { ObjectStorageService, objectStorageClient } from "../lib/objectStorage.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
