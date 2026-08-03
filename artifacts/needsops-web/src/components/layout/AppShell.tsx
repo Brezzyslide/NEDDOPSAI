@@ -26,12 +26,21 @@ const KNOWLEDGE_NAV = [
   { label: "Memory",  icon: "🧠", path: "/memory" },
 ];
 
+// ── Governance ────────────────────────────────────────────────────────────────
+const GOVERNANCE_NAV = [
+  { label: "Governance",       icon: "🏛",  path: "/governance" },
+  { label: "Approvals",        icon: "✅", path: "/approvals" },
+  { label: "Memory",           icon: "💡", path: "/memory" },
+  { label: "Knowledge Health", icon: "❤️", path: "/governance/knowledge-health" },
+  { label: "Timeline",         icon: "🕐", path: "/governance/timeline" },
+  { label: "Audit Log",        icon: "📋", path: "/audit" },
+];
+
 // ── Organisation ──────────────────────────────────────────────────────────────
 const ORG_NAV = [
   { label: "Team",     icon: "👥", path: "/team" },
   { label: "Plan",     icon: "💎", path: "/plan" },
   { label: "Usage",    icon: "📊", path: "/usage" },
-  { label: "Audit",    icon: "📋", path: "/audit" },
   { label: "Settings", icon: "⚙",  path: "/settings" },
 ];
 
@@ -107,10 +116,13 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
             <NavSection items={OPERATIONS_NAV} base={base} active={active} setLocation={setLocation} label="Operations" />
           </div>
           <div className="border-t border-[#1E3A5F]/60 pt-3">
-            <NavSection items={KNOWLEDGE_NAV}  base={base} active={active} setLocation={setLocation} label="Knowledge" />
+            <NavSection items={KNOWLEDGE_NAV}   base={base} active={active} setLocation={setLocation} label="Knowledge" />
           </div>
           <div className="border-t border-[#1E3A5F]/60 pt-3">
-            <NavSection items={ORG_NAV}         base={base} active={active} setLocation={setLocation} label="Organisation" />
+            <NavSection items={GOVERNANCE_NAV}  base={base} active={active} setLocation={setLocation} label="Governance" />
+          </div>
+          <div className="border-t border-[#1E3A5F]/60 pt-3">
+            <NavSection items={ORG_NAV}          base={base} active={active} setLocation={setLocation} label="Organisation" />
           </div>
         </nav>
 

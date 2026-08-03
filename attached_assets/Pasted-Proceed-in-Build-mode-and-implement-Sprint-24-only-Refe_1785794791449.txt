@@ -1,0 +1,243 @@
+Proceed in Build mode and implement Sprint 24 only.
+
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing document.
+
+Do not implement Sprint 25 or any future roadmap items.
+
+Do not begin:
+
+• Completed Work Portal
+• AI Workforce Operations Dashboard
+• Blueprint Management
+• Global Search
+• Desktop retrieval
+• Cloud connectors
+• OCR
+• Entity Knowledge
+• AWS deployment
+
+Sprint 24 focuses entirely on organisational governance.
+
+No new backend architecture should be created unless absolutely necessary.
+
+Consume existing services wherever possible.
+
+────────────────────────────────────────
+SPRINT OBJECTIVE
+────────────────────────────────────────
+
+Create the Governance Centre.
+
+This becomes the place where organisation owners and administrators supervise the AI Workforce.
+
+Every organisational decision should be visible, reviewable and auditable.
+
+The Governance Centre should feel like running an executive review meeting.
+
+────────────────────────────────────────
+PART 1
+Unified Approval Centre
+────────────────────────────────────────
+
+Create a single Approval Centre.
+
+Aggregate existing approval workflows into one experience.
+
+Include:
+
+• Knowledge proposals
+• Organisation memory proposals
+• Library review requests
+• Completed Work awaiting approval (summary only)
+• Specialist readiness approvals
+
+Support:
+
+• approve
+• reject
+• request changes
+• bulk actions
+• filtering
+• searching
+• sorting
+• comments
+• audit history
+
+Use existing approval APIs.
+
+────────────────────────────────────────
+PART 2
+Knowledge Review
+────────────────────────────────────────
+
+Expand proposal review.
+
+Display:
+
+• proposal summary
+• confidence
+• source document
+• source section
+• reasoning
+• affected specialists
+• related memories
+• previous versions
+
+Allow:
+
+• edit before approval
+• merge duplicates
+• archive
+• reject with reason
+
+Never bypass approval.
+
+────────────────────────────────────────
+PART 3
+Memory Governance
+────────────────────────────────────────
+
+Create a Memory Review experience.
+
+Display:
+
+• approved memories
+• pending memories
+• superseded memories
+• archived memories
+
+Support:
+
+• pin memory
+• edit metadata
+• retire memory
+• compare versions
+• view provenance
+• view audit trail
+
+Memory remains governed.
+
+────────────────────────────────────────
+PART 4
+Knowledge Health Dashboard
+────────────────────────────────────────
+
+Build the frontend for the existing Knowledge Health Service.
+
+Display:
+
+• overall health score
+• coverage
+• freshness
+• duplicate knowledge
+• conflicting knowledge
+• obsolete knowledge
+• pending proposals
+• recent approvals
+• specialist coverage
+• retraining recommendations
+
+Provide drill-down views.
+
+────────────────────────────────────────
+PART 5
+Governance Timeline
+────────────────────────────────────────
+
+Create a timeline of governance activity.
+
+Include:
+
+• document approvals
+• memory approvals
+• proposal creation
+• retraining recommendations
+• policy updates
+• specialist readiness changes
+
+Everything should link to the underlying record.
+
+────────────────────────────────────────
+PART 6
+Organisation Health
+────────────────────────────────────────
+
+Add an Organisation Health summary.
+
+Combine:
+
+• Knowledge Health
+• Specialist readiness
+• Pending approvals
+• Library completeness
+• Memory quality
+
+Display an executive summary.
+
+The Chief of Staff should generate recommendations from existing data only.
+
+────────────────────────────────────────
+PART 7
+Audit Experience
+────────────────────────────────────────
+
+Improve visibility into audit records.
+
+Allow administrators to view:
+
+• who approved
+• when
+• why
+• source
+• affected specialist
+• related document
+
+Do not modify audit architecture.
+
+────────────────────────────────────────
+PART 8
+User Experience
+────────────────────────────────────────
+
+The Governance Centre should feel calm and professional.
+
+Users should understand:
+
+• what needs attention
+• what is healthy
+• what requires approval
+• what has recently changed
+
+Avoid technical AI terminology.
+
+Use business language.
+
+────────────────────────────────────────
+PART 9
+Testing
+────────────────────────────────────────
+
+Add frontend tests.
+
+Add integration tests where appropriate.
+
+Do not change backend behaviour.
+
+Run the full test suite.
+
+────────────────────────────────────────
+PART 10
+Completion Report
+────────────────────────────────────────
+
+Provide:
+
+• pages created
+• components created
+• APIs consumed
+• tests added
+• total passing tests
+
+Confirm that Sprint 25 functionality has not been started.
+
+Begin Sprint 24.

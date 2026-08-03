@@ -35,6 +35,9 @@ import ExecutiveDashboard from "@/pages/app/ExecutiveDashboard";
 import ExecutiveInbox from "@/pages/app/ExecutiveInbox";
 import ActiveWorkPage from "@/pages/app/ActiveWorkPage";
 import NotificationCentrePage from "@/pages/app/NotificationCentrePage";
+import GovernanceCentre from "@/pages/app/GovernanceCentre";
+import KnowledgeHealthPage from "@/pages/app/KnowledgeHealthPage";
+import GovernanceTimelinePage from "@/pages/app/GovernanceTimelinePage";
 import TeamPage from "@/pages/app/TeamPage";
 import OrgSettings from "@/pages/app/OrgSettings";
 import AuditPage from "@/pages/app/AuditPage";
@@ -243,6 +246,10 @@ function AppRouter() {
             <Route path="/app/:slug/inbox" component={ExecutiveInbox} />
             <Route path="/app/:slug/active-work" component={ActiveWorkPage} />
             <Route path="/app/:slug/notifications" component={NotificationCentrePage} />
+            {/* Sprint 24 — Governance Centre (more-specific paths before :slug catch-all) */}
+            <Route path="/app/:slug/governance/knowledge-health" component={KnowledgeHealthPage} />
+            <Route path="/app/:slug/governance/timeline" component={GovernanceTimelinePage} />
+            <Route path="/app/:slug/governance" component={GovernanceCentre} />
             <Route path="/app/:slug" component={ExecutiveDashboard} />
             <Route path="/account" component={AccountSettings} />
             {/* Platform Console — Sprint 4 */}

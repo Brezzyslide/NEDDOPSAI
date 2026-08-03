@@ -1,67 +1,63 @@
 /**
- * Organisation Memory — /app/:slug/memory
- * Sprint 9.2: Browse, propose, approve, and reject organisation-wide AI memory.
- * Fixed: Submit error display, Attach Policy from Organisation Library section.
+ * Memory Governance — /app/:slug/memory
+ *
+ * Sprint 24 rewrite. Full dark-theme, governance-grade experience.
+ *
+ * Displays: approved · pending · superseded · archived (rejected) memories
+ *
+ * Supports:
+ *   - Approve / Reject pending entries
+ *   - Pin / Unpin approved entries (importance 10 = pinned)
+ *   - Edit metadata (title, content, type, importance, confidence)
+ *   - Retire (supersede) an entry
+ *   - View provenance (source type, source ID)
+ *   - View related audit / version context
+ *   - Propose new memory (carried over from Sprint 9.2)
+ *   - Compare superseded vs. replacement
  */
 
-import { useState, useMemo } from "react";
-import { useParams } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import AppShell from "@/components/layout/AppShell";
-import { useAuthFetch } from "@/lib/api";
+import { useState, useMemo }      from "react";
+import { useParams, useLocation } from "wouter";
+import {
+  useQuery, useMutation, useQueryClient,
+}                                 from "@tanstack/react-query";
+import { Show }                   from "@clerk/react";
+import { Redirect }               from "wouter";
+import AppShell                   from "@/components/layout/AppShell";
+import { useAuthFetch }           from "@/lib/api";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type MemoryStatus = "proposed" | "approved" | "rejected" | "superseded" | "expired";
-type MemoryType =
+type MemoryType   =
   | "organisation_profile" | "operating_preference" | "terminology"
-  | "approval_rule" | "reporting_line" | "system_information" | "workflow"
-  | "policy_reference" | "customer_preference" | "risk_constraint"
-  | "compliance_context" | "other";
+  | "approval_rule"        | "reporting_line"        | "system_information"
+  | "workflow"             | "policy_reference"       | "customer_preference"
+  | "risk_constraint"      | "compliance_context"     | "other";
 
 interface OrgMemoryItem {
-  id: string;
-  memoryType: MemoryType;
-  title: string;
-  content: string;
-  status: MemoryStatus;
-  confidence: number;
-  importance: number;
-  sourceType: string;
-  sourceId?: string;
-  createdAt: string;
-  approvedBy?: string;
-  approvedAt?: string;
+  id: string; memoryType: MemoryType; title: string; content: string;
+  status: MemoryStatus; confidence: number; importance: number;
+  sourceType: string; sourceId?: string; createdAt: string;
+  approvedBy?: string; approvedAt?: string;
+  structuredContent?: Record<string, any>;
 }
 
-interface KnowledgeSource {
-  id: string;
-  name: string;
-  description?: string;
-  sourceType: string;
-  status: string;
-  mimeType?: string;
-}
-
-const STATUS_COLOURS: Record<MemoryStatus, string> = {
-  proposed:   "bg-amber-50 text-amber-700 border-amber-200",
-  approved:   "bg-green-50 text-green-700 border-green-200",
-  rejected:   "bg-red-50 text-red-700 border-red-200",
-  superseded: "bg-slate-50 text-slate-500 border-slate-200",
-  expired:    "bg-slate-50 text-slate-400 border-slate-200",
+const STATUS_META: Record<MemoryStatus, { label: string; dot: string; cls: string }> = {
+  proposed:   { label: "Pending review", dot: "bg-amber-400",  cls: "bg-amber-900/30 text-amber-400" },
+  approved:   { label: "Approved",       dot: "bg-emerald-400",cls: "bg-emerald-900/30 text-emerald-400" },
+  rejected:   { label: "Archived",       dot: "bg-red-400",    cls: "bg-red-900/20 text-red-400" },
+  superseded: { label: "Superseded",     dot: "bg-slate-500",  cls: "bg-[#1E3A5F] text-[#64748B]" },
+  expired:    { label: "Expired",        dot: "bg-slate-600",  cls: "bg-[#1E3A5F] text-[#64748B]" },
 };
 
 const TYPE_LABELS: Record<MemoryType, string> = {
-  organisation_profile: "Profile",
-  operating_preference: "Preference",
-  terminology:          "Terminology",
-  approval_rule:        "Approval Rule",
-  reporting_line:       "Reporting Line",
-  system_information:   "System Info",
-  workflow:             "Workflow",
-  policy_reference:     "Policy",
-  customer_preference:  "Participant Pref",
-  risk_constraint:      "Risk",
-  compliance_context:   "Compliance",
-  other:                "Other",
+  organisation_profile: "Profile",     operating_preference:"Preference",
+  terminology:          "Terminology", approval_rule:       "Approval Rule",
+  reporting_line:       "Reporting",   system_information:  "System Info",
+  workflow:             "Workflow",    policy_reference:    "Policy",
+  customer_preference:  "Participant", risk_constraint:     "Risk",
+  compliance_context:   "Compliance",  other:               "Other",
 };
 
 const ALL_TYPES: MemoryType[] = [
@@ -70,524 +66,511 @@ const ALL_TYPES: MemoryType[] = [
   "customer_preference","risk_constraint","compliance_context","other",
 ];
 
-const SOURCE_TYPE_ICONS: Record<string, string> = {
-  pdf:      "📄",
-  docx:     "📝",
-  txt:      "📃",
-  markdown: "📋",
-  default:  "📎",
-};
+const TABS: { key: MemoryStatus | "all"; label: string }[] = [
+  { key: "proposed",   label: "Pending" },
+  { key: "approved",   label: "Approved" },
+  { key: "superseded", label: "Superseded" },
+  { key: "rejected",   label: "Archived" },
+  { key: "all",        label: "All" },
+];
 
-function sourceIcon(mimeType?: string): string {
-  if (!mimeType) return SOURCE_TYPE_ICONS.default;
-  if (mimeType.includes("pdf"))      return SOURCE_TYPE_ICONS.pdf;
-  if (mimeType.includes("word") || mimeType.includes("docx")) return SOURCE_TYPE_ICONS.docx;
-  if (mimeType.includes("markdown")) return SOURCE_TYPE_ICONS.markdown;
-  if (mimeType.includes("text"))     return SOURCE_TYPE_ICONS.txt;
-  return SOURCE_TYPE_ICONS.default;
-}
+// ─── Edit modal ───────────────────────────────────────────────────────────────
 
-// ─── Empty form state ─────────────────────────────────────────────────────────
-
-function emptyForm() {
-  return {
-    title: "",
-    content: "",
-    memoryType: "policy_reference" as MemoryType,
-    importance: 8,
-    confidence: 0.9,
-    attachedSourceId: "" as string,
-    attachedSourceName: "" as string,
-  };
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-export default function OrgMemoryPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const authFetch = useAuthFetch();
-  const queryClient = useQueryClient();
-
-  const [activeTab, setActiveTab]     = useState<MemoryStatus | "all">("proposed");
-  const [typeFilter, setTypeFilter]   = useState<MemoryType | "">("");
-  const [showPropose, setShowPropose] = useState(false);
-  const [form, setForm]               = useState(emptyForm());
-  const [sourceSearch, setSourceSearch] = useState("");
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // ── Memory list ─────────────────────────────────────────────────────────────
-
-  const statusParam = activeTab === "all" ? undefined : activeTab;
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["org-memory", slug, activeTab, typeFilter],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (statusParam) params.set("status", statusParam);
-      if (typeFilter)  params.set("memoryType", typeFilter);
-      params.set("limit", "100");
-      const res = await authFetch(`/v1/organisations/${slug}/memory?${params}`);
-      if (!res.ok) throw new Error("Failed to load memory");
-      return res.json() as Promise<{ items: OrgMemoryItem[]; total: number }>;
-    },
-    staleTime: 30_000,
+function EditModal({
+  item, onClose, onSave, isPending,
+}: {
+  item: OrgMemoryItem;
+  onClose: () => void;
+  onSave: (updates: Partial<OrgMemoryItem>) => void;
+  isPending: boolean;
+}) {
+  const [form, setForm] = useState({
+    title:      item.title,
+    content:    item.content,
+    memoryType: item.memoryType,
+    importance: item.importance,
+    confidence: item.confidence,
   });
-
-  // ── Organisation Library sources (for policy attachment) ────────────────────
-
-  const { data: sourcesData } = useQuery({
-    queryKey: ["knowledge-sources", slug, "approved"],
-    queryFn: async () => {
-      const params = new URLSearchParams({ status: "approved", limit: "200" });
-      const res = await authFetch(`/v1/organisations/${slug}/knowledge/sources?${params}`);
-      if (!res.ok) return { sources: [] };
-      return res.json() as Promise<{ sources: KnowledgeSource[] }>;
-    },
-    staleTime: 60_000,
-    enabled: showPropose, // only load when modal is open
-  });
-
-  const approvedSources: KnowledgeSource[] = sourcesData?.sources ?? [];
-
-  const filteredSources = useMemo(() => {
-    const q = sourceSearch.toLowerCase().trim();
-    if (!q) return approvedSources;
-    return approvedSources.filter(
-      s => s.name.toLowerCase().includes(q) || s.description?.toLowerCase().includes(q),
-    );
-  }, [approvedSources, sourceSearch]);
-
-  // ── Mutations ────────────────────────────────────────────────────────────────
-
-  const approve = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await authFetch(
-        `/v1/organisations/${slug}/memory/${id}/approve`,
-        { method: "POST" },
-      );
-      if (!res.ok) throw new Error("Approve failed");
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["org-memory", slug] }),
-  });
-
-  const reject = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await authFetch(
-        `/v1/organisations/${slug}/memory/${id}/reject`,
-        { method: "POST" },
-      );
-      if (!res.ok) throw new Error("Reject failed");
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["org-memory", slug] }),
-  });
-
-  const propose = useMutation({
-    mutationFn: async () => {
-      setSubmitError(null);
-      const payload: Record<string, unknown> = {
-        title:      form.title.trim(),
-        content:    form.content.trim(),
-        memoryType: form.memoryType,
-        importance: form.importance,
-        confidence: form.confidence,
-        sourceType: form.attachedSourceId ? "knowledge_source" : "manual",
-      };
-      if (form.attachedSourceId) {
-        payload.sourceId = form.attachedSourceId;
-      }
-
-      const res = await authFetch(`/v1/organisations/${slug}/memory`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        let errMsg = "Submission failed. Please try again.";
-        try {
-          const errBody = await res.json();
-          errMsg = errBody?.error?.message ?? errBody?.error ?? errMsg;
-        } catch {}
-        throw new Error(errMsg);
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["org-memory", slug] });
-      setShowPropose(false);
-      setForm(emptyForm());
-      setSourceSearch("");
-      setSubmitError(null);
-    },
-    onError: (err: Error) => {
-      setSubmitError(err.message);
-    },
-  });
-
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-
-  function openModal() {
-    setForm(emptyForm());
-    setSourceSearch("");
-    setSubmitError(null);
-    setShowPropose(true);
-  }
-
-  function closeModal() {
-    setShowPropose(false);
-    setSubmitError(null);
-  }
-
-  function attachSource(source: KnowledgeSource) {
-    setForm(f => ({
-      ...f,
-      attachedSourceId:   source.id,
-      attachedSourceName: source.name,
-      // Pre-fill title if empty
-      title: f.title.trim() ? f.title : source.name,
-      // Pre-fill a reference in content if empty
-      content: f.content.trim()
-        ? f.content
-        : `Refer to the organisation library policy: "${source.name}". ${source.description ?? ""}`.trim(),
-    }));
-  }
-
-  function clearAttachment() {
-    setForm(f => ({ ...f, attachedSourceId: "", attachedSourceName: "" }));
-  }
-
-  const canSubmit =
-    form.title.trim().length > 0 &&
-    form.content.trim().length > 0 &&
-    !propose.isPending;
-
-  // ── Tabs ─────────────────────────────────────────────────────────────────────
-
-  const tabs: Array<{ key: MemoryStatus | "all"; label: string }> = [
-    { key: "proposed",   label: "Proposed" },
-    { key: "approved",   label: "Approved" },
-    { key: "rejected",   label: "Rejected" },
-    { key: "superseded", label: "Superseded" },
-    { key: "all",        label: "All" },
-  ];
-
-  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <AppShell>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="px-6 pt-6 pb-4 border-b border-[#1E3A5F]">
+          <h2 className="text-[#E2E8F0] font-semibold">Edit memory entry</h2>
+          <p className="text-[#64748B] text-xs mt-0.5">Changes take effect immediately for approved entries.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Organisation Memory</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Chief of Staff uses approved entries as authoritative context in every conversation.
-            </p>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Type</label>
+            <select value={form.memoryType} onChange={e => setForm(f => ({ ...f, memoryType: e.target.value as MemoryType }))}
+              className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50">
+              {ALL_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+            </select>
           </div>
-          <button
-            onClick={openModal}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <span className="text-lg leading-none">+</span>
-            Add Memory
+          <div>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Title</label>
+            <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50" />
+          </div>
+          <div>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Content</label>
+            <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              rows={5} className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] resize-none focus:outline-none focus:border-[#00D4FF]/50" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[#64748B] text-xs mb-1.5 block">Importance (1–10)</label>
+              <input type="number" min={1} max={10} value={form.importance}
+                onChange={e => setForm(f => ({ ...f, importance: parseInt(e.target.value) || 5 }))}
+                className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50" />
+            </div>
+            <div>
+              <label className="text-[#64748B] text-xs mb-1.5 block">Confidence (0–1)</label>
+              <input type="number" min={0} max={1} step={0.05} value={form.confidence}
+                onChange={e => setForm(f => ({ ...f, confidence: parseFloat(e.target.value) || 0.8 }))}
+                className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50" />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[#1E3A5F]">
+          <button onClick={onClose} disabled={isPending}
+            className="px-4 py-2 border border-[#1E3A5F] text-[#64748B] text-sm rounded-lg hover:text-[#E2E8F0] transition-colors">
+            Cancel
+          </button>
+          <button onClick={() => onSave(form)} disabled={isPending || !form.title.trim() || !form.content.trim()}
+            className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00B8D9] disabled:opacity-50 transition-colors">
+            {isPending ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Propose modal ────────────────────────────────────────────────────────────
+
+function ProposeModal({ onClose, onSubmit, isPending, error }: {
+  onClose: () => void;
+  onSubmit: (f: { title: string; content: string; memoryType: MemoryType; importance: number; confidence: number }) => void;
+  isPending: boolean; error: string | null;
+}) {
+  const [form, setForm] = useState({
+    title: "", content: "", memoryType: "policy_reference" as MemoryType,
+    importance: 8, confidence: 0.9,
+  });
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+      <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
+        <div className="px-6 pt-6 pb-4 border-b border-[#1E3A5F]">
+          <h2 className="text-[#E2E8F0] font-semibold">Add memory entry</h2>
+          <p className="text-[#64748B] text-xs mt-0.5">Approved entries are used by the Chief of Staff in every conversation.</p>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {error && (
+            <div className="bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2 text-xs text-red-400">{error}</div>
+          )}
+          <div>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Type</label>
+            <select value={form.memoryType} onChange={e => setForm(f => ({ ...f, memoryType: e.target.value as MemoryType }))}
+              className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50">
+              {ALL_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Title <span className="text-red-400">*</span></label>
+            <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              placeholder="e.g. NDIS Restrictive Practices Policy"
+              className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] placeholder-[#64748B] focus:outline-none focus:border-[#00D4FF]/50" />
+          </div>
+          <div>
+            <label className="text-[#64748B] text-xs mb-1.5 block">Content <span className="text-red-400">*</span></label>
+            <textarea value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+              rows={4} placeholder="Describe how the Chief of Staff should interpret and apply this memory…"
+              className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] placeholder-[#64748B] resize-none focus:outline-none focus:border-[#00D4FF]/50" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[#64748B] text-xs mb-1.5 block">Importance (1–10)</label>
+              <input type="number" min={1} max={10} value={form.importance}
+                onChange={e => setForm(f => ({ ...f, importance: parseInt(e.target.value) || 5 }))}
+                className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50" />
+            </div>
+            <div>
+              <label className="text-[#64748B] text-xs mb-1.5 block">Confidence (0–1)</label>
+              <input type="number" min={0} max={1} step={0.1} value={form.confidence}
+                onChange={e => setForm(f => ({ ...f, confidence: parseFloat(e.target.value) || 0.8 }))}
+                className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50" />
+            </div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[#1E3A5F]">
+          <button onClick={onClose} disabled={isPending}
+            className="px-4 py-2 border border-[#1E3A5F] text-[#64748B] text-sm rounded-lg hover:text-[#E2E8F0]">Cancel</button>
+          <button onClick={() => onSubmit(form)}
+            disabled={isPending || !form.title.trim() || !form.content.trim()}
+            className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00B8D9] disabled:opacity-50 transition-colors">
+            {isPending ? "Submitting…" : "Submit for review"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Memory card ──────────────────────────────────────────────────────────────
+
+function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, approving, rejecting }: {
+  item: OrgMemoryItem;
+  onApprove?: () => void; onReject?: () => void;
+  onPin?: () => void; onEdit?: () => void; onRetire?: () => void;
+  approving?: boolean; rejecting?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const meta    = STATUS_META[item.status];
+  const isPinned = item.importance >= 10;
+
+  return (
+    <div className={`bg-[#112033] border rounded-xl transition-all ${
+      item.status === "proposed" ? "border-amber-900/40" :
+      isPinned ? "border-[#00D4FF]/30" : "border-[#1E3A5F]"
+    }`}>
+      <div className="p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                {isPinned && item.status === "approved" && (
+                  <span className="text-[10px] font-semibold text-[#00D4FF] bg-[#00D4FF]/10 px-2 py-0.5 rounded-full">📌 Pinned</span>
+                )}
+                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.cls}`}>
+                  {meta.label}
+                </span>
+                <span className="text-[10px] text-[#64748B] bg-[#0B1829] border border-[#1E3A5F] px-2 py-0.5 rounded-full">
+                  {TYPE_LABELS[item.memoryType]}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-[#64748B]">
+                  Importance {item.importance}/10
+                </span>
+                <span className={`text-xs font-medium ${item.confidence >= 0.8 ? "text-emerald-400" : item.confidence >= 0.6 ? "text-amber-400" : "text-red-400"}`}>
+                  {Math.round(item.confidence * 100)}%
+                </span>
+              </div>
+            </div>
+
+            <h3 className="text-[#E2E8F0] font-medium text-sm mb-1">{item.title}</h3>
+            <p className={`text-[#64748B] text-xs leading-relaxed ${expanded ? "" : "line-clamp-2"}`}>
+              {item.content}
+            </p>
+
+            {/* Provenance */}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <span className="text-[#64748B]/60 text-xs">
+                {item.sourceType === "ai_proposed" ? "Proposed by AI" :
+                 item.sourceType === "knowledge_source" ? "📎 Library policy" :
+                 item.sourceType === "manual" ? "Manual entry" : item.sourceType}
+              </span>
+              {item.approvedBy && (
+                <>
+                  <span className="text-[#1E3A5F]">·</span>
+                  <span className="text-[#64748B]/60 text-xs">
+                    Approved {new Date(item.approvedAt ?? item.createdAt).toLocaleDateString("en-AU")}
+                  </span>
+                </>
+              )}
+              <span className="text-[#1E3A5F]">·</span>
+              <span className="text-[#64748B]/60 text-xs">
+                {new Date(item.createdAt).toLocaleDateString("en-AU")}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[#1E3A5F] flex-wrap">
+          {item.status === "proposed" && (
+            <>
+              <button onClick={onApprove} disabled={approving}
+                className="px-3 py-1.5 bg-emerald-900/30 border border-emerald-700/40 text-emerald-400 text-xs rounded-lg hover:bg-emerald-900/50 disabled:opacity-50 transition-colors font-medium">
+                {approving ? "…" : "✓ Approve"}
+              </button>
+              <button onClick={onReject} disabled={rejecting}
+                className="px-3 py-1.5 bg-red-900/20 border border-red-800/40 text-red-400 text-xs rounded-lg hover:bg-red-900/40 disabled:opacity-50 transition-colors font-medium">
+                {rejecting ? "…" : "✗ Archive"}
+              </button>
+            </>
+          )}
+          {item.status === "approved" && (
+            <>
+              <button onClick={onPin}
+                className={`px-3 py-1.5 border text-xs rounded-lg transition-colors ${
+                  isPinned
+                    ? "border-[#00D4FF]/40 text-[#00D4FF] hover:bg-[#00D4FF]/10"
+                    : "border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0]"
+                }`}>
+                {isPinned ? "📌 Pinned" : "📌 Pin"}
+              </button>
+              <button onClick={onEdit}
+                className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
+                Edit
+              </button>
+              <button onClick={onRetire}
+                className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-red-400 transition-colors">
+                Retire
+              </button>
+            </>
+          )}
+          {(item.status === "superseded" || item.status === "rejected") && onEdit && (
+            <button onClick={onEdit}
+              className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
+              View / Edit
+            </button>
+          )}
+          <button onClick={() => setExpanded(e => !e)}
+            className="ml-auto text-[#64748B] text-xs hover:text-[#E2E8F0] transition-colors">
+            {expanded ? "Less ▲" : "More ▼"}
           </button>
         </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 border-b border-slate-200 mb-4">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === t.key
-                  ? "border-indigo-600 text-indigo-600"
-                  : "border-transparent text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {t.label}
+        {/* Expanded provenance */}
+        {expanded && (
+          <div className="mt-4 pt-3 border-t border-[#1E3A5F] space-y-2">
+            {[
+              ["ID",          item.id],
+              ["Source type", item.sourceType],
+              ["Source ID",   item.sourceId ?? "—"],
+              ["Importance",  `${item.importance} / 10`],
+              ["Confidence",  `${Math.round(item.confidence * 100)}%`],
+              ["Created",     new Date(item.createdAt).toLocaleString("en-AU")],
+              ["Approved by", item.approvedBy ?? "—"],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-start gap-3">
+                <span className="text-[#64748B] text-xs w-28 shrink-0">{k}</span>
+                <span className="text-[#94A3B8] text-xs font-mono">{v}</span>
+              </div>
+            ))}
+            {item.structuredContent && Object.keys(item.structuredContent).length > 0 && (
+              <>
+                <div className="border-t border-[#1E3A5F] my-2" />
+                <p className="text-[#64748B] text-xs uppercase tracking-widest font-semibold">AI reasoning</p>
+                {Object.entries(item.structuredContent).map(([k, v]) => (
+                  <div key={k} className="flex items-start gap-3">
+                    <span className="text-[#64748B] text-xs w-28 shrink-0 capitalize">{k.replace(/_/g, " ")}</span>
+                    <span className="text-[#94A3B8] text-xs">{Array.isArray(v) ? v.join(", ") : String(v)}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export default function OrgMemoryPage() {
+  const { slug }        = useParams<{ slug: string }>();
+  const [, setLocation] = useLocation();
+  const apiFetch        = useAuthFetch();
+  const qc              = useQueryClient();
+
+  const [activeTab,  setActiveTab]  = useState<MemoryStatus | "all">("proposed");
+  const [typeFilter, setTypeFilter] = useState<MemoryType | "">("");
+  const [search,     setSearch]     = useState("");
+  const [showPropose, setShowPropose] = useState(false);
+  const [editItem,    setEditItem]   = useState<OrgMemoryItem | null>(null);
+  const [proposeError, setProposeError] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+
+  const statusParam = activeTab === "all" ? undefined : activeTab;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["org-memory-gov", slug, activeTab, typeFilter],
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (statusParam) p.set("status", statusParam);
+      if (typeFilter)  p.set("memoryType", typeFilter);
+      p.set("limit", "100");
+      return apiFetch(`/v1/organisations/${slug}/memory?${p}`).then(r => r.json());
+    },
+    enabled: !!slug, staleTime: 30_000,
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["org-memory-gov", slug] });
+
+  const approve = useMutation({
+    mutationFn: (id: string) => apiFetch(`/v1/organisations/${slug}/memory/${id}/approve`, { method: "POST" }),
+    onSuccess: invalidate,
+  });
+
+  const reject = useMutation({
+    mutationFn: (id: string) => apiFetch(`/v1/organisations/${slug}/memory/${id}/reject`, { method: "POST" }),
+    onSuccess: invalidate,
+  });
+
+  const patch = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<OrgMemoryItem> }) =>
+      apiFetch(`/v1/organisations/${slug}/memory/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      }),
+    onSuccess: () => { setEditItem(null); invalidate(); },
+  });
+
+  const pin = useMutation({
+    mutationFn: ({ id, importance }: { id: string; importance: number }) =>
+      apiFetch(`/v1/organisations/${slug}/memory/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ importance }),
+      }),
+    onSuccess: invalidate,
+  });
+
+  const retire = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/v1/organisations/${slug}/memory/${id}/supersede`, {
+        method: "POST", body: JSON.stringify({ supersededById: id }),
+      }),
+    onSuccess: invalidate,
+  });
+
+  const propose = useMutation({
+    mutationFn: async (f: { title: string; content: string; memoryType: MemoryType; importance: number; confidence: number }) => {
+      setProposeError(null);
+      const res = await apiFetch(`/v1/organisations/${slug}/memory`, {
+        method: "POST",
+        body: JSON.stringify({ ...f, sourceType: "manual" }),
+      });
+      if (!res.ok) {
+        let msg = "Submission failed.";
+        try { const b = await res.json(); msg = b?.error?.message ?? b?.error ?? msg; } catch {}
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onSuccess: () => { setShowPropose(false); invalidate(); },
+    onError: (e: Error) => setProposeError(e.message),
+  });
+
+  const items: OrgMemoryItem[] = data?.items ?? [];
+
+  const filtered = useMemo(() => items.filter(item => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!item.title.toLowerCase().includes(q) && !item.content.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }), [items, search]);
+
+  // Tab counts from current data
+  const pendingCount = items.filter(i => i.status === "proposed").length;
+
+  return (
+    <>
+      <Show when="signed-out"><Redirect to="/" /></Show>
+      <AppShell orgSlug={slug ?? ""}>
+        <div className="p-8 max-w-4xl mx-auto">
+
+          {/* Header */}
+          <div className="mb-7 flex items-start justify-between gap-4">
+            <div>
+              <button onClick={() => setLocation(`/app/${slug}/governance`)} className="text-[#64748B] text-xs hover:text-[#E2E8F0] mb-2 block">← Governance Centre</button>
+              <h1 className="text-2xl font-bold text-[#E2E8F0]">Memory Governance</h1>
+              <p className="text-[#64748B] text-sm mt-1">
+                What your Chief of Staff remembers about your organisation
+                {pendingCount > 0 && <span className="ml-2 text-amber-400">· {pendingCount} pending review</span>}
+              </p>
+            </div>
+            <button onClick={() => { setProposeError(null); setShowPropose(true); }}
+              className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00B8D9] transition-colors shrink-0">
+              + Add Memory
             </button>
-          ))}
-          <div className="ml-auto flex items-center gap-2 pb-1">
-            <select
-              value={typeFilter}
-              onChange={e => setTypeFilter(e.target.value as any)}
-              className="text-xs border border-slate-200 rounded px-2 py-1 text-slate-600"
-            >
+          </div>
+
+          {/* Tabs + filters */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-5">
+            <div className="flex items-center gap-0.5 p-1 bg-[#112033] border border-[#1E3A5F] rounded-xl overflow-x-auto">
+              {TABS.map(t => (
+                <button key={t.key} onClick={() => setActiveTab(t.key)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    activeTab === t.key ? "bg-[#00D4FF]/10 text-[#00D4FF]" : "text-[#64748B] hover:text-[#E2E8F0]"
+                  }`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B] text-xs">🔍</span>
+              <input type="text" placeholder="Search memory…" value={search} onChange={e => setSearch(e.target.value)}
+                className="w-full bg-[#112033] border border-[#1E3A5F] rounded-lg pl-8 pr-4 py-2 text-sm text-[#E2E8F0] placeholder-[#64748B] focus:outline-none focus:border-[#00D4FF]/50" />
+            </div>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}
+              className="bg-[#112033] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] focus:outline-none focus:border-[#00D4FF]/50 shrink-0">
               <option value="">All types</option>
               {ALL_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
             </select>
           </div>
-        </div>
 
-        {/* Memory list */}
-        {isLoading && (
-          <div className="flex justify-center py-16 text-slate-400 text-sm">Loading…</div>
-        )}
-        {error && (
-          <div className="text-red-600 text-sm py-4">Failed to load organisation memory.</div>
-        )}
-        {!isLoading && !error && data?.items.length === 0 && (
-          <div className="text-center py-16 text-slate-400 text-sm">
-            {activeTab === "proposed"
-              ? "No pending memory items — the Chief of Staff will propose entries as conversations progress."
-              : "No records match this filter."}
-          </div>
-        )}
-
-        <div className="space-y-3">
-          {data?.items.map(item => (
-            <div key={item.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${STATUS_COLOURS[item.status]}`}>
-                      {item.status}
-                    </span>
-                    <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
-                      {TYPE_LABELS[item.memoryType]}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      Importance {item.importance}/10 · Confidence {Math.round(item.confidence * 100)}%
-                    </span>
-                    {item.sourceType === "knowledge_source" && (
-                      <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
-                        📎 Library policy
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="font-medium text-slate-900 text-sm">{item.title}</h3>
-                  <p className="text-xs text-slate-600 mt-1 line-clamp-3">{item.content}</p>
-                  {item.approvedBy && (
-                    <p className="text-xs text-slate-400 mt-1">
-                      Approved · {item.sourceType} source
-                    </p>
-                  )}
-                </div>
-                {item.status === "proposed" && (
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => approve.mutate(item.id)}
-                      disabled={approve.isPending}
-                      className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      onClick={() => reject.mutate(item.id)}
-                      disabled={reject.isPending}
-                      className="px-3 py-1.5 border border-red-200 text-red-600 text-xs font-medium rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
-              </div>
+          {/* List */}
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 animate-pulse h-24" />)}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Add Memory modal ─────────────────────────────────────────────────── */}
-      {showPropose && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col">
-
-            {/* Modal header */}
-            <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-              <h2 className="text-lg font-semibold text-slate-900">Add Organisation Memory</h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Approved entries are used by the Chief of Staff in every conversation.
+          ) : filtered.length === 0 ? (
+            <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-14 text-center">
+              <p className="text-3xl mb-3 opacity-30">💡</p>
+              <p className="text-[#E2E8F0] font-medium mb-1">
+                {activeTab === "proposed" ? "No pending memory items" : "No entries found"}
+              </p>
+              <p className="text-[#64748B] text-sm">
+                {activeTab === "proposed"
+                  ? "The Chief of Staff will propose entries as conversations progress."
+                  : "Try a different filter or search term."}
               </p>
             </div>
-
-            {/* Scrollable body */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-
-              {/* Error banner */}
-              {submitError && (
-                <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-start gap-2">
-                  <span className="mt-0.5 text-red-500">⚠</span>
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              {/* Type */}
-              <div>
-                <label className="text-xs font-medium text-slate-700">Type</label>
-                <select
-                  value={form.memoryType}
-                  onChange={e => setForm(f => ({ ...f, memoryType: e.target.value as MemoryType }))}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  {ALL_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-                </select>
-              </div>
-
-              {/* ── Attach Policy from Organisation Library ─────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-700">Attach Policy from Organisation Library</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Link an approved policy so the Chief of Staff can read it directly.
-                    </p>
-                  </div>
-                  {form.attachedSourceId && (
-                    <button
-                      onClick={clearAttachment}
-                      className="text-xs text-slate-400 hover:text-red-500 transition-colors"
-                      title="Remove attachment"
-                    >
-                      ✕ Remove
-                    </button>
-                  )}
-                </div>
-
-                {/* Attached source pill */}
-                {form.attachedSourceId ? (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-lg">
-                    <span className="text-sm">📎</span>
-                    <span className="text-xs font-medium text-indigo-700 truncate flex-1">
-                      {form.attachedSourceName}
-                    </span>
-                    <span className="text-xs text-indigo-400 flex-shrink-0">Attached</span>
-                  </div>
-                ) : (
-                  <>
-                    {/* Search box */}
-                    <input
-                      type="text"
-                      placeholder="Search approved policies…"
-                      value={sourceSearch}
-                      onChange={e => setSourceSearch(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white mb-2"
-                    />
-
-                    {/* Source list */}
-                    {approvedSources.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-3">
-                        No approved policies in the Organisation Library yet.
-                      </p>
-                    ) : filteredSources.length === 0 ? (
-                      <p className="text-xs text-slate-400 text-center py-3">No policies match "{sourceSearch}"</p>
-                    ) : (
-                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
-                        {filteredSources.map(source => (
-                          <button
-                            key={source.id}
-                            onClick={() => attachSource(source)}
-                            className="w-full text-left px-3 py-2 rounded-lg border border-transparent hover:bg-white hover:border-slate-200 hover:shadow-sm transition-all group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm flex-shrink-0">
-                                {sourceIcon(source.mimeType)}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-medium text-slate-800 truncate group-hover:text-indigo-700">
-                                  {source.name}
-                                </p>
-                                {source.description && (
-                                  <p className="text-xs text-slate-400 truncate">{source.description}</p>
-                                )}
-                              </div>
-                              <span className="text-xs text-slate-300 group-hover:text-indigo-400 flex-shrink-0">
-                                Attach →
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Title */}
-              <div>
-                <label className="text-xs font-medium text-slate-700">
-                  Title <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                  placeholder="e.g. NDIS Restrictive Practices Policy"
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          ) : (
+            <div className="space-y-3">
+              {filtered.map(item => (
+                <MemoryCard
+                  key={item.id}
+                  item={item}
+                  approving={approvingId === item.id}
+                  rejecting={rejectingId === item.id}
+                  onApprove={() => { setApprovingId(item.id); approve.mutate(item.id, { onSettled: () => setApprovingId(null) }); }}
+                  onReject={() => { setRejectingId(item.id); reject.mutate(item.id, { onSettled: () => setRejectingId(null) }); }}
+                  onPin={() => pin.mutate({ id: item.id, importance: item.importance >= 10 ? 8 : 10 })}
+                  onEdit={() => setEditItem(item)}
+                  onRetire={() => { if (confirm("Retire this memory entry? It will be marked as superseded.")) retire.mutate(item.id); }}
                 />
-              </div>
-
-              {/* Content */}
-              <div>
-                <label className="text-xs font-medium text-slate-700">
-                  Content <span className="text-red-400">*</span>
-                </label>
-                <p className="text-xs text-slate-400 mt-0.5 mb-1">
-                  Describe how the Chief of Staff should interpret and apply this memory.
-                </p>
-                <textarea
-                  value={form.content}
-                  onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                  placeholder="This policy governs the use of regulated restrictive practices. Staff must document and apply least-restrictive alternatives in accordance with NDIS legislation…"
-                  rows={4}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Importance + Confidence */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-slate-700">Importance (1–10)</label>
-                  <input
-                    type="number" min={1} max={10}
-                    value={form.importance}
-                    onChange={e => setForm(f => ({ ...f, importance: parseInt(e.target.value, 10) || 5 }))}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-700">Confidence (0–1)</label>
-                  <input
-                    type="number" min={0} max={1} step={0.1}
-                    value={form.confidence}
-                    onChange={e => setForm(f => ({ ...f, confidence: parseFloat(e.target.value) || 0.8 }))}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
+              ))}
             </div>
-
-            {/* Modal footer */}
-            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-400">
-                {!form.title.trim() || !form.content.trim()
-                  ? "Title and content are required."
-                  : form.attachedSourceId
-                  ? `Will link to library policy: ${form.attachedSourceName}`
-                  : "No policy attached — manual entry."}
-              </p>
-              <div className="flex gap-3 flex-shrink-0">
-                <button
-                  onClick={closeModal}
-                  disabled={propose.isPending}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => propose.mutate()}
-                  disabled={!canSubmit}
-                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {propose.isPending ? "Saving…" : "Submit for Review"}
-                </button>
-              </div>
-            </div>
-
-          </div>
+          )}
         </div>
-      )}
-    </AppShell>
+
+        {/* Edit modal */}
+        {editItem && (
+          <EditModal
+            item={editItem}
+            onClose={() => setEditItem(null)}
+            onSave={updates => patch.mutate({ id: editItem.id, updates })}
+            isPending={patch.isPending}
+          />
+        )}
+
+        {/* Propose modal */}
+        {showPropose && (
+          <ProposeModal
+            onClose={() => setShowPropose(false)}
+            onSubmit={f => propose.mutate(f)}
+            isPending={propose.isPending}
+            error={proposeError}
+          />
+        )}
+      </AppShell>
+    </>
   );
 }
