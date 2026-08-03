@@ -38,6 +38,8 @@ import NotificationCentrePage from "@/pages/app/NotificationCentrePage";
 import GovernanceCentre from "@/pages/app/GovernanceCentre";
 import KnowledgeHealthPage from "@/pages/app/KnowledgeHealthPage";
 import GovernanceTimelinePage from "@/pages/app/GovernanceTimelinePage";
+import CompletedWorkPortal from "@/pages/app/CompletedWorkPortal";
+import CompletedWorkViewer from "@/pages/app/CompletedWorkViewer";
 import TeamPage from "@/pages/app/TeamPage";
 import OrgSettings from "@/pages/app/OrgSettings";
 import AuditPage from "@/pages/app/AuditPage";
@@ -242,6 +244,9 @@ function AppRouter() {
             <Route path="/app/:slug/install" component={InstallPage} />
             <Route path="/app/:slug/devices" component={DevicesPage} />
             <Route path="/app/:slug/discover" component={DiscoveryPage} />
+            {/* Sprint 25 — Completed Work Portal (more-specific before :slug catch-all) */}
+            <Route path="/app/:slug/work/:id" component={CompletedWorkViewer} />
+            <Route path="/app/:slug/work" component={CompletedWorkPortal} />
             {/* Sprint 23 — Executive Workspace */}
             <Route path="/app/:slug/inbox" component={ExecutiveInbox} />
             <Route path="/app/:slug/active-work" component={ActiveWorkPage} />

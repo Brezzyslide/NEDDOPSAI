@@ -1,0 +1,277 @@
+Proceed in Build mode and implement Sprint 25 only.
+
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing design document.
+
+The backend Work Execution Engine is already complete.
+
+This sprint focuses entirely on exposing Completed Work through a first-class professional user experience.
+
+Do not implement:
+
+• AI Workforce Operations
+• Blueprint Management
+• Global Search
+• Desktop retrieval
+• Cloud connectors
+• OCR
+• Entity Knowledge
+• AWS deployment
+
+Consume existing APIs wherever possible.
+
+Only introduce backend endpoints if absolutely required.
+
+────────────────────────────────────────
+SPRINT OBJECTIVE
+────────────────────────────────────────
+
+Completed Work becomes one of the flagship experiences of NeedsOps AI+.
+
+Users should feel like their AI Workforce has completed real professional work on their behalf.
+
+The experience should rival modern document management systems while remaining simple and executive-focused.
+
+────────────────────────────────────────
+PART 1
+Completed Work Portal
+────────────────────────────────────────
+
+Create the Completed Work Portal.
+
+Display:
+
+• Draft
+• Awaiting Approval
+• Approved
+• Rejected
+• Archived
+• Superseded
+
+Provide:
+
+• search
+• filters
+• sorting
+• pagination
+• favourites
+• recent work
+• pinned work
+
+Allow filtering by:
+
+• specialist
+• blueprint
+• status
+• date
+• author
+• organisation area
+
+────────────────────────────────────────
+PART 2
+Professional Work Viewer
+────────────────────────────────────────
+
+Create a rich document viewer.
+
+Display:
+
+• formatted document
+• sections
+• headings
+• tables
+• attachments
+• metadata
+• execution summary
+
+Include:
+
+• document outline
+• quick navigation
+• print view
+• presentation mode
+
+────────────────────────────────────────
+PART 3
+Evidence & Citations
+────────────────────────────────────────
+
+Every completed document should show where information came from.
+
+Display:
+
+• Organisation Library sources
+• Organisation Memory
+• Uploaded task documents
+• Policies
+• Templates
+• Approved examples
+• General knowledge
+
+Selecting a citation should display:
+
+• source
+• section
+• version
+• retrieval reason
+
+Never expose embeddings or technical retrieval information.
+
+Use business language only.
+
+────────────────────────────────────────
+PART 4
+Approval Experience
+────────────────────────────────────────
+
+Improve approval.
+
+Support:
+
+• approve
+• reject
+• request revision
+• add comments
+• assign reviewer
+• approval history
+
+Display:
+
+• current status
+• previous versions
+• reviewer comments
+
+────────────────────────────────────────
+PART 5
+Version History
+────────────────────────────────────────
+
+Create version comparison.
+
+Display:
+
+• timeline
+• author
+• specialist
+• approval outcome
+• summary of changes
+
+Allow:
+
+• compare versions
+• restore previous version
+• download previous versions
+
+────────────────────────────────────────
+PART 6
+Comments & Collaboration
+────────────────────────────────────────
+
+Support threaded comments.
+
+Allow users to:
+
+• comment
+• reply
+• resolve
+• mention colleagues (future ready)
+• attach notes
+
+Keep audit integrity.
+
+────────────────────────────────────────
+PART 7
+Downloads & Export
+────────────────────────────────────────
+
+Support downloading completed work as:
+
+• PDF
+• DOCX
+• Markdown
+
+Prepare the architecture for future exports without changing the UI.
+
+────────────────────────────────────────
+PART 8
+Promote to Organisation Library
+────────────────────────────────────────
+
+Allow approved work to become organisational knowledge.
+
+Support promotion as:
+
+• Template
+• Policy
+• Procedure
+• Approved Example
+• Guide
+• Reference Material
+
+Display impact:
+
+"This document will become available to the following specialists..."
+
+Require confirmation before promotion.
+
+────────────────────────────────────────
+PART 9
+Execution Transparency
+────────────────────────────────────────
+
+Without exposing technical AI implementation, show:
+
+• Assigned specialist
+• Blueprint used
+• Work package summary
+• Validation outcome
+• Self-review outcome
+• Confidence summary
+• Time taken
+• Related conversation
+
+This should build trust without overwhelming users.
+
+────────────────────────────────────────
+PART 10
+User Experience
+────────────────────────────────────────
+
+The Completed Work experience should feel comparable to:
+
+• Microsoft Word
+• Google Docs
+• Notion
+
+but focused on reviewing AI-produced professional work.
+
+It should become one of the strongest features of the platform.
+
+────────────────────────────────────────
+PART 11
+Testing
+────────────────────────────────────────
+
+Add frontend tests.
+
+Add integration tests.
+
+Do not modify completed backend workflows unless required.
+
+Run the complete test suite.
+
+────────────────────────────────────────
+PART 12
+Completion Report
+────────────────────────────────────────
+
+Provide:
+
+• Pages created
+• Components created
+• APIs consumed
+• Tests added
+• Total passing tests
+
+Confirm that AI Workforce Operations, Blueprint Management, Global Search and all Phase 3 work remain untouched.
+
+Begin Sprint 25.
