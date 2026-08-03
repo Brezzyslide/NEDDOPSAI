@@ -43,8 +43,11 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import {
   requestUploadUrl,
+  uploadFileToStorage,
   validateUploadMetadata,
   UploadValidationError,
+  ALLOWED_MIME_TYPES,
+  MAX_FILE_SIZE_BYTES,
   type UploadMetadata,
 } from "../../services/knowledgeStorageService.js";
 import {
@@ -257,6 +260,54 @@ router.post(
         res.status(400).json({ error: { code: err.code, message: err.message } });
         return;
       }
+      next(err);
+    }
+  },
+);
+
+// ─── Upload file (proxy route) ────────────────────────────────────────────────
+//
+// Replit workload-identity credentials cannot sign GCS URLs, so we proxy the
+// file PUT through our own API server.  The client sends the raw file body
+// with the storageKey supplied in the X-Storage-Key header (returned by
+// request-upload).
+
+router.put(
+  "/organisations/:slug/knowledge/sources/:sourceId/file",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const storageKey = req.headers["x-storage-key"] as string | undefined;
+      const mimeType   = req.headers["content-type"] ?? "application/octet-stream";
+
+      if (!storageKey) {
+        res.status(400).json({ error: { code: "MISSING_STORAGE_KEY", message: "X-Storage-Key header is required." } });
+        return;
+      }
+
+      if (!ALLOWED_MIME_TYPES.has(mimeType.split(";")[0].trim())) {
+        res.status(415).json({ error: { code: "UNSUPPORTED_MIME_TYPE", message: "File type not supported." } });
+        return;
+      }
+
+      // Collect body into a buffer (request body arrives as a stream)
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      for await (const chunk of req) {
+        totalBytes += (chunk as Buffer).length;
+        if (totalBytes > MAX_FILE_SIZE_BYTES) {
+          res.status(413).json({ error: { code: "FILE_TOO_LARGE", message: "File exceeds the 50 MB limit." } });
+          return;
+        }
+        chunks.push(chunk as Buffer);
+      }
+      const buffer = Buffer.concat(chunks);
+
+      await uploadFileToStorage(storageKey, buffer, mimeType.split(";")[0].trim());
+
+      res.status(204).end();
+    } catch (err) {
       next(err);
     }
   },

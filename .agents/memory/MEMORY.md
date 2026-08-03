@@ -27,3 +27,4 @@
 - [NeedsOps v1 Router double-prefix bug](needsops-route-double-v1.md) — routers at router.use("/", sub) must NOT prefix routes with /v1/; inline requireOwnerOrAdmin pattern; frontend always calls /v1/...
 - [NeedsOps Task #17 Knowledge Orchestration Engine](needsops-task17-knowledge-orchestration.md) — provider conditional skips (P1/P2 skip on null taskId/entityIds), mockReset not clearAllMocks, _resetProviderRegistry pattern, 1856 tests
 - [NeedsOps Task #18 Specialist Training UI](needsops-sprint18-training-ui.md) — OrgLibraryPage wizard, SourceDetailPage, SpecialistTrainingPage 6 tabs, approve/scope service behaviors, mockDeleteChain must be awaitable, 1905 tests
+- [Replit GCS signed URL limitation](replit-gcs-signed-urls.md) — sidecar credentials cannot sign GCS URLs; proxy uploads through own API route using file.save(buffer)

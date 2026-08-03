@@ -66,16 +66,14 @@ export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
  */
 export interface StorageAdapter {
   /**
-   * Generate a signed PUT URL for the client to upload directly to storage.
+   * Upload a file buffer directly to storage (server-side upload path).
+   * Used when client-side signed URLs are not available (e.g. Replit workload
+   * identity credentials cannot sign GCS URLs).
    * @param storageKey  Tenant-scoped path (e.g. "orgs/xxx/library/yyy/file.pdf")
-   * @param mimeType    Expected MIME type for the upload
-   * @param expirySeconds  How long the URL is valid (default 900)
+   * @param buffer      File bytes
+   * @param mimeType    MIME type for the Content-Type metadata
    */
-  generateUploadUrl(
-    storageKey: string,
-    mimeType: string,
-    expirySeconds?: number,
-  ): Promise<string>;
+  uploadFile(storageKey: string, buffer: Buffer, mimeType: string): Promise<void>;
 
   /**
    * Generate a signed GET URL for downloading a private object.
@@ -104,32 +102,26 @@ class GCSStorageAdapter implements StorageAdapter {
     this.service = new ObjectStorageService();
   }
 
-  async generateUploadUrl(
-    storageKey: string,
-    _mimeType: string,
-    expirySeconds = 900,
-  ): Promise<string> {
+  /**
+   * Upload a buffer directly to GCS using the Replit sidecar credential.
+   * Replit workload-identity credentials support direct read/write but cannot
+   * sign GCS URLs (requires a service account key), so we proxy uploads
+   * through our own API instead of issuing signed PUT URLs to the client.
+   */
+  async uploadFile(storageKey: string, buffer: Buffer, mimeType: string): Promise<void> {
     const privateDir = this.service.getPrivateObjectDir();
     const fullPath = `${privateDir}/${storageKey}`;
     const { bucketName, objectName } = parseBucketPath(fullPath);
-    const { Storage } = await import("@google-cloud/storage");
-    const bucket = new Storage().bucket(bucketName);
+    const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
-    const [url] = await file.getSignedUrl({
-      version: "v4",
-      action: "write",
-      expires: Date.now() + expirySeconds * 1000,
-      contentType: _mimeType,
-    });
-    return url;
+    await file.save(buffer, { contentType: mimeType, resumable: false });
   }
 
   async generateDownloadUrl(storageKey: string, expirySeconds = 3600): Promise<string> {
     const privateDir = this.service.getPrivateObjectDir();
     const fullPath = `${privateDir}/${storageKey}`;
     const { bucketName, objectName } = parseBucketPath(fullPath);
-    const { Storage } = await import("@google-cloud/storage");
-    const bucket = new Storage().bucket(bucketName);
+    const bucket = objectStorageClient.bucket(bucketName);
     const file = bucket.file(objectName);
     const [url] = await file.getSignedUrl({
       version: "v4",
@@ -144,8 +136,7 @@ class GCSStorageAdapter implements StorageAdapter {
       const privateDir = this.service.getPrivateObjectDir();
       const fullPath = `${privateDir}/${storageKey}`;
       const { bucketName, objectName } = parseBucketPath(fullPath);
-      const { Storage } = await import("@google-cloud/storage");
-      const bucket = new Storage().bucket(bucketName);
+      const bucket = objectStorageClient.bucket(bucketName);
       await bucket.file(objectName).delete();
     } catch {
       // Idempotent — ignore not-found errors
@@ -296,10 +287,11 @@ export interface RequestUploadUrlParams {
 }
 
 export interface RequestUploadUrlResult {
+  /** Always null — uploads are proxied through the /file server route. */
   /** Pending source ID — use this in completeUpload */
   sourceId: string;
   /** Signed PUT URL for the client to upload directly to storage */
-  uploadUrl: string;
+  uploadUrl: null;
   /** Tenant-scoped storage key — store and pass to completeUpload */
   storageKey: string;
   /** Storage provider name */
@@ -310,7 +302,8 @@ export interface RequestUploadUrlResult {
 
 /**
  * Step 1 of the upload flow.
- * Validates metadata and returns a signed PUT URL.
+ * Validates metadata, checks dedup, and returns a pending sourceId + storageKey.
+ * The client must then PUT the file to our own /file proxy route (not GCS directly).
  * No DB records are created yet — call completeUpload after the upload.
  */
 export async function requestUploadUrl(
@@ -329,14 +322,29 @@ export async function requestUploadUrl(
   });
 
   const adapter = params.storageAdapter ?? defaultStorageAdapter;
-  const expirySeconds = 900;
-  const uploadUrl = await adapter.generateUploadUrl(
-    storageKey,
-    params.metadata.mimeType,
-    expirySeconds,
-  );
 
-  return { sourceId, uploadUrl, storageKey, storageProvider: adapter.providerName, expirySeconds };
+  // The uploadUrl is handled by our own proxy route; no signed GCS URL needed.
+  return {
+    sourceId,
+    uploadUrl: null,
+    storageKey,
+    storageProvider: adapter.providerName,
+    expirySeconds: 900,
+  };
+}
+
+/**
+ * Server-side file upload — used by the /file proxy route.
+ * Writes the buffer to the configured storage backend.
+ */
+export async function uploadFileToStorage(
+  storageKey: string,
+  buffer: Buffer,
+  mimeType: string,
+  storageAdapter?: StorageAdapter,
+): Promise<void> {
+  const adapter = storageAdapter ?? defaultStorageAdapter;
+  await adapter.uploadFile(storageKey, buffer, mimeType);
 }
 
 // ─── Generate download URL ────────────────────────────────────────────────────

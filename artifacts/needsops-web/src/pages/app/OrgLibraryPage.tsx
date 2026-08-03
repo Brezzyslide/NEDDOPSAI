@@ -43,7 +43,7 @@ interface ScopeRecord {
 }
 
 interface UploadUrlResponse {
-  uploadUrl:       string;
+  uploadUrl:       string | null;
   sourceId:        string;
   storageKey:      string;
   storageProvider: string;
@@ -318,13 +318,23 @@ export default function OrgLibraryPage() {
       }
       const { uploadUrl, sourceId, storageKey, storageProvider }: UploadUrlResponse = await reqRes.json();
 
-      // Step 2 — upload to signed URL
-      const putRes = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": mimeType },
-        body: upload.file,
-      });
-      if (!putRes.ok) throw new Error("File upload failed");
+      // Step 2 — proxy the file through our own API (Replit credentials cannot
+      // sign GCS URLs, so we always upload server-side via /file route)
+      const putRes = await authFetch(
+        `/v1/organisations/${slug}/knowledge/sources/${sourceId}/file`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": mimeType,
+            "X-Storage-Key": storageKey,
+          },
+          body: upload.file,
+        },
+      );
+      if (!putRes.ok) {
+        const err = await putRes.json().catch(() => ({}));
+        throw new Error(err?.error?.message ?? "File upload failed");
+      }
 
       // Step 3 — confirm with metadata
       const [scopeType, scopeId] = upload.scope.split(":");
