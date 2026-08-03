@@ -1,0 +1,230 @@
+Based on your architecture and everything that’s already been completed, I would not jump to desktop retrieval or OCR yet. The biggest return on investment is making all the powerful backend capabilities usable through a polished operational experience.
+
+I would call the next phase:
+
+Phase 2 – Operational Experience
+
+Sprint 23 – Executive Workspace & Unified Operations
+
+Here’s the prompt I’d give Replit:
+
+Proceed in Build mode and implement Sprint 23 only.
+Do not begin OCR, desktop retrieval, cloud connectors, web search, AWS deployment, or Entity Knowledge.
+This sprint focuses entirely on exposing the existing platform capabilities through a unified operational experience.
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing design document.
+Do not duplicate existing backend capability.
+Build on what already exists.
+────────────────────────────────────────
+SPRINT OBJECTIVE
+────────────────────────────────────────
+Create the Executive Workspace.
+This becomes the operational home of every organisation.
+When a customer signs in, they should immediately understand:
+• What work is in progress
+• What requires approval
+• What their AI Workforce is doing
+• What knowledge has changed
+• What has been completed
+• What requires attention
+The Workspace should feel like managing a professional executive team rather than using a chatbot.
+────────────────────────────────────────
+PART 1 — EXECUTIVE DASHBOARD
+────────────────────────────────────────
+Create a new Executive Workspace.
+Sections:
+• Welcome summary
+• Today's activity
+• AI Workforce status
+• Active conversations
+• Active work
+• Pending approvals
+• Recently completed work
+• Knowledge health
+• Recent organisational learning
+• Notifications
+Widgets should use existing backend services.
+Do not duplicate business logic.
+────────────────────────────────────────
+PART 2 — UNIFIED APPROVAL CENTRE
+────────────────────────────────────────
+Create one Approval Centre.
+Display:
+• Knowledge proposals
+• Memory proposals
+• Completed Work awaiting approval
+• Specialist readiness approvals
+• Library review requests
+Provide:
+• Filtering
+• Bulk approval
+• Bulk rejection
+• Review comments
+• Audit history
+• Search
+Use existing approval workflows.
+────────────────────────────────────────
+PART 3 — COMPLETED WORK PORTAL
+────────────────────────────────────────
+Build the frontend for Completed Work.
+Features:
+• Folder view
+• Search
+• Filters
+• Status
+• Version history
+• Comments
+• Approval history
+• Execution manifest
+• Citations
+• Downloads
+• Promote to Organisation Library
+• Reopen
+• Compare versions
+Do not modify backend lifecycle.
+────────────────────────────────────────
+PART 4 — EXECUTIVE INBOX
+────────────────────────────────────────
+Every specialist delivers work here.
+Show:
+• New completed work
+• Approval requests
+• Knowledge proposals
+• Specialist alerts
+• Retraining recommendations
+• Library changes
+Allow:
+• Archive
+• Snooze
+• Assign
+• Open related work
+────────────────────────────────────────
+PART 5 — KNOWLEDGE HEALTH DASHBOARD
+────────────────────────────────────────
+Build the UI for the existing Knowledge Health Service.
+Display:
+• Overall health score
+• Coverage
+• Freshness
+• Duplicate knowledge
+• Conflicts
+• Pending proposals
+• Recently approved memories
+• Recently updated policies
+• Specialist coverage
+• Retraining recommendations
+Provide drill-down capability.
+────────────────────────────────────────
+PART 6 — AI WORKFORCE OPERATIONS
+────────────────────────────────────────
+Enhance the Workforce page.
+Each specialist should show:
+• Current workload
+• Readiness
+• Last training
+• Assigned knowledge
+• Recent completed work
+• Confidence
+• Health
+• Performance summary
+Add quick actions:
+• Train
+• View knowledge
+• View completed work
+• Test specialist
+────────────────────────────────────────
+PART 7 — ACTIVE WORK
+────────────────────────────────────────
+Create an Active Work dashboard.
+Display:
+• Running executions
+• Queue
+• Waiting approvals
+• Waiting clarification
+• Completed today
+• Failed executions
+Each work item should show:
+• Blueprint
+• Assigned specialist
+• Progress
+• Started
+• Estimated completion
+• Related conversation
+────────────────────────────────────────
+PART 8 — GLOBAL SEARCH
+────────────────────────────────────────
+Create unified platform search.
+Search:
+• Completed Work
+• Organisation Library
+• Memories
+• Knowledge proposals
+• Specialists
+• Conversations
+Future providers should plug into the same search.
+────────────────────────────────────────
+PART 9 — NOTIFICATIONS
+────────────────────────────────────────
+Create notification centre.
+Support:
+• Knowledge proposal awaiting review
+• Completed work awaiting approval
+• Specialist retraining recommended
+• Library update
+• Failed execution
+• Health alerts
+Provide:
+• Read
+• Unread
+• Archive
+• Filter
+────────────────────────────────────────
+PART 10 — UX
+────────────────────────────────────────
+The platform should feel like an executive operations centre.
+Avoid exposing technical implementation.
+Users should never need to understand:
+• Retrieval
+• Memory
+• Embeddings
+• Pipelines
+• Manifests
+Instead present:
+• Work
+• Knowledge
+• Specialists
+• Decisions
+• Approvals
+────────────────────────────────────────
+PART 11 — TESTING
+────────────────────────────────────────
+Add comprehensive frontend and API integration tests.
+Do not break existing functionality.
+Run the complete test suite.
+────────────────────────────────────────
+PART 12 — COMPLETION REPORT
+────────────────────────────────────────
+Provide:
+• Architecture summary
+• Pages created
+• Components created
+• APIs consumed
+• Tests added
+• Total passing tests
+Confirm that no OCR, desktop retrieval, cloud connectors, web search, Entity Knowledge or AWS work was started.
+Begin Sprint 23.
+
+One refinement I’d add
+
+At the end of Sprint 23, don’t immediately move to OCR or cloud connectors. Instead, pause for a Version 1 Readiness Review. Assess whether a new customer can complete the full journey:
+
+1. Sign up.
+2. Create an organisation.
+3. Select an AI Workforce.
+4. Connect the desktop app (or use the web).
+5. Upload organisational knowledge.
+6. Train specialists.
+7. Ask the Chief of Staff to perform work.
+8. Review and approve the output.
+9. Retrieve completed work later.
+
+If that entire journey feels polished and intuitive, then you’re ready to move into the next phase of expanding knowledge sources and enterprise integrations. That checkpoint will likely deliver more value than immediately adding more backend capabilities.
