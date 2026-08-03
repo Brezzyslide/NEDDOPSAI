@@ -387,7 +387,7 @@ export default function OrgLibraryPage() {
                   value={uploadForm.name}
                   onChange={e => setUploadForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. NDIS Restrictive Practices Policy"
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
@@ -399,7 +399,7 @@ export default function OrgLibraryPage() {
                   onChange={e => setUploadForm(f => ({ ...f, description: e.target.value }))}
                   placeholder="Brief summary of what this document covers…"
                   rows={2}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
             </div>

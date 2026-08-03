@@ -419,7 +419,7 @@ export default function OrgMemoryPage() {
                 <select
                   value={form.memoryType}
                   onChange={e => setForm(f => ({ ...f, memoryType: e.target.value as MemoryType }))}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 >
                   {ALL_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
                 </select>
@@ -462,7 +462,7 @@ export default function OrgMemoryPage() {
                       placeholder="Search approved policies…"
                       value={sourceSearch}
                       onChange={e => setSourceSearch(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white mb-2"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white mb-2"
                     />
 
                     {/* Source list */}
@@ -514,7 +514,7 @@ export default function OrgMemoryPage() {
                   value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   placeholder="e.g. NDIS Restrictive Practices Policy"
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
@@ -531,7 +531,7 @@ export default function OrgMemoryPage() {
                   onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
                   placeholder="This policy governs the use of regulated restrictive practices. Staff must document and apply least-restrictive alternatives in accordance with NDIS legislation…"
                   rows={4}
-                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 />
               </div>
 
@@ -543,7 +543,7 @@ export default function OrgMemoryPage() {
                     type="number" min={1} max={10}
                     value={form.importance}
                     onChange={e => setForm(f => ({ ...f, importance: parseInt(e.target.value, 10) || 5 }))}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -552,7 +552,7 @@ export default function OrgMemoryPage() {
                     type="number" min={0} max={1} step={0.1}
                     value={form.confidence}
                     onChange={e => setForm(f => ({ ...f, confidence: parseFloat(e.target.value) || 0.8 }))}
-                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="mt-1 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
               </div>
