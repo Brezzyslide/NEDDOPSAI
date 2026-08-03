@@ -107,6 +107,10 @@ router.use("/", ingestionRouter);
 import knowledgeWorkerHealthRouter from "./knowledgeWorkerHealth.js";
 router.use("/platform", knowledgeWorkerHealthRouter);
 
+// Sprint 21: Knowledge Curation (proposals, health, version intelligence)
+import curationRouter from "./curation.js";
+router.use("/", curationRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 

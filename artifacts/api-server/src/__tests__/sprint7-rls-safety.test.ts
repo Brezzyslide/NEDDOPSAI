@@ -28,7 +28,7 @@ describe("Sprint 7 — RLS Safety", () => {
 
   describe("verifyRLS()", () => {
     it("REAL DB: REQUIRED_RLS_TABLES contains all expected tables", () => {
-      expect(REQUIRED_RLS_TABLES).toHaveLength(60); // Task #16: +1 ingestion_jobs (Task #15: +6 knowledge tables)
+      expect(REQUIRED_RLS_TABLES).toHaveLength(61); // Sprint 21: +1 knowledge_curation_jobs (Task #16: +1 ingestion_jobs, Task #15: +6 knowledge tables)
       expect(REQUIRED_RLS_TABLES).toContain("tasks");
       expect(REQUIRED_RLS_TABLES).toContain("approvals");
       expect(REQUIRED_RLS_TABLES).toContain("approval_rules");

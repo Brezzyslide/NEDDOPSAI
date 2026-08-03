@@ -122,3 +122,4 @@ export * from "./specialistTrainingStatus";
 export * from "./retrievalAuditEvents";
 // Task #16 — Document Ingestion & Embedding Pipeline
 export * from "./ingestionJobs";
+export * from "./knowledgeCurationJobs";

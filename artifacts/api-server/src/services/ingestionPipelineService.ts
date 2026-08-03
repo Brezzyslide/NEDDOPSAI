@@ -49,6 +49,7 @@ import {
   type EnqueueIngestionJobInput,
 } from "./ingestionJobService.js";
 import { logOrgEvent } from "./auditService.js";
+import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
 
 // ─── Ingestion trigger ────────────────────────────────────────────────────────
 
@@ -321,6 +322,15 @@ async function runPipeline(
         requiresHumanReview: injectionResult.requiresHumanReview || extraction.isScanned,
       },
     }).catch(() => {});
+
+    // Sprint 21: trigger knowledge curation after ingestion completes (fire-and-forget)
+    enqueueCurationJobAsync({
+      organizationId,
+      knowledgeSourceId,
+      sourceVersionId,
+      triggerEvent: "uploaded",
+      actorUserId:  "system",
+    });
 
   } catch (err) {
     // Cancellation — clean up partial chunks and finalise

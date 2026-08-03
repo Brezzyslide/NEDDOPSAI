@@ -53,6 +53,7 @@ import {
 } from "@workspace/db";
 import { eq, and, desc, isNull, ne, not } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
+import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -459,6 +460,19 @@ export async function approveKnowledgeSource(
     resourceId: sourceId,
   }).catch(() => {});
 
+  // Sprint 21: trigger knowledge curation (fire-and-forget)
+  getCurrentVersion(sourceId, organizationId).then(version => {
+    if (version) {
+      enqueueCurationJobAsync({
+        organizationId,
+        knowledgeSourceId: sourceId,
+        sourceVersionId:   version.id,
+        triggerEvent:      "approved",
+        actorUserId:       approvedByUserId,
+      });
+    }
+  }).catch(() => {});
+
   return updated!;
 }
 
@@ -494,6 +508,19 @@ export async function revokeKnowledgeSource(
     resourceId: sourceId,
     isSensitive: true,
     metadata: { reason: reason?.slice(0, 500) },
+  }).catch(() => {});
+
+  // Sprint 21: trigger curation job to retire any related proposals
+  getCurrentVersion(sourceId, organizationId).then(version => {
+    if (version) {
+      enqueueCurationJobAsync({
+        organizationId,
+        knowledgeSourceId: sourceId,
+        sourceVersionId:   version.id,
+        triggerEvent:      "archived",
+        actorUserId,
+      });
+    }
   }).catch(() => {});
 
   return updated!;
@@ -578,6 +605,22 @@ export async function supersedeKnowledgeSource(
     resourceType: "knowledge_source",
     resourceId: oldSourceId,
     metadata: { supersededBySourceId: newSourceId },
+  }).catch(() => {});
+
+  // Sprint 21: trigger version intelligence curation on new source
+  getCurrentVersion(newSourceId, organizationId).then(newVersion => {
+    getCurrentVersion(oldSourceId, organizationId).then(oldVersion => {
+      if (newVersion) {
+        enqueueCurationJobAsync({
+          organizationId,
+          knowledgeSourceId:  newSourceId,
+          sourceVersionId:    newVersion.id,
+          previousVersionId:  oldVersion?.id,
+          triggerEvent:       "superseded",
+          actorUserId,
+        });
+      }
+    }).catch(() => {});
   }).catch(() => {});
 }
 

@@ -95,6 +95,8 @@ export const REQUIRED_RLS_TABLES = [
   "retrieval_audit_events",
   // Task #16 — Document Ingestion & Embedding Pipeline
   "ingestion_jobs",
+  // Sprint 21 — Knowledge Curation Jobs
+  "knowledge_curation_jobs",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

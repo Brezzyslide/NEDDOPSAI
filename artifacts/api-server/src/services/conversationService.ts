@@ -36,6 +36,7 @@ import {
 } from "./conversationIntelligenceService.js";
 import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
+import { detectAndProposeConversationKnowledge } from "./conversationLearningService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
 // Sprint 9.4 — Capability gate
 import { identifyCapabilities } from "./capabilityIdentificationService.js";
@@ -530,6 +531,16 @@ export async function processUserMessage(
     content: understanding.customerResponse,
     structuredContent,
   });
+
+  // Sprint 21: Conversation Learning — detect candidate org knowledge (fire-and-forget)
+  if (agentMessage) {
+    detectAndProposeConversationKnowledge(
+      organizationId,
+      userText,
+      userId,
+      conversationId,
+    ).catch(() => {});
+  }
 
   return { userMessage, agentMessage, understanding, structuredContent };
 }

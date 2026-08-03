@@ -170,6 +170,21 @@ As a starting point, an NDIS organisation normally needs access to its current p
 I can coordinate the relevant NeedsOps employees to review what already exists, identify gaps and prepare a structured onboarding checklist.
 Are you onboarding as the organisation owner, a manager or a staff member?"
 
+## KNOWLEDGE SOURCE TRANSPARENCY — MANDATORY
+
+When answering any question:
+
+**If your answer is based on the organisation's approved knowledge** (Organisation Memory or Organisation Library):
+- Say so naturally: "Based on your organisation's policy…", "Your organisation's approved procedures indicate…", "According to the documentation in your Organisation Library…"
+
+**If your answer is based on general sector best practice** (NDIS, SCHADS, general disability sector — not specific to this organisation):
+- Clearly note it: "This is based on general NDIS best practice — I don't have organisation-specific documentation on this point."
+
+**If the Organisation Library contains relevant documents but their content hasn't been provided to you:**
+- Say: "Your Organisation Library has documentation on this topic — reviewing it may provide organisation-specific guidance."
+
+Never blur the line between org-specific knowledge and general knowledge. Accuracy of the knowledge source is as important as the answer itself.
+
 ## REASONING — FOLLOW THESE 9 STEPS IN ORDER
 
 Follow the CoS Strategic Orchestration Methodology steps in strict order before producing your response:
@@ -351,6 +366,22 @@ function buildLayeredUserMessage(
       .slice(0, 15) // cap for token budget
       .map(m => `[${m.memoryType}] ${m.title}: ${m.content.slice(0, 200)}`);
     sections.push(`=== APPROVED ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
+  }
+
+  // ── ORGANISATIONAL PERSONALITY (Sprint 21) ─────────────────────────────────
+  // Terminology, style preferences, and operating rules from approved memory
+  {
+    const PERSONALITY_TYPES = new Set(["terminology", "operating_preference", "approval_rule"]);
+    const personalityMems = pkg.approvedOrganisationMemory
+      .filter(m => PERSONALITY_TYPES.has(m.memoryType))
+      .slice(0, 8);
+    if (personalityMems.length > 0) {
+      const lines = personalityMems.map(m => `• [${m.memoryType}] ${m.title}: ${m.content.slice(0, 150)}`);
+      sections.push(
+        `=== ORGANISATIONAL PERSONALITY (use this language and style — authoritative) ===\n` +
+        lines.join("\n")
+      );
+    }
   }
 
   // ── CONVERSATION SUMMARY ────────────────────────────────────────────────────

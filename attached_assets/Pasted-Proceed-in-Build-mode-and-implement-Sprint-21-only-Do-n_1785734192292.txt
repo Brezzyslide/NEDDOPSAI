@@ -1,0 +1,294 @@
+Proceed in Build mode and implement Sprint 21 only.
+
+Do not begin OCR, Completed Work, desktop retrieval, cloud connectors, web search implementation, or AWS deployment.
+
+Sprint Objective
+
+Transform the Chief of Staff into the organisation's Knowledge Curator and Executive Intelligence layer.
+
+The Chief of Staff must become progressively smarter about the organisation through governed learning, while remaining completely auditable.
+
+The Organisation Library remains the source of truth.
+
+The Chief of Staff Memory becomes distilled organisational intelligence.
+
+Nothing becomes organisational knowledge without human approval.
+
+────────────────────────────────────────
+PART 1 — KNOWLEDGE CURATION
+────────────────────────────────────────
+
+Whenever an Organisation Library document is:
+
+- uploaded
+- approved
+- updated
+- superseded
+- archived
+
+automatically create a Knowledge Curation Job.
+
+The Chief of Staff must:
+
+- read the document
+- understand its purpose
+- compare against previous versions
+- identify organisational rules
+- identify terminology
+- identify writing style
+- identify business processes
+- identify escalation rules
+- identify compliance obligations
+- identify approval requirements
+- identify specialist-specific knowledge
+- identify entity-specific knowledge
+- identify duplicate guidance
+- identify conflicting guidance
+- identify obsolete knowledge
+
+Generate proposals only.
+
+Never update memory automatically.
+
+────────────────────────────────────────
+PART 2 — MEMORY PROPOSALS
+────────────────────────────────────────
+
+Create proposed memories with:
+
+- title
+- summary
+- rationale
+- confidence
+- source document
+- source version
+- page reference
+- section
+- memory category
+- affected specialists
+- suggested action
+
+Statuses:
+
+- proposed
+- approved
+- rejected
+- superseded
+- archived
+
+Human approval required before activation.
+
+────────────────────────────────────────
+PART 3 — ORGANISATIONAL PERSONALITY
+────────────────────────────────────────
+
+The Chief of Staff must learn:
+
+- preferred terminology
+- writing style
+- communication tone
+- decision-making preferences
+- organisational culture
+- meeting style
+- escalation habits
+- approval practices
+
+Only through:
+
+- approved memory
+- approved documents
+- approved user decisions
+
+Never infer organisational culture without evidence.
+
+────────────────────────────────────────
+PART 4 — CONVERSATIONAL INTELLIGENCE
+────────────────────────────────────────
+
+Before every response the Chief of Staff must internally reason about:
+
+- Who is asking?
+- What organisation am I representing?
+- What approved knowledge applies?
+- What policies apply?
+- Which specialists should assist?
+- Am I answering from organisational knowledge or general knowledge?
+- Should I ask a clarifying question?
+- Should I delegate?
+- Should I recommend updating memory?
+- Should I recommend retraining?
+
+Do not expose this reasoning.
+
+Improve conversation quality by:
+
+- avoiding generic AI responses
+- using organisation terminology
+- writing in the organisation's preferred style
+- citing approved organisational knowledge naturally
+- distinguishing organisational advice from general advice
+
+If no organisational knowledge exists, clearly state that guidance is based on general best practice.
+
+────────────────────────────────────────
+PART 5 — CONVERSATION LEARNING
+────────────────────────────────────────
+
+During conversations detect candidate organisational knowledge.
+
+Examples:
+
+"We call them participants."
+
+"Our approval limit is $5,000."
+
+"We never email incident reports externally."
+
+When confidence is high:
+
+Create a proposed memory.
+
+Never activate automatically.
+
+Notify authorised reviewers.
+
+────────────────────────────────────────
+PART 6 — VERSION INTELLIGENCE
+────────────────────────────────────────
+
+Whenever a document version changes:
+
+Produce:
+
+- Executive summary of changes
+- New policies
+- Removed policies
+- Changed responsibilities
+- Changed terminology
+- Changed workflows
+- Changed compliance requirements
+
+Recommend:
+
+- retire memories
+- create memories
+- retrain specialists
+- archive obsolete knowledge
+
+────────────────────────────────────────
+PART 7 — KNOWLEDGE HEALTH
+────────────────────────────────────────
+
+Create a Knowledge Health dashboard.
+
+Metrics:
+
+- Organisation Library coverage
+- Approved memory count
+- Pending proposals
+- Conflicting knowledge
+- Duplicate knowledge
+- Obsolete knowledge
+- Specialist knowledge coverage
+- Specialists requiring retraining
+- Recently changed policies
+- Recently approved knowledge
+
+Produce an overall Knowledge Health Score.
+
+────────────────────────────────────────
+PART 8 — SPECIALIST IMPACT
+────────────────────────────────────────
+
+When knowledge changes:
+
+Identify:
+
+- affected specialists
+- affected workflows
+- affected templates
+- affected guidance
+
+Recommend retraining.
+
+Track retraining completion.
+
+────────────────────────────────────────
+PART 9 — CONFIDENCE ENGINE
+────────────────────────────────────────
+
+Every knowledge item should carry confidence derived from:
+
+- approval status
+- authority
+- document freshness
+- version
+- source quality
+- retrieval confidence
+
+The Chief of Staff should favour higher-confidence organisational knowledge.
+
+────────────────────────────────────────
+PART 10 — AUDIT
+────────────────────────────────────────
+
+Audit:
+
+- every proposal
+- every approval
+- every rejection
+- every retired memory
+- every detected conflict
+- every version comparison
+- every retraining recommendation
+
+────────────────────────────────────────
+PART 11 — TESTING
+────────────────────────────────────────
+
+Add comprehensive tests for:
+
+- knowledge extraction
+- proposal generation
+- duplicate detection
+- conflict detection
+- version comparison
+- conversation learning
+- organisational personality
+- conversational intelligence
+- confidence engine
+- specialist retraining recommendations
+- audit events
+- tenant isolation
+
+Do not break existing tests.
+
+Run the complete suite.
+
+────────────────────────────────────────
+PART 12 — COMPLETION REPORT
+────────────────────────────────────────
+
+Provide:
+
+- architecture
+- files added
+- services added
+- proposal workflow
+- conversational intelligence improvements
+- knowledge health implementation
+- confidence engine
+- retraining recommendations
+- tests added
+- total passing tests
+- known limitations
+
+Confirm:
+
+- OCR has not started
+- Completed Work has not started
+- Desktop retrieval has not started
+- Cloud connectors have not started
+- Web search has not started
+
+Begin Sprint 21 now.

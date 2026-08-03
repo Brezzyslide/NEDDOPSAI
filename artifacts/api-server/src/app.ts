@@ -53,4 +53,14 @@ app.use("/api", router);
 // Sprint 1 authenticated routes
 app.use("/v1", v1Router);
 
+// ── 8. Global error handler ───────────────────────────────────────────────────
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = err.status ?? err.statusCode ?? 500;
+  const message = err.message ?? "Internal server error";
+  logger.error({ err, status }, `[error-handler] ${message}`);
+  if (!res.headersSent) {
+    res.status(status).json({ error: { code: err.code ?? "INTERNAL_ERROR", message } });
+  }
+});
+
 export default app;
