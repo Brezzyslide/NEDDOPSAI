@@ -1,0 +1,459 @@
+Proceed in Build mode and implement Task #17 only.
+
+Do not begin Task #18 (Organisation Library UI), Sprint 21 (Chief of Staff Knowledge Curation), Task #20 (OCR), Completed Work UI, cloud connectors, or desktop file integrations beyond defining their interfaces.
+
+Task #17 Objective
+
+Implement the Knowledge Orchestration Engine.
+
+This is significantly broader than traditional Retrieval-Augmented Generation (RAG).
+
+The goal is to assemble the best possible context for every specialist by intelligently combining multiple governed knowledge sources while maintaining complete auditability.
+
+────────────────────────────────────────
+
+Core Principles
+
+The Organisation Library remains the authoritative source.
+
+Chief of Staff Memory remains curated organisational intelligence.
+
+Specialists retrieve knowledge.
+
+They never permanently learn without human approval.
+
+Every retrieved item must be attributable.
+
+Every decision must be auditable.
+
+────────────────────────────────────────
+
+Knowledge Retrieval Priority
+
+Every execution must retrieve context in this order:
+
+Priority 1
+Current task uploads
+
+Documents uploaded only for the current task.
+
+Highest priority.
+
+Never automatically promoted into Organisation Library.
+
+Priority 2
+Entity Knowledge
+
+Knowledge attached to:
+
+• participant
+• client
+• project
+• contract
+• supplier
+• employee
+• location
+• asset
+
+Only retrieve if directly relevant.
+
+Priority 3
+Approved Chief of Staff Memory
+
+Approved organisational memory.
+
+Terminology.
+
+Policies.
+
+Writing style.
+
+Business rules.
+
+Approval thresholds.
+
+Escalation rules.
+
+Priority 4
+Specialist Knowledge
+
+Knowledge explicitly assigned to this specialist.
+
+Never retrieved by unrelated specialists unless explicitly shared.
+
+Priority 5
+Organisation Library
+
+Approved knowledge sources.
+
+Policies.
+
+Procedures.
+
+Templates.
+
+Guides.
+
+Reference manuals.
+
+Priority 6
+
+Approved desktop file providers (interface only)
+
+Define interfaces only.
+
+Do not implement retrieval.
+
+Priority 7
+
+Approved cloud providers (interface only)
+
+SharePoint
+
+Google Drive
+
+OneDrive
+
+Confluence
+
+Notion
+
+Define provider interfaces only.
+
+No implementation.
+
+Priority 8
+
+Approved Web Search
+
+Interface only.
+
+No implementation.
+
+────────────────────────────────────────
+
+Knowledge Orchestration Engine
+
+Create a dedicated orchestration service.
+
+Responsibilities:
+
+Collect candidate knowledge.
+
+Remove duplicates.
+
+Rank relevance.
+
+Apply authority weighting.
+
+Apply freshness weighting.
+
+Apply entity relevance.
+
+Apply specialist relevance.
+
+Apply confidence weighting.
+
+Apply sensitivity rules.
+
+Apply token budget.
+
+Generate citations.
+
+Generate retrieval audit.
+
+Return structured context.
+
+This replaces simple "top N chunks".
+
+────────────────────────────────────────
+
+Hybrid Retrieval
+
+Implement:
+
+Lexical search
+
+Semantic search (pgvector)
+
+Weighted ranking
+
+Metadata filtering
+
+Scope filtering
+
+Specialist filtering
+
+Entity filtering
+
+Recency weighting
+
+Authority weighting
+
+Pinned organisational memory
+
+Confidence weighting
+
+Mandatory inclusion rules
+
+Conflict detection
+
+Result diversification
+
+Do not rely solely on vector similarity.
+
+────────────────────────────────────────
+
+Context Assembly
+
+The runtime instruction assembler should receive:
+
+Organisation Context
+
+Approved Memory
+
+Specialist Knowledge
+
+Retrieved Knowledge
+
+Current Task Documents
+
+Entity Context
+
+Writing Style
+
+Goals
+
+Escalation Contacts
+
+Knowledge Citations
+
+The assembler should clearly separate these sections.
+
+────────────────────────────────────────
+
+Source Attribution
+
+Every retrieved knowledge item must include:
+
+Source
+
+Version
+
+Section
+
+Chunk
+
+Page number where available
+
+Confidence
+
+Authority level
+
+Knowledge type
+
+Scope
+
+Every AI answer can therefore be traced back.
+
+────────────────────────────────────────
+
+Retrieval Audit
+
+Expand retrieval_audit_events.
+
+Record:
+
+executionId
+
+specialistId
+
+organisationId
+
+entityId
+
+knowledgeSourceIds
+
+chunkIds
+
+memoryIds
+
+taskUploadIds
+
+ranking scores
+
+retrieval duration
+
+semantic score
+
+lexical score
+
+reason selected
+
+reason rejected
+
+Never log document contents.
+
+────────────────────────────────────────
+
+Conflict Detection
+
+Detect:
+
+Conflicting policies.
+
+Conflicting terminology.
+
+Superseded documents.
+
+Outdated versions.
+
+Conflicting memories.
+
+Return structured warnings.
+
+Do not silently choose one.
+
+────────────────────────────────────────
+
+Sensitivity
+
+Restricted documents
+
+Highly confidential documents
+
+Participant documents
+
+Medical information
+
+Legal documents
+
+Never leave their permitted retrieval scope.
+
+Enforce existing RLS.
+
+────────────────────────────────────────
+
+Future Interfaces
+
+Define provider interfaces for:
+
+Desktop Connector
+
+SharePoint
+
+Google Drive
+
+OneDrive
+
+Dropbox
+
+Confluence
+
+Notion
+
+Approved Web Search
+
+Return NotImplemented.
+
+No retrieval implementation.
+
+────────────────────────────────────────
+
+Performance
+
+Cache safe retrieval metadata.
+
+Reuse embeddings.
+
+Parallelise retrieval.
+
+Respect token budgets.
+
+Fail gracefully.
+
+────────────────────────────────────────
+
+Testing
+
+Add comprehensive tests covering:
+
+Priority ordering.
+
+Task uploads overriding Organisation Library.
+
+Entity knowledge retrieval.
+
+Memory retrieval.
+
+Specialist-specific retrieval.
+
+Organisation Library retrieval.
+
+Duplicate elimination.
+
+Authority weighting.
+
+Conflict detection.
+
+Token budget trimming.
+
+Citation generation.
+
+Retrieval audit.
+
+Tenant isolation.
+
+Sensitivity enforcement.
+
+Superseded document exclusion.
+
+Outdated document handling.
+
+Future provider interface registration.
+
+Do not break any existing tests.
+
+────────────────────────────────────────
+
+Completion Report
+
+Provide:
+
+Files added.
+
+Files modified.
+
+Knowledge orchestration architecture.
+
+Retrieval order implemented.
+
+Hybrid ranking algorithm.
+
+Citation model.
+
+Retrieval audit model.
+
+Conflict detection.
+
+Provider interfaces created.
+
+Tests added.
+
+Final passing test count.
+
+Known limitations.
+
+Confirm:
+
+Task #18 has NOT started.
+
+Sprint 21 has NOT started.
+
+OCR has NOT started.
+
+Desktop retrieval has NOT started.
+
+Cloud retrieval has NOT started.
+
+Only provider interfaces were created.

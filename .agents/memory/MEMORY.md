@@ -25,3 +25,4 @@
 - [NeedsOps Task #16 Ingestion Pipeline](needsops-sprint16-ingestion-pipeline.md) — pgVector custom Drizzle type, GCS buffer download pattern, no-daemon queue worker, injection check detection-only, embedding sensitivity gate, REQUIRED_RLS_TABLES=60, 1649 tests
 - [NeedsOps Task #19 Knowledge Queue Worker](needsops-sprint19-queue-worker.md) — in-process worker, 2 new statuses (dead_lettered/cancelling), 6 new DB columns, auto-enqueue on complete-upload, IIngestionQueue interface, 1606 tests
 - [NeedsOps v1 Router double-prefix bug](needsops-route-double-v1.md) — routers at router.use("/", sub) must NOT prefix routes with /v1/; inline requireOwnerOrAdmin pattern; frontend always calls /v1/...
+- [NeedsOps Task #17 Knowledge Orchestration Engine](needsops-task17-knowledge-orchestration.md) — provider conditional skips (P1/P2 skip on null taskId/entityIds), mockReset not clearAllMocks, _resetProviderRegistry pattern, 1856 tests

@@ -88,6 +88,27 @@ export interface SpecialistOrganisationContext {
   injectedMemoryIds?: string[];
   /** Approximate tokens consumed by this context block */
   tokenBudgetUsed?: number;
+
+  /**
+   * Retrieved knowledge documents from the Knowledge Orchestration Engine (Task #17).
+   * Populated by knowledgeOrchestrationEngine.orchestrateKnowledge().
+   * Includes chunks from P1 task uploads, P2 entity, P4 specialist, P5 org library.
+   * P3 org memory is carried in approvedMemory above.
+   */
+  retrievedKnowledge?: {
+    /** Pre-formatted prompt sections ready for injection */
+    sections: string[];
+    /** Number of retrieved chunks across all layers */
+    totalChunks: number;
+    /** Token count used by retrieved knowledge */
+    tokenBudgetUsed: number;
+    /** Citation IDs — for audit linkage */
+    citationIds: string[];
+    /** Conflict count — surface in response if > 0 */
+    conflictCount: number;
+    /** Retrieval audit event ID — for attribution */
+    auditEventId: string | null;
+  };
 }
 
 export interface AssembledRuntimeInstructions {
@@ -350,6 +371,14 @@ export function assembleRuntimeInstructions(
     if (organisationContext.injectedMemoryIds) {
       for (const id of organisationContext.injectedMemoryIds) {
         if (!injectedMemoryIds.includes(id)) injectedMemoryIds.push(id);
+      }
+    }
+
+    // ── 12b. Retrieved knowledge documents (Task #17) ─────────────────────
+    const rk = organisationContext.retrievedKnowledge;
+    if (rk && rk.sections.length > 0) {
+      for (const section of rk.sections) {
+        orgSections.push(section);
       }
     }
   }

@@ -1,27 +1,24 @@
 /**
- * retrieval_audit_events — Task #15 (Knowledge Schema, Scopes & Secure Upload)
+ * retrieval_audit_events — Task #15 (schema) + Task #17 (implementation)
  *
- * PLACEHOLDER TABLE — Task #17 populates this; Task #15 only defines the schema.
+ * Full audit trail for runtime knowledge retrieval events.
  *
- * Audit trail for runtime knowledge retrieval events.
  * Records which Organisation Library sources and chunks were retrieved
- * for each specialist execution — enabling citation, transparency, and
- * retrieval quality monitoring.
+ * for each specialist execution — enabling citation, transparency,
+ * conflict detection, and retrieval quality monitoring.
  *
  * CITATION SUPPORT:
  *   sourceIds and chunkIds provide the citation chain from a specialist's
  *   response back to specific Organisation Library documents and their
- *   exact version. The future Completed Work module uses these for attribution.
+ *   exact version.
  *
- * LIVE EVENTS:
- *   Task #17 (Hybrid Retrieval) will begin writing rows here.
- *   Task #15 defines the schema only — no live events are written yet
- *   unless the existing Task #14 audit path can safely reuse it
- *   (it cannot — different semantics).
+ * PRIVACY CONSTRAINT:
+ *   NEVER log document contents — only IDs, scores, and metadata.
  *
  * Tenant isolation enforced by RLS on organization_id.
  */
 import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { organizationsTable } from "./organizations.js";
 
 export const retrievalAuditEventsTable = pgTable("retrieval_audit_events", {
@@ -35,39 +32,80 @@ export const retrievalAuditEventsTable = pgTable("retrieval_audit_events", {
   specialistId: text("specialist_id").notNull(),
 
   /**
-   * Execution ID from the execution engine (lib/agent-runtime).
+   * Execution ID from the execution engine.
    * NULL for test/ad-hoc retrieval calls.
    */
   executionId: text("execution_id"),
 
   /**
-   * knowledge_sources.id values retrieved in this event.
-   * JSON array of text IDs for citation and attribution.
+   * Entity the retrieval was scoped to (P2 — Entity Knowledge).
+   * e.g. participant ID, client ID, project ID.
    */
-  sourceIds: jsonb("source_ids").notNull().default([]),
+  entityId: text("entity_id"),
 
   /**
-   * knowledge_chunks.id values retrieved in this event.
+   * knowledge_sources.id values retrieved (P5 — Organisation Library).
+   * JSON array of text IDs.
+   */
+  sourceIds: jsonb("source_ids").notNull().default(sql`'[]'::jsonb`),
+
+  /**
+   * knowledge_chunks.id values retrieved.
    * JSON array of text IDs for precise chunk-level citation.
    */
-  chunkIds: jsonb("chunk_ids").notNull().default([]),
+  chunkIds: jsonb("chunk_ids").notNull().default(sql`'[]'::jsonb`),
 
   /**
-   * Retrieval method used by the pipeline.
-   * lexical | semantic | hybrid | exact_match
-   * NULL until Task #17 populates live events.
+   * organisation_memory.id values retrieved (P3 — Org Memory).
+   * JSON array of text IDs.
+   */
+  memoryIds: jsonb("memory_ids").notNull().default(sql`'[]'::jsonb`),
+
+  /**
+   * Task-scoped source IDs retrieved (P1 — Task Uploads).
+   * JSON array of text IDs.
+   */
+  taskUploadIds: jsonb("task_upload_ids").notNull().default(sql`'[]'::jsonb`),
+
+  /**
+   * Retrieval method used: lexical | semantic | hybrid | exact_match
    */
   retrievalMethod: text("retrieval_method"),
 
   /**
-   * Retrieval scoring metadata from the pipeline.
-   * e.g. { topScore: 0.92, meanScore: 0.81, chunkScores: [...] }
-   * NULL until Task #17 populates live events.
+   * Retrieval scoring summary:
+   * { topScore, meanScore, semanticScore, lexicalScore, chunkScores: [{id, score}] }
+   * Never includes raw text content.
    */
-  scoreMetadata: jsonb("score_metadata").notNull().default({}),
+  scoreMetadata: jsonb("score_metadata").notNull().default(sql`'{}'::jsonb`),
+
+  /**
+   * Per-chunk ranking details (id, finalScore, semanticScore, lexicalScore,
+   * authorityBonus, freshnessBonus, priorityLayer, reasonSelected).
+   * Never includes raw text.
+   */
+  rankingDetails: jsonb("ranking_details").notNull().default(sql`'[]'::jsonb`),
+
+  /**
+   * Map of chunkId/memoryId → reason this item was selected.
+   * e.g. { "chunk-1": "highest_authority", "mem-1": "pinned_decision" }
+   */
+  reasonSelected: jsonb("reason_selected").notNull().default(sql`'{}'::jsonb`),
+
+  /**
+   * Map of sourceId → reason this source was rejected.
+   * e.g. { "src-1": "sensitivity_blocked", "src-2": "superseded" }
+   */
+  reasonRejected: jsonb("reason_rejected").notNull().default(sql`'{}'::jsonb`),
+
+  /** Number of conflicts detected during retrieval */
+  conflictCount: integer("conflict_count").notNull().default(0),
 
   /** Total token count of the retrieved context window */
   tokenCount: integer("token_count"),
+
+  /** Total retrieval duration in milliseconds */
+  retrievalDurationMs: integer("retrieval_duration_ms"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -32,9 +32,9 @@ interface KnowledgeSource {
 interface UploadUrlResponse {
   uploadUrl: string;
   sourceId: string;
-  versionId: string;
   storageKey: string;
-  expiresAt: string;
+  storageProvider: string;
+  expiresInSeconds: number;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -49,6 +49,20 @@ const STATUS_STYLES: Record<SourceStatus, { badge: string; label: string }> = {
 };
 
 const ACCEPTED_TYPES = ".pdf,.docx,.doc,.txt,.md";
+
+async function computeFileChecksum(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function inferSourceType(mimeType: string): string {
+  if (mimeType.includes("pdf")) return "policy";
+  if (mimeType.includes("word") || mimeType.includes("officedocument")) return "document";
+  if (mimeType.includes("markdown") || mimeType.includes("text")) return "text";
+  return "document";
+}
 
 function mimeIcon(mimeType?: string): string {
   if (!mimeType) return "📎";
@@ -138,40 +152,71 @@ export default function OrgLibraryPage() {
     setUploadError(null);
 
     try {
-      // Step 1 — request upload URL
+      const mimeType         = selectedFile.type || "application/octet-stream";
+      const fileSize         = selectedFile.size;
+      const originalFileName = selectedFile.name;
+
+      // Compute SHA-256 checksum for duplicate detection
+      const checksum = await computeFileChecksum(selectedFile);
+
+      // Step 1 — request a signed upload URL
       const reqRes = await authFetch(
         `/v1/organisations/${slug}/knowledge/sources/request-upload`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name:        uploadForm.name.trim(),
-            description: uploadForm.description.trim() || undefined,
-            mimeType:    selectedFile.type || "application/octet-stream",
-            fileSizeBytes: selectedFile.size,
+            originalFileName,
+            mimeType,
+            fileSize,
+            checksum,
+            sourceScope: "library",
           }),
         },
       );
       if (!reqRes.ok) {
         const errBody = await reqRes.json().catch(() => ({}));
+        // Duplicate detection: surface friendly message
+        if (errBody?.error?.code === "DUPLICATE_CHECKSUM") {
+          throw new Error("This file has already been uploaded to your library.");
+        }
         throw new Error(errBody?.error?.message ?? errBody?.error ?? "Upload request failed");
       }
-      const { uploadUrl, sourceId }: UploadUrlResponse = await reqRes.json();
+      const { uploadUrl, sourceId, storageKey, storageProvider }: UploadUrlResponse =
+        await reqRes.json();
 
-      // Step 2 — upload file directly to signed URL
+      // Step 2 — PUT file bytes directly to signed URL (no auth header)
       const putRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": selectedFile.type || "application/octet-stream" },
+        headers: { "Content-Type": mimeType },
         body: selectedFile,
       });
       if (!putRes.ok) throw new Error("File upload to storage failed");
 
-      // Step 3 — confirm upload
+      // Step 3 — confirm upload with all metadata the API needs
       const completeRes = await authFetch(
         `/v1/organisations/${slug}/knowledge/sources/${sourceId}/complete-upload`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title:           uploadForm.name.trim(),
+            description:     uploadForm.description.trim() || undefined,
+            sourceType:      inferSourceType(mimeType),
+            storageKey,
+            storageProvider,
+            originalFileName,
+            mimeType,
+            fileSize,
+            checksum,
+            sourceScope:     "library",
+          }),
+        },
       );
-      if (!completeRes.ok) throw new Error("Failed to confirm upload");
+      if (!completeRes.ok) {
+        const errBody = await completeRes.json().catch(() => ({}));
+        throw new Error(errBody?.error?.message ?? errBody?.error ?? "Failed to confirm upload");
+      }
 
       queryClient.invalidateQueries({ queryKey: ["library-sources", slug] });
       setShowUpload(false);

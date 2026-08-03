@@ -39,6 +39,11 @@ import {
 } from "@workspace/db";
 import { eq, and, or, isNull, desc, asc } from "drizzle-orm";
 import { estimateTokens } from "./contextSelectionService.js";
+import {
+  orchestrateKnowledge,
+  formatKnowledgeContextSections,
+} from "./knowledgeOrchestrationEngine.js";
+import type { SensitivityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +94,19 @@ export interface SpecialistContextPackage {
   injectedMemoryIds: string[];
   /** Approximate token count consumed by this context package */
   tokenBudgetUsed: number;
+  /**
+   * Retrieved knowledge context from the Knowledge Orchestration Engine (Task #17).
+   * Includes pre-formatted sections for the assembler plus audit metadata.
+   * null when knowledge retrieval is disabled or no query is provided.
+   */
+  retrievedKnowledge?: {
+    sections: string[];
+    totalChunks: number;
+    tokenBudgetUsed: number;
+    citationIds: string[];
+    conflictCount: number;
+    auditEventId: string | null;
+  } | null;
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -104,16 +122,44 @@ const MAX_MEMORY_RECORDS = 40;
 
 // ─── Main loader ──────────────────────────────────────────────────────────────
 
+export interface KnowledgeRetrievalOptions {
+  /** Natural language query to drive retrieval (typically the task description) */
+  query: string;
+  /** Pre-computed embedding vector for semantic search. null = lexical-only */
+  queryEmbedding?: number[] | null;
+  /** Task ID for P1 current-task document retrieval */
+  taskId?: string | null;
+  /** Entity IDs for P2 entity knowledge retrieval */
+  entityIds?: string[];
+  /** Execution ID written to the retrieval audit event */
+  executionId?: string | null;
+  /** Total token budget for knowledge chunks. Default: KNOWLEDGE_TOKEN_BUDGET env */
+  knowledgeTokenBudget?: number;
+  /** Sensitivity levels this call may access */
+  allowedSensitivity?: SensitivityLevel[];
+  /**
+   * Write a retrieval_audit_events row. Default true.
+   * Set false in tests to avoid DB side effects.
+   */
+  writeAudit?: boolean;
+}
+
 /**
  * Load the full runtime context package for a specialist within an organisation.
  *
- * Safe to call concurrently — reads only, no writes.
+ * Optionally runs the Knowledge Orchestration Engine (Task #17) when
+ * `knowledgeOptions` is provided. Knowledge retrieval is opt-in to preserve
+ * backward compatibility — callers without a query receive the original
+ * memory-only context package.
+ *
+ * Safe to call concurrently — reads only (unless writeAudit=true).
  * Degrades gracefully: if any sub-query fails the partial result is returned.
  */
 export async function loadSpecialistContext(
   organizationId: string,
   specialistId: string,
   tokenBudget: number = DEFAULT_CONTEXT_TOKEN_BUDGET,
+  knowledgeOptions?: KnowledgeRetrievalOptions,
 ): Promise<SpecialistContextPackage> {
   const [specialistConfig, languageProfile, candidateMemory] = await Promise.all([
     loadSpecialistConfig(organizationId, specialistId),
@@ -127,12 +173,54 @@ export async function loadSpecialistContext(
     tokenBudget,
   );
 
+  // ── Knowledge Orchestration (Task #17) ─────────────────────────────────────
+  let retrievedKnowledge: SpecialistContextPackage["retrievedKnowledge"] = null;
+
+  if (knowledgeOptions?.query) {
+    try {
+      const kCtx = await orchestrateKnowledge({
+        organisationId:      organizationId,
+        specialistId,
+        query:               knowledgeOptions.query,
+        queryEmbedding:      knowledgeOptions.queryEmbedding ?? null,
+        taskId:              knowledgeOptions.taskId ?? null,
+        entityIds:           knowledgeOptions.entityIds ?? [],
+        executionId:         knowledgeOptions.executionId ?? null,
+        tokenBudget:         knowledgeOptions.knowledgeTokenBudget,
+        allowedSensitivity:  knowledgeOptions.allowedSensitivity,
+        writeAudit:          knowledgeOptions.writeAudit ?? true,
+      });
+
+      const sections    = formatKnowledgeContextSections(kCtx);
+      const allItems    = [
+        ...kCtx.taskUploadItems,
+        ...kCtx.entityItems,
+        ...kCtx.specialistItems,
+        ...kCtx.libraryItems,
+      ];
+      const citationIds = kCtx.citations.map(c => c.citationId);
+
+      retrievedKnowledge = {
+        sections,
+        totalChunks:      allItems.length,
+        tokenBudgetUsed:  kCtx.tokenBudgetUsed,
+        citationIds,
+        conflictCount:    kCtx.conflicts.length,
+        auditEventId:     kCtx.auditEventId,
+      };
+    } catch {
+      // Knowledge retrieval failure MUST NOT block execution
+      retrievedKnowledge = null;
+    }
+  }
+
   return {
     specialistConfig,
     languageProfile,
     approvedMemory,
     injectedMemoryIds: approvedMemory.map(m => m.id),
     tokenBudgetUsed,
+    retrievedKnowledge,
   };
 }
 
