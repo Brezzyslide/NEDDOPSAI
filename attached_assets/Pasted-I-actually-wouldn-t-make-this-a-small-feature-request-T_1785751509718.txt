@@ -1,0 +1,287 @@
+I actually wouldn’t make this a small feature request. This is significant enough to become its own sprint because it changes how specialists perform work, not just what they know.
+
+I’d position it as:
+
+Sprint 22 – Professional Work Engine & Task Blueprints
+
+Paste the following into Replit.
+
+⸻
+
+Proceed in Build mode and implement Sprint 22 only.
+Do not begin OCR, cloud connectors, desktop retrieval, AWS deployment or external integrations.
+Objective
+Transform the AI Workforce from an information retrieval platform into a Professional Work Execution platform.
+The AI should no longer simply answer questions.
+It should execute professional business tasks using organisational knowledge, approved templates, organisational policies, customer documents, specialist reasoning and governed approval workflows.
+Every completed task should produce work that is suitable for human review, approval and downstream business use.
+────────────────────────────────────────
+PART 1 — TASK BLUEPRINT ENGINE
+Introduce a new core concept:
+Task Blueprints.
+A Task Blueprint defines exactly how a specialist performs a piece of professional work.
+Each blueprint contains:
+• specialist owner
+• task category
+• objective
+• required organisational knowledge
+• mandatory policies
+• mandatory templates
+• required uploaded documents
+• optional supporting documents
+• organisational memory requirements
+• legislation references
+• expected output type
+• quality checklist
+• approval workflow
+• completed work destination
+Task Blueprints become the execution contract for all professional work.
+────────────────────────────────────────
+PART 2 — ORGANISATIONAL ASSET TYPES
+Extend the Organisation Library.
+Documents should no longer all be treated equally.
+Support distinct asset categories:
+• Policies
+• Procedures
+• Templates
+• Forms
+• Care Plans
+• Behaviour Support Plans
+• Risk Assessments
+• Incident Reports
+• Communication Guides
+• Style Guides
+• Training Material
+• Approved Examples
+• Legislation
+• Standards
+• Spreadsheets
+• Task Uploads
+• Reference Material
+Each asset type should have its own retrieval behaviour.
+Example:
+Policies provide rules.
+Templates provide structure.
+Approved Examples teach writing style.
+Spreadsheets provide data.
+Task Uploads exist only for the current task unless promoted into the Organisation Library.
+────────────────────────────────────────
+PART 3 — PROFESSIONAL WORK PACKAGE
+Before any specialist begins work, assemble a Work Package.
+A Work Package should contain:
+Current task
+Organisation Memory
+Relevant organisational policies
+Required templates
+Required forms
+Relevant client documents
+Relevant uploaded files
+Relevant care plans
+Relevant BSPs
+Relevant spreadsheets
+Organisation terminology
+Writing style
+Relevant legislation
+Previous approved examples
+Specialist configuration
+Approval requirements
+Knowledge confidence
+Missing information
+The specialist should never execute using only a user prompt.
+────────────────────────────────────────
+PART 4 — TEMPLATE-DRIVEN GENERATION
+Templates become first-class assets.
+The AI should recognise templates separately from reference documents.
+When producing work:
+Never invent a structure if an approved organisational template exists.
+Instead:
+Load template
+Populate sections
+Apply organisational writing style
+Insert evidence
+Complete mandatory fields
+Mark incomplete sections if required information is unavailable.
+Support templates for:
+Risk Assessments
+Incident Reports
+Investigation Reports
+Behaviour Support Plans
+Care Plans
+Meeting Minutes
+Letters
+Policies
+Procedures
+Operational Checklists
+Action Plans
+Business Cases
+Executive Reports
+Add support for future template types.
+────────────────────────────────────────
+PART 5 — APPROVED EXAMPLES
+Create a new asset type:
+Approved Example.
+Approved Examples should never be copied.
+Instead they teach:
+Writing style
+Level of detail
+Preferred terminology
+Formatting
+Section ordering
+Professional tone
+Examples should influence generation but never be reproduced.
+────────────────────────────────────────
+PART 6 — TASK CONTEXT
+Allow users to upload documents directly into a conversation.
+These become Task Uploads.
+Task Uploads are isolated from the Organisation Library.
+Task Uploads:
+may be retrieved
+may influence execution
+may be cited
+must never permanently train specialists
+Provide an option:
+Promote to Organisation Library
+This follows the existing approval workflow.
+────────────────────────────────────────
+PART 7 — WORK VALIDATION
+Before generating output, validate:
+Required template present
+Required policies retrieved
+Required documents available
+Mandatory organisational guidance included
+Required legislation considered
+No conflicting policies
+No superseded template
+Missing information identified
+If validation fails:
+Ask for missing information
+Retrieve additional documents
+Recommend human review
+Do not silently continue.
+────────────────────────────────────────
+PART 8 — SELF REVIEW
+After generation the specialist performs an internal review.
+Review against:
+Blueprint requirements
+Template completeness
+Policy compliance
+Writing style
+Organisation terminology
+Missing evidence
+Internal consistency
+Risk of hallucination
+Return a quality score.
+If quality is below threshold:
+Revise once automatically.
+Otherwise return draft.
+────────────────────────────────────────
+PART 9 — COMPLETED WORK
+All professional outputs should automatically become Completed Work items.
+Each item stores:
+Task
+Specialist
+Blueprint
+Organisation
+Supporting assets used
+Memory references
+Policy references
+Template version
+Review outcome
+Approval status
+Version history
+Download formats
+Audit trail
+Support:
+Draft
+Awaiting Approval
+Approved
+Rejected
+Archived
+Superseded
+────────────────────────────────────────
+PART 10 — BLUEPRINT LIBRARY
+Provide built-in Task Blueprints including:
+Incident Investigation
+Risk Assessment
+Behaviour Support Plan
+Care Plan
+Meeting Minutes
+Operational Procedure
+Policy Draft
+Executive Brief
+Investigation Report
+Performance Review
+Project Plan
+Action Plan
+Customer Response
+Business Proposal
+Allow organisations to create custom Task Blueprints.
+────────────────────────────────────────
+PART 11 — EXECUTION PIPELINE
+Professional execution becomes:
+User Request
+↓
+Chief of Staff
+↓
+Select Blueprint
+↓
+Build Work Package
+↓
+Knowledge Retrieval
+↓
+Retrieval Validation
+↓
+Load Template
+↓
+Load Policies
+↓
+Load Examples
+↓
+Generate Draft
+↓
+Self Review
+↓
+Completed Work
+↓
+Approval Workflow
+↓
+Final Output
+────────────────────────────────────────
+PART 12 — TESTING
+Add comprehensive tests for:
+Blueprint selection
+Template retrieval
+Template population
+Task uploads
+Organisation Library retrieval
+Approved examples
+Validation failures
+Missing documents
+Policy enforcement
+Completed Work creation
+Quality review
+Audit
+Tenant isolation
+Do not break existing tests.
+Run the complete test suite.
+────────────────────────────────────────
+PART 13 — COMPLETION REPORT
+Provide:
+Architecture overview
+Blueprint Engine
+Work Package architecture
+Template system
+Approved Example system
+Completed Work implementation
+API changes
+Database changes
+UI changes
+Services added
+Tests added
+Total passing tests
+Known future enhancements
+Confirm OCR, cloud connectors, desktop retrieval and AWS deployment remain out of scope.
+
+⸻
+
+I believe this will become one of the defining capabilities of NeedsOps. Most AI products stop at “answering questions.” This sprint changes the model entirely: every specialist becomes capable of executing professional work using the organisation’s own methods, templates, and standards, producing outputs that are consistent, reviewable, and ready for real business use. That’s a much stronger value proposition than generic AI assistance.
