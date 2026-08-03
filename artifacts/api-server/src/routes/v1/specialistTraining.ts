@@ -1,7 +1,11 @@
 /**
- * Specialist Training routes — Task #15
+ * Knowledge Hub — Specialist Training API (internal module name)
+ * Customer-facing wording: "Train this specialist", "Add knowledge",
+ *   "Choose Organisation Library sources", "Review what this specialist can use"
  *
- * Per-specialist training readiness state machine.
+ * These routes manage the per-specialist Knowledge Hub integration readiness
+ * state machine — tracking whether each specialist has been configured with
+ * Organisation Library sources, tested, and approved for live use.
  *
  * Routes:
  *   GET    /v1/organisations/:slug/knowledge/training

@@ -47,6 +47,21 @@ An enterprise AI Operations Platform that enables organisations to build, manage
 - **Shared constants in `@workspace/shared`**: enums and labels defined once, imported by both API and frontend
 - **Worker/connector are real shells**: each is a complete runnable Node.js process with graceful shutdown and logging — not stubs
 
+## Knowledge naming convention
+
+| Context | Name |
+|---|---|
+| Customer-facing UI | **Organisation Library** |
+| Internal platform / module | **Knowledge Hub** |
+| Database tables | `knowledge_*` (unchanged) |
+| API paths | `/knowledge/sources`, `/knowledge/training` (unchanged) |
+
+**Organisation Library** is shown to customers everywhere — in navigation, upload dialogs, permissions panels, and citations in Completed Work. Never expose internal terms (RAG, embeddings, chunks, vector store, knowledge_sources) in the UI.
+
+**Knowledge Hub** is used in developer documentation, service descriptions, architecture diagrams, module headings, and future feature names. It is the umbrella for all source types: uploaded documents, policies, procedures, care plans, Behaviour Support Plans, approved examples, task uploads, connected cloud storage, approved local files, web sources, and future SaaS connectors.
+
+Task-scoped uploads are **never** automatically promoted to the Organisation Library. Customer wording: "Use for this task only" vs "Save to Organisation Library".
+
 ## Product
 
 NeedsOps AI+ is the operational brain of an organisation. It coordinates specialist AI employees — Compliance Officers, HR Managers, Finance Officers, and more — behind a single secure Command Centre. Built first for Australian NDIS providers, expanding to all regulated industries.

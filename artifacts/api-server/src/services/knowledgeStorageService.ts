@@ -1,7 +1,10 @@
 /**
- * Knowledge Storage Service — Task #15
+ * Knowledge Hub — Storage Service (internal module name)
+ * Customer-facing product name: Organisation Library
  *
- * Secure upload foundation for the Organisation Library.
+ * Secure upload foundation for the Organisation Library. Handles presigned
+ * URL generation, checksum validation, duplicate detection, and tenant-scoped
+ * object storage for all source types supported by the Knowledge Hub.
  *
  * Implements a two-step presigned URL upload flow:
  *   1. requestUploadUrl — validates metadata, checks dedup, returns a
@@ -10,9 +13,9 @@
  *      the knowledge_source and knowledge_source_version DB records.
  *
  * S3-COMPATIBLE ADAPTER INTERFACE:
- *   A StorageAdapter interface is defined so the service can swap between
- *   GCS (current), S3 (future), or local (dev/test) without business logic
- *   changes. Pass a custom adapter to override the default GCS adapter.
+ *   A StorageAdapter interface is defined so the Knowledge Hub can swap between
+ *   GCS (current), S3, desktop connector, or local (dev/test) without
+ *   business logic changes. Pass a custom adapter to override the default.
  *
  * SECURITY RULES:
  *   - Authenticated user required (enforced by caller / middleware)
@@ -25,6 +28,8 @@
  *   - Storage key is system-generated (safe filename), never user-supplied
  *   - All objects stored in private tenant-scoped paths — never public
  *   - No executable file types
+ *   - Task-scoped uploads stored under orgs/{orgId}/tasks/{taskId}/ — never
+ *     promoted to the Organisation Library automatically
  */
 
 import { randomUUID, createHash } from "crypto";

@@ -1,0 +1,138 @@
+Paste this into Replit:
+
+```text
+Apply the agreed naming standard for the NeedsOps organisational knowledge system.
+
+Do not redesign the database or change the core schema unless a name is genuinely misleading.
+
+Use this naming convention consistently:
+
+Customer-facing name:
+Organisation Library
+
+Internal product/module name:
+Knowledge Hub
+
+Database/table names:
+Keep the existing names, including:
+- knowledge_sources
+- knowledge_source_scopes
+- knowledge_source_versions
+- knowledge_chunks
+- retrieval_audit_events
+- specialist_training_status
+
+The reason is simple:
+
+“Organisation Library” is clear and familiar for customers.
+
+“Knowledge Hub” is broad enough internally to include:
+- uploaded documents
+- policies
+- procedures
+- care plans
+- Behaviour Support Plans
+- approved examples
+- task uploads
+- connected cloud storage
+- approved local files
+- web sources
+- future SaaS connectors
+
+Do not rename the database tables merely for branding.
+
+Update the following areas where appropriate:
+
+1. Customer-facing UI
+Use:
+- Organisation Library
+- Add to Organisation Library
+- Save to Organisation Library
+- Organisation Library sources
+- Organisation Library access
+- Organisation Library permissions
+
+Do not show:
+- RAG
+- vector store
+- embeddings
+- chunks
+- Knowledge Hub
+- knowledge_sources
+- retrieval pipeline
+
+2. Internal services and modules
+Use “Knowledge Hub” in:
+- service descriptions
+- internal documentation
+- architecture diagrams
+- developer comments
+- module headings
+- future feature names
+- implementation reports
+
+Do not force unnecessary file renames if they would create risk.
+
+3. API descriptions
+Keep existing API paths unless there is a strong reason to change them.
+
+For example, it is acceptable to keep:
+- /knowledge/sources
+- /knowledge/training
+
+But update API documentation to explain that these endpoints power the customer-facing Organisation Library and the internal Knowledge Hub.
+
+4. Task-scoped uploads
+Keep task uploads separate from the Organisation Library.
+
+Use customer wording such as:
+- Use for this task only
+- Save to Organisation Library
+- Do not save permanently
+
+Never automatically move a task upload into the Organisation Library.
+
+5. Completed Work
+Ensure future Completed Work records can reference Knowledge Hub sources, while the customer sees:
+- Sources from Organisation Library
+- Task uploads
+- Web sources
+- Approved local files
+
+6. Specialist training
+Use customer-facing wording such as:
+- Train this specialist
+- Add knowledge
+- Choose Organisation Library sources
+- Review what this specialist can use
+
+Internally, refer to this as Knowledge Hub integration.
+
+7. Documentation
+Add a short naming note to the architecture documentation:
+
+“Organisation Library” is the customer-facing name.
+“Knowledge Hub” is the internal platform/module name.
+Database tables retain the existing knowledge_* naming convention.
+
+8. Scope
+Do not change:
+- database contracts
+- existing migrations
+- RLS policies
+- API behaviour
+- test expectations
+
+Only update names where they improve clarity and do not create unnecessary technical risk.
+
+At completion, report:
+- files changed
+- customer-facing labels updated
+- internal documentation updated
+- API documentation updated
+- confirmation that database table names were preserved
+- confirmation that no migration was required
+- confirmation that task-scoped uploads remain separate from Organisation Library content
+
+Proceed now.
+```

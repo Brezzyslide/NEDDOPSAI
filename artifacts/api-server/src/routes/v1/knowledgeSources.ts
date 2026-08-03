@@ -1,7 +1,19 @@
 /**
- * Knowledge Sources routes — Task #15
+ * Knowledge Hub — Sources API (internal module name)
+ * Customer-facing product name: Organisation Library
  *
- * Organisation Library and task-scoped upload management.
+ * These routes power the Organisation Library — the customer-facing knowledge
+ * management surface — and the internal Knowledge Hub platform.
+ *
+ * API paths are intentionally generic (/knowledge/sources) so they can serve
+ * all current and future Knowledge Hub source types without path changes.
+ *
+ * Customer-facing UI wording (never expose internal terms like RAG, chunks,
+ * embeddings, or knowledge_sources to end users):
+ *   - "Organisation Library"
+ *   - "Add to Organisation Library" / "Save to Organisation Library"
+ *   - "Organisation Library sources" / "Organisation Library access"
+ *   - For task uploads: "Use for this task only" | "Save to Organisation Library"
  *
  * Routes:
  *   GET    /v1/organisations/:slug/knowledge/sources

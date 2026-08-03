@@ -1,7 +1,8 @@
 /**
- * Knowledge Source Service — Task #15
+ * Knowledge Hub — Source Service (internal module name)
+ * Customer-facing product name: Organisation Library
  *
- * Manages the Organisation Library lifecycle:
+ * Manages the full lifecycle of Organisation Library sources:
  *   - create (complete upload)
  *   - list / get
  *   - update metadata
@@ -13,6 +14,12 @@
  *   - reprocess placeholder (marks version for re-ingestion in Task #16)
  *   - list version history
  *
+ * NAMING:
+ *   "Organisation Library" is the customer-facing name shown in all UI.
+ *   "Knowledge Hub" is the internal platform/module name used in developer
+ *   documentation, architecture diagrams, and service descriptions.
+ *   Database tables retain the existing knowledge_* naming convention.
+ *
  * BACKWARDS COMPATIBILITY:
  *   - Does NOT touch organisation_memory, specialist_language_profiles,
  *     or any Task #14 specialist context service.
@@ -23,6 +30,7 @@
  *   - Only owner/admin may approve sources
  *   - Superseded versions remain queryable for audit
  *   - Deleted sources are soft-deleted (deletedAt set) — never hard-deleted
+ *   - Task-scoped uploads are NEVER automatically promoted to the Organisation Library
  */
 
 import { randomUUID } from "crypto";

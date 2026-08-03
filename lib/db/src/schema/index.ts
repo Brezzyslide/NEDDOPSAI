@@ -111,7 +111,9 @@ export * from "./specialistDnaCompetencies";
 export * from "./organisationSpecialistConfig";
 // Sprint Knowledge Bridge (Task #14) — Specialist Language Profiles
 export * from "./specialistLanguageProfiles";
-// Task #15 — Knowledge Schema, Scopes & Secure Upload (Organisation Library)
+// Task #15 — Knowledge Hub (internal) / Organisation Library (customer-facing)
+// Database tables retain the knowledge_* naming convention.
+// Never expose table names, chunk/embedding terms, or "Knowledge Hub" in UI.
 export * from "./knowledgeSources";
 export * from "./knowledgeSourceScopes";
 export * from "./knowledgeSourceVersions";

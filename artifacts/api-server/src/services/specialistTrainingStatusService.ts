@@ -1,7 +1,11 @@
 /**
- * Specialist Training Status Service — Task #15
+ * Knowledge Hub — Specialist Training Status Service (internal module name)
+ * Customer-facing wording: "Train this specialist", "Add knowledge",
+ *   "Choose Organisation Library sources", "Review what this specialist can use"
  *
- * Manages the per-specialist training readiness state machine.
+ * Manages the per-specialist Knowledge Hub integration readiness state machine.
+ * Tracks whether a specialist has been configured with the right Organisation
+ * Library sources, tested, and approved for live use.
  *
  * Rules:
  *   - One record per (organizationId, specialistId) — upserted on first access
