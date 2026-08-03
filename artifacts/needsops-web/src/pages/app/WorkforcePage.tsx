@@ -5,7 +5,7 @@
  */
 
 import { useState } from "react";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
@@ -49,6 +49,7 @@ function getStatusBadge(s: any): { label: string; cls: string } {
 
 export default function WorkforcePage() {
   const { slug } = useParams<{ slug: string }>();
+  const [, setLocation] = useLocation();
   const apiFetch = useAuthFetch();
   const [selectedPack, setSelectedPack] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -255,6 +256,15 @@ export default function WorkforcePage() {
                           <p className="text-[10px] text-amber-400/80">
                             ⚠ Requires {s.approvalRequirements.replace(/_/g, " ")}
                           </p>
+                        )}
+
+                        {/* Train button */}
+                        {!isDnaPending && (
+                          <button
+                            onClick={() => setLocation(`/app/${slug}/workforce/${s.code}/training`)}
+                            className="mt-1 w-full text-center text-[11px] font-medium px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#94A3B8] hover:border-[#00D4FF]/40 hover:text-[#00D4FF] transition-colors">
+                            Train this specialist →
+                          </button>
                         )}
                       </div>
                     );

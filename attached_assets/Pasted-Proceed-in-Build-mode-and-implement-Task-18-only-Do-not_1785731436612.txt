@@ -1,0 +1,560 @@
+Proceed in Build mode and implement Task #18 only.
+
+Do not start Sprint 21 Chief of Staff Knowledge Curation, Task #20 OCR, Completed Work, cloud connectors, desktop file retrieval, or public web search beyond using the interfaces already defined.
+
+Task #18 objective:
+
+Build the customer-facing Organisation Library and Specialist Training experience.
+
+The experience must let an organisation:
+
+- upload and manage knowledge
+- classify and approve sources
+- assign knowledge to the organisation, workforce, specialist, department, location, task type, or entity
+- define each specialist’s responsibilities and limits
+- define writing style and terminology
+- test a specialist against approved knowledge
+- review the sources used
+- approve the specialist as ready
+
+Customer-facing name:
+Organisation Library
+
+Internal module name:
+Knowledge Hub
+
+Do not expose internal terms such as:
+- RAG
+- embeddings
+- vectors
+- chunks
+- retrieval pipeline
+- pgvector
+- token budget
+- knowledge_sources
+
+────────────────────────────────────────
+1. INSPECT BEFORE MODIFYING
+────────────────────────────────────────
+
+Inspect:
+
+- OrgLibraryPage.tsx
+- current AI workforce pages
+- specialist configuration pages
+- Business Discovery
+- organisation routes
+- knowledge APIs
+- training status APIs
+- ingestion status APIs
+- retrieval test APIs
+- citation and warning models
+- current role and permission model
+- current design system and component patterns
+
+Produce a short implementation checklist, then proceed.
+
+────────────────────────────────────────
+2. ORGANISATION LIBRARY
+────────────────────────────────────────
+
+Build or complete the Organisation Library page.
+
+Suggested route:
+
+/app/:slug/library
+
+The page must support:
+
+- list sources
+- search
+- filter
+- upload
+- processing status
+- review required
+- approved
+- needs attention
+- failed
+- revoked
+- superseded
+- archived
+
+Show customer-friendly labels only.
+
+Source cards or rows should show:
+
+- title
+- category
+- file type
+- version
+- effective date
+- authority level
+- sensitivity
+- scopes
+- status
+- last updated
+- uploaded by
+- specialists using it
+
+Actions:
+
+- view
+- edit metadata
+- review
+- approve
+- reject
+- assign scope
+- replace version
+- supersede
+- revoke
+- archive
+- delete where allowed
+- retry processing
+- download where authorised
+
+────────────────────────────────────────
+3. UPLOAD EXPERIENCE
+────────────────────────────────────────
+
+Build a guided upload flow.
+
+Steps:
+
+1. Choose file
+2. Enter title
+3. Choose category
+4. Choose scope
+5. Choose authority level
+6. Choose sensitivity
+7. Enter version
+8. Enter effective date
+9. Confirm
+10. Upload and process
+
+Supported categories should include:
+
+- policy
+- procedure
+- playbook
+- style guide
+- approved example
+- template
+- legislation reference
+- manual note
+- care plan
+- Behaviour Support Plan
+- participant document
+- HR document
+- finance document
+- contract
+- risk assessment
+- compliance document
+- operational manual
+
+If backend enums do not yet include all customer categories, map them safely without breaking existing contracts.
+
+Do not infer business meaning solely from MIME type.
+
+A PDF is not automatically a policy.
+
+Task uploads must remain separate.
+
+Add customer choices:
+
+- Use for this task only
+- Save to Organisation Library
+
+Never save task uploads permanently without explicit consent.
+
+────────────────────────────────────────
+4. PROCESSING AND REVIEW
+────────────────────────────────────────
+
+Show processing stages in plain language:
+
+- Uploading
+- Reading document
+- Organising sections
+- Preparing knowledge
+- Ready for review
+- Approved
+- Needs attention
+- Failed
+
+For scanned PDFs:
+
+Show:
+
+“This document appears to be scanned and cannot yet be read automatically.”
+
+Do not show a generic failure.
+
+Review screen should show:
+
+- extracted sections
+- page references
+- headings
+- warnings
+- prompt-injection flags
+- detected language
+- document version
+- effective date
+- sensitivity
+- authority level
+- source scopes
+
+Allow authorised users to:
+
+- approve
+- reject
+- edit metadata
+- request reprocessing
+- replace version
+- mark superseded
+
+High-risk warnings must block one-click approval.
+
+────────────────────────────────────────
+5. SPECIALIST TRAINING
+────────────────────────────────────────
+
+Add:
+
+/app/:slug/ai-workforce/:specialistId/training
+
+Use tabs or clear sections:
+
+- Overview
+- Responsibilities
+- Language & Style
+- Knowledge
+- Test Specialist
+- Readiness
+
+Overview should show:
+
+- specialist name
+- current readiness
+- workforce pack
+- knowledge count
+- last tested date
+- warnings
+- retraining needed
+- approval status
+
+Responsibilities should support:
+
+- responsibilities
+- prohibited actions
+- approval-required actions
+- escalation conditions
+- escalation contacts
+- allowed systems
+- first-week goals
+
+Language & Style should support:
+
+- locale
+- spelling convention
+- tone
+- formality
+- preferred terms
+- prohibited terms
+- date format
+- time format
+- heading style
+- output structure
+- concise or detailed preference
+- approved examples
+
+Knowledge tab should show:
+
+- organisation-wide sources
+- specialist-specific sources
+- workforce sources
+- department sources
+- task-type sources
+- entity-scoped sources where relevant
+
+Allow:
+
+- add source
+- remove scope
+- view source
+- test retrieval
+- identify conflicts
+- see missing required knowledge
+
+────────────────────────────────────────
+6. INCIDENT MANAGEMENT REFERENCE FLOW
+────────────────────────────────────────
+
+Complete Incident Management as the first fully trained specialist.
+
+The training page must support:
+
+- incident policy
+- incident procedure
+- severity matrix
+- reporting template
+- escalation contacts
+- approved incident summaries
+- external reporting approval rules
+- prohibited actions
+- relevant care plans and BSPs where authorised
+
+Default safety rules:
+
+- may draft
+- may classify with evidence
+- may recommend escalation
+- may not submit externally
+- may not notify regulators without approval
+- may not alter production records without permission
+- must show uncertainty
+- must cite sources
+
+────────────────────────────────────────
+7. TEST THE SPECIALIST
+────────────────────────────────────────
+
+Build a test interface.
+
+Example prompts:
+
+- “How should a moderate-severity incident be escalated?”
+- “Draft an incident summary using our approved style.”
+- “Which approval is required before external reporting?”
+- “What changed between policy versions?”
+
+Show:
+
+- answer
+- sources used
+- highlighted passages
+- version
+- page or section
+- authority
+- confidence
+- warnings
+- conflicts
+- approval required
+
+Do not show raw vector scores to normal users.
+
+Use plain language such as:
+
+- Strong match
+- Supporting source
+- Current approved policy
+- Possible conflict
+- Outdated source
+- Human review recommended
+
+────────────────────────────────────────
+8. READINESS
+────────────────────────────────────────
+
+Do not mark a specialist ready simply because documents exist.
+
+Readiness checks should include:
+
+- responsibilities confirmed
+- language and style confirmed
+- required sources approved
+- no unresolved critical conflicts
+- retrieval test passed
+- sample task reviewed
+- owner/admin approval
+
+Final states:
+
+- Not started
+- Configuring
+- Processing knowledge
+- Review required
+- Testing
+- Ready
+- Needs attention
+- Suspended
+
+Show exactly what is blocking readiness.
+
+────────────────────────────────────────
+9. PERMISSIONS
+────────────────────────────────────────
+
+Roles:
+
+Owner/admin:
+- upload
+- approve
+- revoke
+- supersede
+- assign scopes
+- mark ready
+- suspend specialist
+
+Member:
+- view permitted sources
+- test specialist where allowed
+- upload task documents
+- request changes
+
+Viewer:
+- read-only access where permitted
+
+Sensitive sources such as care plans, BSPs, participant files, HR files, and legal files must respect stricter permissions.
+
+Do not rely only on frontend hiding. Enforce through APIs.
+
+────────────────────────────────────────
+10. WEB-FIRST EXPERIENCE
+────────────────────────────────────────
+
+Customers without the desktop app must still be able to:
+
+- upload documents
+- manage Organisation Library
+- train specialists
+- run test tasks
+- approve work
+- see citations
+- download allowed outputs later
+
+The desktop app must remain optional.
+
+Show desktop-only features as:
+
+“Available with NeedsOps Desktop”
+
+Do not block Organisation Library or specialist training behind installation.
+
+────────────────────────────────────────
+11. EMPTY STATES AND GUIDANCE
+────────────────────────────────────────
+
+Add useful empty states.
+
+Examples:
+
+Organisation Library empty:
+
+“Add your policies, procedures, templates and examples so your AI workforce can work the way your organisation works.”
+
+Specialist has no assigned knowledge:
+
+“This specialist is not yet trained on your organisation’s documents.”
+
+Processing:
+
+“NeedsOps is reading and organising this document.”
+
+Ready:
+
+“This specialist is ready to work using your approved knowledge.”
+
+Keep language simple and reassuring.
+
+────────────────────────────────────────
+12. AUDIT AND PROVENANCE
+────────────────────────────────────────
+
+Customer-visible activity should include:
+
+- uploaded
+- processing completed
+- approved
+- rejected
+- scope assigned
+- version replaced
+- superseded
+- revoked
+- specialist tested
+- readiness approved
+- readiness suspended
+
+Do not expose sensitive internal logs.
+
+Every displayed answer should preserve citations.
+
+────────────────────────────────────────
+13. TESTING
+────────────────────────────────────────
+
+Add tests for:
+
+Organisation Library:
+- list
+- search
+- filter
+- upload
+- duplicate upload
+- category selection
+- scope assignment
+- processing states
+- review
+- approve
+- reject
+- supersede
+- revoke
+- scanned PDF warning
+- permissions
+- tenant isolation
+
+Specialist Training:
+- responsibilities
+- language profile
+- knowledge assignment
+- specialist isolation
+- Incident Management reference setup
+- retrieval test
+- citation display
+- conflict warning
+- readiness blockers
+- readiness approval
+- suspension
+- owner/admin gates
+
+Web-first:
+- works without desktop registration
+- no desktop dependency for uploads or training
+- desktop-only actions clearly labelled
+
+Do not break existing tests.
+
+Run the full test suite.
+
+────────────────────────────────────────
+14. COMPLETION REPORT
+────────────────────────────────────────
+
+At completion provide:
+
+- routes added
+- pages added
+- components added
+- Organisation Library flow
+- upload flow
+- review flow
+- specialist training flow
+- Incident Management reference flow
+- readiness rules
+- permissions
+- scanned PDF handling
+- citation display
+- web-first confirmation
+- tests added
+- total test count
+- known limitations
+
+Confirm that:
+
+- Sprint 21 Knowledge Curation has not started
+- Task #20 OCR has not started
+- Completed Work has not started
+- desktop file retrieval has not started
+- cloud connectors have not started
+- web search has not started
+
+Begin Task #18 now.

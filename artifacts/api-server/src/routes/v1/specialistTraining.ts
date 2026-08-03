@@ -3,20 +3,23 @@
  * Customer-facing wording: "Train this specialist", "Add knowledge",
  *   "Choose Organisation Library sources", "Review what this specialist can use"
  *
- * These routes manage the per-specialist Knowledge Hub integration readiness
- * state machine — tracking whether each specialist has been configured with
- * Organisation Library sources, tested, and approved for live use.
- *
  * Routes:
  *   GET    /v1/organisations/:slug/knowledge/training
  *   GET    /v1/organisations/:slug/knowledge/training/:specialistId
  *   PATCH  /v1/organisations/:slug/knowledge/training/:specialistId
+ *   GET    /v1/organisations/:slug/knowledge/training/:specialistId/language-profile
+ *   PUT    /v1/organisations/:slug/knowledge/training/:specialistId/language-profile
+ *   GET    /v1/organisations/:slug/knowledge/training/:specialistId/config
+ *   PUT    /v1/organisations/:slug/knowledge/training/:specialistId/config
+ *   GET    /v1/organisations/:slug/knowledge/training/:specialistId/knowledge
+ *   POST   /v1/organisations/:slug/knowledge/training/:specialistId/test
  *
  * Permission model:
- *   - Any authenticated org member may view training status.
+ *   - Any authenticated org member may view training status, language profile, config, knowledge.
  *   - Transitioning to 'ready' or 'suspended' requires owner or admin.
- *   - All other flag updates require any authenticated member
- *     (pipeline automation uses member-level access).
+ *   - Writing language profile and config: any member.
+ *   - Running a test: any member.
+ *   - Approving to 'ready': owner or admin only.
  */
 
 import { Router } from "express";
@@ -28,9 +31,57 @@ import {
   updateTrainingFlags,
   TrainingStatusError,
 } from "../../services/specialistTrainingStatusService.js";
+import {
+  getOrCreateLanguageProfile,
+  upsertLanguageProfile,
+} from "../../services/specialistLanguageProfileService.js";
+import {
+  getOrCreateSpecialistConfig,
+  upsertSpecialistConfig,
+} from "../../services/specialistConfigService.js";
+import { orchestrateKnowledge } from "../../services/knowledgeOrchestrationEngine.js";
 import { TRAINING_STATUSES } from "@workspace/db";
+import { db } from "@workspace/db";
+import {
+  knowledgeSourcesTable,
+  knowledgeSourceScopesTable,
+} from "@workspace/db";
+import { eq, and, or, isNull, inArray } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function requireOwnerOrAdmin(req: any, res: any): boolean {
+  const role = req.tenantContext?.role;
+  if (role !== "owner" && role !== "admin") {
+    res.status(403).json({
+      error: { code: "INSUFFICIENT_ROLE", message: "Owner or admin role required." },
+    });
+    return false;
+  }
+  return true;
+}
+
+/** Map internal authority level to customer-friendly label */
+function friendlyAuthority(level: string): string {
+  const map: Record<string, string> = {
+    mandatory:       "Required reading",
+    authoritative:   "Authoritative source",
+    supporting:      "Supporting source",
+    example_only:    "Approved example",
+    reference_only:  "Reference only",
+  };
+  return map[level] ?? level;
+}
+
+/** Map retrieval score range to customer-friendly match label */
+function friendlyMatchLabel(score: number): string {
+  if (score >= 0.85) return "Strong match";
+  if (score >= 0.70) return "Good match";
+  if (score >= 0.55) return "Supporting source";
+  return "Possible match";
+}
 
 // ─── List all ─────────────────────────────────────────────────────────────────
 
@@ -59,8 +110,6 @@ router.get(
     try {
       const ctx = req.tenantContext!;
       const { specialistId } = req.params;
-
-      // getOrCreate so callers always get a record even for new specialists
       const status = await getOrCreateTrainingStatus(ctx.tenantId, specialistId);
       res.json({ trainingStatus: status });
     } catch (err) {
@@ -91,7 +140,6 @@ router.patch(
         sampleTaskPassed,
       } = req.body as Record<string, any>;
 
-      // If a status transition is requested, use the transition service
       if (newStatus !== undefined) {
         if (!TRAINING_STATUSES.includes(newStatus)) {
           res.status(400).json({
@@ -108,25 +156,19 @@ router.patch(
           specialistId,
           newStatus,
           actorUserId: user.id,
-          actorRole: role,
+          actorRole:   role,
           notes,
-          flags: {
-            configurationComplete,
-            knowledgeSourcesApproved,
-            retrievalTestPassed,
-            sampleTaskPassed,
-          },
+          flags: { configurationComplete, knowledgeSourcesApproved, retrievalTestPassed, sampleTaskPassed },
         });
 
         res.json({ trainingStatus: updated });
         return;
       }
 
-      // Otherwise update flags only (any member)
       const updated = await updateTrainingFlags({
         organizationId: ctx.tenantId,
         specialistId,
-        actorUserId: user.id,
+        actorUserId:          user.id,
         configurationComplete,
         knowledgeSourcesApproved,
         retrievalTestPassed,
@@ -141,6 +183,251 @@ router.patch(
         res.status(status).json({ error: { code: err.code, message: err.message } });
         return;
       }
+      next(err);
+    }
+  },
+);
+
+// ─── Language profile GET ─────────────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/knowledge/training/:specialistId/language-profile",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+      const profile = await getOrCreateLanguageProfile(ctx.tenantId, specialistId);
+      res.json({ languageProfile: profile });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── Language profile PUT ─────────────────────────────────────────────────────
+
+router.put(
+  "/organisations/:slug/knowledge/training/:specialistId/language-profile",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+      const body = req.body as Record<string, any>;
+
+      const profile = await upsertLanguageProfile({
+        organizationId:           ctx.tenantId,
+        specialistId,
+        locale:                   body.locale,
+        spellingConvention:       body.spellingConvention,
+        tone:                     body.tone,
+        formality:                body.formality,
+        preferredTerms:           body.preferredTerms,
+        prohibitedTerms:          body.prohibitedTerms,
+        dateFormat:               body.dateFormat,
+        timeFormat:               body.timeFormat,
+        headingPreferences:       body.headingPreferences,
+        sentenceLengthPreference: body.sentenceLengthPreference,
+        outputStructure:          body.outputStructure,
+        confirmProfile:           body.confirmProfile === true,
+      });
+
+      res.json({ languageProfile: profile });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── Config GET ───────────────────────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/knowledge/training/:specialistId/config",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+      const config = await getOrCreateSpecialistConfig(ctx.tenantId, specialistId);
+      res.json({ config });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── Config PUT ───────────────────────────────────────────────────────────────
+
+router.put(
+  "/organisations/:slug/knowledge/training/:specialistId/config",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+      const body = req.body as Record<string, any>;
+
+      const config = await upsertSpecialistConfig({
+        organizationId:       ctx.tenantId,
+        specialistId,
+        goals:                body.goals,
+        preferredStyle:       body.preferredStyle,
+        escalationContacts:   body.escalationContacts,
+        responsibilities:     body.responsibilities,
+        additionalContext:    body.additionalContext,
+        confirmConfiguration: body.confirmConfiguration === true,
+      });
+
+      res.json({ config });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── Specialist knowledge GET ─────────────────────────────────────────────────
+// Returns all approved library sources scoped to this specialist:
+// (scopeType=organisation) OR (scopeType=workforce) OR (scopeType=specialist, scopeId=specialistId)
+
+router.get(
+  "/organisations/:slug/knowledge/training/:specialistId/knowledge",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+
+      // Find all scope records that include this specialist
+      const scopes = await db
+        .select()
+        .from(knowledgeSourceScopesTable)
+        .where(
+          and(
+            eq(knowledgeSourceScopesTable.organizationId, ctx.tenantId),
+            or(
+              and(
+                eq(knowledgeSourceScopesTable.scopeType, "organisation"),
+                eq(knowledgeSourceScopesTable.scopeId, "all"),
+              ),
+              and(
+                eq(knowledgeSourceScopesTable.scopeType, "workforce"),
+                eq(knowledgeSourceScopesTable.scopeId, "all"),
+              ),
+              and(
+                eq(knowledgeSourceScopesTable.scopeType, "specialist"),
+                eq(knowledgeSourceScopesTable.scopeId, specialistId),
+              ),
+            ),
+          ),
+        );
+
+      if (scopes.length === 0) {
+        res.json({ sources: [], total: 0 });
+        return;
+      }
+
+      const sourceIds = [...new Set(scopes.map(s => s.knowledgeSourceId))];
+
+      const sources = await db
+        .select()
+        .from(knowledgeSourcesTable)
+        .where(
+          and(
+            eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
+            isNull(knowledgeSourcesTable.deletedAt),
+            inArray(knowledgeSourcesTable.id, sourceIds),
+          ),
+        );
+
+      // Attach scope type to each source
+      const sourcesWithScope = sources.map(s => ({
+        ...s,
+        scopes: scopes
+          .filter(sc => sc.knowledgeSourceId === s.id)
+          .map(sc => ({ scopeType: sc.scopeType, scopeId: sc.scopeId })),
+      }));
+
+      res.json({ sources: sourcesWithScope, total: sourcesWithScope.length });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── Retrieval test POST ──────────────────────────────────────────────────────
+// Tests what this specialist would retrieve for a given query.
+// Returns customer-friendly citations — no raw scores, vectors, or internal labels.
+
+router.post(
+  "/organisations/:slug/knowledge/training/:specialistId/test",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { specialistId } = req.params;
+      const { query } = req.body as { query?: string };
+
+      if (!query?.trim()) {
+        res.status(400).json({
+          error: { code: "MISSING_QUERY", message: "A test query is required." },
+        });
+        return;
+      }
+
+      const result = await orchestrateKnowledge({
+        organisationId: ctx.tenantId,
+        specialistId,
+        query:          query.trim(),
+        tokenBudget:    2000,
+        writeAudit:     false, // test mode — no audit write
+      });
+
+      // Format citations for the customer: no raw scores, no internal labels
+      const citations = result.items.map(item => ({
+        sourceId:    item.sourceId,
+        title:       item.title,
+        excerpt:     item.content.slice(0, 400),
+        section:     item.sectionTitle ?? null,
+        pageNumber:  item.pageNumber ?? null,
+        versionLabel: item.versionLabel ?? null,
+        authority:   friendlyAuthority(item.authorityLevel),
+        matchLabel:  friendlyMatchLabel(item.score),
+        isApproved:  item.authorityLevel !== "reference_only",
+        isCurrent:   item.isCurrent,
+        scopeType:   item.sourceScope,
+        warnings: [
+          ...(!item.isCurrent ? ["Outdated source — a newer version may be available"] : []),
+          ...(item.conflictIds?.length ? ["Possible conflict with another source"] : []),
+        ],
+      }));
+
+      // Conflict warnings (customer-friendly)
+      const conflicts = result.conflicts.map(c => ({
+        type:    c.conflictType === "overlapping_scope" ? "Overlapping scope" :
+                 c.conflictType === "contradictory_authority" ? "Contradictory authority levels" :
+                 "Possible conflict",
+        sources: c.involvedSourceIds,
+        warning: c.description,
+      }));
+
+      res.json({
+        query:            query.trim(),
+        retrievalMethod:  result.retrievalMethod === "hybrid"  ? "Full knowledge search" :
+                          result.retrievalMethod === "lexical" ? "Keyword search" : "Keyword search",
+        citations,
+        conflicts,
+        sourcesUsed:      citations.length,
+        warnings:         result.warnings,
+        testedAt:         new Date().toISOString(),
+      });
+    } catch (err) {
       next(err);
     }
   },

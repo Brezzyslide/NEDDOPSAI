@@ -43,6 +43,8 @@ import WorkforceChatPage from "@/pages/app/WorkforceChatPage";
 import ApprovalsPage from "@/pages/app/ApprovalsPage";
 import OrgMemoryPage from "@/pages/app/OrgMemoryPage";
 import OrgLibraryPage from "@/pages/app/OrgLibraryPage";
+import SourceDetailPage from "@/pages/app/SourceDetailPage";
+import SpecialistTrainingPage from "@/pages/app/SpecialistTrainingPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
 // Sprint 14 — Installer, Devices, Discovery
@@ -225,7 +227,9 @@ function AppRouter() {
             <Route path="/app/:slug/usage" component={UsagePage} />
             <Route path="/app/:slug/settings" component={OrgSettings} />
             <Route path="/app/:slug/audit" component={AuditPage} />
+            <Route path="/app/:slug/library/:sourceId" component={SourceDetailPage} />
             <Route path="/app/:slug/library" component={OrgLibraryPage} />
+            <Route path="/app/:slug/workforce/:specialistId/training" component={SpecialistTrainingPage} />
             <Route path="/app/:slug/memory" component={OrgMemoryPage} />
             {/* Sprint 14 — Installer, Devices, Discovery */}
             <Route path="/app/:slug/install" component={InstallPage} />
