@@ -17,8 +17,15 @@ export default function AppHome() {
   const orgs: OrgMembership[] = data?.organisations ?? [];
 
   useEffect(() => {
-    if (!isLoading && orgs.length === 1) setLocation(`/app/${orgs[0]!.slug}`);
-    if (!isLoading && orgs.length === 0) setLocation("/onboarding");
+    if (isLoading) return;
+    if (orgs.length === 1) {
+      const slug = orgs[0]!.slug;
+      // Guard: only navigate if we have a real slug, not undefined/null
+      if (slug && slug !== "undefined") {
+        setLocation(`/app/${slug}`);
+      }
+    }
+    if (orgs.length === 0) setLocation("/onboarding");
   }, [isLoading, orgs, setLocation]);
 
   if (isLoading || orgs.length <= 1) return (

@@ -162,11 +162,22 @@ function MessageBubble({
   );
 }
 
+// Treat JS undefined, empty string, or the literal string "undefined" as invalid
+function isValidSlug(s: string | undefined): s is string {
+  return !!s && s !== "undefined";
+}
+
 export default function WorkforceChatPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, setLocation] = useLocation();
   const { isSignedIn } = useAuth();
   const apiFetch = useAuthFetch();
+
+  // If the slug is missing or invalid (e.g. user navigated to /app/undefined/chat),
+  // bounce them back to org selection immediately.
+  useEffect(() => {
+    if (!isValidSlug(slug)) setLocation("/app-home");
+  }, [slug, setLocation]);
   const qc = useQueryClient();
 
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -182,7 +193,7 @@ export default function WorkforceChatPage() {
 
   // Create or reuse the general conversation — only after Clerk auth is ready
   useEffect(() => {
-    if (!slug || !isSignedIn) return;
+    if (!isValidSlug(slug) || !isSignedIn) return;
     apiFetch(`/v1/organisations/${slug}/conversations`, {
       method: "POST",
       body: JSON.stringify({ conversationType: "general_workforce", title: "Workforce Chat" }),
