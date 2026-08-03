@@ -64,10 +64,16 @@ interface CompletedWorkVersion {
 }
 
 interface CommentRow {
-  id:           string;
-  content:      string;
-  authorUserId: string;
-  createdAt:    string;
+  id:               string;
+  content:          string;
+  authorUserId:     string;
+  createdAt:        string;
+  // Sprint 25 Hardening — server-backed resolution lifecycle
+  status:           "open" | "resolved" | "reopened";
+  resolvedByUserId: string | null;
+  resolvedAt:       string | null;
+  reopenedByUserId: string | null;
+  reopenedAt:       string | null;
 }
 
 interface AssetRow {
@@ -537,15 +543,17 @@ function ExecutionTab({
 // ─── Versions Tab ─────────────────────────────────────────────────────────────
 
 function VersionsTab({
-  versions, workId, slug, onAddVersion,
+  versions, workId, slug, onAddVersion, onExport,
 }: {
   versions: CompletedWorkVersion[];
   workId: string;
   slug: string;
   onAddVersion: () => void;
+  onExport: (format: "md" | "pdf" | "docx") => Promise<void>;
 }) {
-  const [compareA, setCompareA] = useState<number | null>(null);
-  const [compareB, setCompareB] = useState<number | null>(null);
+  const [compareA,    setCompareA]    = useState<number | null>(null);
+  const [compareB,    setCompareB]    = useState<number | null>(null);
+  const [exporting,   setExporting]   = useState<"pdf" | "docx" | null>(null);
   const apiFetch = useAuthFetch();
 
   function downloadMd(v: CompletedWorkVersion) {
@@ -644,13 +652,21 @@ function VersionsTab({
                       disabled={!v.contentMarkdown}
                       className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 disabled:opacity-30"
                     >
-                      ↓ Markdown
+                      ↓ MD
                     </button>
-                    <button disabled className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#64748B]/40 cursor-not-allowed" title="Coming soon">
-                      ↓ PDF
+                    <button
+                      onClick={async () => { setExporting("pdf"); try { await onExport("pdf"); } finally { setExporting(null); } }}
+                      disabled={exporting === "pdf"}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 disabled:opacity-40"
+                    >
+                      {exporting === "pdf" ? "…" : "↓ PDF"}
                     </button>
-                    <button disabled className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#64748B]/40 cursor-not-allowed" title="Coming soon">
-                      ↓ DOCX
+                    <button
+                      onClick={async () => { setExporting("docx"); try { await onExport("docx"); } finally { setExporting(null); } }}
+                      disabled={exporting === "docx"}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 disabled:opacity-40"
+                    >
+                      {exporting === "docx" ? "…" : "↓ DOCX"}
                     </button>
                     {i > 0 && (
                       <button
@@ -687,12 +703,9 @@ function CommentsTab({
   slug: string;
   onAdded: () => void;
 }) {
-  const [draft, setDraft]   = useState("");
-  const [sending, setSend]  = useState(false);
-  const [resolved, setRes]  = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(`needsops-resolved-comments-${workId}`) ?? "[]")); }
-    catch { return new Set(); }
-  });
+  const [draft,      setDraft]   = useState("");
+  const [sending,    setSend]    = useState(false);
+  const [actingOn,   setActingOn]= useState<string | null>(null); // commentId being resolved/reopened
   const apiFetch = useAuthFetch();
   const qc       = useQueryClient();
 
@@ -700,24 +713,46 @@ function CommentsTab({
     if (!draft.trim() || sending) return;
     setSend(true);
     try {
-      await apiFetch(`/v1/organisations/${slug}/completed-work/${workId}/comment`, {
+      const resp = await apiFetch(`/v1/organisations/${slug}/completed-work/${workId}/comment`, {
         method: "POST", body: JSON.stringify({ content: draft.trim() }),
       });
+      if (!resp.ok) throw new Error("Failed to post comment");
       setDraft("");
       onAdded();
       qc.invalidateQueries({ queryKey: ["work-comments", workId] });
     } finally { setSend(false); }
   }
 
-  function toggleResolve(id: string) {
-    const next = new Set(resolved);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setRes(next);
-    localStorage.setItem(`needsops-resolved-comments-${workId}`, JSON.stringify([...next]));
+  async function handleResolve(commentId: string) {
+    if (actingOn) return;
+    setActingOn(commentId);
+    try {
+      const resp = await apiFetch(
+        `/v1/organisations/${slug}/completed-work/${workId}/comment/${commentId}/resolve`,
+        { method: "POST" },
+      );
+      if (!resp.ok) throw new Error("Failed to resolve comment");
+      qc.invalidateQueries({ queryKey: ["work-comments", workId] });
+      onAdded();
+    } finally { setActingOn(null); }
   }
 
-  const active   = comments.filter(c => !resolved.has(c.id));
-  const resolvedC= comments.filter(c => resolved.has(c.id));
+  async function handleReopen(commentId: string) {
+    if (actingOn) return;
+    setActingOn(commentId);
+    try {
+      const resp = await apiFetch(
+        `/v1/organisations/${slug}/completed-work/${workId}/comment/${commentId}/reopen`,
+        { method: "POST" },
+      );
+      if (!resp.ok) throw new Error("Failed to reopen comment");
+      qc.invalidateQueries({ queryKey: ["work-comments", workId] });
+      onAdded();
+    } finally { setActingOn(null); }
+  }
+
+  const active    = comments.filter(c => c.status === "open" || c.status === "reopened");
+  const resolvedC = comments.filter(c => c.status === "resolved");
 
   return (
     <div className="space-y-6">
@@ -762,15 +797,24 @@ function CommentsTab({
                         {c.authorUserId.slice(0, 2).toUpperCase()}
                       </div>
                       <span className="text-[#64748B] text-xs">{timeAgo(c.createdAt)}</span>
+                      {c.status === "reopened" && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-orange-900/30 text-orange-300">Reopened</span>
+                      )}
                     </div>
                     <button
-                      onClick={() => toggleResolve(c.id)}
-                      className="text-xs text-[#64748B] hover:text-emerald-400 shrink-0"
+                      onClick={() => handleResolve(c.id)}
+                      disabled={actingOn === c.id}
+                      className="text-xs text-[#64748B] hover:text-emerald-400 shrink-0 disabled:opacity-40"
                     >
-                      ✓ Resolve
+                      {actingOn === c.id ? "…" : "✓ Resolve"}
                     </button>
                   </div>
                   <p className="text-[#CBD5E1] text-sm leading-relaxed whitespace-pre-wrap">{c.content}</p>
+                  {c.resolvedAt && (
+                    <p className="text-[#64748B] text-xs mt-2">
+                      Resolved by {c.resolvedByUserId?.slice(0, 8)}… · {fmtDate(c.resolvedAt)}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -789,8 +833,19 @@ function CommentsTab({
                       <div className="flex items-center gap-2">
                         <span className="text-emerald-400 text-xs">✓</span>
                         <span className="text-[#64748B] text-xs">{timeAgo(c.createdAt)}</span>
+                        {c.resolvedAt && (
+                          <span className="text-[#64748B] text-xs">
+                            · resolved {fmtDate(c.resolvedAt)}
+                          </span>
+                        )}
                       </div>
-                      <button onClick={() => toggleResolve(c.id)} className="text-xs text-[#64748B] hover:text-[#E2E8F0]">Reopen</button>
+                      <button
+                        onClick={() => handleReopen(c.id)}
+                        disabled={actingOn === c.id}
+                        className="text-xs text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40"
+                      >
+                        {actingOn === c.id ? "…" : "Reopen"}
+                      </button>
                     </div>
                     <p className="text-[#64748B] text-sm line-through">{c.content}</p>
                   </div>
@@ -900,6 +955,35 @@ export default function CompletedWorkViewer() {
     URL.revokeObjectURL(url);
   }
 
+  const [exportingFmt, setExportingFmt] = useState<"pdf"|"docx"|null>(null);
+
+  async function downloadExport(format: "pdf" | "docx") {
+    if (exportingFmt || !work) return;
+    setExportingFmt(format);
+    try {
+      const resp = await apiFetch(
+        `/v1/organisations/${slug}/completed-work/${id}/export?format=${format}`,
+      );
+      if (!resp.ok) {
+        showToast(`Export failed — please try again`);
+        return;
+      }
+      const blob     = await resp.blob();
+      const url      = URL.createObjectURL(blob);
+      const filename = resp.headers.get("Content-Disposition")
+        ?.match(/filename="([^"]+)"/)?.[1]
+        ?? `${work.title.replace(/[^a-z0-9]/gi, "_")}.${format}`;
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported as ${format.toUpperCase()}`);
+    } catch {
+      showToast("Export failed — please try again");
+    } finally {
+      setExportingFmt(null);
+    }
+  }
+
   // ── Status-aware action bar ────────────────────────────────────────────────
 
   function ActionBar() {
@@ -930,11 +1014,25 @@ export default function CompletedWorkViewer() {
             ↩ Reopen
           </button>
         )}
-        {(status === "approved" || status === "draft") && currentContent && (
+        {(status === "approved" || status === "draft") && currentContent && (<>
           <button onClick={downloadMd} className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0]">
-            ↓ Download
+            ↓ MD
           </button>
-        )}
+          <button
+            onClick={() => downloadExport("pdf")}
+            disabled={exportingFmt === "pdf"}
+            className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40"
+          >
+            {exportingFmt === "pdf" ? "…" : "↓ PDF"}
+          </button>
+          <button
+            onClick={() => downloadExport("docx")}
+            disabled={exportingFmt === "docx"}
+            className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40"
+          >
+            {exportingFmt === "docx" ? "…" : "↓ DOCX"}
+          </button>
+        </>)}
         {status !== "archived" && (
           <button onClick={() => transition.mutate({ action: "archive" })} className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] ml-auto">
             Archive
@@ -1068,6 +1166,7 @@ export default function CompletedWorkViewer() {
                   workId={id!}
                   slug={slug!}
                   onAddVersion={() => { refetchVersions(); qc.invalidateQueries({ queryKey: ["completed-work", id] }); }}
+                  onExport={downloadExport}
                 />
               )}
               {tab === "comments"  && (

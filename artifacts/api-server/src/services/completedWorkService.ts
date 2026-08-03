@@ -471,6 +471,82 @@ export async function getComments(id: string, organizationId: string) {
     .orderBy(desc(completedWorkCommentsTable.createdAt));
 }
 
+// ─── Comment resolution (Sprint 25 Hardening) ────────────────────────────────
+
+export async function resolveComment(
+  commentId: string,
+  workId: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(completedWorkCommentsTable)
+    .where(
+      and(
+        eq(completedWorkCommentsTable.id, commentId),
+        eq(completedWorkCommentsTable.completedWorkId, workId),
+        eq(completedWorkCommentsTable.organizationId, organizationId),
+      )
+    )
+    .limit(1);
+
+  const comment = rows[0];
+  if (!comment) throw Object.assign(new Error("Comment not found"), { statusCode: 404 });
+  if (comment.status === "resolved") throw Object.assign(new Error("Comment is already resolved"), { statusCode: 400 });
+
+  await db
+    .update(completedWorkCommentsTable)
+    .set({ status: "resolved", resolvedByUserId: actorUserId, resolvedAt: new Date() })
+    .where(eq(completedWorkCommentsTable.id, commentId));
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "completed_work_comment_resolved" as any,
+    resourceType: "completed_work_comment",
+    resourceId: commentId,
+    metadata: { workId },
+  });
+}
+
+export async function reopenComment(
+  commentId: string,
+  workId: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(completedWorkCommentsTable)
+    .where(
+      and(
+        eq(completedWorkCommentsTable.id, commentId),
+        eq(completedWorkCommentsTable.completedWorkId, workId),
+        eq(completedWorkCommentsTable.organizationId, organizationId),
+      )
+    )
+    .limit(1);
+
+  const comment = rows[0];
+  if (!comment) throw Object.assign(new Error("Comment not found"), { statusCode: 404 });
+  if (comment.status === "open") throw Object.assign(new Error("Comment is already open"), { statusCode: 400 });
+
+  await db
+    .update(completedWorkCommentsTable)
+    .set({ status: "reopened", reopenedByUserId: actorUserId, reopenedAt: new Date() })
+    .where(eq(completedWorkCommentsTable.id, commentId));
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "completed_work_comment_reopened" as any,
+    resourceType: "completed_work_comment",
+    resourceId: commentId,
+    metadata: { workId },
+  });
+}
+
 // ─── Promote to Organisation Library ─────────────────────────────────────────
 
 export async function promoteToLibrary(

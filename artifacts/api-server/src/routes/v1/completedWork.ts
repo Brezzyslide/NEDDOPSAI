@@ -28,11 +28,14 @@ import {
   reopen,
   addComment,
   getComments,
+  resolveComment,
+  reopenComment,
   promoteToLibrary,
   addVersion,
   getVersions,
   getAssets,
 } from "../../services/completedWorkService.js";
+import { completedWorkExportService, type ExportFormat } from "../../services/completedWorkExportService.js";
 import type { CompletedWorkStatus } from "@workspace/db";
 
 const router = Router({ mergeParams: true });
@@ -258,6 +261,78 @@ router.post(
       }
       const result = await promoteToLibrary(id, ctx.tenantId, documentType, user.id);
       res.status(201).json(result);
+    } catch (err) { next(err); }
+  }
+);
+
+// ─── Comment resolve / reopen (Sprint 25 Hardening) ──────────────────────────
+
+router.post(
+  "/organisations/:slug/completed-work/:id/comment/:commentId/resolve",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx               = req.tenantContext!;
+      const user              = req.appUser!;
+      const { id, commentId } = req.params as { id: string; commentId: string };
+      await resolveComment(commentId, id, ctx.tenantId, user.id);
+      res.json({ message: "Comment resolved" });
+    } catch (err) { next(err); }
+  }
+);
+
+router.post(
+  "/organisations/:slug/completed-work/:id/comment/:commentId/reopen",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx               = req.tenantContext!;
+      const user              = req.appUser!;
+      const { id, commentId } = req.params as { id: string; commentId: string };
+      await reopenComment(commentId, id, ctx.tenantId, user.id);
+      res.json({ message: "Comment reopened" });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─── Export (Sprint 25 Hardening) ─────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/completed-work/:id/export",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx    = req.tenantContext!;
+      const user   = req.appUser!;
+      const { id } = req.params as { id: string };
+      const format = (req.query.format as string | undefined) ?? "md";
+
+      if (!["md", "pdf", "docx"].includes(format)) {
+        res.status(400).json({ error: "format must be one of: md, pdf, docx" });
+        return;
+      }
+
+      // Resolve organisation name for export metadata
+      const orgName: string = (ctx as any).organisationName
+        ?? (ctx as any).orgName
+        ?? (ctx as any).name
+        ?? "Your Organisation";
+
+      const result = await completedWorkExportService.export({
+        workId:          id,
+        organisationId:  ctx.tenantId,
+        organisationName: orgName,
+        format:          format as ExportFormat,
+        actorUserId:     user.id,
+      });
+
+      res.setHeader("Content-Type",        result.mimeType);
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+      res.setHeader("Content-Length",      result.buffer.length);
+      res.end(result.buffer);
     } catch (err) { next(err); }
   }
 );

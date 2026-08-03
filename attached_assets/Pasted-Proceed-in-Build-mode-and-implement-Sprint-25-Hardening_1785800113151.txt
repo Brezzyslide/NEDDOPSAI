@@ -1,0 +1,211 @@
+Proceed in Build mode and implement Sprint 25 Hardening only.
+
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing document.
+
+Do not begin Sprint 26.
+
+Do not add any new user-facing features beyond those described below.
+
+This sprint exists solely to replace temporary implementations from Sprint 25 with production-grade functionality.
+
+────────────────────────────────────────
+OBJECTIVE
+────────────────────────────────────────
+
+Complete the remaining production gaps in the Completed Work Portal.
+
+The architecture, APIs and user experience already exist.
+
+Replace placeholders with enterprise-ready implementations.
+
+Do not redesign the portal.
+
+────────────────────────────────────────
+PART 1
+Server-backed Comment Resolution
+────────────────────────────────────────
+
+Replace all localStorage state used for:
+
+• resolve comment
+• reopen comment
+• comment status
+
+Persist comment state using the existing Completed Work backend.
+
+If additional database fields are required, create the smallest possible schema change.
+
+Every comment should support:
+
+• Open
+• Resolved
+• Reopened
+
+Audit:
+
+• who resolved
+• when
+• who reopened
+• when
+
+Maintain tenant isolation.
+
+────────────────────────────────────────
+PART 2
+Professional PDF Export
+────────────────────────────────────────
+
+Replace the PDF stub.
+
+Implement production-quality PDF generation.
+
+Requirements:
+
+• Preserve document headings
+• Tables
+• Lists
+• Images (future-ready)
+• Metadata
+• Footer
+• Page numbers
+
+Include:
+
+Document title
+
+Organisation
+
+Generated date
+
+Specialist
+
+Approval status
+
+Version
+
+Use the existing Completed Work document.
+
+Do not generate a different representation.
+
+────────────────────────────────────────
+PART 3
+Professional DOCX Export
+────────────────────────────────────────
+
+Replace the DOCX stub.
+
+Generate Microsoft Word documents using the existing Completed Work structure.
+
+Requirements:
+
+• Preserve formatting
+• Headings
+• Tables
+• Lists
+• Hyperlinks
+• Metadata
+
+The exported document should open cleanly in:
+
+• Microsoft Word
+• Word Online
+• LibreOffice
+
+Use a proper DOCX generation library.
+
+────────────────────────────────────────
+PART 4
+Export Architecture
+────────────────────────────────────────
+
+Create an export service.
+
+Example:
+
+CompletedWorkExportService
+
+Supported exporters:
+
+MarkdownExporter
+
+PdfExporter
+
+DocxExporter
+
+Future-ready:
+
+HtmlExporter
+
+ODTExporter
+
+Never duplicate rendering logic.
+
+Use one intermediate document model.
+
+────────────────────────────────────────
+PART 5
+Export Audit
+────────────────────────────────────────
+
+Log export events.
+
+Capture:
+
+• user
+• organisation
+• completed work
+• export format
+• timestamp
+
+Do not store exported files.
+
+Only audit the event.
+
+────────────────────────────────────────
+PART 6
+User Experience
+────────────────────────────────────────
+
+Downloading should feel immediate.
+
+Display progress where appropriate.
+
+Handle failures gracefully.
+
+Use existing notification patterns.
+
+────────────────────────────────────────
+PART 7
+Testing
+────────────────────────────────────────
+
+Add tests covering:
+
+• PDF generation
+• DOCX generation
+• Markdown generation
+• Comment resolution persistence
+• Audit logging
+• Tenant isolation
+• Export service
+• Invalid document handling
+
+Run the complete test suite.
+
+────────────────────────────────────────
+PART 8
+Completion Report
+────────────────────────────────────────
+
+Provide:
+
+• Files changed
+• Libraries introduced
+• Database changes
+• APIs consumed
+• Tests added
+• Total passing tests
+
+Confirm that Sprint 26 has not been started.
+
+Begin Sprint 25 Hardening.
