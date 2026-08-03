@@ -31,6 +31,10 @@ import NotFound from "@/pages/not-found";
 import OrgOnboarding from "@/pages/OrgOnboarding";
 import AppHome from "@/pages/app/AppHome";
 import AppDashboard from "@/pages/app/AppDashboard";
+import ExecutiveDashboard from "@/pages/app/ExecutiveDashboard";
+import ExecutiveInbox from "@/pages/app/ExecutiveInbox";
+import ActiveWorkPage from "@/pages/app/ActiveWorkPage";
+import NotificationCentrePage from "@/pages/app/NotificationCentrePage";
 import TeamPage from "@/pages/app/TeamPage";
 import OrgSettings from "@/pages/app/OrgSettings";
 import AuditPage from "@/pages/app/AuditPage";
@@ -235,7 +239,11 @@ function AppRouter() {
             <Route path="/app/:slug/install" component={InstallPage} />
             <Route path="/app/:slug/devices" component={DevicesPage} />
             <Route path="/app/:slug/discover" component={DiscoveryPage} />
-            <Route path="/app/:slug" component={AppDashboard} />
+            {/* Sprint 23 — Executive Workspace */}
+            <Route path="/app/:slug/inbox" component={ExecutiveInbox} />
+            <Route path="/app/:slug/active-work" component={ActiveWorkPage} />
+            <Route path="/app/:slug/notifications" component={NotificationCentrePage} />
+            <Route path="/app/:slug" component={ExecutiveDashboard} />
             <Route path="/account" component={AccountSettings} />
             {/* Platform Console — Sprint 4 */}
             <Route path="/platform/organisations/:id" component={PlatformOrgDetail} />

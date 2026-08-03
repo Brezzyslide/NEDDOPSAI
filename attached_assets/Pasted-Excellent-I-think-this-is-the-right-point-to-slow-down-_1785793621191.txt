@@ -1,0 +1,178 @@
+Excellent. I think this is the right point to slow down and focus on delivering a polished experience rather than continuing to add backend capabilities.
+
+Here’s the prompt I’d use with Replit.
+
+⸻
+
+Proceed in Build mode and implement Sprint 23 only.
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing document.
+Do not implement any functionality planned for Sprint 24 or Sprint 25.
+This sprint is intentionally narrower than originally proposed.
+The objective is to create an exceptional Executive Workspace experience rather than many disconnected pages.
+────────────────────────────────────────
+SPRINT 23
+Executive Workspace
+────────────────────────────────────────
+Objective
+Create the operational home for every organisation.
+When an organisation owner logs in they should immediately understand:
+• What the AI Workforce is doing
+• What work is active
+• What needs attention
+• What has recently completed
+• What requires approval
+• What the Chief of Staff recommends
+The experience should feel like managing an executive team.
+Not using an AI application.
+Do not expose technical implementation such as:
+• embeddings
+• retrieval
+• vector search
+• memory layers
+• manifests
+• execution pipelines
+Surface business language only.
+────────────────────────────────────────
+PART 1
+Executive Dashboard
+────────────────────────────────────────
+Create a new Executive Dashboard.
+Use existing backend services only.
+Display:
+• Organisation summary
+• Today's activity
+• AI Workforce status
+• Active work
+• Recently completed work
+• Pending approvals (summary only)
+• Knowledge health summary
+• Notifications summary
+• Chief of Staff recommendations
+• Connected desktop status
+Provide quick actions:
+• Start new work
+• Open AI Workforce
+• Open Active Work
+• Open Completed Work
+• Open Organisation Library
+The dashboard should become the default landing page.
+────────────────────────────────────────
+PART 2
+Executive Inbox
+────────────────────────────────────────
+Create a unified Executive Inbox.
+Display:
+• completed work delivered by specialists
+• approval requests
+• specialist recommendations
+• knowledge alerts
+• policy changes
+• retraining recommendations
+• operational alerts
+Actions:
+• open
+• archive
+• snooze
+• assign
+• mark read
+Group by:
+• Today
+• Yesterday
+• Earlier
+────────────────────────────────────────
+PART 3
+Active Work
+────────────────────────────────────────
+Create the Active Work dashboard.
+Display:
+• running work
+• queued work
+• awaiting clarification
+• awaiting approval
+• recently completed
+• failed work
+Each item should display:
+• blueprint
+• assigned specialist
+• progress
+• current stage
+• started time
+• estimated completion
+• originating conversation
+Allow opening directly into the work details.
+────────────────────────────────────────
+PART 4
+Notification Centre
+────────────────────────────────────────
+Create the Notification Centre.
+Consume the existing notification APIs.
+Support:
+• unread
+• read
+• archive
+• filters
+• search
+Notifications include:
+• completed work
+• approvals
+• knowledge updates
+• retraining
+• library updates
+• execution failures
+────────────────────────────────────────
+PART 5
+Chief of Staff Executive Summary
+────────────────────────────────────────
+This is the most important feature.
+The Chief of Staff should generate a concise executive briefing for the dashboard.
+Examples:
+"Three pieces of work were completed overnight."
+"You have two approval requests awaiting review."
+"The Incident Management Specialist recommends retraining following a policy update."
+"Knowledge Health has improved to 94."
+Do not invent information.
+Use existing platform data only.
+If insufficient data exists simply omit that recommendation.
+────────────────────────────────────────
+PART 6
+UX
+────────────────────────────────────────
+Design principles:
+• clean
+• executive
+• professional
+• minimal clicks
+• responsive
+• consistent with existing portal
+Avoid technical terminology.
+Everything should revolve around:
+Work
+Knowledge
+People
+Decisions
+Approvals
+────────────────────────────────────────
+PART 7
+TESTING
+────────────────────────────────────────
+Add frontend tests.
+Add integration tests where appropriate.
+Do not change backend business logic.
+Run the full test suite.
+────────────────────────────────────────
+PART 8
+COMPLETION REPORT
+────────────────────────────────────────
+Provide:
+• pages created
+• components created
+• APIs consumed
+• tests added
+• screenshots if available
+• total passing tests
+Confirm that no Sprint 24 or Sprint 25 functionality has been implemented.
+Sprint 23 should remain focused on creating an outstanding Executive Workspace.
+
+⸻
+
+I think this will produce a much stronger result than trying to build ten pages at once. Once Sprint 23 is complete, we can review it as if we were first-time customers. If it feels intuitive and polished, then Sprint 24 can naturally expand into governance (Approval Centre and Knowledge Health), followed by Sprint 25 for specialist management and the Completed Work experience. That progression keeps the product cohesive and avoids overwhelming users with too many new concepts at once.

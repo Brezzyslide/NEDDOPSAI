@@ -30,3 +30,4 @@
 - [Replit GCS signed URL limitation](replit-gcs-signed-urls.md) — sidecar credentials cannot sign GCS URLs; proxy uploads through own API route using file.save(buffer)
 - [NeedsOps Sprint 21 Knowledge Curation](needsops-sprint21-curation.md) — curation jobs engine, confidence shortcircuit on rejected, createChain() test helper, REQUIRED_RLS_TABLES=61, migration applied direct psql
 - [NeedsOps Sprint 22 Work Execution Engine](needsops-sprint22-work-execution.md) — Work Blueprints+Manifests, Completed Work 7-status lifecycle, Self Review 10-dimension, REQUIRED_RLS_TABLES=67, 1916 tests
+- [NeedsOps Sprint 23 Executive Workspace](needsops-sprint23-executive-workspace.md) — Executive Dashboard+Inbox+ActiveWork+Notifications; Redirect from wouter not @clerk/react; localStorage inbox/notif state; briefing endpoint; no new DB tables

@@ -119,6 +119,10 @@ router.use("/", workBlueprintsRouter);
 router.use("/", completedWorkRouter);
 router.use("/", taskUploadsRouter);
 
+// Sprint 23: Executive Workspace — Briefing
+import executiveBriefingRouter from "./executiveBriefing.js";
+router.use("/", executiveBriefingRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 
