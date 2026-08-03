@@ -31,7 +31,7 @@ const router = Router({ mergeParams: true });
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 router.get(
-  "/v1/organisations/:slug/memory",
+  "/organisations/:slug/memory",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -55,7 +55,7 @@ router.get(
 
 // ─── Propose ──────────────────────────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/memory",
+  "/organisations/:slug/memory",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -91,7 +91,7 @@ router.post(
 
 // ─── Get single ───────────────────────────────────────────────────────────────
 router.get(
-  "/v1/organisations/:slug/memory/:memoryId",
+  "/organisations/:slug/memory/:memoryId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -111,7 +111,7 @@ router.get(
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 router.patch(
-  "/v1/organisations/:slug/memory/:memoryId",
+  "/organisations/:slug/memory/:memoryId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -128,7 +128,7 @@ router.patch(
 
 // ─── Approve ──────────────────────────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/memory/:memoryId/approve",
+  "/organisations/:slug/memory/:memoryId/approve",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -145,7 +145,7 @@ router.post(
 
 // ─── Reject ───────────────────────────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/memory/:memoryId/reject",
+  "/organisations/:slug/memory/:memoryId/reject",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -162,7 +162,7 @@ router.post(
 
 // ─── Supersede ────────────────────────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/memory/:memoryId/supersede",
+  "/organisations/:slug/memory/:memoryId/supersede",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {

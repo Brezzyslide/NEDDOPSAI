@@ -35,7 +35,7 @@ const router = Router({ mergeParams: true });
 // ─── List all ─────────────────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/training",
+  "/organisations/:slug/knowledge/training",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -52,7 +52,7 @@ router.get(
 // ─── Get for specialist ───────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/training/:specialistId",
+  "/organisations/:slug/knowledge/training/:specialistId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -72,7 +72,7 @@ router.get(
 // ─── Update (transition or flag update) ───────────────────────────────────────
 
 router.patch(
-  "/v1/organisations/:slug/knowledge/training/:specialistId",
+  "/organisations/:slug/knowledge/training/:specialistId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {

@@ -21,7 +21,7 @@ const router = Router({ mergeParams: true });
 
 // ─── Get memory for conversation ───────────────────────────────────────────────
 router.get(
-  "/v1/organisations/:slug/conversations/:conversationId/memory",
+  "/organisations/:slug/conversations/:conversationId/memory",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -37,7 +37,7 @@ router.get(
 
 // ─── Trigger rolling summarisation ────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/conversations/:conversationId/memory/summarise",
+  "/organisations/:slug/conversations/:conversationId/memory/summarise",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -53,7 +53,7 @@ router.post(
 
 // ─── Pin a decision ───────────────────────────────────────────────────────────
 router.post(
-  "/v1/organisations/:slug/conversations/:conversationId/memory/pin",
+  "/organisations/:slug/conversations/:conversationId/memory/pin",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -79,7 +79,7 @@ router.post(
 
 // ─── Unpin a decision ─────────────────────────────────────────────────────────
 router.delete(
-  "/v1/organisations/:slug/conversations/:conversationId/memory/pin/:pinId",
+  "/organisations/:slug/conversations/:conversationId/memory/pin/:pinId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {

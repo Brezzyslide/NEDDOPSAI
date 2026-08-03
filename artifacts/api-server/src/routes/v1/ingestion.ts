@@ -22,11 +22,19 @@
  * participant data, RAG/embedding/vector/chunk terminology to end users.
  */
 
-import { Router } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
-import { requireMembership }  from "../../middlewares/requireMembership.js";
-import { requireRole }        from "../../middlewares/requireRole.js";
 import { ApiError }           from "../../lib/errors.js";
+
+/** Inline role gate — replaces the missing requireRole middleware. */
+function requireOwnerOrAdmin(req: Request, res: Response, next: NextFunction): void {
+  const role = req.tenantContext?.role;
+  if (role !== "owner" && role !== "admin") {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Owner or admin role required." } });
+    return;
+  }
+  next();
+}
 import {
   enqueueIngestionJob,
   getIngestionJob,
@@ -59,13 +67,12 @@ router.post(
   "/organisations/:slug/knowledge/sources/:sourceId/ingest",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { slug, sourceId } = req.params;
-      const orgId = (req as any).tenant?.id;
-      const userId = (req as any).auth?.userId;
+      const orgId = req.tenantContext!.tenantId;
+      const userId = req.appUser!.id;
 
       const source = await getKnowledgeSource(sourceId, orgId);
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Knowledge source not found.", 404);
@@ -115,11 +122,10 @@ router.get(
   "/organisations/:slug/knowledge/ingestion/:jobId",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
   async (req, res, next) => {
     try {
       const { jobId } = req.params;
-      const orgId = (req as any).tenant?.id;
+      const orgId = req.tenantContext!.tenantId;
 
       const job = await getIngestionJob(jobId, orgId);
       if (!job) throw new ApiError("JOB_NOT_FOUND", "Ingestion job not found.", 404);
@@ -140,10 +146,9 @@ router.get(
   "/organisations/:slug/knowledge/ingestion",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
   async (req, res, next) => {
     try {
-      const orgId = (req as any).tenant?.id;
+      const orgId = req.tenantContext!.tenantId;
       const { sourceId, status, limit, offset } = req.query as Record<string, string>;
 
       const jobs = await listIngestionJobs(orgId, {
@@ -170,13 +175,12 @@ router.post(
   "/organisations/:slug/knowledge/ingestion/:jobId/cancel",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { jobId } = req.params;
-      const orgId   = (req as any).tenant?.id;
-      const userId  = (req as any).auth?.userId;
+      const orgId   = req.tenantContext!.tenantId;
+      const userId  = req.appUser!.id;
 
       const job = await cancelIngestionJob(jobId, orgId, userId);
       res.json({ jobId: job.id, status: job.status });
@@ -196,13 +200,12 @@ router.post(
   "/organisations/:slug/knowledge/ingestion/:jobId/retry",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { jobId } = req.params;
-      const orgId   = (req as any).tenant?.id;
-      const userId  = (req as any).auth?.userId;
+      const orgId   = req.tenantContext!.tenantId;
+      const userId  = req.appUser!.id;
 
       const existingJob = await getIngestionJob(jobId, orgId);
       if (!existingJob) throw new ApiError("JOB_NOT_FOUND", "Ingestion job not found.", 404);
@@ -237,12 +240,11 @@ router.get(
   "/organisations/:slug/knowledge/sources/:sourceId/chunks",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { sourceId } = req.params;
-      const orgId = (req as any).tenant?.id;
+      const orgId = req.tenantContext!.tenantId;
       const limit  = Math.min(parseInt((req.query.limit as string) ?? "20", 10), 100);
       const offset = parseInt((req.query.offset as string) ?? "0", 10);
 
@@ -292,12 +294,11 @@ router.get(
   "/organisations/:slug/knowledge/sources/:sourceId/warnings",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { sourceId } = req.params;
-      const orgId = (req as any).tenant?.id;
+      const orgId = req.tenantContext!.tenantId;
 
       const source = await getKnowledgeSource(sourceId, orgId);
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Source not found.", 404);
@@ -336,13 +337,12 @@ router.post(
   "/organisations/:slug/knowledge/sources/:sourceId/approve-ingestion",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { sourceId } = req.params;
-      const orgId   = (req as any).tenant?.id;
-      const userId  = (req as any).auth?.userId;
+      const orgId   = req.tenantContext!.tenantId;
+      const userId  = req.appUser!.id;
 
       const source = await getKnowledgeSource(sourceId, orgId);
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Source not found.", 404);
@@ -413,13 +413,12 @@ router.post(
   "/organisations/:slug/knowledge/sources/:sourceId/reject-ingestion",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { sourceId } = req.params;
-      const orgId   = (req as any).tenant?.id;
-      const userId  = (req as any).auth?.userId;
+      const orgId   = req.tenantContext!.tenantId;
+      const userId  = req.appUser!.id;
       const { reason } = req.body as { reason?: string };
 
       const source = await getKnowledgeSource(sourceId, orgId);
@@ -478,13 +477,12 @@ router.post(
   "/organisations/:slug/knowledge/sources/:sourceId/re-embed",
   requireAuth,
   resolveTenantFromSlug,
-  requireMembership,
-  requireRole(["owner", "admin"]),
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const { sourceId } = req.params;
-      const orgId  = (req as any).tenant?.id;
-      const userId = (req as any).auth?.userId;
+      const orgId  = req.tenantContext!.tenantId;
+      const userId = req.appUser!.id;
 
       const source = await getKnowledgeSource(sourceId, orgId);
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Source not found.", 404);

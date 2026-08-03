@@ -83,7 +83,7 @@ function requireOwnerOrAdmin(req: any, res: any): boolean {
 // ─── List sources ─────────────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/sources",
+  "/organisations/:slug/knowledge/sources",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -113,7 +113,7 @@ router.get(
 // ─── Request upload URL ───────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/request-upload",
+  "/organisations/:slug/knowledge/sources/request-upload",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -188,7 +188,7 @@ router.post(
 // ─── Complete upload ──────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/complete-upload",
+  "/organisations/:slug/knowledge/sources/:sourceId/complete-upload",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -246,7 +246,7 @@ router.post(
 // ─── Get source ───────────────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId",
+  "/organisations/:slug/knowledge/sources/:sourceId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -272,7 +272,7 @@ router.get(
 // ─── Get status ───────────────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/status",
+  "/organisations/:slug/knowledge/sources/:sourceId/status",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -303,7 +303,7 @@ router.get(
 // ─── Update metadata ──────────────────────────────────────────────────────────
 
 router.patch(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId",
+  "/organisations/:slug/knowledge/sources/:sourceId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -328,7 +328,7 @@ router.patch(
 // ─── Approve ──────────────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/approve",
+  "/organisations/:slug/knowledge/sources/:sourceId/approve",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -353,7 +353,7 @@ router.post(
 // ─── Revoke ───────────────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/revoke",
+  "/organisations/:slug/knowledge/sources/:sourceId/revoke",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -384,7 +384,7 @@ router.post(
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
 router.delete(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId",
+  "/organisations/:slug/knowledge/sources/:sourceId",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -409,7 +409,7 @@ router.delete(
 // ─── Supersede ────────────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/supersede",
+  "/organisations/:slug/knowledge/sources/:sourceId/supersede",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -440,7 +440,7 @@ router.post(
 // ─── Reprocess ────────────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/reprocess",
+  "/organisations/:slug/knowledge/sources/:sourceId/reprocess",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -468,7 +468,7 @@ router.post(
 // ─── Version history ──────────────────────────────────────────────────────────
 
 router.get(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/versions",
+  "/organisations/:slug/knowledge/sources/:sourceId/versions",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -493,7 +493,7 @@ router.get(
 // ─── Replace version ──────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/versions",
+  "/organisations/:slug/knowledge/sources/:sourceId/versions",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -542,7 +542,7 @@ router.post(
 // ─── Assign scope ─────────────────────────────────────────────────────────────
 
 router.post(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/scopes",
+  "/organisations/:slug/knowledge/sources/:sourceId/scopes",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
@@ -580,7 +580,7 @@ router.post(
 // ─── Remove scope ─────────────────────────────────────────────────────────────
 
 router.delete(
-  "/v1/organisations/:slug/knowledge/sources/:sourceId/scopes",
+  "/organisations/:slug/knowledge/sources/:sourceId/scopes",
   requireAuth,
   resolveTenantFromSlug,
   async (req, res, next) => {
