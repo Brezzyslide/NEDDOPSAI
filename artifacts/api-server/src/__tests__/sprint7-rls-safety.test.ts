@@ -28,7 +28,7 @@ describe("Sprint 7 — RLS Safety", () => {
 
   describe("verifyRLS()", () => {
     it("REAL DB: REQUIRED_RLS_TABLES contains all expected tables", () => {
-      expect(REQUIRED_RLS_TABLES).toHaveLength(53); // Task #14 Knowledge Bridge: +1 specialist_language_profiles // Sprint SRM Hardening: +1 organisation_specialist_configuration // Sprint 15: +5 new WS relay tables
+      expect(REQUIRED_RLS_TABLES).toHaveLength(59); // Task #15: +6 knowledge tables (knowledge_sources, knowledge_source_scopes, knowledge_source_versions, knowledge_chunks, specialist_training_status, retrieval_audit_events)
       expect(REQUIRED_RLS_TABLES).toContain("tasks");
       expect(REQUIRED_RLS_TABLES).toContain("approvals");
       expect(REQUIRED_RLS_TABLES).toContain("approval_rules");

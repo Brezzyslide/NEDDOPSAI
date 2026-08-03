@@ -95,6 +95,11 @@ router.use("/", orgDiscoveryRouter);
 // Sprint 15 — Short-lived device auth (challenge / exchange / refresh)
 import deviceAuthRouter from "./deviceAuth.js";
 router.use("/devices", deviceAuthRouter);
+// Task #15 — Knowledge Schema, Scopes & Secure Upload (Organisation Library)
+import knowledgeSourcesRouter from "./knowledgeSources.js";
+import specialistTrainingRouter from "./specialistTraining.js";
+router.use("/", knowledgeSourcesRouter);
+router.use("/", specialistTrainingRouter);
 
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);

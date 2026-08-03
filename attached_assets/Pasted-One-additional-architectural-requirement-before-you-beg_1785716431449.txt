@@ -1,0 +1,112 @@
+One additional architectural requirement before you begin Build mode.
+
+Everything implemented in Task #15 must support the long-term vision of NeedsOps as a web-first AI workforce platform.
+
+Please ensure the schema and services are designed around these principles.
+
+1. Organisation Library
+
+The knowledge system must evolve into an Organisation Library.
+
+It is not simply document storage.
+
+It is the central organisational knowledge repository from which specialists learn.
+
+Examples include:
+
+- policies
+- procedures
+- playbooks
+- communication style guides
+- terminology
+- care plans
+- Behaviour Support Plans
+- participant documentation
+- risk assessments
+- finance procedures
+- HR manuals
+- onboarding guides
+- contracts
+- templates
+- approved examples
+- legislation references
+- compliance documentation
+- meeting packs
+- operational manuals
+
+Do not design the schema around only "documents".
+
+Design it around organisational knowledge.
+
+2. Multiple knowledge sources
+
+The architecture should eventually support retrieval from:
+
+- Organisation Library
+- uploaded task documents
+- approved desktop folders
+- connected cloud storage
+- approved SaaS systems
+- public web search
+
+Task #15 does not implement all of these, but nothing in the schema should prevent them.
+
+3. Task-scoped uploads
+
+Files uploaded inside a chat/task must remain task-scoped unless the user explicitly chooses:
+
+"Save to Organisation Library"
+
+Never automatically convert uploaded task documents into organisational knowledge.
+
+4. Desktop remains optional
+
+The Organisation Library must work entirely through the web application.
+
+Desktop access is an additional capability, not a dependency.
+
+Customers without the desktop connector must still be able to:
+
+- upload documents
+- train specialists
+- execute work
+- approve work
+- download completed outputs
+
+5. Future Completed Work module
+
+Please avoid assumptions that outputs disappear after chat completion.
+
+Every task will eventually generate a Completed Work record containing:
+
+- draft
+- revisions
+- approvals
+- final output
+- downloadable files
+- audit trail
+- citations
+- source references
+
+If useful, include foreign-key placeholders or extension points for this future module.
+
+6. Knowledge governance
+
+Design for:
+
+- version history
+- effective dates
+- superseded documents
+- authority levels
+- sensitivity
+- permissions
+- auditability
+- citations
+
+7. Keep Task #15 focused
+
+Do not implement retrieval, embeddings, chunking, vector search or UI beyond what Task #15 requires.
+
+Simply ensure today's architecture cleanly supports those later tasks without requiring schema redesign.
+
+Proceed with Task #15 in Build mode.

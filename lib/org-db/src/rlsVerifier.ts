@@ -86,6 +86,13 @@ export const REQUIRED_RLS_TABLES = [
   "organisation_specialist_configuration",
   // Sprint Knowledge Bridge (Task #14) — Specialist Language Profiles
   "specialist_language_profiles",
+  // Task #15 — Knowledge Schema, Scopes & Secure Upload (Organisation Library)
+  "knowledge_sources",
+  "knowledge_source_scopes",
+  "knowledge_source_versions",
+  "knowledge_chunks",
+  "specialist_training_status",
+  "retrieval_audit_events",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
