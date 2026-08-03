@@ -1,0 +1,529 @@
+Proceed in Build mode and implement Task #19 only.
+
+Do not start Task #17 hybrid retrieval, Task #18 customer-facing training UI, Task #20 OCR, Completed Work, web search, or desktop file access yet.
+
+Task #19 goal:
+
+Make the Knowledge Hub ingestion pipeline run automatically and reliably in the background after a document upload is completed.
+
+Preserve all Task #14, Task #15, and Task #16 behaviour.
+
+────────────────────────────────────────
+1. INSPECT BEFORE MODIFYING
+────────────────────────────────────────
+
+Inspect:
+
+- ingestion_jobs
+- ingestion pipeline service
+- current upload completion flow
+- current API server startup
+- current background worker patterns
+- current database connection handling
+- current audit logging
+- current health endpoints
+- current environment configuration
+- deployment model in Replit
+- planned AWS deployment model
+- whether any queue or cron infrastructure already exists
+
+Produce a short implementation checklist, then proceed.
+
+────────────────────────────────────────
+2. AUTOMATIC INGESTION TRIGGER
+────────────────────────────────────────
+
+When a supported knowledge source upload is successfully completed:
+
+- create or reuse an ingestion job
+- enqueue it automatically
+- do not require a user to manually call the ingest endpoint
+- preserve idempotency
+- do not create duplicate active jobs for the same source version
+- do not enqueue revoked, deleted, archived, or superseded sources
+- do not process a source before upload completion
+- record an audit event
+
+The manual ingest endpoint may remain for retry, repair, and administrative use.
+
+────────────────────────────────────────
+3. QUEUE ABSTRACTION
+────────────────────────────────────────
+
+Create a provider-neutral queue interface.
+
+Suggested operations:
+
+- enqueue(job)
+- claimNext(workerId)
+- heartbeat(jobId, workerId)
+- complete(jobId, workerId)
+- fail(jobId, workerId, error)
+- release(jobId, workerId)
+- retry(jobId)
+- cancel(jobId)
+- getDepth()
+- getOldestQueuedAt()
+
+Do not tie the core ingestion pipeline directly to one queue provider.
+
+Implement:
+
+- database-backed queue for local development and Replit
+- AWS-ready adapter interface for SQS
+- clear provider selection through environment variables
+
+Suggested environment variable:
+
+KNOWLEDGE_QUEUE_PROVIDER=database
+
+Future production value:
+
+KNOWLEDGE_QUEUE_PROVIDER=sqs
+
+Do not claim SQS is active unless it is actually configured and tested.
+
+────────────────────────────────────────
+4. DATABASE QUEUE WORKER
+────────────────────────────────────────
+
+Implement a durable database-backed worker.
+
+Requirements:
+
+- claim jobs atomically
+- use row locking or equivalent protection
+- prevent two workers from processing the same job
+- assign workerId
+- record claimedAt
+- record heartbeatAt
+- record leaseExpiresAt
+- increment attempt count
+- support retry delay
+- support cancellation
+- support graceful shutdown
+- support safe restart
+- preserve tenant isolation
+- do not hold long database transactions during extraction or embedding
+
+Add schema fields or a worker-leases table if required.
+
+────────────────────────────────────────
+5. WORKER PROCESS
+────────────────────────────────────────
+
+Create a dedicated worker entry point rather than running heavy ingestion inside the HTTP request.
+
+Examples:
+
+- artifacts/api-server/src/workers/knowledgeIngestionWorker.ts
+- a separate workspace package if that better fits the codebase
+
+Worker behaviour:
+
+1. start
+2. register worker identity
+3. poll queue
+4. claim one job
+5. start heartbeat
+6. run ingestion pipeline
+7. complete or fail job
+8. apply retry policy
+9. continue polling
+10. stop gracefully on SIGTERM or SIGINT
+
+The worker must not block API traffic.
+
+For local and Replit development, allow the worker to run as:
+
+- a separate process
+- or an explicitly enabled in-process development worker
+
+Production should prefer a separate worker process.
+
+────────────────────────────────────────
+6. RETRY POLICY
+────────────────────────────────────────
+
+Implement retry categories.
+
+Retryable examples:
+
+- temporary storage failure
+- provider timeout
+- provider rate limit
+- temporary database issue
+- transient network failure
+- worker crash
+- expired lease
+
+Non-retryable examples:
+
+- unsupported file type
+- corrupted document
+- encrypted document without password
+- source revoked
+- source deleted
+- invalid version state
+- permanent extraction failure
+- policy restriction preventing embedding
+
+Suggested retry behaviour:
+
+- exponential backoff
+- jitter
+- configurable maximum attempts
+- safe terminal failure state
+
+Record:
+
+- attempt count
+- nextAttemptAt
+- lastErrorCode
+- lastSafeErrorMessage
+- lastFailedAt
+
+Do not store raw provider errors containing secrets or document content.
+
+────────────────────────────────────────
+7. STUCK JOB AND LEASE RECOVERY
+────────────────────────────────────────
+
+Implement stuck-job recovery.
+
+A job is considered abandoned when:
+
+- status is processing
+- lease has expired
+- heartbeat is stale
+- worker no longer owns the lease
+
+Recovery behaviour:
+
+- release the stale lease
+- return retryable jobs to queued
+- increment recovery count
+- preserve the previous error context
+- do not create a duplicate job
+- audit the recovery
+
+Add a periodic sweeper.
+
+Suggested environment variables:
+
+KNOWLEDGE_WORKER_HEARTBEAT_MS
+KNOWLEDGE_WORKER_LEASE_MS
+KNOWLEDGE_WORKER_POLL_MS
+KNOWLEDGE_WORKER_MAX_ATTEMPTS
+KNOWLEDGE_WORKER_SWEEP_MS
+
+Provide safe defaults.
+
+────────────────────────────────────────
+8. CANCELLATION
+────────────────────────────────────────
+
+Cancellation must work for:
+
+- queued jobs
+- claimed jobs
+- jobs between stages
+
+Requirements:
+
+- cancellation request stored durably
+- worker checks cancellation between pipeline stages
+- no new chunks written after cancellation is observed
+- partially written chunks are rolled back or marked invalid
+- embeddings are not retained for cancelled content
+- final status becomes cancelled
+- audit event created
+
+Do not claim hard cancellation during an active third-party API request unless the provider genuinely supports it.
+
+────────────────────────────────────────
+9. IDEMPOTENCY
+────────────────────────────────────────
+
+Guarantee:
+
+- one active ingestion job per source version
+- repeated upload completion does not duplicate processing
+- repeated queue enqueue is safe
+- repeated worker completion is safe
+- repeated failure handling is safe
+- completed jobs are not processed again unless explicitly reprocessed
+- reprocessing creates a clear new attempt or job lineage
+
+Add database constraints where appropriate.
+
+────────────────────────────────────────
+10. WORKER HEALTH AND OBSERVABILITY
+────────────────────────────────────────
+
+Add internal or platform-admin visibility for:
+
+- worker running state
+- workerId
+- last heartbeat
+- jobs queued
+- jobs processing
+- jobs failed
+- jobs completed
+- oldest queued job age
+- average processing duration where practical
+- stuck-job count
+- retry count
+
+Add an internal health endpoint or extend the existing platform health model.
+
+Do not expose tenant document names or content in platform-wide health responses.
+
+Add structured logs with:
+
+- jobId
+- organizationId
+- sourceId
+- versionId
+- stage
+- attempt
+- workerId
+- duration
+
+Never log raw extracted text, embeddings, participant names, or document contents.
+
+────────────────────────────────────────
+11. API CHANGES
+────────────────────────────────────────
+
+Update upload completion so it automatically enqueues ingestion.
+
+Retain endpoints for:
+
+- get ingestion status
+- cancel
+- retry
+- reprocess
+- re-embed
+
+Add platform/internal endpoints only if needed for:
+
+- queue health
+- worker health
+- stuck-job recovery
+- manual sweep
+
+Every endpoint must preserve:
+
+- authentication
+- tenant isolation
+- role checks
+- audit logging
+- safe errors
+
+────────────────────────────────────────
+12. REPLIT DEVELOPMENT DEPLOYMENT
+────────────────────────────────────────
+
+Support Replit development clearly.
+
+Document and implement one of these:
+
+Option A:
+- API process
+- separate worker process
+
+Option B:
+- API process with KNOWLEDGE_WORKER_MODE=in-process for development only
+
+Preferred:
+
+- separate worker where Replit deployment supports it
+- in-process mode only as a development fallback
+
+Suggested environment variables:
+
+KNOWLEDGE_WORKER_MODE=separate
+KNOWLEDGE_QUEUE_PROVIDER=database
+
+Do not make production depend on Replit-specific behaviour.
+
+────────────────────────────────────────
+13. AWS READINESS
+────────────────────────────────────────
+
+Design the worker so it can later run in:
+
+- AWS development
+- AWS staging
+- AWS production
+
+Target architecture:
+
+API service
+→ SQS queue
+→ ingestion worker service
+→ private S3 bucket
+→ RDS PostgreSQL with pgvector
+
+Document mappings for:
+
+- queue adapter → SQS
+- worker process → ECS/Fargate or another suitable worker service
+- storage → private S3
+- secrets → Secrets Manager
+- logs → CloudWatch
+- dead-letter queue → SQS DLQ
+- autoscaling based on queue depth
+
+Keep local, development, staging, and production queues separate.
+
+Do not implement production AWS resources in this task unless already available.
+
+────────────────────────────────────────
+14. DEAD-LETTER HANDLING
+────────────────────────────────────────
+
+Add a dead-letter concept for jobs that exceed maximum attempts.
+
+Requirements:
+
+- terminal failed state
+- clear safe reason
+- no infinite retries
+- administrative retry option
+- audit event
+- worker health count
+- future SQS DLQ mapping documented
+
+Do not discard failed jobs silently.
+
+────────────────────────────────────────
+15. SECURITY
+────────────────────────────────────────
+
+Protect against:
+
+- cross-tenant job claiming
+- processing a revoked source
+- processing a superseded source
+- processing deleted content
+- duplicate worker claims
+- forged job IDs
+- unsafe error logging
+- queue flooding
+- repeated malicious retries
+- worker privilege escalation
+
+The worker must use least-privilege database and storage access where the architecture permits.
+
+Do not allow a tenant user to access queue-wide health information.
+
+────────────────────────────────────────
+16. TESTING
+────────────────────────────────────────
+
+Add tests for:
+
+Automatic trigger:
+- upload completion enqueues ingestion
+- repeated completion is idempotent
+- revoked source not enqueued
+- deleted source not enqueued
+- superseded version not enqueued
+
+Queue:
+- atomic claim
+- duplicate claim prevented
+- enqueue idempotency
+- queue depth
+- oldest queued job
+- tenant isolation
+
+Worker:
+- successful processing
+- extraction failure
+- embedding failure
+- retryable failure
+- non-retryable failure
+- graceful shutdown
+- heartbeat
+- lease renewal
+- worker restart
+
+Recovery:
+- expired lease recovered
+- stale heartbeat recovered
+- completed job not recovered
+- recovery audit written
+
+Retry:
+- exponential backoff
+- maximum attempts
+- dead-letter state
+- manual retry
+
+Cancellation:
+- queued cancellation
+- in-progress cancellation
+- cancellation between stages
+- no active chunks after cancellation
+
+Security:
+- cross-tenant job access denied
+- no document content in logs
+- revoked source stops processing
+- duplicate workers cannot process one job
+
+Health:
+- queue counts
+- worker heartbeat
+- stuck job count
+- no sensitive data exposed
+
+Do not break the existing 1,649 tests.
+
+Run the full test suite.
+
+────────────────────────────────────────
+17. COMPLETION REPORT
+────────────────────────────────────────
+
+At completion provide:
+
+- files added
+- files modified
+- migrations
+- RLS count
+- automatic upload trigger
+- queue abstraction
+- active queue provider
+- worker design
+- retry policy
+- lease and heartbeat behaviour
+- stuck-job recovery
+- cancellation behaviour
+- dead-letter handling
+- health endpoints
+- Replit development run instructions
+- AWS development/staging/production mapping
+- tests added
+- full test result
+- known limitations
+- confirmation that Task #17 hybrid retrieval has not started
+- confirmation that Task #18 UI has not started
+- confirmation that OCR has not started
+
+Do not mark Task #19 complete unless:
+
+- upload completion automatically enqueues ingestion
+- a worker processes queued jobs without blocking the API
+- duplicate processing is prevented
+- retry and dead-letter behaviour work
+- stuck jobs recover
+- cancellation works
+- health is observable
+- tenant isolation is tested
+- all tests pass
+
+Begin Task #19 now.

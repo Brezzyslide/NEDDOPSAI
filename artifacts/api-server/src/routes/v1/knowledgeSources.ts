@@ -66,6 +66,7 @@ import {
   KnowledgeSourceError,
 } from "../../services/knowledgeSourceService.js";
 import { getRequestMeta } from "../../services/auditService.js";
+import { triggerIngestion as triggerIngestionJob } from "../../services/ingestionPipelineService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -232,7 +233,25 @@ router.post(
         checksum: String(body.checksum),
       });
 
-      res.status(isDuplicate ? 200 : 201).json({ source, version, isDuplicate });
+      // ── Auto-trigger ingestion (Task #19) ───────────────────────────────
+      // Enqueue asynchronously — do not block the upload response.
+      // Not enqueued for duplicates (existing job already running).
+      if (!isDuplicate && source.status !== "revoked" && !source.deletedAt) {
+        triggerIngestionJob({
+          organizationId:    ctx.tenantId,
+          knowledgeSourceId: source.id,
+          sourceVersionId:   version.id,
+          actorUserId:       user.id,
+        }).catch((err: unknown) => {
+          // Non-fatal — upload succeeded; log for ops monitoring
+          const msg = err instanceof Error ? err.message.slice(0, 200) : "unknown";
+          console.error(
+            `[knowledgeSources] Failed to enqueue ingestion for source=${source.id}: ${msg}`,
+          );
+        });
+      }
+
+      res.status(isDuplicate ? 200 : 201).json({ source, version, isDuplicate, ingestionQueued: !isDuplicate });
     } catch (err) {
       if (err instanceof KnowledgeSourceError) {
         res.status(400).json({ error: { code: err.code, message: err.message } });

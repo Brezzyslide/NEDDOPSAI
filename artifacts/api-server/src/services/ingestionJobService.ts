@@ -314,16 +314,26 @@ export async function cancelIngestionJob(
   if (!job) throw new IngestionJobError("Ingestion job not found.", "NOT_FOUND");
 
   const current = job.status as IngestionJobStatus;
-  if (!INGESTION_JOB_TRANSITIONS[current]?.includes("cancelled")) {
+  const allowed = INGESTION_JOB_TRANSITIONS[current] ?? [];
+
+  // Processing jobs transition to 'cancelling' (worker will finalise);
+  // queued jobs go straight to 'cancelled'.
+  const canCancel = allowed.includes("cancelled") || allowed.includes("cancelling");
+  if (!canCancel) {
     throw new IngestionJobError(
       `Cannot cancel job in status "${current}".`,
       "CANNOT_CANCEL",
     );
   }
 
+  const newStatus = current === "queued" ? "cancelled" : "cancelling";
   const rows = await db
     .update(ingestionJobsTable)
-    .set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
+    .set({
+      status: newStatus,
+      cancelledAt: newStatus === "cancelled" ? new Date() : undefined,
+      updatedAt: new Date(),
+    })
     .where(
       and(
         eq(ingestionJobsTable.id, id),
@@ -390,7 +400,6 @@ export async function getActiveJobForVersion(
   sourceVersionId: string,
   organizationId: string,
 ): Promise<IngestionJob | null> {
-  const terminalStatuses = ["approved", "cancelled"];
   const rows = await db
     .select()
     .from(ingestionJobsTable)
@@ -398,7 +407,7 @@ export async function getActiveJobForVersion(
       and(
         eq(ingestionJobsTable.sourceVersionId, sourceVersionId),
         eq(ingestionJobsTable.organizationId, organizationId),
-        sql`${ingestionJobsTable.status} NOT IN ('approved', 'cancelled')`,
+        sql`${ingestionJobsTable.status} NOT IN ('approved', 'cancelled', 'revoked', 'dead_lettered')`,
       ),
     )
     .limit(1);

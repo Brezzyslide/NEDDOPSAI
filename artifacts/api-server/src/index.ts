@@ -10,6 +10,10 @@ import {
 } from "@workspace/org-db";
 import { runRLSStartupCheck } from "./startup/rlsStartupCheck";
 import { attachRelayService } from "./services/deviceRelayService.js";
+import {
+  startInProcessWorker,
+  stopInProcessWorker,
+} from "./workers/knowledgeIngestionWorker.js";
 
 const rawPort = process.env["PORT"];
 
@@ -60,7 +64,17 @@ async function start(): Promise<void> {
     intervalMs: 5 * 60 * 1000,
   });
 
-  // 4. Create HTTP server (wraps Express app so WS can share the same port)
+  // 4. Start in-process knowledge ingestion worker (default for Replit/local dev)
+  //    Set KNOWLEDGE_WORKER_MODE=external to disable (use a separate worker process instead).
+  const workerMode = (process.env.KNOWLEDGE_WORKER_MODE ?? "in-process").toLowerCase();
+  if (workerMode === "in-process") {
+    startInProcessWorker();
+    logger.info("[startup] Knowledge ingestion worker started (in-process)");
+  } else {
+    logger.info(`[startup] Knowledge ingestion worker mode="${workerMode}" — not starting in-process`);
+  }
+
+  // 5. Create HTTP server (wraps Express app so WS can share the same port)
   const server = createServer(app);
 
   // 5. Attach WebSocket relay server
@@ -89,6 +103,9 @@ async function start(): Promise<void> {
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "Shutdown signal received — draining connections");
+
+    // Stop knowledge ingestion worker
+    await stopInProcessWorker().catch(() => {});
 
     // Stop backup scheduler
     stopBackupScheduler();

@@ -103,6 +103,9 @@ router.use("/", specialistTrainingRouter);
 // Task #16 — Document Ingestion & Embedding Pipeline
 import ingestionRouter from "./ingestion.js";
 router.use("/", ingestionRouter);
+// Task #19 — Knowledge Worker Health
+import knowledgeWorkerHealthRouter from "./knowledgeWorkerHealth.js";
+router.use("/platform", knowledgeWorkerHealthRouter);
 
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
