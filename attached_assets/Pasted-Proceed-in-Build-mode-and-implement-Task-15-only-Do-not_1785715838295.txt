@@ -1,0 +1,442 @@
+Proceed in Build mode and implement Task #15 only.
+
+Do not start document extraction, embeddings, vector search, hybrid retrieval, or the training UI yet. Those belong to Tasks #16–#18.
+
+Task #15 goal:
+
+Build the knowledge, scope, versioning, upload, and governance foundation required for specialist training.
+
+Preserve all Task #14 behaviour and all existing organisation memory behaviour.
+
+────────────────────────────────────────
+1. INSPECT BEFORE MODIFYING
+────────────────────────────────────────
+
+Inspect:
+
+- organisation_memory
+- specialist_language_profiles
+- organisation_specialist_configuration
+- current file upload and storage abstractions
+- current audit logging
+- current role and tenant authorisation
+- Drizzle schema conventions
+- RLS verifier
+- API route conventions
+- object storage configuration
+- existing signed URL support
+- current file-size and MIME validation utilities
+
+Produce a short implementation checklist, then proceed.
+
+────────────────────────────────────────
+2. KNOWLEDGE SOURCE MODEL
+────────────────────────────────────────
+
+Implement appropriate forms of:
+
+knowledge_sources
+
+Required fields should cover:
+
+- id
+- organizationId
+- title
+- description
+- sourceType
+- originalFileName
+- mimeType
+- storageProvider
+- storageKey
+- externalSourceId
+- checksum
+- fileSize
+- language
+- status
+- authorityLevel
+- sensitivityClassification
+- effectiveFrom
+- effectiveTo
+- versionLabel
+- isCurrent
+- supersededBySourceId
+- uploadedByUserId
+- approvedByUserId
+- approvedAt
+- revokedAt
+- createdAt
+- updatedAt
+- deletedAt where appropriate
+
+Source types:
+
+- policy
+- procedure
+- playbook
+- style_guide
+- approved_example
+- template
+- legislation_reference
+- manual_note
+- connected_document
+
+Statuses:
+
+- uploaded
+- processing
+- review_required
+- approved
+- failed
+- revoked
+- superseded
+- archived
+
+Authority levels:
+
+- mandatory
+- authoritative
+- supporting
+- example_only
+- reference_only
+
+Do not create duplicate fields if an existing shared model safely provides them.
+
+────────────────────────────────────────
+3. KNOWLEDGE SCOPE MODEL
+────────────────────────────────────────
+
+Do not rely only on organisation_memory.specialist_id.
+
+Implement a durable knowledge scope model.
+
+Support:
+
+- organisation
+- workforce
+- specialist
+- department
+- location
+- task_type
+
+Use a relational design with:
+
+- knowledgeSourceId
+- scopeType
+- scopeId
+- organizationId
+- timestamps
+
+Avoid unsafe polymorphic references where possible.
+
+Ensure:
+
+- org-wide source support
+- multiple scopes per source
+- duplicate scope prevention
+- tenant ownership
+- deletion behaviour
+- indexes for retrieval filtering
+
+────────────────────────────────────────
+4. VERSIONING
+────────────────────────────────────────
+
+Implement knowledge_source_versions or an equivalent model.
+
+Support:
+
+- version lineage
+- version labels
+- checksums
+- effective dates
+- source status
+- supersedes relation
+- approval metadata
+- storage metadata
+- ingestion status placeholder
+- timestamps
+
+Rules:
+
+- only one current version per logical source
+- replacing a version must not destroy audit history
+- superseded versions remain queryable for authorised audit use
+- superseded versions must not be treated as active knowledge
+- version replacement must be transactional
+
+────────────────────────────────────────
+5. PLACEHOLDER CHUNK MODEL
+────────────────────────────────────────
+
+Create the knowledge_chunks table now, but do not implement extraction or embeddings yet.
+
+Fields should cover:
+
+- id
+- organizationId
+- knowledgeSourceId
+- sourceVersionId
+- chunkIndex
+- sectionTitle
+- pageNumber
+- headingPath
+- text
+- tokenCount
+- lexicalSearchVector placeholder or appropriate searchable field
+- embedding placeholder compatible with Task #16
+- embeddingModel
+- embeddingDimensions
+- contentHash
+- createdAt
+- deletedAt
+
+Do not claim RAG is active in Task #15.
+
+────────────────────────────────────────
+6. TRAINING STATUS AND AUDIT MODELS
+────────────────────────────────────────
+
+Implement:
+
+specialist_training_status
+
+Fields should cover:
+
+- organizationId
+- specialistId
+- status
+- configurationComplete
+- knowledgeSourcesApproved
+- retrievalTestPassed
+- sampleTaskPassed
+- approvedByUserId
+- approvedAt
+- lastTestedAt
+- notes
+- createdAt
+- updatedAt
+
+Statuses:
+
+- not_started
+- configuring
+- knowledge_processing
+- review_required
+- testing
+- ready
+- needs_attention
+- suspended
+
+Also create retrieval_audit_events as a placeholder for later runtime retrieval.
+
+It should support:
+
+- organizationId
+- specialistId
+- executionId
+- source IDs
+- chunk IDs
+- retrieval method
+- score metadata
+- token count
+- createdAt
+
+Do not yet write live retrieval events unless the existing Task #14 audit path can safely reuse it.
+
+────────────────────────────────────────
+7. SECURE UPLOAD FOUNDATION
+────────────────────────────────────────
+
+Implement secure upload support for:
+
+- PDF
+- DOCX
+- TXT
+- Markdown
+
+Requirements:
+
+- authenticated user
+- organisation membership
+- owner/admin permission by default
+- role checks
+- tenant-scoped storage path
+- file size limit
+- MIME validation
+- extension validation
+- checksum calculation
+- duplicate detection
+- no executable uploads
+- no public storage URLs
+- safe generated filenames
+- upload cancellation
+- retry-safe completion
+- version replacement
+- audit logging
+- revoke
+- delete where allowed
+- reprocess placeholder action
+
+For development:
+
+- use the current storage abstraction where possible
+- implement local or configured development storage
+
+For AWS readiness:
+
+- add or preserve an S3-compatible adapter interface
+- private bucket assumption
+- signed upload/download URL support
+- separate environment configuration
+- no hard-coded bucket names or AWS credentials
+
+Do not implement extraction in this task.
+
+────────────────────────────────────────
+8. API ROUTES
+────────────────────────────────────────
+
+Implement routes consistent with the existing API conventions for:
+
+- list knowledge sources
+- create upload
+- complete upload
+- retrieve source
+- update metadata
+- assign scope
+- remove scope
+- revoke source
+- supersede source
+- delete source
+- replace source version
+- retrieve version history
+- retrieve source status
+- reprocess placeholder
+- get specialist training status
+- update specialist training status where authorised
+
+Every write route must include:
+
+- authentication
+- tenant authorisation
+- role checks
+- validation
+- audit logging
+- idempotency where appropriate
+- safe errors
+- rate limiting where appropriate
+
+────────────────────────────────────────
+9. RLS AND MIGRATION
+────────────────────────────────────────
+
+Add all new tenant tables to REQUIRED_RLS_TABLES.
+
+Apply:
+
+- tenant_isolation policies
+- foreign keys
+- indexes
+- unique constraints
+- timestamps
+- soft deletion where appropriate
+
+Add cross-tenant tests for every new table.
+
+Do not weaken current RLS behaviour.
+
+────────────────────────────────────────
+10. BACKWARDS COMPATIBILITY
+────────────────────────────────────────
+
+Preserve:
+
+- organisation_memory behaviour
+- Task #14 specialist context injection
+- Chief of Staff memory behaviour
+- existing specialist configuration
+- existing APIs
+- existing tests
+
+Existing organisation memory should not be silently migrated into knowledge_sources in this task.
+
+Document how Task #16 or a later migration may bridge them.
+
+────────────────────────────────────────
+11. TESTING
+────────────────────────────────────────
+
+Add tests for:
+
+Schema and RLS:
+
+- every new table protected
+- cross-tenant reads rejected
+- cross-tenant writes rejected
+- scope isolation
+- duplicate scope prevention
+- version lineage
+- only one current version
+- superseded version handling
+
+Upload:
+
+- allowed MIME types
+- rejected extensions
+- rejected executables
+- file size limit
+- checksum generation
+- duplicate checksum handling
+- tenant storage path
+- upload completion
+- idempotent completion
+- revoke
+- delete
+- version replacement
+- malformed metadata
+- unauthorised user
+- wrong tenant
+
+Training status:
+
+- default state
+- valid transitions
+- invalid transitions
+- tenant isolation
+- owner/admin approval restriction
+
+Do not break the 1,498 existing tests.
+
+Run the full test suite.
+
+────────────────────────────────────────
+12. COMPLETION REPORT
+────────────────────────────────────────
+
+At completion provide:
+
+- files added
+- files modified
+- migration summary
+- new tables
+- RLS count
+- API endpoint summary
+- upload flow
+- storage abstraction
+- AWS-readiness notes
+- tests added
+- full test result
+- known limitations
+- confirmation that no extraction, embeddings, vector retrieval, or training UI was implemented yet
+- confirmation that Task #16 has not started
+
+Do not mark Task #15 complete unless:
+
+- secure upload works
+- scopes work
+- versions work
+- tenant isolation is tested
+- upload records are auditable
+- all tests pass
+
+Begin Task #15 now.
