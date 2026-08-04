@@ -37,3 +37,4 @@
 - [NeedsOps Sprint 26 Workforce Operations Centre](needsops-sprint26-workforce-ops.md) — displayName/version (not title/dnaVersion), logOrgEvent object-only, tenantId not organizationId, mockReset clears once-queue, @swc/helpers runtime dep, 2108 tests
 - [Clerk Show-without-when crash](needsops-show-without-when-crash.md) — <Show> without `when` prop crashes for signed-in users; always add when="signed-in"; ClerkErrorBoundary in App.tsx as safety net
 - [NeedsOps Chat Interface Bugs](needsops-chat-bugs.md) — find-or-create conversation, NULLS LAST ordering, userText→text, SSE error handling, res.ok guard
+- [NeedsOps Task #34 Connector Fleet](needsops-sprint34.md) — platformDeviceService, disable/revoke separation, stale heartbeat, vitest only scans src/__tests__/ not subdirs, 2120 tests

@@ -281,6 +281,14 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
   if (!device || device.status === "revoked" || device.revokedAt) {
     throw Object.assign(new Error("Device is revoked"), { code: "DEVICE_REVOKED" });
   }
+  // Task #34: platform-disabled devices cannot refresh tokens
+  if ((device as any).isPlatformDisabled) {
+    throw Object.assign(new Error("Device is disabled by a platform administrator"), { code: "DEVICE_PLATFORM_DISABLED" });
+  }
+  // Task #34: devices awaiting re-activation (after credential rotation) cannot refresh
+  if (device.status === "pending") {
+    throw Object.assign(new Error("Device credentials have been rotated — re-activation required"), { code: "DEVICE_REACTIVATION_REQUIRED" });
+  }
 
   const now = new Date();
 
@@ -367,6 +375,10 @@ export async function validateAccessToken(rawToken: string): Promise<{
     .limit(1);
 
   if (!device || device.status === "revoked") return null;
+  // Task #34: platform-disabled devices cannot use the relay
+  if ((device as any).isPlatformDisabled) return null;
+  // Task #34: pending (post-rotation) devices cannot use existing access tokens
+  if (device.status === "pending") return null;
 
   // Update last_used_at (fire-and-forget)
   db.update(deviceAccessTokensTable)

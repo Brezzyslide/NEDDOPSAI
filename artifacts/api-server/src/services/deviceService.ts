@@ -204,6 +204,8 @@ export async function authenticateDevice(
 
   if (!device) return null;
   if (device.status === "revoked") return null;
+  // Task #34: platform-disabled devices are treated the same as revoked for auth purposes
+  if ((device as any).isPlatformDisabled) return null;
 
   // Update last used
   await db

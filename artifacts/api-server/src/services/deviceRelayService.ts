@@ -178,6 +178,17 @@ async function handleAuth(
 
   const { device: deviceRow } = result;
 
+  // Task #34: reject platform-disabled devices at the relay gate (defence-in-depth;
+  // validateAccessToken already returns null for disabled devices, but guard here too)
+  if ((deviceRow as any).isPlatformDisabled) {
+    sendMessage(ws, buildRelayMessage("auth_error", deviceRow.id, deviceRow.organizationId, {
+      code: "DEVICE_PLATFORM_DISABLED",
+      message: "This device has been temporarily disabled by a platform administrator.",
+    }));
+    ws.terminate();
+    return null;
+  }
+
   // Close duplicate connection if one exists
   const existing = connections.get(deviceRow.id);
   if (existing) {

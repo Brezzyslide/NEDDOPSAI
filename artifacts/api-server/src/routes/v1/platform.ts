@@ -50,6 +50,7 @@ import platformAIRouter from "./platformAI.js";
 import { platformDatabaseRouter } from "./platformDatabase.js";
 import platformStaffRouter from "./platformStaff.js";
 import platformPackGrantsRouter from "./platformPackGrants.js";
+import platformDevicesRouter from "./platformDevices.js";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -132,6 +133,8 @@ router.use("/ai", platformAIRouter);
 router.use("/staff", platformStaffRouter);
 // Sprint 9.7 — Pack grant/revoke from platform console
 router.use("/packs", platformPackGrantsRouter);
+// Task #34 — Connector & Device Fleet Management
+router.use("/devices", platformDevicesRouter);
 // Sprint 6/7 — Organisation Database management
 router.use("/", platformDatabaseRouter);
 

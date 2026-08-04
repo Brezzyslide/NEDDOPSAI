@@ -190,10 +190,10 @@ router.get("/:id", ...auth, async (req, res, next) => {
       },
       usageSummary: usageRows,
       seatInfo,
-      placeholders: {
-        connectors: { status: "not_implemented", message: "Connectors coming in a later sprint." },
-        devices:    { status: "not_implemented", message: "Local device access coming in a later sprint." },
-      },
+      // Device count (safe aggregate — no tokens/secrets)
+      deviceCount: await import("../../services/platformDeviceService.js")
+        .then(svc => svc.listDevicesForOrg(org.id).then(d => d.length))
+        .catch(() => 0),
     });
   } catch (err) { next(err); }
 });

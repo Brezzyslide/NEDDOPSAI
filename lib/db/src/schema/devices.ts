@@ -79,6 +79,13 @@ export const devicesTable = pgTable("devices", {
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   revokedBy: text("revoked_by"),
 
+  // ── Task #34 — Platform disable (reversible; separate from permanent revoke) ──
+  /** When true, device is temporarily blocked by a platform owner. */
+  isPlatformDisabled: boolean("is_platform_disabled").notNull().default(false),
+  platformDisabledAt: timestamp("platform_disabled_at", { withTimezone: true }),
+  platformDisabledBy: text("platform_disabled_by"),
+  platformDisabledReason: text("platform_disabled_reason"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

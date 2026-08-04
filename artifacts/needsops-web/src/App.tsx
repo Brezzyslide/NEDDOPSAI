@@ -77,6 +77,7 @@ import PlatformRuntime from "@/pages/platform/PlatformRuntime";
 import SpecialistOpsPage from "@/pages/platform/SpecialistOpsPage";
 import PlatformPacksPage from "@/pages/platform/PlatformPacksPage";
 import PlatformStaff from "@/pages/platform/PlatformStaff";
+import PlatformConnectorFleet from "@/pages/platform/PlatformConnectorFleet";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -308,6 +309,7 @@ function AppRouter() {
             <Route path="/platform/specialist-ops" component={SpecialistOpsPage} />
             <Route path="/platform/packs" component={PlatformPacksPage} />
             <Route path="/platform/staff" component={PlatformStaff} />
+            <Route path="/platform/connector-fleet" component={PlatformConnectorFleet} />
             <Route path="/platform" component={PlatformDashboard} />
             {/* Legacy Sprint 0 routes */}
             <Route path="/dashboard" component={Dashboard} />

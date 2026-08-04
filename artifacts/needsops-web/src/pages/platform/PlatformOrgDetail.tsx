@@ -9,7 +9,7 @@ import { useParams, useLocation } from "wouter";
 import { usePlatformFetch } from "@/lib/platformApi";
 import PlatformShell from "@/components/layout/PlatformShell";
 
-type Tab = "overview" | "subscription" | "members" | "invitations" | "workforce" | "usage" | "entitlements" |
+type Tab = "overview" | "subscription" | "members" | "invitations" | "devices" | "workforce" | "usage" | "entitlements" |
            "overrides" | "notes" | "tasks" | "approvals" | "audit" | "security" | "placeholders";
 
 const TABS: { id: Tab; label: string }[] = [
@@ -17,6 +17,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "subscription",  label: "Subscription" },
   { id: "members",       label: "Members" },
   { id: "invitations",   label: "Invitations" },
+  { id: "devices",       label: "Devices" },
   { id: "workforce",     label: "Workforce" },
   { id: "usage",         label: "Usage" },
   { id: "entitlements",  label: "Entitlements" },
@@ -341,6 +342,13 @@ export default function PlatformOrgDetail() {
   const [invBusy, setInvBusy] = useState(false);
   const [invFormError, setInvFormError] = useState("");
   const [invPreviewUrls, setInvPreviewUrls] = useState<Record<string, string>>({});
+
+  // ── Devices tab state ──────────────────────────────────────────────────────
+  const [orgDevices, setOrgDevices] = useState<any[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [devicesError, setDevicesError] = useState("");
+  const [devicesActionBusy, setDevicesActionBusy] = useState<string | null>(null);
+
   const isDev = import.meta.env.DEV;
 
   const loadInvitations = useCallback(() => {
@@ -354,8 +362,19 @@ export default function PlatformOrgDetail() {
       .finally(() => setInvLoading(false));
   }, [params.id, fetch]);
 
+  const loadDevices = useCallback(() => {
+    if (!id) return;
+    setDevicesLoading(true); setDevicesError("");
+    fetch(`/devices/by-org/${id}`)
+      .then(r => r.json())
+      .then(d => setOrgDevices(d.devices ?? []))
+      .catch(() => setDevicesError("Failed to load devices."))
+      .finally(() => setDevicesLoading(false));
+  }, [id, fetch]);
+
   useEffect(() => {
     if (activeTab === "invitations") loadInvitations();
+    if (activeTab === "devices") loadDevices();
   }, [activeTab]);
 
   const sendInvitation = async () => {
@@ -949,6 +968,130 @@ export default function PlatformOrgDetail() {
                     </button>
                   </div>
                   <p className="text-xs text-[#4A5568]">All actions are logged to the platform audit log.</p>
+                </div>
+              )}
+
+              {/* DEVICES */}
+              {activeTab === "devices" && (
+                <div>
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-[#E2E8F0]">Registered Devices</h3>
+                    <a
+                      href="/platform/connector-fleet"
+                      className="text-xs text-[#00D4FF] hover:underline"
+                    >
+                      View full fleet →
+                    </a>
+                  </div>
+
+                  {devicesLoading && (
+                    <div className="flex items-center gap-2 text-sm text-[#64748B]">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-[#00D4FF] border-t-transparent" />
+                      Loading…
+                    </div>
+                  )}
+                  {devicesError && (
+                    <div className="rounded-lg border border-red-800 bg-red-950/30 p-3 text-sm text-red-400">{devicesError}</div>
+                  )}
+                  {!devicesLoading && orgDevices.length === 0 && !devicesError && (
+                    <p className="text-sm text-[#4A5568]">No devices registered for this organisation.</p>
+                  )}
+                  {!devicesLoading && orgDevices.length > 0 && (
+                    <div className="overflow-hidden rounded-lg border border-[#1E3A5F]">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[#0B1829]">
+                          <tr className="border-b border-[#1E3A5F] text-left text-xs font-medium uppercase tracking-wider text-[#64748B]">
+                            <th className="px-4 py-2">Device</th>
+                            <th className="px-4 py-2">Status</th>
+                            <th className="px-4 py-2">Last seen</th>
+                            <th className="px-4 py-2">Version</th>
+                            <th className="px-4 py-2">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#1E3A5F]">
+                          {orgDevices.map((dev: any) => {
+                            const ONLINE_COLORS: Record<string, string> = {
+                              online: "bg-emerald-950/30 text-emerald-400",
+                              offline: "bg-[#1E3A5F] text-[#64748B]",
+                              never_connected: "bg-amber-950/30 text-amber-400",
+                            };
+                            const ONLINE_LABELS: Record<string, string> = {
+                              online: "Online", offline: "Offline", never_connected: "Never connected",
+                            };
+                            const heartbeatAgo = (ts: string | null) => {
+                              if (!ts) return "Never";
+                              const secs = Math.round((Date.now() - new Date(ts).getTime()) / 1000);
+                              if (secs < 60) return `${secs}s ago`;
+                              if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+                              return `${Math.floor(secs / 3600)}h ago`;
+                            };
+                            const doDeviceAction = async (action: string, body: Record<string, unknown> = {}) => {
+                              setDevicesActionBusy(dev.id + action);
+                              try {
+                                const r = await fetch(`/devices/${dev.id}/${action}`, { method: "POST", body: JSON.stringify(body) });
+                                const d = await r.json();
+                                if (!r.ok) alert(d.error?.message ?? "Action failed.");
+                                else loadDevices();
+                              } finally { setDevicesActionBusy(null); }
+                            };
+                            return (
+                              <tr key={dev.id} className={`hover:bg-[#0B1829]/50 ${dev.isPlatformDisabled ? "opacity-60" : ""}`}>
+                                <td className="px-4 py-3">
+                                  <div className="font-medium text-[#E2E8F0]">{dev.displayName}</div>
+                                  <div className="text-xs text-[#4A5568]">{dev.platform}{dev.hostname ? ` · ${dev.hostname}` : ""}</div>
+                                  {dev.isPlatformDisabled && <span className="text-xs text-amber-400">⚠ Disabled</span>}
+                                  {dev.revokedAt && <span className="text-xs text-red-400">Revoked</span>}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ONLINE_COLORS[dev.onlineStatus] ?? ""}`}>
+                                    {ONLINE_LABELS[dev.onlineStatus] ?? dev.onlineStatus}
+                                  </span>
+                                  {dev.runtime?.brokerStatus && (
+                                    <div className="mt-0.5 text-xs text-[#4A5568]">broker: {dev.runtime.brokerStatus}</div>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-[#94A3B8]">{heartbeatAgo(dev.lastHeartbeatAt)}</td>
+                                <td className="px-4 py-3 text-xs text-[#64748B]">
+                                  {dev.appVersion ? `v${dev.appVersion}` : "—"}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {dev.status !== "revoked" && (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {dev.isPlatformDisabled ? (
+                                        <button
+                                          disabled={devicesActionBusy === dev.id + "enable"}
+                                          onClick={() => doDeviceAction("enable")}
+                                          className="text-xs text-emerald-400 hover:text-emerald-300 disabled:opacity-50"
+                                        >Enable</button>
+                                      ) : (
+                                        <button
+                                          disabled={devicesActionBusy === dev.id + "disable"}
+                                          onClick={() => {
+                                            const r = window.prompt("Reason for disabling:");
+                                            if (r) doDeviceAction("disable", { reason: r });
+                                          }}
+                                          className="text-xs text-amber-400 hover:text-amber-300 disabled:opacity-50"
+                                        >Disable</button>
+                                      )}
+                                      <span className="text-[#1E3A5F]">·</span>
+                                      <button
+                                        disabled={devicesActionBusy === dev.id + "revoke"}
+                                        onClick={() => {
+                                          const r = window.prompt("Reason to revoke (permanent):");
+                                          if (r && window.confirm("This cannot be undone. Confirm?")) doDeviceAction("revoke", { reason: r });
+                                        }}
+                                        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                                      >Revoke</button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
 
