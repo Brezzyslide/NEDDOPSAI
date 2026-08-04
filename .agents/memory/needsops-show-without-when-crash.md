@@ -38,6 +38,10 @@ All `<Show>` without a `when` prop (e.g. `<Show fallback={<Redirect to="/sign-in
 
 Files fixed: `CompletedWorkPortal.tsx` (1 instance) and `CompletedWorkViewer.tsx` (3 instances).
 
+## AI_PROVIDER env var
+
+The CoS (and all specialists) default to deterministic keyword routing unless `AI_PROVIDER=openai` is set. The `OPENAI_API_KEY` secret being present is not sufficient — the env var must also be set. Default model is `gpt-4o-mini` (override with `OPENAI_MODEL`).
+
 ## Safety net
 
 `ClerkErrorBoundary` (class component) in `App.tsx` catches "Cannot read properties of undefined" errors from Clerk internals and calls `window.location.reload()` to recover cleanly. This is a last-resort guard — fix the root cause (`when` prop) instead of relying on the boundary.
