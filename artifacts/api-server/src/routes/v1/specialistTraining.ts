@@ -389,31 +389,45 @@ router.post(
         writeAudit:     false, // test mode — no audit write
       });
 
+      // Flatten all document-layer items (P1+P2+P4+P5) into a single list for
+      // the training UI. P3 org memory is excluded from the test view.
+      const allItems = [
+        ...result.taskUploadItems,
+        ...result.entityItems,
+        ...result.specialistItems,
+        ...result.libraryItems,
+      ];
+
+      // Build a set of source IDs flagged in any conflict for O(1) lookup
+      const conflictSourceIds = new Set(
+        result.conflicts.flatMap(c => c.sourceIds),
+      );
+
       // Format citations for the customer: no raw scores, no internal labels
-      const citations = result.items.map(item => ({
-        sourceId:    item.sourceId,
-        title:       item.title,
-        excerpt:     item.content.slice(0, 400),
-        section:     item.sectionTitle ?? null,
-        pageNumber:  item.pageNumber ?? null,
-        versionLabel: item.versionLabel ?? null,
-        authority:   friendlyAuthority(item.authorityLevel),
-        matchLabel:  friendlyMatchLabel(item.score),
-        isApproved:  item.authorityLevel !== "reference_only",
-        isCurrent:   item.isCurrent,
-        scopeType:   item.sourceScope,
+      const citations = allItems.map(item => ({
+        sourceId:     item.sourceId,
+        title:        item.sourceTitle,
+        excerpt:      item.content.slice(0, 400),
+        section:      item.sectionTitle ?? null,
+        pageNumber:   item.pageNumber ?? null,
+        versionId:    item.versionId ?? null,
+        authority:    friendlyAuthority(item.authorityLevel),
+        matchLabel:   friendlyMatchLabel(Math.max(item.semanticScore, item.lexicalScore)),
+        isApproved:   item.authorityLevel !== "reference_only",
+        isCurrent:    item.isCurrent,
+        scopeType:    item.priorityLayer,
         warnings: [
           ...(!item.isCurrent ? ["Outdated source — a newer version may be available"] : []),
-          ...(item.conflictIds?.length ? ["Possible conflict with another source"] : []),
+          ...(conflictSourceIds.has(item.sourceId) ? ["Possible conflict with another source"] : []),
         ],
       }));
 
-      // Conflict warnings (customer-friendly)
+      // Conflict warnings (customer-friendly, using correct field names from ConflictWarning)
       const conflicts = result.conflicts.map(c => ({
-        type:    c.conflictType === "overlapping_scope" ? "Overlapping scope" :
-                 c.conflictType === "contradictory_authority" ? "Contradictory authority levels" :
+        type:    c.conflictType === "effective_date_overlap"  ? "Overlapping scope" :
+                 c.conflictType === "policy_conflict"         ? "Contradictory authority levels" :
                  "Possible conflict",
-        sources: c.involvedSourceIds,
+        sources: c.sourceIds,
         warning: c.description,
       }));
 
@@ -424,7 +438,7 @@ router.post(
         citations,
         conflicts,
         sourcesUsed:      citations.length,
-        warnings:         result.warnings,
+        conflictCount:    result.conflicts.length,
         testedAt:         new Date().toISOString(),
       });
     } catch (err) {

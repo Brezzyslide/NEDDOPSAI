@@ -211,11 +211,20 @@ async function buildExecutionPackage(
 
   // ── Phase A (Knowledge Bridge): Load per-specialist organisation context ──
   // Retrieves approved org memory (scoped to this specialist or org-wide),
-  // specialist config (goals, style, escalation), and language profile.
-  // Degrades gracefully — never blocks execution if context load fails.
+  // specialist config (goals, style, escalation), language profile, and
+  // (Task #17) retrieved knowledge document chunks from the Organisation Library.
+  // Degrades gracefully — never blocks execution if any context load fails.
   const specialistContext = await loadSpecialistContext(
     task.organizationId,
     primaryRole,
+    undefined,  // use default token budget
+    {
+      // Use task title + description as query for hybrid retrieval
+      query:        task.description ? `${task.title}: ${task.description}` : task.title,
+      taskId:       task.id,
+      executionId,
+      writeAudit:   true,
+    },
   );
 
   // ── Phase 1 (SRM Hardening): Assemble runtime instructions ──────────────
