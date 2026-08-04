@@ -34,3 +34,4 @@
 - [NeedsOps Sprint 24 Governance Centre](needsops-sprint24-governance-centre.md) — 6 pages, unified approval dispatch pattern, pin=importance 10, audit field normalisation, route ordering for sub-paths, 1948 tests
 - [NeedsOps Sprint 25 Completed Work Portal](needsops-sprint25-completed-work-portal.md) — Portal+Viewer 2 pages, MarkdownRenderer component, pin/recent in localStorage, PDF/DOCX stubs, 1997 tests
 - [NeedsOps Sprint 25 Hardening](needsops-sprint25-hardening.md) — server comment resolution, PDF/DOCX export architecture, export audit, mock chain must be reset via resetChain() helper, 2060 tests
+- [NeedsOps Sprint 26 Workforce Operations Centre](needsops-sprint26-workforce-ops.md) — displayName/version (not title/dnaVersion), logOrgEvent object-only, tenantId not organizationId, mockReset clears once-queue, @swc/helpers runtime dep, 2108 tests

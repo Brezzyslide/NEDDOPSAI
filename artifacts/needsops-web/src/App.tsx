@@ -46,6 +46,8 @@ import AuditPage from "@/pages/app/AuditPage";
 import AccountSettings from "@/pages/app/AccountSettings";
 import InvitationAccept from "@/pages/InvitationAccept";
 import WorkforcePage from "@/pages/app/WorkforcePage";
+import WorkforceOpsCentre from "@/pages/app/WorkforceOpsCentre";
+import WorkforceSpecialistDetail from "@/pages/app/WorkforceSpecialistDetail";
 import TaskCentrePage from "@/pages/app/TaskCentrePage";
 import TaskWorkroomPage from "@/pages/app/TaskWorkroomPage";
 import WorkforceChatPage from "@/pages/app/WorkforceChatPage";
@@ -228,6 +230,9 @@ function AppRouter() {
             <Route path="/app-home" component={AppHome} />
             <Route path="/app/:slug/chat" component={WorkforceChatPage} />
             <Route path="/app/:slug/workforce" component={WorkforcePage} />
+            {/* Sprint 26 — Workforce Operations Centre (before :specialistId/training) */}
+            <Route path="/app/:slug/workforce-ops/:specialistId" component={WorkforceSpecialistDetail} />
+            <Route path="/app/:slug/workforce-ops" component={WorkforceOpsCentre} />
             <Route path="/app/:slug/tasks/:taskId" component={TaskWorkroomPage} />
             <Route path="/app/:slug/tasks" component={TaskCentrePage} />
             <Route path="/app/:slug/approvals" component={ApprovalsPage} />

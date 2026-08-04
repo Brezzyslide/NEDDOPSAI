@@ -123,6 +123,10 @@ router.use("/", taskUploadsRouter);
 import executiveBriefingRouter from "./executiveBriefing.js";
 router.use("/", executiveBriefingRouter);
 
+// Sprint 26: Workforce Operations Centre
+import workforceOpsRouter from "./workforceOps.js";
+router.use("/", workforceOpsRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 

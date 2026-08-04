@@ -10,7 +10,8 @@
   },
   "private": true,
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1"
+    "@replit/connectors-sdk": "^0.4.1",
+    "@swc/helpers": "^0.5.23"
   },
   "devDependencies": {
     "@rollup/rollup-darwin-arm64": "4.62.2",

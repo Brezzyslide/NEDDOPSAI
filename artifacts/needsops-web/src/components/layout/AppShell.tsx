@@ -14,10 +14,11 @@ const WORKSPACE_NAV = [
 
 // ── Operations ────────────────────────────────────────────────────────────────
 const OPERATIONS_NAV = [
-  { label: "Chat",           icon: "💬", path: "/chat" },
-  { label: "Workforce",      icon: "🤖", path: "/workforce" },
-  { label: "Tasks",          icon: "📌", path: "/tasks" },
-  { label: "Completed Work", icon: "📄", path: "/work" },
+  { label: "Chat",                icon: "💬", path: "/chat" },
+  { label: "Workforce",           icon: "🤖", path: "/workforce" },
+  { label: "Operations Centre",   icon: "🖥",  path: "/workforce-ops" },
+  { label: "Tasks",               icon: "📌", path: "/tasks" },
+  { label: "Completed Work",      icon: "📄", path: "/work" },
 ];
 
 // ── Knowledge ─────────────────────────────────────────────────────────────────
