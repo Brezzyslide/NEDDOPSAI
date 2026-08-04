@@ -123,6 +123,8 @@ export * from "./retrievalAuditEvents";
 // Task #16 — Document Ingestion & Embedding Pipeline
 export * from "./ingestionJobs";
 export * from "./knowledgeCurationJobs";
+// Task #33 — Owner Console Org Provisioning
+export * from "./orgProvisioningJobs";
 // Sprint 22 — Work Execution Engine & Completed Work
 export * from "./workBlueprints";
 export * from "./workPackageManifests";

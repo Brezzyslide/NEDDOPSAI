@@ -9,13 +9,14 @@ import { useParams, useLocation } from "wouter";
 import { usePlatformFetch } from "@/lib/platformApi";
 import PlatformShell from "@/components/layout/PlatformShell";
 
-type Tab = "overview" | "subscription" | "members" | "workforce" | "usage" | "entitlements" |
+type Tab = "overview" | "subscription" | "members" | "invitations" | "workforce" | "usage" | "entitlements" |
            "overrides" | "notes" | "tasks" | "approvals" | "audit" | "security" | "placeholders";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview",      label: "Overview" },
   { id: "subscription",  label: "Subscription" },
   { id: "members",       label: "Members" },
+  { id: "invitations",   label: "Invitations" },
   { id: "workforce",     label: "Workforce" },
   { id: "usage",         label: "Usage" },
   { id: "entitlements",  label: "Entitlements" },
@@ -330,6 +331,53 @@ export default function PlatformOrgDetail() {
   // Pack panel
   const [showGrantPack, setShowGrantPack] = useState(false);
 
+  // Invitations panel
+  const [invitations, setInvitations] = useState<any[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invError, setInvError] = useState("");
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [invEmail, setInvEmail] = useState("");
+  const [invRole, setInvRole] = useState("administrator");
+  const [invBusy, setInvBusy] = useState(false);
+  const [invFormError, setInvFormError] = useState("");
+  const [invPreviewUrls, setInvPreviewUrls] = useState<Record<string, string>>({});
+  const isDev = import.meta.env.DEV;
+
+  const loadInvitations = useCallback(() => {
+    if (!params.id) return;
+    setInvLoading(true);
+    setInvError("");
+    fetch(`/organisations/${params.id}/invitations`)
+      .then(r => r.json())
+      .then(d => setInvitations(d.invitations ?? []))
+      .catch(e => setInvError(e.message))
+      .finally(() => setInvLoading(false));
+  }, [params.id, fetch]);
+
+  useEffect(() => {
+    if (activeTab === "invitations") loadInvitations();
+  }, [activeTab]);
+
+  const sendInvitation = async () => {
+    if (!invEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invEmail)) {
+      setInvFormError("Valid email is required."); return;
+    }
+    setInvBusy(true); setInvFormError("");
+    try {
+      const r = await fetch(`/organisations/${params.id}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: invEmail, role: invRole }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setInvFormError(d.error?.message ?? "Failed to send invitation."); return; }
+      if (d.previewUrl && d.invitation?.id) {
+        setInvPreviewUrls(prev => ({ ...prev, [d.invitation.id]: d.previewUrl }));
+      }
+      setInvEmail(""); setShowInviteForm(false);
+      loadInvitations();
+    } finally { setInvBusy(false); }
+  };
+
   const load = useCallback(() => {
     if (!params.id) return;
     setLoading(true);
@@ -557,6 +605,118 @@ export default function PlatformOrgDetail() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* INVITATIONS */}
+              {activeTab === "invitations" && (
+                <div>
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-[#E2E8F0]">Staff Invitations</h3>
+                    <button
+                      onClick={() => { setShowInviteForm(true); setInvFormError(""); }}
+                      className="rounded-lg border border-[#00D4FF]/40 px-3 py-1.5 text-sm text-[#00D4FF] hover:bg-[#00D4FF]/10"
+                    >
+                      + Send Invitation
+                    </button>
+                  </div>
+
+                  {invLoading && <div className="text-sm text-[#64748B]">Loading…</div>}
+                  {invError && <div className="rounded-lg border border-red-800 bg-red-950/30 p-3 text-sm text-red-400">{invError}</div>}
+
+                  {!invLoading && invitations.length === 0 && (
+                    <p className="text-sm text-[#4A5568]">No invitations for this organisation.</p>
+                  )}
+
+                  {!invLoading && invitations.length > 0 && (
+                    <div className="space-y-2">
+                      {invitations.map((inv: any) => {
+                        const isPending = inv.status === "pending";
+                        const devUrl = invPreviewUrls[inv.id];
+                        return (
+                          <div key={inv.id} className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-4 py-3">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm text-[#E2E8F0]">{inv.email}</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                                    inv.role === "owner" ? "bg-[#00D4FF]/10 text-[#00D4FF]" :
+                                    inv.role === "administrator" ? "bg-violet-900/20 text-violet-400" :
+                                    "bg-[#1E3A5F] text-[#94A3B8]"
+                                  }`}>{inv.role}</span>
+                                  <span className={`text-xs capitalize ${
+                                    isPending ? "text-[#00D4FF]" :
+                                    inv.status === "accepted" ? "text-emerald-400" : "text-[#4A5568]"
+                                  }`}>{inv.status}</span>
+                                </div>
+                                {inv.expiresAt && isPending && (
+                                  <div className="mt-0.5 text-xs text-[#4A5568]">
+                                    Expires {new Date(inv.expiresAt).toLocaleDateString("en-AU")}
+                                  </div>
+                                )}
+                                {isDev && devUrl && isPending && (
+                                  <div className="mt-1">
+                                    <a href={devUrl} target="_blank" rel="noopener noreferrer"
+                                      className="text-xs text-yellow-400 hover:text-yellow-300 underline">
+                                      🔗 Open invitation preview
+                                    </a>
+                                    <span className="ml-1 text-[10px] text-[#4A5568]">(dev only)</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Send Invitation Form */}
+                  {showInviteForm && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4" onClick={() => setShowInviteForm(false)}>
+                      <div className="w-full max-w-md rounded-2xl border border-[#1E3A5F] bg-[#112033] p-6" onClick={e => e.stopPropagation()}>
+                        <h2 className="mb-4 text-lg font-semibold text-[#E2E8F0]">Send Staff Invitation</h2>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="mb-1 block text-sm text-[#E2E8F0]">Email address</label>
+                            <input
+                              type="email"
+                              value={invEmail}
+                              onChange={e => setInvEmail(e.target.value)}
+                              placeholder="colleague@org.com.au"
+                              autoFocus
+                              className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2.5 text-sm text-[#E2E8F0] placeholder-[#4A5568] focus:border-[#00D4FF] focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-sm text-[#E2E8F0]">Role</label>
+                            <select
+                              value={invRole}
+                              onChange={e => setInvRole(e.target.value)}
+                              className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2.5 text-sm text-[#E2E8F0] focus:border-[#00D4FF] focus:outline-none"
+                            >
+                              {["administrator","manager","member","viewer","auditor"].map(r => (
+                                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          {invFormError && <p className="text-sm text-red-400">{invFormError}</p>}
+                        </div>
+                        <div className="mt-6 flex gap-3">
+                          <button onClick={() => setShowInviteForm(false)} className="flex-1 rounded-lg border border-[#1E3A5F] px-4 py-2.5 text-sm text-[#E2E8F0] hover:border-[#00D4FF]">
+                            Cancel
+                          </button>
+                          <button
+                            onClick={sendInvitation}
+                            disabled={invBusy || !invEmail}
+                            className="flex-1 rounded-lg bg-[#00D4FF] px-4 py-2.5 text-sm font-semibold text-[#0B1829] hover:bg-[#00B8D9] disabled:opacity-50"
+                          >
+                            {invBusy ? "Sending…" : "Send invitation"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

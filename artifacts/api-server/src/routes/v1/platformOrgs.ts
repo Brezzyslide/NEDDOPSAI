@@ -51,6 +51,9 @@ import { eq, and, count, desc, like, or, isNull, gte, lte, ilike, sql } from "dr
 import { auditService } from "../../services/auditService.js";
 import { getUsageAllowance, getSeatAllowance } from "../../services/entitlementService.js";
 import { USAGE_DIMENSION_CODES, type UsageDimensionCode } from "@workspace/shared";
+import * as orgProvisioningService from "../../services/orgProvisioningService.js";
+import * as invitationService from "../../services/invitationService.js";
+import type { MembershipRole } from "@workspace/shared";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -1062,6 +1065,181 @@ router.delete("/:id/seats/override/:oid", ...auth, requirePlatformRole("platform
     }).catch(() => {});
 
     res.json({ success: true });
+  } catch (err) { next(err); }
+});
+
+// ─── POST / — Create organisation (owner console) ────────────────────────────
+/**
+ * POST /v1/platform/organisations
+ * Creates a new organisation from the owner console.
+ * Rate limited to 10 org creations per hour per staff member.
+ */
+router.post("/", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+  try {
+    const {
+      name,
+      type,
+      industry,
+      country,
+      state,
+      timezone,
+      abn,
+      ndisRegistrationNumber,
+      primaryContactName,
+      primaryContactEmail,
+      initialAdminEmail,
+      additionalPackCodes,
+    } = req.body as {
+      name?: string;
+      type?: string;
+      industry?: string;
+      country?: string;
+      state?: string;
+      timezone?: string;
+      abn?: string;
+      ndisRegistrationNumber?: string;
+      primaryContactName?: string;
+      primaryContactEmail?: string;
+      initialAdminEmail?: string;
+      additionalPackCodes?: string[];
+    };
+
+    if (!name || typeof name !== "string" || name.trim().length < 2) {
+      res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "Organisation name must be at least 2 characters." } });
+      return;
+    }
+
+    // Rate limit check
+    try {
+      orgProvisioningService.checkRateLimit(req.platformUserId!);
+    } catch (e: any) {
+      res.status(e.status ?? 429).json({ error: { code: "RATE_LIMITED", message: e.message } });
+      return;
+    }
+
+    const result = await orgProvisioningService.provisionOrganisation(
+      {
+        name: name.trim(),
+        type, industry, country, state, timezone,
+        abn, ndisRegistrationNumber, primaryContactName, primaryContactEmail,
+        initialAdminEmail,
+        additionalPackCodes: additionalPackCodes ?? [],
+      },
+      req.platformUserId!,
+    );
+
+    await auditService.log({
+      eventType: "platform.org_created",
+      actorId: req.platformUserId,
+      organizationId: result.orgId ?? undefined,
+      metadata: { jobId: result.jobId, name: name.trim(), error: result.error ?? null },
+    }).catch(() => {});
+
+    const statusCode = result.orgId ? 201 : 500;
+    res.status(statusCode).json({
+      jobId: result.jobId,
+      orgId: result.orgId,
+      error: result.error ?? null,
+    });
+  } catch (err) { next(err); }
+});
+
+// ─── GET /:id/provisioning — Get provisioning job status ─────────────────────
+
+router.get("/:id/provisioning", ...auth, async (req, res, next) => {
+  try {
+    const [org] = await db.select({ id: organizationsTable.id })
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!))
+      .limit(1);
+    if (!org) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } });
+      return;
+    }
+    const job = await orgProvisioningService.getLatestProvisioningJobForOrg(org.id);
+    res.json({ job: job ?? null });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/provisioning/retry — Retry a failed provisioning job ──────────
+
+router.post("/:id/provisioning/retry", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+  try {
+    const { jobId } = req.body as { jobId?: string };
+    if (!jobId) {
+      res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "jobId is required." } });
+      return;
+    }
+    const result = await orgProvisioningService.retryProvisioningJob(jobId, req.platformUserId!);
+    res.json(result);
+  } catch (err: any) {
+    if (err.status) {
+      res.status(err.status).json({ error: { code: "REQUEST_ERROR", message: err.message } });
+      return;
+    }
+    next(err);
+  }
+});
+
+// ─── GET /:id/invitations — List org invitations (platform view) ──────────────
+
+router.get("/:id/invitations", ...auth, async (req, res, next) => {
+  try {
+    const [org] = await db.select({ id: organizationsTable.id })
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!))
+      .limit(1);
+    if (!org) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } });
+      return;
+    }
+    const invitations = await invitationService.listInvitations(org.id);
+    res.json({ invitations });
+  } catch (err) { next(err); }
+});
+
+// ─── POST /:id/invitations — Send an invitation from the platform console ─────
+
+router.post("/:id/invitations", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+  try {
+    const [org] = await db.select({ id: organizationsTable.id })
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, req.params.id!))
+      .limit(1);
+    if (!org) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } });
+      return;
+    }
+
+    const { email, role } = req.body as { email?: string; role?: string };
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "Valid email is required." } });
+      return;
+    }
+    if (!role) {
+      res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "Role is required." } });
+      return;
+    }
+
+    const { invitation, previewUrl, emailDelivery } = await invitationService.createInvitation({
+      organizationId: org.id,
+      email,
+      role: role as MembershipRole,
+      invitedByUserId: req.platformUserId!,
+    });
+
+    await auditService.log({
+      eventType: "platform.org_invitation_sent",
+      actorId: req.platformUserId,
+      organizationId: org.id,
+      metadata: { invitationId: invitation.id, email, role },
+    }).catch(() => {});
+
+    res.status(201).json({
+      invitation,
+      previewUrl: previewUrl ?? undefined,
+      emailDelivery,
+    });
   } catch (err) { next(err); }
 });
 
