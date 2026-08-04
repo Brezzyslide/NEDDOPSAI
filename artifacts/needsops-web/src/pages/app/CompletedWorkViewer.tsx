@@ -409,6 +409,161 @@ function formatRole(role: string) {
   return role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ─── Quality Review Section (Task #39) ───────────────────────────────────────
+
+const DIMENSION_LABELS: Record<string, string> = {
+  instruction_adherence:    "Instruction Adherence",
+  policy_compliance:        "Policy Compliance",
+  writing_style_compliance: "Writing Style",
+  source_coverage:          "Source Coverage",
+  completeness:             "Completeness",
+  confidence:               "Confidence",
+  missing_information:      "Missing Information",
+  approval_requirements:    "Approval Requirements",
+  safety:                   "Safety",
+  consistency:              "Consistency",
+};
+
+function QualityReviewSection({
+  dimensions, qualityScore, isAutoRevision,
+}: {
+  dimensions: any[];
+  qualityScore: number | null;
+  isAutoRevision: boolean;
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const passed   = dimensions.filter(d => d.passed);
+  const failed   = dimensions.filter(d => !d.passed);
+  const score100 = qualityScore ?? (
+    dimensions.length > 0
+      ? Math.round(dimensions.reduce((s: number, d: any) => s + (d.score ?? 0), 0) / dimensions.length * 10)
+      : null
+  );
+
+  const scoreColor = score100 == null ? "" : score100 >= 80 ? "text-emerald-400" : score100 >= 70 ? "text-amber-400" : "text-red-400";
+  const barColor   = score100 == null ? "bg-gray-500" : score100 >= 80 ? "bg-emerald-500" : score100 >= 70 ? "bg-amber-500" : "bg-red-500";
+
+  return (
+    <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 space-y-4">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-[#64748B] text-xs uppercase tracking-widest">Quality Review</h3>
+          {isAutoRevision && (
+            <span className="mt-1 inline-block text-[10px] px-2 py-0.5 rounded-full bg-amber-900/40 text-amber-300">
+              Auto-revised
+            </span>
+          )}
+        </div>
+        {score100 != null && (
+          <div className="flex items-center gap-3">
+            <div className="w-28 h-2 rounded-full bg-[#0B1829] overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(100, score100)}%` }} />
+            </div>
+            <span className={`font-bold text-lg ${scoreColor}`}>{score100}/100</span>
+          </div>
+        )}
+      </div>
+
+      {/* Summary chips */}
+      {(passed.length > 0 || failed.length > 0) && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {passed.length > 0 && (
+            <span className="px-2 py-1 rounded-full bg-emerald-900/30 text-emerald-300">
+              ✓ {passed.length} dimension{passed.length !== 1 ? "s" : ""} passed
+            </span>
+          )}
+          {failed.length > 0 && (
+            <span className="px-2 py-1 rounded-full bg-red-900/30 text-red-300">
+              ✗ {failed.length} dimension{failed.length !== 1 ? "s" : ""} deducted
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Per-dimension results */}
+      <div className="space-y-2">
+        {dimensions.map((dim: any, i: number) => {
+          const dimLabel = DIMENSION_LABELS[dim.dimension] ?? dim.dimension;
+          const score    = dim.score ?? 0;
+          const score100d = Math.round(score * 10);
+          const dimColor = dim.passed ? "bg-emerald-500" : "bg-red-500";
+          const isOpen   = expanded === dim.dimension;
+          const hasDetail = (dim.feedback || (dim.evidence?.length ?? 0) > 0 || (dim.improvementSuggestions?.length ?? 0) > 0);
+
+          return (
+            <div key={i} className={`rounded-lg border transition-colors ${dim.passed ? "border-[#1E3A5F]" : "border-red-900/40"}`}>
+              <button
+                className="w-full flex items-center justify-between px-4 py-3 text-left"
+                onClick={() => hasDetail && setExpanded(isOpen ? null : dim.dimension)}
+                disabled={!hasDetail}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className={`text-xs font-semibold ${dim.passed ? "text-emerald-400" : "text-red-400"}`}>
+                    {dim.passed ? "✓" : "✗"}
+                  </span>
+                  <span className="text-[#E2E8F0] text-sm truncate">{dimLabel}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <div className="w-20 h-1.5 rounded-full bg-[#0B1829] overflow-hidden">
+                    <div className={`h-full rounded-full ${dimColor}`} style={{ width: `${score100d}%` }} />
+                  </div>
+                  <span className="text-[#64748B] text-xs w-8 text-right">{score}/10</span>
+                  {hasDetail && (
+                    <span className="text-[#475569] text-xs">{isOpen ? "▲" : "▼"}</span>
+                  )}
+                </div>
+              </button>
+
+              {isOpen && (
+                <div className="px-4 pb-4 space-y-3 border-t border-[#1E3A5F]/40 pt-3">
+                  {/* Plain-language reason */}
+                  {dim.feedback && (
+                    <p className="text-[#94A3B8] text-sm">{dim.feedback}</p>
+                  )}
+                  {/* Improvement suggestions */}
+                  {(dim.improvementSuggestions?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-[#64748B] text-xs uppercase tracking-widest mb-1">What to improve</p>
+                      <ul className="space-y-1">
+                        {dim.improvementSuggestions.map((s: string, j: number) => (
+                          <li key={j} className="text-amber-300 text-xs flex items-start gap-2">
+                            <span className="mt-0.5 shrink-0">→</span>
+                            <span>{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {/* Evidence citations */}
+                  {(dim.evidence?.length ?? 0) > 0 && (
+                    <div>
+                      <p className="text-[#64748B] text-xs uppercase tracking-widest mb-1">Evidence checked</p>
+                      <ul className="space-y-1">
+                        {dim.evidence.map((e: string, j: number) => (
+                          <li key={j} className="text-[#64748B] text-xs font-mono leading-relaxed">
+                            · {e}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer note — no chain-of-thought exposed */}
+      <p className="text-[#475569] text-xs">
+        Quality scores are computed automatically from structural and content analysis. Scores do not reflect the underlying AI model's reasoning process.
+      </p>
+    </div>
+  );
+}
+
 // ─── Execution Tab ────────────────────────────────────────────────────────────
 
 function ExecutionTab({
@@ -469,45 +624,9 @@ function ExecutionTab({
         ))}
       </div>
 
-      {/* Validation & self-review */}
+      {/* Validation & self-review — Quality Review Section (Task #39) */}
       {reviewDim.length > 0 && (
-        <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[#64748B] text-xs uppercase tracking-widest">Quality Self-Review</h3>
-            {avgScore != null && (
-              <div className="flex items-center gap-2">
-                <div className={`h-2 rounded-full flex-1 w-20 bg-[#0B1829] overflow-hidden`}>
-                  <div className={`h-full rounded-full ${avgScore >= 80 ? "bg-emerald-500" : avgScore >= 60 ? "bg-amber-500" : "bg-red-500"}`} style={{ width: `${avgScore}%` }} />
-                </div>
-                <span className="text-[#E2E8F0] text-sm font-semibold">{avgScore}/100</span>
-              </div>
-            )}
-          </div>
-          <div className="space-y-3">
-            {reviewDim.slice(0, 8).map((dim: any, i: number) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-[#94A3B8] text-sm">{dim.dimension ?? `Dimension ${i+1}`}</span>
-                <div className="flex items-center gap-3">
-                  <div className="w-24 h-1.5 rounded-full bg-[#0B1829] overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${(dim.score ?? 0) >= 80 ? "bg-emerald-500" : (dim.score ?? 0) >= 60 ? "bg-amber-500" : "bg-red-500"}`}
-                      style={{ width: `${dim.score ?? 0}%` }}
-                    />
-                  </div>
-                  <span className="text-[#64748B] text-xs w-8 text-right">{dim.score ?? "—"}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          {latest?.qualityScore != null && (
-            <div className="mt-4 pt-4 border-t border-[#1E3A5F] flex items-center justify-between">
-              <span className="text-[#64748B] text-sm">Overall quality score</span>
-              <span className={`font-bold text-lg ${latest.qualityScore >= 80 ? "text-emerald-400" : latest.qualityScore >= 60 ? "text-amber-400" : "text-red-400"}`}>
-                {latest.qualityScore}/100
-              </span>
-            </div>
-          )}
-        </div>
+        <QualityReviewSection dimensions={reviewDim} qualityScore={latest?.qualityScore ?? null} isAutoRevision={latest?.isAutoRevision === "true"} />
       )}
 
       {/* Related conversation */}
