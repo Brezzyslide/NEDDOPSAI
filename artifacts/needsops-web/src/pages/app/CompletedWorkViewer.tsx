@@ -1049,7 +1049,7 @@ export default function CompletedWorkViewer() {
 
   if (isLoading) {
     return (
-      <Show fallback={<Redirect to="/sign-in" />}>
+      <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
         <AppShell>
           <div className="min-h-full bg-[#0B1829] flex items-center justify-center">
             <div className="text-[#64748B] text-sm animate-pulse">Loading document…</div>
@@ -1061,7 +1061,7 @@ export default function CompletedWorkViewer() {
 
   if (!work) {
     return (
-      <Show fallback={<Redirect to="/sign-in" />}>
+      <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
         <AppShell>
           <div className="min-h-full bg-[#0B1829] flex flex-col items-center justify-center gap-4">
             <div className="text-4xl">📄</div>
@@ -1076,7 +1076,7 @@ export default function CompletedWorkViewer() {
   const badge = STATUS_BADGE[work.status] ?? STATUS_BADGE.draft;
 
   return (
-    <Show fallback={<Redirect to="/sign-in" />}>
+    <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
       <AppShell>
         <div className={`min-h-full ${printMode ? "bg-white text-black" : "bg-[#0B1829] text-[#E2E8F0]"}`}>
 

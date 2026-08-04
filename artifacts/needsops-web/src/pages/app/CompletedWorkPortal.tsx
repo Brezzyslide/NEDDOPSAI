@@ -267,7 +267,7 @@ export default function CompletedWorkPortal() {
   }
 
   return (
-    <Show fallback={<Redirect to="/sign-in" />}>
+    <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
       <AppShell>
         <div className="min-h-full bg-[#0B1829] text-[#E2E8F0]">
           {/* ── Header ── */}

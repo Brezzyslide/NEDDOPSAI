@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, Component, type ReactNode } from "react";
 import {
   ClerkProvider,
   SignIn,
   SignUp,
-  Show,
   useClerk,
   useUser,
 } from "@clerk/react";
@@ -99,6 +98,45 @@ function stripBase(path: string): string {
 
 if (!clerkPubKey) throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 
+// ── Error Boundary ────────────────────────────────────────────────────────────
+// Guards against Clerk internal errors (e.g. checkOrgAuthorization crashing
+// when orgMembership is undefined on users without Clerk org membership).
+class ClerkErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error) {
+    // Clerk internally calls checkOrgAuthorization(undefined) when <Show> renders
+    // without org membership, which crashes at undefined.role. Do a clean page
+    // reload so Clerk reinitialises with correct state rather than looping.
+    const isClerkAuthError =
+      error.message?.includes("Cannot read properties of undefined") ||
+      error.message?.includes("orgMembership") ||
+      error.message?.includes("checkOrgAuthorization");
+    if (isClerkAuthError) {
+      window.location.reload();
+    }
+  }
+  render() {
+    // Render null briefly while the reload triggers; avoids a blank screen flash.
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#0B1829", color: "#64748B", fontSize: 14 }}>
+          Reconnecting…
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const clerkAppearance = {
   theme: shadcn,
   cssLayerName: "clerk",
@@ -173,16 +211,9 @@ function SignUpPage() {
 }
 
 function HomeRedirect() {
-  return (
-    <>
-      <Show when="signed-in">
-        <Redirect to="/app-home" />
-      </Show>
-      <Show when="signed-out">
-        <LandingPage />
-      </Show>
-    </>
-  );
+  const { isSignedIn, isLoaded } = useUser();
+  if (!isLoaded) return null;
+  return isSignedIn ? <Redirect to="/app-home" /> : <LandingPage />;
 }
 
 function ClerkQueryClientCacheInvalidator() {
@@ -295,9 +326,11 @@ function AppRouter() {
 
 function App() {
   return (
-    <WouterRouter base={basePath}>
-      <AppRouter />
-    </WouterRouter>
+    <ClerkErrorBoundary>
+      <WouterRouter base={basePath}>
+        <AppRouter />
+      </WouterRouter>
+    </ClerkErrorBoundary>
   );
 }
 export default App;

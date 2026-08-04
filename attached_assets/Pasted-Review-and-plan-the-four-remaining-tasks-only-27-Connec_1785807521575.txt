@@ -1,0 +1,67 @@
+Review and plan the four remaining tasks only:
+
+#27 Connect the Chief of Staff to automatically execute and record professional work
+#28 Let admins create and manage custom Work Blueprints for their organisation
+#29 Give admins a single place to action every pending decision across the platform
+#30 Let admins review and curate the AI's memory of their organisation
+
+Do not begin implementation yet.
+
+First, compare each task against the current codebase and all completed work through Sprint 26.
+
+Important:
+
+- Sprint 24 already delivered the Governance Centre, Unified Approval Centre, and Memory Governance.
+- Sprint 22 already delivered the Work Execution Engine, Work Blueprints backend, Work Package Manifests, Completed Work lifecycle, and task uploads.
+- Sprint 26 already delivered the AI Workforce Operations Centre.
+
+For each task, classify it as:
+
+- Not started
+- Partially implemented
+- Fully implemented
+- Stale and safe to archive
+
+For partially implemented tasks, identify only the genuine missing work.
+
+Pay particular attention to:
+
+Task #27:
+- whether the Chief of Staff conversation path already creates execution intent
+- whether auto-dispatch already exists
+- whether executed work is automatically recorded in Completed Work
+- whether failures, approvals, clarification, and related conversation links are preserved
+- whether the user experience is seamless from chat to Completed Work
+
+Task #28:
+- whether only built-in blueprints exist
+- whether organisation admins can create, edit, version, archive, clone, test, and approve custom blueprints
+- whether blueprint permissions and validation already exist
+- whether a management UI exists
+
+Task #29:
+- compare directly against Sprint 24 Unified Approval Centre
+- identify any missing approval sources, actions, comments, bulk actions, or audit history
+- archive the task if it is already complete
+
+Task #30:
+- compare directly against Sprint 24 Memory Governance
+- identify any missing provenance, edit, pin, retire, merge, version comparison, or audit capability
+- archive the task if it is already complete
+
+Then produce:
+
+1. Current implementation status for each task
+2. Exact gaps
+3. Files and services involved
+4. Dependencies
+5. Which tasks can run in parallel
+6. Recommended implementation order
+7. Tasks that should be archived
+8. A concise plan for the remaining genuine work
+
+Do not duplicate shipped functionality.
+
+Do not create new tasks merely to rename completed work.
+
+Once the plan is complete, stop and wait for approval before entering Build mode.
