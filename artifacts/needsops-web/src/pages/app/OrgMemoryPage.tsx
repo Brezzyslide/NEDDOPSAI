@@ -25,6 +25,7 @@ import { Show }                   from "@clerk/react";
 import { Redirect }               from "wouter";
 import AppShell                   from "@/components/layout/AppShell";
 import { useAuthFetch }           from "@/lib/api";
+import { MemoryAuditPanel }       from "@/components/governance/MemoryAuditPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -219,10 +220,11 @@ function ProposeModal({ onClose, onSubmit, isPending, error }: {
 
 // ─── Memory card ──────────────────────────────────────────────────────────────
 
-function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, approving, rejecting }: {
+function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, onMerge, onAudit, approving, rejecting }: {
   item: OrgMemoryItem;
   onApprove?: () => void; onReject?: () => void;
   onPin?: () => void; onEdit?: () => void; onRetire?: () => void;
+  onMerge?: () => void; onAudit?: () => void;
   approving?: boolean; rejecting?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -315,6 +317,12 @@ function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, approv
                 className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
                 Edit
               </button>
+              {onMerge && (
+                <button onClick={onMerge}
+                  className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-purple-400 transition-colors">
+                  🔀 Merge
+                </button>
+              )}
               <button onClick={onRetire}
                 className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-red-400 transition-colors">
                 Retire
@@ -325,6 +333,12 @@ function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, approv
             <button onClick={onEdit}
               className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
               View / Edit
+            </button>
+          )}
+          {onAudit && (
+            <button onClick={onAudit}
+              className="px-3 py-1.5 border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#00D4FF] transition-colors">
+              📋 History
             </button>
           )}
           <button onClick={() => setExpanded(e => !e)}
@@ -381,10 +395,12 @@ export default function OrgMemoryPage() {
   const [typeFilter, setTypeFilter] = useState<MemoryType | "">("");
   const [search,     setSearch]     = useState("");
   const [showPropose, setShowPropose] = useState(false);
-  const [editItem,    setEditItem]   = useState<OrgMemoryItem | null>(null);
-  const [proposeError, setProposeError] = useState<string | null>(null);
-  const [approvingId, setApprovingId] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [editItem,      setEditItem]      = useState<OrgMemoryItem | null>(null);
+  const [proposeError,  setProposeError]  = useState<string | null>(null);
+  const [approvingId,   setApprovingId]   = useState<string | null>(null);
+  const [rejectingId,   setRejectingId]   = useState<string | null>(null);
+  const [mergeTarget,   setMergeTarget]   = useState<OrgMemoryItem | null>(null); // target (survivor)
+  const [auditItem,     setAuditItem]     = useState<OrgMemoryItem | null>(null);
 
   const statusParam = activeTab === "all" ? undefined : activeTab;
 
@@ -436,6 +452,22 @@ export default function OrgMemoryPage() {
         method: "POST", body: JSON.stringify({ supersededById: id }),
       }),
     onSuccess: invalidate,
+  });
+
+  // Sprint 29: merge two memory records (sourceId absorbed into targetId)
+  const merge = useMutation({
+    mutationFn: async ({ targetId, sourceId }: { targetId: string; sourceId: string }) => {
+      const res = await apiFetch(`/v1/organisations/${slug}/memory/${targetId}/merge`, {
+        method: "POST",
+        body: JSON.stringify({ sourceId }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b?.error ?? "Merge failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => { setMergeTarget(null); invalidate(); },
   });
 
   const propose = useMutation({
@@ -545,6 +577,8 @@ export default function OrgMemoryPage() {
                   onPin={() => pin.mutate({ id: item.id, importance: item.importance >= 10 ? 8 : 10 })}
                   onEdit={() => setEditItem(item)}
                   onRetire={() => { if (confirm("Retire this memory entry? It will be marked as superseded.")) retire.mutate(item.id); }}
+                  onMerge={item.status === "approved" ? () => setMergeTarget(item) : undefined}
+                  onAudit={() => setAuditItem(item)}
                 />
               ))}
             </div>
@@ -568,6 +602,56 @@ export default function OrgMemoryPage() {
             onSubmit={f => propose.mutate(f)}
             isPending={propose.isPending}
             error={proposeError}
+          />
+        )}
+
+        {/* Sprint 29: Memory merge modal */}
+        {mergeTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+            <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl w-full max-w-lg shadow-2xl">
+              <div className="p-5 border-b border-[#1E3A5F]">
+                <p className="text-[#E2E8F0] font-semibold">Merge Memory Entry</p>
+                <p className="text-[#64748B] text-xs mt-1">
+                  Select the memory entry to absorb into <span className="text-[#E2E8F0]">&ldquo;{mergeTarget.title}&rdquo;</span>.
+                  The absorbed entry will be marked as superseded.
+                </p>
+              </div>
+              <div className="p-5 space-y-3 max-h-80 overflow-y-auto">
+                {items
+                  .filter(i => i.id !== mergeTarget.id && i.status === "approved")
+                  .map(i => (
+                    <button
+                      key={i.id}
+                      disabled={merge.isPending}
+                      onClick={() => merge.mutate({ targetId: mergeTarget.id, sourceId: i.id })}
+                      className="w-full text-left bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3 hover:border-purple-500/40 transition-colors disabled:opacity-50"
+                    >
+                      <p className="text-[#E2E8F0] text-xs font-medium">{i.title}</p>
+                      <p className="text-[#64748B] text-xs mt-0.5 line-clamp-1">{i.content}</p>
+                    </button>
+                  ))
+                }
+                {items.filter(i => i.id !== mergeTarget.id && i.status === "approved").length === 0 && (
+                  <p className="text-[#64748B] text-sm text-center py-4">No other approved entries to merge.</p>
+                )}
+              </div>
+              <div className="p-5 pt-0 flex justify-end">
+                <button onClick={() => setMergeTarget(null)}
+                  className="px-4 py-2 border border-[#1E3A5F] text-[#94A3B8] text-sm rounded-lg hover:text-[#E2E8F0] transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sprint 29: Memory audit history panel */}
+        {auditItem && slug && (
+          <MemoryAuditPanel
+            memoryId={auditItem.id}
+            orgSlug={slug}
+            memoryTitle={auditItem.title}
+            onClose={() => setAuditItem(null)}
           />
         )}
       </AppShell>

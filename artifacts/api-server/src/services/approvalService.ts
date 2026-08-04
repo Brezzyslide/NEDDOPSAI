@@ -117,15 +117,53 @@ export async function getApprovalsByOrg(
   state?: ApprovalState,
   limit = 50,
 ): Promise<(typeof approvalsTable.$inferSelect)[]> {
-  const rows = await db
+  // Sprint 29: filter state in DB (not in-memory after limit) to avoid missing items
+  const condition = state
+    ? and(eq(approvalsTable.organizationId, organizationId), eq(approvalsTable.state, state) as any)
+    : eq(approvalsTable.organizationId, organizationId);
+
+  return db
     .select()
     .from(approvalsTable)
-    .where(eq(approvalsTable.organizationId, organizationId))
+    .where(condition)
     .orderBy(desc(approvalsTable.requestedAt))
     .limit(limit);
+}
 
-  if (state) return rows.filter(r => r.state === state);
-  return rows;
+// ─── Bulk Resolve (Sprint 29) ─────────────────────────────────────────────────
+
+export interface BulkResolveResult {
+  id: string;
+  success: boolean;
+  error?: string;
+}
+
+export async function bulkResolveApprovals(input: {
+  approvalIds: string[];
+  organizationId: string;
+  action: "approved" | "rejected";
+  actorUserId: string;
+  notes?: string;
+}): Promise<{ succeeded: number; failed: number; results: BulkResolveResult[] }> {
+  const results: BulkResolveResult[] = [];
+
+  for (const approvalId of input.approvalIds.slice(0, 100)) {
+    try {
+      await resolveApproval({
+        approvalId,
+        organizationId: input.organizationId,
+        action: input.action,
+        actorUserId: input.actorUserId,
+        notes: input.notes,
+      });
+      results.push({ id: approvalId, success: true });
+    } catch (err: any) {
+      results.push({ id: approvalId, success: false, error: err?.message ?? "Unknown error" });
+    }
+  }
+
+  const succeeded = results.filter(r => r.success).length;
+  return { succeeded, failed: results.length - succeeded, results };
 }
 
 export async function getApprovalById(

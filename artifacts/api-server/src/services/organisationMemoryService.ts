@@ -243,6 +243,101 @@ function mapRow(r: typeof organisationMemoryTable.$inferSelect): OrganisationMem
   };
 }
 
+// ─── Merge (Sprint 29) ────────────────────────────────────────────────────────
+
+export interface MergeMemoryInput {
+  targetId:   string; // the surviving record
+  sourceId:   string; // the record to be absorbed
+  mergedBy:   string;
+  mergedTitle?:   string;
+  mergedContent?: string;
+}
+
+/**
+ * Merge two memory records into one.
+ * - Updates the target with optional new title/content
+ * - Supersedes the source (marks it superseded with supersededBy = targetId)
+ * - Writes audit events for both operations
+ */
+export async function mergeOrganisationMemory(
+  organizationId: string,
+  input: MergeMemoryInput,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    // Load both records and validate ownership
+    const [targetRow] = await db
+      .select()
+      .from(organisationMemoryTable)
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.targetId)))
+      .limit(1);
+    const [sourceRow] = await db
+      .select()
+      .from(organisationMemoryTable)
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.sourceId)))
+      .limit(1);
+
+    if (!targetRow) return { ok: false, error: "Target memory record not found." };
+    if (!sourceRow) return { ok: false, error: "Source memory record not found." };
+
+    // Update target with merged content (if provided)
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.mergedTitle)   patch.title   = input.mergedTitle.slice(0, 200);
+    if (input.mergedContent) patch.content = input.mergedContent.slice(0, 5000);
+    // Keep target confidence at the higher of the two
+    const mergedConfidence = Math.max(
+      parseFloat(String(targetRow.confidence ?? "0.8")),
+      parseFloat(String(sourceRow.confidence ?? "0.8")),
+    );
+    patch.confidence = String(mergedConfidence);
+
+    await db
+      .update(organisationMemoryTable)
+      .set(patch as any)
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.targetId)));
+
+    // Supersede the source
+    await db
+      .update(organisationMemoryTable)
+      .set({ status: "superseded", supersededBy: input.targetId, updatedAt: new Date() })
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.sourceId)));
+
+    await writeMemoryAudit(organizationId, input.mergedBy, "memory.merged", input.targetId, {
+      sourceId: input.sourceId,
+      sourceTitle: sourceRow.title,
+    });
+    await writeMemoryAudit(organizationId, input.mergedBy, "memory.superseded", input.sourceId, {
+      supersededBy: input.targetId,
+      mergedInto: input.targetId,
+    });
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? "Merge failed" };
+  }
+}
+
+// ─── Per-memory audit history (Sprint 29) ────────────────────────────────────
+
+export async function getMemoryAuditHistory(
+  organizationId: string,
+  memoryId: string,
+): Promise<(typeof orgAuditLogTable.$inferSelect)[]> {
+  try {
+    const { desc: descOrder } = await import("drizzle-orm");
+    return db
+      .select()
+      .from(orgAuditLogTable)
+      .where(
+        and(
+          eq(orgAuditLogTable.organizationId, organizationId),
+          eq(orgAuditLogTable.resourceId, memoryId),
+        ),
+      )
+      .orderBy(descOrder(orgAuditLogTable.occurredAt))
+      .limit(50);
+  } catch { return []; }
+}
+
 // ─── Audit ────────────────────────────────────────────────────────────────────
 
 async function writeMemoryAudit(orgId: string, userId: string, eventType: string, resourceId: string, metadata: Record<string, unknown>) {

@@ -15,6 +15,27 @@ import { Redirect }               from "wouter";
 import AppShell                   from "@/components/layout/AppShell";
 import { useAuthFetch }           from "@/lib/api";
 
+// ─── Governance Metrics types ─────────────────────────────────────────────────
+interface GovernanceMetrics {
+  pendingApprovals:        number;
+  approvedLast30Days:      number;
+  rejectedLast30Days:      number;
+  avgApprovalHours:        number | null;
+  approvalsAgedOver48h:    number;
+  approvalAgingBuckets:    { under24h: number; h24to48: number; over48h: number };
+  approvedMemoryCount:     number;
+  pendingMemoryCount:      number;
+  memoryHealthScore:       number;
+  completedWorkPending:    number;
+  executionSuccessRate:    number | null;
+  publishedBlueprintCount: number;
+  draftBlueprintCount:     number;
+  blueprintCoverage:       number;
+  governanceScore:         number;
+  governanceEventsLast30Days: number;
+  topGovernanceActors:     { actorUserId: string | null; count: number }[];
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function scoreColour(score: number) {
@@ -151,6 +172,14 @@ export default function GovernanceCentre() {
     enabled: !!slug, staleTime: 60_000,
   });
 
+  // Sprint 29: Governance metrics
+  const { data: metricsData } = useQuery({
+    queryKey: ["governance-metrics", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals/metrics`).then(r => r.json()),
+    enabled: !!slug, staleTime: 120_000,
+  });
+  const metrics = metricsData?.metrics as GovernanceMetrics | undefined;
+
   const health      = healthData as Record<string, any> | undefined;
   const healthScore = health?.healthScore ?? health?.overallScore ?? health?.score ?? 0;
 
@@ -237,6 +266,87 @@ export default function GovernanceCentre() {
               </div>
             </div>
           </div>
+
+          {/* Sprint 29: Governance Metrics Panel */}
+          {metrics && (
+            <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl p-6 mb-8">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <p className="text-[#E2E8F0] font-semibold">Governance Score</p>
+                  <p className="text-[#64748B] text-xs mt-0.5">How consistently your AI Workforce is governed</p>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className={`text-4xl font-bold tabular-nums ${
+                    metrics.governanceScore >= 80 ? "text-emerald-400" :
+                    metrics.governanceScore >= 60 ? "text-amber-400" : "text-red-400"
+                  }`}>{Math.round(metrics.governanceScore)}</span>
+                  <span className="text-[#64748B] text-xs">/ 100</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+                {/* Approval ageing */}
+                <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
+                  <p className="text-[#64748B] text-xs mb-1">Pending</p>
+                  <p className="text-[#E2E8F0] text-xl font-bold">{metrics.pendingApprovals}</p>
+                  {metrics.approvalsAgedOver48h > 0 && (
+                    <p className="text-red-400 text-xs mt-0.5">{metrics.approvalsAgedOver48h} aged &gt;48h</p>
+                  )}
+                </div>
+                {/* Avg resolution time */}
+                <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
+                  <p className="text-[#64748B] text-xs mb-1">Avg. resolution</p>
+                  <p className="text-[#E2E8F0] text-xl font-bold">
+                    {metrics.avgApprovalHours !== null ? `${metrics.avgApprovalHours.toFixed(1)}h` : "—"}
+                  </p>
+                  <p className="text-[#64748B] text-xs mt-0.5">{metrics.approvedLast30Days} resolved (30d)</p>
+                </div>
+                {/* Memory health */}
+                <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
+                  <p className="text-[#64748B] text-xs mb-1">Memory health</p>
+                  <p className={`text-xl font-bold ${
+                    metrics.memoryHealthScore >= 80 ? "text-emerald-400" :
+                    metrics.memoryHealthScore >= 60 ? "text-amber-400" : "text-red-400"
+                  }`}>{Math.round(metrics.memoryHealthScore)}%</p>
+                  <p className="text-[#64748B] text-xs mt-0.5">{metrics.approvedMemoryCount} approved entries</p>
+                </div>
+                {/* Blueprint coverage */}
+                <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
+                  <p className="text-[#64748B] text-xs mb-1">Blueprint coverage</p>
+                  <p className={`text-xl font-bold ${
+                    metrics.blueprintCoverage >= 70 ? "text-emerald-400" :
+                    metrics.blueprintCoverage >= 40 ? "text-amber-400" : "text-[#94A3B8]"
+                  }`}>{Math.round(metrics.blueprintCoverage)}%</p>
+                  <p className="text-[#64748B] text-xs mt-0.5">{metrics.publishedBlueprintCount} published</p>
+                </div>
+              </div>
+
+              {/* Aging breakdown */}
+              {(metrics.approvalAgingBuckets.over48h > 0 || metrics.approvalAgingBuckets.h24to48 > 0) && (
+                <div className="border-t border-[#1E3A5F] pt-4">
+                  <p className="text-[#64748B] text-xs uppercase tracking-widest font-semibold mb-3">Approval ageing</p>
+                  <div className="flex items-center gap-6">
+                    {[
+                      { label: "Under 24h", count: metrics.approvalAgingBuckets.under24h, cls: "text-emerald-400" },
+                      { label: "24–48h",    count: metrics.approvalAgingBuckets.h24to48,  cls: "text-amber-400" },
+                      { label: "Over 48h",  count: metrics.approvalAgingBuckets.over48h,  cls: "text-red-400" },
+                    ].map(b => (
+                      <div key={b.label} className="flex items-center gap-2">
+                        <span className={`text-lg font-bold tabular-nums ${b.cls}`}>{b.count}</span>
+                        <span className="text-[#64748B] text-xs">{b.label}</span>
+                      </div>
+                    ))}
+                    {metrics.topGovernanceActors.length > 0 && (
+                      <div className="ml-auto text-right">
+                        <p className="text-[#64748B] text-xs">Top actor</p>
+                        <p className="text-[#94A3B8] text-xs font-mono">{metrics.topGovernanceActors[0]?.actorUserId ?? "—"}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Navigation grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">

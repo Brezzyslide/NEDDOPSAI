@@ -19,6 +19,8 @@ import {
   supersedeOrganisationMemory,
   updateOrganisationMemory,
   listOrganisationMemory,
+  mergeOrganisationMemory,
+  getMemoryAuditHistory,
   type MemoryStatus,
   type MemoryType,
   type CreateMemoryInput,
@@ -175,6 +177,67 @@ router.post(
       const ok = await supersedeOrganisationMemory(ctx.tenantId, memoryId, newMemoryId, user.id);
       if (!ok) { res.status(404).json({ error: "Memory not found" }); return; }
       res.json({ ok: true });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─── Merge (Sprint 29) ────────────────────────────────────────────────────────
+// POST /v1/organisations/:slug/memory/:memoryId/merge
+// Body: { sourceId, mergedTitle?, mergedContent? }
+// Absorbs sourceId into memoryId (target), superseding the source.
+router.post(
+  "/organisations/:slug/memory/:memoryId/merge",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { memoryId } = req.params as { memoryId: string };
+      const { sourceId, mergedTitle, mergedContent } = req.body as {
+        sourceId?: string;
+        mergedTitle?: string;
+        mergedContent?: string;
+      };
+
+      if (!sourceId) {
+        res.status(400).json({ error: "sourceId is required" });
+        return;
+      }
+      if (sourceId === memoryId) {
+        res.status(400).json({ error: "targetId and sourceId must be different records" });
+        return;
+      }
+
+      const result = await mergeOrganisationMemory(ctx.tenantId, {
+        targetId: memoryId,
+        sourceId,
+        mergedBy: user.id,
+        mergedTitle,
+        mergedContent,
+      });
+
+      if (!result.ok) {
+        res.status(404).json({ error: result.error ?? "Merge failed" });
+        return;
+      }
+      res.json({ ok: true });
+    } catch (err) { next(err); }
+  }
+);
+
+// ─── Per-memory audit history (Sprint 29) ─────────────────────────────────────
+// GET /v1/organisations/:slug/memory/:memoryId/audit
+router.get(
+  "/organisations/:slug/memory/:memoryId/audit",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { memoryId } = req.params as { memoryId: string };
+      const events = await getMemoryAuditHistory(ctx.tenantId, memoryId);
+      res.json({ events });
     } catch (err) { next(err); }
   }
 );

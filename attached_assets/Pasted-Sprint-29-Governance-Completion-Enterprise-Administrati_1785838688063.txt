@@ -1,0 +1,505 @@
+Sprint 29 — Governance Completion & Enterprise Administration
+
+You are implementing Sprint 29 only.
+
+Before writing any code:
+
+1. Inspect the current implementation.
+2. Compare against all completed work through Sprint 28.
+3. Identify only genuine remaining governance gaps.
+4. Do not rebuild functionality already delivered.
+5. Extend existing governance services, routes and UI.
+
+⸻
+
+Background
+
+The following are already complete and must not be duplicated:
+
+Sprint 21
+
+* Knowledge Curation Engine
+* Conversation Learning
+* Knowledge Health Service
+* Organisational Personality
+* Confidence Engine
+
+Sprint 22
+
+* Work Execution Engine
+* Work Blueprints backend
+* Work Package Manifests
+* Completed Work lifecycle
+
+Sprint 23
+
+* Executive Workspace
+* Dashboard
+* Inbox
+* Active Work
+* Notifications
+
+Sprint 24
+
+* Governance Centre
+* Unified Approval Centre
+* Memory Governance
+* Knowledge Health Dashboard
+* Audit Timeline
+
+Sprint 25
+
+* Completed Work Portal
+* Viewer
+* Versioning
+* Comments
+* Export
+
+Sprint 26
+
+* AI Workforce Operations Centre
+
+Sprint 27
+
+* End-to-end execution
+* Execution Coordinator
+* Completed Work automation
+
+Sprint 27.1
+
+* Live execution progress
+* Execution timeline
+* Unified approvals
+* Recovery
+
+Sprint 28
+
+* Blueprint Studio
+* Blueprint Versioning
+* Sandbox Testing
+* Publishing
+* Organisation Blueprint Overrides
+
+⸻
+
+Goal
+
+Finish every remaining governance gap so the platform’s governance layer is production complete.
+
+No redesigns.
+
+No duplicate pages.
+
+Only genuine missing capability.
+
+⸻
+
+Phase 1 — Inspection
+
+Inspect:
+
+* Governance Centre
+* Approval Centre
+* Memory Governance
+* Audit
+* Knowledge Health
+* Completed Work
+* Approval APIs
+* Organisation Memory APIs
+* Pack Provisioning
+* Execution Intents
+* Notification APIs
+
+Produce an inspection report identifying:
+
+Already complete
+
+Partially complete
+
+Missing
+
+Broken
+
+Do not implement until inspection is complete.
+
+⸻
+
+Phase 2 — Unified Approval Completion
+
+Verify every approval source.
+
+Current approval sources should include:
+
+* Knowledge proposals
+* Organisation Memory
+* Library Reviews
+* Completed Work
+* System approvals
+
+Identify missing sources.
+
+Complete support for:
+
+* Execution Intent approvals
+* Pack Access Requests
+* Blueprint publication approvals (if required)
+* Future approval provider registration
+
+All approval sources must execute through the existing Approval framework.
+
+⸻
+
+Phase 3 — Bulk Operations
+
+Complete enterprise bulk actions.
+
+Support:
+
+Bulk Approve
+
+Bulk Reject
+
+Bulk Request Changes
+
+Bulk Archive
+
+Bulk Assign
+
+Implement:
+
+Server batch endpoint
+
+Progress reporting
+
+Partial failure handling
+
+Transaction safety
+
+Audit logging
+
+⸻
+
+Phase 4 — Approval History
+
+Every approval should expose:
+
+Decision history
+
+Comments
+
+Who approved
+
+When
+
+Previous decisions
+
+Related work
+
+Linked conversation
+
+Linked audit events
+
+Do not duplicate existing audit records.
+
+Build a reusable history component.
+
+⸻
+
+Phase 5 — Memory Governance Completion
+
+Complete remaining memory features.
+
+Inspect existing implementation.
+
+Implement only genuine gaps.
+
+Expected features include:
+
+Merge memories
+
+Resolve provenance
+
+Per-memory audit history
+
+Pagination
+
+Retire workflow fixes
+
+memoryType editing
+
+Replacement selection
+
+Conflict detection
+
+Duplicate suggestions
+
+Memory health indicators
+
+Pinned memories
+
+Supersede relationships
+
+⸻
+
+Phase 6 — Provenance Resolution
+
+Replace raw IDs with meaningful information.
+
+Examples:
+
+Instead of:
+
+sourceId
+
+Display:
+
+Document title
+
+Conversation title
+
+Completed Work
+
+User
+
+Specialist
+
+Knowledge Source
+
+Blueprint
+
+All provenance should be navigable.
+
+⸻
+
+Phase 7 — Governance Metrics
+
+Complete organisation governance metrics.
+
+Include:
+
+Pending approvals
+
+Knowledge health
+
+Memory health
+
+Approval ageing
+
+Average approval time
+
+Execution success
+
+Policy coverage
+
+Blueprint coverage
+
+Training readiness
+
+Completed Work awaiting review
+
+Governance score
+
+Everything should derive from existing services.
+
+⸻
+
+Phase 8 — Notifications
+
+Ensure governance actions generate notifications.
+
+Examples:
+
+Approval requested
+
+Approval completed
+
+Memory proposed
+
+Blueprint published
+
+Completed Work awaiting approval
+
+Knowledge review required
+
+⸻
+
+Phase 9 — Audit
+
+Every governance action records:
+
+Approve
+
+Reject
+
+Merge
+
+Archive
+
+Restore
+
+Supersede
+
+Publish
+
+Rollback
+
+Memory edits
+
+Blueprint publication
+
+Bulk operations
+
+Maintain full traceability.
+
+⸻
+
+Phase 10 — Security
+
+Verify:
+
+Tenant isolation
+
+Owner/Admin permissions
+
+Audit integrity
+
+Immutable history
+
+Read-only published artefacts
+
+Cross-tenant protection
+
+⸻
+
+Phase 11 — UI Completion
+
+Polish existing governance pages.
+
+Do not redesign.
+
+Improve:
+
+Loading
+
+Filtering
+
+Search
+
+Pagination
+
+Empty states
+
+Error handling
+
+Accessibility
+
+Performance
+
+Reuse existing components.
+
+⸻
+
+Phase 12 — Testing
+
+Add comprehensive tests covering:
+
+Execution approvals
+
+Pack approvals
+
+Bulk operations
+
+Approval history
+
+Memory merge
+
+Provenance
+
+Pagination
+
+Notifications
+
+Audit
+
+Permissions
+
+Tenant isolation
+
+Regression coverage
+
+All existing tests must continue to pass.
+
+⸻
+
+Deliverables
+
+Produce:
+
+1. Inspection Report
+
+Clearly identify:
+
+Already complete
+
+Partially complete
+
+Missing
+
+Broken
+
+Files modified
+
+⸻
+
+2. Governance Completion Summary
+
+Confirm completion of:
+
+Unified approvals
+
+Memory governance
+
+Approval history
+
+Bulk actions
+
+Metrics
+
+Notifications
+
+Audit
+
+Security
+
+⸻
+
+3. Test Summary
+
+Include:
+
+New tests
+
+Total passing tests
+
+Regression status
+
+⸻
+
+4. Remaining Governance Gaps
+
+Report only genuine remaining gaps.
+
+Do not invent work.
+
+⸻
+
+Important
+
+* Do not redesign Governance Centre.
+* Do not rebuild Approval Centre.
+* Do not rebuild Memory Governance.
+* Do not duplicate Sprint 24 functionality.
+* Do not modify Blueprint Studio except where governance requires it.
+* Reuse existing approval, audit and notification infrastructure.
+
+The outcome should be a production-ready Governance Layer that completes the administration, approval, audit and organisational memory capabilities of NeedsOps without duplicating previously delivered functionality.

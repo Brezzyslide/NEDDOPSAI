@@ -16,8 +16,40 @@ import {
 } from "../../services/executionIntentService.js";
 import { coordinateIntentApproval } from "../../services/executionCoordinatorService.js";
 import * as auditService from "../../services/auditService.js";
+import { db, executionIntentsTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
+
+// ─── GET /organisations/:slug/execution-intents?status=pending_approval ──────
+// Sprint 29: org-level listing so Approval Centre can surface pending intents.
+router.get(
+  "/organisations/:slug/execution-intents",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx    = req.tenantContext!;
+      const status = (req.query.status as string | undefined) ?? "pending_approval";
+
+      const intents = await db
+        .select()
+        .from(executionIntentsTable)
+        .where(
+          and(
+            eq(executionIntentsTable.organizationId, ctx.tenantId),
+            eq(executionIntentsTable.status, status),
+          ),
+        )
+        .orderBy(desc(executionIntentsTable.createdAt))
+        .limit(50);
+
+      res.json({ intents, total: intents.length });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ─── GET /organisations/:slug/tasks/:taskId/execution-intents ─────────────────
 

@@ -8,6 +8,7 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import * as approvalService from "../../services/approvalService.js";
 import * as auditService from "../../services/auditService.js";
+import { computeGovernanceMetrics } from "../../services/governanceMetricsService.js";
 import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
 import { getTaskById } from "../../services/taskService.js";
 import type { ApprovalType, ApprovalState } from "@workspace/shared";
@@ -139,6 +140,85 @@ router.post("/:approvalId/resolve", requireAuth, resolveTenantFromSlug, async (r
     }
 
     res.json({ approval, executionDispatched: action === "approved" && !!approval.taskId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /v1/organisations/:slug/approvals/bulk (Sprint 29) ─────────────────
+// Batch resolve multiple system approvals in one request.
+// Returns per-item success/failure — partial failures do NOT roll back successes.
+router.post("/bulk", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const user = req.appUser!;
+    const ctx  = req.tenantContext!;
+    const { approvalIds, action, notes } = req.body as {
+      approvalIds?: string[];
+      action?:      "approved" | "rejected";
+      notes?:       string;
+    };
+
+    if (!Array.isArray(approvalIds) || approvalIds.length === 0) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "approvalIds array is required." } });
+      return;
+    }
+    if (!action || !["approved", "rejected"].includes(action)) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "action must be 'approved' or 'rejected'." } });
+      return;
+    }
+
+    const outcome = await approvalService.bulkResolveApprovals({
+      approvalIds: approvalIds.slice(0, 100),
+      organizationId: ctx.tenantId,
+      action,
+      actorUserId: user.id,
+      notes,
+    });
+
+    const meta = auditService.getRequestMeta(req);
+    await auditService.writeAuditEvent({
+      organizationId: ctx.tenantId,
+      actorUserId: user.id,
+      eventType: "approval.bulk_resolved",
+      resourceType: "approval",
+      resourceId: "bulk",
+      metadata: { action, total: approvalIds.length, succeeded: outcome.succeeded, failed: outcome.failed },
+      ...meta,
+    }).catch(() => {});
+
+    // Dispatch execution for each approved approval (non-fatal)
+    if (action === "approved") {
+      for (const r of outcome.results.filter(r => r.success)) {
+        approvalService.getApprovalById(r.id, ctx.tenantId)
+          .then(approval => {
+            if (!approval?.taskId) return;
+            return getTaskById(approval.taskId, ctx.tenantId).then(task => {
+              if (!task) return;
+              return dispatchWorkExecution({
+                organizationId: ctx.tenantId,
+                taskId: task.id,
+                taskTitle: task.title,
+                taskDescription: task.description ?? undefined,
+                requesterId: user.id,
+              });
+            });
+          })
+          .catch(err => console.warn("[approvalRoutes/bulk] dispatch failed:", err?.message));
+      }
+    }
+
+    res.json(outcome);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /v1/organisations/:slug/governance/metrics (Sprint 29) ───────────────
+router.get("/metrics", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const metrics = await computeGovernanceMetrics(ctx.tenantId);
+    res.json({ metrics });
   } catch (err) {
     next(err);
   }
