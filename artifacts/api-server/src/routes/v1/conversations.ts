@@ -15,6 +15,7 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
+import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -291,7 +292,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
 
     await conversationService.postPlanToConversation(ctx.tenantId, conv.id, result.task.id, result.plan);
 
-    // Post approval request card if required
+    // Post approval request card if required; otherwise dispatch work immediately
     if (result.plan.requiresApproval) {
       const [approval] = await import("@workspace/db").then(db =>
         db.db.select().from(db.approvalsTable)
@@ -314,6 +315,19 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
           },
         );
       }
+    } else {
+      // Sprint 27: no approval required — dispatch work execution immediately in background.
+      // The pipeline will post progress and completion messages to this conversation.
+      dispatchWorkExecution({
+        organizationId: ctx.tenantId,
+        taskId: result.task.id,
+        taskTitle: result.task.title,
+        taskDescription: description,
+        requesterId: user.id,
+        conversationId: conv.id,
+      }).catch(err =>
+        console.warn("[conversations] Background dispatch failed (non-fatal):", err?.message),
+      );
     }
 
     const meta = auditService.getRequestMeta(req);

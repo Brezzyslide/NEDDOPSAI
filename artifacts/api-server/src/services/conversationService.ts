@@ -627,6 +627,149 @@ export async function postApprovalRequestToConversation(
   });
 }
 
+// ─── Sprint 27: Execution lifecycle conversation messages ─────────────────────
+
+/**
+ * Posts an "execution started" system message to the conversation.
+ * Called immediately after an intent is approved or a task is dispatched.
+ */
+export async function postExecutionStartedToConversation(
+  organizationId: string,
+  conversationId: string,
+  taskId: string,
+  correlationId: string,
+): Promise<ConversationMessage> {
+  const card = buildExecutionUpdateCard({
+    eventType: "execution.started",
+    timestamp: new Date().toISOString(),
+  });
+  return addMessage({
+    organizationId,
+    conversationId,
+    taskId: taskId || undefined,
+    senderType: "runtime",
+    workforceRoleCode: "chief_of_staff",
+    messageType: "execution_update",
+    content: "Work has begun. I'll keep you updated as progress is made.",
+    structuredContent: card,
+    correlationId,
+  });
+}
+
+/**
+ * Posts a progress stage message to the conversation.
+ * Called at each pipeline stage (selecting blueprint, assembling package, etc.).
+ */
+export async function postExecutionProgressToConversation(
+  organizationId: string,
+  conversationId: string,
+  taskId: string,
+  stage: string,
+  correlationId: string,
+): Promise<ConversationMessage> {
+  const STAGE_LABELS: Record<string, string> = {
+    selecting_blueprint:     "Selecting work blueprint…",
+    assembling_package:      "Reviewing organisational knowledge…",
+    validating:              "Validating requirements…",
+    retrieving_examples:     "Consulting approved work examples…",
+    executing:               "Consulting specialist…",
+    reviewing:               "Running quality review…",
+    creating_completed_work: "Preparing completed work document…",
+  };
+  const humanLabel = STAGE_LABELS[stage] ?? stage;
+
+  const card = buildExecutionUpdateCard({
+    eventType: "execution.step_started",
+    stepName: humanLabel,
+    timestamp: new Date().toISOString(),
+  });
+  return addMessage({
+    organizationId,
+    conversationId,
+    taskId: taskId || undefined,
+    senderType: "runtime",
+    workforceRoleCode: "chief_of_staff",
+    messageType: "execution_update",
+    content: humanLabel,
+    structuredContent: card,
+    correlationId,
+  });
+}
+
+/**
+ * Posts a "completed work created" system message to the conversation.
+ * Links directly to the completed work item for immediate review.
+ */
+export async function postCompletedWorkCreatedToConversation(
+  organizationId: string,
+  conversationId: string,
+  taskId: string,
+  completedWorkId: string,
+  title: string,
+  qualityScore: number | null,
+  correlationId: string,
+): Promise<ConversationMessage> {
+  const scoreNote = qualityScore !== null
+    ? ` Quality score: ${qualityScore}/100.`
+    : "";
+
+  const card = buildExecutionUpdateCard({
+    eventType: "execution.completed",
+    message: completedWorkId,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Augment the card data with completed work details
+  (card.data as Record<string, unknown>).completedWorkId = completedWorkId;
+  (card.data as Record<string, unknown>).title = title;
+  (card.data as Record<string, unknown>).qualityScore = qualityScore;
+
+  return addMessage({
+    organizationId,
+    conversationId,
+    taskId: taskId || undefined,
+    senderType: "chief_of_staff",
+    workforceRoleCode: "chief_of_staff",
+    messageType: "execution_update",
+    content: `The work is complete and ready for your review.${scoreNote} I've created a draft of "${title}" for your approval.`,
+    structuredContent: card,
+    correlationId,
+  });
+}
+
+/**
+ * Posts an "execution failed" system message to the conversation.
+ * Always called — failures must never be silent.
+ */
+export async function postExecutionFailedToConversation(
+  organizationId: string,
+  conversationId: string,
+  taskId: string,
+  errorMessage: string,
+  correlationId: string,
+): Promise<ConversationMessage> {
+  const card = buildExecutionUpdateCard({
+    eventType: "execution.failed",
+    message: errorMessage,
+    timestamp: new Date().toISOString(),
+  });
+  (card.data as Record<string, unknown>).errorMessage = errorMessage;
+
+  return addMessage({
+    organizationId,
+    conversationId,
+    taskId: taskId || undefined,
+    senderType: "runtime",
+    workforceRoleCode: "chief_of_staff",
+    messageType: "execution_update",
+    content: `I encountered a problem completing this work: ${errorMessage} Please check the requirements and try again, or contact support if the issue persists.`,
+    structuredContent: card,
+    correlationId,
+  });
+}
+
+// ─── Runtime event (OpenClaw) ──────────────────────────────────────────────────
+
 /** Convert an OpenClaw runtime event into a readable thread message. */
 export async function postRuntimeEventToConversation(
   organizationId: string,

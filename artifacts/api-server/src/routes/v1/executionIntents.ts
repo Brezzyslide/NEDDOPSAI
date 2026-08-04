@@ -12,9 +12,10 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import {
   getExecutionIntentsForTask,
-  approveIntent,
   rejectIntent,
 } from "../../services/executionIntentService.js";
+import { coordinateIntentApproval } from "../../services/executionCoordinatorService.js";
+import * as auditService from "../../services/auditService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -38,6 +39,9 @@ router.get(
 );
 
 // ─── POST /organisations/:slug/execution-intents/:intentId/approve ────────────
+//
+// Sprint 27: approval now immediately triggers the Work Execution Pipeline.
+// The response returns synchronously; execution runs in the background.
 
 router.post(
   "/organisations/:slug/execution-intents/:intentId/approve",
@@ -49,8 +53,25 @@ router.post(
       const ctx = req.tenantContext!;
       const { intentId } = req.params as { intentId: string };
 
-      await approveIntent(intentId, ctx.tenantId, user.id);
-      res.json({ success: true, intentId });
+      const result = await coordinateIntentApproval(intentId, ctx.tenantId, user.id);
+
+      auditService.writeAuditEvent({
+        organizationId: ctx.tenantId,
+        actorUserId: user.id,
+        eventType: "execution_intent.approved",
+        resourceType: "execution_intent",
+        resourceId: intentId,
+        metadata: { dispatched: result.dispatched, executionStarted: result.executionStarted },
+        ...auditService.getRequestMeta(req),
+      }).catch(() => {});
+
+      res.json({
+        success: true,
+        intentId,
+        executionDispatched: result.dispatched,
+        executionStarted: result.executionStarted,
+        skipReason: result.skipReason,
+      });
     } catch (err) {
       next(err);
     }

@@ -1,0 +1,399 @@
+I’d make this the master implementation prompt. It forces Replit to inspect first, prevents rebuilding things you’ve already shipped, and keeps the sprint focused on the genuine gaps.
+
+⸻
+
+Sprint 27 — Intelligent Work Execution & Conversation Reliability
+
+You are implementing Sprint 27 only.
+
+Before writing any code:
+
+1. Inspect the existing implementation thoroughly.
+2. Compare against all completed work through Sprint 26.
+3. Identify what already exists.
+4. Implement only the genuine gaps.
+5. Do not rebuild or duplicate shipped functionality.
+
+⸻
+
+Goal
+
+Complete the final wiring so the Chief of Staff behaves like a real executive assistant that can seamlessly execute professional work.
+
+The desired experience is:
+
+User chats with the Chief of Staff → CoS plans the work → asks for approval if required → dispatches specialists → work executes → Completed Work is created automatically → progress is visible in chat → user reviews and approves.
+
+The user should never need to manually stitch together conversations, execution runs or Completed Work.
+
+⸻
+
+Phase 1 — Codebase inspection
+
+Inspect at minimum:
+
+* chiefOfStaffService
+* chiefOfStaffOrchestrator
+* chiefOfStaffLLMService
+* executionIntentService
+* executionService
+* workExecutionPipelineService
+* completedWorkService
+* taskService
+* conversationService
+* conversation routes
+* execution intent routes
+* Completed Work routes
+* Task Workroom UI
+* Workforce Chat UI
+* SSE implementation
+* streaming implementation
+
+Determine exactly what is already wired.
+
+⸻
+
+Phase 2 — End-to-end execution loop
+
+Verify and complete:
+
+User message
+
+↓
+
+CoS reasoning
+
+↓
+
+Execution intent
+
+↓
+
+Approval (if required)
+
+↓
+
+Automatic dispatch
+
+↓
+
+Work Execution Pipeline
+
+↓
+
+Completed Work (draft)
+
+↓
+
+Conversation updated
+
+↓
+
+User notified
+
+No manual intervention.
+
+⸻
+
+Phase 3 — Execution intent wiring
+
+Review executionIntentService.
+
+If approval currently only updates database state:
+
+Wire it into:
+
+workExecutionPipelineService.executeWork()
+
+Ensure approval immediately starts execution.
+
+⸻
+
+Phase 4 — Automatic Completed Work
+
+When execution completes:
+
+Automatically create Completed Work.
+
+Populate:
+
+* conversationId
+* executionRunId
+* blueprintId
+* workPackageManifestId
+* executionManifestId
+* specialist
+* timestamps
+* approval status
+* self review
+* evidence
+* citations
+
+Do not require manual creation.
+
+⸻
+
+Phase 5 — Conversation integration
+
+Ensure the conversation receives system events.
+
+Examples:
+
+✅ Specialist started
+
+✅ Clarification required
+
+✅ Waiting for approval
+
+✅ Execution resumed
+
+✅ Completed Work created
+
+✅ Completed Work approved
+
+✅ Execution failed
+
+Messages should appear naturally in chat.
+
+⸻
+
+Phase 6 — Clarification loop
+
+If a specialist requires clarification:
+
+Pause execution.
+
+Persist state.
+
+Post clarification into chat.
+
+Resume after user response.
+
+Never restart execution from scratch.
+
+⸻
+
+Phase 7 — Failure handling
+
+When execution fails:
+
+Persist failure.
+
+Notify conversation.
+
+Record audit.
+
+Preserve execution context.
+
+Allow retry.
+
+Never silently fail.
+
+⸻
+
+Phase 8 — Streaming improvements
+
+Replace simulated streaming where possible.
+
+Improve:
+
+* SSE heartbeat
+* reconnect support
+* timeout handling
+* cancellation
+* duplicate event prevention
+* idempotency
+
+Never lose a streamed response.
+
+⸻
+
+Phase 9 — Progress events
+
+Surface live execution events.
+
+Examples:
+
+Planning…
+
+Selecting specialist…
+
+Building work package…
+
+Retrieving knowledge…
+
+Executing…
+
+Running self review…
+
+Preparing completed work…
+
+Awaiting approval…
+
+Completed.
+
+⸻
+
+Phase 10 — Policy gates
+
+Before execution:
+
+Validate:
+
+Capability
+
+Entitlements
+
+Required policies
+
+Required templates
+
+Incident prerequisites
+
+Knowledge access
+
+Clearance
+
+Return meaningful errors.
+
+Never allow silent failures.
+
+⸻
+
+Phase 11 — Conversation ↔ Completed Work
+
+Create permanent links both directions.
+
+Conversation
+
+↓
+
+Completed Work
+
+Completed Work
+
+↓
+
+Conversation
+
+Also link:
+
+Execution
+
+Manifest
+
+Blueprint
+
+Knowledge used
+
+Evidence
+
+⸻
+
+Phase 12 — UX polish
+
+Users should never see internal implementation details.
+
+Instead of:
+
+ExecutionIntent
+
+Manifest
+
+Run
+
+Pipeline
+
+Show:
+
+Preparing work
+
+Reviewing organisational knowledge
+
+Consulting specialist
+
+Completing quality review
+
+Preparing final document
+
+⸻
+
+Phase 13 — Audit
+
+Audit every stage.
+
+Planning
+
+Approval
+
+Dispatch
+
+Knowledge retrieval
+
+Execution
+
+Failure
+
+Retry
+
+Completed Work
+
+Approval
+
+Archive
+
+⸻
+
+Phase 14 — Tests
+
+Add comprehensive tests covering:
+
+* chat → execution
+* approval → execution
+* clarification
+* retry
+* failure
+* Completed Work creation
+* conversation linking
+* streaming
+* cancellation
+* duplicate prevention
+* audit
+* tenant isolation
+
+All existing tests must continue to pass.
+
+⸻
+
+Deliverables
+
+Produce:
+
+1. Inspection report
+
+* Existing implementation
+* Missing implementation
+* Files modified
+
+2. Implementation summary
+3. Test summary
+4. Remaining gaps (if any)
+5. Confirmation that the platform now supports:
+
+Chat → Professional Execution → Completed Work → Approval → Audit
+
+without manual intervention.
+
+⸻
+
+Important
+
+Do not implement Sprint 28, 29 or any future sprint.
+
+Do not redesign completed systems.
+
+Only close the remaining execution-loop gaps discovered during inspection.
+
+If inspection shows a requested feature is already fully implemented, report it and leave it unchanged.
+
+Build only what is genuinely missing.

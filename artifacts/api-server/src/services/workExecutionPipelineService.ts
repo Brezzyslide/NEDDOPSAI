@@ -35,6 +35,36 @@ import type { ValidationResult } from "./workValidationService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Optional progress callback invoked at each pipeline stage.
+ * Callers can use this to post conversation messages or emit SSE events.
+ * Errors thrown by the callback are swallowed so they never abort the pipeline.
+ */
+export type ExecutionProgressCallback = (
+  stage: ExecutionStage,
+  detail?: string,
+) => void | Promise<void>;
+
+/** Human-readable labels surfaced in chat for each pipeline stage. */
+export const EXECUTION_STAGE_LABELS: Record<ExecutionStage, string> = {
+  selecting_blueprint:   "Selecting work blueprint…",
+  assembling_package:    "Reviewing organisational knowledge…",
+  validating:            "Validating requirements…",
+  retrieving_examples:   "Consulting approved work examples…",
+  executing:             "Consulting specialist…",
+  reviewing:             "Running quality review…",
+  creating_completed_work: "Preparing completed work document…",
+};
+
+export type ExecutionStage =
+  | "selecting_blueprint"
+  | "assembling_package"
+  | "validating"
+  | "retrieving_examples"
+  | "executing"
+  | "reviewing"
+  | "creating_completed_work";
+
 export interface ExecuteWorkInput {
   organizationId: string;
   requesterId: string;
@@ -50,6 +80,13 @@ export interface ExecuteWorkInput {
   /** Title for the completed work item (default: derived from request) */
   title?: string;
   conversationId?: string;
+  /** Optional correlation ID for audit / de-duplication */
+  correlationId?: string;
+  /**
+   * Progress callback — invoked before each pipeline stage.
+   * Errors are caught and logged; they never abort the pipeline.
+   */
+  onProgress?: ExecutionProgressCallback;
 }
 
 export type ExecutionOutcome =
@@ -76,7 +113,14 @@ export interface ExecuteWorkResult {
 export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkResult> {
   const { organizationId, requesterId, userRequest } = input;
 
+  // Convenience wrapper — errors in progress callbacks must never abort the pipeline
+  const progress = async (stage: ExecutionStage, detail?: string) => {
+    if (!input.onProgress) return;
+    try { await input.onProgress(stage, detail); } catch { /* swallow */ }
+  };
+
   // ── Step 1: Select Blueprint ─────────────────────────────────────────────
+  await progress("selecting_blueprint");
   let blueprint: WorkBlueprint | null = null;
 
   if (input.blueprintId) {
@@ -90,6 +134,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   }
 
   // ── Step 2: Assemble Work Package Manifest ────────────────────────────────
+  await progress("assembling_package");
   const manifest = await assembleWorkPackage({
     organizationId,
     requesterId,
@@ -100,6 +145,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   });
 
   // ── Step 3: Validate prerequisites ───────────────────────────────────────
+  await progress("validating");
   const validationResult = validateWorkPackage(manifest, blueprint);
 
   if (!validationResult.passed) {
@@ -116,11 +162,13 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   }
 
   // ── Step 4: Retrieve approved examples for style guidance ─────────────────
+  await progress("retrieving_examples");
   const outputType = blueprint?.outputTypes[0] ?? "general_output";
   const examples = await retrieveApprovedExamples(organizationId, outputType);
   const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
   // ── Step 5: Build execution context and generate draft ────────────────────
+  await progress("executing");
   let draftContent: string;
   try {
     draftContent = await generateDraft(userRequest, manifest, blueprint, styleGuidance.guidanceBlock, {
@@ -137,6 +185,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   }
 
   // ── Step 6: Self Review ───────────────────────────────────────────────────
+  await progress("reviewing");
   const reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
     organizationId,
     userId: requesterId,
@@ -144,6 +193,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   });
 
   // ── Step 7: Create Completed Work ─────────────────────────────────────────
+  await progress("creating_completed_work");
   const title = input.title ?? deriveTitleFromRequest(userRequest, blueprint);
 
   const assetIds = [
