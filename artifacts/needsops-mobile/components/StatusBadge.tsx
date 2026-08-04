@@ -12,7 +12,12 @@ type StatusVariant =
   | 'outage'
   | 'available'
   | 'coming_soon'
-  | 'invited';
+  | 'invited'
+  // Specialist display states
+  | 'dna_pending'
+  | 'archived'
+  | 'deprecated'
+  | 'unavailable_for_plan';
 
 interface StatusBadgeProps {
   status: StatusVariant;
@@ -20,7 +25,7 @@ interface StatusBadgeProps {
 }
 
 const STATUS_CONFIG: Record<StatusVariant, { label: string; color: string; dot?: boolean }> = {
-  active: { label: 'Active', color: '#10b981' },
+  active: { label: 'Active', color: '#10b981', dot: true },
   inactive: { label: 'Inactive', color: '#6b7896' },
   trial: { label: 'Trial', color: '#f59e0b' },
   suspended: { label: 'Suspended', color: '#ef4444' },
@@ -28,8 +33,13 @@ const STATUS_CONFIG: Record<StatusVariant, { label: string; color: string; dot?:
   degraded: { label: 'Degraded', color: '#f59e0b', dot: true },
   outage: { label: 'Outage', color: '#ef4444', dot: true },
   available: { label: 'Available', color: '#10b981' },
-  coming_soon: { label: 'Coming Soon', color: '#6b7896' },
+  coming_soon: { label: 'Coming Soon', color: '#f59e0b' },
   invited: { label: 'Invited', color: '#3b82f6' },
+  // Specialist display states
+  dna_pending: { label: 'In Development', color: '#3b82f6' },
+  archived: { label: 'Archived', color: '#6b7896' },
+  deprecated: { label: 'Deprecated', color: '#ef4444' },
+  unavailable_for_plan: { label: 'Not in your plan', color: '#4A5568' },
 };
 
 export function StatusBadge({ status, label }: StatusBadgeProps) {
