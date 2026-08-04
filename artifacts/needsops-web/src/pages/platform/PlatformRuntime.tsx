@@ -11,6 +11,59 @@
 import { useEffect, useState, useCallback } from "react";
 import { usePlatformFetch } from "@/lib/platformApi";
 
+// ─── Knowledge provider stubs (P6/P7/P8) — never implemented, always shown as "Not yet implemented" ──
+
+const KNOWLEDGE_PROVIDER_STUBS = [
+  {
+    id:          "desktop_connector",
+    name:        "Desktop Connector (P6)",
+    icon:        "🖥️",
+    description: "Retrieves documents from approved local desktop file providers. Requires the NeedsOps Desktop Connector to be installed and running on each org's workstation.",
+  },
+  {
+    id:          "cloud_sharepoint",
+    name:        "SharePoint (P7)",
+    icon:        "☁️",
+    description: "Retrieves documents from Microsoft SharePoint. Requires OAuth delegation to the organisation's Microsoft 365 tenant.",
+  },
+  {
+    id:          "cloud_google_drive",
+    name:        "Google Drive (P7)",
+    icon:        "📁",
+    description: "Retrieves documents from Google Drive. Requires OAuth delegation to the organisation's Google Workspace.",
+  },
+  {
+    id:          "cloud_onedrive",
+    name:        "OneDrive (P7)",
+    icon:        "🔷",
+    description: "Retrieves documents from Microsoft OneDrive. Requires OAuth delegation to the organisation's Microsoft 365 tenant.",
+  },
+  {
+    id:          "cloud_dropbox",
+    name:        "Dropbox (P7)",
+    icon:        "📦",
+    description: "Retrieves documents from Dropbox. Requires OAuth delegation to the organisation's Dropbox account.",
+  },
+  {
+    id:          "cloud_confluence",
+    name:        "Confluence (P7)",
+    icon:        "📗",
+    description: "Retrieves pages from Atlassian Confluence. Requires OAuth / API token delegation to the organisation's Confluence instance.",
+  },
+  {
+    id:          "cloud_notion",
+    name:        "Notion (P7)",
+    icon:        "🗒️",
+    description: "Retrieves pages and databases from Notion. Requires Notion OAuth delegation from the organisation.",
+  },
+  {
+    id:          "web_search",
+    name:        "Approved Web Search (P8)",
+    icon:        "🌐",
+    description: "Approved live web search for specialists. All queries are logged for audit. Rate limits enforced per organisation.",
+  },
+] as const;
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface RuntimeStatus {
@@ -167,25 +220,35 @@ function AIOperationsSection({ platformFetch }: { platformFetch: ReturnType<type
           </div>
         </div>
 
-        {/* All providers */}
+        {/* All providers — accurate status mapping */}
         {aiStatus?.providers && (
           <div className="mt-5 pt-5 border-t border-[#1E3A5F]">
-            <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">Approved providers</p>
+            <p className="text-xs text-slate-500 uppercase tracking-wide mb-3">Approved AI providers</p>
             <div className="flex flex-wrap gap-2">
-              {aiStatus.providers.map(p => (
-                <span
-                  key={p.name}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
-                    p.connected
-                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-                      : "border-[#1E3A5F] bg-[#112033] text-slate-500"
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${p.connected ? "bg-emerald-400" : "bg-slate-600"}`} />
-                  {p.name}
-                  {p.model && <span className="text-slate-500 font-mono text-[10px] ml-0.5">({p.model})</span>}
-                </span>
-              ))}
+              {aiStatus.providers.map(p => {
+                // Derive an accurate status label — no false "active" indicators
+                const statusLabel =
+                  !p.configured                              ? "Not configured" :
+                  !p.connected                               ? "Not connected"  :
+                  "Active";
+                const isActive = statusLabel === "Active";
+                return (
+                  <span
+                    key={p.name}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+                      isActive
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                        : "border-[#1E3A5F] bg-[#112033] text-slate-500"
+                    }`}
+                    title={statusLabel}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-400" : "bg-slate-600"}`} />
+                    {p.name}
+                    {p.model && <span className="text-slate-500 font-mono text-[10px] ml-0.5">({p.model})</span>}
+                    <span className="text-slate-600 text-[10px]">· {statusLabel}</span>
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -234,6 +297,42 @@ function AIOperationsSection({ platformFetch }: { platformFetch: ReturnType<type
           </p>
         </div>
       )}
+
+      {/* ── Knowledge Provider Stubs (P6 / P7 / P8) ── */}
+      <div>
+        <h2 className="text-base font-semibold text-slate-200 uppercase tracking-wide mb-4">
+          Knowledge Provider Stubs
+        </h2>
+        <p className="text-xs text-slate-500 mb-4">
+          The following provider integrations are defined in the codebase but not yet implemented.
+          They return empty results and will never pretend to be active.
+        </p>
+        <div className="space-y-3">
+          {KNOWLEDGE_PROVIDER_STUBS.map(stub => (
+            <div key={stub.id} className="flex items-start gap-4 bg-[#0B1829] rounded-xl border border-[#1E3A5F] px-5 py-4">
+              <div className="text-xl shrink-0">{stub.icon}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="text-slate-300 text-sm font-medium">{stub.name}</span>
+                  <span className="text-[10px] font-mono text-slate-500 bg-[#112033] border border-[#1E3A5F] rounded px-1.5 py-0.5">
+                    {stub.id}
+                  </span>
+                  {/* Explicit "Not yet implemented" badge — never shows active/configured */}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-800 text-slate-500 border border-slate-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-600" />
+                    Not yet implemented
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{stub.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-slate-600">
+          These stubs exist so the platform architecture is defined before implementation begins.
+          When a provider is implemented, it will be removed from this list and appear in the Knowledge section.
+        </p>
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+import { getSpecialistDisplayState, DISPLAY_STATE_META } from "@/lib/specialistDisplayState";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,15 @@ type Tab = (typeof TABS)[number];
 
 // ─── Tab: Overview ────────────────────────────────────────────────────────────
 
-function OverviewTab({ profile, slug }: { profile: SpecialistOpsProfile; slug: string }) {
+function OverviewTab({
+  profile,
+  slug,
+  isSpecialistActive = true,
+}: {
+  profile: SpecialistOpsProfile;
+  slug: string;
+  isSpecialistActive?: boolean;
+}) {
   const [, setLocation] = useLocation();
   const tr = profile.trainingRecord;
   const oc = profile.orgConfig;
@@ -262,12 +271,22 @@ function OverviewTab({ profile, slug }: { profile: SpecialistOpsProfile; slug: s
             <p className="text-amber-400 text-xs">{tr.notes}</p>
           </div>
         )}
-        <button
-          onClick={() => setLocation(`/app/${slug}/workforce/${profile.code}/training`)}
-          className="mt-4 w-full text-center text-xs text-[#00D4FF] hover:underline"
-        >
-          Open Training Page →
-        </button>
+        {isSpecialistActive ? (
+          <button
+            onClick={() => setLocation(`/app/${slug}/workforce/${profile.code}/training`)}
+            className="mt-4 w-full text-center text-xs text-[#00D4FF] hover:underline"
+          >
+            Open Training Page →
+          </button>
+        ) : (
+          <button
+            disabled
+            className="mt-4 w-full text-center text-xs text-[#475569] cursor-not-allowed"
+            title="Training is disabled for non-active specialists"
+          >
+            Training unavailable
+          </button>
+        )}
       </div>
 
       {/* Organisation config */}
@@ -821,6 +840,15 @@ export default function WorkforceSpecialistDetail() {
     enabled: activeTab === "Knowledge" && !!slug && !!specialistId,
   });
 
+  // Fetch catalogue display state for this specialist (non-blocking — used for banner only)
+  const { data: catalogueData } = useQuery({
+    queryKey: ["catalogue-specialist", profile?.code ?? specialistId],
+    queryFn:  () =>
+      apiFetch(`/v1/workforce/specialists/${profile?.code ?? specialistId}`).then(r => r.json()),
+    enabled: !!profile,
+    staleTime: 60_000,
+  });
+
   if (profileLoading) {
     return (
       <AppShell orgSlug={slug!}>
@@ -847,8 +875,52 @@ export default function WorkforceSpecialistDetail() {
 
   const opsStatus = OPS_STATUS[profile.operationalStatus] ?? OPS_STATUS.offline!;
 
+  // Derive catalogue display state from the wrapped response shape { specialist, capabilities }
+  const catalogueSpecialist = catalogueData?.specialist;
+  const displayState = catalogueSpecialist
+    ? getSpecialistDisplayState({
+        executionStatus: catalogueSpecialist.executionStatus,
+        comingSoon:      catalogueSpecialist.comingSoon,
+        isArchived:      catalogueSpecialist.isArchived,
+        dnaStatus:       catalogueSpecialist.dnaStatus,
+      })
+    : "active";
+  const displayMeta = DISPLAY_STATE_META[displayState];
+  const isSpecialistActive = displayState === "active";
+
   return (
     <AppShell orgSlug={slug!}>
+      {/* ── Catalogue status banner (shown for all non-active states) ── */}
+      {catalogueData && displayState !== "active" && (
+        <div className={`mb-4 rounded-xl border px-4 py-3 flex items-start gap-3 ${
+          displayState === "archived"       ? "bg-gray-900/20 border-gray-700/30" :
+          displayState === "coming_soon"    ? "bg-amber-900/10 border-amber-700/20" :
+          displayState === "dna_pending"    ? "bg-blue-900/10 border-blue-700/20" :
+          displayState === "deprecated"     ? "bg-red-900/10 border-red-700/20" :
+          "bg-[#112033] border-[#1E3A5F]"
+        }`}>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border mt-0.5 shrink-0 ${displayMeta.cls}`}>
+            {displayMeta.label}
+          </span>
+          <div>
+            <p className={`text-sm font-medium ${
+              displayState === "archived"    ? "text-gray-400" :
+              displayState === "coming_soon" ? "text-amber-400" :
+              displayState === "dna_pending" ? "text-blue-400"  :
+              displayState === "deprecated"  ? "text-red-400"   :
+              "text-[#94A3B8]"
+            }`}>
+              {displayMeta.tooltip}
+            </p>
+            {!isSpecialistActive && (
+              <p className="text-xs text-[#475569] mt-0.5">
+                Training and execution are disabled for this specialist.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="mb-6">
         <button
@@ -893,7 +965,7 @@ export default function WorkforceSpecialistDetail() {
 
       {/* ── Tab Content ── */}
       {activeTab === "Overview" && (
-        <OverviewTab profile={profile} slug={slug!}/>
+        <OverviewTab profile={profile} slug={slug!} isSpecialistActive={isSpecialistActive}/>
       )}
       {activeTab === "Readiness" && (
         readiness

@@ -15,6 +15,7 @@ import {
   getSpecialistsByPack,
   getSpecialistCapabilities,
 } from "../../lib/workforceRegistry.js";
+import { getCatalogueEntry } from "../../services/specialistCatalogueService.js";
 
 const router = Router();
 
@@ -61,14 +62,43 @@ router.get("/specialists", (req, res) => {
 });
 
 // GET /v1/workforce/specialists/:code
-router.get("/specialists/:code", (req, res) => {
-  const specialist = SPECIALISTS.find(s => s.code === req.params.code);
-  if (!specialist) {
-    res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Specialist not found." } });
-    return;
-  }
-  const capabilities = getSpecialistCapabilities(specialist.code);
-  res.json({ specialist, capabilities });
+// Task #41: overlays catalogue commercial/status fields so the detail page
+// can derive SpecialistDisplayState from the response.
+router.get("/specialists/:code", async (req, res, next) => {
+  try {
+    const registryEntry = SPECIALISTS.find(s => s.code === req.params.code);
+    if (!registryEntry) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Specialist not found." } });
+      return;
+    }
+    const capabilities = getSpecialistCapabilities(registryEntry.code);
+    const cat = await getCatalogueEntry(registryEntry.code);
+
+    // Overlay catalogue display fields over registry runtime fields
+    const specialist = {
+      ...registryEntry,
+      ...(cat ? {
+        displayName:    cat.displayName,
+        description:    cat.description,
+        executionStatus: cat.executionStatus,
+        availability:   cat.availability,
+        comingSoon:     cat.comingSoon,
+        isArchived:     cat.isArchived,
+        isActive:       cat.isActive,
+        icon:           cat.iconMetadata.icon,
+        colour:         cat.iconMetadata.colour,
+        packCode:       cat.packMembership,
+        dnaStatus:      cat.versionMetadata.dnaStatus,
+        _source: "catalogue",
+      } : {
+        isArchived: false,
+        comingSoon: false,
+        _source: "registry_only",
+      }),
+    };
+
+    res.json({ specialist, capabilities });
+  } catch (err) { next(err); }
 });
 
 // GET /v1/workforce/capabilities

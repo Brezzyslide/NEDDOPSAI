@@ -1,7 +1,6 @@
 /**
  * WorkforceBrowser — legacy pack-based workforce browser.
  * Task #41: Updated to use SpecialistDisplayState for distinct badges.
- * This is the routed component at /workforce.
  */
 
 import React from "react";
@@ -13,18 +12,18 @@ import {
   type SpecialistDisplayState,
 } from "@/lib/specialistDisplayState";
 
-// ─── Worker status icon using the canonical display state ─────────────────────
+// ─── Worker status badge using the canonical display state ────────────────────
 
 interface WorkerStatusIconProps { state: SpecialistDisplayState }
 function WorkerStatusIcon({ state }: WorkerStatusIconProps) {
   switch (state) {
-    case "active":               return <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />;
-    case "coming_soon":          return <Clock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />;
-    case "dna_pending":          return <FlaskConical className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />;
+    case "active":              return <CheckCircle2 className="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" />;
+    case "coming_soon":         return <Clock className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />;
+    case "dna_pending":         return <FlaskConical className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />;
     case "archived":
     case "deprecated":
     case "unavailable_for_plan": return <Lock className="w-3.5 h-3.5 text-slate-500 mt-0.5 shrink-0" />;
-    default:                     return <AlertCircle className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />;
+    default:                    return <AlertCircle className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />;
   }
 }
 
@@ -32,10 +31,10 @@ function WorkerStatusIcon({ state }: WorkerStatusIconProps) {
 
 const getTierColor = (tier: string) => {
   switch (tier) {
-    case "enterprise":   return "text-[#b975f8] border-[#b975f8]/30 bg-[#b975f8]/10";
-    case "professional": return "text-[#3b82f6] border-[#3b82f6]/30 bg-[#3b82f6]/10";
-    case "starter":      return "text-[#94a3b8] border-[#94a3b8]/30 bg-[#94a3b8]/10";
-    default:             return "text-muted-foreground border-border bg-transparent";
+    case "enterprise":    return "text-[#b975f8] border-[#b975f8]/30 bg-[#b975f8]/10";
+    case "professional":  return "text-[#3b82f6] border-[#3b82f6]/30 bg-[#3b82f6]/10";
+    case "starter":       return "text-[#94a3b8] border-[#94a3b8]/30 bg-[#94a3b8]/10";
+    default:              return "text-muted-foreground border-border bg-transparent";
   }
 };
 
@@ -78,7 +77,7 @@ export function WorkforceBrowser() {
         </div>
       </div>
 
-      {/* Status legend */}
+      {/* Legend */}
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <span className="font-medium uppercase tracking-wide">Status:</span>
         {(["active", "coming_soon", "dna_pending", "unavailable_for_plan"] as SpecialistDisplayState[]).map(s => (
@@ -109,7 +108,7 @@ export function WorkforceBrowser() {
                 className="bg-card border border-border rounded-md overflow-hidden group hover:border-primary/40 transition-all duration-300 flex flex-col relative animate-in fade-in slide-in-from-bottom-4"
                 style={{ animationDelay: `${index * 100}ms` }}
               >
-                {/* Subtle background glow on hover */}
+                {/* Subtle background glow effect on hover */}
                 <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
                 <div className="p-6 border-b border-border relative z-10">
@@ -137,6 +136,8 @@ export function WorkforceBrowser() {
 
                   <div className="space-y-3">
                     {pack.workers.slice(0, 3).map(worker => {
+                      // Workers in this endpoint don't have individual executionStatus —
+                      // infer from the pack status for display purposes
                       const workerState = getSpecialistDisplayState({
                         executionStatus: pack.status === "available" ? "available" : pack.status,
                         comingSoon:      pack.status === "coming_soon",
@@ -158,12 +159,14 @@ export function WorkforceBrowser() {
                     )}
                   </div>
 
-                  {/* Coming-soon / DNA-pending notices */}
+                  {/* Coming-soon notice */}
                   {packState === "coming_soon" && (
                     <div className="mt-4 rounded-lg bg-amber-900/10 border border-amber-700/20 px-3 py-2">
                       <p className="text-xs text-amber-400">{DISPLAY_STATE_META.coming_soon.tooltip}</p>
                     </div>
                   )}
+
+                  {/* DNA pending notice */}
                   {packState === "dna_pending" && (
                     <div className="mt-4 rounded-lg bg-blue-900/10 border border-blue-700/20 px-3 py-2">
                       <p className="text-xs text-blue-400">🧬 {DISPLAY_STATE_META.dna_pending.tooltip}</p>

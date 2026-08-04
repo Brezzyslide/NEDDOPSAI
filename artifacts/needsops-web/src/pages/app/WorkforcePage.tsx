@@ -9,6 +9,10 @@ import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+import {
+  getSpecialistDisplayState,
+  DISPLAY_STATE_META,
+} from "@/lib/specialistDisplayState";
 
 const PACK_COLOURS: Record<string, string> = {
   core: "#00D4FF",
@@ -28,24 +32,6 @@ const DEPARTMENT_NAMES: Record<string, string> = {
   hr: "Human Resources",
   marketing: "Marketing",
 };
-
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  available: { label: "Available", cls: "bg-emerald-900/30 text-emerald-400" },
-  beta: { label: "Beta", cls: "bg-blue-900/30 text-blue-400" },
-  coming_soon: { label: "Coming Soon", cls: "bg-[#1E3A5F] text-[#64748B]" },
-  dna_pending: { label: "DNA Design Pending", cls: "bg-amber-900/30 text-amber-400" },
-  deprecated: { label: "Deprecated", cls: "bg-red-900/20 text-red-400" },
-  archived: { label: "Archived", cls: "bg-gray-900/20 text-gray-500" },
-};
-
-/** Returns the effective status badge for a specialist */
-function getStatusBadge(s: any): { label: string; cls: string } {
-  // Show "DNA Design Pending" if executionStatus is dna_pending OR dnaStatus is pending_design
-  if (s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design") {
-    return STATUS_BADGE.dna_pending!;
-  }
-  return STATUS_BADGE[s.executionStatus as string] ?? STATUS_BADGE.coming_soon!;
-}
 
 export default function WorkforcePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -95,7 +81,7 @@ export default function WorkforcePage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-[#E2E8F0]">AI Workforce</h1>
           <p className="text-[#64748B] text-sm mt-1">
-            17 AI employees across 6 departments — browse your available specialists and workforce packs
+            Browse your available specialists across all workforce departments
           </p>
         </div>
 
@@ -189,81 +175,123 @@ export default function WorkforcePage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {specialists.map((s: any) => {
-                    const badge = getStatusBadge(s);
+                    const displayState = getSpecialistDisplayState({
+                      executionStatus: s.executionStatus,
+                      comingSoon:      s.comingSoon,
+                      isArchived:      s.isArchived,
+                      isAccessible:    s.isAccessible,
+                      dnaStatus:       s.dnaStatus,
+                    });
+                    const meta = DISPLAY_STATE_META[displayState];
                     const packColour = PACK_COLOURS[s.packCode] ?? "#00D4FF";
-                    const isDnaPending = s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design";
+                    const isActive = displayState === "active";
+
+                    // Card border changes per state
+                    const cardBorder =
+                      displayState === "dna_pending" ? "border-blue-900/30 hover:border-blue-700/30" :
+                      displayState === "coming_soon"  ? "border-amber-900/30 hover:border-amber-700/30" :
+                      displayState === "archived" || displayState === "deprecated" ? "border-[#1E3A5F] opacity-60" :
+                      displayState === "unavailable_for_plan" ? "border-[#1E3A5F] opacity-75" :
+                      "border-[#1E3A5F] hover:border-[#00D4FF]/30";
+
                     return (
                       <div
                         key={s.code}
-                        className={`bg-[#112033] border rounded-xl p-5 flex flex-col gap-3 transition-colors ${
-                          isDnaPending
-                            ? "border-amber-900/40 hover:border-amber-700/40"
-                            : "border-[#1E3A5F] hover:border-[#00D4FF]/30"
-                        }`}
+                        className={`bg-[#112033] border rounded-xl p-5 flex flex-col gap-3 transition-colors ${cardBorder}`}
                       >
                         {/* Top row */}
                         <div className="flex items-start gap-3">
                           <div
-                            className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${isDnaPending ? "opacity-60" : ""}`}
+                            className={`h-10 w-10 rounded-xl flex items-center justify-center text-xl shrink-0 ${!isActive ? "opacity-50" : ""}`}
                             style={{ backgroundColor: packColour + "22" }}
                           >
                             {s.icon}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className={`font-semibold text-sm ${isDnaPending ? "text-[#94A3B8]" : "text-[#E2E8F0]"}`}>
+                            <p className={`font-semibold text-sm ${isActive ? "text-[#E2E8F0]" : "text-[#94A3B8]"}`}>
                               {s.displayName}
                             </p>
                             <p className="text-[#64748B] text-xs capitalize">
                               {DEPARTMENT_NAMES[s.packCode] ?? s.packCode} department
                             </p>
                           </div>
-                          <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${badge.cls}`}>
-                            {badge.label}
+                          {/* Status badge with tooltip */}
+                          <span
+                            className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium border ${meta.cls}`}
+                            title={meta.tooltip}
+                          >
+                            {meta.label}
                           </span>
                         </div>
 
                         {/* Description */}
-                        <p className={`text-xs leading-relaxed line-clamp-2 ${isDnaPending ? "text-[#64748B]" : "text-[#94A3B8]"}`}>
+                        <p className={`text-xs leading-relaxed line-clamp-2 ${isActive ? "text-[#94A3B8]" : "text-[#64748B]"}`}>
                           {s.description}
                         </p>
 
-                        {/* DNA pending notice */}
-                        {isDnaPending && (
-                          <p className="text-[10px] text-amber-400/70 bg-amber-900/10 border border-amber-900/30 rounded px-2 py-1">
-                            🧬 Professional profile is being designed — available soon
+                        {/* State-specific notice */}
+                        {displayState === "dna_pending" && (
+                          <p className="text-[10px] text-blue-400/80 bg-blue-900/10 border border-blue-700/20 rounded px-2 py-1">
+                            🧬 {meta.tooltip}
+                          </p>
+                        )}
+                        {displayState === "coming_soon" && (
+                          <p className="text-[10px] text-amber-400/80 bg-amber-900/10 border border-amber-700/20 rounded px-2 py-1">
+                            🕐 {meta.tooltip}
+                          </p>
+                        )}
+                        {displayState === "unavailable_for_plan" && (
+                          <p className="text-[10px] text-[#64748B] bg-[#0B1829] border border-[#1E3A5F] rounded px-2 py-1">
+                            🔒 {meta.tooltip}
+                          </p>
+                        )}
+                        {displayState === "archived" && (
+                          <p className="text-[10px] text-gray-500 bg-gray-900/20 border border-gray-700/20 rounded px-2 py-1">
+                            📦 {meta.tooltip}
                           </p>
                         )}
 
-                        {/* Capabilities */}
-                        <div className="flex flex-wrap gap-1.5">
-                          {(s.capabilities ?? []).slice(0, 4).map((cap: string) => (
-                            <span
-                              key={cap}
-                              className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]"
-                            >
-                              {cap.replace(/_/g, " ")}
-                            </span>
-                          ))}
-                          {s.capabilities?.length > 4 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]">
-                              +{s.capabilities.length - 4} more
-                            </span>
-                          )}
-                        </div>
+                        {/* Capabilities — only shown for active specialists */}
+                        {isActive && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(s.capabilities ?? []).slice(0, 4).map((cap: string) => (
+                              <span
+                                key={cap}
+                                className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]"
+                              >
+                                {cap.replace(/_/g, " ")}
+                              </span>
+                            ))}
+                            {s.capabilities?.length > 4 && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full border border-[#1E3A5F] text-[#64748B]">
+                                +{s.capabilities.length - 4} more
+                              </span>
+                            )}
+                          </div>
+                        )}
 
-                        {/* Approval requirement */}
-                        {s.approvalRequirements && s.approvalRequirements !== "no_approval" && (
+                        {/* Approval requirement — only relevant when active */}
+                        {isActive && s.approvalRequirements && s.approvalRequirements !== "no_approval" && (
                           <p className="text-[10px] text-amber-400/80">
                             ⚠ Requires {s.approvalRequirements.replace(/_/g, " ")}
                           </p>
                         )}
 
-                        {/* Train button */}
-                        {!isDnaPending && (
+                        {/* Train button — disabled for all non-active states */}
+                        {meta.canTrain ? (
                           <button
                             onClick={() => setLocation(`/app/${slug}/workforce/${s.code}/training`)}
-                            className="mt-1 w-full text-center text-[11px] font-medium px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#94A3B8] hover:border-[#00D4FF]/40 hover:text-[#00D4FF] transition-colors">
+                            className="mt-1 w-full text-center text-[11px] font-medium px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#94A3B8] hover:border-[#00D4FF]/40 hover:text-[#00D4FF] transition-colors"
+                          >
                             Train this specialist →
+                          </button>
+                        ) : (
+                          <button
+                            disabled
+                            title={meta.tooltip}
+                            className="mt-1 w-full text-center text-[11px] font-medium px-3 py-1.5 rounded-lg border border-[#1E3A5F] text-[#4A5568] cursor-not-allowed opacity-50"
+                          >
+                            {meta.label} — unavailable
                           </button>
                         )}
                       </div>
