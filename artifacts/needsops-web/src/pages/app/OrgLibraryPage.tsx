@@ -126,7 +126,7 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   DOCUMENT_CATEGORIES.map(c => [c.value, c.label]),
 );
 
-const ACCEPTED_TYPES = ".pdf,.docx,.doc,.txt,.md";
+const ACCEPTED_TYPES = ".pdf,.docx,.txt,.md";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -289,13 +289,23 @@ export default function OrgLibraryPage() {
     6: true,
   };
 
+  /** Normalise MIME type — browsers report inconsistent types for .md and .txt */
+  function resolveMimeType(file: File): string {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "md")   return "text/markdown";
+    if (ext === "txt")  return "text/plain";
+    if (ext === "pdf")  return "application/pdf";
+    if (ext === "docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    return file.type || "application/octet-stream";
+  }
+
   async function handleUpload() {
     if (!upload.file) return;
     setUploading(true);
     setUploadError(null);
 
     try {
-      const mimeType         = upload.file.type || "application/octet-stream";
+      const mimeType         = resolveMimeType(upload.file);
       const fileSize         = upload.file.size;
       const originalFileName = upload.file.name;
       const checksum         = await computeChecksum(upload.file);

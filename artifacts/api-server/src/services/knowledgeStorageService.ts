@@ -145,8 +145,10 @@ class GCSStorageAdapter implements StorageAdapter {
 }
 
 function parseBucketPath(fullPath: string): { bucketName: string; objectName: string } {
-  // fullPath may be gs://bucket/path or just bucket/path
-  const stripped = fullPath.replace(/^gs:\/\//, "");
+  // Normalise: strip gs:// prefix and any leading slash so we always work
+  // with "bucketName/objectName" regardless of whether PRIVATE_OBJECT_DIR was
+  // set as  gs://bucket/prefix  or  /bucket/prefix  (both are valid).
+  const stripped = fullPath.replace(/^gs:\/\//, "").replace(/^\/+/, "");
   const slashIdx = stripped.indexOf("/");
   if (slashIdx === -1) return { bucketName: stripped, objectName: "" };
   return {
