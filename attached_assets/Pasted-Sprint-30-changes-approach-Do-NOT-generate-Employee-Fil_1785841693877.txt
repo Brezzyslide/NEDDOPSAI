@@ -1,0 +1,91 @@
+Sprint 30 changes approach.
+
+Do NOT generate Employee Files yet.
+
+Do NOT invent specialist personalities, responsibilities, authority, or professional judgement.
+
+Instead, Sprint 30 begins with a Professional Design phase.
+
+The objective is to capture human-defined executive and professional judgement before implementation.
+
+The Chief of Staff and Executive Assistant remain the reference implementations.
+
+Every remaining specialist will follow a four-stage process:
+
+Stage 0
+Professional Design Brief
+
+↓
+
+Stage 1
+Employee File
+
+↓
+
+Stage 2
+Implementation
+
+↓
+
+Stage 3
+Validation & Runtime Integration
+
+Your task is ONLY to prepare the platform for this workflow.
+
+Review the current Employee File architecture and determine what additions are required to support a Professional Design Brief.
+
+Design a reusable Professional Design Brief template that can be stored alongside each Employee File.
+
+The Design Brief should NOT contain runtime prompts.
+
+Instead it should capture the thinking behind the specialist.
+
+Include sections such as:
+
+• Purpose of the role
+• Why the organisation hires this role
+• Professional philosophy
+• Daily operational priorities
+• Weekly executive responsibilities
+• Decision-making approach
+• Professional mental models
+• Common judgement calls
+• Typical escalation scenarios
+• Authority boundaries
+• Professional risks
+• Common mistakes inexperienced staff make
+• Quality expectations
+• Trusted information sources
+• Collaboration with other specialists
+• Success indicators
+• Failure indicators
+• Professional red flags
+• Required evidence before making recommendations
+• Situations where the specialist must refuse work
+• Situations requiring another specialist
+
+Review the current Employee File schema.
+
+Recommend whether the Design Brief should:
+
+A) become part of the Employee File
+
+or
+
+B) exist as a separate design artefact compiled into the Employee File.
+
+Do not implement yet.
+
+Produce a recommendation with reasoning.
+
+Then design the reusable template for approval.
+
+Stop after the template and recommendation.
+
+Do not generate Employee Files.
+
+Do not modify runtime code.
+
+Do not implement specialist logic.
+
+Wait for approval before continuing.

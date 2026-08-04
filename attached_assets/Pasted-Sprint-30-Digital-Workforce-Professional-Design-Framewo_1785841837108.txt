@@ -1,0 +1,271 @@
+Sprint 30 – Digital Workforce Professional Design Framework
+
+Change of approach.
+
+Do NOT generate Employee Files.
+
+Do NOT invent specialist personalities.
+
+Do NOT invent responsibilities.
+
+Do NOT invent authority.
+
+Do NOT invent professional judgement.
+
+Professional judgement will come from founder-led workshops and approved Professional Design Briefs.
+
+Your role is to build the framework that supports this process.
+
+──────────────────────────────────────
+
+Background
+
+The Chief of Staff and Executive Assistant remain the reference implementations.
+
+Every remaining specialist will now follow the same professional development lifecycle.
+
+Professional Design Workshop
+        ↓
+Professional Design Brief (Founder Approved)
+        ↓
+Employee File
+        ↓
+Capability Catalogue
+        ↓
+Authority Matrix
+        ↓
+Runtime Manifest
+        ↓
+Implementation
+        ↓
+Validation
+        ↓
+Production
+
+No Employee File should be created until its Design Brief has been completed and approved.
+
+──────────────────────────────────────
+
+Your task
+
+Review the current Employee File architecture.
+
+Review:
+
+• Employee File schema
+• DNA schema
+• Runtime Manifest compiler
+• Worker Profile
+• Capability definitions
+• Responsibility definitions
+• Authority definitions
+• Validation logic
+
+Design a reusable Professional Design Framework.
+
+The framework should support every current and future specialist.
+
+──────────────────────────────────────
+
+Deliverable 1
+
+Create a reusable Professional Design Brief template.
+
+This should NOT be runtime content.
+
+It is the constitutional design document that sits behind every Employee File.
+
+Include sections such as:
+
+1. Why this role exists
+2. Organisational purpose
+3. Problems this role solves
+4. Professional philosophy
+5. Executive mindset
+6. Leadership style
+7. Daily priorities
+8. Weekly priorities
+9. Monthly responsibilities
+10. Professional mental models
+11. Common judgement calls
+12. Decision-making framework
+13. Professional risks
+14. Typical mistakes inexperienced people make
+15. Escalation philosophy
+16. Success indicators
+17. Failure indicators
+18. Professional red flags
+19. Evidence required before recommendations
+20. Situations requiring refusal
+21. Situations requiring escalation
+22. Trusted information sources
+23. Collaboration expectations
+24. Regulatory considerations
+25. Ethics considerations
+26. Professional limitations
+
+This template must be reusable for every specialist.
+
+──────────────────────────────────────
+
+Deliverable 2
+
+Design a Capability Definition template.
+
+Every capability should define:
+
+• Purpose
+• Description
+• Inputs
+• Outputs
+• Required evidence
+• Required legislation
+• Required organisational knowledge
+• Required trusted providers
+• Required templates
+• Validation rules
+• Confidence requirements
+• Refusal conditions
+• Escalation conditions
+
+──────────────────────────────────────
+
+Deliverable 3
+
+Design a Responsibility Matrix template.
+
+Each responsibility should identify:
+
+Primary owner
+
+Shared owner
+
+Supports
+
+Consults
+
+Informed
+
+Escalation owner
+
+Approval owner
+
+Review owner
+
+Never owner
+
+──────────────────────────────────────
+
+Deliverable 4
+
+Design an Authority Matrix template.
+
+Include:
+
+May decide
+
+May recommend
+
+May approve
+
+May assign
+
+May delegate
+
+Must consult
+
+Must escalate
+
+Must refuse
+
+Never authorised
+
+Approval thresholds
+
+──────────────────────────────────────
+
+Deliverable 5
+
+Design a Collaboration Matrix template.
+
+For every specialist capture:
+
+Reports to
+
+Works with
+
+Receives work from
+
+Delegates to
+
+Reviews work for
+
+Reviews work from
+
+Must consult
+
+Cannot bypass
+
+Cross-functional dependencies
+
+──────────────────────────────────────
+
+Deliverable 6
+
+Design a Professional Competency Model.
+
+Every competency should include:
+
+Competency
+
+Expected proficiency
+
+Knowledge sources
+
+Evidence requirements
+
+Validation requirements
+
+Required trusted providers
+
+Expected outputs
+
+Quality expectations
+
+Review requirements
+
+──────────────────────────────────────
+
+Deliverable 7
+
+Review whether the existing Employee File schema needs extending to support these new artefacts.
+
+Recommend:
+
+• what should remain outside the runtime
+• what should compile into the runtime manifest
+• what should remain founder-only documentation
+
+Explain why.
+
+──────────────────────────────────────
+
+Rules
+
+Do NOT generate Employee Files.
+
+Do NOT generate specialist content.
+
+Do NOT invent personalities.
+
+Do NOT modify runtime behaviour.
+
+Do NOT implement specialist logic.
+
+Do NOT generate prompts.
+
+Produce only the reusable framework.
+
+After the framework is complete, stop and wait for approval before beginning the first specialist workshop.
+
+The goal is to ensure every NeedsOps specialist is built from founder-approved professional knowledge rather than AI-generated assumptions.
