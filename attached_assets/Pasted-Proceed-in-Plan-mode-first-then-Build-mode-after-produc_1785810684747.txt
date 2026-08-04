@@ -1,0 +1,670 @@
+Proceed in Plan mode first, then Build mode after producing the implementation plan.
+
+Objective:
+
+Close all confirmed platform gaps from the latest inspection without duplicating functionality that is already complete.
+
+Reference the NeedsOps AI+ Platform Architecture Blueprint as the governing document.
+
+Do not redesign the platform.
+
+Do not start unrelated roadmap work such as:
+
+- Trusted Intelligence Providers
+- OCR
+- Organisation Intelligence Graph
+- AWS infrastructure migration
+- General web search
+- New specialist development
+
+This programme is focused on completing the owner console, operational gaps, mobile bugs, runtime permission gaps, and remaining placeholders.
+
+────────────────────────────────────────
+PHASE 0 — VERIFY CURRENT STATE
+────────────────────────────────────────
+
+Before changing code, inspect and verify each reported gap against the current codebase.
+
+Classify every item as:
+
+- Confirmed missing
+- Partially implemented
+- Already complete
+- Stale and safe to ignore
+
+Do not rely only on comments or old task descriptions.
+
+Verify these areas:
+
+1. Owner-initiated organisation creation
+2. Connector and device data in owner organisation detail
+3. Price editing UI for workforce packs
+4. Trial duration configuration UI
+5. Staff invite for users without an existing Clerk account
+6. Notification unread count and server-side read tracking
+7. Runtime context permissions and configuration logic
+8. Workforce catalogue persistence and owner management
+9. Self-review scoring evidence quality
+10. Discovery screen configuration
+11. Mobile approvals
+12. Mobile organisation selection propagation
+13. Platform runtime and AI control surface
+14. Orchestration provider placeholders P6–P8
+15. Coming-soon specialist handling
+
+Produce a concise implementation plan and dependency order.
+
+Then proceed into Build mode.
+
+────────────────────────────────────────
+PHASE 1 — OWNER-INITIATED ORGANISATION CREATION
+────────────────────────────────────────
+
+Build a complete owner-console organisation creation flow.
+
+Platform owners must be able to create and provision an organisation on behalf of a client.
+
+Support:
+
+- organisation name
+- organisation slug
+- first owner name
+- first owner email
+- plan selection
+- trial duration
+- workforce pack selection
+- seat override
+- billing status
+- onboarding status
+- optional activation-code generation
+- optional desktop connector activation
+- send onboarding invitation
+
+Requirements:
+
+- create organisation record
+- provision organisation database
+- apply migrations and RLS
+- create subscription and entitlements
+- grant selected workforce packs
+- create first owner membership
+- send invite even if the person does not yet have a Clerk account
+- support idempotent retries
+- rollback safely on partial failure
+- show provisioning progress
+- audit every step
+
+Do not require the client to self-register first.
+
+Add owner-console UI:
+
+- Create Organisation button
+- multi-step form
+- progress screen
+- success screen
+- retry failed provisioning
+- open created organisation
+
+────────────────────────────────────────
+PHASE 2 — COLD STAFF INVITATIONS
+────────────────────────────────────────
+
+Fix staff invitation so the invitee does not need an existing Clerk account.
+
+Support:
+
+- email invitation
+- pending invitation state
+- expiry
+- resend
+- revoke
+- accept after account creation
+- role assignment
+- organisation membership creation after acceptance
+
+Use Clerk invitation APIs or the existing invitation abstraction.
+
+Do not expose Clerk-specific details in the UI.
+
+Add tests for:
+
+- existing user
+- new user
+- expired invite
+- revoked invite
+- duplicate invite
+- cross-tenant access
+- invalid role
+
+────────────────────────────────────────
+PHASE 3 — CONNECTOR AND DEVICE MANAGEMENT
+────────────────────────────────────────
+
+Replace all connector and device placeholders with real data.
+
+Owner organisation detail should display:
+
+- device name
+- organisation
+- status
+- online / offline
+- last heartbeat
+- last connected
+- connector version
+- desktop app version
+- operating system
+- architecture
+- hostname where permitted
+- activation state
+- token expiry
+- update available
+- recent errors
+- broker status
+- tunnel status
+- last job executed
+
+Add platform-level Connector Fleet page.
+
+Support:
+
+- filter by organisation
+- filter by status
+- search
+- revoke device
+- disable device
+- rotate credentials
+- resend activation
+- view device history
+- view error history
+
+All actions must be audited and role-protected.
+
+Do not show secrets or raw tokens.
+
+────────────────────────────────────────
+PHASE 4 — WORKFORCE CATALOGUE PERSISTENCE
+────────────────────────────────────────
+
+Move catalogue metadata from static-only code into a database-backed catalogue.
+
+Important:
+
+Keep specialist runtime behaviour, DNA, Employee Files, Constitution, prompt logic, and code implementations in source control.
+
+Move only catalogue and commercial metadata into the database:
+
+- specialist code
+- display name
+- description
+- status
+- availability
+- category
+- icon metadata
+- pack membership
+- plan visibility
+- commercial availability
+- coming-soon state
+- active / archived state
+- display order
+- version metadata
+
+Requirements:
+
+- seed existing catalogue idempotently
+- preserve all current specialist codes
+- preserve current pack behaviour
+- owner-console catalogue management
+- create, edit, publish, unpublish, archive
+- assign to packs
+- mark coming soon
+- prevent deleting specialists referenced by work or history
+- version catalogue changes
+- audit all changes
+
+Do not make runtime behaviour editable from the owner console.
+
+────────────────────────────────────────
+PHASE 5 — WORKFORCE PACK PRICE EDITING
+────────────────────────────────────────
+
+Wire the existing backend price-edit endpoint into the Platform Packs UI.
+
+Support:
+
+- edit draft price
+- currency
+- billing interval
+- amount
+- effective date
+- version notes
+- activate price
+- archive price
+- compare versions
+- show current active price
+
+Rules:
+
+- active prices are immutable
+- changes create or update a draft version only
+- activation is explicit
+- historical versions remain visible
+
+Add confirmation and audit history.
+
+────────────────────────────────────────
+PHASE 6 — TRIAL DURATION MANAGEMENT
+────────────────────────────────────────
+
+Expose plan trial-length configuration in the owner console.
+
+Support:
+
+- default trial days per plan
+- no-trial option
+- maximum allowed trial length
+- plan-level override
+- organisation-level override
+- visible effective value
+- audit changes
+
+Do not silently change active trials.
+
+Only apply changed defaults to new trials unless explicitly overridden.
+
+────────────────────────────────────────
+PHASE 7 — SERVER-SIDE NOTIFICATION STATE
+────────────────────────────────────────
+
+Replace placeholder or client-only notification state.
+
+Implement server-backed:
+
+- unread count
+- mark read
+- mark unread
+- archive
+- restore
+- snooze where supported
+- read timestamps
+- archive timestamps
+- per-user state
+- tenant isolation
+
+Update:
+
+- Executive Inbox
+- Notification Centre
+- navigation badges
+- mobile notification views
+
+Remove localStorage as the source of truth.
+
+Local caching may remain for performance only.
+
+────────────────────────────────────────
+PHASE 8 — MOBILE ORGANISATION CONTEXT FIX
+────────────────────────────────────────
+
+Fix mobile organisation selection propagation.
+
+When a user selects an organisation:
+
+- update the shared organisation context
+- persist the current organisation safely
+- ensure Tasks, Work, Approvals, Notifications, and Workforce screens use the same selected organisation
+- restore context on app relaunch
+- handle removed access
+- handle users with one organisation
+- handle users with multiple organisations
+- avoid global mutable variables such as __needsops_org_slug
+
+Use a proper context/store abstraction.
+
+Add tests for first launch and cross-screen navigation.
+
+────────────────────────────────────────
+PHASE 9 — MOBILE APPROVAL ACTIONS
+────────────────────────────────────────
+
+Upgrade mobile approvals from read-only where backend workflows already exist.
+
+Support on mobile:
+
+- approve
+- reject
+- request changes
+- add comment
+- open source
+- open completed work
+- view audit summary
+
+Apply the same role checks and governance rules as the web portal.
+
+Do not duplicate backend logic.
+
+For actions too complex for mobile, provide a clear handoff, but do not make all approvals web-only.
+
+────────────────────────────────────────
+PHASE 10 — RUNTIME CONTEXT PERMISSIONS
+────────────────────────────────────────
+
+Complete runtimeContextService permission and configuration logic.
+
+Enforce:
+
+- organisation access
+- specialist access
+- workforce pack entitlements
+- user role
+- source scope
+- sensitivity classification
+- entity scope
+- device permission
+- task permission
+- allowed systems
+- approval restrictions
+
+Requirements:
+
+- deny by default
+- explicit permission decisions
+- audit permission decisions
+- no cross-tenant context
+- no sensitive-source leakage
+- no retrieval solely because of similarity
+- tests for every permission boundary
+
+Do not leave placeholder allow-all behaviour.
+
+────────────────────────────────────────
+PHASE 11 — SELF-REVIEW EVIDENCE HARDENING
+────────────────────────────────────────
+
+Improve self-review scoring so dimensions are derived from execution evidence.
+
+Each dimension must cite the evidence used:
+
+- instruction adherence
+- policy compliance
+- writing style
+- source coverage
+- completeness
+- confidence
+- missing information
+- approval requirements
+- safety
+- consistency
+
+Requirements:
+
+- no hardcoded positive scores
+- deterministic fallback when AI review unavailable
+- explain score deductions
+- retain one automatic revision maximum
+- store review evidence in Completed Work
+- show plain-language quality reasons in the UI
+- audit review outcomes
+
+Do not expose chain-of-thought.
+
+────────────────────────────────────────
+PHASE 12 — DISCOVERY CONFIGURATION
+────────────────────────────────────────
+
+Do not build a full CMS unless justified.
+
+Move Business Discovery definitions into a versioned configuration model only if the current hardcoded definitions are causing operational limitations.
+
+Minimum target:
+
+- versioned question sets
+- active version
+- safe defaults
+- plan or workforce-pack targeting
+- owner-console preview
+- publish / archive
+- backward compatibility with completed discovery answers
+
+If a database-driven model adds more risk than value, preserve code-based defaults and add a safe configuration overlay instead.
+
+Document the decision.
+
+────────────────────────────────────────
+PHASE 13 — PLATFORM RUNTIME OPERATIONS
+────────────────────────────────────────
+
+Strengthen the owner-console runtime and AI operations surface.
+
+Display:
+
+- API health
+- database health
+- queue health
+- worker health
+- AI provider health
+- embedding provider health
+- connector relay health
+- object storage health
+- failed jobs
+- retry counts
+- oldest queued job
+- provider latency
+- error rate
+
+Allow safe platform-owner actions:
+
+- retry failed job
+- recover stuck job
+- disable provider
+- enable provider
+- rotate non-secret configuration
+- restart logical worker where supported
+
+Do not expose or manipulate secrets directly.
+
+────────────────────────────────────────
+PHASE 14 — ORCHESTRATION PROVIDERS P6–P8
+────────────────────────────────────────
+
+Inspect whether these placeholders are still required immediately.
+
+P6 Desktop provider:
+- integrate with the existing Desktop Connector only where permission and transport are already ready
+
+P7 Cloud provider:
+- keep as interface only unless a supported cloud connector already exists
+
+P8 Trusted Web / Regulatory provider:
+- keep as interface only unless an authoritative provider is already configured
+
+Do not implement general web search in this programme.
+
+Do not pretend providers are active when they are stubs.
+
+Expose provider status clearly:
+
+- available
+- configured
+- disabled
+- not implemented
+
+────────────────────────────────────────
+PHASE 15 — COMING-SOON SPECIALISTS
+────────────────────────────────────────
+
+Keep inactive specialists visible only where useful.
+
+Support:
+
+- active
+- coming soon
+- dna pending
+- archived
+- unavailable for plan
+
+Do not allow execution or selection of inactive specialists.
+
+Show clear customer-facing status.
+
+Owner console should manage commercial visibility, not runtime implementation.
+
+────────────────────────────────────────
+SECURITY REQUIREMENTS
+────────────────────────────────────────
+
+All new functionality must preserve:
+
+- tenant isolation
+- RLS
+- least privilege
+- owner-only platform actions
+- organisation role checks
+- immutable audit history
+- safe error messages
+- no secrets in logs
+- no raw tokens in responses
+- idempotent provisioning
+- safe rollback
+
+Add rate limiting where missing for:
+
+- organisation creation
+- invitations
+- device actions
+- trial actions
+- pack price changes
+- retries
+
+────────────────────────────────────────
+TESTING
+────────────────────────────────────────
+
+Add tests for every phase.
+
+At minimum:
+
+Owner provisioning:
+- full success
+- retry
+- partial failure
+- rollback
+- duplicate org
+- duplicate slug
+- new owner invite
+- existing owner
+
+Connector/device:
+- live status
+- stale heartbeat
+- revoke
+- credential rotation
+- wrong tenant
+- no secret exposure
+
+Catalogue:
+- seed
+- edit
+- publish
+- archive
+- pack assignment
+- protected specialist deletion
+
+Pricing:
+- edit draft
+- activate
+- archive
+- immutable active version
+
+Notifications:
+- unread count
+- read/unread
+- archive
+- per-user state
+- tenant isolation
+
+Mobile:
+- selected org propagation
+- persisted context
+- approvals
+- role restrictions
+
+Runtime permissions:
+- cross-tenant denial
+- specialist denial
+- sensitivity denial
+- entitlement denial
+- allowed access
+
+Self review:
+- evidence-backed scoring
+- deterministic fallback
+- revision threshold
+- stored explanation
+
+Platform operations:
+- health aggregation
+- safe action permissions
+- no sensitive output
+
+Run:
+
+- type checks
+- API tests
+- web tests
+- mobile tests
+- full monorepo test suite
+
+Do not report success if any required suite fails.
+
+────────────────────────────────────────
+IMPLEMENTATION ORDER
+────────────────────────────────────────
+
+Implement in this order:
+
+1. Owner organisation creation and cold invitations
+2. Connector/device management
+3. Price editing and trial configuration
+4. Notification state
+5. Mobile organisation context and approvals
+6. Runtime permissions
+7. Self-review evidence
+8. Workforce catalogue
+9. Platform runtime operations
+10. Discovery configuration decision
+11. Provider placeholder status
+12. Coming-soon specialist controls
+
+Work in parallel only where changes do not overlap.
+
+────────────────────────────────────────
+COMPLETION REPORT
+────────────────────────────────────────
+
+At completion provide:
+
+- verified status of every original gap
+- files added
+- files modified
+- migrations
+- RLS count
+- new routes
+- new pages
+- libraries introduced
+- tests added
+- total passing tests
+- unresolved limitations
+- items intentionally deferred
+- confirmation that no unrelated Phase 3 or AWS work was started
+
+Do not mark the programme complete unless:
+
+- all confirmed hard placeholders are replaced or explicitly deferred with a documented reason
+- owner-created organisation provisioning works
+- device data is real
+- notification state is server-backed
+- mobile organisation context works
+- runtime permissions are enforced
+- all tests pass
+
+Begin with the inspection and implementation plan now.
