@@ -34,6 +34,7 @@ import {
 import { randomUUID } from "crypto";
 import { logOrgEvent } from "./auditService.js";
 import { SPECIALISTS } from "../lib/workforceRegistry.js";
+import { getCatalogueEntry, listCatalogue } from "./specialistCatalogueService.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,34 @@ export class WorkforceOpsError extends Error {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Task #40: Returns SPECIALISTS merged with catalogue commercial fields.
+ * Use this anywhere the registry is filtered for "active" specialists — it
+ * ensures catalogue overrides (comingSoon, isArchived, executionStatus,
+ * displayName, description) are authoritative rather than the seed values.
+ */
+async function getCatalogueAwareSpecialists(): Promise<Array<typeof SPECIALISTS[number] & {
+  displayName: string;
+  description: string;
+  isArchived: boolean;
+  comingSoon: boolean;
+}>> {
+  const { entries } = await listCatalogue({ includeArchived: true, includeDeprecated: true, limit: 500 })
+    .catch(() => ({ entries: [] as any[] }));
+  const catMap = new Map(entries.map((e: any) => [e.specialistCode, e]));
+  return SPECIALISTS.map(s => {
+    const cat = catMap.get(s.code) as any;
+    return {
+      ...s,
+      displayName:     cat?.displayName     ?? s.displayName,
+      description:     cat?.description     ?? s.description     ?? "",
+      executionStatus: cat?.executionStatus ?? s.executionStatus,
+      isArchived:      cat?.isArchived      ?? false,
+      comingSoon:      cat?.comingSoon      ?? false,
+    };
+  });
+}
 
 function periodStart(days: number): Date {
   const d = new Date();
@@ -103,9 +132,11 @@ export interface WorkforceSummary {
 export async function getWorkforceSummary(
   organizationId: string,
 ): Promise<WorkforceSummary> {
-  // Specialist list from static registry (active non-deprecated/archived entries)
-  const active = SPECIALISTS.filter(
-    s => s.executionStatus !== "deprecated" && s.executionStatus !== "archived",
+  // Task #40: use catalogue-aware list so platform-overridden statuses (comingSoon,
+  // isArchived, executionStatus) are authoritative rather than seed registry values.
+  const allSpecs = await getCatalogueAwareSpecialists();
+  const active = allSpecs.filter(
+    s => s.executionStatus !== "deprecated" && !s.isArchived,
   );
 
   // Training status rows for this org (bounded to 500 — org cannot have more active specialists)
@@ -288,10 +319,14 @@ export async function getSpecialistOpsProfile(
   // Last activity: most recent completed work createdAt
   const lastActivity = recentWork[0]?.createdAt?.toISOString() ?? null;
 
+  // Task #40: overlay catalogue commercial fields (displayName, description) so
+  // platform-managed display names are authoritative over registry seed values.
+  const cat = await getCatalogueEntry(specialistCode).catch(() => null);
+
   return {
     code: spec.code,
-    title: spec.displayName,
-    descriptor: spec.description ?? "",
+    title: cat?.displayName ?? spec.displayName,
+    descriptor: cat?.description ?? spec.description ?? "",
     domain: spec.departmentCode ?? "",
     department: spec.departmentCode ?? "—",
     dnaVersion: spec.version ?? "1.0.0",
@@ -824,8 +859,10 @@ export async function getWorkforceAlerts(
 ): Promise<WorkforceAlert[]> {
   const alerts: WorkforceAlert[] = [];
 
-  const activeSpecs = SPECIALISTS.filter(
-    s => s.executionStatus !== "deprecated" && s.executionStatus !== "archived",
+  // Task #40: catalogue-aware so archived/overridden specialists are excluded correctly.
+  const allCatalogueSpecs = await getCatalogueAwareSpecialists();
+  const activeSpecs = allCatalogueSpecs.filter(
+    s => s.executionStatus !== "deprecated" && !s.isArchived,
   );
 
   const [trainingRows, failedRuns, pendingApprovals] = await Promise.all([
@@ -1042,13 +1079,17 @@ export async function performSpecialistAction(
     metadata: { specialistCode, action, targetStatus, performedBy: userId, auditId },
   });
 
+  // Task #40: use catalogue displayName so platform-managed names appear in messages.
+  const specCat = await getCatalogueEntry(specialistCode).catch(() => null);
+  const specName = specCat?.displayName ?? spec.displayName;
+
   const messages: Record<SpecialistAction, string> = {
-    pause:            `${spec.displayName} has been paused.`,
-    resume:           `${spec.displayName} has been resumed.`,
-    suspend:          `${spec.displayName} has been suspended.`,
-    enable:           `${spec.displayName} has been enabled.`,
-    force_retraining: `Retraining has been triggered for ${spec.displayName}.`,
-    refresh_knowledge: `Knowledge refresh has been initiated for ${spec.displayName}.`,
+    pause:            `${specName} has been paused.`,
+    resume:           `${specName} has been resumed.`,
+    suspend:          `${specName} has been suspended.`,
+    enable:           `${specName} has been enabled.`,
+    force_retraining: `Retraining has been triggered for ${specName}.`,
+    refresh_knowledge: `Knowledge refresh has been initiated for ${specName}.`,
   };
 
   return {
@@ -1083,8 +1124,10 @@ export async function getOrgWorkforceHealth(
   organizationId: string,
   orgSlug: string,
 ): Promise<OrgWorkforceHealth> {
-  const activeSpecs = SPECIALISTS.filter(
-    s => s.executionStatus !== "deprecated" && s.executionStatus !== "archived",
+  // Task #40: catalogue-aware so platform-overridden statuses are authoritative.
+  const allCatalogueSpecs = await getCatalogueAwareSpecialists();
+  const activeSpecs = allCatalogueSpecs.filter(
+    s => s.executionStatus !== "deprecated" && !s.isArchived,
   );
 
   const [trainingRows, qualityRow, taskRow, pendingRow] = await Promise.all([

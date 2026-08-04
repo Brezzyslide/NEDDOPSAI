@@ -15,7 +15,7 @@ import {
   getSpecialistsByPack,
   getSpecialistCapabilities,
 } from "../../lib/workforceRegistry.js";
-import { getCatalogueEntry } from "../../services/specialistCatalogueService.js";
+import { getCatalogueEntry, listCatalogue } from "../../services/specialistCatalogueService.js";
 
 const router = Router();
 
@@ -36,29 +36,61 @@ router.get("/packs/:code", (req, res) => {
 });
 
 // GET /v1/workforce/specialists
-// By default only returns active catalogue entries (available + dna_pending).
-// Pass ?includeDeprecated=true (platform admin use) to see all statuses.
-router.get("/specialists", (req, res) => {
-  const { pack, status, includeDeprecated } = req.query as {
-    pack?: string;
-    status?: string;
-    includeDeprecated?: string;
-  };
+// Task #40/#41: overlays catalogue commercial fields (displayName, comingSoon,
+// isArchived, executionStatus, etc.) so callers always see DB-authoritative state.
+// By default excludes deprecated and archived; pass ?includeDeprecated=true to opt in.
+router.get("/specialists", async (req, res, next) => {
+  try {
+    const { pack, status, includeDeprecated } = req.query as {
+      pack?: string;
+      status?: string;
+      includeDeprecated?: string;
+    };
 
-  let list = SPECIALISTS;
+    // Fetch all catalogue entries (including archived) to build a complete overlay map.
+    const { entries: catalogueEntries } = await listCatalogue({
+      includeArchived:   true,
+      includeDeprecated: true,
+      limit:             500,
+    });
+    const catalogueMap = new Map(catalogueEntries.map(e => [e.specialistCode, e]));
 
-  // Default filter: exclude deprecated and archived unless caller opts in
-  if (includeDeprecated !== "true") {
-    list = list.filter(s =>
-      s.executionStatus !== "deprecated" &&
-      s.executionStatus !== "archived",
-    );
-  }
+    let list: any[] = SPECIALISTS.map(s => {
+      const cat = catalogueMap.get(s.code);
+      return {
+        ...s,
+        ...(cat ? {
+          displayName:     cat.displayName,
+          description:     cat.description,
+          executionStatus: cat.executionStatus,
+          availability:    cat.availability,
+          comingSoon:      cat.comingSoon,
+          isArchived:      cat.isArchived,
+          isActive:        cat.isActive,
+          icon:            cat.iconMetadata.icon,
+          colour:          cat.iconMetadata.colour,
+          packCode:        cat.packMembership,
+          dnaStatus:       cat.versionMetadata.dnaStatus,
+          displayOrder:    cat.displayOrder,
+          _source: "catalogue",
+        } : {
+          isArchived: false,
+          comingSoon:  false,
+          _source: "registry_only",
+        }),
+      };
+    });
 
-  if (pack) list = list.filter(s => s.packCode === pack);
-  if (status) list = list.filter(s => s.executionStatus === status);
+    // Default: exclude deprecated and archived unless caller opts in
+    if (includeDeprecated !== "true") {
+      list = list.filter(s => s.executionStatus !== "deprecated" && !s.isArchived);
+    }
 
-  res.json({ specialists: list, total: list.length });
+    if (pack)   list = list.filter(s => s.packCode === pack);
+    if (status) list = list.filter(s => s.executionStatus === status);
+
+    res.json({ specialists: list, total: list.length });
+  } catch (err) { next(err); }
 });
 
 // GET /v1/workforce/specialists/:code

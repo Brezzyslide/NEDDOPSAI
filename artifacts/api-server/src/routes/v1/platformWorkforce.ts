@@ -40,13 +40,41 @@ router.get("/packs", ...auth, async (_req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.get("/packs/:code", ...auth, (req, res) => {
-  const pack = WORKFORCE_PACKS.find(p => p.code === req.params.code);
-  if (!pack) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Pack not found." } }); return; }
-  const specialists = SPECIALISTS
-    .filter(s => s.packCode === pack.code)
-    .map(s => ({ ...s, resolvedCapabilities: getSpecialistCapabilities(s.code) }));
-  res.json({ ...pack, specialists });
+// Task #40: async, overlays catalogue commercial fields on each specialist in the pack.
+router.get("/packs/:code", ...auth, async (req, res, next) => {
+  try {
+    const pack = WORKFORCE_PACKS.find(p => p.code === req.params.code);
+    if (!pack) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Pack not found." } }); return; }
+
+    // Fetch catalogue map (including archived so isArchived is correct)
+    const { entries: catalogueEntries } = await listCatalogue({ includeArchived: true, limit: 500 });
+    const catalogueMap = new Map(catalogueEntries.map(e => [e.specialistCode, e]));
+
+    const specialists = SPECIALISTS
+      .filter(s => s.packCode === pack.code)
+      .map(s => {
+        const cat = catalogueMap.get(s.code);
+        return {
+          ...s,
+          resolvedCapabilities: getSpecialistCapabilities(s.code),
+          ...(cat ? {
+            displayName:     cat.displayName,
+            description:     cat.description,
+            executionStatus: cat.executionStatus,
+            availability:    cat.availability,
+            comingSoon:      cat.comingSoon,
+            isArchived:      cat.isArchived,
+            isActive:        cat.isActive,
+            icon:            cat.iconMetadata.icon,
+            colour:          cat.iconMetadata.colour,
+            displayOrder:    cat.displayOrder,
+            dnaStatus:       cat.versionMetadata.dnaStatus,
+            _source: "catalogue",
+          } : { isArchived: false, comingSoon: false, _source: "registry_only" }),
+        };
+      });
+    res.json({ ...pack, specialists });
+  } catch (err) { next(err); }
 });
 
 // Task #40: specialists endpoint now merges DB catalogue + registry.

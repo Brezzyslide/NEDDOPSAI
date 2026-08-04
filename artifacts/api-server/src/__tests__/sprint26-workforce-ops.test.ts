@@ -48,6 +48,14 @@ vi.mock("../services/auditService.js", () => ({
   logOrgEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Task #40: workforceOpsService now calls listCatalogue + getCatalogueEntry.
+// Default to empty catalogue (entries:[]) so tests continue using registry
+// values — no commercial overlay — and the .catch() fallback is exercised.
+vi.mock("../services/specialistCatalogueService.js", () => ({
+  listCatalogue:    vi.fn().mockResolvedValue({ entries: [] }),
+  getCatalogueEntry: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("../lib/workforceRegistry.js", () => ({
   SPECIALISTS: [
     {
