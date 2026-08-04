@@ -101,7 +101,7 @@ export async function findOrCreateGeneralConversation(
         eq(conversationsTable.status, "active"),
       )
     )
-    .orderBy(desc(conversationsTable.lastMessageAt))
+    .orderBy(sql`${conversationsTable.lastMessageAt} DESC NULLS LAST, ${conversationsTable.createdAt} DESC`)
     .limit(1);
 
   if (existing) return { conversation: existing, created: false };
@@ -571,7 +571,7 @@ export async function processUserMessage(
   if (agentMessage) {
     detectAndProposeConversationKnowledge(
       organizationId,
-      userText,
+      text,
       userId,
       conversationId,
     ).catch(() => {});

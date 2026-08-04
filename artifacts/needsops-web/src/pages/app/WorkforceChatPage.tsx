@@ -240,6 +240,13 @@ export default function WorkforceChatPage() {
         }
       );
 
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const msg = (errBody as any)?.error?.message ?? `Server error (${res.status})`;
+        setError(msg);
+        return;
+      }
+
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";
@@ -254,7 +261,9 @@ export default function WorkforceChatPage() {
           if (!line.startsWith("data: ")) continue;
           const raw = line.slice(6).trim();
           if (!raw) continue;
-          const evt = JSON.parse(raw) as Record<string, unknown>;
+          let evt: Record<string, unknown>;
+          try { evt = JSON.parse(raw) as Record<string, unknown>; }
+          catch { continue; }
           if (evt.type === "token") {
             setStreamingText(prev => prev + (evt.content as string));
           } else if (evt.type === "user_message") {
@@ -264,6 +273,9 @@ export default function WorkforceChatPage() {
             setStreamingText("");
           } else if (evt.type === "done") {
             setIsStreaming(false);
+          } else if (evt.type === "error") {
+            setError((evt.message as string) ?? "The Chief of Staff encountered an error.");
+            setStreamingText("");
           }
         }
       }

@@ -36,3 +36,4 @@
 - [NeedsOps Sprint 25 Hardening](needsops-sprint25-hardening.md) — server comment resolution, PDF/DOCX export architecture, export audit, mock chain must be reset via resetChain() helper, 2060 tests
 - [NeedsOps Sprint 26 Workforce Operations Centre](needsops-sprint26-workforce-ops.md) — displayName/version (not title/dnaVersion), logOrgEvent object-only, tenantId not organizationId, mockReset clears once-queue, @swc/helpers runtime dep, 2108 tests
 - [Clerk Show-without-when crash](needsops-show-without-when-crash.md) — <Show> without `when` prop crashes for signed-in users; always add when="signed-in"; ClerkErrorBoundary in App.tsx as safety net
+- [NeedsOps Chat Interface Bugs](needsops-chat-bugs.md) — find-or-create conversation, NULLS LAST ordering, userText→text, SSE error handling, res.ok guard
