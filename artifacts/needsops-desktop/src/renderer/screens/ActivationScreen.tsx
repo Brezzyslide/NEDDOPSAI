@@ -29,7 +29,10 @@ export default function ActivationScreen({ onSuccess, onBack }: Props) {
   useEffect(() => {
     window.needsops?.platform?.info?.().then(info => {
       setPlatformInfo(info);
-      setDeviceName(`${info.platform === "darwin" ? "Mac" : "PC"} (${info.arch})`);
+      // Sprint 34: map all three platforms to human-readable display names.
+      // Previously only darwin was handled; win32 and linux now get correct names.
+      const displayName = { darwin: "Mac", win32: "Windows", linux: "Linux" }[info.platform] ?? info.platform;
+      setDeviceName(`${displayName} (${info.arch})`);
     }).catch(() => {});
     inputRef.current?.focus();
   }, []);
@@ -63,7 +66,9 @@ export default function ActivationScreen({ onSuccess, onBack }: Props) {
       const result = await window.needsops.activation.redeem({
         activationCode: stripped,
         apiBaseUrl: DEFAULT_API_URL,
-        platform: platformInfo.platform === "darwin" ? "macos" : platformInfo.platform,
+        // Sprint 34: map Node platform strings to NeedsOps API platform identifiers.
+        // Node uses "darwin"/"win32"/"linux"; the API expects "macos"/"windows"/"linux".
+        platform: ({ darwin: "macos", win32: "windows", linux: "linux" } as Record<string, string>)[platformInfo.platform] ?? platformInfo.platform,
         arch: platformInfo.arch,
         displayName: deviceName.trim(),
         appVersion: platformInfo.appVersion,

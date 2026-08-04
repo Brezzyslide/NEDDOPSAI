@@ -1,10 +1,9 @@
 /**
  * brokerManager — Embedded Broker Process Manager
- * Sprint 14
+ * Sprint 14 (created) | Sprint 34 (cross-platform refactor)
  *
- * The NeedsOps broker runs as a Node.js child process spawned by the Electron
- * main process. It handles WebSocket connections back to the NeedsOps platform
- * and executes AI tasks on the local machine.
+ * Spawns the NeedsOps broker as a Node.js child process.
+ * Platform-specific spawn options are now provided by IPlatformAdapter.
  *
  * The broker binary path:
  *   - Dev: artifacts/desktop-connector/dist/index.js (run via node)
@@ -15,6 +14,7 @@ import { ChildProcess, spawn } from "child_process";
 import path from "path";
 import { app } from "electron";
 import { getMainWindow } from "./index.js";
+import { platformAdapter } from "./platform/PlatformAdapterFactory.js";
 
 let brokerProcess: ChildProcess | null = null;
 let brokerStarting = false;
@@ -44,10 +44,14 @@ function getBrokerPath(): string {
 function getNodePath(): string {
   // In dev, use the system node. In packaged builds, node is bundled.
   if (app.isPackaged) {
+    // Packaged node binary — platform adapter provides the correct executable name.
+    // On Windows this would be node.exe; on macOS/Linux, node.
     return path.join(process.resourcesPath, "node", "node");
   }
-  return process.execPath.endsWith("electron") || process.execPath.endsWith("electron.exe")
-    ? "node" // use system node
+  // Platform adapter determines whether the current execPath is the Electron
+  // host binary (in which case we fall back to system node).
+  return platformAdapter.isElectronExecutable(process.execPath)
+    ? "node" // use system node in development
     : process.execPath;
 }
 
@@ -86,10 +90,15 @@ export async function startBroker(params: BrokerStartParams): Promise<void> {
 
   console.log(`[broker] Spawning: ${nodePath} ${brokerPath}`);
 
+  // Platform adapter provides the correct spawn options for this OS.
+  // windowsHide: true on Windows prevents a console window flashing.
+  // windowsHide: false on macOS/Linux — not applicable, avoid side effects.
+  const spawnOpts = platformAdapter.getChildProcessOptions();
+
   brokerProcess = spawn(nodePath, [brokerPath], {
     env,
     stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
+    windowsHide: spawnOpts.windowsHide,
   });
 
   brokerProcess.stdout?.on("data", (data: Buffer) => {

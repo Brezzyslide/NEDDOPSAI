@@ -2,7 +2,7 @@
   "name": "@workspace/needsops-desktop",
   "version": "0.1.1",
   "private": true,
-  "description": "NeedsOps AI+ Desktop App \u2014 Electron wrapper with embedded broker",
+  "description": "NeedsOps AI+ Desktop App — Electron wrapper with embedded broker",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently \"pnpm run dev:renderer\" \"pnpm run dev:main\"",
@@ -13,6 +13,7 @@
     "build:main": "tsc -p tsconfig.main.json",
     "dist:mac": "pnpm run build && electron-builder --mac --arm64 --x64 --publish never",
     "dist:win": "pnpm run build && electron-builder --win --x64 --publish never",
+    "dist:linux": "pnpm run build && electron-builder --linux --x64 --arm64 --publish never",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "postinstall": "echo 'Run: npx @electron/rebuild -f -w keytar after install on CI'"
@@ -43,7 +44,7 @@
   "build": {
     "appId": "com.needsops.desktop",
     "productName": "NeedsOps AI+",
-    "copyright": "Copyright \u00a9 2026 NeedsOps",
+    "copyright": "Copyright © 2026 NeedsOps",
     "directories": {
       "buildResources": "assets",
       "output": "release"
@@ -53,37 +54,25 @@
       {
         "from": "dist",
         "to": "dist",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       },
       {
         "from": "assets",
         "to": "assets",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "extraResources": [
       {
         "from": "../../artifacts/desktop-connector/dist",
         "to": "broker",
-        "filter": [
-          "**/*"
-        ]
+        "filter": ["**/*"]
       }
     ],
     "mac": {
       "category": "public.app-category.business",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
+        { "target": "dmg", "arch": ["arm64", "x64"] }
       ],
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -92,13 +81,16 @@
     },
     "win": {
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
+        { "target": "nsis", "arch": ["x64"] }
       ]
+    },
+    "linux": {
+      "category": "Utility",
+      "target": [
+        { "target": "AppImage", "arch": ["x64", "arm64"] }
+      ],
+      "maintainer": "NeedsOps <support@needsops.com>",
+      "description": "NeedsOps AI+ Desktop Connector — connects your device to the NeedsOps AI workforce platform"
     },
     "nsis": {
       "oneClick": true,

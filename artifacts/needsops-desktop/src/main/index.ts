@@ -1,6 +1,9 @@
 /**
  * NeedsOps AI+ Desktop — Main Process Entry Point
- * Sprint 14
+ * Sprint 14 (created) | Sprint 34 (cross-platform refactor)
+ *
+ * Platform-specific behaviour is now fully isolated behind IPlatformAdapter.
+ * No direct process.platform checks exist in this file.
  *
  * Responsibilities:
  *  - Create BrowserWindow for the setup/settings UI
@@ -17,6 +20,7 @@ import { startBroker, stopBroker } from "./brokerManager.js";
 import { setupIpcHandlers } from "./ipcHandlers.js";
 import { configureStartup } from "./startupManager.js";
 import { loadCredentials } from "./credentialStore.js";
+import { platformAdapter } from "./platform/PlatformAdapterFactory.js";
 
 const isDev = !app.isPackaged;
 const RENDERER_URL = isDev ? "http://localhost:5174" : undefined;
@@ -27,6 +31,8 @@ let mainWindow: BrowserWindow | null = null;
 // ── Window ────────────────────────────────────────────────────────────────────
 
 export function createWindow(): BrowserWindow {
+  const chrome = platformAdapter.getWindowChromeOptions();
+
   mainWindow = new BrowserWindow({
     width: 560,
     height: 700,
@@ -35,7 +41,11 @@ export function createWindow(): BrowserWindow {
     resizable: true,
     center: true,
     show: false,
-    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    // titleBarStyle is now provided by the platform adapter:
+    //   macOS   → "hiddenInset"  (integrates traffic-light buttons)
+    //   Windows → "default"
+    //   Linux   → "default"
+    titleBarStyle: chrome.titleBarStyle,
     webPreferences: {
       preload: path.join(__dirname, "../../main/preload.js"),
       contextIsolation: true,
@@ -72,9 +82,20 @@ export function getMainWindow(): BrowserWindow | null {
 }
 
 function getAppIcon() {
-  if (process.platform === "darwin") return undefined;
-  const iconPath = path.join(__dirname, "../../assets/icon.png");
-  try { return nativeImage.createFromPath(iconPath); } catch { return undefined; }
+  // Platform adapter determines whether an explicit icon is needed.
+  // macOS: undefined — icon is embedded in the .app bundle.
+  // Windows/Linux: load icon.png from assets.
+  if (!platformAdapter.getWindowChromeOptions().showExplicitIcon) {
+    return undefined;
+  }
+  const assetsDir = path.join(__dirname, "../../assets");
+  const iconPath = platformAdapter.getAppIconPath(assetsDir);
+  if (!iconPath) return undefined;
+  try {
+    return nativeImage.createFromPath(iconPath);
+  } catch {
+    return undefined;
+  }
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
@@ -111,8 +132,11 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  // On macOS, stay alive in tray unless explicitly quit
-  if (process.platform !== "darwin") {
+  // Platform adapter determines the correct close behaviour:
+  //   macOS   → keep alive in tray (shouldKeepAliveOnWindowClose = true)
+  //   Windows → quit when last window closes
+  //   Linux   → quit when last window closes
+  if (!platformAdapter.shouldKeepAliveOnWindowClose()) {
     stopBroker().finally(() => app.quit());
   }
 });

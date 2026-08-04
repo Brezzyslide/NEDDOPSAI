@@ -1,17 +1,19 @@
 /**
  * tray — System Tray Icon
- * Sprint 14
+ * Sprint 14 (created) | Sprint 34 (cross-platform refactor)
  *
  * Shows the NeedsOps AI+ icon in the system tray with a context menu.
- * The tray icon gives quick access to:
- *  - Open main window
- *  - Broker status
- *  - Quit
+ * Platform-specific icon behaviour is handled by IPlatformAdapter.
+ *
+ *   macOS   — icon resized to 16×16 (template image, adapts dark/light mode)
+ *   Windows — icon passed as-is (Windows notification area handles sizing)
+ *   Linux   — icon passed as-is (desktop environment handles sizing)
  */
 
 import { Tray, Menu, nativeImage, BrowserWindow, app } from "electron";
 import path from "path";
 import { getBrokerStatus } from "./brokerManager.js";
+import { platformAdapter } from "./platform/PlatformAdapterFactory.js";
 
 let tray: Tray | null = null;
 
@@ -27,9 +29,12 @@ export function setupTray(win: BrowserWindow): void {
     icon = nativeImage.createEmpty();
   }
 
-  // macOS: use template image (auto adapts to dark/light mode)
-  if (process.platform === "darwin") {
-    icon = icon.resize({ width: 16, height: 16 });
+  // Platform adapter determines whether and how to resize the tray icon.
+  // macOS: resize to 16×16 for menu bar template images.
+  // Windows/Linux: let the OS handle sizing.
+  const trayOpts = platformAdapter.getTrayIconOptions();
+  if (trayOpts.resizeTo) {
+    icon = icon.resize(trayOpts.resizeTo);
   }
 
   tray = new Tray(icon);

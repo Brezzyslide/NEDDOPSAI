@@ -1,0 +1,260 @@
+Sprint 34 – Cross-Platform Desktop Connector Architecture
+
+Objective
+
+Refactor the Desktop Connector into a true cross-platform application while preserving 100% compatibility with the existing macOS implementation.
+
+This is an architectural sprint.
+
+Do NOT create separate connectors for macOS, Windows and Linux.
+
+Maintain one shared codebase.
+
+The only platform-specific code should exist behind adapter interfaces.
+
+────────────────────────────────────────
+
+Background
+
+The current Desktop Connector was originally built for macOS.
+
+The long-term production vision is:
+
+• macOS
+• Windows
+• Linux
+
+All three platforms must communicate with the same NeedsOps Cloud using the same authentication, relay protocol, execution protocol and runtime APIs.
+
+No cloud protocol changes are permitted.
+
+────────────────────────────────────────
+
+Phase 1 — Architecture Audit
+
+Inspect the entire Desktop Connector.
+
+Classify every module as one of:
+
+• Platform Independent
+• macOS Specific
+• Runtime Specific
+• Shared Infrastructure
+• Candidate for Abstraction
+
+Produce an architecture report before modifying code.
+
+Identify every macOS dependency including (but not limited to):
+
+• safeStorage / Keychain
+• filesystem paths
+• startup/login integration
+• notifications
+• process management
+• installer
+• runtime discovery
+• shell integration
+• permissions
+
+Document every dependency.
+
+────────────────────────────────────────
+
+Phase 2 — Platform Adapter Architecture
+
+Design and implement a PlatformAdapter abstraction.
+
+The connector core must no longer contain operating-system-specific logic.
+
+Create adapters for:
+
+MacPlatformAdapter
+
+WindowsPlatformAdapter
+
+LinuxPlatformAdapter
+
+The interface should cover:
+
+• Secure credential storage
+• Filesystem locations
+• Startup integration
+• Notifications
+• Process discovery
+• Runtime discovery
+• Temporary directories
+• Installer integration
+• Platform metadata
+
+The connector core should depend only on the interface.
+
+────────────────────────────────────────
+
+Phase 3 — Runtime Adapter Architecture
+
+Refactor runtime integration.
+
+Do not tightly couple the connector to OpenClaw.
+
+Create a RuntimeAdapter interface.
+
+Support:
+
+• OpenClaw (current)
+• Ollama
+• LM Studio
+• vLLM
+• OpenAI-compatible local servers
+• Future runtimes
+
+Runtime selection should be configuration-driven.
+
+────────────────────────────────────────
+
+Phase 4 — Windows Support
+
+Implement WindowsPlatformAdapter.
+
+Support:
+
+• Windows Credential Manager / DPAPI
+• Windows filesystem conventions
+• Windows startup
+• Windows notifications
+• Runtime discovery
+• Auto-start
+• Installer integration
+• Process detection
+
+The connector should compile and operate on Windows.
+
+Document any unavoidable limitations.
+
+────────────────────────────────────────
+
+Phase 5 — Linux Support
+
+Implement LinuxPlatformAdapter.
+
+Support:
+
+• Secret Service / libsecret
+• XDG Base Directory Specification
+• systemd user services
+• Linux notifications
+• Runtime discovery
+• Auto-start
+• Process detection
+
+The connector should compile and operate on Linux.
+
+Document any unavoidable limitations.
+
+────────────────────────────────────────
+
+Phase 6 — Runtime Discovery
+
+Implement runtime discovery independent of platform.
+
+The connector should automatically detect installed runtimes where possible.
+
+Examples:
+
+• OpenClaw
+• Ollama
+• LM Studio
+• vLLM
+
+Provide capability information to the cloud.
+
+Never assume a runtime exists.
+
+────────────────────────────────────────
+
+Phase 7 — Security Review
+
+Verify that security guarantees remain unchanged.
+
+Authentication
+
+Device registration
+
+Challenge-response
+
+Token storage
+
+Credential encryption
+
+TLS
+
+Tenant isolation
+
+No platform may weaken the security model.
+
+────────────────────────────────────────
+
+Phase 8 — Testing
+
+Add platform-focused tests.
+
+Verify:
+
+• macOS compatibility unchanged
+• Windows build succeeds
+• Linux build succeeds
+• Platform adapters load correctly
+• Runtime adapters load correctly
+• Existing relay protocol unchanged
+• Existing authentication unchanged
+
+Do not reduce existing test coverage.
+
+────────────────────────────────────────
+
+Deliverables
+
+Produce:
+
+1. Cross-platform architecture audit.
+2. PlatformAdapter implementation.
+3. RuntimeAdapter implementation.
+4. Windows support.
+5. Linux support.
+6. Runtime discovery framework.
+7. Security review.
+8. Platform compatibility report.
+9. Test summary.
+10. Remaining platform-specific limitations.
+
+────────────────────────────────────────
+
+Future Compatibility
+
+The architecture must allow future support for:
+
+• Docker-hosted runtimes
+• Remote GPU servers
+• Kubernetes workers
+• Hybrid cloud/local execution
+
+without redesigning the connector.
+
+────────────────────────────────────────
+
+Rules
+
+Do NOT duplicate code.
+
+Do NOT fork the connector.
+
+Do NOT change the cloud API.
+
+Do NOT change authentication.
+
+Do NOT change execution semantics.
+
+Refactor only where required to achieve true cross-platform portability.
+
+Maintain backward compatibility with the existing macOS implementation.
+
+Where platform behaviour differs, isolate those differences behind the PlatformAdapter interface.

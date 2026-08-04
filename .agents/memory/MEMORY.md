@@ -43,3 +43,4 @@
 - [NeedsOps Sprint 27.1 Execution Experience](needsops-sprint271.md) — live SSE event bus, checkpoint store, timeline service, clarification resume, unified approvals, orphan recovery, 2650 tests
 - [NeedsOps Sprint 28 Blueprint Studio](needsops-sprint28.md) — blueprint versioning lifecycle, org override selection, sandbox testing, 6 frontend pages, REQUIRED_RLS_TABLES=69, 2733 tests
 - [NeedsOps Sprint 29 Governance Completion](needsops-sprint29.md) — bulk approvals (server-batched POST /bulk), memory merge, per-memory audit history, governance metrics service, intents+packs in approval feed, 2775 tests
+- [NeedsOps Sprint 34 Cross-Platform Connector](needsops-sprint34-cross-platform.md) — IPlatformAdapter/IRuntimeAdapter pattern, HOME→os.homedir() fix, Linux AppImage added, never-throws adapter rule, 26 new tests

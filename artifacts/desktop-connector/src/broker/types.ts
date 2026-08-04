@@ -6,6 +6,8 @@
  * HTTP API contract; these describe local state management.
  */
 
+import os from "node:os";
+
 // ─── Execution state machine ──────────────────────────────────────────────────
 
 export type BrokerExecutionStatus =
@@ -262,7 +264,10 @@ export function loadBrokerConfig(): BrokerConfig {
     port: parseInt(process.env.BROKER_PORT ?? "19002", 10),
     authToken,
     webhookSecret,
-    dbPath: process.env.BROKER_DB_PATH ?? `${process.env.HOME ?? "."}/needsops-broker.db`,
+    // Sprint 34: use os.homedir() for cross-platform compatibility.
+    // process.env.HOME is reliable on macOS/Linux but not always set on Windows
+    // (USERPROFILE is the Windows equivalent). os.homedir() works on all platforms.
+    dbPath: process.env.BROKER_DB_PATH ?? `${os.homedir()}/needsops-broker.db`,
     maxBodyBytes: parseInt(process.env.BROKER_MAX_BODY_BYTES ?? String(1 * 1024 * 1024), 10),
     webhookRetryAttempts: parseInt(process.env.BROKER_WEBHOOK_RETRY_ATTEMPTS ?? "5", 10),
     webhookRetryBaseMs: parseInt(process.env.BROKER_WEBHOOK_RETRY_BASE_MS ?? "2000", 10),
