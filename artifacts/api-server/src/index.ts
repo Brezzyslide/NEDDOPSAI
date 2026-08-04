@@ -83,6 +83,15 @@ async function start(): Promise<void> {
     logger.warn({ err }, "[startup] Built-in Work Blueprints seeding failed — continuing");
   }
 
+  // 4c. Seed specialist catalogue from registry (idempotent — safe to run on every startup)
+  try {
+    const { seedCatalogueFromRegistry } = await import("./services/specialistCatalogueService.js");
+    const { inserted, updated } = await seedCatalogueFromRegistry();
+    logger.info({ inserted, updated }, "[startup] Specialist catalogue seeded");
+  } catch (err) {
+    logger.warn({ err }, "[startup] Specialist catalogue seeding failed — continuing");
+  }
+
   // 5. Create HTTP server (wraps Express app so WS can share the same port)
   const server = createServer(app);
 

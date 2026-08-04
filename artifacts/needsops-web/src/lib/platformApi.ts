@@ -38,5 +38,6 @@ export const PLATFORM_NAV = [
   { label: "Pack Builder",      icon: "📦", path: "/packs" },
   { label: "Staff",             icon: "👤", path: "/staff" },
   { label: "Connector Fleet",   icon: "🖥️", path: "/connector-fleet" },
+  { label: "Catalogue",         icon: "📂", path: "/catalogue" },
   { label: "Platform Settings", icon: "⚙️", path: "/settings" },
 ] as const;

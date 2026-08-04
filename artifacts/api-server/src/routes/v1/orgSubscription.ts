@@ -28,6 +28,7 @@ import {
 } from "../../services/entitlementService.js";
 import { USAGE_DIMENSION_CODES, type FeatureCode, type UsageDimensionCode, type WorkforcePackCode } from "@workspace/shared";
 import { SPECIALISTS, WORKFORCE_PACKS, getSpecialistCapabilities } from "../../lib/workforceRegistry.js";
+import { listCatalogue } from "../../services/specialistCatalogueService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -161,16 +162,37 @@ router.get("/workforce", requireAuth, resolveTenantFromSlug, async (req, res, ne
 
     const activePackCodes = new Set(activePacks.map(p => p.packCode));
 
+    // Task #40: fetch ALL catalogue entries (including archived) so that archived
+    // specialists are present in the map and correctly filtered out after merge.
+    // Without includeArchived:true, archived entries are absent → catalogueMap.get()
+    // returns undefined → isArchived check is always falsy → archived stays visible.
+    const { entries: catalogueEntries } = await listCatalogue({ includeArchived: true, limit: 500 }).catch(() => ({ entries: [] }));
+    const catalogueMap = new Map(catalogueEntries.map(e => [e.specialistCode, e]));
+
     const packs = await Promise.all(
       WORKFORCE_PACKS.map(async pack => {
         const isIncluded = activePackCodes.has(pack.code);
         const specialists = SPECIALISTS
           .filter(s => s.packCode === pack.code)
-          .map(s => ({
-            ...s,
-            resolvedCapabilities: getSpecialistCapabilities(s.code),
-            isAccessible: isIncluded && s.executionStatus !== "deprecated",
-          }));
+          .map(s => {
+            const cat = catalogueMap.get(s.code);
+            return {
+              ...s,
+              // Overlay catalogue commercial fields if available
+              ...(cat ? {
+                displayName:  cat.displayName,
+                description:  cat.description,
+                icon:         cat.iconMetadata.icon,
+                colour:       cat.iconMetadata.colour,
+                comingSoon:   cat.comingSoon,
+                availability: cat.availability,
+                isActive:     cat.isActive,
+              } : {}),
+              resolvedCapabilities: getSpecialistCapabilities(s.code),
+              isAccessible: isIncluded && s.executionStatus !== "deprecated" && !(cat?.isArchived),
+            };
+          })
+          .filter(s => !catalogueMap.get(s.code)?.isArchived);
         return { ...pack, isIncluded, specialists };
       }),
     );

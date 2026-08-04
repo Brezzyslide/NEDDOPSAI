@@ -134,3 +134,5 @@ export * from "./completedWorkComments";
 export * from "./completedWorkAssets";
 // Task #36 — Server-side notification state
 export * from "./notificationReads";
+// Task #40 — Workforce Catalogue Database Migration
+export * from "./specialistCatalogue";

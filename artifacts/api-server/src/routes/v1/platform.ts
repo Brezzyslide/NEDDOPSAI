@@ -51,6 +51,7 @@ import { platformDatabaseRouter } from "./platformDatabase.js";
 import platformStaffRouter from "./platformStaff.js";
 import platformPackGrantsRouter from "./platformPackGrants.js";
 import platformDevicesRouter from "./platformDevices.js";
+import platformCatalogueRouter from "./platformCatalogue.js";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -135,6 +136,8 @@ router.use("/staff", platformStaffRouter);
 router.use("/packs", platformPackGrantsRouter);
 // Task #34 — Connector & Device Fleet Management
 router.use("/devices", platformDevicesRouter);
+// Task #40 — Workforce Catalogue Management
+router.use("/catalogue", platformCatalogueRouter);
 // Sprint 6/7 — Organisation Database management
 router.use("/", platformDatabaseRouter);
 
