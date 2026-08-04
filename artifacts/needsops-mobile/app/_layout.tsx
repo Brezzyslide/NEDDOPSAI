@@ -16,6 +16,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { setBaseUrl } from '@workspace/api-client-react';
 import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/expo';
 import { tokenCache } from '@clerk/expo/token-cache';
+import { OrgProvider } from '@/contexts/OrgContext';
 
 // Set the API base URL so Expo (outside the web proxy) can reach the API server.
 if (process.env.EXPO_PUBLIC_DOMAIN) {
@@ -74,11 +75,13 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <ErrorBoundary>
             <QueryClientProvider client={queryClient}>
-              <GestureHandlerRootView>
-                <KeyboardProvider>
-                  <RootLayoutNav />
-                </KeyboardProvider>
-              </GestureHandlerRootView>
+              <OrgProvider>
+                <GestureHandlerRootView>
+                  <KeyboardProvider>
+                    <RootLayoutNav />
+                  </KeyboardProvider>
+                </GestureHandlerRootView>
+              </OrgProvider>
             </QueryClientProvider>
           </ErrorBoundary>
         </SafeAreaProvider>

@@ -18,6 +18,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch';
+import { useOrgContext } from '@/contexts/OrgContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,8 @@ export default function NotificationsScreen() {
   const colors      = useColors();
   const fetchAuth   = useAuthenticatedFetch();
   const queryClient = useQueryClient();
-  const slug        = (global as any).__needsops_org_slug as string | undefined ?? '';
+  const { selectedOrg } = useOrgContext();
+  const slug = selectedOrg?.slug ?? '';
 
   const [optimisticArchived, setOptimisticArchived] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);

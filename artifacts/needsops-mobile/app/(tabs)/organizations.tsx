@@ -1,3 +1,11 @@
+/**
+ * Organizations screen — Task #37
+ *
+ * Updated to:
+ *  - Call setSelectedOrg when an org card is tapped
+ *  - Show a checkmark indicator on the currently selected org
+ *  - Show a "needs selection" banner when the user has multiple orgs and none is chosen
+ */
 import React from 'react';
 import {
   ActivityIndicator,
@@ -9,100 +17,113 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useListOrganizations } from '@workspace/api-client-react';
 import { useColors } from '@/hooks/useColors';
 import { StatusBadge } from '@/components/StatusBadge';
+import { useOrgContext, OrgSummary } from '@/contexts/OrgContext';
 
 type OrgStatus = 'active' | 'suspended' | 'trial' | 'inactive';
 type SubTier = 'starter' | 'professional' | 'enterprise';
 
 const TIER_COLORS: Record<SubTier, string> = {
-  starter: '#6b7896',
+  starter:      '#6b7896',
   professional: '#3b82f6',
-  enterprise: '#8b5cf6',
+  enterprise:   '#8b5cf6',
 };
-
-interface OrgItem {
-  id: string;
-  name: string;
-  slug: string;
-  industry?: string;
-  status: OrgStatus;
-  subscriptionTier: SubTier;
-  userCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
 
 export default function OrganizationsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { data, isLoading, refetch, isRefetching } = useListOrganizations();
 
-  const organizations = (data?.items ?? []) as OrgItem[];
+  const {
+    orgs,
+    selectedOrg,
+    isLoading,
+    needsSelection,
+    setSelectedOrg,
+    refreshOrgs,
+  } = useOrgContext();
 
-  const renderItem = ({ item }: { item: OrgItem }) => (
-    <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
-      activeOpacity={0.7}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.cardTitleRow}>
-          <Text style={[styles.orgName, { color: colors.foreground }]} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <StatusBadge status={item.status} />
-        </View>
-        <Text style={[styles.orgSlug, { color: colors.mutedForeground }]}>/{item.slug}</Text>
-      </View>
-      <View style={styles.cardMeta}>
-        {item.industry ? (
-          <View style={[styles.chip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-            <Text style={[styles.chipText, { color: colors.mutedForeground }]}>
-              {item.industry.toUpperCase()}
+  const renderItem = ({ item }: { item: OrgSummary }) => {
+    const isSelected = selectedOrg?.id === item.id;
+    const tier = (item.subscriptionTier ?? 'starter') as SubTier;
+    const tierColor = TIER_COLORS[tier] ?? colors.mutedForeground;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.card,
+          {
+            backgroundColor: colors.card,
+            borderColor: isSelected ? colors.primary : colors.border,
+            borderWidth: isSelected ? 2 : 1,
+          },
+        ]}
+        activeOpacity={0.7}
+        onPress={() => setSelectedOrg(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`Select ${item.name}`}
+        accessibilityState={{ selected: isSelected }}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardTitleRow}>
+            <Text style={[styles.orgName, { color: colors.foreground }]} numberOfLines={1}>
+              {item.name}
             </Text>
+            <View style={styles.rightBadges}>
+              {isSelected && (
+                <View style={[styles.selectedBadge, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '60' }]}>
+                  <Text style={[styles.selectedBadgeText, { color: colors.primary }]}>✓ Active</Text>
+                </View>
+              )}
+              <StatusBadge status={item.status as OrgStatus} />
+            </View>
           </View>
-        ) : null}
-        <View
-          style={[
-            styles.chip,
-            {
-              backgroundColor: (TIER_COLORS[item.subscriptionTier] ?? colors.mutedForeground) + '20',
-              borderColor: (TIER_COLORS[item.subscriptionTier] ?? colors.mutedForeground) + '40',
-            },
-          ]}
-        >
-          <Text
+          <Text style={[styles.orgSlug, { color: colors.mutedForeground }]}>/{item.slug}</Text>
+        </View>
+        <View style={styles.cardMeta}>
+          {item.industry ? (
+            <View style={[styles.chip, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Text style={[styles.chipText, { color: colors.mutedForeground }]}>
+                {(item.industry as string).toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
+          <View
             style={[
-              styles.chipText,
-              { color: TIER_COLORS[item.subscriptionTier] ?? colors.mutedForeground },
+              styles.chip,
+              {
+                backgroundColor: tierColor + '20',
+                borderColor:     tierColor + '40',
+              },
             ]}
           >
-            {item.subscriptionTier.toUpperCase()}
+            <Text style={[styles.chipText, { color: tierColor }]}>
+              {tier.toUpperCase()}
+            </Text>
+          </View>
+          <Text style={[styles.userCount, { color: colors.mutedForeground }]}>
+            {item.userCount} {item.userCount === 1 ? 'user' : 'users'}
           </Text>
         </View>
-        <Text style={[styles.userCount, { color: colors.mutedForeground }]}>
-          {item.userCount} {item.userCount === 1 ? 'user' : 'users'}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
-        data={organizations}
+        data={orgs as OrgSummary[]}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={[
           styles.list,
           { paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 },
         ]}
-        scrollEnabled={!!organizations.length}
+        scrollEnabled={orgs.length > 0}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
+            refreshing={isLoading}
+            onRefresh={refreshOrgs}
             tintColor={colors.primary}
           />
         }
@@ -110,11 +131,18 @@ export default function OrganizationsScreen() {
           <View style={styles.listHeader}>
             <Text style={[styles.eyebrow, { color: colors.primary }]}>TENANT REGISTRY</Text>
             <Text style={[styles.title, { color: colors.foreground }]}>Organizations</Text>
-            {data ? (
+            {orgs.length > 0 && (
               <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-                {data.total} organization{data.total !== 1 ? 's' : ''}
+                {orgs.length} organization{orgs.length !== 1 ? 's' : ''}{selectedOrg ? ` · ${selectedOrg.name} selected` : ''}
               </Text>
-            ) : null}
+            )}
+            {needsSelection && (
+              <View style={[styles.selectionBanner, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '40' }]}>
+                <Text style={[styles.selectionBannerText, { color: colors.primary }]}>
+                  Tap an organisation to make it active across all tabs.
+                </Text>
+              </View>
+            )}
           </View>
         }
         ListEmptyComponent={
@@ -137,47 +165,27 @@ export default function OrganizationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  list: { paddingHorizontal: 20, gap: 0 },
-  listHeader: { marginBottom: 20 },
-  eyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 6,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  subtitle: { fontSize: 13, marginTop: 4 },
-  card: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
-    gap: 10,
-  },
-  cardHeader: { gap: 3 },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  orgName: { fontSize: 16, fontWeight: '700', flex: 1 },
-  orgSlug: { fontSize: 12, fontFamily: 'Inter_400Regular' },
-  cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  chip: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 5,
-    borderWidth: 1,
-  },
-  chipText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  userCount: { fontSize: 12, marginLeft: 'auto' },
-  empty: { marginTop: 60, alignItems: 'center', gap: 8 },
-  emptyTitle: { fontSize: 16, fontWeight: '600' },
-  emptySubtitle: { fontSize: 13, textAlign: 'center' },
+  container:            { flex: 1 },
+  list:                 { paddingHorizontal: 20, gap: 0 },
+  listHeader:           { marginBottom: 20 },
+  eyebrow:              { fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 6 },
+  title:                { fontSize: 28, fontWeight: '800', letterSpacing: -0.3 },
+  subtitle:             { fontSize: 13, marginTop: 4 },
+  selectionBanner:      { marginTop: 12, borderRadius: 8, borderWidth: 1, padding: 10 },
+  selectionBannerText:  { fontSize: 13, fontWeight: '500' },
+  card:                 { borderRadius: 12, padding: 16, marginBottom: 12, gap: 10 },
+  cardHeader:           { gap: 3 },
+  cardTitleRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  orgName:              { fontSize: 16, fontWeight: '700', flex: 1 },
+  orgSlug:              { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  rightBadges:          { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  selectedBadge:        { borderRadius: 10, borderWidth: 1, paddingHorizontal: 8, paddingVertical: 2 },
+  selectedBadgeText:    { fontSize: 10, fontWeight: '700' },
+  cardMeta:             { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  chip:                 { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, borderWidth: 1 },
+  chipText:             { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  userCount:            { fontSize: 12, marginLeft: 'auto' },
+  empty:                { marginTop: 60, alignItems: 'center', gap: 8 },
+  emptyTitle:           { fontSize: 16, fontWeight: '600' },
+  emptySubtitle:        { fontSize: 13, textAlign: 'center' },
 });
