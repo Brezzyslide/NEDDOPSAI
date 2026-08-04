@@ -80,6 +80,41 @@ export interface ConversationWithMessages extends Conversation {
 
 // ─── Conversations ─────────────────────────────────────────────────────────────
 
+/**
+ * Find an existing active general_workforce conversation for this user, or create one.
+ * Prevents a new conversation from being created on every page load, which was
+ * causing messages to disappear after SSE delivery.
+ */
+export async function findOrCreateGeneralConversation(
+  organizationId: string,
+  userId: string,
+): Promise<{ conversation: Conversation; created: boolean }> {
+  // Look for an active general_workforce conversation created by this user
+  const [existing] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.organizationId, organizationId),
+        eq(conversationsTable.createdByUserId, userId),
+        eq(conversationsTable.conversationType, "general_workforce"),
+        eq(conversationsTable.status, "active"),
+      )
+    )
+    .orderBy(desc(conversationsTable.lastMessageAt))
+    .limit(1);
+
+  if (existing) return { conversation: existing, created: false };
+
+  const conversation = await createConversation({
+    organizationId,
+    createdByUserId: userId,
+    conversationType: "general_workforce",
+    title: "Workforce Chat",
+  });
+  return { conversation, created: true };
+}
+
 export async function createConversation(input: CreateConversationInput): Promise<Conversation> {
   const [conv] = await db
     .insert(conversationsTable)

@@ -39,11 +39,35 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       primaryTaskId?: string;
     };
 
+    const resolvedType = (conversationType as string | undefined) ?? "general_workforce";
+
+    // For general workforce chat (no task), find or return the existing conversation
+    // rather than creating a new one on every page load.
+    if (resolvedType === "general_workforce" && !primaryTaskId) {
+      const { conversation, created } = await conversationService.findOrCreateGeneralConversation(
+        ctx.tenantId,
+        user.id,
+      );
+      if (created) {
+        await auditService.writeAuditEvent({
+          organizationId: ctx.tenantId,
+          actorUserId: user.id,
+          eventType: "conversation.created",
+          resourceType: "conversation",
+          resourceId: conversation.id,
+          metadata: { conversationType: conversation.conversationType },
+          ...auditService.getRequestMeta(req),
+        }).catch(() => {});
+      }
+      res.status(created ? 201 : 200).json({ conversation });
+      return;
+    }
+
     const conv = await conversationService.createConversation({
       organizationId: ctx.tenantId,
       createdByUserId: user.id,
       title,
-      conversationType: (conversationType as any) ?? "general_workforce",
+      conversationType: resolvedType as any,
       primaryTaskId,
     });
 
