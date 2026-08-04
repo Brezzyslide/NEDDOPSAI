@@ -12,6 +12,7 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+import { resolveMimeType, ACCEPTED_UPLOAD_TYPES } from "@/lib/uploadUtils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,6 @@ const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
   DOCUMENT_CATEGORIES.map(c => [c.value, c.label]),
 );
 
-const ACCEPTED_TYPES = ".pdf,.docx,.txt,.md";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -288,16 +288,6 @@ export default function OrgLibraryPage() {
     5: true,
     6: true,
   };
-
-  /** Normalise MIME type — browsers report inconsistent types for .md and .txt */
-  function resolveMimeType(file: File): string {
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (ext === "md")   return "text/markdown";
-    if (ext === "txt")  return "text/plain";
-    if (ext === "pdf")  return "application/pdf";
-    if (ext === "docx") return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    return file.type || "application/octet-stream";
-  }
 
   async function handleUpload() {
     if (!upload.file) return;
@@ -638,7 +628,7 @@ export default function OrgLibraryPage() {
                         <p className="text-xs text-slate-400 mt-0.5">PDF, DOCX, TXT, MD — max 20 MB</p>
                       </div>
                     )}
-                    <input type="file" accept={ACCEPTED_TYPES} className="hidden" onChange={onFileChange} />
+                    <input type="file" accept={ACCEPTED_UPLOAD_TYPES} className="hidden" onChange={onFileChange} />
                   </label>
                   <p className="text-xs text-slate-400 mt-2">
                     Task uploads — where a document is for one task only — are kept separate.
