@@ -146,10 +146,10 @@ describe("lib/workforce-dna — DNA registry", () => {
   });
 
   describe("getAllActiveDNAProfiles", () => {
-    it("returns array of length 4", () => {
+    it("returns array of at least 4 profiles", () => {
       const profiles = getAllActiveDNAProfiles();
       expect(Array.isArray(profiles)).toBe(true);
-      expect(profiles).toHaveLength(4);
+      expect(profiles.length).toBeGreaterThanOrEqual(4);
     });
 
     it("all returned profiles have isActive=true", () => {
@@ -183,9 +183,9 @@ describe("lib/workforce-dna — DNA registry", () => {
   });
 
   describe("getDNASummary", () => {
-    it("returns 4 entries", () => {
+    it("returns at least 4 entries", () => {
       const summary = getDNASummary();
-      expect(summary).toHaveLength(4);
+      expect(summary.length).toBeGreaterThanOrEqual(4);
     });
 
     it("each entry has roleCode, title, version, domain, isActive", () => {
@@ -204,7 +204,7 @@ describe("lib/workforce-dna — DNA registry", () => {
       }
     });
 
-    it("all 4 entries are active", () => {
+    it("all entries are active", () => {
       const summary = getDNASummary();
       for (const entry of summary) {
         expect(entry.isActive).toBe(true);

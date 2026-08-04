@@ -122,15 +122,24 @@ const TRAINING_STATUS_CONFIG: Record<string, { label: string; badge: string; des
 };
 
 const SPECIALIST_LABELS: Record<string, string> = {
-  chief_of_staff:            "Chief of Staff",
-  operations_manager:        "Operations Manager",
+  chief_of_staff:             "Chief of Staff",
+  operations_manager:         "Operations Manager",
   compliance_quality_manager: "Compliance & Quality Manager",
-  incident_manager:          "Incident Manager",
-  hr_coordinator:            "HR Coordinator",
-  finance_analyst:           "Finance Analyst",
+  incident_management:        "Incident Management Specialist",
+  incident_manager:           "Incident Manager",
+  hr_coordinator:             "HR Coordinator",
+  finance_analyst:            "Finance Analyst",
 };
 
 const EXAMPLE_PROMPTS: Record<string, string[]> = {
+  incident_management: [
+    "How should a Severity 2 incident involving a participant be escalated?",
+    "Draft an incident report for a fall at the day program using our approved style.",
+    "Which approval is required before sending a notification to the NDIS Commission?",
+    "Is this incident reportable under s73Z of the NDIS Act?",
+    "What changed between our incident policy versions?",
+    "Who should be notified first when a Severity 1 incident occurs?",
+  ],
   incident_manager: [
     "How should a moderate-severity incident be escalated?",
     "Draft an incident summary using our approved style.",
