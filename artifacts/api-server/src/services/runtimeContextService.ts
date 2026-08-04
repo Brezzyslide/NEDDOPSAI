@@ -7,8 +7,14 @@
  * The Runtime Context is the single source of organisational knowledge during execution.
  */
 
-import { eq, and } from "drizzle-orm";
-import { db, organizationsTable, organisationMemoryTable } from "@workspace/db";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import {
+  db,
+  organizationsTable,
+  organisationMemoryTable,
+  executionIntentsTable,
+  membershipsTable,
+} from "@workspace/db";
 import {
   listResources,
   buildDescriptor,
@@ -23,6 +29,12 @@ import {
   getEscalationPaths,
 } from "./organisationStructureService.js";
 import { getCurrentSpecialists } from "../lib/workforceRegistry.js";
+import {
+  tenantHasWorkforcePack,
+  tenantCanUseFeature,
+} from "./entitlementService.js";
+import { logOrgEvent } from "./auditService.js";
+import type { WorkforcePackCode } from "@workspace/shared";
 
 // ─── Context Types ────────────────────────────────────────────────────────────
 
@@ -88,6 +100,10 @@ export interface OrganisationRuntimeContext {
     resourcePermissions: Record<string, string[]>;
     canBrowse: boolean;
     canExecuteConnectors: boolean;
+    /** Maximum sensitivity level of knowledge sources this specialist may access */
+    sensitivityClearance: 'public' | 'internal' | 'confidential' | 'restricted';
+    /** Whether the specialist's workforce pack is granted for this org */
+    packGranted: boolean;
   };
 
   // Available connectors
@@ -125,11 +141,45 @@ export type { OrgConfigurationData };
 export async function assembleRuntimeContext(
   organisationId: string,
   employeeRoleCode: string,
-  options?: { includeMemory?: boolean; maxMemoryEntries?: number },
+  options?: {
+    includeMemory?: boolean;
+    maxMemoryEntries?: number;
+    /**
+     * When provided, an active-membership cross-tenant check is performed.
+     * Throws CROSS_TENANT_ACCESS if the user is not an active member of this org.
+     */
+    requestingUserId?: string;
+  },
 ): Promise<OrganisationRuntimeContext> {
   const assembledAt = new Date().toISOString();
   const includeMemory = options?.includeMemory ?? true;
   const maxMemoryEntries = options?.maxMemoryEntries ?? 20;
+
+  // ── 0. Cross-tenant guard ──────────────────────────────────────────────────
+  // If a requesting user ID is provided, verify they are an active member of
+  // this org before assembling any context. This prevents cross-tenant leakage
+  // when the caller forwards an unverified org ID.
+  if (options?.requestingUserId) {
+    const [membership] = await db
+      .select({ id: membershipsTable.id })
+      .from(membershipsTable)
+      .where(
+        and(
+          eq(membershipsTable.organizationId, organisationId),
+          eq(membershipsTable.userId, options.requestingUserId),
+          eq(membershipsTable.status, 'active'),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      const err = new Error(
+        `User ${options.requestingUserId} does not have active membership in organisation ${organisationId}.`,
+      );
+      (err as NodeJS.ErrnoException).code = 'CROSS_TENANT_ACCESS';
+      throw err;
+    }
+  }
 
   // ── 1. Organisation Identity ───────────────────────────────────────────────
   const [org] = await db
@@ -244,13 +294,93 @@ export async function assembleRuntimeContext(
       };
     });
 
-  // ── 6. Permissions (stub — will be wired in subsequent task) ──────────────
-  const permissions = {
-    capabilityCodes: [] as string[],
-    resourcePermissions: {} as Record<string, string[]>,
-    canBrowse: false,
-    canExecuteConnectors: false,
+  // ── 6. Permissions (deny-by-default) ─────────────────────────────────────
+  //
+  // Resolution order:
+  //  a) Find this specialist's pack from the workforce registry
+  //  b) Check if the org's subscription grants the specialist's pack
+  //  c) Check execution channel entitlements (browse, connectors)
+  //  d) Derive capability codes and sensitivity clearance
+  //  e) Build resource permission map from already-filtered available resources
+  //  f) Audit the permission decision (fire-and-forget)
+
+  // 6a. Locate specialist definition to find its pack
+  const specialistDef = getCurrentSpecialists().find(s => s.code === employeeRoleCode);
+  const specialistPackCode = specialistDef?.packCode as WorkforcePackCode | undefined;
+
+  // 6b. Pack entitlement — denied if specialist is not in registry or pack not granted
+  const packEntitlement = specialistPackCode
+    ? await tenantHasWorkforcePack(organisationId, specialistPackCode)
+    : {
+        allowed: false as const,
+        reason: 'Specialist not found in workforce registry — pack cannot be determined.',
+        source: undefined,
+        effectiveUntil: undefined,
+      };
+
+  // 6c. Execution channel entitlements (parallel — do not wait on each other)
+  const [browseEntitlement, connectorEntitlement] = await Promise.all([
+    tenantCanUseFeature(organisationId, 'execution.browser_session'),
+    tenantCanUseFeature(organisationId, 'execution.api_connectors'),
+  ]);
+
+  // 6d. Capability codes — only granted capabilities are included
+  const capabilityCodes: string[] = [];
+  if (packEntitlement.allowed && specialistPackCode) {
+    capabilityCodes.push(`workforce_pack.${specialistPackCode}`);
+  }
+  if (browseEntitlement.allowed) capabilityCodes.push('execution.browser_session');
+  if (connectorEntitlement.allowed) capabilityCodes.push('execution.api_connectors');
+
+  // Sensitivity clearance — derived from pack type (deny-by-default: public only)
+  // compliance/hr/finance handle sensitive operational data → confidential clearance
+  // core/operations/marketing → internal clearance
+  // no pack granted → public sources only
+  const PACK_SENSITIVITY: Record<string, 'internal' | 'confidential'> = {
+    compliance: 'confidential',
+    hr:         'confidential',
+    finance:    'confidential',
+    core:       'internal',
+    operations: 'internal',
+    marketing:  'internal',
   };
+  const sensitivityClearance = (
+    packEntitlement.allowed && specialistPackCode
+      ? PACK_SENSITIVITY[specialistPackCode] ?? 'internal'
+      : 'public'
+  ) as 'public' | 'internal' | 'confidential' | 'restricted';
+
+  // 6e. Resource permissions — map each accessible resource to its granted operations
+  const resourcePermissions: Record<string, string[]> = {};
+  for (const r of availableResources) {
+    resourcePermissions[r.resourceId] = r.availableOperations;
+  }
+
+  const permissions = {
+    capabilityCodes,
+    resourcePermissions,
+    canBrowse:             browseEntitlement.allowed,
+    canExecuteConnectors:  connectorEntitlement.allowed,
+    sensitivityClearance,
+    packGranted:           packEntitlement.allowed,
+  };
+
+  // 6f. Audit the permission decision — fire-and-forget, never block execution
+  void logOrgEvent({
+    eventType:    packEntitlement.allowed ? 'specialist.run_queued' : 'specialist.run_blocked',
+    organizationId: organisationId,
+    actorType:    'system',
+    resourceType: 'runtime_context',
+    metadata: {
+      specialistCode:      employeeRoleCode,
+      packCode:            specialistPackCode ?? null,
+      packGranted:         packEntitlement.allowed,
+      packDeniedReason:    packEntitlement.allowed ? null : packEntitlement.reason,
+      canBrowse:           browseEntitlement.allowed,
+      canExecuteConnectors: connectorEntitlement.allowed,
+      sensitivityClearance,
+    },
+  }).catch(() => { /* swallow — audit write failure must not block execution */ });
 
   // ── 7. Connectors ──────────────────────────────────────────────────────────
   const connectorTypes = new Set(allResources.map((r) => r.connectorType));
@@ -311,10 +441,41 @@ export async function assembleRuntimeContext(
   }
 
   // ── 9. Runtime State ───────────────────────────────────────────────────────
+  // Count active (approved/dispatched) and pending-approval intents from DB.
+  // Both queries are scoped to organisationId — cross-tenant safety guaranteed.
+  let activeGraphCount = 0;
+  let pendingIntentCount = 0;
+  try {
+    const [activeRow, pendingRow] = await Promise.all([
+      db
+        .select({ n: sql<number>`cast(count(*) as int)` })
+        .from(executionIntentsTable)
+        .where(
+          and(
+            eq(executionIntentsTable.organizationId, organisationId),
+            inArray(executionIntentsTable.status, ['approved', 'dispatched']),
+          ),
+        ),
+      db
+        .select({ n: sql<number>`cast(count(*) as int)` })
+        .from(executionIntentsTable)
+        .where(
+          and(
+            eq(executionIntentsTable.organizationId, organisationId),
+            eq(executionIntentsTable.status, 'pending_approval'),
+          ),
+        ),
+    ]);
+    activeGraphCount   = activeRow[0]?.n ?? 0;
+    pendingIntentCount = pendingRow[0]?.n ?? 0;
+  } catch {
+    // Count queries failed — leave zero defaults; do not block context assembly
+  }
+
   const runtimeState = {
     executionFrozen: org.executionFrozen ?? false,
-    activeGraphCount: 0,
-    pendingIntentCount: 0,
+    activeGraphCount,
+    pendingIntentCount,
   };
 
   // ── 10. Operational Preferences ───────────────────────────────────────────
@@ -434,4 +595,39 @@ export function runtimeContextToPromptBlocks(context: OrganisationRuntimeContext
   return blocks.join('\n\n');
 }
 
+// ─── Sensitivity Gate Helpers ─────────────────────────────────────────────────
 
+/**
+ * Ordered sensitivity levels — higher index = more sensitive.
+ * A clearance of level N grants access to all sources at index ≤ N.
+ */
+const SENSITIVITY_ORDER = ['public', 'internal', 'confidential', 'restricted'] as const;
+export type SensitivityLevel = (typeof SENSITIVITY_ORDER)[number];
+
+/**
+ * Returns true when a source at `sourceLevel` is within the specialist's
+ * `clearanceLevel`. Deny-by-default: unknown levels are denied.
+ */
+export function isSensitivityPermitted(
+  sourceLevel: string,
+  clearanceLevel: string,
+): boolean {
+  const srcIdx      = SENSITIVITY_ORDER.indexOf(sourceLevel as SensitivityLevel);
+  const clearanceIdx = SENSITIVITY_ORDER.indexOf(clearanceLevel as SensitivityLevel);
+  if (srcIdx === -1 || clearanceIdx === -1) return false;
+  return srcIdx <= clearanceIdx;
+}
+
+/**
+ * Filters an array of items that have a `sensitivityClassification` field,
+ * keeping only those the specialist is cleared to access.
+ *
+ * Usage:
+ *   const permittedSources = filterBySensitivity(allSources, context.permissions.sensitivityClearance);
+ */
+export function filterBySensitivity<T extends { sensitivityClassification: string }>(
+  sources: T[],
+  clearanceLevel: string,
+): T[] {
+  return sources.filter(s => isSensitivityPermitted(s.sensitivityClassification, clearanceLevel));
+}
