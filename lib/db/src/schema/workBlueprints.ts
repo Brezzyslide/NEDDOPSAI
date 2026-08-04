@@ -128,6 +128,13 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
   isBuiltIn: boolean("is_built_in").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
 
+  /**
+   * Blueprint lifecycle status (Sprint 28).
+   * Built-ins: "published" (immutable).
+   * Org custom: draft → review → published → superseded → archived.
+   */
+  status: text("status").notNull().default("draft"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

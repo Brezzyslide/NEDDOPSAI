@@ -41,3 +41,4 @@
 - [NeedsOps Task #36 Notification State](needsops-sprint36.md) — notification_reads table, legacy messageIds dual-write to message_reads (critical), nav badge, REQUIRED_RLS_TABLES=68, 2331 passing
 - [NeedsOps Sprint 27 Execution Loop](needsops-sprint27.md) — executionCoordinatorService bridges approval→executeWork, onProgress callback, 4 conversation lifecycle helpers, lib/shared dist must be patched manually, 2603 tests
 - [NeedsOps Sprint 27.1 Execution Experience](needsops-sprint271.md) — live SSE event bus, checkpoint store, timeline service, clarification resume, unified approvals, orphan recovery, 2650 tests
+- [NeedsOps Sprint 28 Blueprint Studio](needsops-sprint28.md) — blueprint versioning lifecycle, org override selection, sandbox testing, 6 frontend pages, REQUIRED_RLS_TABLES=69, 2733 tests

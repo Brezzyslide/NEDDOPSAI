@@ -1,0 +1,358 @@
+Since Sprint 27 is now effectively complete, I’d move straight into Sprint 28 – Blueprint Studio. This is the natural next step because your execution engine is mature enough to support organisation-defined workflows, and you already have the backend foundations from Sprint 22. Sprint 28 should focus on exposing and completing those capabilities rather than rebuilding them.
+
+⸻
+
+Sprint 28 – Blueprint Studio & Organisation Workflow Designer
+
+You are implementing Sprint 28 only.
+
+Before writing any code:
+
+1. Inspect the existing implementation thoroughly.
+2. Compare against all completed work through Sprint 27.1.
+3. Identify only the genuine missing functionality.
+4. Do not duplicate shipped backend functionality.
+5. Extend the existing Work Blueprint architecture.
+
+⸻
+
+Background
+
+Sprint 22 already delivered:
+
+* Built-in Work Blueprints
+* Work Package Manifests
+* Work Validation
+* Work Execution Pipeline
+* Completed Work lifecycle
+
+The backend exists.
+
+The remaining work is making Blueprints a fully manageable organisation asset.
+
+⸻
+
+Phase 1 — Inspection
+
+Inspect at minimum:
+
+* workBlueprintService
+* workBlueprint routes
+* workExecutionPipeline
+* workValidationService
+* Work Package Manifest
+* Completed Work
+* Organisation Library
+* Blueprint selection logic
+* Existing frontend pages
+* Navigation
+* Tests
+
+Determine exactly:
+
+* What already exists
+* What is partially implemented
+* What is genuinely missing
+
+Do not rebuild existing backend logic.
+
+⸻
+
+Phase 2 — Organisation Blueprint Management
+
+Build a complete Blueprint Studio.
+
+Organisation administrators must be able to:
+
+* View built-in blueprints
+* View organisation blueprints
+* Create new blueprint
+* Edit blueprint
+* Archive
+* Restore
+* Clone
+* Search
+* Filter
+* Sort
+
+Built-in blueprints remain read-only.
+
+Organisation blueprints may override built-in selection.
+
+⸻
+
+Phase 3 — Blueprint Versioning
+
+Implement proper blueprint lifecycle.
+
+Each blueprint should support:
+
+Draft
+
+↓
+
+Review
+
+↓
+
+Published
+
+↓
+
+Superseded
+
+↓
+
+Archived
+
+Maintain immutable history.
+
+Never overwrite published versions.
+
+Allow rollback.
+
+Allow version comparison.
+
+⸻
+
+Phase 4 — Validation
+
+Strengthen validation.
+
+Verify:
+
+* Specialist codes exist
+* Blueprint references valid capabilities
+* Required templates exist
+* Required knowledge exists
+* Required policies exist
+* Required document types exist
+* Required outputs defined
+
+Display friendly validation errors.
+
+⸻
+
+Phase 5 — Blueprint Testing
+
+Implement sandbox mode.
+
+Allow administrators to:
+
+* Select blueprint
+* Supply sample task
+* Supply optional uploaded documents
+* Run validation only
+* Run execution preview
+
+Do NOT create Completed Work.
+
+Do NOT dispatch specialists permanently.
+
+Show:
+
+* Selected specialist
+* Knowledge retrieved
+* Missing assets
+* Validation outcome
+* Expected outputs
+
+⸻
+
+Phase 6 — Blueprint Designer UI
+
+Create a professional Blueprint Studio.
+
+Pages:
+
+Blueprint Library
+
+↓
+
+Blueprint Detail
+
+↓
+
+Blueprint Editor
+
+↓
+
+Validation
+
+↓
+
+Testing
+
+↓
+
+Version History
+
+↓
+
+Publishing
+
+Support:
+
+* Search
+* Filters
+* Categories
+* Specialist
+* Status
+* Version
+
+⸻
+
+Phase 7 — Blueprint Clone
+
+Implement:
+
+Clone Blueprint
+
+↓
+
+New Draft
+
+↓
+
+Edit
+
+↓
+
+Publish
+
+Clone must preserve:
+
+* Validation rules
+* Specialist assignments
+* Required assets
+* Outputs
+
+Generate new identity.
+
+⸻
+
+Phase 8 — Organisation Overrides
+
+Selection logic should become:
+
+Organisation Blueprint
+
+↓
+
+Built-in Blueprint
+
+↓
+
+Generic fallback
+
+If an organisation publishes a blueprint matching a built-in category, it should take precedence.
+
+⸻
+
+Phase 9 — Governance
+
+Every change must record:
+
+Created
+
+Edited
+
+Published
+
+Archived
+
+Restored
+
+Cloned
+
+Rolled Back
+
+All actions must be audited.
+
+⸻
+
+Phase 10 — Security
+
+Ensure:
+
+* Tenant isolation
+* Owner/Admin permissions
+* Read-only built-in blueprints
+* Immutable published versions
+* Audit integrity
+
+⸻
+
+Phase 11 — Testing
+
+Add comprehensive tests covering:
+
+* Create
+* Edit
+* Archive
+* Restore
+* Clone
+* Publish
+* Rollback
+* Version comparison
+* Validation
+* Sandbox execution
+* Organisation override
+* Tenant isolation
+* Permissions
+* Audit
+
+All existing tests must continue to pass.
+
+⸻
+
+Deliverables
+
+Produce:
+
+1. Inspection Report
+
+* Existing functionality
+* Missing functionality
+* Files modified
+
+2. Blueprint Studio Summary
+
+Confirm support for:
+
+* Create
+* Edit
+* Clone
+* Archive
+* Restore
+* Publish
+* Rollback
+* Version History
+* Validation
+* Testing
+
+3. Test Summary
+
+Include:
+
+* New tests
+* Total passing tests
+* Regression status
+
+4. Remaining Gaps
+
+Report only genuine remaining gaps.
+
+Do not invent new work.
+
+⸻
+
+Important
+
+* Do not modify the Work Execution Pipeline except where required for blueprint selection.
+* Do not redesign Completed Work.
+* Do not rebuild Blueprint backend features already delivered in Sprint 22.
+* Prefer extending existing services over creating new ones.
+* Reuse existing governance, audit and approval patterns wherever possible.
+
+The outcome should be a production-ready Blueprint Studio that allows organisations to design, govern, test and publish their own professional workflows while seamlessly integrating with the existing execution engine.

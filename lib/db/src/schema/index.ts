@@ -127,6 +127,8 @@ export * from "./knowledgeCurationJobs";
 export * from "./orgProvisioningJobs";
 // Sprint 22 — Work Execution Engine & Completed Work
 export * from "./workBlueprints";
+// Sprint 28 — Blueprint Studio
+export * from "./blueprintVersions";
 export * from "./workPackageManifests";
 export * from "./completedWork";
 export * from "./completedWorkVersions";

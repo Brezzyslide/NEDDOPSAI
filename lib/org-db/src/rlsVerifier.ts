@@ -106,6 +106,8 @@ export const REQUIRED_RLS_TABLES = [
   "completed_work_assets",
   // Task #36 — Server-side notification state
   "notification_reads",
+  // Sprint 28 — Blueprint Studio versioning
+  "blueprint_versions",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

@@ -1,11 +1,22 @@
 /**
- * Work Blueprints Router — Sprint 22 (Work Execution Engine & Completed Work)
+ * Work Blueprints Router — Sprint 22 + Sprint 28 (Blueprint Studio)
  *
- * Routes:
+ * Sprint 22:
  *   GET  /organisations/:slug/work-blueprints           — list blueprints
  *   POST /organisations/:slug/work-blueprints           — create custom blueprint
  *   PUT  /organisations/:slug/work-blueprints/:id       — update custom blueprint
  *   POST /organisations/:slug/work-executions           — trigger execution pipeline
+ *
+ * Sprint 28 additions:
+ *   PATCH /organisations/:slug/work-blueprints/:id/archive
+ *   PATCH /organisations/:slug/work-blueprints/:id/restore
+ *   POST  /organisations/:slug/work-blueprints/:id/clone
+ *   POST  /organisations/:slug/work-blueprints/:id/submit-for-review
+ *   POST  /organisations/:slug/work-blueprints/:id/publish
+ *   POST  /organisations/:slug/work-blueprints/:id/rollback
+ *   GET   /organisations/:slug/work-blueprints/:id/versions
+ *   GET   /organisations/:slug/work-blueprints/versions/:versionId
+ *   POST  /organisations/:slug/work-blueprints/:id/test
  */
 
 import { Router } from "express";
@@ -14,6 +25,16 @@ import {
   listBlueprints,
   createCustomBlueprint,
   updateCustomBlueprint,
+  getBlueprintById,
+  archiveBlueprint,
+  restoreBlueprint,
+  cloneBlueprint,
+  submitForReview,
+  publishBlueprint,
+  rollbackToVersion,
+  getVersionHistory,
+  getVersionById,
+  testBlueprintSandbox,
 } from "../../services/workBlueprintService.js";
 import { executeWork } from "../../services/workExecutionPipelineService.js";
 
@@ -37,8 +58,36 @@ router.get(
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
-      const blueprints = await listBlueprints(ctx.tenantId);
+      const { search, status, specialist, sort, includeArchived } = req.query as Record<string, string | undefined>;
+
+      const blueprints = await listBlueprints(ctx.tenantId, {
+        search,
+        status: status as any,
+        specialist,
+        sort: sort as any,
+        includeArchived: includeArchived === "true",
+      });
+
       res.json({ blueprints });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Get single blueprint ─────────────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/work-blueprints/:blueprintId",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const blueprint = await getBlueprintById(blueprintId, ctx.tenantId);
+      if (!blueprint) { res.status(404).json({ error: "Blueprint not found" }); return; }
+      res.json({ blueprint });
     } catch (err) {
       next(err);
     }
@@ -112,6 +161,201 @@ router.put(
       const { blueprintId } = req.params as { blueprintId: string };
       const blueprint = await updateCustomBlueprint(blueprintId, req.body as never, ctx.tenantId, user.id);
       res.json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Archive ──────────────────────────────────────────────────────────────────
+
+router.patch(
+  "/organisations/:slug/work-blueprints/:blueprintId/archive",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const blueprint = await archiveBlueprint(blueprintId, ctx.tenantId, user.id);
+      res.json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Restore ──────────────────────────────────────────────────────────────────
+
+router.patch(
+  "/organisations/:slug/work-blueprints/:blueprintId/restore",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const blueprint = await restoreBlueprint(blueprintId, ctx.tenantId, user.id);
+      res.json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Clone ────────────────────────────────────────────────────────────────────
+
+router.post(
+  "/organisations/:slug/work-blueprints/:blueprintId/clone",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const { title } = req.body as { title?: string };
+      const blueprint = await cloneBlueprint(blueprintId, ctx.tenantId, user.id, title);
+      res.status(201).json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Submit for review ────────────────────────────────────────────────────────
+
+router.post(
+  "/organisations/:slug/work-blueprints/:blueprintId/submit-for-review",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const blueprint = await submitForReview(blueprintId, ctx.tenantId, user.id);
+      res.json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Publish ──────────────────────────────────────────────────────────────────
+
+router.post(
+  "/organisations/:slug/work-blueprints/:blueprintId/publish",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const { notes } = req.body as { notes?: string };
+      const result = await publishBlueprint(blueprintId, ctx.tenantId, user.id, notes);
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Rollback ─────────────────────────────────────────────────────────────────
+
+router.post(
+  "/organisations/:slug/work-blueprints/:blueprintId/rollback",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx  = req.tenantContext!;
+      const user = req.appUser!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const { versionId } = req.body as { versionId: string };
+      if (!versionId) { res.status(400).json({ error: "versionId is required" }); return; }
+      const blueprint = await rollbackToVersion(versionId, ctx.tenantId, user.id);
+      res.status(201).json({ blueprint });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Version history ──────────────────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/work-blueprints/:blueprintId/versions",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx = req.tenantContext!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const versions = await getVersionHistory(blueprintId, ctx.tenantId);
+      res.json({ versions });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Single version by ID ─────────────────────────────────────────────────────
+// Note: must be before /:blueprintId to avoid matching "versions" as a blueprintId
+
+router.get(
+  "/organisations/:slug/work-blueprints/versions/:versionId",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx = req.tenantContext!;
+      const { versionId } = req.params as { versionId: string };
+      const version = await getVersionById(versionId, ctx.tenantId);
+      if (!version) { res.status(404).json({ error: "Version not found" }); return; }
+      res.json({ version });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// ─── Sandbox test ─────────────────────────────────────────────────────────────
+
+router.post(
+  "/organisations/:slug/work-blueprints/:blueprintId/test",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      if (!requireOwnerOrAdmin(req, res)) return;
+      const ctx = req.tenantContext!;
+      const { blueprintId } = req.params as { blueprintId: string };
+      const { testRequest, uploadedDocumentTypes } = req.body as {
+        testRequest?: string;
+        uploadedDocumentTypes?: string[];
+      };
+      if (!testRequest) { res.status(400).json({ error: "testRequest is required" }); return; }
+
+      const result = await testBlueprintSandbox({
+        blueprintId,
+        organizationId: ctx.tenantId,
+        testRequest,
+        uploadedDocumentTypes,
+      });
+
+      res.json(result);
     } catch (err) {
       next(err);
     }

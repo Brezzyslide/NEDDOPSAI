@@ -1,25 +1,27 @@
 /**
- * Work Blueprint Service — Sprint 22 (Work Execution Engine & Completed Work)
+ * Work Blueprint Service — Sprint 22 + Sprint 28 (Blueprint Studio)
  *
- * Manages Work Blueprints: the organisational SOPs that define how specialists
- * execute professional work. Blueprints contain the full execution contract —
- * objective, required knowledge, validation rules, quality checklist,
- * escalation rules, and success criteria.
+ * Sprint 22: Built-in blueprints, custom blueprints, selection engine.
+ * Sprint 28: Full version lifecycle (draft→review→published→superseded→archived),
+ *            archive/restore/clone, sandbox testing, org override selection,
+ *            and immutable version snapshots.
  *
- * Built-in blueprints are seeded at startup (organizationId = NULL).
- * Organisations may create custom blueprints (organizationId set).
- *
- * Blueprint selection uses keyword + category matching against the user's
- * request to find the most appropriate blueprint automatically.
+ * Rules:
+ *  - Built-in blueprints (organizationId=NULL) are ALWAYS read-only.
+ *  - Only published org blueprints can override a built-in of the same code.
+ *  - Publishing is the only way to create an immutable version snapshot.
+ *  - Never overwrite an existing version record.
  */
 
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { workBlueprintsTable } from "@workspace/db";
-import { eq, and, or, isNull } from "drizzle-orm";
+import { workBlueprintsTable, blueprintVersionsTable } from "@workspace/db";
+import { eq, and, or, isNull, desc, ilike, inArray } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export type BlueprintStatus = "draft" | "review" | "published" | "superseded" | "archived";
 
 export interface WorkBlueprint {
   id: string;
@@ -27,6 +29,7 @@ export interface WorkBlueprint {
   code: string;
   title: string;
   version: string;
+  status: BlueprintStatus;
   objective: string;
   primarySpecialist: string;
   supportingSpecialists: string[];
@@ -44,6 +47,18 @@ export interface WorkBlueprint {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface BlueprintVersion {
+  id: string;
+  blueprintId: string;
+  organizationId: string;
+  versionLabel: string;
+  status: BlueprintStatus;
+  snapshot: Record<string, unknown>;
+  notes: string | null;
+  createdBy: string;
+  createdAt: Date;
 }
 
 export interface CreateBlueprintInput {
@@ -88,6 +103,37 @@ export interface BlueprintSelectionResult {
   confidence: number;
   matchedKeywords: string[];
   fallbackUsed: boolean;
+}
+
+export interface ListBlueprintsOptions {
+  search?: string;
+  status?: BlueprintStatus | "all";
+  category?: string;
+  specialist?: string;
+  sort?: "title_asc" | "title_desc" | "newest" | "oldest";
+  includeArchived?: boolean;
+}
+
+export interface SandboxTestInput {
+  blueprintId: string;
+  organizationId: string;
+  testRequest: string;
+  uploadedDocumentTypes?: string[];
+}
+
+export interface SandboxTestResult {
+  blueprintId: string;
+  blueprintTitle: string;
+  blueprintCode: string;
+  selectedSpecialist: string;
+  supportingSpecialists: string[];
+  validationOutcome: "passed" | "failed" | "warnings";
+  validationIssues: Array<{ rule: string; level: "error" | "warning"; message: string }>;
+  missingAssets: string[];
+  expectedOutputs: string[];
+  knowledgeRequired: string[];
+  successCriteria: string[];
+  sandboxOnly: true;
 }
 
 // ─── Built-in blueprint definitions ──────────────────────────────────────────
@@ -408,11 +454,82 @@ const BLUEPRINT_KEYWORDS: Record<string, string[]> = {
   business_proposal: ["proposal", "business case", "business proposal", "recommendation", "cost benefit"],
 };
 
+// ─── Internal helpers ─────────────────────────────────────────────────────────
+
+function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    title: row.title,
+    version: row.version,
+    status: (row.status as BlueprintStatus) ?? "draft",
+    objective: row.objective,
+    primarySpecialist: row.primarySpecialist,
+    supportingSpecialists: (row.supportingSpecialists as string[]) ?? [],
+    requiredLibraryKnowledge: (row.requiredLibraryKnowledge as string[]) ?? [],
+    requiredEntityKnowledge: (row.requiredEntityKnowledge as Record<string, unknown>) ?? {},
+    requiredMemories: (row.requiredMemories as string[]) ?? [],
+    requiredApprovals: (row.requiredApprovals as Record<string, unknown>) ?? {},
+    validationRules: (row.validationRules as WorkBlueprint["validationRules"]) ?? [],
+    qualityRules: (row.qualityRules as WorkBlueprint["qualityRules"]) ?? [],
+    successCriteria: (row.successCriteria as string[]) ?? [],
+    outputTypes: (row.outputTypes as string[]) ?? [],
+    escalationRules: (row.escalationRules as WorkBlueprint["escalationRules"]) ?? [],
+    mandatoryCitations: (row.mandatoryCitations as string[]) ?? [],
+    isBuiltIn: row.isBuiltIn,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapVersionRow(row: typeof blueprintVersionsTable.$inferSelect): BlueprintVersion {
+  return {
+    id: row.id,
+    blueprintId: row.blueprintId,
+    organizationId: row.organizationId,
+    versionLabel: row.versionLabel,
+    status: row.status as BlueprintStatus,
+    snapshot: (row.snapshot as Record<string, unknown>) ?? {},
+    notes: row.notes ?? null,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+  };
+}
+
+function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
+  return {
+    id: bp.id,
+    organizationId: bp.organizationId,
+    code: bp.code,
+    title: bp.title,
+    version: bp.version,
+    status: bp.status,
+    objective: bp.objective,
+    primarySpecialist: bp.primarySpecialist,
+    supportingSpecialists: bp.supportingSpecialists,
+    requiredLibraryKnowledge: bp.requiredLibraryKnowledge,
+    requiredEntityKnowledge: bp.requiredEntityKnowledge,
+    requiredMemories: bp.requiredMemories,
+    requiredApprovals: bp.requiredApprovals,
+    validationRules: bp.validationRules,
+    qualityRules: bp.qualityRules,
+    successCriteria: bp.successCriteria,
+    outputTypes: bp.outputTypes,
+    escalationRules: bp.escalationRules,
+    mandatoryCitations: bp.mandatoryCitations,
+    isBuiltIn: bp.isBuiltIn,
+    snapshotAt: new Date().toISOString(),
+  };
+}
+
 // ─── Public API ────────────────────────────────────────────────────────────────
 
 /**
  * Select the most appropriate blueprint for a work request.
- * Uses keyword matching against the user's request text and org context.
+ * Sprint 28: org blueprints (status=published) take precedence over built-ins
+ * when they share the same code.
  */
 export async function selectBlueprint(
   userRequest: string,
@@ -435,30 +552,45 @@ export async function selectBlueprint(
 
   const [code, { score, keywords: matched }] = top;
 
-  // Find the blueprint (built-in or org-custom)
-  const rows = await db
+  // Sprint 28: prefer org-published blueprint over built-in for the same code
+  const orgRows = await db
     .select()
     .from(workBlueprintsTable)
     .where(
       and(
         eq(workBlueprintsTable.code, code),
         eq(workBlueprintsTable.isActive, true),
+        eq(workBlueprintsTable.organizationId, organizationId),
+        eq(workBlueprintsTable.status, "published"),
       )
     )
     .limit(1);
 
-  const blueprint = rows[0] ?? null;
+  if (orgRows[0]) {
+    const confidence = Math.min(1.0, score / 3);
+    return { blueprint: mapRow(orgRows[0]), confidence, matchedKeywords: matched, fallbackUsed: false };
+  }
+
+  // Fallback: built-in
+  const builtInRows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(
+      and(
+        eq(workBlueprintsTable.code, code),
+        eq(workBlueprintsTable.isActive, true),
+        isNull(workBlueprintsTable.organizationId),
+      )
+    )
+    .limit(1);
+
+  const blueprint = builtInRows[0] ?? null;
   if (!blueprint) {
     return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true };
   }
 
   const confidence = Math.min(1.0, score / 3);
-  return {
-    blueprint: mapRow(blueprint),
-    confidence,
-    matchedKeywords: matched,
-    fallbackUsed: false,
-  };
+  return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false };
 }
 
 /**
@@ -482,26 +614,66 @@ export async function getBlueprintById(
 
 /**
  * List blueprints available to an organisation (built-ins + org custom).
+ * Sprint 28: supports search, status filter, specialist filter, sort.
  */
-export async function listBlueprints(organizationId: string): Promise<WorkBlueprint[]> {
+export async function listBlueprints(
+  organizationId: string,
+  options: ListBlueprintsOptions = {},
+): Promise<WorkBlueprint[]> {
+  const { search, status, specialist, sort, includeArchived } = options;
+
   const rows = await db
     .select()
     .from(workBlueprintsTable)
     .where(
       and(
-        eq(workBlueprintsTable.isActive, true),
+        // Tenant isolation: built-ins (null orgId) + this org's custom blueprints
         or(
           isNull(workBlueprintsTable.organizationId),
           eq(workBlueprintsTable.organizationId, organizationId),
         ),
+        // Active filter (skip archived unless requested)
+        includeArchived ? undefined : eq(workBlueprintsTable.isActive, true),
       )
     );
 
-  return rows.map(mapRow);
+  let results = rows.map(mapRow);
+
+  // Client-side filters (small dataset, avoids complex SQL)
+  if (search) {
+    const q = search.toLowerCase();
+    results = results.filter(b =>
+      b.title.toLowerCase().includes(q) ||
+      b.code.toLowerCase().includes(q) ||
+      b.objective.toLowerCase().includes(q)
+    );
+  }
+
+  if (status && status !== "all") {
+    results = results.filter(b => b.status === status);
+  }
+
+  if (specialist) {
+    results = results.filter(b =>
+      b.primarySpecialist === specialist ||
+      b.supportingSpecialists.includes(specialist)
+    );
+  }
+
+  // Sort
+  switch (sort) {
+    case "title_asc":  results.sort((a, b) => a.title.localeCompare(b.title)); break;
+    case "title_desc": results.sort((a, b) => b.title.localeCompare(a.title)); break;
+    case "oldest":     results.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()); break;
+    case "newest":
+    default:           results.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()); break;
+  }
+
+  return results;
 }
 
 /**
- * Create a custom blueprint for an organisation.
+ * Create a custom blueprint for an organisation. Status defaults to "draft".
  */
 export async function createCustomBlueprint(
   input: CreateBlueprintInput,
@@ -517,6 +689,7 @@ export async function createCustomBlueprint(
     code: input.code,
     title: input.title,
     version: input.version ?? "1.0.0",
+    status: "draft",
     objective: input.objective,
     primarySpecialist: input.primarySpecialist,
     supportingSpecialists: input.supportingSpecialists ?? [],
@@ -552,6 +725,8 @@ export async function createCustomBlueprint(
 
 /**
  * Update a custom blueprint. Built-in blueprints cannot be updated.
+ * Published blueprints can only be edited by first creating a new draft
+ * (use cloneBlueprint for that flow). Direct edits are allowed on draft/review.
  */
 export async function updateCustomBlueprint(
   id: string,
@@ -563,6 +738,12 @@ export async function updateCustomBlueprint(
   if (!existing) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
   if (existing.isBuiltIn) throw Object.assign(new Error("Built-in blueprints cannot be modified"), { statusCode: 403 });
   if (existing.organizationId !== organizationId) throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  if (existing.status === "published" || existing.status === "superseded") {
+    throw Object.assign(
+      new Error("Published or superseded blueprints cannot be edited directly. Clone the blueprint to create a new draft."),
+      { statusCode: 409 }
+    );
+  }
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (input.title !== undefined) updates.title = input.title;
@@ -598,12 +779,437 @@ export async function updateCustomBlueprint(
 }
 
 /**
+ * Archive a custom blueprint (status=archived, isActive=false).
+ * Archived blueprints are excluded from execution selection.
+ */
+export async function archiveBlueprint(
+  id: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<WorkBlueprint> {
+  const existing = await getBlueprintById(id, organizationId);
+  if (!existing) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+  if (existing.isBuiltIn) throw Object.assign(new Error("Built-in blueprints cannot be archived"), { statusCode: 403 });
+  if (existing.organizationId !== organizationId) throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+
+  await db.update(workBlueprintsTable)
+    .set({ status: "archived", isActive: false, updatedAt: new Date() })
+    .where(eq(workBlueprintsTable.id, id));
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_archived",
+    resourceType: "work_blueprint",
+    resourceId: id,
+    metadata: { previousStatus: existing.status },
+  });
+
+  const updated = await getBlueprintById(id, organizationId);
+  if (!updated) throw new Error("Blueprint not found after archive");
+  return updated;
+}
+
+/**
+ * Restore an archived blueprint back to draft status.
+ */
+export async function restoreBlueprint(
+  id: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<WorkBlueprint> {
+  const existing = await getBlueprintById(id, organizationId);
+  if (!existing) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+  if (existing.isBuiltIn) throw Object.assign(new Error("Built-in blueprints cannot be restored"), { statusCode: 403 });
+  if (existing.organizationId !== organizationId) throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  if (existing.status !== "archived") {
+    throw Object.assign(new Error("Only archived blueprints can be restored"), { statusCode: 409 });
+  }
+
+  await db.update(workBlueprintsTable)
+    .set({ status: "draft", isActive: true, updatedAt: new Date() })
+    .where(eq(workBlueprintsTable.id, id));
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_restored",
+    resourceType: "work_blueprint",
+    resourceId: id,
+    metadata: {},
+  });
+
+  const updated = await getBlueprintById(id, organizationId);
+  if (!updated) throw new Error("Blueprint not found after restore");
+  return updated;
+}
+
+/**
+ * Clone a blueprint (built-in or org custom) into a new org draft.
+ * The clone gets a new ID, status="draft", and can be edited freely.
+ */
+export async function cloneBlueprint(
+  sourceId: string,
+  organizationId: string,
+  actorUserId: string,
+  newTitle?: string,
+): Promise<WorkBlueprint> {
+  const source = await getBlueprintById(sourceId, organizationId);
+  if (!source) throw Object.assign(new Error("Source blueprint not found"), { statusCode: 404 });
+
+  const newId  = randomUUID();
+  const now    = new Date();
+  const title  = newTitle ?? `${source.title} (Copy)`;
+  const code   = `${source.code}_clone_${newId.slice(0, 8)}`;
+
+  await db.insert(workBlueprintsTable).values({
+    id: newId,
+    organizationId,
+    code,
+    title,
+    version: "1.0.0",
+    status: "draft",
+    objective: source.objective,
+    primarySpecialist: source.primarySpecialist,
+    supportingSpecialists: source.supportingSpecialists,
+    requiredLibraryKnowledge: source.requiredLibraryKnowledge,
+    requiredEntityKnowledge: source.requiredEntityKnowledge,
+    requiredMemories: source.requiredMemories,
+    requiredApprovals: source.requiredApprovals,
+    validationRules: source.validationRules,
+    qualityRules: source.qualityRules,
+    successCriteria: source.successCriteria,
+    outputTypes: source.outputTypes,
+    escalationRules: source.escalationRules,
+    mandatoryCitations: source.mandatoryCitations,
+    isBuiltIn: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_cloned",
+    resourceType: "work_blueprint",
+    resourceId: newId,
+    metadata: { sourceId, sourceTitle: source.title, newTitle: title },
+  });
+
+  const cloned = await getBlueprintById(newId, organizationId);
+  if (!cloned) throw new Error("Blueprint not found after clone");
+  return cloned;
+}
+
+/**
+ * Submit a draft blueprint for internal review.
+ * Transitions: draft → review.
+ */
+export async function submitForReview(
+  id: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<WorkBlueprint> {
+  const existing = await getBlueprintById(id, organizationId);
+  if (!existing) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+  if (existing.isBuiltIn) throw Object.assign(new Error("Built-in blueprints cannot be submitted for review"), { statusCode: 403 });
+  if (existing.organizationId !== organizationId) throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  if (existing.status !== "draft") {
+    throw Object.assign(new Error("Only draft blueprints can be submitted for review"), { statusCode: 409 });
+  }
+
+  await db.update(workBlueprintsTable)
+    .set({ status: "review", updatedAt: new Date() })
+    .where(eq(workBlueprintsTable.id, id));
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_submitted_for_review",
+    resourceType: "work_blueprint",
+    resourceId: id,
+    metadata: { title: existing.title },
+  });
+
+  const updated = await getBlueprintById(id, organizationId);
+  if (!updated) throw new Error("Blueprint not found after review submission");
+  return updated;
+}
+
+/**
+ * Publish a blueprint (draft or review → published).
+ * Creates an immutable version snapshot in blueprint_versions.
+ * Any previous published blueprint with the same code for this org is superseded.
+ */
+export async function publishBlueprint(
+  id: string,
+  organizationId: string,
+  actorUserId: string,
+  notes?: string,
+): Promise<{ blueprint: WorkBlueprint; version: BlueprintVersion }> {
+  const existing = await getBlueprintById(id, organizationId);
+  if (!existing) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+  if (existing.isBuiltIn) throw Object.assign(new Error("Built-in blueprints cannot be published"), { statusCode: 403 });
+  if (existing.organizationId !== organizationId) throw Object.assign(new Error("Forbidden"), { statusCode: 403 });
+  if (existing.status !== "draft" && existing.status !== "review") {
+    throw Object.assign(new Error("Only draft or review blueprints can be published"), { statusCode: 409 });
+  }
+
+  // Supersede any currently-published blueprint with the same code for this org
+  const previouslyPublished = await db
+    .select({ id: workBlueprintsTable.id })
+    .from(workBlueprintsTable)
+    .where(
+      and(
+        eq(workBlueprintsTable.organizationId, organizationId),
+        eq(workBlueprintsTable.code, existing.code),
+        eq(workBlueprintsTable.status, "published"),
+      )
+    );
+
+  for (const prev of previouslyPublished) {
+    if (prev.id !== id) {
+      await db.update(workBlueprintsTable)
+        .set({ status: "superseded", isActive: false, updatedAt: new Date() })
+        .where(eq(workBlueprintsTable.id, prev.id));
+    }
+  }
+
+  // Publish this blueprint
+  await db.update(workBlueprintsTable)
+    .set({ status: "published", isActive: true, updatedAt: new Date() })
+    .where(eq(workBlueprintsTable.id, id));
+
+  // Create immutable version snapshot
+  const versionId = randomUUID();
+  const snapshot  = blueprintToSnapshot({ ...existing, status: "published" });
+
+  await db.insert(blueprintVersionsTable).values({
+    id: versionId,
+    blueprintId: id,
+    organizationId,
+    versionLabel: existing.version,
+    status: "published",
+    snapshot,
+    notes: notes ?? null,
+    createdBy: actorUserId,
+    createdAt: new Date(),
+  });
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_published",
+    resourceType: "work_blueprint",
+    resourceId: id,
+    metadata: { versionLabel: existing.version, versionId, notes },
+  });
+
+  const published = await getBlueprintById(id, organizationId);
+  if (!published) throw new Error("Blueprint not found after publish");
+
+  const versionRows = await db
+    .select()
+    .from(blueprintVersionsTable)
+    .where(eq(blueprintVersionsTable.id, versionId))
+    .limit(1);
+
+  return { blueprint: published, version: mapVersionRow(versionRows[0]!) };
+}
+
+/**
+ * Roll back to a specific version: creates a new draft from the version snapshot.
+ */
+export async function rollbackToVersion(
+  versionId: string,
+  organizationId: string,
+  actorUserId: string,
+): Promise<WorkBlueprint> {
+  const versionRows = await db
+    .select()
+    .from(blueprintVersionsTable)
+    .where(
+      and(
+        eq(blueprintVersionsTable.id, versionId),
+        eq(blueprintVersionsTable.organizationId, organizationId),
+      )
+    )
+    .limit(1);
+
+  const version = versionRows[0];
+  if (!version) throw Object.assign(new Error("Version not found"), { statusCode: 404 });
+
+  const snap = version.snapshot as Record<string, unknown>;
+
+  // Create a new draft from the snapshot
+  const newId = randomUUID();
+  const now   = new Date();
+
+  await db.insert(workBlueprintsTable).values({
+    id: newId,
+    organizationId,
+    code:                    String(snap.code ?? ""),
+    title:                   `${String(snap.title ?? "")} (Rollback from v${version.versionLabel})`,
+    version:                 String(snap.version ?? "1.0.0"),
+    status:                  "draft",
+    objective:               String(snap.objective ?? ""),
+    primarySpecialist:       String(snap.primarySpecialist ?? ""),
+    supportingSpecialists:   (snap.supportingSpecialists as string[]) ?? [],
+    requiredLibraryKnowledge:(snap.requiredLibraryKnowledge as string[]) ?? [],
+    requiredEntityKnowledge: (snap.requiredEntityKnowledge as Record<string, unknown>) ?? {},
+    requiredMemories:        (snap.requiredMemories as string[]) ?? [],
+    requiredApprovals:       (snap.requiredApprovals as Record<string, unknown>) ?? {},
+    validationRules:         (snap.validationRules as WorkBlueprint["validationRules"]) ?? [],
+    qualityRules:            (snap.qualityRules as WorkBlueprint["qualityRules"]) ?? [],
+    successCriteria:         (snap.successCriteria as string[]) ?? [],
+    outputTypes:             (snap.outputTypes as string[]) ?? [],
+    escalationRules:         (snap.escalationRules as WorkBlueprint["escalationRules"]) ?? [],
+    mandatoryCitations:      (snap.mandatoryCitations as string[]) ?? [],
+    isBuiltIn: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  await logOrgEvent({
+    organizationId,
+    actorUserId,
+    eventType: "work_blueprint_rolled_back",
+    resourceType: "work_blueprint",
+    resourceId: newId,
+    metadata: { fromVersionId: versionId, fromVersionLabel: version.versionLabel, sourceId: version.blueprintId },
+  });
+
+  const rollback = await getBlueprintById(newId, organizationId);
+  if (!rollback) throw new Error("Blueprint not found after rollback");
+  return rollback;
+}
+
+/**
+ * Get full version history for a blueprint (newest first).
+ */
+export async function getVersionHistory(
+  blueprintId: string,
+  organizationId: string,
+): Promise<BlueprintVersion[]> {
+  // Verify access
+  const exists = await getBlueprintById(blueprintId, organizationId);
+  if (!exists) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+
+  const rows = await db
+    .select()
+    .from(blueprintVersionsTable)
+    .where(
+      and(
+        eq(blueprintVersionsTable.blueprintId, blueprintId),
+        eq(blueprintVersionsTable.organizationId, organizationId),
+      )
+    )
+    .orderBy(desc(blueprintVersionsTable.createdAt));
+
+  return rows.map(mapVersionRow);
+}
+
+/**
+ * Get a specific version by ID.
+ */
+export async function getVersionById(
+  versionId: string,
+  organizationId: string,
+): Promise<BlueprintVersion | null> {
+  const rows = await db
+    .select()
+    .from(blueprintVersionsTable)
+    .where(
+      and(
+        eq(blueprintVersionsTable.id, versionId),
+        eq(blueprintVersionsTable.organizationId, organizationId),
+      )
+    )
+    .limit(1);
+
+  return rows[0] ? mapVersionRow(rows[0]) : null;
+}
+
+/**
+ * Sandbox test: dry-run a blueprint against a sample request.
+ * Does NOT create completed work, does NOT dispatch specialists.
+ * Returns what the execution engine would do: specialist, knowledge, validation, outputs.
+ */
+export async function testBlueprintSandbox(
+  input: SandboxTestInput,
+): Promise<SandboxTestResult> {
+  const { blueprintId, organizationId, testRequest, uploadedDocumentTypes } = input;
+
+  const blueprint = await getBlueprintById(blueprintId, organizationId);
+  if (!blueprint) throw Object.assign(new Error("Blueprint not found"), { statusCode: 404 });
+
+  const validationIssues: SandboxTestResult["validationIssues"] = [];
+  const missingAssets: string[] = [];
+
+  // Check validation rules against provided context
+  for (const rule of blueprint.validationRules) {
+    const ruleL = rule.rule.toLowerCase();
+    const provided = uploadedDocumentTypes?.map(t => t.toLowerCase()) ?? [];
+    let satisfied = false;
+
+    if (ruleL.includes("incident_policy") || ruleL.includes("policy_present")) {
+      satisfied = provided.some(t => t.includes("policy"));
+    } else if (ruleL.includes("legislation")) {
+      satisfied = provided.some(t => t.includes("legislation") || t.includes("legal"));
+    } else if (ruleL.includes("participant_context") || ruleL.includes("staff_context")) {
+      satisfied = provided.some(t => t.includes("context") || t.includes("participant") || t.includes("staff"));
+    } else if (ruleL.includes("template")) {
+      satisfied = provided.some(t => t.includes("template"));
+    } else if (ruleL.includes("investigation_scope")) {
+      // Scope is in the request text itself
+      satisfied = testRequest.length >= 50;
+    } else {
+      // Generic: unknown rule — warn
+      satisfied = false;
+    }
+
+    if (!satisfied) {
+      if (rule.required) {
+        validationIssues.push({ rule: rule.rule, level: "error", message: rule.description });
+        missingAssets.push(rule.description);
+      } else {
+        validationIssues.push({ rule: rule.rule, level: "warning", message: `Optional: ${rule.description}` });
+      }
+    }
+  }
+
+  const errors   = validationIssues.filter(i => i.level === "error");
+  const warnings = validationIssues.filter(i => i.level === "warning");
+
+  const validationOutcome: SandboxTestResult["validationOutcome"] =
+    errors.length > 0   ? "failed"   :
+    warnings.length > 0 ? "warnings" :
+    "passed";
+
+  return {
+    blueprintId: blueprint.id,
+    blueprintTitle: blueprint.title,
+    blueprintCode: blueprint.code,
+    selectedSpecialist: blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists,
+    validationOutcome,
+    validationIssues,
+    missingAssets,
+    expectedOutputs: blueprint.outputTypes,
+    knowledgeRequired: blueprint.requiredLibraryKnowledge,
+    successCriteria: blueprint.successCriteria,
+    sandboxOnly: true,
+  };
+}
+
+/**
  * Seed all built-in blueprints into the database (idempotent).
  * Called at server startup.
  */
 export async function seedBuiltInBlueprints(): Promise<void> {
   for (const def of BUILT_IN_BLUEPRINTS) {
-    // Check if already seeded
     const existing = await db
       .select({ id: workBlueprintsTable.id })
       .from(workBlueprintsTable)
@@ -624,13 +1230,14 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       code: def.code,
       title: def.title,
       version: "1.0.0",
+      status: "published",
       objective: def.objective,
       primarySpecialist: def.primarySpecialist,
       supportingSpecialists: def.supportingSpecialists ?? [],
       requiredLibraryKnowledge: def.requiredLibraryKnowledge ?? [],
       requiredEntityKnowledge: def.requiredEntityKnowledge ?? {},
       requiredMemories: def.requiredMemories ?? [],
-      requiredApprovals: {},
+      requiredApprovals: def.requiredApprovals ?? {},
       validationRules: def.validationRules ?? [],
       qualityRules: def.qualityRules ?? [],
       successCriteria: def.successCriteria ?? [],
@@ -643,33 +1250,4 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       updatedAt: new Date(),
     });
   }
-}
-
-// ─── Internal mapper ──────────────────────────────────────────────────────────
-
-function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
-  return {
-    id: row.id,
-    organizationId: row.organizationId ?? null,
-    code: row.code,
-    title: row.title,
-    version: row.version,
-    objective: row.objective,
-    primarySpecialist: row.primarySpecialist,
-    supportingSpecialists: (row.supportingSpecialists as string[]) ?? [],
-    requiredLibraryKnowledge: (row.requiredLibraryKnowledge as string[]) ?? [],
-    requiredEntityKnowledge: (row.requiredEntityKnowledge as Record<string, unknown>) ?? {},
-    requiredMemories: (row.requiredMemories as string[]) ?? [],
-    requiredApprovals: (row.requiredApprovals as Record<string, unknown>) ?? {},
-    validationRules: (row.validationRules as Array<{ rule: string; required: boolean; description: string }>) ?? [],
-    qualityRules: (row.qualityRules as Array<{ dimension: string; weight: number; description: string }>) ?? [],
-    successCriteria: (row.successCriteria as string[]) ?? [],
-    outputTypes: (row.outputTypes as string[]) ?? [],
-    escalationRules: (row.escalationRules as Array<{ trigger: string; action: string }>) ?? [],
-    mandatoryCitations: (row.mandatoryCitations as string[]) ?? [],
-    isBuiltIn: row.isBuiltIn,
-    isActive: row.isActive,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
 }

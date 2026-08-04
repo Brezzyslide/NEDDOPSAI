@@ -217,11 +217,12 @@ describe("selectBlueprint — keyword matching", () => {
   });
 
   it("returns null blueprint with fallbackUsed=true when DB returns no row for matched keyword", async () => {
-    mockDb.select.mockReturnValueOnce({
-      from: () => ({ where: () => ({ limit: () => [] }) }),
-    });
+    // Sprint 28: selectBlueprint now does TWO queries: org-published first, then built-in fallback
+    const emptyChain = { from: () => ({ where: () => ({ limit: () => [] }) }) };
+    mockDb.select.mockReturnValueOnce(emptyChain); // org query: no match
+    mockDb.select.mockReturnValueOnce(emptyChain); // built-in query: no match
     const result = await selectBlueprint("incident investigation report", ORG_ID);
-    // DB returned nothing — fallback
+    // DB returned nothing for both queries — fallback
     expect(result.fallbackUsed).toBe(true);
     expect(result.blueprint).toBeNull();
   });
@@ -1080,7 +1081,7 @@ describe("Sprint 22 — REQUIRED_RLS_TABLES", () => {
   });
 
   it("total count is 68 after Task #36 (+1 notification_reads from Sprint 22's 67)", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(68);
+    expect(REQUIRED_RLS_TABLES).toHaveLength(69); // Sprint 28: +1 blueprint_versions
   });
 
   it("still contains all previous core tables", () => {

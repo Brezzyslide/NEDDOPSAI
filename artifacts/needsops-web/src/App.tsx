@@ -55,6 +55,13 @@ import OrgMemoryPage from "@/pages/app/OrgMemoryPage";
 import OrgLibraryPage from "@/pages/app/OrgLibraryPage";
 import SourceDetailPage from "@/pages/app/SourceDetailPage";
 import SpecialistTrainingPage from "@/pages/app/SpecialistTrainingPage";
+// Sprint 28 — Blueprint Studio
+import BlueprintStudioPage from "@/pages/app/BlueprintStudioPage";
+import BlueprintDetailPage from "@/pages/app/BlueprintDetailPage";
+import BlueprintEditorPage from "@/pages/app/BlueprintEditorPage";
+import BlueprintVersionHistoryPage from "@/pages/app/BlueprintVersionHistoryPage";
+import BlueprintTestPage from "@/pages/app/BlueprintTestPage";
+import BlueprintPublishPage from "@/pages/app/BlueprintPublishPage";
 import PlanPage from "@/pages/app/PlanPage";
 import UsagePage from "@/pages/app/UsagePage";
 // Sprint 14 — Installer, Devices, Discovery
@@ -282,6 +289,14 @@ function AppRouter() {
             <Route path="/app/:slug/install" component={InstallPage} />
             <Route path="/app/:slug/devices" component={DevicesPage} />
             <Route path="/app/:slug/discover" component={DiscoveryPage} />
+            {/* Sprint 28 — Blueprint Studio (more-specific paths before :id catch-all) */}
+            <Route path="/app/:slug/blueprints/new" component={BlueprintEditorPage} />
+            <Route path="/app/:slug/blueprints/:id/edit" component={BlueprintEditorPage} />
+            <Route path="/app/:slug/blueprints/:id/versions" component={BlueprintVersionHistoryPage} />
+            <Route path="/app/:slug/blueprints/:id/test" component={BlueprintTestPage} />
+            <Route path="/app/:slug/blueprints/:id/publish" component={BlueprintPublishPage} />
+            <Route path="/app/:slug/blueprints/:id" component={BlueprintDetailPage} />
+            <Route path="/app/:slug/blueprints" component={BlueprintStudioPage} />
             {/* Sprint 25 — Completed Work Portal (more-specific before :slug catch-all) */}
             <Route path="/app/:slug/work/:id" component={CompletedWorkViewer} />
             <Route path="/app/:slug/work" component={CompletedWorkPortal} />

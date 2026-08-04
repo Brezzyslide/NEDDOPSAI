@@ -25,8 +25,9 @@ const OPERATIONS_NAV = [
 
 // ── Knowledge ─────────────────────────────────────────────────────────────────
 const KNOWLEDGE_NAV = [
-  { label: "Library", icon: "📚", path: "/library" },
-  { label: "Memory",  icon: "🧠", path: "/memory" },
+  { label: "Library",          icon: "📚", path: "/library" },
+  { label: "Memory",           icon: "🧠", path: "/memory" },
+  { label: "Blueprint Studio", icon: "📐", path: "/blueprints" },
 ];
 
 // ── Governance ────────────────────────────────────────────────────────────────
