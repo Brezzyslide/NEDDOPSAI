@@ -1,6 +1,8 @@
 import { useLocation } from "wouter";
 import { useClerk, useUser } from "@clerk/react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { useAuthFetch } from "@/lib/api";
 
 interface AppShellProps { orgSlug: string; children: React.ReactNode; }
 
@@ -9,7 +11,7 @@ const WORKSPACE_NAV = [
   { label: "Dashboard",     icon: "⬡",  path: "" },
   { label: "Inbox",         icon: "📥", path: "/inbox" },
   { label: "Active Work",   icon: "⚡", path: "/active-work" },
-  { label: "Notifications", icon: "🔔", path: "/notifications" },
+  { label: "Notifications", icon: "🔔", path: "/notifications", badge: true },
 ];
 
 // ── Operations ────────────────────────────────────────────────────────────────
@@ -46,13 +48,14 @@ const ORG_NAV = [
 ];
 
 function NavSection({
-  items, base, active, setLocation, label,
+  items, base, active, setLocation, label, unreadCount,
 }: {
-  items: { label: string; icon: string; path: string }[];
+  items: { label: string; icon: string; path: string; badge?: boolean }[];
   base: string;
   active: (p: string) => boolean;
   setLocation: (p: string) => void;
   label?: string;
+  unreadCount?: number;
 }) {
   return (
     <div>
@@ -72,7 +75,12 @@ function NavSection({
           }`}
         >
           <span className="shrink-0">{n.icon}</span>
-          {n.label}
+          <span className="flex-1 text-left">{n.label}</span>
+          {n.badge && unreadCount != null && unreadCount > 0 && (
+            <span className="ml-auto shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#00D4FF] text-[#0B1829] text-[10px] font-bold flex items-center justify-center">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -83,12 +91,26 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const apiFetch = useAuthFetch();
   const isPlatformAdmin =
     (user?.publicMetadata as any)?.platformAdmin === true ||
     (user?.publicMetadata as any)?.platformRole != null;
 
   const base   = `/app/${orgSlug}`;
   const active = (path: string) => location === base + path;
+
+  // Navigation badge — server-derived unread count, refreshed every 60s
+  // and invalidated by notification mutations via queryClient.invalidateQueries
+  const { data: unreadData } = useQuery({
+    queryKey:       ["nav-notif-badge", orgSlug],
+    queryFn:        () =>
+      apiFetch(`/v1/organisations/${orgSlug}/notifications/unread-count`)
+        .then(r => r.ok ? r.json() : { unreadCount: 0 }),
+    enabled:        !!orgSlug,
+    refetchInterval: 60_000,
+    staleTime:      30_000,
+  });
+  const navUnreadCount: number = unreadData?.unreadCount ?? 0;
 
   return (
     <div className="flex h-dvh bg-[#0B1829] overflow-hidden">
@@ -112,7 +134,13 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
-          <NavSection items={WORKSPACE_NAV}   base={base} active={active} setLocation={setLocation} />
+          <NavSection
+            items={WORKSPACE_NAV}
+            base={base}
+            active={active}
+            setLocation={setLocation}
+            unreadCount={navUnreadCount}
+          />
           <div className="border-t border-[#1E3A5F]/60 pt-3">
             <NavSection items={OPERATIONS_NAV} base={base} active={active} setLocation={setLocation} label="Operations" />
           </div>

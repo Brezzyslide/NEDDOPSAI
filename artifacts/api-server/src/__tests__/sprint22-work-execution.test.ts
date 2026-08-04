@@ -1079,8 +1079,8 @@ describe("Sprint 22 — REQUIRED_RLS_TABLES", () => {
     }
   });
 
-  it("total count is 67 after Sprint 22 (+6 work execution tables from Sprint 21's 61)", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(67);
+  it("total count is 68 after Task #36 (+1 notification_reads from Sprint 22's 67)", () => {
+    expect(REQUIRED_RLS_TABLES).toHaveLength(68);
   });
 
   it("still contains all previous core tables", () => {

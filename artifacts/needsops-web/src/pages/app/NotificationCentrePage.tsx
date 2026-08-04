@@ -1,5 +1,5 @@
 /**
- * Notification Centre — Sprint 23
+ * Notification Centre — Task #36
  *
  * Aggregates all platform notifications:
  *   - Unread conversation messages
@@ -7,32 +7,42 @@
  *   - Knowledge proposals
  *   - Pending system approvals
  *
- * Supports: Unread filter · Archived filter · Search · Mark read
+ * Read / archive / restore / mark-unread state is server-backed via
+ * notification_reads (not localStorage). Optimistic local state gives
+ * instant UI feedback while the server mutation is in-flight.
  */
 
-import { useState, useMemo }      from "react";
-import { useParams, useLocation } from "wouter";
+import { useState, useMemo, useCallback }   from "react";
+import { useParams, useLocation }            from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Show }                   from "@clerk/react";
-import { Redirect }               from "wouter";
-import AppShell                   from "@/components/layout/AppShell";
-import { useAuthFetch }           from "@/lib/api";
+import { Show }                              from "@clerk/react";
+import { Redirect }                          from "wouter";
+import AppShell                              from "@/components/layout/AppShell";
+import { useAuthFetch }                      from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type NotifType = "work" | "approval" | "knowledge" | "conversation";
 
 interface Notification {
-  id:          string;
-  type:        NotifType;
-  icon:        string;
-  title:       string;
-  body:        string;
-  timestamp:   string;
-  read:        boolean;
-  actionPath?: string;
-  actionLabel?:string;
-  priority:    "high" | "normal";
+  id:           string;
+  type:         NotifType;
+  icon:         string;
+  title:        string;
+  body:         string;
+  timestamp:    string;
+  read:         boolean;
+  archived:     boolean;
+  actionPath?:  string;
+  actionLabel?: string;
+  priority:     "high" | "normal";
+}
+
+interface ServerNotifState {
+  notificationId: string;
+  isRead:         boolean;
+  isArchived:     boolean;
+  snoozedUntil:   string | null;
 }
 
 const TYPE_META: Record<NotifType, { icon: string; label: string; colour: string }> = {
@@ -41,40 +51,6 @@ const TYPE_META: Record<NotifType, { icon: string; label: string; colour: string
   knowledge:    { icon: "🧠", label: "Knowledge",    colour: "text-cyan-400" },
   conversation: { icon: "💬", label: "Conversation", colour: "text-purple-400" },
 };
-
-// ─── Local read/archive state ──────────────────────────────────────────────────
-
-function useNotifState(orgSlug: string) {
-  const readKey    = `needsops_notif_read_${orgSlug}`;
-  const archiveKey = `needsops_notif_arch_${orgSlug}`;
-
-  const [read, setRead]       = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(readKey)    ?? "[]")); } catch { return new Set(); }
-  });
-  const [archived, setArch]   = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem(archiveKey) ?? "[]")); } catch { return new Set(); }
-  });
-
-  const markRead = (id: string) => setRead(prev => {
-    const n = new Set(prev); n.add(id);
-    localStorage.setItem(readKey, JSON.stringify([...n]));
-    return n;
-  });
-
-  const markAllRead = (ids: string[]) => setRead(prev => {
-    const n = new Set(prev); ids.forEach(id => n.add(id));
-    localStorage.setItem(readKey, JSON.stringify([...n]));
-    return n;
-  });
-
-  const archiveItem = (id: string) => setArch(prev => {
-    const n = new Set(prev); n.add(id);
-    localStorage.setItem(archiveKey, JSON.stringify([...n]));
-    return n;
-  });
-
-  return { read, archived, markRead, markAllRead, archiveItem };
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -97,72 +73,215 @@ export default function NotificationCentrePage() {
   const apiFetch        = useAuthFetch();
   const queryClient     = useQueryClient();
 
-  const [tab, setTab]       = useState<"all" | "unread" | "archived">("all");
-  const [search, setSearch] = useState("");
+  const [tab, setTab]         = useState<"all" | "unread" | "archived">("all");
+  const [search, setSearch]   = useState("");
   const [typeFilter, setTypeFilter] = useState<NotifType | "all">("all");
 
-  const { read, archived, markRead, markAllRead, archiveItem } = useNotifState(slug ?? "");
+  // Optimistic override map — single source of truth for pending local state.
+  // Keys are notification IDs; values are the locally-pending overrides.
+  // Using a single map (not separate Sets) avoids contradictory states that
+  // make transitions like archive → restore → archive impossible in one session.
+  const [optimisticRead,  setOptimisticRead]  = useState<Set<string>>(new Set());
+  const [optimisticUnread, setOptimisticUnread] = useState<Set<string>>(new Set());
+  // null = restored (server-archived but locally undone); true = locally archived
+  const [optimisticArchive, setOptimisticArchive] = useState<Map<string, boolean>>(new Map());
 
-  // Data
+  // ── Server queries ────────────────────────────────────────────────────────
+
   const { data: completedWorkData } = useQuery({
     queryKey: ["completed-work-notif", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=50`).then(r => r.json()),
+    queryFn:  () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=50`).then(r => r.json()),
     enabled: !!slug, staleTime: 30_000,
   });
 
   const { data: approvalsData } = useQuery({
     queryKey: ["approvals-notif", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
+    queryFn:  () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
     enabled: !!slug, staleTime: 30_000,
   });
 
   const { data: proposalsData } = useQuery({
     queryKey: ["proposals-notif", slug],
-    queryFn: () =>
+    queryFn:  () =>
       apiFetch(`/v1/organisations/${slug}/knowledge/curation/proposals?status=proposed&limit=20`)
         .then(r => r.json()),
     enabled: !!slug, staleTime: 60_000,
   });
 
   const { data: unreadData } = useQuery({
-    queryKey: ["notif-unread", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/notifications/unread-count`).then(r => r.json()),
-    enabled: !!slug, refetchInterval: 60_000,
+    queryKey:        ["notif-unread", slug],
+    queryFn:         () => apiFetch(`/v1/organisations/${slug}/notifications/unread-count`).then(r => r.json()),
+    enabled:         !!slug,
+    refetchInterval: 60_000,
   });
+
+  // Server notification state — read/archive map for this user
+  const { data: stateData } = useQuery({
+    queryKey: ["notif-state", slug],
+    queryFn:  () => apiFetch(`/v1/organisations/${slug}/notifications/state`).then(r => r.json()),
+    enabled:  !!slug,
+    staleTime: 30_000,
+  });
+
+  const stateMap = useMemo<Map<string, ServerNotifState>>(() => {
+    const m = new Map<string, ServerNotifState>();
+    for (const s of (stateData?.states ?? []) as ServerNotifState[]) {
+      m.set(s.notificationId, s);
+    }
+    return m;
+  }, [stateData]);
+
+  // Derive effective read/archived state: server state + optimistic overrides
+  const isRead = useCallback((id: string) => {
+    if (optimisticUnread.has(id))   return false;
+    if (optimisticRead.has(id))     return true;
+    return stateMap.get(id)?.isRead ?? false;
+  }, [stateMap, optimisticRead, optimisticUnread]);
+
+  const isArchived = useCallback((id: string) => {
+    // Local override wins; then fall through to server truth
+    if (optimisticArchive.has(id)) return optimisticArchive.get(id) as boolean;
+    return stateMap.get(id)?.isArchived ?? false;
+  }, [stateMap, optimisticArchive]);
+
+  const invalidateState = () => {
+    queryClient.invalidateQueries({ queryKey: ["notif-state", slug] });
+    queryClient.invalidateQueries({ queryKey: ["notif-unread", slug] });
+    queryClient.invalidateQueries({ queryKey: ["nav-notif-badge", slug] });
+  };
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const markReadMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (ids: string[]) =>
       apiFetch(`/v1/organisations/${slug}/notifications/mark-read`, {
-        method: "POST", body: JSON.stringify({ messageIds: [] }),
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notif-unread", slug] }),
+        method: "POST",
+        body:   JSON.stringify({ notificationIds: ids }),
+      }).then(r => r.json()),
+    onSuccess: invalidateState,
   });
 
-  // Build notification list
+  const markUnreadMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch(`/v1/organisations/${slug}/notifications/mark-unread`, {
+        method: "POST",
+        body:   JSON.stringify({ notificationIds: ids }),
+      }).then(r => r.json()),
+    onSuccess: invalidateState,
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch(`/v1/organisations/${slug}/notifications/archive`, {
+        method: "POST",
+        body:   JSON.stringify({ notificationIds: ids }),
+      }).then(r => r.json()),
+    onSuccess: (_data, ids) => {
+      invalidateState();
+      // Server has confirmed — remove local override so future transitions are clean
+      setOptimisticArchive(prev => {
+        const next = new Map(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+    },
+    onError: (_err, ids) => {
+      // Roll back optimistic override on failure
+      setOptimisticArchive(prev => {
+        const next = new Map(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (ids: string[]) =>
+      apiFetch(`/v1/organisations/${slug}/notifications/restore`, {
+        method: "POST",
+        body:   JSON.stringify({ notificationIds: ids }),
+      }).then(r => r.json()),
+    onSuccess: (_data, ids) => {
+      invalidateState();
+      // Server has confirmed — remove local override so future transitions are clean
+      setOptimisticArchive(prev => {
+        const next = new Map(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+    },
+    onError: (_err, ids) => {
+      // Roll back optimistic override on failure
+      setOptimisticArchive(prev => {
+        const next = new Map(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+    },
+  });
+
+  // ── Action helpers ────────────────────────────────────────────────────────
+
+  const handleMarkRead = (ids: string[]) => {
+    setOptimisticRead(prev => new Set([...prev, ...ids]));
+    setOptimisticUnread(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    markReadMutation.mutate(ids);
+  };
+
+  const handleMarkUnread = (ids: string[]) => {
+    setOptimisticUnread(prev => new Set([...prev, ...ids]));
+    setOptimisticRead(prev => { const n = new Set(prev); ids.forEach(id => n.delete(id)); return n; });
+    markUnreadMutation.mutate(ids);
+  };
+
+  const handleArchive = (ids: string[]) => {
+    setOptimisticArchive(prev => {
+      const next = new Map(prev);
+      ids.forEach(id => next.set(id, true));  // mark archived; clears any prior restore override
+      return next;
+    });
+    archiveMutation.mutate(ids);
+  };
+
+  const handleRestore = (ids: string[]) => {
+    setOptimisticArchive(prev => {
+      const next = new Map(prev);
+      ids.forEach(id => next.set(id, false)); // mark restored; clears any prior archive override
+      return next;
+    });
+    restoreMutation.mutate(ids);
+  };
+
+  // ── Build notification list ───────────────────────────────────────────────
+
   const notifications = useMemo<Notification[]>(() => {
     const items: Notification[] = [];
 
     // Work awaiting approval
     for (const w of (completedWorkData?.completedWork ?? []).filter((w: any) => w.status === "awaiting_approval")) {
+      const id = `work-${w.id}`;
       items.push({
-        id: `work-${w.id}`, type: "work", icon: "📋",
-        title: "Work ready for your approval",
-        body: `"${w.title ?? "A work item"}" has been submitted by ${w.primarySpecialist?.replace(/_/g, " ") ?? "your AI Workforce"}.`,
+        id, type: "work", icon: "📋",
+        title:     "Work ready for your approval",
+        body:      `"${w.title ?? "A work item"}" has been submitted by ${w.primarySpecialist?.replace(/_/g, " ") ?? "your AI Workforce"}.`,
         timestamp: w.updatedAt ?? w.createdAt,
-        read: read.has(`work-${w.id}`),
+        read:      isRead(id),
+        archived:  isArchived(id),
         actionPath: `/app/${slug}/active-work`, actionLabel: "Review",
         priority: "high",
       });
     }
 
-    // Recently approved (as delivered notifications)
+    // Recently approved
     for (const w of (completedWorkData?.completedWork ?? []).filter((w: any) => w.status === "approved").slice(0, 5)) {
+      const id = `approved-${w.id}`;
       items.push({
-        id: `approved-${w.id}`, type: "work", icon: "✓",
-        title: "Work delivered",
-        body: `"${w.title ?? "A work item"}" was approved and added to your records.`,
+        id, type: "work", icon: "✓",
+        title:     "Work delivered",
+        body:      `"${w.title ?? "A work item"}" was approved and added to your records.`,
         timestamp: w.updatedAt ?? w.createdAt,
-        read: read.has(`approved-${w.id}`),
+        read:      isRead(id),
+        archived:  isArchived(id),
         actionPath: `/app/${slug}/active-work`, actionLabel: "View",
         priority: "normal",
       });
@@ -170,12 +289,14 @@ export default function NotificationCentrePage() {
 
     // Pending approvals
     for (const a of (approvalsData?.approvals ?? [])) {
+      const id = `approval-${a.id}`;
       items.push({
-        id: `approval-${a.id}`, type: "approval", icon: "✅",
-        title: "Approval required",
-        body: a.description ?? `${a.approvalType?.replace(/_/g, " ") ?? "An item"} requires your decision.`,
+        id, type: "approval", icon: "✅",
+        title:     "Approval required",
+        body:      a.description ?? `${a.approvalType?.replace(/_/g, " ") ?? "An item"} requires your decision.`,
         timestamp: a.createdAt ?? new Date().toISOString(),
-        read: read.has(`approval-${a.id}`),
+        read:      isRead(id),
+        archived:  isArchived(id),
         actionPath: `/app/${slug}/approvals`, actionLabel: "Review",
         priority: "high",
       });
@@ -183,12 +304,14 @@ export default function NotificationCentrePage() {
 
     // Knowledge proposals
     for (const p of (proposalsData?.proposals ?? [])) {
+      const id = `proposal-${p.id}`;
       items.push({
-        id: `proposal-${p.id}`, type: "knowledge", icon: "🧠",
-        title: "Knowledge update proposed",
-        body: p.title ?? "Your AI Workforce has suggested a knowledge update for your review.",
+        id, type: "knowledge", icon: "🧠",
+        title:     "Knowledge update proposed",
+        body:      p.title ?? "Your AI Workforce has suggested a knowledge update for your review.",
         timestamp: p.createdAt ?? new Date().toISOString(),
-        read: read.has(`proposal-${p.id}`),
+        read:      isRead(id),
+        archived:  isArchived(id),
         actionPath: `/app/${slug}/memory`, actionLabel: "Review",
         priority: "normal",
       });
@@ -197,30 +320,32 @@ export default function NotificationCentrePage() {
     // Conversation unread count (synthetic item)
     const unreadCount: number = unreadData?.unreadCount ?? 0;
     if (unreadCount > 0) {
+      const id = "conv-unread";
       items.push({
-        id: "conv-unread", type: "conversation", icon: "💬",
-        title: `${unreadCount} unread message${unreadCount > 1 ? "s" : ""}`,
-        body: "Your Chief of Staff or team members have sent messages you haven't read yet.",
+        id, type: "conversation", icon: "💬",
+        title:     `${unreadCount} unread message${unreadCount > 1 ? "s" : ""}`,
+        body:      "Your Chief of Staff or team members have sent messages you haven't read yet.",
         timestamp: new Date().toISOString(),
-        read: read.has("conv-unread"),
+        read:      isRead(id),
+        archived:  isArchived(id),
         actionPath: `/app/${slug}/chat`, actionLabel: "Open Chat",
         priority: unreadCount > 5 ? "high" : "normal",
       });
     }
 
     return items.sort((a, b) => {
-      // Priority first, then time
       if (a.priority !== b.priority) return a.priority === "high" ? -1 : 1;
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [completedWorkData, approvalsData, proposalsData, unreadData, read, slug]);
+  }, [completedWorkData, approvalsData, proposalsData, unreadData, isRead, isArchived, slug]);
 
-  // Apply filters
+  // ── Apply filters ─────────────────────────────────────────────────────────
+
   const filtered = useMemo(() => {
     return notifications.filter(n => {
-      if (tab === "unread"   && n.read)               return false;
-      if (tab === "archived" && !archived.has(n.id))  return false;
-      if (tab !== "archived" && archived.has(n.id))   return false;
+      if (tab === "unread"   && n.read)         return false;
+      if (tab === "archived" && !n.archived)    return false;
+      if (tab !== "archived" && n.archived)     return false;
       if (typeFilter !== "all" && n.type !== typeFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -228,16 +353,17 @@ export default function NotificationCentrePage() {
       }
       return true;
     });
-  }, [notifications, tab, archived, typeFilter, search]);
+  }, [notifications, tab, typeFilter, search]);
 
-  const unreadInView = filtered.filter(n => !n.read).length;
+  const unreadInView    = filtered.filter(n => !n.read).length;
+  const totalUnread     = notifications.filter(n => !n.read && !n.archived).length;
 
   const TYPE_FILTERS: { key: NotifType | "all"; label: string }[] = [
-    { key: "all",         label: "All types" },
-    { key: "work",        label: "Work" },
-    { key: "approval",    label: "Approvals" },
-    { key: "knowledge",   label: "Knowledge" },
-    { key: "conversation",label: "Conversations" },
+    { key: "all",          label: "All types" },
+    { key: "work",         label: "Work" },
+    { key: "approval",     label: "Approvals" },
+    { key: "knowledge",    label: "Knowledge" },
+    { key: "conversation", label: "Conversations" },
   ];
 
   return (
@@ -249,13 +375,11 @@ export default function NotificationCentrePage() {
           <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-[#E2E8F0]">Notifications</h1>
-              <p className="text-[#64748B] text-sm mt-1">
-                {notifications.filter(n => !n.read && !archived.has(n.id)).length} unread
-              </p>
+              <p className="text-[#64748B] text-sm mt-1">{totalUnread} unread</p>
             </div>
             {unreadInView > 0 && tab !== "archived" && (
               <button
-                onClick={() => markAllRead(filtered.map(n => n.id))}
+                onClick={() => handleMarkRead(filtered.filter(n => !n.read).map(n => n.id))}
                 className="shrink-0 px-4 py-2 bg-[#112033] border border-[#1E3A5F] text-[#64748B] text-sm rounded-lg hover:text-[#E2E8F0] transition-colors"
               >
                 Mark all read
@@ -368,23 +492,40 @@ export default function NotificationCentrePage() {
                         <div className="flex items-center gap-2 mt-3">
                           {n.actionPath && (
                             <button
-                              onClick={() => { markRead(n.id); setLocation(n.actionPath!); }}
+                              onClick={() => {
+                                handleMarkRead([n.id]);
+                                setLocation(n.actionPath!);
+                              }}
                               className="px-3 py-1.5 bg-[#00D4FF]/10 border border-[#00D4FF]/30 text-[#00D4FF] text-xs rounded-lg hover:bg-[#00D4FF]/20 transition-colors font-medium"
                             >
                               {n.actionLabel ?? "Open"}
                             </button>
                           )}
-                          {!n.read && (
+                          {!n.read ? (
                             <button
-                              onClick={() => markRead(n.id)}
+                              onClick={() => handleMarkRead([n.id])}
                               className="px-3 py-1.5 bg-[#0B1829] border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors"
                             >
                               Mark read
                             </button>
-                          )}
-                          {tab !== "archived" && (
+                          ) : (
                             <button
-                              onClick={() => archiveItem(n.id)}
+                              onClick={() => handleMarkUnread([n.id])}
+                              className="px-3 py-1.5 bg-[#0B1829] border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors"
+                            >
+                              Mark unread
+                            </button>
+                          )}
+                          {tab === "archived" ? (
+                            <button
+                              onClick={() => handleRestore([n.id])}
+                              className="px-3 py-1.5 bg-[#0B1829] border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors"
+                            >
+                              Restore
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleArchive([n.id])}
                               className="px-3 py-1.5 bg-[#0B1829] border border-[#1E3A5F] text-[#64748B] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors"
                             >
                               Archive

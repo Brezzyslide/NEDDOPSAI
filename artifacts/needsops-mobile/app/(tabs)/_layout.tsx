@@ -31,6 +31,10 @@ function NativeTabLayout() {
         <Icon sf={{ default: 'checkmark.seal', selected: 'checkmark.seal.fill' }} />
         <Label>Approvals</Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="notifications">
+        <Icon sf={{ default: 'bell', selected: 'bell.fill' }} />
+        <Label>Alerts</Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="system">
         <Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} />
         <Label>System</Label>
@@ -129,6 +133,18 @@ function ClassicTabLayout() {
               <SymbolView name="checkmark.seal" tintColor={color} size={24} />
             ) : (
               <Feather name="shield" size={22} color={color} />
+            ),
+        }}
+      />
+      <Tabs.Screen
+        name="notifications"
+        options={{
+          title: 'Alerts',
+          tabBarIcon: ({ color }) =>
+            isIOS ? (
+              <SymbolView name="bell" tintColor={color} size={24} />
+            ) : (
+              <Feather name="bell" size={22} color={color} />
             ),
         }}
       />

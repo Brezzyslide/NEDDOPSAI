@@ -104,6 +104,8 @@ export const REQUIRED_RLS_TABLES = [
   "completed_work_versions",
   "completed_work_comments",
   "completed_work_assets",
+  // Task #36 — Server-side notification state
+  "notification_reads",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
