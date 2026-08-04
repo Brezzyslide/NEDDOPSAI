@@ -15,7 +15,17 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
-import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
+import {
+  dispatchWorkExecution,
+  resumeFromCheckpoint,
+} from "../../services/executionCoordinatorService.js";
+import {
+  subscribeToExecutionEvents,
+  getBufferedEventsSince,
+  type ExecutionEvent,
+} from "../../services/executionEventBus.js";
+import { hasActiveCheckpoint } from "../../services/executionCheckpointStore.js";
+import { getConversationTimeline } from "../../services/executionTimelineService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -156,6 +166,19 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
 
     // Send acknowledgement
     sendEvent({ type: "ack" });
+
+    // Sprint 27.1 — Checkpoint resume: if this conversation has a paused execution
+    // waiting for clarification, resume it in the background with the user's reply.
+    if (hasActiveCheckpoint(req.params.conversationId!)) {
+      resumeFromCheckpoint({
+        conversationId: req.params.conversationId!,
+        organizationId: ctx.tenantId,
+        requesterId: user.id,
+        clarificationAnswer: content.trim(),
+      }).catch(err =>
+        console.warn("[conversations] Checkpoint resume failed (non-fatal):", err?.message),
+      );
+    }
 
     // Process the message (classify + generate response)
     const result = await conversationService.processUserMessage(
@@ -347,6 +370,129 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       specialists: result.specialists,
       conversationId: conv.id,
     });
+  } catch (err) { next(err); }
+});
+
+// ─── Execution progress SSE stream (Sprint 27.1) ──────────────────────────────
+/**
+ * GET /v1/organisations/:slug/conversations/:conversationId/execution-stream
+ *
+ * Server-Sent Events stream for live execution progress.
+ * - Sends buffered events on reconnect (via Last-Event-ID header or ?lastEventId= query param).
+ * - Heartbeat every 15 seconds.
+ * - Closes after receiving a terminal event (completed / failed) or 5-minute idle timeout.
+ *
+ * Security: tenant-scoped — org slug resolved and verified before subscribing.
+ * No internal names (manifest, pipeline, intent) ever appear in event payloads.
+ */
+router.get("/:conversationId/execution-stream", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const { conversationId } = req.params as { conversationId: string };
+
+    const conv = await conversationService.getConversationById(ctx.tenantId, conversationId);
+    if (!conv) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Conversation not found." } });
+      return;
+    }
+
+    // Last-Event-ID header or query param for reconnect catch-up
+    const rawLastId = req.headers["last-event-id"] ?? req.query.lastEventId;
+    const lastEventId = rawLastId ? parseInt(String(rawLastId), 10) : 0;
+
+    // SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+
+    const sendEvent = (event: ExecutionEvent) => {
+      // Strip any internal field names from the payload before sending to client
+      const safe = {
+        id: event.eventId,
+        type: event.type,
+        humanLabel: event.humanLabel,
+        completedWorkId: event.completedWorkId,
+        errorMessage: event.errorMessage,
+        clarificationQuestions: event.clarificationQuestions,
+        timestamp: event.timestamp,
+      };
+      res.write(`id: ${event.eventId}\ndata: ${JSON.stringify(safe)}\n\n`);
+    };
+
+    const sendHeartbeat = () => {
+      res.write(`: heartbeat\n\n`);
+    };
+
+    // Catch-up: replay any buffered events missed since lastEventId
+    const missed = getBufferedEventsSince(conversationId, lastEventId);
+    for (const e of missed) sendEvent(e);
+
+    // Subscribe to live events
+    const TERMINAL_TYPES = new Set(["execution_completed", "execution_failed"]);
+    let isTerminated = false;
+
+    const cleanup = subscribeToExecutionEvents(conversationId, (event) => {
+      if (isTerminated) return;
+      sendEvent(event);
+      if (TERMINAL_TYPES.has(event.type)) {
+        isTerminated = true;
+        clearInterval(heartbeatTimer);
+        clearTimeout(idleTimeout);
+        res.end();
+      }
+    });
+
+    // Heartbeat every 15 seconds
+    const heartbeatTimer = setInterval(sendHeartbeat, 15_000);
+
+    // 5-minute idle timeout (in case execution never fires a terminal event)
+    const idleTimeout = setTimeout(() => {
+      if (!isTerminated) {
+        isTerminated = true;
+        cleanup();
+        clearInterval(heartbeatTimer);
+        res.write(`data: ${JSON.stringify({ type: "timeout", humanLabel: "Stream closed after inactivity." })}\n\n`);
+        res.end();
+      }
+    }, 5 * 60 * 1000);
+
+    // Clean up on client disconnect
+    req.on("close", () => {
+      isTerminated = true;
+      cleanup();
+      clearInterval(heartbeatTimer);
+      clearTimeout(idleTimeout);
+    });
+
+  } catch (err) {
+    if (!res.headersSent) next(err);
+    else res.end();
+  }
+});
+
+// ─── Execution timeline (Sprint 27.1) ─────────────────────────────────────────
+/**
+ * GET /v1/organisations/:slug/conversations/:conversationId/execution-timeline
+ *
+ * Returns a chronological execution timeline built from the conversation's
+ * execution_update messages. No new DB tables — derived from existing messages.
+ * Surfaced in: Completed Work, Governance Centre, Audit, Workforce Ops.
+ */
+router.get("/:conversationId/execution-timeline", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const { conversationId } = req.params as { conversationId: string };
+
+    const conv = await conversationService.getConversationById(ctx.tenantId, conversationId);
+    if (!conv) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Conversation not found." } });
+      return;
+    }
+
+    const timeline = await getConversationTimeline(ctx.tenantId, conversationId);
+    res.json({ timeline });
   } catch (err) { next(err); }
 });
 

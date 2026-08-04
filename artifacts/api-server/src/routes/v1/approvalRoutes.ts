@@ -8,6 +8,8 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import * as approvalService from "../../services/approvalService.js";
 import * as auditService from "../../services/auditService.js";
+import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
+import { getTaskById } from "../../services/taskService.js";
 import type { ApprovalType, ApprovalState } from "@workspace/shared";
 
 const router = Router({ mergeParams: true });
@@ -114,7 +116,29 @@ router.post("/:approvalId/resolve", requireAuth, resolveTenantFromSlug, async (r
       ...meta,
     }).catch(() => {});
 
-    res.json({ approval });
+    // Sprint 27.1 — Unified approval execution:
+    // When any approval is granted for a task, dispatch the work execution pipeline.
+    // This covers Chat approvals, Governance Centre, Executive Dashboard, and Mobile —
+    // all routes call POST /approvals/:id/resolve, so wiring it here covers every source.
+    // The coordinator is idempotent and safe to call even if already dispatched.
+    if (action === "approved" && approval.taskId) {
+      getTaskById(approval.taskId, ctx.tenantId)
+        .then(task => {
+          if (!task) return;
+          return dispatchWorkExecution({
+            organizationId: ctx.tenantId,
+            taskId: task.id,
+            taskTitle: task.title,
+            taskDescription: task.description ?? undefined,
+            requesterId: user.id,
+          });
+        })
+        .catch(err =>
+          console.warn("[approvalRoutes] Post-approval dispatch failed (non-fatal):", err?.message),
+        );
+    }
+
+    res.json({ approval, executionDispatched: action === "approved" && !!approval.taskId });
   } catch (err) {
     next(err);
   }

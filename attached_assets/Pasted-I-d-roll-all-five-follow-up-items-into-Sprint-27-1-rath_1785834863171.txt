@@ -1,0 +1,347 @@
+I’d roll all five follow-up items into Sprint 27.1 rather than creating another sprint. They are all part of making the execution engine feel production-ready.
+
+⸻
+
+Sprint 27.1 — Intelligent Execution Experience & Recovery
+
+You are implementing Sprint 27.1 only.
+
+Before writing any code:
+
+1. Inspect the current Sprint 27 implementation.
+2. Verify exactly what was completed.
+3. Identify only the remaining execution experience gaps.
+4. Do not rebuild completed functionality.
+5. Extend the existing execution architecture.
+
+The execution pipeline is now wired:
+
+User Chat → Chief of Staff → Execution Intent → Approval → Execution Coordinator → Work Execution Pipeline → Completed Work → Conversation
+
+This sprint improves the experience, resilience and transparency of that pipeline.
+
+⸻
+
+Part 1 — Live SSE Execution Progress
+
+Replace database-only progress updates with real-time Server-Sent Events.
+
+Current behaviour:
+
+Pipeline
+↓
+
+Conversation messages written to database
+
+↓
+
+UI eventually sees updates
+
+Required behaviour:
+
+Pipeline
+
+↓
+
+Execution Coordinator
+
+↓
+
+SSE
+
+↓
+
+Chat updates immediately
+
+Display live stages such as:
+
+* Planning work…
+* Building Work Package…
+* Reviewing organisational knowledge…
+* Consulting specialist…
+* Reviewing legislation…
+* Running quality review…
+* Preparing completed work…
+* Awaiting approval…
+* Completed
+
+Do not expose internal implementation names like manifests, execution IDs or pipelines.
+
+Heartbeat every 15–30 seconds.
+
+Reconnect safely without duplicate events.
+
+Support browser refresh during execution.
+
+⸻
+
+Part 2 — Checkpoint-Based Clarification
+
+Execution must never restart from the beginning after clarification.
+
+Current:
+
+Execution
+
+↓
+
+Clarification
+
+↓
+
+Restart
+
+Required:
+
+Execution
+
+↓
+
+Checkpoint
+
+↓
+
+Ask clarification
+
+↓
+
+Persist state
+
+↓
+
+Resume from checkpoint
+
+Persist:
+
+* Current stage
+* Retrieved knowledge
+* Built work package
+* Execution context
+* Partial outputs
+* Specialist state
+
+Resuming should continue from the last successful checkpoint.
+
+⸻
+
+Part 3 — Unified Approval Execution
+
+Every approval source must execute through the same coordinator.
+
+Inspect all approval sources including:
+
+* Chat approvals
+* Governance Centre
+* Executive Dashboard
+* Mobile approvals
+* Completed Work approvals (where applicable)
+
+Refactor so they all call:
+
+executionCoordinatorService
+
+No approval path should bypass the coordinator.
+
+⸻
+
+Part 4 — Execution Timeline
+
+Create a professional execution timeline.
+
+Every execution automatically records events.
+
+Example:
+
+09:01
+
+Chief of Staff accepted request
+
+↓
+
+09:02
+
+Execution approved
+
+↓
+
+09:02
+
+Work Package assembled
+
+↓
+
+09:03
+
+Knowledge retrieved
+
+↓
+
+09:04
+
+Incident Specialist started
+
+↓
+
+09:06
+
+Quality review completed
+
+↓
+
+09:07
+
+Completed Work generated
+
+↓
+
+09:08
+
+Awaiting approval
+
+↓
+
+09:12
+
+Approved
+
+Timeline should appear in:
+
+* Completed Work
+* Governance
+* Audit
+* Workforce Operations
+
+Do not duplicate audit events.
+
+Build a reusable timeline service.
+
+⸻
+
+Part 5 — Execution Recovery
+
+Support recovery after interruption.
+
+Examples:
+
+* API restart
+* Worker restart
+* Lost SSE connection
+* Browser refresh
+
+Execution should resume automatically.
+
+Persist:
+
+* Current stage
+* Checkpoints
+* Progress
+* Context
+* Retry state
+
+Never repeat completed stages unnecessarily.
+
+⸻
+
+Part 6 — UX Improvements
+
+The user should always know what is happening.
+
+Never show:
+
+* ExecutionIntent
+* Manifest
+* Pipeline
+* Runtime Package
+
+Instead display:
+
+Preparing work…
+
+Consulting organisational knowledge…
+
+Reviewing legislation…
+
+Consulting Compliance Manager…
+
+Running quality review…
+
+Preparing final document…
+
+Completed.
+
+⸻
+
+Part 7 — Audit & Governance
+
+Record:
+
+* Stage started
+* Stage completed
+* Pause
+* Resume
+* Retry
+* Failure
+* Recovery
+* Completion
+
+Ensure audit entries link to:
+
+* Conversation
+* Completed Work
+* Execution
+* Timeline
+
+⸻
+
+Part 8 — Testing
+
+Add comprehensive tests covering:
+
+* Live SSE progress
+* Browser reconnect
+* Heartbeats
+* Duplicate prevention
+* Pause/resume
+* Checkpoint persistence
+* Recovery after restart
+* Timeline creation
+* Unified approvals
+* Audit
+* Tenant isolation
+
+All existing tests must continue to pass.
+
+⸻
+
+Deliverables
+
+Produce:
+
+1. Inspection report
+    * What already existed
+    * What was added
+    * Files modified
+2. Architecture summary
+3. Test summary
+4. Remaining execution gaps (if any)
+5. Confirm the platform now supports:
+
+* Live execution progress
+* Checkpoint resume
+* Automatic recovery
+* Unified approvals
+* Execution timeline
+
+without duplicating existing Sprint 27 functionality.
+
+⸻
+
+Important
+
+Do not implement Sprint 28 or later.
+
+Do not redesign the execution engine.
+
+Do not duplicate completed work.
+
+Only extend the existing Sprint 27 implementation to deliver a polished, resilient, enterprise-grade execution experience.

@@ -87,11 +87,19 @@ export interface ExecuteWorkInput {
    * Errors are caught and logged; they never abort the pipeline.
    */
   onProgress?: ExecutionProgressCallback;
+  /**
+   * Checkpoint data for resuming a paused execution after clarification.
+   * When provided, stages 1 (select blueprint) and 2 (assemble package) are
+   * skipped — the checkpoint's blueprint + manifest are used directly and the
+   * user's clarification answer is appended to the request.
+   */
+  checkpointData?: ExecutionCheckpointData;
 }
 
 export type ExecutionOutcome =
   | "completed"
   | "validation_failed"
+  | "awaiting_clarification"
   | "no_blueprint"
   | "execution_failed";
 
@@ -108,10 +116,30 @@ export interface ExecuteWorkResult {
   clarificationQuestions?: string[];
 }
 
+/**
+ * Checkpoint data provided when resuming a paused execution.
+ * When present, pipeline skips blueprint selection and manifest assembly
+ * and resumes from the validation stage with the pre-built manifest.
+ */
+export interface ExecutionCheckpointData {
+  /** Correlation ID of the original execution run */
+  correlationId: string;
+  /** Blueprint selected in the original run */
+  blueprint: WorkBlueprint | null;
+  /** Work package manifest assembled in the original run */
+  manifest: WorkPackageManifest;
+  /** User's answer to the clarification questions */
+  clarificationAnswer: string;
+}
+
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkResult> {
-  const { organizationId, requesterId, userRequest } = input;
+  const { organizationId, requesterId } = input;
+  // When resuming from a checkpoint, enrich the user request with the clarification answer
+  const userRequest = input.checkpointData
+    ? `${input.userRequest}\n\nClarification provided: ${input.checkpointData.clarificationAnswer}`
+    : input.userRequest;
 
   // Convenience wrapper — errors in progress callbacks must never abort the pipeline
   const progress = async (stage: ExecutionStage, detail?: string) => {
@@ -119,45 +147,59 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     try { await input.onProgress(stage, detail); } catch { /* swallow */ }
   };
 
-  // ── Step 1: Select Blueprint ─────────────────────────────────────────────
-  await progress("selecting_blueprint");
-  let blueprint: WorkBlueprint | null = null;
+  let blueprint: WorkBlueprint | null;
+  let manifest: WorkPackageManifest;
 
-  if (input.blueprintId) {
-    blueprint = await getBlueprintById(input.blueprintId, organizationId);
-  } else if (input.blueprintCode) {
-    const selection = await selectBlueprint(input.blueprintCode, organizationId);
-    blueprint = selection.blueprint;
+  if (input.checkpointData) {
+    // ── Checkpoint resume: skip steps 1 & 2 ─────────────────────────────────
+    // The blueprint and manifest were already built in the original run.
+    // Resuming here prevents rebuilding expensive organisational context.
+    blueprint = input.checkpointData.blueprint;
+    manifest  = input.checkpointData.manifest;
   } else {
-    const selection = await selectBlueprint(userRequest, organizationId);
-    blueprint = selection.blueprint;
-  }
+    // ── Step 1: Select Blueprint ───────────────────────────────────────────
+    await progress("selecting_blueprint");
+    blueprint = null;
 
-  // ── Step 2: Assemble Work Package Manifest ────────────────────────────────
-  await progress("assembling_package");
-  const manifest = await assembleWorkPackage({
-    organizationId,
-    requesterId,
-    conversationId: input.conversationId,
-    blueprint,
-    taskUploadSourceIds: input.taskUploadSourceIds,
-    entityKnowledge: input.entityKnowledge,
-  });
+    if (input.blueprintId) {
+      blueprint = await getBlueprintById(input.blueprintId, organizationId);
+    } else if (input.blueprintCode) {
+      const selection = await selectBlueprint(input.blueprintCode, organizationId);
+      blueprint = selection.blueprint;
+    } else {
+      const selection = await selectBlueprint(userRequest, organizationId);
+      blueprint = selection.blueprint;
+    }
+
+    // ── Step 2: Assemble Work Package Manifest ────────────────────────────
+    await progress("assembling_package");
+    manifest = await assembleWorkPackage({
+      organizationId,
+      requesterId,
+      conversationId: input.conversationId,
+      blueprint,
+      taskUploadSourceIds: input.taskUploadSourceIds,
+      entityKnowledge: input.entityKnowledge,
+    });
+  }
 
   // ── Step 3: Validate prerequisites ───────────────────────────────────────
   await progress("validating");
   const validationResult = validateWorkPackage(manifest, blueprint);
 
   if (!validationResult.passed) {
+    const clarificationQuestions = validationResult.missingItems.map(
+      item => `Can you provide or upload the required ${item}?`,
+    );
     return {
-      outcome: "validation_failed",
+      // awaiting_clarification signals the coordinator to pause + save a
+      // checkpoint rather than posting a failure message
+      outcome: "awaiting_clarification",
       manifestId: manifest.id,
       blueprintCode: blueprint?.code,
       validationResult,
-      message: `I cannot proceed without the following: ${validationResult.missingItems.join(", ")}. ${validationResult.summary}`,
-      clarificationQuestions: validationResult.missingItems.map(
-        item => `Can you provide or upload the required ${item}?`
-      ),
+      message: `I need a little more information before I can proceed: ${validationResult.missingItems.join(", ")}. ${validationResult.summary}`,
+      clarificationQuestions,
     };
   }
 

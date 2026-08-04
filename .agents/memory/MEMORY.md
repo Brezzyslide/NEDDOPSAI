@@ -40,3 +40,4 @@
 - [NeedsOps Task #34 Connector Fleet](needsops-sprint34.md) — platformDeviceService, disable/revoke separation, stale heartbeat, vitest only scans src/__tests__/ not subdirs, 2120 tests
 - [NeedsOps Task #36 Notification State](needsops-sprint36.md) — notification_reads table, legacy messageIds dual-write to message_reads (critical), nav badge, REQUIRED_RLS_TABLES=68, 2331 passing
 - [NeedsOps Sprint 27 Execution Loop](needsops-sprint27.md) — executionCoordinatorService bridges approval→executeWork, onProgress callback, 4 conversation lifecycle helpers, lib/shared dist must be patched manually, 2603 tests
+- [NeedsOps Sprint 27.1 Execution Experience](needsops-sprint271.md) — live SSE event bus, checkpoint store, timeline service, clarification resume, unified approvals, orphan recovery, 2650 tests

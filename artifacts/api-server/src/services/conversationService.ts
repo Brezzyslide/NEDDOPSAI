@@ -768,6 +768,40 @@ export async function postExecutionFailedToConversation(
   });
 }
 
+/**
+ * Posts a clarification request from the execution pipeline to the conversation.
+ * Called when validation requires the user to provide missing information before
+ * execution can continue. The execution is paused (checkpointed), not failed.
+ */
+export async function postClarificationRequestToConversation(
+  organizationId: string,
+  conversationId: string,
+  taskId: string,
+  clarificationQuestions: string[],
+  correlationId: string,
+): Promise<ConversationMessage> {
+  const questionList = clarificationQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n");
+  const card = buildExecutionUpdateCard({
+    eventType: "execution.awaiting_approval",
+    message: `Clarification required before work can continue.`,
+    timestamp: new Date().toISOString(),
+  });
+  (card.data as Record<string, unknown>).clarificationQuestions = clarificationQuestions;
+  (card.data as Record<string, unknown>).eventType = "execution.paused";
+
+  return addMessage({
+    organizationId,
+    conversationId,
+    taskId: taskId || undefined,
+    senderType: "chief_of_staff",
+    workforceRoleCode: "chief_of_staff",
+    messageType: "execution_update",
+    content: `Before I continue, I need a little more information:\n\n${questionList}\n\nPlease reply with the details above and I'll pick up right where I left off.`,
+    structuredContent: card,
+    correlationId,
+  });
+}
+
 // ─── Runtime event (OpenClaw) ──────────────────────────────────────────────────
 
 /** Convert an OpenClaw runtime event into a readable thread message. */

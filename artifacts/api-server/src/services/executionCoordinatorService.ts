@@ -1,22 +1,20 @@
 /**
- * Execution Coordinator Service — Sprint 27
+ * Execution Coordinator Service — Sprint 27 / Sprint 27.1
  *
- * Bridges the gap between intent/task approval and the Work Execution Pipeline.
- * This is the single authoritative place where "approval happened → work executes".
+ * The single authoritative bridge between approval and execution.
  *
- * Responsibilities:
- * 1. Approve the execution intent and mark it dispatched.
- * 2. Reconstruct execution context from the task linked to the intent.
- * 3. Post lifecycle messages to the conversation (started, progress, completed, failed).
- * 4. Call workExecutionPipelineService.executeWork() in the background.
- * 5. Never silently fail — all failures are posted to the conversation.
+ * Sprint 27:  approval → executeWork() → conversation lifecycle messages
+ * Sprint 27.1 adds:
+ *   - Live SSE event emission alongside DB messages
+ *   - Checkpoint save on clarification (instead of failure message)
+ *   - Resume from checkpoint after user answers clarification
+ *   - Recovery of orphaned dispatched intents after restart
  *
- * The approval route returns immediately; execution runs asynchronously.
- * Idempotency: an intent can only be dispatched once (status: dispatched).
+ * Never silently fails — all errors surface to the conversation and audit log.
  */
 
 import { randomUUID } from "crypto";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lt, or } from "drizzle-orm";
 import {
   db,
   executionIntentsTable,
@@ -24,24 +22,32 @@ import {
   conversationsTable,
   type ExecutionIntent,
 } from "@workspace/db";
-import { executeWork } from "./workExecutionPipelineService.js";
+import { executeWork, EXECUTION_STAGE_LABELS } from "./workExecutionPipelineService.js";
+import type { ExecutionStage, ExecutionCheckpointData } from "./workExecutionPipelineService.js";
 import {
   postExecutionStartedToConversation,
   postExecutionProgressToConversation,
   postCompletedWorkCreatedToConversation,
   postExecutionFailedToConversation,
+  postClarificationRequestToConversation,
 } from "./conversationService.js";
 import { logOrgEvent } from "./auditService.js";
-import type { ExecutionStage } from "./workExecutionPipelineService.js";
+import {
+  emitExecutionEvent,
+} from "./executionEventBus.js";
+import {
+  saveCheckpoint,
+  getCheckpoint,
+  clearCheckpoint,
+} from "./executionCheckpointStore.js";
+import type { WorkBlueprint } from "./workBlueprintService.js";
+import type { WorkPackageManifest } from "./workPackageService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CoordinateIntentApprovalResult {
-  /** Whether the intent was approved and dispatched for execution. */
   dispatched: boolean;
-  /** Whether background execution was successfully started. */
   executionStarted: boolean;
-  /** Why dispatch was skipped (if dispatched === false). */
   skipReason?: string;
 }
 
@@ -55,86 +61,75 @@ export interface DispatchWorkExecutionInput {
   correlationId?: string;
 }
 
+export interface ResumeFromCheckpointInput {
+  conversationId: string;
+  organizationId: string;
+  requesterId: string;
+  clarificationAnswer: string;
+}
+
 // ─── Intent approval coordinator ──────────────────────────────────────────────
 
 /**
  * Approves an execution intent and immediately starts the Work Execution Pipeline
  * in the background. Posts lifecycle messages to the linked conversation.
- *
- * Idempotent: if the intent is already dispatched, returns { dispatched: false }.
+ * Idempotent — double approval returns { dispatched: false }.
  */
 export async function coordinateIntentApproval(
   intentId: string,
   organizationId: string,
   approvedBy: string,
 ): Promise<CoordinateIntentApprovalResult> {
-  // 1. Fetch the intent
   const [intent] = await db
     .select()
     .from(executionIntentsTable)
-    .where(
-      and(
-        eq(executionIntentsTable.id, intentId),
-        eq(executionIntentsTable.organizationId, organizationId),
-      ),
-    )
+    .where(and(
+      eq(executionIntentsTable.id, intentId),
+      eq(executionIntentsTable.organizationId, organizationId),
+    ))
     .limit(1);
 
   if (!intent) {
     return { dispatched: false, executionStarted: false, skipReason: "intent_not_found" };
   }
 
-  // 2. Idempotency — already approved/dispatched
   if (intent.status === "dispatched" || intent.status === "completed") {
     return { dispatched: false, executionStarted: false, skipReason: "already_dispatched" };
   }
 
-  // 3. Approve + mark dispatched
   await db
     .update(executionIntentsTable)
-    .set({
-      status: "approved",
-      approvedBy,
-      approvedAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(executionIntentsTable.id, intentId),
-        eq(executionIntentsTable.organizationId, organizationId),
-      ),
-    );
+    .set({ status: "approved", approvedBy, approvedAt: new Date(), updatedAt: new Date() })
+    .where(and(
+      eq(executionIntentsTable.id, intentId),
+      eq(executionIntentsTable.organizationId, organizationId),
+    ));
 
-  // 4. Resolve conversation for this task
   const conversationId = await resolveConversationForTask(organizationId, intent.taskId);
 
-  // 5. Fetch task for context
   const [task] = await db
     .select()
     .from(tasksTable)
-    .where(
-      and(
-        eq(tasksTable.organizationId, organizationId),
-        eq(tasksTable.id, intent.taskId),
-      ),
-    )
+    .where(and(
+      eq(tasksTable.organizationId, organizationId),
+      eq(tasksTable.id, intent.taskId),
+    ))
     .limit(1);
 
   const correlationId = randomUUID();
 
-  // 6. Post "started" message to conversation (non-blocking)
   if (conversationId) {
-    postExecutionStartedToConversation(
-      organizationId,
+    emitExecutionEvent(conversationId, {
+      type: "execution_started",
       conversationId,
-      intent.taskId,
       correlationId,
-    ).catch(err =>
-      console.warn("[ExecutionCoordinator] Failed to post started message:", err?.message),
-    );
+      organizationId,
+      humanLabel: "Work approved and starting…",
+    });
+    postExecutionStartedToConversation(organizationId, conversationId, intent.taskId, correlationId)
+      .catch(err => console.warn("[ExecutionCoordinator] Failed to post started message:", err?.message));
   }
 
-  // 7. Audit dispatch
   await logOrgEvent({
     eventType: "execution_intent.dispatched",
     organizationId,
@@ -145,13 +140,11 @@ export async function coordinateIntentApproval(
     metadata: { taskId: intent.taskId, correlationId, intentType: intent.intentType },
   }).catch(() => {});
 
-  // 8. Mark dispatched
   await db
     .update(executionIntentsTable)
     .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
     .where(eq(executionIntentsTable.id, intentId));
 
-  // 9. Fire-and-forget background execution
   const userRequest = task?.description ?? task?.title ?? intent.description;
   runExecutionInBackground({
     organizationId,
@@ -175,16 +168,20 @@ export async function dispatchWorkExecution(
 ): Promise<void> {
   const correlationId = input.correlationId ?? randomUUID();
 
-  // Post started message
   if (input.conversationId) {
+    emitExecutionEvent(input.conversationId, {
+      type: "execution_started",
+      conversationId: input.conversationId,
+      correlationId,
+      organizationId: input.organizationId,
+      humanLabel: "Work is starting…",
+    });
     postExecutionStartedToConversation(
       input.organizationId,
       input.conversationId,
       input.taskId ?? "",
       correlationId,
-    ).catch(err =>
-      console.warn("[ExecutionCoordinator] Failed to post started message:", err?.message),
-    );
+    ).catch(err => console.warn("[ExecutionCoordinator] Failed to post started message:", err?.message));
   }
 
   await logOrgEvent({
@@ -207,6 +204,141 @@ export async function dispatchWorkExecution(
   });
 }
 
+/**
+ * Resume execution from a checkpoint after the user has answered clarification questions.
+ * Loads the saved manifest + blueprint and re-runs the pipeline from step 3 (validation).
+ */
+export async function resumeFromCheckpoint(
+  input: ResumeFromCheckpointInput,
+): Promise<void> {
+  const { conversationId, organizationId, requesterId, clarificationAnswer } = input;
+
+  const checkpoint = getCheckpoint(conversationId);
+  if (!checkpoint) {
+    console.warn("[ExecutionCoordinator] resumeFromCheckpoint: no active checkpoint for conversation", conversationId);
+    return;
+  }
+
+  // Clear the checkpoint so it's not reused
+  clearCheckpoint(conversationId);
+
+  const correlationId = checkpoint.correlationId;
+
+  if (conversationId) {
+    emitExecutionEvent(conversationId, {
+      type: "execution_recovered",
+      conversationId,
+      correlationId,
+      organizationId,
+      humanLabel: "Resuming from where we left off…",
+    });
+    postExecutionStartedToConversation(organizationId, conversationId, "", correlationId)
+      .catch(() => {});
+  }
+
+  await logOrgEvent({
+    eventType: "execution_coordinator.dispatch_started",
+    organizationId,
+    actorType: "system",
+    resourceType: "conversation",
+    resourceId: conversationId,
+    metadata: { correlationId, resumed: true, clarificationAnswer: clarificationAnswer.slice(0, 200) },
+  }).catch(() => {});
+
+  const checkpointData: ExecutionCheckpointData = {
+    correlationId,
+    blueprint: checkpoint.blueprint,
+    manifest: checkpoint.manifest,
+    clarificationAnswer,
+  };
+
+  runExecutionInBackground({
+    organizationId,
+    requesterId,
+    taskId: undefined,
+    userRequest: checkpoint.originalRequest,
+    conversationId,
+    correlationId,
+    intentId: undefined,
+    checkpointData,
+  });
+}
+
+/**
+ * Scans for execution intents that were dispatched but never completed — e.g.
+ * after an API restart. Re-queues them for background execution.
+ * Safe to call multiple times (idempotent per intent).
+ */
+export async function recoverOrphanedExecutions(organizationId?: string): Promise<number> {
+  const STALE_THRESHOLD_MINUTES = 10;
+  const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MINUTES * 60 * 1000);
+
+  const conditions = [
+    eq(executionIntentsTable.status, "dispatched"),
+    lt(executionIntentsTable.dispatchedAt, staleCutoff),
+  ];
+  if (organizationId) {
+    conditions.push(eq(executionIntentsTable.organizationId, organizationId));
+  }
+
+  const staleIntents = await db
+    .select()
+    .from(executionIntentsTable)
+    .where(and(...conditions))
+    .limit(50);
+
+  let recovered = 0;
+
+  for (const intent of staleIntents) {
+    try {
+      const conversationId = await resolveConversationForTask(intent.organizationId, intent.taskId);
+      const [task] = await db
+        .select()
+        .from(tasksTable)
+        .where(and(
+          eq(tasksTable.id, intent.taskId),
+          eq(tasksTable.organizationId, intent.organizationId),
+        ))
+        .limit(1);
+
+      const correlationId = randomUUID();
+      const userRequest = task?.description ?? task?.title ?? intent.description;
+
+      if (conversationId) {
+        emitExecutionEvent(conversationId, {
+          type: "execution_recovered",
+          conversationId,
+          correlationId,
+          organizationId: intent.organizationId,
+          humanLabel: "Recovering previous execution…",
+        });
+        postExecutionStartedToConversation(intent.organizationId, conversationId, intent.taskId, correlationId)
+          .catch(() => {});
+      }
+
+      runExecutionInBackground({
+        organizationId: intent.organizationId,
+        requesterId: intent.approvedBy ?? "system",
+        taskId: intent.taskId,
+        userRequest,
+        conversationId: conversationId ?? undefined,
+        correlationId,
+        intentId: intent.id,
+      });
+
+      recovered++;
+    } catch (err) {
+      console.error("[ExecutionCoordinator] Recovery failed for intent", intent.id, err);
+    }
+  }
+
+  if (recovered > 0) {
+    console.info(`[ExecutionCoordinator] Recovered ${recovered} orphaned execution(s).`);
+  }
+
+  return recovered;
+}
+
 // ─── Background runner ────────────────────────────────────────────────────────
 
 interface BackgroundRunInput {
@@ -217,29 +349,17 @@ interface BackgroundRunInput {
   conversationId?: string;
   correlationId: string;
   intentId?: string;
+  checkpointData?: ExecutionCheckpointData;
 }
 
-/**
- * Runs executeWork() fully asynchronously.
- * Posts progress, completion, and failure messages to the conversation.
- * Never throws — all errors are swallowed after being persisted.
- */
 function runExecutionInBackground(input: BackgroundRunInput): void {
-  // Deliberately NOT awaited — caller returns immediately
   executeWorkAsync(input).catch(err => {
     console.error("[ExecutionCoordinator] Unhandled background execution error:", err?.message);
   });
 }
 
 async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
-  const {
-    organizationId,
-    requesterId,
-    taskId,
-    userRequest,
-    conversationId,
-    correlationId,
-  } = input;
+  const { organizationId, requesterId, taskId, userRequest, conversationId, correlationId } = input;
 
   try {
     const result = await executeWork({
@@ -248,21 +368,67 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       userRequest,
       conversationId,
       correlationId,
+      checkpointData: input.checkpointData,
       onProgress: async (stage: ExecutionStage) => {
-        if (!conversationId) return;
-        await postExecutionProgressToConversation(
-          organizationId,
-          conversationId,
-          taskId ?? "",
-          stage,
-          correlationId,
-        ).catch(err =>
-          console.warn("[ExecutionCoordinator] Progress message failed:", err?.message),
-        );
+        const humanLabel = EXECUTION_STAGE_LABELS[stage] ?? stage;
+
+        // Emit to SSE clients immediately
+        if (conversationId) {
+          emitExecutionEvent(conversationId, {
+            type: "execution_progress",
+            conversationId,
+            correlationId,
+            organizationId,
+            stage,
+            humanLabel,
+          });
+          await postExecutionProgressToConversation(
+            organizationId,
+            conversationId,
+            taskId ?? "",
+            stage,
+            correlationId,
+          ).catch(err => console.warn("[ExecutionCoordinator] Progress message failed:", err?.message));
+        }
       },
     });
 
-    // Audit outcome
+    // ── Handle awaiting_clarification ─────────────────────────────────────────
+    if (result.outcome === "awaiting_clarification" && result.clarificationQuestions?.length) {
+      if (conversationId) {
+        // Save checkpoint so the conversation can resume after the user answers
+        saveCheckpoint({
+          correlationId,
+          conversationId,
+          organizationId,
+          requesterId,
+          originalRequest: userRequest,
+          blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
+          manifest: (result as { manifest?: WorkPackageManifest }).manifest!,
+          clarificationQuestions: result.clarificationQuestions,
+        });
+
+        emitExecutionEvent(conversationId, {
+          type: "execution_clarification_required",
+          conversationId,
+          correlationId,
+          organizationId,
+          humanLabel: "I need a little more information…",
+          clarificationQuestions: result.clarificationQuestions,
+        });
+
+        await postClarificationRequestToConversation(
+          organizationId,
+          conversationId,
+          taskId ?? "",
+          result.clarificationQuestions,
+          correlationId,
+        ).catch(() => {});
+      }
+      return; // Do NOT post failure — execution is paused, not failed
+    }
+
+    // ── Audit outcome ─────────────────────────────────────────────────────────
     await logOrgEvent({
       eventType: result.outcome === "completed"
         ? "execution_coordinator.completed"
@@ -280,8 +446,17 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }).catch(() => {});
 
     if (result.outcome === "completed" && result.completedWorkId && conversationId) {
-      // Derive a human-readable title from the message
       const title = userRequest.slice(0, 80) + (userRequest.length > 80 ? "…" : "");
+
+      emitExecutionEvent(conversationId, {
+        type: "execution_completed",
+        conversationId,
+        correlationId,
+        organizationId,
+        humanLabel: "Work completed and ready for review.",
+        completedWorkId: result.completedWorkId,
+      });
+
       await postCompletedWorkCreatedToConversation(
         organizationId,
         conversationId,
@@ -290,11 +465,8 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         title,
         result.qualityScore ?? null,
         correlationId,
-      ).catch(err =>
-        console.warn("[ExecutionCoordinator] Completed work message failed:", err?.message),
-      );
+      ).catch(err => console.warn("[ExecutionCoordinator] Completed work message failed:", err?.message));
 
-      // Mark intent as completed (if from an intent)
       if (input.intentId) {
         await db
           .update(executionIntentsTable)
@@ -303,15 +475,22 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           .catch(() => {});
       }
     } else if (result.outcome !== "completed" && conversationId) {
+      emitExecutionEvent(conversationId, {
+        type: "execution_failed",
+        conversationId,
+        correlationId,
+        organizationId,
+        humanLabel: "There was a problem completing this work.",
+        errorMessage: result.message,
+      });
+
       await postExecutionFailedToConversation(
         organizationId,
         conversationId,
         taskId ?? "",
         result.message,
         correlationId,
-      ).catch(err =>
-        console.warn("[ExecutionCoordinator] Failure message failed:", err?.message),
-      );
+      ).catch(err => console.warn("[ExecutionCoordinator] Failure message failed:", err?.message));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "An unexpected error occurred during execution.";
@@ -326,23 +505,22 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }).catch(() => {});
 
     if (conversationId) {
-      await postExecutionFailedToConversation(
-        organizationId,
+      emitExecutionEvent(conversationId, {
+        type: "execution_failed",
         conversationId,
-        taskId ?? "",
-        message,
         correlationId,
-      ).catch(() => {});
+        organizationId,
+        humanLabel: "An unexpected error occurred.",
+        errorMessage: message,
+      });
+      await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", message, correlationId)
+        .catch(() => {});
     }
   }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Finds the conversation linked to a task (task_workroom type preferred).
- * Returns null if no conversation exists yet.
- */
 async function resolveConversationForTask(
   organizationId: string,
   taskId: string,
@@ -350,27 +528,22 @@ async function resolveConversationForTask(
   const [workroom] = await db
     .select({ id: conversationsTable.id })
     .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.organizationId, organizationId),
-        eq(conversationsTable.primaryTaskId, taskId),
-        eq(conversationsTable.conversationType, "task_workroom"),
-      ),
-    )
+    .where(and(
+      eq(conversationsTable.organizationId, organizationId),
+      eq(conversationsTable.primaryTaskId, taskId),
+      eq(conversationsTable.conversationType, "task_workroom"),
+    ))
     .limit(1);
 
   if (workroom) return workroom.id;
 
-  // Fall back to any conversation linked to this task
   const [any] = await db
     .select({ id: conversationsTable.id })
     .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.organizationId, organizationId),
-        eq(conversationsTable.primaryTaskId, taskId),
-      ),
-    )
+    .where(and(
+      eq(conversationsTable.organizationId, organizationId),
+      eq(conversationsTable.primaryTaskId, taskId),
+    ))
     .limit(1);
 
   return any?.id ?? null;
