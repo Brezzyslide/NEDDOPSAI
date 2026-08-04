@@ -21,6 +21,12 @@ function PlansSection({ fetch }: { fetch: ReturnType<typeof usePlatformFetch> })
   const [expanded, setExpanded] = useState<string | null>(null);
   const [versions, setVersions] = useState<Record<string, any[]>>({});
 
+  // Trial edit state — keyed by planId
+  const [editTrialPlanId, setEditTrialPlanId] = useState<string | null>(null);
+  const [trialInput, setTrialInput] = useState<{ noTrial: boolean; days: string }>({ noTrial: false, days: "14" });
+  const [trialSaving, setTrialSaving] = useState(false);
+  const [trialError, setTrialError] = useState("");
+
   const load = useCallback(() => {
     setLoading(true);
     fetch("/commercial/plans").then(r => r.json()).then(d => setPlans(d.plans ?? [])).finally(() => setLoading(false));
@@ -52,6 +58,34 @@ function PlansSection({ fetch }: { fetch: ReturnType<typeof usePlatformFetch> })
     loadVersions(planId);
   };
 
+  const openTrialEdit = (plan: any) => {
+    setTrialInput({
+      noTrial: plan.trialLengthDays === 0,
+      days: plan.trialLengthDays > 0 ? String(plan.trialLengthDays) : "14",
+    });
+    setTrialError("");
+    setEditTrialPlanId(plan.id);
+  };
+
+  const saveTrialLength = async (planId: string) => {
+    const days = trialInput.noTrial ? 0 : Number(trialInput.days);
+    if (!trialInput.noTrial && (isNaN(days) || days < 1 || days > 365)) {
+      setTrialError("Enter between 1 and 365 days, or choose 'No trial'.");
+      return;
+    }
+    setTrialSaving(true); setTrialError("");
+    try {
+      const r = await fetch(`/commercial/plans/${planId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ trialLengthDays: days }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setTrialError(d.error?.message ?? "Save failed."); return; }
+      setEditTrialPlanId(null);
+      load();
+    } finally { setTrialSaving(false); }
+  };
+
   if (loading) return <div className="py-8 text-center text-sm text-[#4A5568]">Loading plans…</div>;
 
   return (
@@ -73,8 +107,18 @@ function PlansSection({ fetch }: { fetch: ReturnType<typeof usePlatformFetch> })
                 {!plan.isPublic && <span className="rounded-full bg-[#1E3A5F] px-1.5 py-0.5 text-xs text-[#64748B]">Hidden</span>}
               </div>
               <div className="mt-1 text-xs text-[#64748B]">{plan.description}</div>
-              <div className="mt-1 flex flex-wrap gap-3 text-xs text-[#4A5568]">
-                <span>Trial: {plan.trialLengthDays}d</span>
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[#4A5568]">
+                <span>
+                  Trial:{" "}
+                  {plan.trialLengthDays > 0
+                    ? <span className="text-[#94A3B8]">{plan.trialLengthDays}d</span>
+                    : <span className="text-amber-500">No trial</span>}
+                  {" "}<button
+                    onClick={() => editTrialPlanId === plan.id ? setEditTrialPlanId(null) : openTrialEdit(plan)}
+                    className="text-[#00D4FF] hover:underline">
+                    {editTrialPlanId === plan.id ? "Cancel" : "✏"}
+                  </button>
+                </span>
                 {plan.monthlyPriceCents && <span>Monthly: {(plan.monthlyPriceCents / 100).toFixed(2)} {plan.currency}</span>}
                 {plan.annualPriceCents && <span>Annual: {(plan.annualPriceCents / 100).toFixed(2)} {plan.currency}</span>}
                 <span>{plan.subscriberCount} subscribers</span>
@@ -91,6 +135,50 @@ function PlansSection({ fetch }: { fetch: ReturnType<typeof usePlatformFetch> })
               </button>
             </div>
           </div>
+
+          {/* Inline trial duration edit */}
+          {editTrialPlanId === plan.id && (
+            <div className="border-t border-[#00D4FF]/20 bg-[#00D4FF]/5 p-4 space-y-3">
+              <p className="text-xs font-semibold text-[#00D4FF]">Edit trial duration — {plan.name}</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={trialInput.noTrial}
+                  onChange={e => setTrialInput(v => ({ ...v, noTrial: e.target.checked }))}
+                  className="h-4 w-4 rounded border-[#1E3A5F] accent-[#00D4FF]"
+                />
+                <span className="text-sm text-[#E2E8F0]">No trial for this plan</span>
+              </label>
+              {!trialInput.noTrial && (
+                <div className="flex items-end gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-[#64748B]">Trial days (1–365)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="365"
+                      value={trialInput.days}
+                      onChange={e => setTrialInput(v => ({ ...v, days: e.target.value }))}
+                      className="w-28 rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-1.5 text-sm text-[#E2E8F0] focus:border-[#00D4FF] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-amber-500">⚠ Only affects new trials — active trials are not changed.</p>
+              {trialError && <p className="text-xs text-red-400 bg-red-950/20 rounded px-2 py-1">{trialError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => saveTrialLength(plan.id)}
+                  disabled={trialSaving}
+                  className="rounded-lg bg-[#00D4FF] px-4 py-1.5 text-sm font-semibold text-[#0B1829] hover:bg-[#00B8D9] disabled:opacity-50">
+                  {trialSaving ? "Saving…" : "Save"}
+                </button>
+                <button onClick={() => setEditTrialPlanId(null)} className="rounded-lg border border-[#1E3A5F] px-4 py-1.5 text-sm text-[#94A3B8] hover:border-[#00D4FF]">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {expanded === plan.id && (
             <div className="border-t border-[#1E3A5F] p-4">

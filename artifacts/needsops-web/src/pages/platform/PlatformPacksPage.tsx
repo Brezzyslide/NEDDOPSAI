@@ -31,6 +31,8 @@ interface Pack {
   displayOrder: number;
   featured: boolean;
   isPubliclyVisible: boolean;
+  trialLengthDays: number;
+  trialEligible: boolean;
   pricing: PackPricing;
   specialists: { code: string; displayName: string; icon: string; executionStatus: string }[];
 }
@@ -68,6 +70,7 @@ const BLANK_FORM = {
   code: "", name: "", description: "", marketingTagline: "",
   iconEmoji: "", colorHex: "#00D4FF", industry: "ndis_provider",
   tier: "professional" as Pack["tier"], displayOrder: "99", featured: false, isFree: false,
+  trialEligible: true, trialLengthDays: "14",
 };
 
 const BLANK_PRICE_FORM = {
@@ -134,6 +137,8 @@ export default function PlatformPacksPage() {
       displayOrder: String(p.displayOrder),
       featured: p.featured,
       isFree: p.isFree,
+      trialEligible: p.trialEligible ?? true,
+      trialLengthDays: String(p.trialLengthDays ?? 14),
     });
     setMode("edit");
     setError("");
@@ -149,7 +154,7 @@ export default function PlatformPacksPage() {
     try {
       const r = await apiFetch(`/v1/platform/packs/${p.code}/prices`);
       const d = await r.json();
-      setPriceVersions(d.versions ?? []);
+      setPriceVersions(d.priceVersions ?? []);
     } finally { setPricingLoading(false); }
   };
 
@@ -157,6 +162,7 @@ export default function PlatformPacksPage() {
     if (!form.name.trim()) { setError("Name is required."); return; }
     setSaving(true); setError("");
     try {
+      const trialDays = Number(form.trialLengthDays);
       const body = {
         name: form.name,
         code: form.code || undefined,
@@ -169,6 +175,8 @@ export default function PlatformPacksPage() {
         displayOrder: Number(form.displayOrder),
         featured: form.featured,
         isFree: form.isFree,
+        trialEligible: form.trialEligible,
+        trialLengthDays: form.trialEligible ? (isNaN(trialDays) ? 14 : Math.max(1, Math.min(90, trialDays))) : 0,
       };
 
       let r: Response;
@@ -206,7 +214,7 @@ export default function PlatformPacksPage() {
       });
       const d = await r.json();
       if (!r.ok) { setPriceError(d.error?.message ?? "Failed to create version."); return; }
-      setPriceVersions(v => [d.version, ...v]);
+      setPriceVersions(v => [d.priceVersion, ...v]);
       setShowNewPriceForm(false);
       setPriceForm({ ...BLANK_PRICE_FORM });
       flash("Draft price version created.");
@@ -220,7 +228,7 @@ export default function PlatformPacksPage() {
       // Reload versions
       const r2 = await apiFetch(`/v1/platform/packs/${selected.code}/prices`);
       const d2 = await r2.json();
-      setPriceVersions(d2.versions ?? []);
+      setPriceVersions(d2.priceVersions ?? []);
       await loadPacks();
       flash(`Price version ${action}d.`);
     }
@@ -415,6 +423,34 @@ export default function PlatformPacksPage() {
                       <p className="text-xs text-[#64748B]">Included at no charge. Paid packs use versioned prices (set via 💰 Pricing).</p>
                     </div>
                   </label>
+                </div>
+
+                <div className="border-t border-[#1E3A5F] pt-4">
+                  <p className="text-xs text-[#64748B] uppercase tracking-wider mb-3">Trial configuration</p>
+                  <label className="mb-3 flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.trialEligible}
+                      onChange={e => upd("trialEligible", e.target.checked)}
+                      className="h-4 w-4 rounded border-[#1E3A5F] accent-[#00D4FF]"
+                    />
+                    <span className="text-sm text-[#E2E8F0]">Trial eligible</span>
+                  </label>
+                  {form.trialEligible && (
+                    <Field label="Trial duration (days)" hint="1–90 days; applies to new trials only">
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        value={form.trialLengthDays}
+                        onChange={e => upd("trialLengthDays", e.target.value)}
+                        className={INPUT}
+                      />
+                    </Field>
+                  )}
+                  <p className="mt-1 text-xs text-amber-500">
+                    ⚠ Changes only apply to new trials. Running trials are not affected.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

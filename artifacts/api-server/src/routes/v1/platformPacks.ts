@@ -174,6 +174,11 @@ router.patch("/:code", requirePlatformAuth, async (req, res) => {
     const [pack] = await db.update(workforcePacksTable).set(updates).where(eq(workforcePacksTable.code, req.params.code)).returning();
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
     invalidatePublicPacksCache();
+    await auditService.writeAuditEvent({
+      actorUserId: req.platformUserId!, actorType: "platform_staff",
+      eventType: "workforce_pack.updated" as any, resourceType: "workforce_pack",
+      resourceId: pack.id, metadata: { packCode: pack.code, changes: Object.keys(updates).filter(k => k !== "updatedAt") },
+    }).catch(() => {});
     res.json({ pack: await packWithDetail(pack) });
   } catch (err: any) {
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: err.message } });

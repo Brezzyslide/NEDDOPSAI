@@ -329,6 +329,32 @@ export default function PlatformOrgDetail() {
   // Trial modal
   const [showConvertModal, setShowConvertModal] = useState(false);
 
+  // ── Trial extend form ────────────────────────────────────────────────────────
+  const [showExtendForm, setShowExtendForm] = useState(false);
+  const [extendDays, setExtendDays] = useState("7");
+  const [extendReason, setExtendReason] = useState("");
+  const [extendBusy, setExtendBusy] = useState(false);
+  const [extendError, setExtendError] = useState("");
+
+  const handleExtendTrial = async (subId: string) => {
+    const days = Number(extendDays);
+    if (!days || days < 1 || days > 365) { setExtendError("Enter between 1 and 365 days."); return; }
+    if (!extendReason.trim()) { setExtendError("A reason is required — it will be logged."); return; }
+    setExtendBusy(true); setExtendError("");
+    try {
+      const r = await fetch(`/trials/${subId}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ additionalDays: days, reason: extendReason }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setExtendError(d.error?.message ?? "Error extending trial."); return; }
+      setShowExtendForm(false);
+      setExtendDays("7");
+      setExtendReason("");
+      load();
+    } finally { setExtendBusy(false); }
+  };
+
   // Pack panel
   const [showGrantPack, setShowGrantPack] = useState(false);
 
@@ -562,17 +588,9 @@ export default function PlatformOrgDetail() {
                               ✓ Convert Trial to Paid
                             </button>
                             <button
-                              onClick={async () => {
-                                const days = window.prompt("Extend trial by how many additional days?");
-                                if (!days || isNaN(Number(days)) || Number(days) <= 0) return;
-                                const r = await fetch(`/trials/${sub.id}/extend`, {
-                                  method: "POST",
-                                  body: JSON.stringify({ additionalDays: Number(days), reason: "Extended from platform console" }),
-                                });
-                                if (r.ok) load(); else { const d = await r.json(); alert(d.error?.message ?? "Error extending trial."); }
-                              }}
+                              onClick={() => { setShowExtendForm(v => !v); setExtendError(""); }}
                               className="rounded-lg border border-[#1E3A5F] px-3 py-1.5 text-sm text-[#00D4FF] hover:bg-[#1E3A5F]">
-                              + Extend Trial
+                              {showExtendForm ? "Cancel" : "+ Extend Trial"}
                             </button>
                             <button
                               onClick={async () => {
@@ -587,6 +605,59 @@ export default function PlatformOrgDetail() {
                               ✕ Cancel Trial
                             </button>
                           </div>
+
+                          {/* Structured trial extend form */}
+                          {showExtendForm && (
+                            <div className="mt-4 rounded-lg border border-[#00D4FF]/30 bg-[#0B1829] p-4 space-y-3">
+                              <div className="text-xs text-[#94A3B8]">
+                                Current trial end:{" "}
+                                <span className="font-semibold text-[#E2E8F0]">
+                                  {sub.trialEndAt ? new Date(sub.trialEndAt).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" }) : "Not set"}
+                                </span>
+                              </div>
+                              <p className="text-xs text-amber-500">
+                                ⚠ This override applies to this organisation only and will be logged.
+                              </p>
+                              {extendError && (
+                                <p className="text-xs text-red-400 bg-red-950/20 rounded px-2 py-1">{extendError}</p>
+                              )}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="mb-1 block text-xs text-[#64748B]">Additional days</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max="365"
+                                    value={extendDays}
+                                    onChange={e => setExtendDays(e.target.value)}
+                                    className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-1.5 text-sm text-[#E2E8F0] focus:border-[#00D4FF] focus:outline-none"
+                                  />
+                                  {extendDays && sub.trialEndAt && (
+                                    <div className="mt-1 text-xs text-[#64748B]">
+                                      New end: {new Date(new Date(sub.trialEndAt).getTime() + Number(extendDays) * 86_400_000).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-xs text-[#64748B]">Reason (required, logged)</label>
+                                  <input
+                                    type="text"
+                                    value={extendReason}
+                                    onChange={e => setExtendReason(e.target.value)}
+                                    placeholder="e.g. Customer onboarding delay"
+                                    className="w-full rounded-lg border border-[#1E3A5F] bg-[#08111e] px-3 py-1.5 text-sm text-[#E2E8F0] placeholder-[#4A5568] focus:border-[#00D4FF] focus:outline-none"
+                                  />
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleExtendTrial(sub.id)}
+                                disabled={extendBusy}
+                                className="rounded-lg bg-[#00D4FF] px-4 py-1.5 text-sm font-semibold text-[#0B1829] hover:bg-[#00B8D9] disabled:opacity-50"
+                              >
+                                {extendBusy ? "Extending…" : "Confirm Extension"}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </>
