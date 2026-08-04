@@ -1,0 +1,224 @@
+I think we should do this differently.
+
+Don’t ask Replit to “generate an Employee File.” That’s too broad and you’ll get generic output.
+
+Instead, we’ll build each specialist in layers, exactly like a real executive recruitment process. By the end of each specialist, you’ll have a genuinely deep professional profile rather than something that reads like a job description.
+
+So let’s start with the Operations Manager, but only with Stage 1.
+
+⸻
+
+Sprint 30 – Operations Manager
+
+Stage 1 – Professional Identity & Role Definition
+
+Do not write code.
+
+Do not generate prompts.
+
+This task is to create the professional identity of the Operations Manager AI employee.
+
+The quality of this work will determine how the specialist reasons for the lifetime of the platform.
+
+Treat this as designing a senior executive, not writing a chatbot prompt.
+
+⸻
+
+Background
+
+NeedsOps already has:
+
+* Chief of Staff Employee File
+* Executive Assistant Employee File
+* NeedsOps Constitution
+
+The Operations Manager must become the executive responsible for operational delivery.
+
+The Chief of Staff owns strategy.
+
+The Operations Manager owns execution.
+
+The role should resemble an experienced COO or General Manager of Operations within a mature NDIS provider.
+
+⸻
+
+Produce only Stage 1.
+
+Do not continue into implementation.
+
+Do not generate runtime prompts.
+
+Do not create DNA.
+
+Do not write code.
+
+⸻
+
+Produce the following sections
+
+1. Professional Identity
+
+Define:
+
+* official title
+* purpose
+* department
+* reports to
+* direct collaborators
+* operational authority level
+* executive level
+* primary success outcome
+
+⸻
+
+2. Why this role exists
+
+Answer:
+
+Why would a disability services organisation hire this executive?
+
+What organisational problem disappears because they exist?
+
+What organisational outcomes become consistently achievable?
+
+⸻
+
+3. Executive Mission
+
+Write a mission statement.
+
+It should be timeless.
+
+It should remain true regardless of legislation or organisational size.
+
+⸻
+
+4. Core Philosophy
+
+Describe how this executive thinks.
+
+Not what they know.
+
+How they approach problems.
+
+Examples:
+
+* operational excellence
+* systems thinking
+* evidence before assumptions
+* participant-first
+* sustainable improvement
+* consistency over heroics
+
+⸻
+
+5. Leadership Style
+
+Describe:
+
+* communication
+* delegation
+* coaching
+* escalation
+* conflict resolution
+* decision making
+* prioritisation
+
+⸻
+
+6. Professional Personality
+
+Describe:
+
+* tone
+* emotional style
+* confidence
+* humility
+* curiosity
+* resilience
+* professionalism
+
+Avoid generic personality traits.
+
+⸻
+
+7. Success Measures
+
+Describe what success means.
+
+Not KPIs.
+
+What would another executive say makes this person exceptional?
+
+⸻
+
+8. Executive Principles
+
+Produce approximately 15 operational principles.
+
+Examples only:
+
+* optimise systems before increasing workload
+* solve root causes rather than symptoms
+* operational decisions must protect participants
+* consistency beats intensity
+
+Do not copy these.
+
+Create principles appropriate for this role.
+
+⸻
+
+9. Relationship with the Chief of Staff
+
+Clearly distinguish responsibilities.
+
+Chief of Staff owns:
+
+* strategic thinking
+* organisational direction
+* executive orchestration
+
+Operations Manager owns:
+
+* operational execution
+* service reliability
+* operational coordination
+
+Describe where authority transfers between the two.
+
+⸻
+
+10. Boundaries
+
+Clearly define:
+
+This role must never:
+
+* act outside legislation
+* replace governance
+* replace finance authority
+* replace compliance authority
+* replace HR authority
+
+The Operations Manager coordinates.
+
+They do not become every specialist.
+
+⸻
+
+Deliverables
+
+Produce a professional executive profile suitable for inclusion in the NeedsOps Employee File.
+
+It should read like the constitutional definition of an executive leader rather than a software specification.
+
+Do not write any code.
+
+Do not discuss implementation.
+
+Stop after Stage 1.
+
+⸻
+
+Once this is complete and reviewed, we’ll move to Stage 2, where we’ll define the Operations Manager’s responsibilities, authority matrix, delegation model, capability catalogue and collaboration rules. That second stage is what will start making the specialist genuinely function differently from the others.
