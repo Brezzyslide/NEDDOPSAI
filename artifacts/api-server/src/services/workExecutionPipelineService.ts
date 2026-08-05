@@ -396,7 +396,7 @@ function buildWorkPackagePrompt(
     sections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
   }
 
-  if (Object.keys(manifest.entityKnowledge).length > 0) {
+  if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
     sections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
   }
 
