@@ -1,0 +1,443 @@
+Sprint 27.3 – Knowledge Resolution & Evidence Delivery Engine
+
+This sprint implements the missing architecture between the Knowledge Library and specialist execution.
+
+Background
+
+The inspection identified three architectural gaps:
+
+1. Specialists receive only metadata (title, sourceType) for organisation documents. They never receive the document content or retrieved evidence.
+
+2. Replacing a document resets the knowledge source to status='uploaded', making it disappear from the execution pipeline until manually re-approved.
+
+3. Blueprint selection relies primarily on keyword matching, causing valid operational requests to fall back to the Chief of Staff instead of the appropriate specialist.
+
+These are architecture gaps, not isolated bugs.
+
+Do not weaken validation.
+Do not bypass evidence requirements.
+Do not remove blueprint validation.
+
+Instead complete the knowledge delivery architecture.
+
+────────────────────────────────────────
+PART 1 – Knowledge Resolution Layer
+
+Create a dedicated KnowledgeResolutionService.
+
+This becomes the single authoritative service responsible for delivering evidence into specialist execution.
+
+Flow:
+
+Work Package
+        ↓
+KnowledgeResolutionService
+        ↓
+Hybrid Retrieval
+        ↓
+Evidence Ranking
+        ↓
+Evidence Pack
+        ↓
+Runtime Manifest
+        ↓
+Specialist
+
+The service must:
+
+• Receive:
+    organisationId
+    specialistCode
+    blueprint
+    workPackage
+    userRequest
+
+• Resolve:
+
+- organisation policies
+- procedures
+- legislation
+- standards
+- organisation memory
+- uploaded task documents
+- blueprint-required knowledge
+- mandatory citations
+
+Return:
+
+EvidencePack
+
+containing:
+
+- retrieved chunks
+- citations
+- source ids
+- source titles
+- confidence
+- authority level
+- version
+- why each chunk was selected
+
+The specialist should never perform retrieval itself.
+
+────────────────────────────────────────
+PART 2 – Evidence Pack
+
+Replace metadata-only manifests.
+
+Current:
+
+Organisation Library
+
+- Medication Policy
+- Incident Policy
+
+Replace with:
+
+Evidence Pack
+
+Policy:
+Medication Policy
+
+Relevant sections:
+
+Section 4
+Medication Administration
+
+Section 7
+Medication Errors
+
+Section 11
+Incident Escalation
+
+Each chunk must include:
+
+- source id
+- version
+- authority
+- citation
+- confidence
+
+Do NOT dump entire documents.
+
+Retrieve only relevant evidence.
+
+────────────────────────────────────────
+PART 3 – Work Execution Pipeline
+
+Update:
+
+workExecutionPipelineService
+
+Current:
+
+Manifest
+↓
+
+LLM
+
+Required:
+
+Manifest
+↓
+
+KnowledgeResolutionService
+
+↓
+
+Evidence Pack
+
+↓
+
+buildWorkPackagePrompt()
+
+↓
+
+LLM
+
+The generated prompt must contain:
+
+=== AUTHORITATIVE EVIDENCE ===
+
+rather than document titles.
+
+The prompt should clearly distinguish:
+
+Organisation Policy
+
+Legislation
+
+Organisation Memory
+
+Participant Documents
+
+Task Uploads
+
+Blueprint Instructions
+
+Only retrieved evidence should be included.
+
+────────────────────────────────────────
+PART 4 – Specialist Runtime
+
+Every specialist should receive:
+
+Task
+
+Objectives
+
+Evidence Pack
+
+Organisation Memory
+
+Professional DNA
+
+Blueprint
+
+Expected Deliverables
+
+Validation Rules
+
+The runtime should never receive only document names.
+
+────────────────────────────────────────
+PART 5 – Document Replacement
+
+Review:
+
+replaceSourceVersion()
+
+Current behaviour:
+
+status='approved'
+
+↓
+
+replace
+
+↓
+
+status='uploaded'
+
+↓
+
+document disappears
+
+Required:
+
+Replacing a version must preserve the parent knowledge source approval.
+
+Update only:
+
+- storage key
+- checksum
+- version label
+- timestamps
+
+Do not reset approval unless explicitly required.
+
+Immediately enqueue:
+
+- ingestion
+- embedding generation
+- evidence refresh
+
+Do not require manual intervention.
+
+────────────────────────────────────────
+PART 6 – Ingestion Pipeline
+
+Replacing or superseding a document must automatically:
+
+replace
+
+↓
+
+ingest
+
+↓
+
+chunk
+
+↓
+
+embed
+
+↓
+
+refresh retrieval index
+
+↓
+
+available to specialists
+
+No manual ingestion should be required.
+
+Preserve audit history.
+
+────────────────────────────────────────
+PART 7 – Blueprint Classification
+
+Keep keyword matching as a fast path.
+
+If confidence is low:
+
+Call an LLM classifier.
+
+Provide:
+
+- user request
+- available blueprints
+- blueprint objectives
+- specialist ownership
+
+Return:
+
+selected blueprint
+
+confidence
+
+reasoning
+
+Only use semantic classification when keyword confidence is below threshold.
+
+Do not call the LLM unnecessarily.
+
+────────────────────────────────────────
+PART 8 – Runtime Citations
+
+Every generated document must internally retain:
+
+evidence chunk ids
+
+source ids
+
+versions
+
+citations
+
+These should feed:
+
+Completed Work
+
+Quality Review
+
+Audit
+
+Future "Show Evidence" functionality.
+
+The user should eventually be able to inspect:
+
+Which policies
+
+Which legislation
+
+Which procedures
+
+Which memory entries
+
+supported every recommendation.
+
+────────────────────────────────────────
+PART 9 – Performance
+
+Avoid loading entire libraries.
+
+Requirements:
+
+- retrieve only relevant chunks
+- cache retrieval per execution
+- invalidate cache when knowledge changes
+- avoid duplicate retrieval
+- batch chunk queries where appropriate
+
+Measure:
+
+average retrieval time
+
+chunks returned
+
+cache hit rate
+
+────────────────────────────────────────
+PART 10 – Tests
+
+Add comprehensive tests covering:
+
+Knowledge Resolution
+
+- retrieves relevant chunks
+- excludes unrelated chunks
+- honours authority levels
+- honours organisation boundaries
+- honours approval status
+
+Evidence Pack
+
+- correct citations
+- confidence
+- chunk ordering
+- version tracking
+
+Pipeline
+
+- specialist receives evidence
+- no metadata-only execution
+- citations preserved
+
+Replacement
+
+- approval preserved
+- ingestion queued
+- embeddings refreshed
+- evidence immediately available
+
+Blueprint Classification
+
+- keyword hit
+- semantic fallback
+- Operations Manager selection
+- Chief of Staff fallback only when appropriate
+
+Regression
+
+- specialists no longer ask for already-approved policies
+- replaced policies remain available
+- completed work cites evidence
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Architecture diagram
+
+Knowledge Library
+↓
+
+Knowledge Resolution Service
+↓
+
+Evidence Pack
+↓
+
+Runtime Manifest
+↓
+
+Specialist
+
+2. Files changed
+
+3. Migration summary (if required)
+
+4. Performance impact
+
+5. Test results
+
+6. Confirmation that:
+
+- Specialists receive evidence instead of document titles.
+- Replaced approved documents remain available.
+- Ingestion is automatic after replacement.
+- Blueprint selection supports semantic classification.
+- Completed Work retains evidence provenance.

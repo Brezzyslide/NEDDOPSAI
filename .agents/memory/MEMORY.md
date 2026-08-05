@@ -50,3 +50,4 @@
 - [NeedsOps Task #27 CoS Auto-Dispatch](needsops-task27-auto-dispatch.md) — autoDispatchService fires when confidence≥0.85+shouldCreateTask; task_auto_created SSE before done event; idempotency via conv.primaryTaskId; 3053 tests
 - [NeedsOps addMessage undefined crash](needsops-addmessage-undefined-crash.md) — `return msg!` in addMessage silently returned undefined when DB RETURNING yielded 0 rows; Sprint 27.2 idempotent handler crashed at msg.id; 3062 tests
 - [NeedsOps OpenClaw Contract Investigation](needsops-openclaw-contract.md) — OpenClaw did NOT cause CoS→OM crash; boundary log + MALFORMED_BROKER_RESPONSE guard + 27 contract tests added; @workspace/openclaw alias added to vitest config; 3089 tests
+- [NeedsOps Sprint 27.3 Knowledge Resolution](needsops-sprint273.md) — no .limit() on mock chain = silent null; newVersionId not newVersion!.id in enqueue; makeSelectChain helper; REQUIRED_RLS_TABLES unchanged; 3131 tests

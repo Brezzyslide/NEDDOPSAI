@@ -30,6 +30,12 @@ import { validateWorkPackage } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
 import { createDraft } from "./completedWorkService.js";
+import {
+  resolveEvidence,
+  buildEvidenceSection,
+  buildCitationSummary,
+  type EvidencePack,
+} from "./knowledgeResolutionService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { ValidationResult } from "./workValidationService.js";
 
@@ -206,7 +212,16 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   // ── Step 4: Retrieve approved examples for style guidance ─────────────────
   await progress("retrieving_examples");
   const outputType = blueprint?.outputTypes[0] ?? "general_output";
-  const examples = await retrieveApprovedExamples(organizationId, outputType);
+  const [examples, evidencePack] = await Promise.all([
+    retrieveApprovedExamples(organizationId, outputType),
+    resolveEvidence({
+      organisationId: organizationId,
+      specialistCode: manifest.primarySpecialist,
+      blueprint,
+      workPackage: manifest,
+      userRequest,
+    }).catch(() => null), // evidence resolution must never abort the pipeline
+  ]);
   const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
   // ── Step 5: Build execution context and generate draft ────────────────────
@@ -216,7 +231,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     draftContent = await generateDraft(userRequest, manifest, blueprint, styleGuidance.guidanceBlock, {
       userId: requesterId,
       organizationId,
-    });
+    }, evidencePack ?? undefined);
   } catch (err) {
     return {
       outcome: "execution_failed",
@@ -238,16 +253,29 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   await progress("creating_completed_work");
   const title = input.title ?? deriveTitleFromRequest(userRequest, blueprint);
 
+  // Build a citation reference map from the evidence pack so completed work
+  // retains evidence provenance (which chunks → which sources were actually used).
+  const citationRefBySourceId = new Map<string, string>();
+  if (evidencePack) {
+    for (const chunk of evidencePack.chunks) {
+      if (!citationRefBySourceId.has(chunk.sourceId)) {
+        citationRefBySourceId.set(chunk.sourceId, chunk.citation);
+      }
+    }
+  }
+
   const assetIds = [
     ...manifest.organisationLibrarySources.map(s => ({
       assetId: s.sourceId,
       assetType: "library_source" as const,
       role: "supporting" as const,
+      citationRef: citationRefBySourceId.get(s.sourceId),
     })),
     ...manifest.taskUploads.map(s => ({
       assetId: s.sourceId,
       assetType: "task_upload" as const,
       role: "primary" as const,
+      citationRef: citationRefBySourceId.get(s.sourceId),
     })),
     ...manifest.cosMemories.map(m => ({
       assetId: m.memoryId,
@@ -288,6 +316,7 @@ async function generateDraft(
   blueprint: WorkBlueprint | null,
   styleGuidanceBlock: string,
   authCtx: { userId: string; organizationId: string },
+  evidencePack?: EvidencePack,
 ): Promise<string> {
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
@@ -319,7 +348,7 @@ async function generateDraft(
 
   systemPrompt += buildWorkExecutionAddendum(blueprint);
 
-  const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock);
+  const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack);
 
   const retrievedFields: string[] = [
     "organisation_library_sources",
@@ -374,28 +403,50 @@ function buildWorkPackagePrompt(
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
   styleGuidanceBlock: string,
+  evidencePack?: EvidencePack,
 ): string {
   const sections: string[] = [];
 
   sections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
 
-  if (manifest.organisationLibrarySources.length > 0) {
+  // ── Authoritative Evidence ─────────────────────────────────────────────────
+  // When an evidence pack is available, use retrieved chunk text rather than
+  // metadata-only source titles. This is the primary evidence delivery path.
+  if (evidencePack && evidencePack.totalChunks > 0) {
+    const evidenceSection = buildEvidenceSection(evidencePack);
+    if (evidenceSection) {
+      sections.push(evidenceSection);
+    }
+  } else if (manifest.organisationLibrarySources.length > 0) {
+    // Fallback: metadata only (evidence retrieval returned no chunks — document
+    // may not yet be ingested, or hybrid retrieval returned no relevant matches).
     const sourceLines = manifest.organisationLibrarySources.map(
       s => `- ${s.title} [${s.sourceType}${s.authorityLevel ? `, ${s.authorityLevel}` : ""}]`
     );
-    sections.push(`=== ORGANISATION LIBRARY SOURCES (authoritative) ===\n${sourceLines.join("\n")}`);
+    sections.push(
+      `=== ORGANISATION LIBRARY SOURCES (document metadata — content not yet indexed) ===\n` +
+      `NOTE: These documents are listed but their content could not be retrieved. ` +
+      `Use general professional knowledge for compliance guidance until the documents are ingested.\n` +
+      sourceLines.join("\n")
+    );
   }
 
+  // ── Task Uploads ───────────────────────────────────────────────────────────
+  // Task upload CONTENT is included in the evidence pack (sourceType=task_upload).
+  // If evidence pack has no task upload chunks, list as metadata fallback.
+  const hasUploadEvidence = evidencePack?.citationsByType?.["task_upload"]?.length ?? 0;
+  if (manifest.taskUploads.length > 0 && !hasUploadEvidence) {
+    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload — content not yet indexed]`);
+    sections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
+  }
+
+  // ── Organisation Memory ────────────────────────────────────────────────────
   if (manifest.cosMemories.length > 0) {
     const memLines = manifest.cosMemories.map(m => `- [${m.memoryType}] ${m.title}`);
     sections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
   }
 
-  if (manifest.taskUploads.length > 0) {
-    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload]`);
-    sections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
-  }
-
+  // ── Entity Knowledge ───────────────────────────────────────────────────────
   if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
     sections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
   }
@@ -404,12 +455,23 @@ function buildWorkPackagePrompt(
     sections.push(styleGuidanceBlock);
   }
 
+  // ── Blueprint ──────────────────────────────────────────────────────────────
   if (blueprint) {
     sections.push(
       `=== BLUEPRINT: ${blueprint.title} ===\n` +
       `Objective: ${blueprint.objective}\n` +
       `Output types: ${blueprint.outputTypes.join(", ")}\n` +
       `Mandatory citations: ${blueprint.mandatoryCitations.join(", ") || "none"}`
+    );
+  }
+
+  // ── Evidence Provenance Summary ────────────────────────────────────────────
+  if (evidencePack && evidencePack.totalChunks > 0) {
+    sections.push(
+      `=== CITATION REQUIREMENTS ===\n` +
+      `You MUST cite evidence from the AUTHORITATIVE EVIDENCE section above using the citation tags provided (e.g. [Policy Name, v2, Section 4]).\n` +
+      `Do not cite sources not present in this prompt.\n` +
+      `If evidence is insufficient, mark the affected section as [INCOMPLETE: requires <source type>].`
     );
   }
 

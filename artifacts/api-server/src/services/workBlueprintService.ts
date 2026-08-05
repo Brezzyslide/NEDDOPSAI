@@ -18,6 +18,8 @@ import { db } from "@workspace/db";
 import { workBlueprintsTable, blueprintVersionsTable } from "@workspace/db";
 import { eq, and, or, isNull, desc, ilike, inArray } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
+import { createAIGateway } from "@workspace/ai-gateway";
+import type { AIGatewayContext } from "@workspace/ai-gateway";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -528,6 +530,13 @@ function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
 
 /**
  * Select the most appropriate blueprint for a work request.
+ *
+ * Sprint 27.3: Two-stage selection:
+ *   1. Fast path — keyword substring matching (no LLM, instant).
+ *   2. Semantic fallback — LLM classifier when keyword confidence = 0.
+ *      Only fires when AI_PROVIDER=openai. Returns null with fallbackUsed=true
+ *      if OpenAI is unavailable or returns an unrecognised code.
+ *
  * Sprint 28: org blueprints (status=published) take precedence over built-ins
  * when they share the same code.
  */
@@ -546,8 +555,10 @@ export async function selectBlueprint(
   }
 
   const top = Object.entries(scores).sort((a, b) => b[1].score - a[1].score)[0];
+
   if (!top) {
-    return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    // No keyword match — attempt semantic LLM classification before giving up
+    return classifyBlueprintWithLLM(userRequest, organizationId);
   }
 
   const [code, { score, keywords: matched }] = top;
@@ -591,6 +602,149 @@ export async function selectBlueprint(
 
   const confidence = Math.min(1.0, score / 3);
   return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false };
+}
+
+// ─── LLM semantic blueprint classifier ───────────────────────────────────────
+
+/**
+ * Called when keyword matching returns zero matches.
+ * Queries the AI gateway to classify the request against available blueprints.
+ *
+ * Only runs when AI_PROVIDER=openai. Falls back to null blueprint on any error
+ * to ensure pipeline resilience.
+ *
+ * Returns the standard BlueprintSelectionResult with fallbackUsed=false when
+ * semantic classification succeeds, fallbackUsed=true when it falls back to null.
+ */
+export async function classifyBlueprintWithLLM(
+  userRequest: string,
+  organizationId: string,
+): Promise<BlueprintSelectionResult> {
+  const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
+  if (provider !== "openai") {
+    return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+  }
+
+  try {
+    // Gather all available blueprints for this org (built-in + published overrides)
+    const allRows = await db
+      .select({
+        id:               workBlueprintsTable.id,
+        code:             workBlueprintsTable.code,
+        title:            workBlueprintsTable.title,
+        objective:        workBlueprintsTable.objective,
+        primarySpecialist: workBlueprintsTable.primarySpecialist,
+        organizationId:   workBlueprintsTable.organizationId,
+      })
+      .from(workBlueprintsTable)
+      .where(
+        and(
+          eq(workBlueprintsTable.isActive, true),
+          or(
+            isNull(workBlueprintsTable.organizationId),
+            and(
+              eq(workBlueprintsTable.organizationId, organizationId),
+              eq(workBlueprintsTable.status, "published"),
+            ),
+          ),
+        )
+      )
+      .limit(100); // bounded list of active blueprints for LLM classification
+
+    if (allRows.length === 0) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    // De-duplicate: org-published beats built-in for the same code
+    const byCode = new Map<string, typeof allRows[0]>();
+    for (const row of allRows) {
+      const existing = byCode.get(row.code);
+      if (!existing || (row.organizationId !== null && existing.organizationId === null)) {
+        byCode.set(row.code, row);
+      }
+    }
+
+    const blueprintDescriptions = [...byCode.values()].map(b =>
+      `code: "${b.code}" | specialist: "${b.primarySpecialist}" | objective: "${b.objective}"`
+    ).join("\n");
+
+    const gatewayCtx: AIGatewayContext = {
+      userId:           "system",
+      organizationId:   organizationId,
+      role:             "system",
+      permissions:      [],
+      purpose:          "blueprint_classification",
+      correlationId:    randomUUID(),
+      provider:         "openai",
+      retentionClass:   "standard",
+      requiresHumanApproval: false,
+    };
+
+    const gateway = createAIGateway(gatewayCtx);
+
+    const systemPrompt = `You are a work blueprint classifier for a disability services platform.
+Given a work request and a list of available blueprints, select the single best match.
+Return ONLY a JSON object (no markdown, no explanation outside the JSON) in this exact format:
+{"blueprintCode": "<code or null>", "confidence": <0.0-1.0>, "reasoning": "<one sentence>"}
+Return blueprintCode as null if the request is casual conversation, a general question, or clearly does not require professional work execution. Prefer null over a low-confidence guess.`;
+
+    const userMessage = `Work request: "${userRequest}"\n\nAvailable blueprints:\n${blueprintDescriptions}`;
+
+    const response = await gateway.process({
+      systemPrompt,
+      userMessage,
+      maxTokens: 150,
+    });
+
+    if (response.usedFallback || !response.content) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    // Parse the JSON response
+    let parsed: { blueprintCode: string | null; confidence: number; reasoning: string };
+    try {
+      parsed = JSON.parse(response.content.trim());
+    } catch {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    if (!parsed.blueprintCode || typeof parsed.confidence !== "number") {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    // Confidence gate — only accept high-confidence classifications
+    if (parsed.confidence < 0.6) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    // Look up the blueprint in our de-duplicated map
+    const matchedRow = byCode.get(parsed.blueprintCode);
+    if (!matchedRow) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    // Fetch full blueprint row
+    const fullRows = await db
+      .select()
+      .from(workBlueprintsTable)
+      .where(eq(workBlueprintsTable.id, matchedRow.id))
+      .limit(1);
+
+    const full = fullRows[0];
+    if (!full) {
+      return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+    }
+
+    return {
+      blueprint:       mapRow(full),
+      confidence:      Math.min(1.0, parsed.confidence),
+      matchedKeywords: [], // no keyword match — semantic classification
+      fallbackUsed:    false,
+    };
+  } catch {
+    // LLM classification must never abort the pipeline
+    return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
+  }
 }
 
 /**

@@ -54,6 +54,7 @@ import {
 import { eq, and, desc, isNull, ne, not } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
+import { getIngestionQueue } from "../lib/ingestionQueue/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -608,9 +609,11 @@ export async function supersedeKnowledgeSource(
   }).catch(() => {});
 
   // Sprint 21: trigger version intelligence curation on new source
+  // Sprint 27.3: also enqueue ingestion so new content is indexed immediately
   getCurrentVersion(newSourceId, organizationId).then(newVersion => {
     getCurrentVersion(oldSourceId, organizationId).then(oldVersion => {
       if (newVersion) {
+        // Curation: review the quality / freshness of existing chunks
         enqueueCurationJobAsync({
           organizationId,
           knowledgeSourceId:  newSourceId,
@@ -618,6 +621,19 @@ export async function supersedeKnowledgeSource(
           previousVersionId:  oldVersion?.id,
           triggerEvent:       "superseded",
           actorUserId,
+        });
+        // Ingestion: extract, chunk and embed the new source content
+        getIngestionQueue().enqueue({
+          organizationId,
+          knowledgeSourceId:  newSourceId,
+          sourceVersionId:    newVersion.id,
+          actorUserId,
+        }).catch(err => {
+          console.error(
+            `[knowledgeSourceService] Failed to enqueue ingestion after supersede ` +
+            `(newSourceId=${newSourceId}, versionId=${newVersion.id}):`,
+            err,
+          );
         });
       }
     }).catch(() => {});
@@ -724,7 +740,12 @@ export async function replaceSourceVersion(
       ingestionMetadata: {},
     });
 
-    // 3. Update parent source record
+    // 3. Update parent source record — storage fields only.
+    //    Approval status is intentionally NOT reset: replacing a version of an
+    //    already-approved policy document does not revoke its approval. The new
+    //    content must be re-ingested, but the document remains visible to the
+    //    execution pipeline during that window. If the org admin decides the new
+    //    content requires re-review, they can explicitly revoke or archive it.
     await tx
       .update(knowledgeSourcesTable)
       .set({
@@ -734,7 +755,7 @@ export async function replaceSourceVersion(
         fileSize: input.fileSize,
         mimeType: input.mimeType,
         originalFileName: input.originalFileName,
-        status: "uploaded",
+        // status: intentionally omitted — preserve existing approval state
         updatedAt: new Date(),
       })
       .where(
@@ -764,6 +785,26 @@ export async function replaceSourceVersion(
       newVersionLabel,
     },
   }).catch(() => {});
+
+  // ── Automatically enqueue ingestion for the new version ───────────────────
+  // Ingestion extracts text, chunks, and embeds the new content so it becomes
+  // available to hybridRetrievalService and the KnowledgeResolutionService.
+  // This fires-and-forgets: a failure here must never abort the version swap.
+  // newVersionId is computed via randomUUID() earlier in this function —
+  // use it directly rather than newVersion!.id to avoid a null-access if the
+  // post-transaction SELECT returns no rows (e.g. in test environments).
+  getIngestionQueue().enqueue({
+    organizationId:    input.organizationId,
+    knowledgeSourceId: input.knowledgeSourceId,
+    sourceVersionId:   newVersionId,
+    actorUserId:       input.actorUserId,
+  }).catch(err => {
+    console.error(
+      `[knowledgeSourceService] Failed to enqueue ingestion after version replacement ` +
+      `(sourceId=${input.knowledgeSourceId}, versionId=${newVersionId}):`,
+      err,
+    );
+  });
 
   return { newVersion: newVersion!, oldVersion };
 }
