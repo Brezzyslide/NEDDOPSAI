@@ -25,6 +25,10 @@ import {
 } from "../../services/executionEventBus.js";
 import { handleIncomingMessage } from "../../services/messageIngressService.js";
 import { getConversationTimeline } from "../../services/executionTimelineService.js";
+import {
+  autoCreateAndDispatch,
+  AUTO_EXECUTE_CONFIDENCE_THRESHOLD,
+} from "../../services/autoDispatchService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -179,7 +183,7 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
 
     if (ingressResult.type === "checkpoint_resume") {
       sendEvent({ type: "user_message",  message: ingressResult.userMessage });
-      sendEvent({ type: "agent_message", message: ingressResult.agentMessage });
+      sendEvent({ type: "agent_message", message: ingressResult.agentMessage ?? null });
       sendEvent({ type: "done" });
       res.end();
       return;
@@ -212,7 +216,11 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     sendEvent({ type: "user_message", message: result.userMessage });
     sendEvent({
       type: "agent_message",
-      message: result.agentMessage,
+      // Coerce to null (never undefined) so JSON.stringify always includes the
+      // "message" key.  undefined causes the key to be omitted, making
+      // evt.message === undefined on the client, which crashes the Sprint 27.2
+      // idempotent handler at `msg.id` before it can guard against the value.
+      message: result.agentMessage ?? null,
       understanding: {
         conversationMode: result.understanding.conversationMode,
         confidence: result.understanding.confidence,
@@ -224,6 +232,28 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
         relatedWorkforceRoles: result.understanding.relatedWorkforceRoles,
       },
     });
+
+    // Task #27 — Auto-dispatch: if CoS proposes a task with high confidence and
+    // this conversation has no linked task yet, create + dispatch without user clicking.
+    if (
+      result.understanding.shouldCreateTask &&
+      result.understanding.confidence >= AUTO_EXECUTE_CONFIDENCE_THRESHOLD &&
+      result.understanding.proposedTask &&
+      !conv.primaryTaskId
+    ) {
+      try {
+        const autoResult = await autoCreateAndDispatch({
+          organizationId: ctx.tenantId,
+          conversationId: conv.id,
+          requesterId:    user.id,
+          proposedTask:   result.understanding.proposedTask,
+        });
+        sendEvent({ type: "task_auto_created", ...autoResult });
+      } catch (err) {
+        // Non-fatal — CoS response already delivered; don't surface task creation errors
+        console.warn("[conversations] Auto-dispatch failed (non-fatal):", (err as Error)?.message);
+      }
+    }
 
     sendEvent({ type: "done" });
     res.end();

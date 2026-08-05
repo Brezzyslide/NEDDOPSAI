@@ -182,6 +182,75 @@ export class OpenClawExecutionEngine implements ExecutionEngine {
       throw err;
     }
 
+    // ── Safe boundary log — no prompts, participant data, or credentials ──────
+    // Logs only: adapter identity, top-level response keys, presence of required
+    // fields, response status, and correlation IDs.  This log is the primary
+    // diagnostic for OpenClaw contract drift.
+    // Cast through unknown once — `brokerRequest<T>` returns T but the runtime
+    // value may be anything if the broker drifted its response shape.
+    const rawResp = brokerResponse as unknown as Record<string, unknown> | null | undefined;
+
+    console.info(JSON.stringify({
+      level: "info",
+      source: "[OpenClaw] Submission response received",
+      adapterName:            "openclaw-broker",
+      adapterVersion:         this.runtimeName,
+      // Correlation: executionId is the NeedsOps session ID sent to the broker
+      executionId:            pkg.executionId,
+      correlationId:          pkg.executionId,
+      // Top-level response keys — diagnoses field-name changes without logging values
+      responseKeys:           rawResp ? Object.keys(rawResp) : [],
+      // Presence checks for every field the engine accesses
+      hasStatus:              typeof rawResp?.status === "string",
+      hasRuntimeExecutionId:  typeof rawResp?.runtimeExecutionId === "string",
+      hasRuntimeVersion:      typeof rawResp?.runtimeVersion === "string",
+      // HTTP-level result is 202 for all non-error responses (brokerRequest throws on non-2xx)
+      httpStatus:             202,
+      responseStatus:         rawResp?.status,
+    }));
+
+    // ── Contract validation — catch malformed broker responses before they ────
+    // propagate as undefined values through the pipeline (the root cause of the
+    // "Cannot read properties of undefined" class of bugs).
+    //
+    // All three failure modes are surfaced as typed errors with code
+    // "MALFORMED_BROKER_RESPONSE" so callers can differentiate them from
+    // transient network failures (BrokerRequestError).
+    if (!rawResp || typeof rawResp !== "object") {
+      throw Object.assign(
+        new Error(
+          "[OpenClaw] Broker submission returned a non-object response. " +
+          `Expected { runtimeExecutionId, status, runtimeVersion }. Got: ${typeof rawResp}`,
+        ),
+        { code: "MALFORMED_BROKER_RESPONSE" },
+      );
+    }
+
+    const resp = rawResp;
+
+    if (!["accepted", "queued", "rejected"].includes(resp.status as string)) {
+      throw Object.assign(
+        new Error(
+          `[OpenClaw] Broker returned unknown status: "${String(resp.status)}". ` +
+          "Expected one of: accepted | queued | rejected. " +
+          `Response keys present: ${Object.keys(resp).join(", ")}`,
+        ),
+        { code: "MALFORMED_BROKER_RESPONSE" },
+      );
+    }
+
+    if (resp.status !== "rejected" && typeof resp.runtimeExecutionId !== "string") {
+      throw Object.assign(
+        new Error(
+          "[OpenClaw] Broker accepted/queued the execution but returned no runtimeExecutionId. " +
+          `Response keys present: ${Object.keys(resp).join(", ")}. ` +
+          "Check whether the OpenClaw broker version changed the field name " +
+          "(e.g. id, execution_id, runId) or wrapped the response in an envelope.",
+        ),
+        { code: "MALFORMED_BROKER_RESPONSE" },
+      );
+    }
+
     // 5. Handle broker response
     if (brokerResponse.status === "rejected") {
       await db

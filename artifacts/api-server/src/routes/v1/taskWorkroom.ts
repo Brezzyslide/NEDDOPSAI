@@ -112,7 +112,7 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
 
     if (ingressResult.type === "checkpoint_resume") {
       sendEvent({ type: "user_message",  message: ingressResult.userMessage });
-      sendEvent({ type: "agent_message", message: ingressResult.agentMessage });
+      sendEvent({ type: "agent_message", message: ingressResult.agentMessage ?? null });
       sendEvent({ type: "done" });
       res.end();
       return;
@@ -141,7 +141,9 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
     sendEvent({ type: "user_message", message: result.userMessage });
     sendEvent({
       type: "agent_message",
-      message: result.agentMessage,
+      // Coerce to null — see conversations.ts agent_message comment for full
+      // explanation of why undefined must never reach the SSE stream.
+      message: result.agentMessage ?? null,
       understanding: {
         conversationMode: result.understanding.conversationMode,
         requestedTaskAction: result.understanding.requestedTaskAction,

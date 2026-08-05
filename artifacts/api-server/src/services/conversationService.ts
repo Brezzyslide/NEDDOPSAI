@@ -277,13 +277,25 @@ export async function addMessage(input: AddMessageInput): Promise<ConversationMe
     })
     .returning();
 
+  // Root-cause guard: if the DB INSERT RETURNING yielded no row the non-null
+  // assertion `msg!` would silently return `undefined` at runtime (TypeScript `!`
+  // is compile-time only). Throw explicitly so callers receive a proper error
+  // instead of an undefined value that propagates to SSE clients and crashes the
+  // frontend when the Sprint 27.2 idempotent handler accesses `msg.id`.
+  if (!msg) {
+    throw new Error(
+      `[addMessage] INSERT RETURNING yielded no row for conversation ${input.conversationId}. ` +
+      "Check RLS policies — a WITH CHECK violation can silently drop the insert.",
+    );
+  }
+
   // Update lastMessageAt on conversation
   await db
     .update(conversationsTable)
     .set({ lastMessageAt: new Date(), updatedAt: new Date() })
     .where(eq(conversationsTable.id, input.conversationId));
 
-  return msg!;
+  return msg;
 }
 
 export async function getMessages(

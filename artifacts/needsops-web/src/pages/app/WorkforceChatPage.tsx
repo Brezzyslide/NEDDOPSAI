@@ -195,6 +195,12 @@ export default function WorkforceChatPage() {
   const [input, setInput] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoCreatedTask, setAutoCreatedTask] = useState<{
+    taskId: string;
+    title: string;
+    dispatched: boolean;
+    requiresApproval: boolean;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -294,13 +300,25 @@ export default function WorkforceChatPage() {
               evt.message as Message,
             ]);
           } else if (evt.type === "agent_message") {
-            // Idempotent append — skip if the message is already in state
-            setMessages(prev => {
-              const msg = evt.message as Message;
-              if (prev.some(m => m.id === msg.id)) return prev;
-              return [...prev, msg];
-            });
+            // Idempotent append — skip if the message is already in state.
+            // Guard: server coerces agentMessage to null (never undefined) but a defensive
+            // null check prevents a crash if the JSON key is missing for any reason.
+            // Do NOT use optional chaining — the guard is intentional contract enforcement.
+            const msg = evt.message as Message | null | undefined;
+            if (msg) {
+              setMessages(prev => {
+                if (prev.some(m => m.id === msg.id)) return prev;
+                return [...prev, msg];
+              });
+            }
             setStreamingText("");
+          } else if (evt.type === "task_auto_created") {
+            // CoS created and dispatched a task automatically — show a persistent card
+            const auto = evt as unknown as {
+              taskId: string; title: string;
+              dispatched: boolean; requiresApproval: boolean;
+            };
+            setAutoCreatedTask(auto);
           } else if (evt.type === "done") {
             setIsStreaming(false);
           } else if (evt.type === "error") {
@@ -415,6 +433,41 @@ export default function WorkforceChatPage() {
                 <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl px-4 py-3 text-sm text-[#CBD5E1] leading-relaxed whitespace-pre-wrap">
                   {streamingText}
                   <span className="inline-block w-1.5 h-4 bg-[#00D4FF]/60 animate-pulse ml-0.5 align-middle" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Task #27 — Auto-dispatch notification card */}
+          {autoCreatedTask && (
+            <div className="mx-auto max-w-[75%] mb-4">
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/20 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-emerald-400 text-lg mt-0.5">⚡</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-emerald-400 text-xs font-semibold mb-0.5">
+                      {autoCreatedTask.dispatched ? "Task created & execution started" : "Task created — awaiting approval"}
+                    </p>
+                    <p className="text-[#CBD5E1] text-sm font-medium truncate">{autoCreatedTask.title}</p>
+                    {autoCreatedTask.requiresApproval && (
+                      <p className="text-[#64748B] text-xs mt-0.5">
+                        Review the approval request above to start execution.
+                      </p>
+                    )}
+                    <a
+                      href={`/app/${slug}/tasks/${autoCreatedTask.taskId}`}
+                      className="inline-block mt-2 text-xs text-[#00D4FF] hover:underline"
+                    >
+                      View task →
+                    </a>
+                  </div>
+                  <button
+                    onClick={() => setAutoCreatedTask(null)}
+                    className="text-[#475569] hover:text-[#94A3B8] text-xs shrink-0"
+                    aria-label="Dismiss"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             </div>

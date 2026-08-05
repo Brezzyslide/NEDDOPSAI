@@ -618,12 +618,17 @@ export default function TaskWorkroomPage() {
               evt.message as Message,
             ]);
           } else if (evt.type === "agent_message") {
-            // Idempotent append — skip if a refetch already placed this message in state
-            setMessages(prev => {
-              const msg = evt.message as Message;
-              if (prev.some(m => m.id === msg.id)) return prev;
-              return [...prev, msg];
-            });
+            // Idempotent append — skip if a refetch already placed this message in state.
+            // Guard: server coerces agentMessage to null (never undefined) but a defensive
+            // null check prevents a crash if the JSON key is missing for any reason.
+            // Do NOT use optional chaining — the guard is intentional contract enforcement.
+            const msg = evt.message as Message | null | undefined;
+            if (msg) {
+              setMessages(prev => {
+                if (prev.some(m => m.id === msg.id)) return prev;
+                return [...prev, msg];
+              });
+            }
             setStreamingText("");
           } else if (evt.type === "done") {
             setIsStreaming(false);
