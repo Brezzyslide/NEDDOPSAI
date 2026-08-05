@@ -1,0 +1,258 @@
+Inspection Only — Chief of Staff Knowledge-First Behaviour & Specialist Availability
+
+Do not change code yet.
+
+Investigate why the Chief of Staff currently responds with messages like:
+
+“Could you confirm if you have the latest version of the Medication Management Policy available for review? Once I have that, I will coordinate with the Operations Manager and Compliance & Quality Manager…”
+
+The expected behaviour is:
+
+1. Search the Organisation Library first.
+2. Determine whether the required document exists, is current, approved, indexed, and retrievable.
+3. Ask the user only when the required evidence is genuinely unavailable.
+4. Check the workforce catalogue and runtime readiness before offering or assigning any specialist.
+5. Only mention specialists that actually exist, are active, published, entitled, and operationally ready.
+
+This is an inspection task only.
+
+────────────────────────────────────
+Part 1 — Trace the Chief of Staff response path
+
+Trace the exact request:
+
+“Review our Medication Management Policy through an operational lens.”
+
+Follow the full path through:
+
+- conversation classifier
+- Chief of Staff prompt construction
+- conversationIntelligenceService
+- chiefOfStaffLLMService
+- task proposal generation
+- blueprint selection
+- specialist selection
+- knowledge requirement detection
+- Organisation Library lookup
+- clarification generation
+
+Identify the exact function and instruction that caused the Chief of Staff to ask:
+
+“Do you have the latest version?”
+
+Report:
+
+- file
+- function
+- line
+- input
+- output
+- prompt instruction or classifier branch responsible
+
+────────────────────────────────────
+Part 2 — Knowledge-first behaviour
+
+Determine whether the Chief of Staff checks the Organisation Library before asking the user for a document.
+
+For the Medication Management Policy, report:
+
+- source exists?
+- source id
+- title
+- version
+- status
+- approved?
+- current?
+- indexed?
+- retrievable?
+- organisation id
+- evidence chunks available?
+- retrieval confidence
+
+Identify whether the CoS:
+
+A. searched and failed,
+B. never searched,
+C. searched the wrong source type,
+D. used stale cached state,
+E. asked a generic clarification before execution started.
+
+If the Chief of Staff never searched, identify why the knowledge lookup is only happening later in the execution pipeline.
+
+────────────────────────────────────
+Part 3 — Prompt and policy inspection
+
+Inspect all Chief of Staff instructions relating to:
+
+- asking users for documents
+- requesting clarification
+- checking Organisation Library
+- checking Organisation Memory
+- checking Trusted Intelligence
+- selecting specialists
+- forming a team
+- claiming future actions
+
+Find any instruction resembling:
+
+- “ask the user for the required document”
+- “confirm whether the document is available”
+- “assemble the best team”
+- “coordinate with relevant specialists”
+
+Determine whether those instructions predate the newer knowledge-resolution and workforce-catalogue architecture.
+
+Report any stale prompt rule that conflicts with the intended behaviour:
+
+Search first
+→ ask second
+
+and
+
+Check specialist availability
+→ offer only real specialists
+
+────────────────────────────────────
+Part 4 — Specialist availability check
+
+Inspect how the Chief of Staff decided to mention:
+
+- Operations Manager
+- Compliance & Quality Manager
+
+For each specialist report:
+
+- exists in workforce registry?
+- exists in DB-backed catalogue?
+- active?
+- published?
+- coming soon?
+- archived?
+- suspended?
+- entitled for the organisation?
+- runtime-ready?
+- Employee File available?
+- Professional DNA available?
+- executionStatus
+- can be dispatched now?
+
+Determine whether the Chief of Staff checks any of these before naming or assigning the specialist.
+
+Identify the exact specialist-selection source:
+
+- hardcoded prompt text
+- static registry
+- DB catalogue
+- blueprint ownership
+- LLM inference
+- task proposal defaults
+
+────────────────────────────────────
+Part 5 — Expected specialist-offer logic
+
+Inspect whether there is an existing authoritative function such as:
+
+- getAvailableSpecialists
+- getEligibleSpecialists
+- specialistEligibilityService
+- getCatalogueAwareSpecialists
+- workforce readiness service
+- entitlement service
+
+Determine whether the Chief of Staff uses it.
+
+If not, identify the cleanest integration point.
+
+The intended decision should be:
+
+Request understood
+→ identify required professional domains
+→ query available and eligible specialists
+→ select only specialists that are:
+   - active
+   - not archived
+   - not coming soon
+   - entitled
+   - runtime ready
+   - permitted for this task
+→ offer or assign the valid team
+
+If a useful specialist exists but is unavailable, the Chief of Staff may say:
+
+“The Compliance & Quality Manager would normally support this work, but that specialist is not currently active. I can proceed with the Operations Manager only.”
+
+It must not imply that an unavailable specialist will perform work.
+
+────────────────────────────────────
+Part 6 — Document question quality
+
+Determine why the Chief of Staff asks:
+
+“Do you have the latest version?”
+
+instead of one of these:
+
+Found:
+“I found Medication Management Policy v4.2 in your approved Organisation Library and will use it.”
+
+Missing:
+“I searched your approved Organisation Library but could not locate a current Medication Management Policy.”
+
+Not indexed:
+“I found the policy, but it is still being processed and is not yet available for execution.”
+
+Not approved:
+“I found the policy, but it is awaiting approval before specialists can use it.”
+
+The system should know the state and explain it precisely.
+
+Identify what data is already available to support this behaviour and what is missing.
+
+────────────────────────────────────
+Part 7 — Proposal and delegation integrity
+
+Determine whether the CoS can say:
+
+“I will coordinate with X and Y”
+
+without creating structured delegation state.
+
+Check whether the response created:
+
+- task proposal
+- lead specialist
+- supporting specialists
+- work package
+- execution intent
+- pending proposal record
+
+If it only produced conversational text, identify that clearly.
+
+The Chief of Staff must never promise delegation unless the selected specialists and proposed team are stored in structured state.
+
+────────────────────────────────────
+Part 8 — Produce findings
+
+Return a table:
+
+Issue
+Observed behaviour
+Exact root cause
+File/function
+Evidence
+Confidence
+Recommended fix
+
+At minimum answer:
+
+1. Why did the CoS ask the user for a policy before searching?
+2. Did the policy exist and was it retrievable?
+3. Why did it mention Compliance & Quality Manager?
+4. Is that specialist actually active and dispatchable?
+5. Did it create structured delegation state or only conversational text?
+6. Which stale prompt or classifier rule caused the behaviour?
+7. Where should the availability and knowledge checks be inserted?
+
+Do not implement yet.
+
+Stop after the inspection report.
