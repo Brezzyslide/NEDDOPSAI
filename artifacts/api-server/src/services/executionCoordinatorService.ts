@@ -494,8 +494,6 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "An unexpected error occurred during execution.";
-    // Temporary: log full stack to diagnose root cause
-    console.error("[ExecutionCoordinator] CRASH STACK:", err instanceof Error ? err.stack : err);
 
     await logOrgEvent({
       eventType: "execution_coordinator.error",

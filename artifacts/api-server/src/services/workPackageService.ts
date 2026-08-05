@@ -111,13 +111,13 @@ export async function assembleWorkPackage(
       id: organisationMemoryTable.id,
       memoryType: organisationMemoryTable.memoryType,
       title: organisationMemoryTable.title,
-      approvalStatus: organisationMemoryTable.approvalStatus,
+      approvalStatus: organisationMemoryTable.status,
     })
     .from(organisationMemoryTable)
     .where(
       and(
         eq(organisationMemoryTable.organizationId, organizationId),
-        eq(organisationMemoryTable.approvalStatus, "approved"),
+        eq(organisationMemoryTable.status, "approved"),
       )
     )
     .limit(30);
