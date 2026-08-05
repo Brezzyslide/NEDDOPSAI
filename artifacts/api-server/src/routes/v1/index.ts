@@ -127,6 +127,10 @@ router.use("/", executiveBriefingRouter);
 import workforceOpsRouter from "./workforceOps.js";
 router.use("/", workforceOpsRouter);
 
+// Sprint 27.4 — Execution Inspector & Runtime Transparency
+import executionInspectorRouter from "./executionInspector.js";
+router.use("/", executionInspectorRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 

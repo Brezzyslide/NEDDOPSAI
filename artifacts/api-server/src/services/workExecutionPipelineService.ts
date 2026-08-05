@@ -25,7 +25,12 @@ import type { AIGatewayContext } from "@workspace/ai-gateway";
 import { buildSystemInstructionForEmployee } from "@workspace/workforce-dna";
 
 import { selectBlueprint, getBlueprintById } from "./workBlueprintService.js";
-import { assembleWorkPackage, type WorkPackageManifest } from "./workPackageService.js";
+import {
+  assembleWorkPackage,
+  updateManifestObservability,
+  type WorkPackageManifest,
+} from "./workPackageService.js";
+import type { BlueprintSelectionMetadata } from "@workspace/db";
 import { validateWorkPackage } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
@@ -156,6 +161,16 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   let blueprint: WorkBlueprint | null;
   let manifest: WorkPackageManifest;
 
+  // Sprint 27.4 — per-stage timing for the Execution Inspector
+  const t0 = Date.now();
+  let tBlueprintMs: number | null = null;
+  let tValidationMs: number | null = null;
+  let tRetrievalMs: number | null = null;
+  let tLlmMs: number | null = null;
+  let tReviewMs: number | null = null;
+
+  let selectionMeta: BlueprintSelectionMetadata | undefined;
+
   if (input.checkpointData) {
     // ── Checkpoint resume: skip steps 1 & 2 ─────────────────────────────────
     // The blueprint and manifest were already built in the original run.
@@ -166,16 +181,31 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     // ── Step 1: Select Blueprint ───────────────────────────────────────────
     await progress("selecting_blueprint");
     blueprint = null;
+    const t1 = Date.now();
 
     if (input.blueprintId) {
       blueprint = await getBlueprintById(input.blueprintId, organizationId);
+      selectionMeta = { method: "keyword", confidence: 1.0, matchedKeywords: [input.blueprintId], fallbackUsed: false };
     } else if (input.blueprintCode) {
       const selection = await selectBlueprint(input.blueprintCode, organizationId);
       blueprint = selection.blueprint;
+      selectionMeta = {
+        method: selection.fallbackUsed ? "semantic" : "keyword",
+        confidence: selection.confidence,
+        matchedKeywords: selection.matchedKeywords,
+        fallbackUsed: selection.fallbackUsed,
+      };
     } else {
       const selection = await selectBlueprint(userRequest, organizationId);
       blueprint = selection.blueprint;
+      selectionMeta = {
+        method: selection.fallbackUsed ? "semantic" : (selection.matchedKeywords.length > 0 ? "keyword" : "none"),
+        confidence: selection.confidence,
+        matchedKeywords: selection.matchedKeywords,
+        fallbackUsed: selection.fallbackUsed,
+      };
     }
+    tBlueprintMs = Date.now() - t1;
 
     // ── Step 2: Assemble Work Package Manifest ────────────────────────────
     await progress("assembling_package");
@@ -186,17 +216,40 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
       blueprint,
       taskUploadSourceIds: input.taskUploadSourceIds,
       entityKnowledge: input.entityKnowledge,
+      selectionMetadata: selectionMeta,
     });
   }
 
   // ── Step 3: Validate prerequisites ───────────────────────────────────────
   await progress("validating");
+  const t3 = Date.now();
   const validationResult = validateWorkPackage(manifest, blueprint);
+  tValidationMs = Date.now() - t3;
+
+  // Sprint 27.4 — write validation snapshot (fire-and-forget)
+  updateManifestObservability(manifest.id, {
+    validationSnapshot: {
+      passed: validationResult.passed,
+      missingItems: validationResult.missingItems,
+      summary: validationResult.summary,
+    },
+  }).catch(() => {});
 
   if (!validationResult.passed) {
     const clarificationQuestions = validationResult.missingItems.map(
       item => `Can you provide or upload the required ${item}?`,
     );
+    // Sprint 27.4 — write clarification failure info (fire-and-forget)
+    updateManifestObservability(manifest.id, {
+      failureInfo: {
+        state: "awaiting_clarification",
+        clarificationItems: validationResult.missingItems.map(name => ({
+          name,
+          reason: "Blueprint requires this knowledge type before execution can proceed",
+        })),
+        retryAvailable: true,
+      },
+    }).catch(() => {});
     return {
       // awaiting_clarification signals the coordinator to pause + save a
       // checkpoint rather than posting a failure message
@@ -212,6 +265,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   // ── Step 4: Retrieve approved examples for style guidance ─────────────────
   await progress("retrieving_examples");
   const outputType = blueprint?.outputTypes[0] ?? "general_output";
+  const t4 = Date.now();
   const [examples, evidencePack] = await Promise.all([
     retrieveApprovedExamples(organizationId, outputType),
     resolveEvidence({
@@ -222,17 +276,38 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
       userRequest,
     }).catch(() => null), // evidence resolution must never abort the pipeline
   ]);
+  tRetrievalMs = Date.now() - t4;
   const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
   // ── Step 5: Build execution context and generate draft ────────────────────
   await progress("executing");
+  const t5 = Date.now();
   let draftContent: string;
   try {
     draftContent = await generateDraft(userRequest, manifest, blueprint, styleGuidance.guidanceBlock, {
       userId: requesterId,
       organizationId,
     }, evidencePack ?? undefined);
+    tLlmMs = Date.now() - t5;
   } catch (err) {
+    // Sprint 27.4 — write failure diagnostics (fire-and-forget)
+    updateManifestObservability(manifest.id, {
+      failureInfo: {
+        state: "failed",
+        failedStage: "executing",
+        rootCause: err instanceof Error ? err.message : "Unknown error",
+        retryAvailable: false,
+      },
+      performanceMetrics: {
+        blueprintSelectionMs: tBlueprintMs,
+        validationMs: tValidationMs,
+        retrievalMs: tRetrievalMs,
+        llmMs: null,
+        reviewMs: null,
+        totalMs: Date.now() - t0,
+        evidenceCacheHit: false,
+      },
+    }).catch(() => {});
     return {
       outcome: "execution_failed",
       manifestId: manifest.id,
@@ -243,11 +318,13 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
 
   // ── Step 6: Self Review ───────────────────────────────────────────────────
   await progress("reviewing");
+  const t6 = Date.now();
   const reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
     organizationId,
     userId: requesterId,
     conversationId: input.conversationId,
   });
+  tReviewMs = Date.now() - t6;
 
   // ── Step 7: Create Completed Work ─────────────────────────────────────────
   await progress("creating_completed_work");
@@ -297,6 +374,19 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     createdByUserId: requesterId,
     assetIds,
   });
+
+  // Sprint 27.4 — write final performance metrics (fire-and-forget)
+  updateManifestObservability(manifest.id, {
+    performanceMetrics: {
+      blueprintSelectionMs: tBlueprintMs,
+      validationMs: tValidationMs,
+      retrievalMs: tRetrievalMs,
+      llmMs: tLlmMs,
+      reviewMs: tReviewMs,
+      totalMs: Date.now() - t0,
+      evidenceCacheHit: evidencePack != null,
+    },
+  }).catch(() => {});
 
   return {
     outcome: "completed",

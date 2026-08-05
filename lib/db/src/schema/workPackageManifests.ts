@@ -7,6 +7,11 @@
  *
  * Written once at execution time; never mutated.
  * Linked to the resulting completed_work row via completedWorkId.
+ *
+ * Sprint 27.4: Added observability columns (selectionMetadata, validationSnapshot,
+ * performanceMetrics, failureInfo) for the Execution Inspector. These are nullable
+ * JSONB columns populated asynchronously by the pipeline after each stage completes.
+ * They do not affect execution behaviour.
  */
 import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations.js";
@@ -25,6 +30,43 @@ export interface ManifestMemoryRef {
   memoryType: string;
   title: string;
   approvalStatus?: string;
+}
+
+// ─── Sprint 27.4 observability types ─────────────────────────────────────────
+
+/** How the blueprint was selected for this execution. */
+export interface BlueprintSelectionMetadata {
+  method: "keyword" | "semantic" | "none";
+  confidence: number;
+  matchedKeywords: string[];
+  fallbackUsed: boolean;
+}
+
+/** Snapshot of prerequisite-validation outcome written after Step 3. */
+export interface ManifestValidationSnapshot {
+  passed: boolean;
+  missingItems: string[];
+  summary: string;
+}
+
+/** Per-stage timing written after execution completes (or fails). */
+export interface ManifestPerformanceMetrics {
+  blueprintSelectionMs: number | null;
+  validationMs: number | null;
+  retrievalMs: number | null;
+  llmMs: number | null;
+  reviewMs: number | null;
+  totalMs: number | null;
+  evidenceCacheHit: boolean;
+}
+
+/** Written when execution pauses for clarification or encounters a hard failure. */
+export interface ManifestFailureInfo {
+  state: "awaiting_clarification" | "failed";
+  failedStage?: string;
+  rootCause?: string;
+  retryAvailable?: boolean;
+  clarificationItems?: Array<{ name: string; reason: string }>;
 }
 
 export const workPackageManifestsTable = pgTable("work_package_manifests", {
@@ -93,4 +135,22 @@ export const workPackageManifestsTable = pgTable("work_package_manifests", {
   requesterId: text("requester_id"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+  // ── Sprint 27.4 observability columns (all nullable; never block assembly) ──
+
+  /** How the blueprint was selected (keyword vs semantic, confidence, matched phrase). */
+  selectionMetadata: jsonb("selection_metadata")
+    .$type<BlueprintSelectionMetadata | null>(),
+
+  /** Snapshot of prerequisite-validation outcome (Step 3 of pipeline). */
+  validationSnapshot: jsonb("validation_snapshot")
+    .$type<ManifestValidationSnapshot | null>(),
+
+  /** Per-stage timing in milliseconds. Written after execution completes or fails. */
+  performanceMetrics: jsonb("performance_metrics")
+    .$type<ManifestPerformanceMetrics | null>(),
+
+  /** Written when execution pauses for clarification or encounters a failure. */
+  failureInfo: jsonb("failure_info")
+    .$type<ManifestFailureInfo | null>(),
 });

@@ -27,6 +27,7 @@ import { Redirect }                              from "wouter";
 import AppShell                                  from "@/components/layout/AppShell";
 import { useAuthFetch }                          from "@/lib/api";
 import { MarkdownRenderer, extractOutline }      from "@/components/MarkdownRenderer";
+import ExecutionInspectorPanel                   from "@/components/inspector/ExecutionInspectorPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -980,7 +981,7 @@ function CommentsTab({
 
 // ─── Main Viewer ──────────────────────────────────────────────────────────────
 
-type Tab = "document" | "evidence" | "execution" | "versions" | "comments";
+type Tab = "document" | "evidence" | "execution" | "inspector" | "versions" | "comments";
 
 export default function CompletedWorkViewer() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
@@ -1228,7 +1229,7 @@ export default function CompletedWorkViewer() {
 
             {/* Tabs */}
             <div className="flex items-center gap-1 mt-3">
-              {(["document","evidence","execution","versions","comments"] as Tab[]).map(t => (
+              {(["document","evidence","execution","inspector","versions","comments"] as Tab[]).map(t => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -1238,7 +1239,7 @@ export default function CompletedWorkViewer() {
                       : "border-transparent text-[#64748B] hover:text-[#E2E8F0]"
                   }`}
                 >
-                  {t}
+                  {t === "inspector" ? "🔍 Inspector" : t}
                   {t === "comments"  && comments.length  > 0 && <span className="ml-1 text-xs opacity-60">{comments.length}</span>}
                   {t === "evidence"  && assets.length    > 0 && <span className="ml-1 text-xs opacity-60">{assets.length}</span>}
                   {t === "versions"  && versions.length  > 0 && <span className="ml-1 text-xs opacity-60">{versions.length}</span>}
@@ -1279,6 +1280,9 @@ export default function CompletedWorkViewer() {
               )}
               {tab === "evidence"  && <EvidenceTab assets={assets} />}
               {tab === "execution" && <ExecutionTab work={work} versions={versions} />}
+              {tab === "inspector" && (
+                <ExecutionInspectorPanel slug={slug!} completedWorkId={id!} />
+              )}
               {tab === "versions"  && (
                 <VersionsTab
                   versions={versions}

@@ -17,6 +17,10 @@ import {
   organisationMemoryTable,
   type ManifestLibrarySource,
   type ManifestMemoryRef,
+  type BlueprintSelectionMetadata,
+  type ManifestValidationSnapshot,
+  type ManifestPerformanceMetrics,
+  type ManifestFailureInfo,
 } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import type { WorkBlueprint } from "./workBlueprintService.js";
@@ -57,6 +61,41 @@ export interface AssembleManifestInput {
   entityKnowledge?: Record<string, unknown>;
   /** Override model version (e.g. from AI gateway) */
   modelVersion?: string;
+  /**
+   * Sprint 27.4 — blueprint selection metadata for the Execution Inspector.
+   * Populated by the pipeline after selectBlueprint completes.
+   * Never affects execution behaviour.
+   */
+  selectionMetadata?: BlueprintSelectionMetadata;
+}
+
+// ─── Sprint 27.4 observability update ────────────────────────────────────────
+
+export interface ManifestObservabilityUpdate {
+  validationSnapshot?: ManifestValidationSnapshot;
+  performanceMetrics?: ManifestPerformanceMetrics;
+  failureInfo?: ManifestFailureInfo;
+}
+
+/**
+ * Write observability fields to an existing manifest row.
+ * Fire-and-forget — failures are silently swallowed so they never affect
+ * execution outcomes. Only updates the Sprint 27.4 observability columns.
+ */
+export async function updateManifestObservability(
+  manifestId: string,
+  updates: ManifestObservabilityUpdate,
+): Promise<void> {
+  const set: Partial<typeof workPackageManifestsTable.$inferInsert> = {};
+  if (updates.validationSnapshot !== undefined) set.validationSnapshot = updates.validationSnapshot;
+  if (updates.performanceMetrics !== undefined) set.performanceMetrics = updates.performanceMetrics;
+  if (updates.failureInfo !== undefined) set.failureInfo = updates.failureInfo;
+  if (Object.keys(set).length === 0) return;
+
+  await db
+    .update(workPackageManifestsTable)
+    .set(set)
+    .where(eq(workPackageManifestsTable.id, manifestId));
 }
 
 export interface WorkPackageManifest {
@@ -220,6 +259,8 @@ export async function assembleWorkPackage(
     assembledAt: now,
     requesterId,
     createdAt: now,
+    // Sprint 27.4 observability — selectionMetadata written at assembly time
+    selectionMetadata: input.selectionMetadata ?? null,
   });
 
   return {

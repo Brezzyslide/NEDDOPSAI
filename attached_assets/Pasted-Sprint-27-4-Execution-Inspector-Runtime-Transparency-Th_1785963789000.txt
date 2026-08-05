@@ -1,0 +1,471 @@
+Sprint 27.4 — Execution Inspector & Runtime Transparency
+
+This is an observability sprint.
+
+Objective
+
+Build an Execution Inspector that exposes exactly what the Chief of Staff and each specialist are doing during execution, without exposing internal prompts or sensitive implementation details.
+
+This is primarily a developer and platform-owner tool.
+
+It should make debugging execution possible without reading logs.
+
+Do not modify execution behaviour.
+
+Do not change the work pipeline.
+
+This sprint is inspection and observability only.
+
+────────────────────────────────────────
+Part 1 – Execution Inspector
+
+Create an Execution Inspector panel.
+
+It should be accessible from:
+
+- Completed Work
+- Active Executions
+- Workroom
+- Developer Mode
+- Platform Owner Mode
+
+Display:
+
+Execution Summary
+
+────────────────────────
+
+Lead Specialist
+
+Operations Manager
+
+────────────────────────
+
+Supporting Specialists
+
+Compliance & Quality Manager
+
+Knowledge & Documentation Specialist
+
+────────────────────────
+
+Blueprint
+
+Care Plan Review
+
+Version
+
+Published v2.1
+
+Selection Method
+
+Semantic
+or
+Keyword
+
+Confidence
+
+0.94
+
+────────────────────────
+
+Current Stage
+
+Retrieving Evidence
+
+────────────────────────
+
+Runtime Status
+
+Executing
+
+────────────────────────
+
+Knowledge Confidence
+
+0.93
+
+────────────────────────
+
+Evidence Retrieved
+
+✓ Medication Management Policy
+3 chunks
+
+✓ NDIS Practice Standards
+5 chunks
+
+✓ Medication Procedure
+2 chunks
+
+✓ Organisation Memory
+4 entries
+
+✓ Participant Uploads
+1 document
+
+────────────────────────
+
+Validation
+
+Passed
+
+────────────────────────
+
+Completed Work
+
+Pending
+
+────────────────────────
+
+Started
+
+Timestamp
+
+────────────────────────
+
+Duration
+
+Live timer
+
+────────────────────────
+
+Correlation ID
+
+...
+
+────────────────────────
+
+Execution ID
+
+...
+
+────────────────────────
+
+Task ID
+
+...
+
+────────────────────────
+
+Conversation
+
+Linked
+
+────────────────────────
+
+Part 2 – Evidence Inspector
+
+Expand Evidence Retrieved.
+
+For each source show:
+
+Source
+
+Medication Management Policy
+
+Version
+
+4.2
+
+Authority
+
+Organisation Policy
+
+Chunks Retrieved
+
+3
+
+Confidence
+
+0.98
+
+Chunk Preview
+
+(first 150 characters)
+
+Citation
+
+Internal only
+
+If no evidence is retrieved:
+
+Explain WHY.
+
+Examples:
+
+No approved document
+
+Document archived
+
+No relevant chunks
+
+Confidence below threshold
+
+Not required by blueprint
+
+Never show raw prompts.
+
+────────────────────────────────────────
+Part 3 – Blueprint Inspector
+
+Show:
+
+Blueprint Name
+
+Version
+
+Selection Method
+
+Keyword
+or
+Semantic
+
+Matched Phrase
+
+(if keyword)
+
+Semantic Reason
+
+(if LLM)
+
+Confidence
+
+Validation Rules
+
+Passed
+
+Failed
+
+Skipped
+
+Required Knowledge
+
+Retrieved
+
+Missing
+
+────────────────────────────────────────
+Part 4 – Specialist Runtime
+
+Display what the specialist actually received.
+
+Show counts only.
+
+Example:
+
+Professional DNA
+
+Loaded
+
+Organisation Memory
+
+4 entries
+
+Evidence Chunks
+
+13
+
+Task Uploads
+
+2
+
+Blueprint
+
+Loaded
+
+Expected Deliverables
+
+Loaded
+
+Do NOT display hidden system prompts.
+
+Do NOT expose proprietary prompt engineering.
+
+────────────────────────────────────────
+Part 5 – Execution Timeline
+
+Visual timeline:
+
+Task Created
+
+↓
+
+Blueprint Selected
+
+↓
+
+Knowledge Retrieved
+
+↓
+
+Validation
+
+↓
+
+Execution
+
+↓
+
+Self Review
+
+↓
+
+Completed Work
+
+Show:
+
+Completed
+
+Current
+
+Waiting
+
+Failed
+
+Duration per stage
+
+────────────────────────────────────────
+Part 6 – Failure Diagnostics
+
+If execution pauses:
+
+Show:
+
+Awaiting Clarification
+
+Missing:
+
+Medication Policy
+
+Reason:
+
+Blueprint requires approved policy evidence.
+
+If execution fails:
+
+Show:
+
+Failed Stage
+
+Root Cause
+
+Retry Available
+
+Correlation ID
+
+────────────────────────────────────────
+Part 7 – Performance Metrics
+
+Display:
+
+Retrieval Time
+
+Blueprint Selection Time
+
+LLM Time
+
+Validation Time
+
+Evidence Cache Hit
+
+Chunk Count
+
+Memory Count
+
+Total Execution Time
+
+────────────────────────────────────────
+Part 8 – Security
+
+Respect RBAC.
+
+Organisation users
+
+Only their own executions.
+
+Platform Owners
+
+All executions.
+
+Hide:
+
+System prompts
+
+API keys
+
+Embedding vectors
+
+Internal chain-of-thought
+
+Sensitive payloads
+
+────────────────────────────────────────
+Part 9 – Tests
+
+Add tests covering:
+
+Execution summary
+
+Evidence panel
+
+Blueprint panel
+
+Timeline
+
+Failure state
+
+Clarification state
+
+No evidence found
+
+RBAC
+
+Developer mode
+
+Platform owner mode
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Architecture
+
+Execution
+
+↓
+
+Execution Inspector
+
+↓
+
+Summary
+
+↓
+
+Evidence
+
+↓
+
+Blueprint
+
+↓
+
+Timeline
+
+↓
+
+Diagnostics
+
+2. Files changed
+
+3. UI screenshots or component summary
+
+4. Test results
+
+5. Confirmation that platform owners can now diagnose execution failures without reading server logs.
+
+Do not change execution logic.
+
+This sprint is transparency and observability only.

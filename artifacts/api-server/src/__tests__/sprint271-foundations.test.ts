@@ -350,16 +350,17 @@ describe("executionTimelineService", () => {
 
 describe("workExecutionPipelineService — checkpoint resume", () => {
   vi.mock("../services/workBlueprintService.js", () => ({
-    selectBlueprint:   vi.fn().mockResolvedValue({ blueprint: null }),
+    selectBlueprint:   vi.fn().mockResolvedValue({ blueprint: null, confidence: 0, fallbackUsed: false, matchedKeywords: [] }),
     getBlueprintById:  vi.fn().mockResolvedValue(null),
   }));
   vi.mock("../services/workPackageService.js", () => ({
-    assembleWorkPackage: vi.fn().mockResolvedValue({
+    assembleWorkPackage:          vi.fn().mockResolvedValue({
       id: "manifest-x",
       organisationLibrarySources: [],
       taskUploads: [],
       cosMemories: [],
     }),
+    updateManifestObservability:  vi.fn().mockResolvedValue(undefined),
   }));
   vi.mock("../services/workValidationService.js", () => ({
     validateWorkPackage: vi.fn().mockReturnValue({
