@@ -21,6 +21,26 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 
+/**
+ * Guard: throw a named error if any field in a Drizzle .select({...}) object is
+ * undefined or null, which would cause the opaque "Cannot convert undefined or
+ * null to object" crash inside drizzle-orm/utils.ts:80 (orderSelectedFields).
+ * Call this immediately before the .select() so the error names the exact field.
+ */
+function assertSelectFields(
+  fields: Record<string, unknown>,
+  label: string,
+): void {
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) {
+      throw new Error(
+        `[workPackageService] Drizzle .select() at "${label}": ` +
+        `field "${key}" is ${String(value)} — column name mismatch in schema or stale @workspace/db build.`,
+      );
+    }
+  }
+}
+
 // ─── Prompt version — increment when system prompt changes materially ─────────
 export const CURRENT_PROMPT_VERSION = "sprint22.1.0";
 
@@ -75,15 +95,17 @@ export async function assembleWorkPackage(
   // ── Retrieve Organisation Library sources ────────────────────────────────
   let librarySources: ManifestLibrarySource[] = [];
   if (requiredKnowledgeTypes.length > 0) {
+    const _libFields = {
+      id: knowledgeSourcesTable.id,
+      title: knowledgeSourcesTable.title,
+      sourceType: knowledgeSourcesTable.sourceType,
+      authorityLevel: knowledgeSourcesTable.authorityLevel,
+      storageKey: knowledgeSourcesTable.storageKey,
+      versionLabel: knowledgeSourcesTable.versionLabel,
+    };
+    assertSelectFields(_libFields, "library-sources");
     const sourceRows = await db
-      .select({
-        id: knowledgeSourcesTable.id,
-        title: knowledgeSourcesTable.title,
-        sourceType: knowledgeSourcesTable.sourceType,
-        authorityLevel: knowledgeSourcesTable.authorityLevel,
-        storageKey: knowledgeSourcesTable.storageKey,
-        versionLabel: knowledgeSourcesTable.versionLabel,
-      })
+      .select(_libFields)
       .from(knowledgeSourcesTable)
       .where(
         and(
@@ -106,13 +128,15 @@ export async function assembleWorkPackage(
   }
 
   // ── Retrieve CoS memory ──────────────────────────────────────────────────
+  const _memFields = {
+    id: organisationMemoryTable.id,
+    memoryType: organisationMemoryTable.memoryType,
+    title: organisationMemoryTable.title,
+    approvalStatus: organisationMemoryTable.status,
+  };
+  assertSelectFields(_memFields, "cos-memory");
   const memoryRows = await db
-    .select({
-      id: organisationMemoryTable.id,
-      memoryType: organisationMemoryTable.memoryType,
-      title: organisationMemoryTable.title,
-      approvalStatus: organisationMemoryTable.status,
-    })
+    .select(_memFields)
     .from(organisationMemoryTable)
     .where(
       and(
@@ -143,13 +167,15 @@ export async function assembleWorkPackage(
   // ── Retrieve task uploads ────────────────────────────────────────────────
   let taskUploads: ManifestLibrarySource[] = [];
   if (taskUploadSourceIds.length > 0) {
+    const _uploadFields = {
+      id: knowledgeSourcesTable.id,
+      title: knowledgeSourcesTable.title,
+      sourceType: knowledgeSourcesTable.sourceType,
+      storageKey: knowledgeSourcesTable.storageKey,
+    };
+    assertSelectFields(_uploadFields, "task-uploads");
     const uploadRows = await db
-      .select({
-        id: knowledgeSourcesTable.id,
-        title: knowledgeSourcesTable.title,
-        sourceType: knowledgeSourcesTable.sourceType,
-        storageKey: knowledgeSourcesTable.storageKey,
-      })
+      .select(_uploadFields)
       .from(knowledgeSourcesTable)
       .where(
         and(

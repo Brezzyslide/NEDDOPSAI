@@ -1,0 +1,105 @@
+Do not stop at the generic Drizzle explanation.
+
+Trace the Chief of Staff → Operations Manager delegation request and identify the exact `.select()` call that throws.
+
+The error is:
+
+TypeError: Cannot convert undefined or null to object
+at Object.entries
+at orderSelectedFields
+at PgSelectBase._prepare
+
+This means Drizzle received an invalid selected-fields object, but the exact field is not yet known.
+
+Required investigation:
+
+1. Reproduce the failure from:
+   Create task → Send → Chief of Staff delegates → Operations Manager execution starts.
+
+2. Add temporary stage logging around every DB query in the delegation path, particularly:
+   - executionCoordinatorService
+   - workExecutionPipelineService
+   - workPackageService
+   - workBlueprintService
+   - completedWorkService
+   - specialist context/runtime loading
+   - execution intent loading
+
+3. For every `.select({...})` in the failing path, inspect the complete selected object before query execution.
+
+4. Detect undefined fields explicitly:
+
+   const selectedFields = {
+     ...
+   };
+
+   for (const [key, value] of Object.entries(selectedFields)) {
+     if (value === undefined || value === null) {
+       throw new Error(`Undefined Drizzle selected field: ${key}`);
+     }
+   }
+
+   Also recursively inspect nested selection objects, because the invalid value may be inside:
+   {
+     specialist: {
+       displayName: undefined
+     }
+   }
+
+5. Identify and report:
+   - exact file
+   - exact line
+   - exact table
+   - exact selected field
+   - why the field is undefined
+
+6. Check all four schema consistency layers:
+   - database migration contains the column
+   - Drizzle table definition contains the column
+   - schema/index.ts exports the table
+   - @workspace/db has been rebuilt and the API server restarted
+
+7. Inspect for stale package output. Compare the source schema with the compiled package used by api-server. If the source contains the field but runtime import does not, rebuild the DB package before changing query logic.
+
+8. Do not remove the field merely to make the query pass unless it is genuinely unnecessary. Correct the schema/query contract.
+
+9. Add a regression test that executes the complete path:
+   Chief of Staff task → Operations Manager dispatch → work package assembly → execution → Completed Work.
+
+10. Remove temporary diagnostics after the exact failure has been proven and fixed.
+
+Return:
+- primary root cause
+- affected field and query
+- whether this was schema drift, stale build output, missing export, or an invalid query
+- files changed
+- test results
+My strongest suspicion
+
+Given the recent amount of schema and service work, I would check for a stale @workspace/db build first.
+
+A common monorepo failure looks like this:
+
+Schema source:
+workPackageManifests.someNewColumn ✅
+
+API runtime’s compiled DB package:
+workPackageManifests.someNewColumn === undefined ❌
+
+The code type-checks against one representation, but the running API imports an older generated package. Drizzle then receives:
+
+.select({
+  someNewColumn: undefined
+})
+
+and crashes during _prepare().
+
+The correct remedy in that case is:
+
+Update/export schema
+→ rebuild lib/db
+→ rebuild dependent packages
+→ restart API server
+→ rerun delegation
+
+Do not let Replit claim the issue is fixed until it names the exact field. “A schema column was undefined” is still only the category of failure, not the root cause.

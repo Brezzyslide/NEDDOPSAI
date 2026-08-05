@@ -143,6 +143,8 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
 
   // Convenience wrapper — errors in progress callbacks must never abort the pipeline
   const progress = async (stage: ExecutionStage, detail?: string) => {
+    // Stage tracing: always log so we can tell exactly where the pipeline stops
+    process.stderr.write(`[pipeline] ${organizationId} stage=${stage}${detail ? " detail=" + detail : ""}\n`);
     if (!input.onProgress) return;
     try { await input.onProgress(stage, detail); } catch { /* swallow */ }
   };

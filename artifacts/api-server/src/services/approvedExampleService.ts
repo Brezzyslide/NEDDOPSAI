@@ -16,6 +16,21 @@ import { db } from "@workspace/db";
 import { knowledgeSourcesTable, knowledgeChunksTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
+/**
+ * Guard: throw a named error if any field in a Drizzle .select({...}) object is
+ * undefined or null (column name mismatch → opaque crash in drizzle-orm/utils.ts).
+ */
+function assertSelectFields(fields: Record<string, unknown>, label: string): void {
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) {
+      throw new Error(
+        `[approvedExampleService] Drizzle .select() at "${label}": ` +
+        `field "${key}" is ${String(value)} — column name mismatch in schema.`,
+      );
+    }
+  }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ApprovedExample {
@@ -51,13 +66,15 @@ export async function retrieveApprovedExamples(
   outputType: string,
   limit = 3,
 ): Promise<ApprovedExample[]> {
+  const _exampleFields = {
+    id: knowledgeSourcesTable.id,
+    title: knowledgeSourcesTable.title,
+    sourceType: knowledgeSourcesTable.sourceType,
+    authorityLevel: knowledgeSourcesTable.authorityLevel,
+  };
+  assertSelectFields(_exampleFields, "approved-examples");
   const rows = await db
-    .select({
-      id: knowledgeSourcesTable.id,
-      title: knowledgeSourcesTable.title,
-      sourceType: knowledgeSourcesTable.sourceType,
-      authorityLevel: knowledgeSourcesTable.authorityLevel,
-    })
+    .select(_exampleFields)
     .from(knowledgeSourcesTable)
     .where(
       and(
@@ -104,11 +121,13 @@ export async function buildStyleGuidance(
   const allSignals: ExampleStyleSignal[] = [];
 
   for (const sourceId of sourceIds) {
+    const _chunkFields = {
+      content: knowledgeChunksTable.text,   // column is named `text` in schema, not `content`
+      chunkIndex: knowledgeChunksTable.chunkIndex,
+    };
+    assertSelectFields(_chunkFields, "knowledge-chunks");
     const chunks = await db
-      .select({
-        content: knowledgeChunksTable.content,
-        chunkIndex: knowledgeChunksTable.chunkIndex,
-      })
+      .select(_chunkFields)
       .from(knowledgeChunksTable)
       .where(
         and(

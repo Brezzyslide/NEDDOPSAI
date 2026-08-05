@@ -1,37 +1,39 @@
 ---
-name: NeedsOps Execution Pipeline Bugs
-description: Bugs found when wiring POST /tasks to execute work — column name mismatches, null guards, missing dispatch call
+name: NeedsOps Execution Pipeline Column Bugs
+description: Two wrong Drizzle column-name references that crashed every task execution with "Cannot convert undefined or null to object" in orderSelectedFields.
 ---
 
-## Three bugs that blocked the execution pipeline from ever running via Task Centre
+## Context
+Both bugs caused the same silent crash: `TypeError: Cannot convert undefined or null to object at Object.entries at orderSelectedFields (drizzle-orm/utils.ts:80)` because Drizzle receives `undefined` as a field value in an explicit `.select({...})` call.
 
-### Bug 1 — POST /tasks route never dispatched execution
-`artifacts/api-server/src/routes/v1/tasks.ts` created tasks and returned 201 but never called
-`dispatchWorkExecution`. Only the conversation-linked `POST /conversations/:id/create-task` route
-did. Fix: import `dispatchWorkExecution` from `executionCoordinatorService.js` and call it
-fire-and-forget when `!result.plan.requiresApproval`.
+**Critical architectural note:** `@workspace/db` exports `"." : "./src/index.ts"` and the API server uses an esbuild `workspaceSourcePlugin` that resolves all `@workspace/*` imports to `lib/<pkg>/src/index.ts` at bundle time. The compiled `lib/db/dist/*.d.ts` files are **only for TypeScript type-checking**, not runtime. Any column added to source after the last `tsc --build` is immediately available at runtime — the stale-dist hypothesis is wrong for this project.
 
-### Bug 2 — `entityKnowledge` not guarded against undefined
-`Object.keys(manifest.entityKnowledge)` in `workExecutionPipelineService.ts` (1 place) and
-`workValidationService.ts` (3 places) crashed when execution was dispatched without entity context
-(entityKnowledge was undefined, not {}). All four changed to `manifest.entityKnowledge ?? {}`.
+## Bugs Found and Fixed
 
-### Bug 3 — Wrong column name on organisationMemoryTable (root crash)
-`workPackageService.ts` queried `organisationMemoryTable.approvalStatus` in both the select
-projection and the WHERE clause. The schema column is `status` — `approvalStatus` doesn't exist.
-In Drizzle v0.45.2, accessing a non-existent table column yields a value that Drizzle's
-`orderSelectedFields` tries to recurse into, calling `Object.entries(null/undefined)` and
-throwing `TypeError: Cannot convert undefined or null to object`. Fix: change both references to
-`organisationMemoryTable.status`.
+### Bug 1 — `workPackageService.ts` (FIXED)
+- **Wrong:** `organisationMemoryTable.approvalStatus` (column does not exist)
+- **Correct:** `organisationMemoryTable.status`
+- Appeared in `.select({...})` at line 114 and `eq()` at line 120
+- Crash stage: Step 2 of pipeline (Assemble Work Package Manifest)
 
-**Why:** `orderSelectedFields` in Drizzle v0.45.2 treats any non-Column, non-SQL object value as a
-nested select object and recurses into it. A `null`/`undefined` column reference will crash with
-`Object.entries(null)`. Always verify column names against `lib/db/src/schema/*.ts` before adding
-them to a `.select({...})` call.
+### Bug 2 — `approvedExampleService.ts` (FIXED)
+- **Wrong:** `knowledgeChunksTable.content` (column does not exist; schema defines it as `text("text")`)
+- **Correct:** `knowledgeChunksTable.text`
+- The SELECT alias `content` (left-hand key) is fine; it's the right-hand Drizzle column reference that was wrong
+- Crash stage: Step 4 of pipeline (Retrieve Approved Examples / buildStyleGuidance)
 
-### How to apply
-- Whenever adding a new `.select({...})` call, grep `lib/db/src/schema/<table>.ts` to confirm
-  every column name before using it.
-- When dispatching execution without conversation context, always default `entityKnowledge` to `{}`.
-- For fire-and-forget dispatch from routes, pattern: call `dispatchWorkExecution({...}).catch(...)` 
-  without await; the pipeline writes completed_work regardless of conversationId.
+## Safeguards Added
+1. `assertSelectFields(fields, label)` guard function in both `workPackageService.ts` and `approvedExampleService.ts` — throws a **named** error before the Drizzle crash if any field value is `undefined` or `null`
+2. `process.stderr.write("[pipeline] ... stage=...")` tracing added to `executeWork` progress wrapper so server logs show exactly which stage execution reaches
+3. Regression test: `artifacts/api-server/src/__tests__/regression-execution-column-contracts.test.ts` (37 tests) — schema-contract layer checks live Drizzle column objects; service-integration layer verifies no crash with mock DB
+
+## How to Detect Future Instances
+Pattern: service code does `.select({ alias: someTable.colName })` where `someTable.colName` is `undefined` → Drizzle crashes with `Cannot convert undefined or null to object` deep in `orderSelectedFields`. The new `assertSelectFields` guard converts this to a named error. When the pipeline logs `stage=X` but not `stage=Y`, the crash is in the step between X and Y.
+
+## Pre-existing Test Failures (not caused by this work)
+16 failures in `src/tests/` and `src/services/__tests__/` subdirs are pre-existing:
+- `sprint95-specialist-eligibility.test.ts` — tests `compliance_officer`/`document_specialist` removed in Sprint 11
+- `deviceService.test.ts`, `discoveryService.test.ts`, `paymentBypass`, `INGESTION_JOB_STATUSES` — pre-existing count/mock mismatches
+
+## Test Count After This Work
+3011 passing (37 new regression tests + 2974 pre-existing passing)
