@@ -1,0 +1,339 @@
+Sprint 28.2 — Conversation Context Layer (Part 2)
+Knowledge-First Chief of Staff
+
+Objective
+
+Integrate the completed organisationLibraryPresenceService into the Chief of Staff conversation path.
+
+The Chief of Staff must check the Organisation Library before asking the user whether a required document exists.
+
+Do not modify execution logic.
+Do not modify specialist availability yet.
+Do not begin the unified Conversation Context Service yet.
+Do not change the Knowledge Resolution Service used by the execution pipeline.
+
+This sprint changes conversation behaviour only.
+
+────────────────────────────────────────
+Background
+
+Sprint 28.1 delivered:
+
+checkOrganisationLibraryPresence(
+  organisationId,
+  searchTerms
+): Promise<LibraryPresenceResult>
+
+It provides:
+
+- matching sources
+- title
+- source type
+- version
+- approval state
+- indexing state
+- retrievability
+- ingestion status
+- match confidence
+- a plain-English summary reason
+
+The Chief of Staff currently does not use this service.
+
+It asks questions such as:
+
+“Do you have the latest version of the Medication Management Policy?”
+
+without first checking whether the document exists.
+
+────────────────────────────────────────
+Part 1 — Inspect the conversation path
+
+Before writing code, confirm the exact active path through:
+
+- conversationService.processUserMessage
+- classifyMessageLLM
+- buildChiefOfStaffContext
+- buildLayeredUserMessage
+- buildCoSSystemInstructions
+- parseAndValidateLLMResponse
+- deterministic fallback classifier
+
+Identify every place that may generate document clarification.
+
+Do not duplicate the presence check across multiple branches.
+
+Choose one authoritative integration point.
+
+────────────────────────────────────────
+Part 2 — Extract document requirements from the user request
+
+Create a lightweight document-requirement detector for conversation use.
+
+It should identify explicit documents or document classes mentioned by the user.
+
+Examples:
+
+“Review our Medication Management Policy”
+→ searchTerms: ["Medication Management Policy"]
+
+“Review our incident reporting procedure”
+→ searchTerms: ["Incident Reporting Procedure"]
+
+“Check the participant’s risk assessment”
+→ searchTerms: ["Risk Assessment"]
+
+Do not use the full execution blueprint validator here.
+
+Do not invent document requirements the user did not mention.
+
+Where the user refers only to a broad topic, use conservative search terms.
+
+────────────────────────────────────────
+Part 3 — Call the presence service before LLM response generation
+
+In the authoritative conversation context-building path:
+
+1. Detect relevant document search terms.
+2. Call checkOrganisationLibraryPresence().
+3. Add a structured context section:
+
+=== ORGANISATION LIBRARY PRESENCE ===
+
+Search:
+Medication Management Policy
+
+Result:
+Found and usable
+
+Best match:
+Medication Management Policy
+
+Version:
+4.2
+
+Status:
+approved
+
+Indexed:
+yes
+
+Retrievable:
+yes
+
+Confidence:
+0.96
+
+or:
+
+Result:
+Found but unavailable
+
+Reason:
+The document is awaiting approval.
+
+or:
+
+Result:
+Not found
+
+Reason:
+No matching source exists in the Organisation Library.
+
+Do not include storage keys or internal paths.
+
+────────────────────────────────────────
+Part 4 — Replace the stale prompt instruction
+
+Remove or rewrite the existing instruction that says:
+
+“If the Organisation Library contains relevant documents but their content has not been provided to you…”
+
+This instruction predates the knowledge-first architecture.
+
+Replace it with explicit rules:
+
+- Trust the supplied Organisation Library Presence result.
+- Never ask whether a document exists when a search result is available.
+- If found and usable, state that it was found and proceed toward a task proposal.
+- If found but unavailable, explain the exact state.
+- If not found, say that the Organisation Library was searched and no match was found.
+- Ask the user to upload or approve a document only when the result proves it is unavailable.
+- Do not claim to have reviewed the document content at conversation time. Presence is not evidence retrieval.
+- Actual content retrieval happens during execution.
+
+────────────────────────────────────────
+Part 5 — Required customer-facing behaviour
+
+Found and usable:
+
+“I found Medication Management Policy v4.2 in your approved Organisation Library. I can use it for the operational review.”
+
+Found but awaiting approval:
+
+“I found the Medication Management Policy, but it is awaiting approval and cannot yet be used by specialists.”
+
+Found but still processing:
+
+“I found the Medication Management Policy, but it is still being processed and indexed.”
+
+Found but indexing failed:
+
+“I found the Medication Management Policy, but processing failed. It will need to be reprocessed before the review can use it.”
+
+Archived or superseded:
+
+“I found an older version, but it is archived or superseded and cannot be used as current evidence.”
+
+Partial or related match:
+
+“I found a related document titled ‘Medication Administration Procedure’, but not an exact current Medication Management Policy.”
+
+Missing:
+
+“I searched your Organisation Library but could not locate a current Medication Management Policy.”
+
+Never say:
+
+“Do you have the latest version?”
+
+when the platform has already performed the search.
+
+────────────────────────────────────────
+Part 6 — Exact-match versus related-match safety
+
+Do not treat every synonym-expanded result as an exact match.
+
+Use the service fields:
+
+- exactMatch
+- partialMatch
+- confidence
+- sourceType
+- title
+
+Rules:
+
+- High-confidence exact title match may be described as found.
+- Partial or synonym match must be described as related.
+- A procedure, SOP, standard, or protocol must not automatically be called a policy.
+- Do not allow broad synonym expansion to create false certainty.
+
+Add a reasonable threshold for conversational matching, but do not hide the actual state.
+
+────────────────────────────────────────
+Part 7 — Deterministic fallback alignment
+
+Update the deterministic conversation path so it uses the same library presence result.
+
+Remove the old rule that asks:
+
+“Which specific policies or procedures should be included?”
+
+when the user has already named the document.
+
+Both OpenAI and deterministic paths must produce equivalent factual behaviour.
+
+────────────────────────────────────────
+Part 8 — Preserve execution boundaries
+
+The presence check answers only:
+
+- whether a source exists
+- whether it is usable
+
+It does not provide document content.
+
+The Chief of Staff must not say:
+
+- “I reviewed the policy”
+- “The policy requires…”
+- “According to section 4…”
+
+until execution retrieves actual evidence.
+
+Correct wording:
+
+“I found the policy and can use it during the review.”
+
+────────────────────────────────────────
+Part 9 — Failure handling
+
+If the presence service fails:
+
+- do not pretend the library was searched successfully
+- do not ask the user to upload the document as though it is missing
+- say:
+
+“I could not check the Organisation Library just now. I can still prepare the task, but the document availability will need to be confirmed during execution.”
+
+Log the failure with organisationId, conversationId and correlationId.
+
+Do not expose internal errors.
+
+────────────────────────────────────────
+Part 10 — Tests
+
+Add tests covering:
+
+OpenAI path
+
+- exact approved and indexed document
+- approved but not indexed
+- uploaded and awaiting approval
+- ingestion pending
+- ingestion failed
+- archived source
+- superseded source
+- partial related match
+- no match
+- presence service failure
+
+Deterministic path
+
+- same factual states as OpenAI path
+- named policy does not trigger generic “which policy?” clarification
+
+Behaviour safeguards
+
+- never asks “do you have the latest version?” after a successful search
+- never claims document content was reviewed
+- exact and partial matches are distinguished
+- raw internal status codes are not shown
+- wrong-tenant sources are never exposed
+- presence result is injected before LLM generation
+
+Regression scenario
+
+User:
+
+“Review our Medication Management Policy through an operational lens.”
+
+Expected when usable:
+
+- CoS states that it found the specific policy and version
+- CoS does not ask whether the user has it
+- CoS moves toward preparing a task proposal
+- no claim is made that the document content has already been reviewed
+
+Expected when missing:
+
+- CoS states that the Organisation Library was searched
+- CoS names the exact missing document
+- CoS asks for upload or approval only when appropriate
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Authoritative integration point
+2. Prompt rules changed
+3. Conversation context shape
+4. Exact-versus-related match handling
+5. Files changed
+6. Test results
+7. Manual result for the Medication Management Policy request
+
+Stop after Sprint 28.2.
+
+Do not begin live workforce availability or delegation-integrity work.

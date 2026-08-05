@@ -38,6 +38,10 @@ import {
   type ChiefOfStaffContextPackage,
   type ConversationMessage,
 } from "./contextSelectionService.js";
+import {
+  checkOrganisationLibraryPresence,
+  type LibraryPresenceResult,
+} from "./organisationLibraryPresenceService.js";
 
 // ─── Workforce role validation ────────────────────────────────────────────────
 
@@ -170,20 +174,54 @@ As a starting point, an NDIS organisation normally needs access to its current p
 I can coordinate the relevant NeedsOps employees to review what already exists, identify gaps and prepare a structured onboarding checklist.
 Are you onboarding as the organisation owner, a manager or a staff member?"
 
-## KNOWLEDGE SOURCE TRANSPARENCY — MANDATORY
+## ORGANISATION LIBRARY PRESENCE — MANDATORY RULES
 
-When answering any question:
+When an ORGANISATION LIBRARY PRESENCE section is included in your context, it is the result of a system-level search performed before this response. **Trust it.**
 
-**If your answer is based on the organisation's approved knowledge** (Organisation Memory or Organisation Library):
-- Say so naturally: "Based on your organisation's policy…", "Your organisation's approved procedures indicate…", "According to the documentation in your Organisation Library…"
+Rules you MUST follow when a presence result is available:
 
-**If your answer is based on general sector best practice** (NDIS, SCHADS, general disability sector — not specific to this organisation):
-- Clearly note it: "This is based on general NDIS best practice — I don't have organisation-specific documentation on this point."
+1. **NEVER ask** "Do you have the latest version?", "Can you confirm the document is available?", or any equivalent question. The platform has already searched — you have the answer.
 
-**If the Organisation Library contains relevant documents but their content hasn't been provided to you:**
-- Say: "Your Organisation Library has documentation on this topic — reviewing it may provide organisation-specific guidance."
+2. **Found and usable (Retrievable: yes)**
+   → State the document was found and proceed toward a task proposal.
+   → Say: "I found [Title] [Version] in your approved Organisation Library and can use it for this work."
+   → Do NOT claim to have reviewed the content. Presence is not content retrieval. Content is retrieved by specialists during execution.
+   → Correct: "I found the policy and can use it during the review."
+   → Prohibited: "I reviewed the policy", "The policy requires…", "According to section 4…"
 
-Never blur the line between org-specific knowledge and general knowledge. Accuracy of the knowledge source is as important as the answer itself.
+3. **Found but unavailable**
+   → Explain the exact state using the reason provided. Do not ask the user to upload if the document already exists.
+   → Awaiting approval: "I found the policy, but it is awaiting approval before specialists can use it."
+   → Still processing: "I found the policy, but it is still being processed and indexed."
+   → Ingestion failed: "I found the policy, but processing failed. It will need to be reprocessed."
+   → Archived or superseded: "I found an older version, but it is archived or superseded and cannot be used as current evidence."
+
+4. **Not found**
+   → Say: "I searched your Organisation Library but could not locate a current [document name]."
+   → Only after confirming not found may you ask the user to upload or approve a document.
+
+5. **Partial or related match (Match type: partial)**
+   → Describe as "a related document" — not as the exact document requested.
+   → Say: "I found a related document titled '[Title]', but not an exact [requested document]."
+   → Do NOT treat a synonym-expanded match as a confirmed exact match. A procedure is not a policy.
+
+6. **Presence service unavailable (Result: Service unavailable)**
+   → Say: "I could not check the Organisation Library just now. I can still prepare the task, but document availability will need to be confirmed during execution."
+
+When NO ORGANISATION LIBRARY PRESENCE section is in your context:
+- Do not assume the library was searched.
+- Do not ask the user whether the document exists.
+- State that document availability will be confirmed during execution.
+
+## KNOWLEDGE SOURCE TRANSPARENCY
+
+**If your answer uses the organisation's approved knowledge** (Organisation Memory):
+- Say so: "Based on your organisation's approved records…", "Your organisation's procedures indicate…"
+
+**If your answer uses general sector best practice** (NDIS, SCHADS, disability sector — not this organisation's own documents):
+- Be clear: "This is based on general NDIS best practice — I don't have organisation-specific documentation on this point."
+
+Never blur the line between org-specific knowledge and general knowledge.
 
 ## REASONING — FOLLOW THESE 9 STEPS IN ORDER
 
@@ -269,6 +307,150 @@ const VALID_TASK_ACTIONS = new Set([
   "create","revise","approve","reject","pause","resume","cancel","status","follow_up",
 ]);
 
+// ─── Document requirement detector (Sprint 28.2) ──────────────────────────────
+
+/**
+ * Stop words that interrupt backward scanning for document-name context words.
+ * A stop word here means "the preceding words are not part of the document name".
+ */
+const DOC_NAME_STOP_WORDS = new Set([
+  "our", "the", "your", "a", "an", "this", "that", "any", "some", "all", "its",
+  "their", "my", "me", "we", "i", "you", "s",
+  // Common leading verbs / prepositions that are not part of a document name
+  "review", "check", "update", "analyse", "analyze", "assess", "prepare", "create",
+  "build", "improve", "help", "process", "handle", "submit", "complete", "draft",
+  "ensure", "confirm", "verify", "conduct", "perform", "run",
+  "with", "and", "or", "in", "of", "for", "to", "is", "are", "was", "were",
+  "has", "have", "had", "will", "can", "could", "should", "would", "through",
+  "via", "by", "using", "about", "regarding", "on", "at", "from", "as", "into",
+  "participant", "staff", "worker", "client", "service",
+]);
+
+/** Document type keywords that anchor a document name */
+const DOC_TYPE_KEYWORDS = [
+  "policy", "policies", "procedure", "procedures", "sop", "standard", "standards",
+  "guideline", "guidelines", "protocol", "protocols", "manual", "framework",
+  "assessment", "plan", "register", "handbook",
+];
+
+/**
+ * Lightweight document-requirement detector for conversation use.
+ *
+ * Extracts explicitly named documents from the user message.
+ * Does NOT invent document requirements the user did not mention.
+ * Does NOT run execution blueprint logic.
+ * Where the user refers only to a broad topic, returns conservative terms.
+ *
+ * Examples:
+ *   "Review our Medication Management Policy"    → ["Medication Management Policy"]
+ *   "Review our incident reporting procedure"   → ["Incident Reporting Procedure"]
+ *   "Check the participant's risk assessment"   → ["Risk Assessment"]
+ *   "Update our policies"                       → [] (too vague — no specific name)
+ */
+export function extractDocumentSearchTerms(text: string): string[] {
+  const lower = text.toLowerCase();
+  const terms: string[] = [];
+
+  for (const docType of DOC_TYPE_KEYWORDS) {
+    let searchFrom = 0;
+    while (true) {
+      const idx = lower.indexOf(docType, searchFrom);
+      if (idx === -1) break;
+      searchFrom = idx + 1;
+
+      // Ensure it is a whole-word match (not part of a longer word)
+      const before = idx > 0 ? lower[idx - 1] : " ";
+      const after  = idx + docType.length < lower.length ? lower[idx + docType.length] : " ";
+      if (/[a-z]/i.test(before) || /[a-z]/i.test(after)) continue;
+
+      // Scan backward in the original text for context words (document name prefix)
+      const beforeText = text.slice(0, idx).trimEnd();
+      const words = beforeText.split(/\s+/).filter(w => w.length > 0);
+
+      const nameTokens: string[] = [];
+      for (let i = words.length - 1; i >= 0 && nameTokens.length < 5; i--) {
+        // Strip trailing punctuation and possessives
+        const raw = words[i].replace(/[^a-zA-Z'-]/g, "").replace(/['']s$/i, "");
+        if (!raw || DOC_NAME_STOP_WORDS.has(raw.toLowerCase())) break;
+        nameTokens.unshift(words[i].replace(/[^a-zA-Z''-]/g, "").replace(/['']s$/i, ""));
+      }
+
+      if (nameTokens.length >= 1) {
+        // Build title-cased full phrase: context words + document type
+        const titleCase = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        const phrase = [
+          ...nameTokens.map(titleCase),
+          titleCase(docType),
+        ].join(" ");
+        terms.push(phrase);
+      }
+    }
+  }
+
+  // Deduplicate — prefer longer, more specific phrases over shorter subsets
+  const unique = [...new Set(terms)];
+  return unique
+    .filter(t => !unique.some(other => other !== t && other.toLowerCase().includes(t.toLowerCase())))
+    .slice(0, 5);
+}
+
+// ─── Library presence context section builders (Sprint 28.2) ──────────────────
+
+/**
+ * Format a LibraryPresenceResult as a structured context section for the LLM.
+ * No storage keys or internal paths are included.
+ */
+export function buildLibraryPresenceSection(
+  result: LibraryPresenceResult,
+  searchTerms: string[],
+): string {
+  const lines: string[] = [
+    "=== ORGANISATION LIBRARY PRESENCE ===",
+    `Search: ${searchTerms.join(", ")}`,
+  ];
+
+  if (result.matches.length === 0) {
+    lines.push("Result: Not found");
+    lines.push(`Reason: ${result.summary.reason}`);
+    return lines.join("\n");
+  }
+
+  const top = result.matches[0];
+  const matchType = result.summary.exactMatch ? "exact" : "partial";
+  const resultLabel = result.summary.usable
+    ? "Found and usable"
+    : "Found but unavailable";
+
+  lines.push(`Result: ${resultLabel}`);
+  lines.push(`Match type: ${matchType}`);
+  lines.push(`Best match: ${top.title}`);
+  if (top.version) lines.push(`Version: ${top.version}`);
+  lines.push(`Status: ${top.status}`);
+  lines.push(`Indexed: ${top.indexed ? "yes" : "no"}`);
+  lines.push(`Retrievable: ${top.retrievable ? "yes" : "no"}`);
+  if (top.ingestionStatus) lines.push(`Ingestion: ${top.ingestionStatus}`);
+  lines.push(`Confidence: ${top.confidence.toFixed(2)}`);
+
+  if (!result.summary.usable) {
+    lines.push(`Reason: ${result.summary.reason}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Section to inject when the presence service threw — tells the LLM to produce
+ * the "could not check" response rather than asking the user for the document.
+ */
+function buildLibraryPresenceFailureSection(searchTerms: string[]): string {
+  return [
+    "=== ORGANISATION LIBRARY PRESENCE ===",
+    `Search: ${searchTerms.join(", ")}`,
+    "Result: Service unavailable",
+    "Reason: The Organisation Library could not be checked at this time. Availability will be confirmed during execution.",
+  ].join("\n");
+}
+
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 export async function classifyMessageLLM(
@@ -276,8 +458,35 @@ export async function classifyMessageLLM(
   ctx: MessageContext,
   authCtx: { userId: string; organizationId: string; role: string; permissions: string[] },
 ): Promise<ConversationUnderstanding & CoSExtendedOutput & { usedFallback?: boolean; fallbackReason?: string }> {
+
+  // ── Sprint 28.2: Library presence check (authoritative integration point) ──
+  // Runs before provider selection so both LLM and deterministic paths benefit.
+  const namedDocTerms = extractDocumentSearchTerms(text);
+  let presenceSection: string | null = null;
+
+  if (ctx.organizationId && namedDocTerms.length > 0) {
+    const correlationId = randomUUID();
+    try {
+      const libraryPresence = await checkOrganisationLibraryPresence(
+        ctx.organizationId,
+        namedDocTerms,
+      );
+      presenceSection = buildLibraryPresenceSection(libraryPresence, namedDocTerms);
+    } catch (e) {
+      console.warn("[ChiefOfStaffLLM] Library presence check failed", {
+        organisationId: ctx.organizationId,
+        conversationId: ctx.conversationId ?? null,
+        correlationId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+      presenceSection = buildLibraryPresenceFailureSection(namedDocTerms);
+    }
+  }
+
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
-  if (provider !== "openai") return classifyMessage(text, ctx);
+  if (provider !== "openai") {
+    return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: false };
+  }
 
   try {
     // Build full tenant-aware context package (Sprint 9.2)
@@ -311,8 +520,8 @@ export async function classifyMessageLLM(
     const gateway = createAIGateway(gatewayCtx);
 
     const userMessage = ctxPackage
-      ? buildLayeredUserMessage(text, ctx, ctxPackage)
-      : buildLegacyUserMessage(text, ctx);
+      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined)
+      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined);
 
     const retrievedFields: string[] = [];
     if (ctx.currentTaskId)    retrievedFields.push("task.id");
@@ -329,7 +538,7 @@ export async function classifyMessageLLM(
     });
 
     if (response.usedFallback) {
-      return { ...classifyMessage(text, ctx), usedFallback: true, fallbackReason: response.fallbackReason };
+      return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: true, fallbackReason: response.fallbackReason };
     }
 
     const parsed = parseAndValidateLLMResponse(response.content, ctx);
@@ -338,7 +547,7 @@ export async function classifyMessageLLM(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[ChiefOfStaffLLM] Fallback: ${reason}`);
-    return { ...classifyMessage(text, ctx), usedFallback: true, fallbackReason: reason };
+    return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: true, fallbackReason: reason };
   }
 }
 
@@ -348,6 +557,7 @@ function buildLayeredUserMessage(
   text: string,
   ctx: MessageContext,
   pkg: ChiefOfStaffContextPackage,
+  presenceSection?: string,
 ): string {
   const sections: string[] = [];
 
@@ -463,6 +673,12 @@ function buildLayeredUserMessage(
     `Token estimate: ${pkg.tokenEstimate}`
   );
 
+  // ── ORGANISATION LIBRARY PRESENCE (Sprint 28.2) ────────────────────────────
+  // Injected immediately before the user message so the LLM reads it in context.
+  if (presenceSection) {
+    sections.push(presenceSection);
+  }
+
   // ── CURRENT USER MESSAGE (untrusted) ──────────────────────────────────────
   sections.push(`=== CURRENT USER MESSAGE (UNTRUSTED DATA) ===\n${text}`);
 
@@ -471,7 +687,11 @@ function buildLayeredUserMessage(
 
 // ─── Legacy message builder (fallback when context package unavailable) ────────
 
-function buildLegacyUserMessage(text: string, ctx: MessageContext): string {
+function buildLegacyUserMessage(
+  text: string,
+  ctx: MessageContext,
+  presenceSection?: string,
+): string {
   const lines: string[] = [];
   if (ctx.currentTaskId) lines.push(`Current task: "${ctx.currentTaskTitle ?? "Untitled"}" [${ctx.currentTaskState ?? "unknown"}]`);
   if (ctx.pendingApprovalId) lines.push(`Pending approval waiting for a decision.`);
@@ -482,6 +702,10 @@ function buildLegacyUserMessage(text: string, ctx: MessageContext): string {
       const content = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
       lines.push(`${role}: ${content}`);
     }
+  }
+  // Sprint 28.2: inject presence result before user message
+  if (presenceSection) {
+    lines.push(`\n${presenceSection}`);
   }
   lines.push(`\nUser message: ${text}`);
   return lines.join("\n");

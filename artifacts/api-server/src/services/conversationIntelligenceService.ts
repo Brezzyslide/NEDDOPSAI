@@ -216,7 +216,19 @@ function buildProposedTask(
   };
 }
 
-function buildClarificationQuestions(text: string, roles: string[]): string[] {
+/**
+ * Sprint 28.2: pattern to detect a specific document name in the user's message.
+ * Matches "Medication Management Policy", "incident reporting procedure", etc.
+ * Used to suppress the generic "which policies?" clarification question when the
+ * user has already named the document.
+ */
+const SPECIFIC_DOC_NAME_PATTERN = /\b[A-Za-z][A-Za-z\s]{2,50}\s+(policy|policies|procedure|procedures|sop|standard|standards|guideline|guidelines|protocol|protocols|manual|framework|assessment|plan|register|handbook)\b/i;
+
+function buildClarificationQuestions(
+  text: string,
+  roles: string[],
+  namedDocTerms?: string[],
+): string[] {
   const lower = text.toLowerCase();
   const questions: string[] = [];
 
@@ -229,7 +241,20 @@ function buildClarificationQuestions(text: string, roles: string[]): string[] {
   if (lower.includes("document") && !lower.match(/\bsharep|onedrive|google drive|folder|location\b/)) {
     questions.push("Where is the relevant documentation currently stored?");
   }
-  if ((lower.includes("policy") || lower.includes("procedure")) && !lower.includes("which")) {
+
+  // Sprint 28.2: Skip "which policies?" when:
+  //   (a) namedDocTerms were detected by extractDocumentSearchTerms, OR
+  //   (b) the message itself contains a specific document name pattern.
+  // The user has already named the document — asking "which?" is redundant and wrong.
+  const userNamedSpecificDoc =
+    (namedDocTerms && namedDocTerms.length > 0) ||
+    SPECIFIC_DOC_NAME_PATTERN.test(text);
+
+  if (
+    (lower.includes("policy") || lower.includes("procedure")) &&
+    !lower.includes("which") &&
+    !userNamedSpecificDoc
+  ) {
     questions.push("Which specific policies or procedures should be included?");
   }
 
@@ -238,7 +263,11 @@ function buildClarificationQuestions(text: string, roles: string[]): string[] {
 
 // ─── Main classifier ──────────────────────────────────────────────────────────
 
-export function classifyMessage(text: string, ctx: MessageContext): ConversationUnderstanding {
+export function classifyMessage(
+  text: string,
+  ctx: MessageContext,
+  namedDocTerms?: string[],
+): ConversationUnderstanding {
   const hasTask = !!ctx.currentTaskId;
   const taskState = ctx.currentTaskState;
 
@@ -410,7 +439,7 @@ export function classifyMessage(text: string, ctx: MessageContext): Conversation
   // 9. Task intent — actionable request
   if (hasActionVerb(text)) {
     const roles = detectRoles(text);
-    const clarQuestions = buildClarificationQuestions(text, roles);
+    const clarQuestions = buildClarificationQuestions(text, roles, namedDocTerms);
     const hasSufficientInfo = clarQuestions.length === 0;
     const confidence = hasSufficientInfo ? 0.82 : 0.65;
 
