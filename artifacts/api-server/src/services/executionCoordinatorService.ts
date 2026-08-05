@@ -30,6 +30,7 @@ import {
   postCompletedWorkCreatedToConversation,
   postExecutionFailedToConversation,
   postClarificationRequestToConversation,
+  getOrCreateWorkroom,
 } from "./conversationService.js";
 import { logOrgEvent } from "./auditService.js";
 import {
@@ -168,17 +169,34 @@ export async function dispatchWorkExecution(
 ): Promise<void> {
   const correlationId = input.correlationId ?? randomUUID();
 
-  if (input.conversationId) {
-    emitExecutionEvent(input.conversationId, {
+  // Ensure a workroom conversation exists for this task so clarification
+  // checkpoints have somewhere to write messages and resume from — even when
+  // the task was created outside a conversation (e.g. direct POST /tasks).
+  let conversationId = input.conversationId;
+  if (!conversationId && input.taskId) {
+    try {
+      const workroom = await getOrCreateWorkroom(
+        input.organizationId,
+        input.taskId,
+        input.requesterId,
+      );
+      conversationId = workroom.id;
+    } catch (err) {
+      console.warn("[ExecutionCoordinator] Could not resolve workroom conversation (non-fatal):", (err as Error)?.message);
+    }
+  }
+
+  if (conversationId) {
+    emitExecutionEvent(conversationId, {
       type: "execution_started",
-      conversationId: input.conversationId,
+      conversationId,
       correlationId,
       organizationId: input.organizationId,
       humanLabel: "Work is starting…",
     });
     postExecutionStartedToConversation(
       input.organizationId,
-      input.conversationId,
+      conversationId,
       input.taskId ?? "",
       correlationId,
     ).catch(err => console.warn("[ExecutionCoordinator] Failed to post started message:", err?.message));
@@ -198,7 +216,7 @@ export async function dispatchWorkExecution(
     requesterId: input.requesterId,
     taskId: input.taskId,
     userRequest: input.taskDescription ?? input.taskTitle,
-    conversationId: input.conversationId,
+    conversationId,
     correlationId,
     intentId: undefined,
   });
