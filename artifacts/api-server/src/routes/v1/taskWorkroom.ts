@@ -13,6 +13,8 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
+import { hasActiveCheckpoint } from "../../services/executionCheckpointStore.js";
+import { resumeFromCheckpoint } from "../../services/executionCoordinatorService.js";
 import { db } from "@workspace/db";
 import {
   approvalsTable,
@@ -97,6 +99,19 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
     };
 
     sendEvent({ type: "ack" });
+
+    // Sprint 27.1 — Checkpoint resume: if this task's conversation has a paused
+    // execution waiting for clarification, resume it with the user's reply.
+    if (hasActiveCheckpoint(conv.id)) {
+      resumeFromCheckpoint({
+        conversationId: conv.id,
+        organizationId: ctx.tenantId,
+        requesterId: user.id,
+        clarificationAnswer: content.trim(),
+      }).catch(err =>
+        console.warn("[taskWorkroom] Checkpoint resume failed (non-fatal):", err?.message),
+      );
+    }
 
     const result = await conversationService.processUserMessage(
       ctx.tenantId,
