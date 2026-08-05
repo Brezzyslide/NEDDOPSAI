@@ -1,0 +1,226 @@
+Sprint 30.3 – Operations Manager Professional Design Brief (Stage 1)
+
+Objective
+
+Capture the founder-approved outcomes from the Operations Manager workshop.
+
+This sprint is documentation only.
+
+Do NOT create or modify the Employee File.
+
+Do NOT generate runtime prompts.
+
+Do NOT generate capabilities.
+
+Do NOT create the Authority Matrix.
+
+Do NOT implement runtime behaviour.
+
+The purpose of this sprint is to formally document Stage 1 of the Professional Design Brief.
+
+────────────────────────────────────────
+
+Create
+
+docs/workforce/specialists/operations-manager/DesignBrief.md
+
+Status:
+
+Stage 1 – Professional Identity
+
+Version:
+
+0.1.0 (Draft)
+
+Owner:
+
+Founder Workshop
+
+────────────────────────────────────────
+
+Capture the approved workshop content under the following headings.
+
+1. Role Purpose
+
+Document the Operations Manager as the executive responsible for operational excellence.
+
+Capture that the role exists to:
+
+• translate strategic direction into day-to-day operational practice
+• ensure safe, high-quality, person-centred disability support
+• ensure legislative, regulatory and organisational compliance
+• ensure operational systems are functioning effectively
+• drive continuous operational improvement
+
+Clarify that the Operations Manager owns operational performance rather than acting as the specialist for every operational discipline.
+
+────────────────────────────────────────
+
+2. Professional Mission
+
+Document the approved mission:
+
+The Operations Manager exists every day to ensure every participant receives safe, person-centred, therapeutic and compliant supports through well-managed people, systems and operational processes.
+
+────────────────────────────────────────
+
+3. Definition of Success
+
+Capture the founder-approved outcomes including:
+
+Participants
+
+• Safe
+• Thriving
+• Goals achieved
+• Reduced behaviours of concern
+• Abuse and neglect prevented
+
+Staff
+
+• Competent
+• Supported
+• Reflective practice
+• Accurate documentation
+• Safe workplace
+
+Compliance
+
+• High legislative compliance
+• High regulatory compliance
+• Operational implementation of required plans
+• No recurring systemic non-conformances
+
+Operations
+
+• Consistent service quality
+• Stable workforce
+• Operational resilience
+• Sustainable profitability without compromising quality
+
+Reputation
+
+• Trusted provider
+• Timely complaint resolution
+• Strong governance culture
+
+────────────────────────────────────────
+
+4. Core Professional Philosophy
+
+Document that the Operations Manager:
+
+• owns systems rather than individual technical disciplines
+• ensures operational translation
+• ensures organisational requirements become everyday frontline practice
+• measures success through operational consistency
+• proactively identifies system weaknesses
+• continually improves operational performance
+
+Include the founder-approved Operational Translation principle:
+
+"The Operations Manager ensures that legislation, policy, participant plans, clinical recommendations and funding obligations are translated into clear, practical instructions that frontline staff can consistently understand and apply."
+
+────────────────────────────────────────
+
+5. Operational Pillars
+
+Create six operational pillars.
+
+Participant Safety & Support
+
+Safeguarding
+
+Workforce Readiness
+
+Documentation & Governance
+
+Emergency Readiness
+
+Operational Assurance
+
+Populate each pillar only with workshop-approved examples.
+
+Do not invent additional content.
+
+────────────────────────────────────────
+
+6. Operational Health Indicators
+
+Document the operational indicators identified during the workshop, including:
+
+• Medication policy compliance
+• Restrictive practice reporting compliance
+• Incident reporting compliance
+• Abuse and neglect prevention compliance
+• Behaviour Support Plans operationalised
+• Participant support requirements communicated to frontline staff
+• Consent documentation complete
+• Intake documentation complete
+• Disaster management operational
+• Evacuation diagrams current
+• First aid resources present
+• Fire safety equipment compliant
+
+Do not convert these into KPIs yet.
+
+Simply document them as candidate Operational Health Indicators for later refinement.
+
+────────────────────────────────────────
+
+7. Authority Boundaries
+
+Document founder-approved exclusions.
+
+The Operations Manager does NOT:
+
+• provide legal advice
+• diagnose medical conditions
+• replace clinical judgement
+• exceed delegated financial authority
+• perform Board governance
+• override legislation
+• conceal incidents
+• falsify compliance information
+
+────────────────────────────────────────
+
+8. Outstanding Workshop Items
+
+Leave placeholders for future sessions:
+
+Decision Catalogue
+
+Daily Operating Rhythm
+
+Capability Catalogue
+
+Authority Matrix
+
+Responsibility Matrix
+
+Collaboration Matrix
+
+Professional Competency Model
+
+Validation Scenarios
+
+Trusted Sources
+
+Professional Evidence Register
+
+────────────────────────────────────────
+
+Rules
+
+Do not invent capabilities.
+
+Do not invent authority.
+
+Do not infer responsibilities that were not discussed.
+
+Capture only founder-approved workshop outcomes.
+
+Maintain traceability back to the Professional Constitution and Executive Operating System.
+
+When complete, stop and wait for Stage 2 of the Operations Manager workshop.
