@@ -58,18 +58,20 @@ export type ExecutionProgressCallback = (
 
 /** Human-readable labels surfaced in chat for each pipeline stage. */
 export const EXECUTION_STAGE_LABELS: Record<ExecutionStage, string> = {
-  selecting_blueprint:   "Selecting work blueprint…",
-  assembling_package:    "Reviewing organisational knowledge…",
-  validating:            "Validating requirements…",
-  retrieving_examples:   "Consulting approved work examples…",
-  executing:             "Consulting specialist…",
-  reviewing:             "Running quality review…",
-  creating_completed_work: "Preparing completed work document…",
+  selecting_blueprint:    "Selecting work blueprint…",
+  assembling_package:     "Reviewing organisational knowledge…",
+  retrieving_evidence:    "Searching Organisation Library…",
+  validating:             "Validating requirements…",
+  retrieving_examples:    "Consulting approved work examples…",
+  executing:              "Consulting specialist…",
+  reviewing:              "Running quality review…",
+  creating_completed_work:"Preparing completed work document…",
 };
 
 export type ExecutionStage =
   | "selecting_blueprint"
   | "assembling_package"
+  | "retrieving_evidence"
   | "validating"
   | "retrieving_examples"
   | "executing"
@@ -220,11 +222,26 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     });
   }
 
-  // ── Step 3: Validate prerequisites ───────────────────────────────────────
+  // ── Step 3: Resolve evidence (Sprint 27.5 — runs BEFORE validation) ─────────
+  // KnowledgeResolutionService must run before validateWorkPackage so that
+  // validation can inspect what was actually retrieved, not abstract metadata.
+  // Evidence resolution must never abort the pipeline even if retrieval fails.
+  await progress("retrieving_evidence");
+  const t3evidence = Date.now();
+  const evidencePack = await resolveEvidence({
+    organisationId: organizationId,
+    specialistCode: manifest.primarySpecialist,
+    blueprint,
+    workPackage: manifest,
+    userRequest,
+  }).catch(() => null);
+  tRetrievalMs = Date.now() - t3evidence;
+
+  // ── Step 4: Validate prerequisites against retrieved evidence ─────────────
   await progress("validating");
-  const t3 = Date.now();
-  const validationResult = validateWorkPackage(manifest, blueprint);
-  tValidationMs = Date.now() - t3;
+  const t4 = Date.now();
+  const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined);
+  tValidationMs = Date.now() - t4;
 
   // Sprint 27.4 — write validation snapshot (fire-and-forget)
   updateManifestObservability(manifest.id, {
@@ -236,17 +253,21 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
   }).catch(() => {});
 
   if (!validationResult.passed) {
+    // Sprint 27.5 — use evidence-aware clarification message and structured items
+    const missingItems = validationResult.missingEvidenceItems ?? [];
     const clarificationQuestions = validationResult.missingItems.map(
-      item => `Can you provide or upload the required ${item}?`,
+      label => `Can you provide or upload the required ${label}?`,
     );
-    // Sprint 27.4 — write clarification failure info (fire-and-forget)
+    // Sprint 27.4/27.5 — write clarification failure info (fire-and-forget)
     updateManifestObservability(manifest.id, {
       failureInfo: {
         state: "awaiting_clarification",
-        clarificationItems: validationResult.missingItems.map(name => ({
-          name,
-          reason: "Blueprint requires this knowledge type before execution can proceed",
-        })),
+        clarificationItems: missingItems
+          .filter(m => m.required)
+          .map(m => ({
+            name: m.displayLabel,
+            reason: m.reason,
+          })),
         retryAvailable: true,
       },
     }).catch(() => {});
@@ -257,26 +278,15 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
       manifestId: manifest.id,
       blueprintCode: blueprint?.code,
       validationResult,
-      message: `I need a little more information before I can proceed: ${validationResult.missingItems.join(", ")}. ${validationResult.summary}`,
+      message: validationResult.clarificationMessage || validationResult.summary,
       clarificationQuestions,
     };
   }
 
-  // ── Step 4: Retrieve approved examples for style guidance ─────────────────
+  // ── Step 5: Retrieve approved style examples ──────────────────────────────
   await progress("retrieving_examples");
   const outputType = blueprint?.outputTypes[0] ?? "general_output";
-  const t4 = Date.now();
-  const [examples, evidencePack] = await Promise.all([
-    retrieveApprovedExamples(organizationId, outputType),
-    resolveEvidence({
-      organisationId: organizationId,
-      specialistCode: manifest.primarySpecialist,
-      blueprint,
-      workPackage: manifest,
-      userRequest,
-    }).catch(() => null), // evidence resolution must never abort the pipeline
-  ]);
-  tRetrievalMs = Date.now() - t4;
+  const examples = await retrieveApprovedExamples(organizationId, outputType);
   const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
   // ── Step 5: Build execution context and generate draft ────────────────────

@@ -52,3 +52,4 @@
 - [NeedsOps OpenClaw Contract Investigation](needsops-openclaw-contract.md) — OpenClaw did NOT cause CoS→OM crash; boundary log + MALFORMED_BROKER_RESPONSE guard + 27 contract tests added; @workspace/openclaw alias added to vitest config; 3089 tests
 - [NeedsOps Sprint 27.3 Knowledge Resolution](needsops-sprint273.md) — no .limit() on mock chain = silent null; newVersionId not newVersion!.id in enqueue; makeSelectChain helper; REQUIRED_RLS_TABLES unchanged; 3131 tests
 - [NeedsOps Sprint 27.4 Execution Inspector](needsops-sprint274.md) — fire-and-forget observability columns, RBAC actorId/role pattern, matchedPhrase null guard, sprint271 mock fix, workBlueprintsTable.title not .name; 3178 tests
+- [NeedsOps Sprint 27.5 Evidence-Aware Validation](needsops-sprint275.md) — pipeline reorder (evidence before validation), MissingEvidenceItem model, trusted-provider types never block, vi.mock hoisting test split rule, 3239 tests

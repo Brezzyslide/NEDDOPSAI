@@ -1,0 +1,373 @@
+Sprint 27.5 — Evidence-Aware Validation & Clarification Quality
+
+Objective
+
+Fix the execution ordering defect where work-package validation runs before KnowledgeResolutionService.
+
+Current broken flow:
+
+assembleWorkPackage
+→ validateWorkPackage
+→ awaiting_clarification
+→ resolveEvidence never runs
+
+Required flow:
+
+assembleWorkPackage
+→ resolveEvidence
+→ validateWorkPackage using the EvidencePack
+→ execute or request precise clarification
+
+Do not weaken blueprint validation.
+Do not remove mandatory evidence requirements.
+Do not bypass missing documents.
+The goal is to validate what was actually retrieved rather than checking abstract metadata before retrieval.
+
+────────────────────────────────────────
+Part 1 — Reorder the Pipeline
+
+Update workExecutionPipelineService.ts.
+
+Current order:
+
+1. selectBlueprint
+2. assembleWorkPackage
+3. validateWorkPackage
+4. retrieveApprovedExamples + resolveEvidence
+5. generateDraft
+
+Required order:
+
+1. selectBlueprint
+2. assembleWorkPackage
+3. resolveEvidence
+4. validateWorkPackage(manifest, blueprint, evidencePack)
+5. retrieveApprovedExamples
+6. generateDraft
+
+Evidence resolution must happen before any validation rule that depends on library knowledge.
+
+Preserve existing progress events and stage timings.
+
+Recommended stages:
+
+assembling_package
+retrieving_evidence
+validating
+retrieving_examples
+executing
+reviewing
+completed
+
+────────────────────────────────────────
+Part 2 — Evidence-Aware Validation
+
+Extend validateWorkPackage to accept an EvidencePack.
+
+Suggested signature:
+
+validateWorkPackage(
+  manifest,
+  blueprint,
+  evidencePack?
+)
+
+Build validation source coverage from retrieved evidence.
+
+Use:
+
+- evidencePack chunks
+- evidence source types
+- task-upload evidence
+- organisation memory where the blueprint permits it
+- manifest metadata only as a fallback for legacy or ad-hoc paths
+
+Do not count a document type as satisfied merely because a metadata row exists if no relevant evidence was retrieved.
+
+Do not fail merely because a metadata source type is absent when relevant evidence was found through another valid provider.
+
+Validation must answer:
+
+- Was relevant evidence actually retrieved?
+- Does it meet the required source category?
+- Is it approved and current?
+- Does it meet the minimum confidence threshold?
+- Is a mandatory citation source available?
+- Is the evidence sufficient for the requested work?
+
+────────────────────────────────────────
+Part 3 — Source-Type Normalisation
+
+Create or reuse one shared source-type normalisation utility.
+
+The following should not be treated as unrelated when they represent the same professional requirement:
+
+- policy
+- risk_policy
+- risk_management_policy
+- organisation_policy
+
+Likewise normalise reasonable aliases for:
+
+- legislation
+- standards
+- procedure
+- risk_assessment
+- template
+- participant_document
+- task_upload
+
+Do not hide genuine distinctions where they matter.
+
+Use canonical internal values and human-facing labels.
+
+Example:
+
+canonical type:
+policy
+
+display label:
+Organisation policy
+
+Do not place raw codes such as risk_assessment in user messages.
+
+────────────────────────────────────────
+Part 4 — Validation Rule Semantics
+
+Review the built-in blueprint validation rules.
+
+The current risk_policy_present rule checks:
+
+sourceTypes.has("policy") || sourceTypes.has("risk_assessment")
+
+This may be too broad or semantically confused.
+
+Determine whether the requirement is:
+
+- a Risk Management Policy,
+- a participant-specific risk assessment,
+- either one,
+- or both.
+
+Do not guess silently.
+
+Preserve the current rule where professional intent is unclear, but document it for later blueprint review.
+
+For every rule, separate:
+
+- required blocker
+- recommended evidence
+- optional supporting evidence
+- citation requirement
+
+Warnings must not automatically become clarification blockers unless a required rule depends on them.
+
+────────────────────────────────────────
+Part 5 — Remove Duplicate Missing Items
+
+Current output duplicates concepts:
+
+- Risk management policy
+- policy
+- risk_assessment
+- legislation
+- standards
+
+Build a structured MissingEvidenceItem model:
+
+{
+  canonicalType,
+  displayLabel,
+  required,
+  reason,
+  searched,
+  searchOutcome,
+  suggestedAction
+}
+
+Deduplicate by canonical type and professional requirement.
+
+A missing policy should appear once.
+
+A named mandatory rule should take priority over a generic category warning.
+
+────────────────────────────────────────
+Part 6 — Precise Clarification Messages
+
+Replace the generic template:
+
+“I need a little more information before I can proceed…”
+
+with evidence-aware language.
+
+Example when evidence was searched but not found:
+
+“I searched your approved Organisation Library but could not locate a current Risk Management Policy required for this review.
+
+Please upload or approve the policy, or confirm that another approved document should be used instead.”
+
+Example when legislation is recommended but not a blocker:
+
+“I could not locate organisation-approved legislative guidance. I can continue using available organisational evidence, but the final review will identify this limitation.”
+
+Only ask the user for evidence that is genuinely required to proceed.
+
+Do not ask customers to upload government legislation when the Trusted Intelligence layer should retrieve it externally.
+
+If external trusted-provider retrieval is not implemented for that source yet, clearly say so and classify it as a platform limitation rather than pretending it is an organisation document.
+
+────────────────────────────────────────
+Part 7 — Trusted and Organisation Source Responsibilities
+
+Separate evidence ownership:
+
+Organisation-provided evidence:
+
+- organisation policies
+- procedures
+- templates
+- participant documents
+- risk assessments
+- internal standards
+
+Platform/trusted intelligence evidence:
+
+- legislation
+- NDIS Practice Standards
+- Commission guidance
+- Fair Work instruments
+- government publications
+
+The user should generally not be asked to upload publicly available legislation or NDIS standards.
+
+Where trusted-provider retrieval is available, resolve those automatically.
+
+Where it is not yet implemented, surface a precise limitation.
+
+Do not falsely mark trusted evidence as available.
+
+────────────────────────────────────────
+Part 8 — Evidence Pack and Inspector Alignment
+
+Ensure the Execution Inspector reflects the same evidence used by validation.
+
+The Inspector should show:
+
+Required evidence
+
+- Risk Management Policy — missing
+- Participant risk assessment — retrieved, 2 chunks
+- NDIS Practice Standards — retrieved from trusted source, 5 chunks
+
+Validation result
+
+- 1 blocking requirement
+- 1 warning
+- 2 requirements satisfied
+
+The Inspector must never show “evidence retrieved” while validation claims the same evidence is missing.
+
+Use one shared EvidencePack and validation result throughout the execution.
+
+────────────────────────────────────────
+Part 9 — Checkpoint and Resume
+
+If validation returns a genuine blocker:
+
+- persist the EvidencePack summary
+- persist the structured missing-evidence items
+- create the durable checkpoint
+- post the precise clarification message
+- resume after upload or user clarification
+- rerun evidence resolution and validation
+- do not rerun blueprint selection or package assembly unnecessarily
+
+When a required document is uploaded during clarification:
+
+- associate it with the task/conversation
+- ensure ingestion completes
+- resolve evidence again
+- resume automatically when safe
+
+Do not resume before the document is indexed and retrievable.
+
+────────────────────────────────────────
+Part 10 — Tests
+
+Add tests covering:
+
+Ordering
+
+- resolveEvidence runs before validateWorkPackage
+- validation receives the EvidencePack
+- validation failure does not occur before retrieval
+
+Evidence validation
+
+- approved relevant policy chunks satisfy policy requirement
+- metadata-only policy does not satisfy evidence requirement
+- unrelated policy chunks do not satisfy the rule
+- low-confidence evidence does not satisfy a mandatory rule
+- task-upload evidence can satisfy permitted requirements
+- tenant isolation
+
+Clarification
+
+- duplicate missing types are deduplicated
+- raw source codes are never shown to users
+- required missing evidence blocks
+- warnings do not block
+- exact missing source is named
+- legislation is not incorrectly requested as an organisation upload
+- trusted-provider limitation is explained accurately
+
+Pipeline
+
+- evidence retrieved → validation passes → Operations Manager executes
+- missing policy → checkpoint created
+- upload/approval/ingestion → evidence re-resolved → execution resumes
+- completed stages are not unnecessarily repeated
+
+Inspector
+
+- inspector evidence and validation state agree
+- blocking and warning counts are correct
+- missing evidence shows search outcome
+
+Regression scenario
+
+Use this exact class of request:
+
+“Review our Medication Management Policy through an operational lens and delegate the work to the Operations Manager.”
+
+Confirm that:
+
+- the Operations Manager is selected
+- the library is searched before validation
+- an existing approved Medication Management Policy is retrieved
+- the system does not ask for generic “policy”, “legislation”, or “standards”
+- only genuinely missing mandatory evidence is requested
+- completed work retains evidence citations
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Before-and-after execution order
+2. Exact validation contract changes
+3. Source-type normalisation map
+4. Clarification-message examples
+5. Files changed
+6. Test results
+7. Manual end-to-end result for the medication-policy review
+8. Confirmation that evidence retrieval and validation now use the same EvidencePack
+
+Important constraints
+
+- Do not weaken professional safeguards.
+- Do not mark missing evidence as present.
+- Do not treat metadata as document evidence.
+- Do not ask users to upload public legislation by default.
+- Do not add optional chaining merely to silence errors.
+- Do not redesign unrelated execution components.

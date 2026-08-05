@@ -362,11 +362,32 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     }),
     updateManifestObservability:  vi.fn().mockResolvedValue(undefined),
   }));
+  vi.mock("../services/knowledgeResolutionService.js", () => ({
+    resolveEvidence:       vi.fn().mockResolvedValue(null),
+    buildEvidenceSection:  vi.fn().mockReturnValue(""),
+    buildCitationSummary:  vi.fn().mockReturnValue([]),
+    invalidateEvidenceCache: vi.fn(),
+    clearEvidenceCache:    vi.fn(),
+  }));
   vi.mock("../services/workValidationService.js", () => ({
     validateWorkPackage: vi.fn().mockReturnValue({
       passed: false,
-      missingItems: ["incident policy document"],
-      summary: "Policy document required.",
+      issues: [{ rule: "incident_policy_present", level: "error", message: "Organisation incident management policy must be retrieved" }],
+      missingItems: ["Organisation Policy"],
+      conflictingItems: [],
+      recommendedAction: "request_information",
+      summary: "1 required item(s) missing: Organisation Policy.",
+      missingEvidenceItems: [{
+        canonicalType: "policy",
+        displayLabel: "Organisation Policy",
+        required: true,
+        reason: "Organisation incident management policy must be retrieved",
+        searched: false,
+        searchOutcome: "not_searched",
+        suggestedAction: "upload_document",
+      }],
+      evidenceSearched: false,
+      clarificationMessage: "This work requires an Organisation Policy to proceed. Please upload or approve the relevant document.",
     }),
   }));
   vi.mock("../services/approvedExampleService.js", () => ({
@@ -407,7 +428,11 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     const { validateWorkPackage } = await import("../services/workValidationService.js");
 
     // Make validation pass for the resume case
-    vi.mocked(validateWorkPackage).mockReturnValueOnce({ passed: true, missingItems: [], summary: "OK" });
+    vi.mocked(validateWorkPackage).mockReturnValueOnce({
+      passed: true, issues: [], missingItems: [], conflictingItems: [],
+      recommendedAction: "proceed", summary: "OK",
+      missingEvidenceItems: [], evidenceSearched: false, clarificationMessage: "",
+    });
 
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
 
@@ -442,7 +467,11 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
 
   it("enriches userRequest with clarification answer when checkpoint provided", async () => {
     const { validateWorkPackage } = await import("../services/workValidationService.js");
-    vi.mocked(validateWorkPackage).mockReturnValueOnce({ passed: true, missingItems: [], summary: "OK" });
+    vi.mocked(validateWorkPackage).mockReturnValueOnce({
+      passed: true, issues: [], missingItems: [], conflictingItems: [],
+      recommendedAction: "proceed", summary: "OK",
+      missingEvidenceItems: [], evidenceSearched: false, clarificationMessage: "",
+    });
 
     // We can verify the clarification answer is included by inspecting what gets passed to generateDraft
     // (indirectly: the enriched request = original + clarification answer)
