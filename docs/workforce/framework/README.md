@@ -203,6 +203,7 @@ docs/workforce/
 | 4 | [Governance Rules](./GovernanceRules.md) | Binding rules governing all artefacts from constitutional documents to runtime compilation | ✅ Approved |
 | 5 | [Professional Design Lifecycle](./ProfessionalDesignLifecycle.md) | 12-stage lifecycle from Founder Workshop to Production — stages, gates, and responsibilities | ✅ Approved |
 | 6 | [Specialist Readiness Assessment](./SpecialistReadinessAssessment.md) | Formal confirmation that shared framework is complete; gate to specialist workshops | ✅ Approved |
+| 7 | [Founder Approval Register](./FOUNDER_APPROVAL.md) | Formal governance trail — lists every founder-approved constitutional artefact with version, approval date, change log, and review schedule | ✅ Approved |
 
 ### Tier 2 — Design Templates (Architecture-Owned, In Use)
 
@@ -281,6 +282,7 @@ Full governance rules: [Governance Rules](./GovernanceRules.md).
 | Governance Rules | 1.0.0 | ✅ Founder-Approved |
 | Professional Design Lifecycle | 1.0.0 | ✅ Founder-Approved |
 | Specialist Readiness Assessment | 1.0.0 | ✅ Approved — framework complete |
+| Founder Approval Register | 1.0.0 | ✅ Approved — governance trail active |
 | Design Brief Template | 1.0.0 | ✅ In use |
 | Chief of Staff Employee File | Active | ✅ Implemented |
 | Executive Assistant Employee File | Active | ✅ Implemented |
