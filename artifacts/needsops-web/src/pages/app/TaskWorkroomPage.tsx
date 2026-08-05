@@ -542,7 +542,14 @@ export default function TaskWorkroomPage() {
 
   useEffect(() => {
     if (data?.messages) {
-      setMessages(data.messages);
+      // Merge server messages with any local-only pending/failed messages.
+      // Using the server list as the canonical order prevents duplicate keys
+      // when a background refetch and an SSE append race against each other.
+      setMessages(prev => {
+        const serverIds = new Set((data.messages as Message[]).map((m: Message) => m.id));
+        const localOnly = prev.filter(m => !serverIds.has(m.id));
+        return [...(data.messages as Message[]), ...localOnly];
+      });
     }
     if (data?.conversation?.id) {
       setConversationId(data.conversation.id);
@@ -611,7 +618,12 @@ export default function TaskWorkroomPage() {
               evt.message as Message,
             ]);
           } else if (evt.type === "agent_message") {
-            setMessages(prev => [...prev, evt.message as Message]);
+            // Idempotent append — skip if a refetch already placed this message in state
+            setMessages(prev => {
+              const msg = evt.message as Message;
+              if (prev.some(m => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
             setStreamingText("");
           } else if (evt.type === "done") {
             setIsStreaming(false);

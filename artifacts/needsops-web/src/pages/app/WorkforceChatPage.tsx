@@ -294,7 +294,12 @@ export default function WorkforceChatPage() {
               evt.message as Message,
             ]);
           } else if (evt.type === "agent_message") {
-            setMessages(prev => [...prev, evt.message as Message]);
+            // Idempotent append — skip if the message is already in state
+            setMessages(prev => {
+              const msg = evt.message as Message;
+              if (prev.some(m => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
             setStreamingText("");
           } else if (evt.type === "done") {
             setIsStreaming(false);
