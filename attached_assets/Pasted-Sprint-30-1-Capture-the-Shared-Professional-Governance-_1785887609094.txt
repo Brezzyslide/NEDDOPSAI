@@ -1,0 +1,288 @@
+Sprint 30.1 – Capture the Shared Professional Governance Framework
+
+Objective
+
+The founder workshops have now established the shared professional philosophy that governs every current and future NeedsOps AI employee.
+
+These are no longer working notes.
+
+They now become version-controlled constitutional artefacts that sit above every Employee File.
+
+Do NOT modify runtime behaviour.
+
+Do NOT generate specialist content.
+
+Do NOT create Employee Files.
+
+This sprint is documentation, governance and architecture only.
+
+────────────────────────────────────────
+
+Background
+
+The following shared artefacts have now been approved:
+
+1. NeedsOps Professional Constitution v1.0
+2. NeedsOps Executive Operating System v1.0
+3. NeedsOps Universal Decision Hierarchy v1.0
+
+Every AI employee will inherit these before inheriting any role-specific behaviour.
+
+These documents become the constitutional foundation of the Digital Workforce.
+
+────────────────────────────────────────
+
+Deliverable 1
+
+Create:
+
+docs/workforce/framework/SharedProfessionalConstitution.md
+
+Structure the document professionally.
+
+Include:
+
+• Purpose
+• Why NeedsOps exists
+• Participant Promise
+• Professional Standard
+• Decision Philosophy
+• Knowledge Hierarchy
+• Professional Ethics
+• Universal Escalation Principles
+• Quality Standard
+• Trust Standard
+• Professional Humility
+• Systems Before Symptoms
+• Constitutional Principles
+• Version History
+• Founder Approval section
+
+This document represents immutable organisational values.
+
+────────────────────────────────────────
+
+Deliverable 2
+
+Create:
+
+docs/workforce/framework/ExecutiveOperatingSystem.md
+
+This document defines HOW executives think.
+
+Include:
+
+• Executive Mindset
+• Executive First Responsibility
+• Executive Priority Hierarchy
+• Definition of a Good Decision
+• Evidence Hierarchy
+• Risk Philosophy
+• Leadership Philosophy
+• Communication Standards
+• Continuous Improvement Philosophy
+• Legacy Statement
+• Executive Operating Principles
+• Decision Review Expectations
+• Founder Approval
+• Version History
+
+This document governs reasoning, not specialist knowledge.
+
+────────────────────────────────────────
+
+Deliverable 3
+
+Create:
+
+docs/workforce/framework/UniversalDecisionHierarchy.md
+
+This document defines the mandatory reasoning sequence inherited by every specialist.
+
+The hierarchy should include:
+
+1. Immediate participant safety
+2. Staff safety
+3. Community safety
+4. Organisational safety
+5. Legislative obligations
+6. Regulatory obligations
+7. Organisational policies
+8. Participant goals and preferences
+9. Evidence quality
+10. Appropriate specialist ownership
+11. Confidence assessment
+12. Consultation requirements
+13. Escalation requirements
+14. Decision justification
+15. Professional defensibility
+
+Document how conflicts between priorities are resolved.
+
+────────────────────────────────────────
+
+Deliverable 4
+
+Inheritance Documentation
+
+Update README.md in docs/workforce/framework/
+
+Document the inheritance model.
+
+Every specialist inherits:
+
+NeedsOps Professional Constitution
+
+↓
+
+Executive Operating System
+
+↓
+
+Universal Decision Hierarchy
+
+↓
+
+Professional Design Brief
+
+↓
+
+Employee File
+
+↓
+
+Capability Catalogue
+
+↓
+
+Authority Matrix
+
+↓
+
+Runtime Manifest
+
+↓
+
+Execution
+
+Include diagrams showing:
+
+• Governance inheritance
+• Runtime inheritance
+• Documentation hierarchy
+
+────────────────────────────────────────
+
+Deliverable 5
+
+Governance Rules
+
+Document the governance rules.
+
+Examples:
+
+• These documents are founder-approved.
+• They are version controlled.
+• Runtime manifests compile selected operational principles only.
+• Workshop notes never become runtime instructions.
+• Employee Files cannot contradict these documents.
+• Specialist Design Briefs extend these documents but never override them.
+• Constitutional principles override role-specific behaviour.
+• Legislative obligations override organisational policy.
+• Participant safety overrides operational convenience.
+
+────────────────────────────────────────
+
+Deliverable 6
+
+Professional Design Lifecycle
+
+Update the framework documentation to reflect the complete lifecycle.
+
+Founder Workshop
+
+↓
+
+Shared Governance Framework
+
+↓
+
+Professional Design Brief
+
+↓
+
+Professional Evidence Register
+
+↓
+
+Founder Approval
+
+↓
+
+Employee File
+
+↓
+
+Capability Catalogue
+
+↓
+
+Authority Matrix
+
+↓
+
+Runtime Compilation
+
+↓
+
+Validation
+
+↓
+
+Testing
+
+↓
+
+Production
+
+Include responsibilities for:
+
+Founder
+
+Subject Matter Expert
+
+Architecture
+
+Engineering
+
+Testing
+
+────────────────────────────────────────
+
+Deliverable 7
+
+Future Specialist Readiness
+
+Review the framework and confirm that no further shared governance work is required before beginning specialist workshops.
+
+Confirm that every remaining specialist can now be developed using the established framework without redefining shared philosophy.
+
+────────────────────────────────────────
+
+Rules
+
+Do NOT create specialist Employee Files.
+
+Do NOT generate specialist personalities.
+
+Do NOT modify runtime code.
+
+Do NOT modify prompts.
+
+Do NOT change execution logic.
+
+Do NOT alter existing Chief of Staff or Executive Assistant implementations.
+
+Only capture the approved governance framework in a professional, version-controlled form.
+
+When complete, stop and wait for the first specialist workshop (Operations Manager).
