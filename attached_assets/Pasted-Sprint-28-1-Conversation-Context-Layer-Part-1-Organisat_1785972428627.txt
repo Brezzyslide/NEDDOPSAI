@@ -1,0 +1,187 @@
+Sprint 28.1 — Conversation Context Layer (Part 1)
+Organisation Library Presence Service
+
+Objective
+
+Implement the first component of the new Conversation Context Layer.
+
+Do not modify prompts yet.
+Do not modify specialist selection yet.
+Do not modify execution.
+
+This sprint is purely about allowing the Chief of Staff to know the state of the Organisation Library before generating a conversational response.
+
+────────────────────────────────────
+
+Problem
+
+The inspection found that the Chief of Staff never checks the Organisation Library during conversation.
+
+Instead, it asks the user:
+
+"Do you have the latest version?"
+
+without knowing whether the document:
+
+• exists
+• is approved
+• is indexed
+• is retrievable
+
+The conversation layer must become knowledge-aware before the LLM generates a response.
+
+────────────────────────────────────
+
+Build a new service:
+
+organisationLibraryPresenceService.ts
+
+Purpose:
+
+Fast, lightweight inspection.
+
+NOT semantic retrieval.
+
+NOT chunk retrieval.
+
+NOT KnowledgeResolutionService.
+
+It only answers:
+
+• Does the document exist?
+• Can specialists currently use it?
+
+────────────────────────────────────
+
+Public API
+
+checkOrganisationLibraryPresence(
+    organisationId,
+    searchTerms
+)
+
+Returns:
+
+{
+    searched: true,
+
+    matches: [
+
+        {
+            sourceId,
+            title,
+            sourceType,
+            version,
+            approved,
+            indexed,
+            retrievable,
+            status,
+            ingestionStatus,
+            confidence
+        }
+
+    ],
+
+    summary: {
+
+        exactMatch,
+
+        partialMatch,
+
+        searchable,
+
+        usable,
+
+        reason
+
+    }
+
+}
+
+────────────────────────────────────
+
+Search Behaviour
+
+Support:
+
+exact title
+
+partial title
+
+keywords
+
+canonical source types
+
+normalised names
+
+Example:
+
+Medication Policy
+
+Medication Management Policy
+
+Medication Procedure
+
+Medication SOP
+
+should all produce sensible results.
+
+Do not perform semantic chunk retrieval.
+
+────────────────────────────────────
+
+Performance
+
+Target:
+
+<100ms
+
+Cache for a short period.
+
+Do not affect execution performance.
+
+────────────────────────────────────
+
+No prompt changes.
+
+No conversation changes.
+
+No execution changes.
+
+Only expose the service.
+
+────────────────────────────────────
+
+Tests
+
+Add comprehensive tests covering:
+
+approved
+
+uploaded
+
+superseded
+
+archived
+
+pending ingestion
+
+multiple versions
+
+multiple partial matches
+
+no match
+
+wrong organisation
+
+wrong tenant
+
+Return:
+
+• files changed
+• API contract
+• tests
+• performance characteristics
+
+Do not continue to Part 2.
+Stop after this sprint.
