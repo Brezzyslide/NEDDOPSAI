@@ -612,11 +612,15 @@ export default function TaskWorkroomPage() {
           if (evt.type === "token") {
             setStreamingText(prev => prev + (evt.content as string));
           } else if (evt.type === "user_message") {
-            // Reconcile: replace optimistic message with server-confirmed message
-            setMessages(prev => [
-              ...prev.filter(m => m.id !== clientId),
-              evt.message as Message,
-            ]);
+            // Reconcile: replace optimistic message with server-confirmed message.
+            // Guard: if the background poll already injected this server ID into
+            // state before the SSE event fires, do not duplicate it.
+            setMessages(prev => {
+              const confirmedMsg = evt.message as Message;
+              const withoutPending = prev.filter(m => m.id !== clientId);
+              if (withoutPending.some(m => m.id === confirmedMsg.id)) return withoutPending;
+              return [...withoutPending, confirmedMsg];
+            });
           } else if (evt.type === "agent_message") {
             // Idempotent append — skip if a refetch already placed this message in state.
             // Guard: server coerces agentMessage to null (never undefined) but a defensive
