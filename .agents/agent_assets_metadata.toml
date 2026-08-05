@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "xD9lwztKc6utAwsMlhDIJ"
+uri = "file://docs/architecture/KnowledgeExecutionFlow.pdf"
+type = "pdf"
+title = "Knowledge Execution Architecture — Flow Diagram"
+description = "16-page PDF: cover, pipeline overview with annotated flow diagram, end-to-end data lineage, key invariants, one detailed page per stage (entry points, functions, DB tables, guards, notes), and a full file index."
