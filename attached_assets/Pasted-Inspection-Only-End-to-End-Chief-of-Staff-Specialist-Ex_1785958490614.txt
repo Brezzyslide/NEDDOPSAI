@@ -1,0 +1,294 @@
+Inspection Only – End-to-End Chief of Staff → Specialist Execution & Knowledge Resolution
+
+Do NOT fix anything yet.
+
+This task is investigation only.
+
+The objective is to determine exactly why:
+
+1. The Chief of Staff is not reliably delegating work to specialists.
+2. Specialists (particularly Operations Manager) request documents that have already been uploaded or replaced.
+3. Execution sometimes falls back into clarification instead of completing work.
+
+Do not modify runtime behaviour until the investigation is complete.
+
+────────────────────────────────────────
+
+PART 1 — Execution Trace
+
+Trace one complete request from:
+
+User
+→ Chief of Staff
+→ Conversation understanding
+→ Task proposal
+→ Task creation
+→ Approval (if applicable)
+→ Execution Coordinator
+→ Work Package
+→ Blueprint selection
+→ Specialist selection
+→ Runtime manifest
+→ Knowledge retrieval
+→ Specialist execution
+→ Completed Work
+
+For each stage report:
+
+- entered?
+- exited?
+- duration
+- input
+- output
+- next stage
+
+Stop at the first incorrect transition.
+
+────────────────────────────────────────
+
+PART 2 — Specialist Delegation
+
+For the Operations Manager specifically determine:
+
+- Was the specialist actually selected?
+- If not, why?
+- If yes, did dispatch occur?
+- If dispatch occurred, did execution begin?
+- Was the runtime manifest built?
+- Was the work package received?
+- Was execution blocked?
+- If blocked, exactly why?
+
+Produce the complete decision chain.
+
+────────────────────────────────────────
+
+PART 3 — Blueprint Inspection
+
+For the blueprint used:
+
+Show:
+
+- blueprint id
+- version
+- status
+- required library documents
+- required templates
+- required knowledge
+- required capabilities
+- validation rules
+
+Determine whether validation is requesting:
+
+- current documents
+- deleted documents
+- archived documents
+- document IDs that no longer exist
+- document names that changed
+
+If a document was replaced:
+
+Determine whether the blueprint still references the old document ID.
+
+────────────────────────────────────────
+
+PART 4 — Knowledge Resolution
+
+Inspect the knowledge pipeline.
+
+For every required document determine:
+
+- expected document
+- actual document
+- document id
+- document title
+- current status
+- approved?
+- indexed?
+- searchable?
+- active?
+- archived?
+- superseded?
+- organisation id
+
+If the document exists:
+
+Explain exactly why retrieval failed.
+
+Examples:
+
+- not indexed
+- not approved
+- archived
+- tenant mismatch
+- stale cache
+- vector index not rebuilt
+- blueprint references obsolete id
+- retrieval filters exclude it
+
+────────────────────────────────────────
+
+PART 5 — Knowledge Cache
+
+Determine whether:
+
+Replacing a policy
+
+↓
+
+updates the search index
+
+↓
+
+updates blueprint references
+
+↓
+
+updates knowledge retrieval
+
+↓
+
+invalidates caches
+
+↓
+
+updates embeddings
+
+↓
+
+becomes immediately available to specialists
+
+If any step is missing identify it.
+
+────────────────────────────────────────
+
+PART 6 — Runtime Manifest
+
+Show what the Operations Manager actually receives.
+
+Include:
+
+- blueprint
+- work package
+- available knowledge
+- retrieved examples
+- organisation memory
+- runtime capabilities
+
+Determine whether the uploaded policy is actually present in the runtime context.
+
+────────────────────────────────────────
+
+PART 7 — Specialist Behaviour
+
+Determine whether the Operations Manager asks for documents because:
+
+A)
+
+It genuinely cannot find them.
+
+B)
+
+The blueprint requires a specific document ID.
+
+C)
+
+Knowledge retrieval failed.
+
+D)
+
+The runtime manifest omitted the document.
+
+E)
+
+The specialist ignored available evidence.
+
+Identify which one.
+
+────────────────────────────────────────
+
+PART 8 — Document Replacement
+
+Inspect document replacement.
+
+If a document is replaced:
+
+Does the system:
+
+supersede the old document
+
+↓
+
+update blueprint references
+
+↓
+
+update vector index
+
+↓
+
+update knowledge retrieval
+
+↓
+
+update caches
+
+↓
+
+update organisation memory
+
+or does it simply create another document row?
+
+Explain exactly what currently happens.
+
+────────────────────────────────────────
+
+PART 9 — Produce Findings
+
+Do not propose generic fixes.
+
+Produce:
+
+Issue 1
+
+Root cause
+
+Evidence
+
+Affected files
+
+Recommended fix
+
+────────────────
+
+Issue 2
+
+Root cause
+
+Evidence
+
+Affected files
+
+Recommended fix
+
+────────────────
+
+Issue 3
+
+...
+
+Rank all issues by confidence.
+
+────────────────────────────────────────
+
+Important
+
+Do not weaken validation.
+
+Do not bypass blueprint requirements.
+
+Do not make specialists ignore missing evidence.
+
+Find the architectural cause.
+
+Return a complete inspection report before changing any code.
