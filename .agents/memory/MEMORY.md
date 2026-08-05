@@ -44,3 +44,4 @@
 - [NeedsOps Sprint 28 Blueprint Studio](needsops-sprint28.md) — blueprint versioning lifecycle, org override selection, sandbox testing, 6 frontend pages, REQUIRED_RLS_TABLES=69, 2733 tests
 - [NeedsOps Sprint 29 Governance Completion](needsops-sprint29.md) — bulk approvals (server-batched POST /bulk), memory merge, per-memory audit history, governance metrics service, intents+packs in approval feed, 2775 tests
 - [NeedsOps Sprint 34 Cross-Platform Connector](needsops-sprint34-cross-platform.md) — IPlatformAdapter/IRuntimeAdapter pattern, HOME→os.homedir() fix, Linux AppImage added, never-throws adapter rule, 26 new tests
+- [NeedsOps org provisioning capability gate](needsops-org-provisioning-gate.md) — no subscription = capability gate fails closed; execution.openclaw_runtime must be a manual tenant_entitlements grant; provisioning SQL pattern included
