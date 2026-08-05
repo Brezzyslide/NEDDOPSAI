@@ -179,13 +179,13 @@ function evaluateRule(
 
     case "participant_context_present":
       return {
-        passed: manifest.taskUploads.length > 0 || Object.keys(manifest.entityKnowledge).length > 0,
+        passed: manifest.taskUploads.length > 0 || Object.keys(manifest.entityKnowledge ?? {}).length > 0,
         details: ["Participant information (task upload or entity knowledge)"],
       };
 
     case "staff_context_present":
       return {
-        passed: manifest.taskUploads.length > 0 || Object.keys(manifest.entityKnowledge).length > 0,
+        passed: manifest.taskUploads.length > 0 || Object.keys(manifest.entityKnowledge ?? {}).length > 0,
         details: ["Staff member information"],
       };
 
@@ -197,7 +197,7 @@ function evaluateRule(
 
     case "investigation_scope_defined":
       // Cannot evaluate purely from manifest — assume defined if entity knowledge has scope
-      return { passed: Object.keys(manifest.entityKnowledge).length > 0, details: ["Investigation scope"] };
+      return { passed: Object.keys(manifest.entityKnowledge ?? {}).length > 0, details: ["Investigation scope"] };
 
     default:
       // Unknown rule — pass by default (don't block on unknown rules)
