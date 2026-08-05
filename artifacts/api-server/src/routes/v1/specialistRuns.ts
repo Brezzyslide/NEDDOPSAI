@@ -31,7 +31,7 @@ const auth = [requireAuth, resolveTenantFromSlug] as const;
 router.get("/", ...auth, async (req, res, next) => {
   try {
     const ctx = req.tenantContext!;
-    const runs = await getRunsByTask(req.params.taskId!, ctx.organizationId);
+    const runs = await getRunsByTask(req.params.taskId!, ctx.tenantId);
 
     res.json({
       runs: runs.map(r => ({
@@ -67,7 +67,7 @@ router.get("/", ...auth, async (req, res, next) => {
 router.get("/consolidated", ...auth, async (req, res, next) => {
   try {
     const ctx = req.tenantContext!;
-    const consolidated = await consolidateTaskResults(req.params.taskId!, ctx.organizationId);
+    const consolidated = await consolidateTaskResults(req.params.taskId!, ctx.tenantId);
     res.json({ consolidated });
   } catch (err) {
     next(err);
@@ -78,7 +78,7 @@ router.get("/consolidated", ...auth, async (req, res, next) => {
 router.get("/:id", ...auth, async (req, res, next) => {
   try {
     const ctx = req.tenantContext!;
-    const run = await getSpecialistRunById(req.params.id!, ctx.organizationId);
+    const run = await getSpecialistRunById(req.params.id!, ctx.tenantId);
     if (!run || run.taskId !== req.params.taskId) {
       return res.status(404).json({ error: "Specialist run not found" });
     }
@@ -125,7 +125,7 @@ router.get("/:id", ...auth, async (req, res, next) => {
 router.post("/:id/clarification", ...auth, async (req, res, next) => {
   try {
     const ctx = req.tenantContext!;
-    const run = await getSpecialistRunById(req.params.id!, ctx.organizationId);
+    const run = await getSpecialistRunById(req.params.id!, ctx.tenantId);
     if (!run || run.taskId !== req.params.taskId) {
       return res.status(404).json({ error: "Specialist run not found" });
     }
@@ -141,11 +141,11 @@ router.post("/:id/clarification", ...auth, async (req, res, next) => {
       return res.status(400).json({ error: "Clarification response too long (max 4000 chars)" });
     }
 
-    await resumeAfterClarification(run.id, ctx.organizationId, response);
+    await resumeAfterClarification(run.id, ctx.tenantId, response);
 
     await logOrgEvent({
       eventType: "specialist.clarification_resolved",
-      organizationId: ctx.organizationId,
+      organizationId: ctx.tenantId,
       actorUserId: req.user!.id,
       actorType: "user",
       resourceType: "specialist_run",
@@ -163,7 +163,7 @@ router.post("/:id/clarification", ...auth, async (req, res, next) => {
 router.post("/:id/cancel", ...auth, async (req, res, next) => {
   try {
     const ctx = req.tenantContext!;
-    const run = await getSpecialistRunById(req.params.id!, ctx.organizationId);
+    const run = await getSpecialistRunById(req.params.id!, ctx.tenantId);
     if (!run || run.taskId !== req.params.taskId) {
       return res.status(404).json({ error: "Specialist run not found" });
     }
@@ -175,12 +175,12 @@ router.post("/:id/cancel", ...auth, async (req, res, next) => {
       });
     }
 
-    await markCancelled(run.id, ctx.organizationId);
-    await transitionRunStatus(run.id, ctx.organizationId, "cancelled");
+    await markCancelled(run.id, ctx.tenantId);
+    await transitionRunStatus(run.id, ctx.tenantId, "cancelled");
 
     await logOrgEvent({
       eventType: "specialist.run_cancelled",
-      organizationId: ctx.organizationId,
+      organizationId: ctx.tenantId,
       actorUserId: req.user!.id,
       actorType: "user",
       resourceType: "specialist_run",
