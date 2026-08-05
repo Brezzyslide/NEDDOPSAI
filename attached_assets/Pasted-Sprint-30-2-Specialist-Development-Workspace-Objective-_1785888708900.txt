@@ -1,0 +1,349 @@
+Sprint 30.2 – Specialist Development Workspace
+
+Objective
+
+The shared governance framework is now complete and founder approved.
+
+Before creating any additional specialists, establish the standard workspace that every current and future NeedsOps AI employee will use throughout its lifecycle.
+
+This sprint creates the development structure only.
+
+Do NOT create specialist content.
+
+Do NOT generate Employee Files.
+
+Do NOT generate Design Briefs.
+
+Do NOT modify runtime behaviour.
+
+Do NOT implement specialist logic.
+
+Do NOT generate prompts.
+
+The objective is to prepare a repeatable, version-controlled development environment for every specialist.
+
+────────────────────────────────────────
+
+Background
+
+The following constitutional artefacts are complete:
+
+• Shared Professional Constitution
+• Executive Operating System
+• Universal Decision Hierarchy
+• Governance Rules
+• Professional Design Lifecycle
+• Founder Approval Register
+
+Every specialist will now be built from these shared artefacts.
+
+────────────────────────────────────────
+
+Deliverable 1 – Specialist Workspace
+
+Create:
+
+docs/workforce/specialists/
+
+Create one folder for every active specialist.
+
+Current workforce:
+
+• chief-of-staff
+• executive-assistant
+• operations-manager
+• service-delivery-coordinator
+• compliance-quality-manager
+• incident-safeguarding-specialist
+• policy-governance-specialist
+• people-culture-manager
+• workforce-rostering-coordinator
+• workforce-compliance-specialist
+• talent-learning-specialist
+• finance-officer
+• payroll-workforce-cost-officer
+• financial-planning-reporting-manager
+• knowledge-documentation-specialist
+• process-asset-coordinator
+• marketing-communications-manager
+
+Do not generate any role content.
+
+────────────────────────────────────────
+
+Deliverable 2 – Standard Specialist Workspace
+
+Inside every specialist folder create placeholder documents:
+
+README.md
+
+DesignBrief.md
+
+EmployeeFile.md
+
+CapabilityCatalogue.md
+
+ResponsibilityMatrix.md
+
+AuthorityMatrix.md
+
+CollaborationMatrix.md
+
+DecisionCatalogue.md
+
+ProfessionalEvidenceRegister.md
+
+ValidationScenarios.md
+
+CompetencyModel.md
+
+KnowledgeRequirements.md
+
+TrustedProviders.md
+
+BlueprintOwnership.md
+
+CompletedWorkCatalogue.md
+
+RuntimeCompilationNotes.md
+
+ImplementationStatus.md
+
+TestCoverage.md
+
+VersionHistory.md
+
+FounderApproval.md
+
+Each document should contain:
+
+• Purpose
+• Status
+• Version
+• Owner
+• Last Updated
+• Dependencies
+• Related Documents
+
+No specialist content is to be written.
+
+────────────────────────────────────────
+
+Deliverable 3 – Development Workflow
+
+Create:
+
+docs/workforce/SPECIALIST_DEVELOPMENT_GUIDE.md
+
+Document the required workflow.
+
+Professional Workshop
+
+↓
+
+Design Brief
+
+↓
+
+Founder Review
+
+↓
+
+Professional Evidence Register
+
+↓
+
+Employee File
+
+↓
+
+Capability Catalogue
+
+↓
+
+Authority Matrix
+
+↓
+
+Runtime Compilation
+
+↓
+
+Implementation
+
+↓
+
+Validation
+
+↓
+
+Testing
+
+↓
+
+Production
+
+No stage may be skipped.
+
+────────────────────────────────────────
+
+Deliverable 4 – Specialist Status Register
+
+Create:
+
+docs/workforce/SPECIALIST_REGISTER.md
+
+For every specialist record:
+
+• Specialist Code
+• Display Name
+• Department
+• Current Status
+• Design Brief
+• Employee File
+• Capability Catalogue
+• Runtime
+• Testing
+• Production Status
+• Last Review
+• Next Review
+
+Current status for new specialists:
+
+Professional Design Pending
+
+Chief of Staff and Executive Assistant should reflect their current implementation state.
+
+────────────────────────────────────────
+
+Deliverable 5 – Cross-Specialist Dependency Matrix
+
+Create:
+
+docs/workforce/SPECIALIST_DEPENDENCIES.md
+
+Document:
+
+Reports To
+
+Collaborates With
+
+Receives Work From
+
+Delegates To
+
+Must Consult
+
+Cannot Override
+
+Escalation Chain
+
+Dependency Status
+
+This document will evolve as specialists are completed.
+
+────────────────────────────────────────
+
+Deliverable 6 – Specialist Quality Gates
+
+Create:
+
+docs/workforce/SPECIALIST_QUALITY_GATES.md
+
+Define mandatory quality gates before any specialist can move to the next stage.
+
+Gate 1
+
+Shared Governance inherited
+
+Gate 2
+
+Professional Design Brief approved
+
+Gate 3
+
+Professional Evidence Register complete
+
+Gate 4
+
+Employee File complete
+
+Gate 5
+
+Capability Catalogue validated
+
+Gate 6
+
+Authority Matrix approved
+
+Gate 7
+
+Runtime compiled
+
+Gate 8
+
+Implementation complete
+
+Gate 9
+
+Behaviour validated
+
+Gate 10
+
+Regression tests passing
+
+Gate 11
+
+Founder approval
+
+Gate 12
+
+Production ready
+
+No specialist may bypass any gate.
+
+────────────────────────────────────────
+
+Deliverable 7 – Progress Dashboard
+
+Create:
+
+docs/workforce/WORKFORCE_PROGRESS.md
+
+Track:
+
+Total Specialists
+
+Completed
+
+In Workshop
+
+Awaiting Review
+
+Awaiting Implementation
+
+Awaiting Validation
+
+Production Ready
+
+Include completion percentages for every stage.
+
+────────────────────────────────────────
+
+Rules
+
+Do NOT create specialist content.
+
+Do NOT invent personalities.
+
+Do NOT write Design Briefs.
+
+Do NOT write Employee Files.
+
+Do NOT modify runtime.
+
+Do NOT generate prompts.
+
+This sprint prepares the governed development environment for the Digital Workforce.
+
+When complete, stop and wait for the Operations Manager Professional Design Workshop.
