@@ -13,8 +13,7 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
-import { hasActiveCheckpoint } from "../../services/executionCheckpointStore.js";
-import { resumeFromCheckpoint } from "../../services/executionCoordinatorService.js";
+import { handleIncomingMessage } from "../../services/messageIngressService.js";
 import { db } from "@workspace/db";
 import {
   approvalsTable,
@@ -100,26 +99,38 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
 
     sendEvent({ type: "ack" });
 
-    // Sprint 27.1 — Checkpoint resume: if this task's conversation has a paused
-    // execution waiting for clarification, resume it with the user's reply.
-    if (hasActiveCheckpoint(conv.id)) {
-      resumeFromCheckpoint({
-        conversationId: conv.id,
-        organizationId: ctx.tenantId,
-        requesterId: user.id,
-        clarificationAnswer: content.trim(),
-      }).catch(err =>
-        console.warn("[taskWorkroom] Checkpoint resume failed (non-fatal):", err?.message),
-      );
+    // Sprint 27.2 — Unified message ingress (checkpoint routing + CoS classification).
+    // Workroom messages that answer clarification questions resume the paused
+    // execution instead of going through normal CoS classification.
+    const ingressResult = await handleIncomingMessage({
+      content: content.trim(),
+      organizationId: ctx.tenantId,
+      conversationId: conv.id,
+      taskId,
+      userId: user.id,
+    });
+
+    if (ingressResult.type === "checkpoint_resume") {
+      sendEvent({ type: "user_message",  message: ingressResult.userMessage });
+      sendEvent({ type: "agent_message", message: ingressResult.agentMessage });
+      sendEvent({ type: "done" });
+      res.end();
+      return;
     }
 
-    const result = await conversationService.processUserMessage(
-      ctx.tenantId,
-      conv.id,
-      user.id,
-      content.trim(),
-      taskId,
-    );
+    if (ingressResult.type === "checkpoint_duplicate") {
+      sendEvent({ type: "done" });
+      res.end();
+      return;
+    }
+
+    if (ingressResult.type === "error") {
+      sendEvent({ type: "error", message: ingressResult.message });
+      res.end();
+      return;
+    }
+
+    const result = ingressResult.result;
 
     const words = result.understanding.customerResponse.split(" ");
     for (const word of words) {

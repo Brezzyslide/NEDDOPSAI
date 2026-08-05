@@ -116,7 +116,7 @@ describe("REQUIRED_RLS_TABLES — notification_reads", () => {
   });
 
   it("total count is 68 (previous 67 + notification_reads)", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(69); // Sprint 28: +1 blueprint_versions
+    expect(REQUIRED_RLS_TABLES).toHaveLength(70); // Sprint 27.2: +1 execution_checkpoints
   });
 });
 

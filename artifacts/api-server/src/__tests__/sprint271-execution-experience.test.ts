@@ -97,6 +97,26 @@ vi.mock("../services/executionCheckpointStore.js", () => ({
   hasActiveCheckpoint: mockHasCheckpoint,
 }));
 
+// Sprint 27.2 — durable checkpoint service mocks (replaces in-memory store in coordinator)
+const mockCreateDurableCheckpoint    = vi.hoisted(() => vi.fn().mockResolvedValue({ id: "cp-durable-1" }));
+const mockGetActiveCheckpointByConv  = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockBeginResume271             = vi.hoisted(() => vi.fn().mockResolvedValue({ resumed: false, reason: "no_checkpoint" }));
+const mockRecordAnswer271            = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+
+vi.mock("../services/executionCheckpointService.js", () => ({
+  createCheckpoint:                  (...a: unknown[]) => mockCreateDurableCheckpoint(...a),
+  getActiveCheckpointByConversation: (...a: unknown[]) => mockGetActiveCheckpointByConv(...a),
+  beginResume:                       (...a: unknown[]) => mockBeginResume271(...a),
+  recordClarificationAnswer:         (...a: unknown[]) => mockRecordAnswer271(...a),
+  hasActiveCheckpoint:               vi.fn().mockResolvedValue(false),
+  markResumed:                       vi.fn().mockResolvedValue(undefined),
+  markCompleted:                     vi.fn().mockResolvedValue(undefined),
+  markFailed:                        vi.fn().mockResolvedValue(undefined),
+  cancelCheckpoint:                  vi.fn().mockResolvedValue(undefined),
+  expireStaleCheckpoints:            vi.fn().mockResolvedValue(0),
+  recoverStuckResumes:               vi.fn().mockResolvedValue(0),
+}));
+
 // Default pipeline mock — can be overridden per test
 const mockExecuteWork = vi.hoisted(() => vi.fn().mockResolvedValue({
   outcome: "completed",
@@ -165,7 +185,8 @@ describe("executionCoordinatorService — clarification pause", () => {
     await coordinateIntentApproval(INTENT, ORG, USER);
     await new Promise(r => setTimeout(r, 20));
 
-    expect(mockSaveCheckpoint).toHaveBeenCalledWith(
+    // Sprint 27.2: coordinator now calls the durable service (createCheckpoint) instead of in-memory saveCheckpoint
+    expect(mockCreateDurableCheckpoint).toHaveBeenCalledWith(
       expect.objectContaining({ conversationId: CONV }),
     );
   });
@@ -219,7 +240,8 @@ describe("executionCoordinatorService — clarification pause", () => {
     await coordinateIntentApproval(INTENT, ORG, USER);
     await new Promise(r => setTimeout(r, 20));
 
-    expect(mockSaveCheckpoint).not.toHaveBeenCalled();
+    // Sprint 27.2: durable service must not be called when conversation context is unresolvable
+    expect(mockCreateDurableCheckpoint).not.toHaveBeenCalled();
   });
 });
 
@@ -387,19 +409,24 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
     });
   });
 
-  it("clears checkpoint and dispatches pipeline", async () => {
-    mockGetCheckpoint.mockReturnValue({
-      correlationId: "corr-resume",
+  it("claims the durable checkpoint and dispatches pipeline", async () => {
+    const durableCheckpoint = {
+      id: "cp-resume-1",
       conversationId: "conv-resume",
       organizationId: ORG,
-      requesterId: USER,
-      originalRequest: "Write incident report",
-      blueprint: null,
-      manifest: { id: "m1", organisationLibrarySources: [], taskUploads: [], cosMemories: [] },
+      correlationId: "corr-resume",
       clarificationQuestions: ["What is the date?"],
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 60000).toISOString(),
-    });
+      clarificationAnswer: null,
+      payload: {
+        originalRequest: "Write incident report",
+        blueprint: null,
+        manifest: { manifestId: "m1", organisationLibrarySources: [], taskUploads: [], cosMemories: [] },
+      },
+      status: "awaiting_clarification" as const,
+      expiresAt: new Date(Date.now() + 60000),
+    };
+    mockGetActiveCheckpointByConv.mockResolvedValue(durableCheckpoint);
+    mockBeginResume271.mockResolvedValue({ resumed: true, checkpoint: durableCheckpoint });
 
     const { resumeFromCheckpoint } = await import("../services/executionCoordinatorService.js");
     await resumeFromCheckpoint({
@@ -409,22 +436,28 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
       clarificationAnswer: "Monday 3rd August",
     });
 
-    expect(mockClearCheckpoint).toHaveBeenCalledWith("conv-resume");
+    // Sprint 27.2: uses atomic beginResume (durable DB CAS) instead of in-memory clearCheckpoint
+    expect(mockBeginResume271).toHaveBeenCalledWith("conv-resume");
   });
 
   it("emits execution_recovered SSE event", async () => {
-    mockGetCheckpoint.mockReturnValue({
-      correlationId: "corr-resume-2",
+    const durableCheckpoint = {
+      id: "cp-resume-2",
       conversationId: "conv-resume-2",
       organizationId: ORG,
-      requesterId: USER,
-      originalRequest: "Write report",
-      blueprint: null,
-      manifest: { id: "m2", organisationLibrarySources: [], taskUploads: [], cosMemories: [] },
+      correlationId: "corr-resume-2",
       clarificationQuestions: [],
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 60000).toISOString(),
-    });
+      clarificationAnswer: null,
+      payload: {
+        originalRequest: "Write report",
+        blueprint: null,
+        manifest: { manifestId: "m2", organisationLibrarySources: [], taskUploads: [], cosMemories: [] },
+      },
+      status: "awaiting_clarification" as const,
+      expiresAt: new Date(Date.now() + 60000),
+    };
+    mockGetActiveCheckpointByConv.mockResolvedValue(durableCheckpoint);
+    mockBeginResume271.mockResolvedValue({ resumed: true, checkpoint: durableCheckpoint });
 
     const { resumeFromCheckpoint } = await import("../services/executionCoordinatorService.js");
     await resumeFromCheckpoint({
@@ -441,13 +474,13 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
   });
 
   it("does nothing gracefully if no checkpoint exists", async () => {
-    mockGetCheckpoint.mockReturnValue(null);
+    mockGetActiveCheckpointByConv.mockResolvedValue(null);
 
     const { resumeFromCheckpoint } = await import("../services/executionCoordinatorService.js");
     await expect(
       resumeFromCheckpoint({ conversationId: "conv-none", organizationId: ORG, requesterId: USER, clarificationAnswer: "x" })
     ).resolves.not.toThrow();
-    expect(mockClearCheckpoint).not.toHaveBeenCalled();
+    expect(mockBeginResume271).not.toHaveBeenCalled();
   });
 });
 

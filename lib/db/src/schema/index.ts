@@ -138,3 +138,5 @@ export * from "./completedWorkAssets";
 export * from "./notificationReads";
 // Task #40 — Workforce Catalogue Database Migration
 export * from "./specialistCatalogue";
+// Sprint 27.2 — Durable Execution Checkpoints
+export * from "./executionCheckpoints";

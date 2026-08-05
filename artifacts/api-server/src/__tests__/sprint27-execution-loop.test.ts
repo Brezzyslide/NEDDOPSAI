@@ -371,15 +371,17 @@ describe("dispatchWorkExecution", () => {
     );
   });
 
-  it("does not post messages when no conversationId is provided", async () => {
+  it("auto-creates a workroom and posts messages when taskId is provided without conversationId", async () => {
+    // Sprint 27 bug fix: dispatchWorkExecution always ensures a conversation context by calling
+    // getOrCreateWorkroom when conversationId is absent but taskId is present.
     await dispatchWorkExecution({
       organizationId: ORG, taskId: TASK, taskTitle: "Silent task",
       requesterId: USER,
-      // no conversationId
+      // no conversationId — workroom is auto-created via getOrCreateWorkroom
     });
     await new Promise(r => setTimeout(r, 50));
-    expect(mockPostStarted).not.toHaveBeenCalled();
-    expect(mockPostCompleted).not.toHaveBeenCalled();
+    // With auto-created workroom (id: "workroom-1"), execution messages ARE posted
+    expect(mockPostStarted).toHaveBeenCalled();
   });
 
   it("passes progress callbacks to executeWork", async () => {

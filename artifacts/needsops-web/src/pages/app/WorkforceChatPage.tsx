@@ -27,6 +27,10 @@ interface Message {
   content: string;
   structuredContent?: Record<string, unknown> | null;
   createdAt: string;
+  /** true while the message is optimistically rendered pending server confirmation */
+  _pending?: boolean;
+  /** true if the send request failed — message shown in an error state */
+  _failed?: boolean;
 }
 
 interface Conversation {
@@ -140,9 +144,11 @@ function MessageBubble({
         <div
           className={`rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
             isUser
-              ? "bg-[#00D4FF]/15 text-[#E2E8F0] border border-[#00D4FF]/20"
+              ? msg._failed
+                ? "bg-red-900/30 text-[#E2E8F0] border border-red-500/40"
+                : "bg-[#00D4FF]/15 text-[#E2E8F0] border border-[#00D4FF]/20"
               : "bg-[#112033] text-[#CBD5E1] border border-[#1E3A5F]"
-          }`}
+          } ${msg._pending ? "opacity-60" : ""}`}
         >
           {msg.content}
           {proposalData && (
@@ -154,8 +160,10 @@ function MessageBubble({
             />
           )}
         </div>
-        <p className="text-[#475569] text-xs mt-1 px-1">
-          {new Date(msg.createdAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
+        <p className="text-[#475569] text-xs mt-1 px-1 flex items-center gap-1.5">
+          {msg._pending && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#64748B] animate-pulse" />}
+          {msg._failed && <span className="text-red-400">Failed to send</span>}
+          {!msg._failed && !msg._pending && new Date(msg.createdAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
     </div>
@@ -226,6 +234,18 @@ export default function WorkforceChatPage() {
     setIsStreaming(true);
     setStreamingText("");
 
+    // Optimistic UI: add user message immediately so the user sees it
+    // before the network round-trip completes.
+    const clientId = `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setMessages(prev => [...prev, {
+      id: clientId,
+      senderType: "user" as MessageSenderType,
+      messageType: "text" as MessageType,
+      content: text,
+      createdAt: new Date().toISOString(),
+      _pending: true,
+    }]);
+
     const abort = new AbortController();
     abortRef.current = abort;
 
@@ -244,6 +264,7 @@ export default function WorkforceChatPage() {
         const errBody = await res.json().catch(() => ({})) as Record<string, unknown>;
         const msg = (errBody as any)?.error?.message ?? `Server error (${res.status})`;
         setError(msg);
+        setMessages(prev => prev.filter(m => m.id !== clientId));
         return;
       }
 
@@ -267,7 +288,11 @@ export default function WorkforceChatPage() {
           if (evt.type === "token") {
             setStreamingText(prev => prev + (evt.content as string));
           } else if (evt.type === "user_message") {
-            setMessages(prev => [...prev, evt.message as Message]);
+            // Reconcile: replace optimistic message with server-confirmed message
+            setMessages(prev => [
+              ...prev.filter(m => m.id !== clientId),
+              evt.message as Message,
+            ]);
           } else if (evt.type === "agent_message") {
             setMessages(prev => [...prev, evt.message as Message]);
             setStreamingText("");
@@ -276,11 +301,21 @@ export default function WorkforceChatPage() {
           } else if (evt.type === "error") {
             setError((evt.message as string) ?? "The Chief of Staff encountered an error.");
             setStreamingText("");
+            setMessages(prev => prev.filter(m => m.id !== clientId));
           }
         }
       }
     } catch (e: any) {
-      if (e?.name !== "AbortError") setError("Failed to send message.");
+      if (e?.name === "AbortError") {
+        // Aborted — remove optimistic message cleanly
+        setMessages(prev => prev.filter(m => m.id !== clientId));
+      } else {
+        setError("Failed to send message.");
+        // Keep message visible but mark as failed so user knows
+        setMessages(prev => prev.map(m =>
+          m.id === clientId ? { ...m, _pending: false, _failed: true } : m,
+        ));
+      }
     } finally {
       setIsStreaming(false);
       setStreamingText("");

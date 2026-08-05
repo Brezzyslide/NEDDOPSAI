@@ -17,14 +17,13 @@ import * as taskService from "../../services/taskService.js";
 import * as auditService from "../../services/auditService.js";
 import {
   dispatchWorkExecution,
-  resumeFromCheckpoint,
 } from "../../services/executionCoordinatorService.js";
 import {
   subscribeToExecutionEvents,
   getBufferedEventsSince,
   type ExecutionEvent,
 } from "../../services/executionEventBus.js";
-import { hasActiveCheckpoint } from "../../services/executionCheckpointStore.js";
+import { handleIncomingMessage } from "../../services/messageIngressService.js";
 import { getConversationTimeline } from "../../services/executionTimelineService.js";
 
 const router = Router({ mergeParams: true });
@@ -167,27 +166,38 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     // Send acknowledgement
     sendEvent({ type: "ack" });
 
-    // Sprint 27.1 — Checkpoint resume: if this conversation has a paused execution
-    // waiting for clarification, resume it in the background with the user's reply.
-    if (hasActiveCheckpoint(req.params.conversationId!)) {
-      resumeFromCheckpoint({
-        conversationId: req.params.conversationId!,
-        organizationId: ctx.tenantId,
-        requesterId: user.id,
-        clarificationAnswer: content.trim(),
-      }).catch(err =>
-        console.warn("[conversations] Checkpoint resume failed (non-fatal):", err?.message),
-      );
+    // Sprint 27.2 — Unified message ingress (checkpoint routing + CoS classification).
+    // MessageIngressService detects an active checkpoint and routes accordingly,
+    // preventing clarification replies from going through normal CoS classification.
+    const ingressResult = await handleIncomingMessage({
+      content: content.trim(),
+      organizationId: ctx.tenantId,
+      conversationId: req.params.conversationId!,
+      taskId: resolvedTaskId,
+      userId: user.id,
+    });
+
+    if (ingressResult.type === "checkpoint_resume") {
+      sendEvent({ type: "user_message",  message: ingressResult.userMessage });
+      sendEvent({ type: "agent_message", message: ingressResult.agentMessage });
+      sendEvent({ type: "done" });
+      res.end();
+      return;
     }
 
-    // Process the message (classify + generate response)
-    const result = await conversationService.processUserMessage(
-      ctx.tenantId,
-      req.params.conversationId!,
-      user.id,
-      content.trim(),
-      resolvedTaskId,
-    );
+    if (ingressResult.type === "checkpoint_duplicate") {
+      sendEvent({ type: "done" });
+      res.end();
+      return;
+    }
+
+    if (ingressResult.type === "error") {
+      sendEvent({ type: "error", message: ingressResult.message });
+      res.end();
+      return;
+    }
+
+    const result = ingressResult.result;
 
     // Stream the agent response text token by token (word-level simulation)
     const words = result.understanding.customerResponse.split(" ");
@@ -195,16 +205,11 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     for (const word of words) {
       accumulated += (accumulated ? " " : "") + word;
       sendEvent({ type: "token", content: (accumulated === word ? "" : " ") + word });
-      // Tiny yield to allow flush — real LLM would stream here
       await new Promise(r => setTimeout(r, 8));
     }
 
     // Send the committed messages
-    sendEvent({
-      type: "user_message",
-      message: result.userMessage,
-    });
-
+    sendEvent({ type: "user_message", message: result.userMessage });
     sendEvent({
       type: "agent_message",
       message: result.agentMessage,

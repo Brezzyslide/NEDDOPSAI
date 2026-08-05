@@ -92,6 +92,20 @@ async function start(): Promise<void> {
     logger.warn({ err }, "[startup] Specialist catalogue seeding failed — continuing");
   }
 
+  // 4d. Recover stuck execution checkpoints (Sprint 27.2).
+  //     Any checkpoint left in 'resuming' state by a crashed server process is
+  //     returned to 'awaiting_clarification' so the user can reply again.
+  try {
+    const { recoverStuckResumes, expireStaleCheckpoints } = await import("./services/executionCheckpointService.js");
+    const stuck = await recoverStuckResumes();
+    const expired = await expireStaleCheckpoints();
+    if (stuck > 0 || expired > 0) {
+      logger.info({ stuck, expired }, "[startup] Execution checkpoint recovery complete");
+    }
+  } catch (err) {
+    logger.warn({ err }, "[startup] Checkpoint recovery failed — continuing");
+  }
+
   // 5. Create HTTP server (wraps Express app so WS can share the same port)
   const server = createServer(app);
 

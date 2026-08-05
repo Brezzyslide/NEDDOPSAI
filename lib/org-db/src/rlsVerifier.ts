@@ -108,6 +108,8 @@ export const REQUIRED_RLS_TABLES = [
   "notification_reads",
   // Sprint 28 — Blueprint Studio versioning
   "blueprint_versions",
+  // Sprint 27.2 — Durable Execution Checkpoints
+  "execution_checkpoints",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

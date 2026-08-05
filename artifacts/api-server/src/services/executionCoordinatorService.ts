@@ -37,10 +37,11 @@ import {
   emitExecutionEvent,
 } from "./executionEventBus.js";
 import {
-  saveCheckpoint,
-  getCheckpoint,
-  clearCheckpoint,
-} from "./executionCheckpointStore.js";
+  createCheckpoint as createDurableCheckpoint,
+  beginResume,
+  getActiveCheckpointByConversation,
+} from "./executionCheckpointService.js";
+import type { ActiveCheckpoint } from "./executionCheckpointService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 
@@ -63,6 +64,15 @@ export interface DispatchWorkExecutionInput {
 }
 
 export interface ResumeFromCheckpointInput {
+  conversationId: string;
+  organizationId: string;
+  requesterId: string;
+  clarificationAnswer: string;
+}
+
+export interface ResumeFromCheckpointByIdInput {
+  checkpointId: string;
+  checkpoint: ActiveCheckpoint;
   conversationId: string;
   organizationId: string;
   requesterId: string;
@@ -224,22 +234,44 @@ export async function dispatchWorkExecution(
 
 /**
  * Resume execution from a checkpoint after the user has answered clarification questions.
- * Loads the saved manifest + blueprint and re-runs the pipeline from step 3 (validation).
+ * Uses the durable checkpoint service for atomic state transition.
+ * Delegates to resumeFromCheckpointById after claiming the resume lock.
  */
 export async function resumeFromCheckpoint(
   input: ResumeFromCheckpointInput,
 ): Promise<void> {
   const { conversationId, organizationId, requesterId, clarificationAnswer } = input;
 
-  const checkpoint = getCheckpoint(conversationId);
+  const checkpoint = await getActiveCheckpointByConversation(conversationId);
   if (!checkpoint) {
     console.warn("[ExecutionCoordinator] resumeFromCheckpoint: no active checkpoint for conversation", conversationId);
     return;
   }
 
-  // Clear the checkpoint so it's not reused
-  clearCheckpoint(conversationId);
+  const resumeResult = await beginResume(conversationId);
+  if (!resumeResult.resumed) {
+    console.warn("[ExecutionCoordinator] resumeFromCheckpoint: already resuming or no checkpoint", resumeResult.reason);
+    return;
+  }
 
+  await resumeFromCheckpointById({
+    checkpointId:        checkpoint.id,
+    checkpoint:          resumeResult.checkpoint!,
+    conversationId,
+    organizationId,
+    requesterId,
+    clarificationAnswer,
+  });
+}
+
+/**
+ * Resume from a specific checkpoint that has already been atomically claimed
+ * (status = "resuming"). Called by messageIngressService after beginResume succeeds.
+ */
+export async function resumeFromCheckpointById(
+  input: ResumeFromCheckpointByIdInput,
+): Promise<void> {
+  const { checkpoint, conversationId, organizationId, requesterId, clarificationAnswer } = input;
   const correlationId = checkpoint.correlationId;
 
   if (conversationId) {
@@ -260,21 +292,26 @@ export async function resumeFromCheckpoint(
     actorType: "system",
     resourceType: "conversation",
     resourceId: conversationId,
-    metadata: { correlationId, resumed: true, clarificationAnswer: clarificationAnswer.slice(0, 200) },
+    metadata: {
+      correlationId,
+      resumed: true,
+      checkpointId: checkpoint.id,
+      clarificationAnswer: clarificationAnswer.slice(0, 200),
+    },
   }).catch(() => {});
 
   const checkpointData: ExecutionCheckpointData = {
     correlationId,
-    blueprint: checkpoint.blueprint,
-    manifest: checkpoint.manifest,
+    blueprint: checkpoint.payload.blueprint,
+    manifest: checkpoint.payload.manifest,
     clarificationAnswer,
   };
 
   runExecutionInBackground({
     organizationId,
     requesterId,
-    taskId: undefined,
-    userRequest: checkpoint.originalRequest,
+    taskId: checkpoint.taskId ?? undefined,
+    userRequest: checkpoint.payload.originalRequest,
     conversationId,
     correlationId,
     intentId: undefined,
@@ -415,16 +452,22 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     if (result.outcome === "awaiting_clarification" && result.clarificationQuestions?.length) {
       if (conversationId) {
         // Save checkpoint so the conversation can resume after the user answers
-        saveCheckpoint({
+        // Persist checkpoint durably so it survives server restarts
+        await createDurableCheckpoint({
           correlationId,
           conversationId,
           organizationId,
+          taskId,
           requesterId,
-          originalRequest: userRequest,
-          blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
-          manifest: (result as { manifest?: WorkPackageManifest }).manifest!,
           clarificationQuestions: result.clarificationQuestions,
-        });
+          payload: {
+            originalRequest: userRequest,
+            blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
+            manifest: (result as { manifest?: WorkPackageManifest }).manifest!,
+          },
+        }).catch(err =>
+          console.warn("[ExecutionCoordinator] Failed to persist checkpoint (in-memory fallback active):", err?.message),
+        );
 
         emitExecutionEvent(conversationId, {
           type: "execution_clarification_required",

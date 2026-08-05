@@ -1,0 +1,451 @@
+Sprint 27.2 — Durable Clarification Resume, Unified Message Ingress & Optimistic Chat
+
+Implement this sprint only.
+
+Background
+
+The Chief of Staff execution flow now works through:
+
+User message
+→ Chief of Staff
+→ execution intent
+→ approval
+→ execution coordinator
+→ work execution pipeline
+→ validation
+→ specialist execution
+→ Completed Work
+
+The current clarification flow also works in principle:
+
+Pipeline validation fails because required information or documents are missing
+→ execution pauses
+→ clarification questions are posted
+→ user replies
+→ execution resumes from checkpoint
+
+Two real gaps remain:
+
+1. Execution checkpoints are stored in process memory and are lost whenever the API server restarts.
+2. Message handling is fragmented across multiple endpoints. The general conversation endpoint knew how to resume a checkpoint, but the task workroom endpoint originally treated clarification answers as ordinary Chief of Staff messages.
+3. The frontend does not render the user’s own message immediately. It waits for the backend/SSE response before the submitted message becomes visible.
+
+Do not redesign the work execution pipeline.
+Do not duplicate Sprint 27 or Sprint 27.1.
+Implement only the genuine gaps below.
+
+────────────────────────────────────────
+Part 1 — Inspection
+
+Before modifying code, inspect:
+
+- executionCheckpointStore.ts
+- workExecutionPipelineService.ts
+- executionCoordinatorService.ts
+- conversationService.ts
+- general conversation message routes
+- task workroom message routes
+- mobile message routes, if present
+- any dashboard or approval route capable of submitting clarification
+- WorkforceChatPage
+- TaskWorkroomPage
+- shared chat hooks/providers/components
+- SSE acknowledgement and user_message event handling
+
+Document:
+
+- every message-ingress endpoint
+- where each endpoint persists user messages
+- where checkpoint detection currently happens
+- how conversationId, taskId, executionId and organisationId are related
+- how optimistic UI is currently handled
+- why the user message is delayed
+
+Do not begin broad refactoring until the active paths are identified.
+
+────────────────────────────────────────
+Part 2 — Persistent Execution Checkpoints
+
+Replace the in-memory checkpoint store with durable tenant-scoped persistence.
+
+Create an execution_checkpoints table, unless a suitable existing execution-state table already supports the full requirement.
+
+Suggested fields:
+
+- id
+- organisationId
+- conversationId
+- taskId
+- executionIntentId
+- executionRunId
+- specialistCode
+- blueprintId
+- workPackageManifestId
+- correlationId
+- pausedStage
+- status
+- checkpointPayload JSONB
+- validationResult JSONB
+- clarificationQuestions JSONB
+- clarificationAnswer
+- createdAt
+- updatedAt
+- expiresAt
+- resumedAt
+- completedAt
+- cancelledAt
+
+Required statuses:
+
+- active
+- awaiting_clarification
+- resuming
+- resumed
+- completed
+- expired
+- cancelled
+- failed
+
+Requirements:
+
+- Full RLS and tenant isolation.
+- One active clarification checkpoint per execution.
+- Idempotent creation and resume.
+- Immutable references to the original blueprint and work-package manifest.
+- Store only the state required to resume safely.
+- Do not persist secrets or unrestricted prompt contents.
+- Expired checkpoints must not resume.
+- Server restart must not destroy active checkpoints.
+- Update the RLS verifier and migration assertions only if a new table is added.
+
+Preserve a test-only reset helper if existing tests depend on it, but production behaviour must use persistence.
+
+────────────────────────────────────────
+Part 3 — Checkpoint Service
+
+Refactor executionCheckpointStore into a durable service or repository.
+
+Required operations:
+
+- createCheckpoint
+- getActiveCheckpointByConversation
+- getActiveCheckpointByExecution
+- hasActiveCheckpoint
+- recordClarificationAnswer
+- beginResume
+- markResumed
+- markCompleted
+- markFailed
+- cancelCheckpoint
+- expireStaleCheckpoints
+
+All state transitions must be atomic.
+
+Use a compare-and-set or transactional transition so two simultaneous user replies cannot resume the same execution twice.
+
+Return an idempotent result such as:
+
+{
+  resumed: false,
+  reason: "already_resuming"
+}
+
+when duplicate replies occur.
+
+────────────────────────────────────────
+Part 4 — Unified Message Ingress Service
+
+Create a single authoritative MessageIngressService.
+
+Every user-authored conversational message must pass through this service, regardless of source.
+
+Potential sources include:
+
+- General Chief of Staff chat
+- Task workroom
+- Mobile chat
+- Executive Dashboard
+- Notification action
+- Future Teams, Slack or email adapters
+
+The service should:
+
+1. Validate and normalise the message.
+2. Resolve organisation, conversation, task and user.
+3. Persist the user message exactly once.
+4. Check for an active checkpoint.
+5. If a checkpoint exists:
+   - treat the message as a clarification answer,
+   - record it against the checkpoint,
+   - start resumeFromCheckpoint(),
+   - do not send it through normal Chief of Staff classification.
+6. If no checkpoint exists:
+   - continue through normal conversation handling.
+7. Return a consistent result to all callers.
+
+Do not duplicate checkpoint checks in route handlers.
+
+Routes should delegate to MessageIngressService.
+
+Preserve current endpoint contracts where possible.
+
+Ensure task workroom, general chat and mobile behave identically.
+
+────────────────────────────────────────
+Part 5 — Clarification UX and State Propagation
+
+When execution enters awaiting_clarification:
+
+- Persist the checkpoint.
+- Persist the validation result.
+- Post a human-readable conversation message.
+- Emit the SSE lifecycle event.
+- Mark the related execution/task state as awaiting_clarification.
+- Stop frontend polling as if the run were actively processing.
+- Clearly display what is missing and why it is required.
+
+Example:
+
+“I need the following information before the Operations Manager can continue:
+
+• Risk Management Policy
+• Current participant risk assessment
+
+Once these are provided, the work will continue from validation without rebuilding the work package.”
+
+When the user replies:
+
+- Acknowledge the answer immediately.
+- Change status to resuming.
+- Resume from the stored paused stage.
+- Do not rerun successfully completed blueprint selection or package assembly.
+- Post “Continuing the work…” or an equivalent human label.
+- Preserve conversation, task and execution links.
+
+If the user uploads a file rather than typing an answer, ensure the upload can be associated with the active checkpoint before resuming.
+
+────────────────────────────────────────
+Part 6 — Optimistic Chat UI
+
+Fix the delayed-message problem in all Chief of Staff chat surfaces.
+
+Current incorrect behaviour:
+
+- User clicks Send.
+- The input may remain or clear.
+- The user message does not appear immediately.
+- The UI waits for the API/SSE response.
+- The user message appears only after the Chief of Staff starts or finishes responding.
+
+Required behaviour:
+
+1. User clicks Send.
+2. Create a temporary client message immediately.
+3. Add it to local state before awaiting fetch.
+4. Clear the input immediately.
+5. Scroll to the newest message.
+6. Display the Chief of Staff thinking or execution state.
+7. Reconcile the temporary message with the persisted server message when the ack or user_message SSE event arrives.
+
+Temporary message requirements:
+
+- clientGeneratedId
+- pending status
+- original content
+- created timestamp
+- sender=user
+
+Reconciliation requirements:
+
+- Match by clientGeneratedId or idempotency key.
+- Replace the temporary ID with the server message ID.
+- Never display duplicates.
+- Preserve ordering.
+- Multiple quick submissions must remain ordered.
+- Browser refresh should load only persisted server messages.
+
+Failure behaviour:
+
+- Do not silently remove the message.
+- Mark it failed with a visible retry action, or remove it only if the existing product standard requires removal.
+- Restore the text to the composer when appropriate.
+- Retry must reuse an idempotency key so the server does not create duplicates.
+
+Apply this consistently to:
+
+- WorkforceChatPage
+- TaskWorkroomPage
+- shared chat components/hooks
+- mobile chat, if it shares the same architecture
+
+Do not wait for the Chief of Staff response before showing the user message.
+
+────────────────────────────────────────
+Part 7 — Idempotency and Duplicate Prevention
+
+Add or reuse a message idempotency key.
+
+Protect against:
+
+- Double-clicking Send
+- Network retry
+- SSE reconnect
+- Duplicate user_message events
+- Two clarification replies arriving nearly simultaneously
+- Route retry after a timeout
+
+The same submitted message must produce one persisted message and, where relevant, one checkpoint resume.
+
+────────────────────────────────────────
+Part 8 — Recovery
+
+On API startup:
+
+- Do not blindly execute every checkpoint.
+- Recover checkpoints that were in resuming state when the process stopped.
+- Safely return them to awaiting_clarification or requeue resume based on stored state.
+- Never repeat completed stages unnecessarily.
+- Log recovery outcomes.
+- Ensure expired or completed checkpoints are ignored.
+
+The existing orphaned-execution recovery logic should coordinate with checkpoint recovery rather than compete with it.
+
+────────────────────────────────────────
+Part 9 — Audit and Observability
+
+Audit:
+
+- checkpoint created
+- clarification requested
+- clarification received
+- resume started
+- resume completed
+- resume failed
+- checkpoint expired
+- duplicate resume prevented
+- optimistic message failed and retried, where server-side audit is appropriate
+
+Include:
+
+- organisationId
+- conversationId
+- taskId
+- executionId
+- checkpointId
+- correlationId
+- userId
+- specialistCode
+
+Do not expose sensitive checkpoint payloads in logs.
+
+Add structured stage logging sufficient to trace:
+
+message accepted
+→ checkpoint detected
+→ answer persisted
+→ resume claimed
+→ pipeline resumed
+→ completed/failed
+
+────────────────────────────────────────
+Part 10 — Tests
+
+Add comprehensive tests for:
+
+Persistent checkpoints
+
+- checkpoint survives simulated service restart
+- active checkpoint lookup by conversation
+- tenant isolation
+- one active checkpoint per execution
+- expiration
+- cancellation
+- completed checkpoint cannot resume
+
+Message ingress
+
+- normal message follows Chief of Staff path
+- task workroom clarification resumes pipeline
+- general chat clarification resumes pipeline
+- mobile clarification resumes pipeline, if applicable
+- clarification does not also trigger a normal CoS response
+- duplicate reply resumes only once
+- user message persists exactly once
+
+Pipeline resume
+
+- resume starts from validation
+- blueprint selection is not repeated
+- work package assembly is not repeated
+- stored clarification answer reaches validation/execution context
+- successful completion closes checkpoint
+- failure preserves recoverable state
+
+Optimistic UI
+
+- user message renders before fetch resolves
+- input clears immediately
+- scroll is triggered
+- server acknowledgement reconciles temporary message
+- no duplicate after user_message SSE event
+- failed send is visibly marked
+- retry works
+- two fast messages preserve order
+- task workroom and general chat behave consistently
+
+Recovery
+
+- API restart during awaiting_clarification
+- API restart during resuming
+- stale checkpoint expiration
+- orphan recovery does not dispatch twice
+
+All existing tests must continue to pass.
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Inspection report
+   - All message entry points
+   - Existing duplication
+   - Proven cause of delayed user-message rendering
+
+2. Database and migration summary
+   - Only if durable persistence required a new table
+
+3. Architecture summary
+   - MessageIngressService
+   - Persistent checkpoint service
+   - Resume flow
+   - Optimistic UI reconciliation
+
+4. Files changed
+
+5. Test summary
+   - New tests
+   - Total passing
+   - Regressions
+
+6. Confirmation that the platform now supports:
+
+User sends message
+→ message appears immediately
+→ clarification reply is routed to the paused execution
+→ execution resumes from durable state
+→ process restarts do not lose the checkpoint
+→ duplicate messages or resumes are prevented
+
+────────────────────────────────────────
+Important constraints
+
+- Do not weaken blueprint validation.
+- Do not bypass missing-policy requirements.
+- Do not remove clarification questions merely to make execution finish.
+- Do not keep production checkpoints in memory.
+- Do not duplicate resume logic across routes.
+- Do not redesign the broader execution pipeline.
+- Do not begin Sprint 28 or any later sprint.
+- Preserve existing API contracts unless a change is necessary and documented.
+- Remove temporary diagnostics after the root causes are proven.

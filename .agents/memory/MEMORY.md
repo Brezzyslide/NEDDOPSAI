@@ -46,3 +46,4 @@
 - [NeedsOps Sprint 34 Cross-Platform Connector](needsops-sprint34-cross-platform.md) — IPlatformAdapter/IRuntimeAdapter pattern, HOME→os.homedir() fix, Linux AppImage added, never-throws adapter rule, 26 new tests
 - [NeedsOps org provisioning capability gate](needsops-org-provisioning-gate.md) — no subscription = capability gate fails closed; execution.openclaw_runtime must be a manual tenant_entitlements grant; provisioning SQL pattern included
 - [NeedsOps Execution Pipeline Column Bugs](needsops-execution-pipeline-bugs.md) — wrong Drizzle column names crashed every task dispatch; assertSelectFields guard added; @workspace/db uses src not dist at runtime; 3011 tests, 16 pre-existing failures
+- [NeedsOps Sprint 27.2 Durable Checkpoint Persistence](needsops-sprint272.md) — DB-backed checkpoints, atomic beginResume CAS, messageIngressService single ingress, optimistic chat UI, REQUIRED_RLS_TABLES=70, 3039 tests
