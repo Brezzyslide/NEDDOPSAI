@@ -444,9 +444,11 @@ describe("Sprint 28.7 — Gateway.process(): outputMode threaded to AIResponse",
 describe("Sprint 28.7 — Caller outputMode declaration audit (source-level)", () => {
 
   it("workExecutionPipelineService: outputMode='text' (produces prose, not JSON)", async () => {
-    const src = await readService("workExecutionPipelineService.ts");
+    // Sprint 29B: execution logic moved to unifiedExecutionEngine.ts (thin adapter pattern).
+    // The outputMode="text" declaration for task-driven prose generation lives in the engine.
+    const src = await readService("unifiedExecutionEngine.ts");
     expect(src).toContain(`outputMode: "text"`);
-    // Comment must explain the reasoning
+    // Comment must explain the reasoning: prose / markdown output
     expect(src.toLowerCase()).toMatch(/prose|markdown|never json/i);
   });
 
@@ -476,7 +478,9 @@ describe("Sprint 28.7 — Caller outputMode declaration audit (source-level)", (
   });
 
   it("specialistIntelligenceService: outputMode='json' (intelligence result is JSON)", async () => {
-    const src = await readService("specialistIntelligenceService.ts");
+    // Sprint 29B: execution logic moved to unifiedExecutionEngine.ts (thin adapter pattern).
+    // The outputMode="json" declaration for conversation-driven specialist runs lives in the engine.
+    const src = await readService("unifiedExecutionEngine.ts");
     expect(src).toContain(`outputMode: "json"`);
   });
 

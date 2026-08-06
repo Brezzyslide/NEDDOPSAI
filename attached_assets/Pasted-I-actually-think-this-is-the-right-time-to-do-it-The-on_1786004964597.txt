@@ -1,0 +1,286 @@
+I actually think this is the right time to do it.
+
+The only thing I’d change is the order. Don’t start with Sprint 29B exactly as written. Refine it first so you’re building the architecture you actually want, not the one that evolved over several design iterations.
+
+I’d give Replit this prompt:
+
+⸻
+
+Sprint 29B – Architecture Refactor (Execution Unification)
+
+Objective
+
+This sprint is an architectural refactor, not a feature sprint.
+
+Do not change user-visible behaviour.
+
+The goal is to simplify the execution architecture while preserving all working functionality from Sprints 27–29.
+
+Everything that currently works (CoS delegation, Operations Manager execution, evidence retrieval, Completed Work, approvals, Execution Inspector) must continue to work exactly as before.
+
+⸻
+
+Primary Architectural Goals
+
+1. Chief of Staff remains the only orchestrator
+
+The Chief of Staff owns:
+
+* intent understanding
+* specialist selection
+* delegation
+* approvals
+* monitoring
+* completion review
+* escalation
+
+The Chief of Staff should not own execution planning, provider selection, connector sessions, evidence routing or infrastructure decisions.
+
+After specialist selection, execution responsibility transfers to the unified execution engine.
+
+⸻
+
+2. Remove the dual execution model
+
+Today there are two execution paths:
+
+* Conversation execution
+* Coordinator / Completed Work execution
+
+Replace these with one execution engine.
+
+Both become thin entry points into a single pipeline.
+
+The end state should be:
+
+Trigger
+↓
+Chief of Staff
+↓
+Unified Execution Engine
+↓
+Evidence Resolution
+↓
+Execution
+↓
+Self Review
+↓
+Persistence
+
+There must be only one place where specialist execution occurs.
+
+⸻
+
+3. Introduce an Execution Engine
+
+Create a UnifiedExecutionEngine responsible for:
+
+* execution planning
+* capability planning
+* resource planning
+* evidence resolution
+* validation
+* AI execution
+* self review
+* persistence
+* execution actions
+
+The CoS simply hands over an ExecutionRequest.
+
+⸻
+
+4. Separate three concepts
+
+Do not mix these.
+
+Evidence
+
+Read-only information.
+
+Examples:
+
+* organisation library
+* uploaded files
+* organisation memory
+* desktop document content
+* legislation
+
+⸻
+
+Resources
+
+Objects that exist outside NeedsOps.
+
+Examples:
+
+* desktop files
+* Outlook mailbox
+* Word document
+* Excel workbook
+* browser tab
+
+⸻
+
+Execution Actions
+
+Side effects.
+
+Examples:
+
+* save file
+* create document
+* send email
+* update spreadsheet
+* rename folder
+* execute automation
+
+These must remain completely separate throughout the architecture.
+
+⸻
+
+5. Introduce a Resource Registry
+
+Do not let execution planning know provider implementations.
+
+Create a ResourceRegistry responsible for resolving providers.
+
+Example:
+
+Medication Policy
+↓
+Resource Registry
+↓
+Organisation Library
+↓
+Connector
+↓
+Trusted Sources
+↓
+Future Providers
+
+The execution engine requests resources from the registry.
+
+The registry decides which provider resolves them.
+
+⸻
+
+6. Introduce Resource Handles
+
+Do not pass raw paths around.
+
+Every resolved resource should become a ResourceHandle.
+
+Example:
+
+ResourceHandle
+id
+provider
+uri
+permissions
+contentType
+metadata
+confidence
+isTransient
+
+Execution works only with ResourceHandles.
+
+Providers know how to open them.
+
+⸻
+
+7. Introduce Execution Sessions
+
+Replace Connector Sessions with Execution Sessions.
+
+ExecutionSession owns:
+
+* connector channel
+* browser channel
+* office channel
+* cloud provider channel
+
+Desktop connector becomes one participant inside the session.
+
+The session survives the entire execution.
+
+⸻
+
+8. Keep Knowledge Resolution
+
+KnowledgeResolutionService remains exactly as its name implies.
+
+It retrieves organisational knowledge.
+
+It does not become a generic resource service.
+
+Instead:
+
+Unified Execution Engine
+↓
+Resource Registry
+↓
+Knowledge Resolution
+Connector Resolver
+Trusted Source Resolver
+Future Providers
+
+Knowledge Resolution becomes one provider within the registry.
+
+⸻
+
+9. Canonical Execution Context
+
+Create one immutable execution context.
+
+Every specialist receives the identical object regardless of trigger.
+
+It should include:
+
+* Professional DNA
+* Runtime Manifest
+* Conversation Context
+* Organisation Memory
+* Evidence Pack
+* Resource Registry references
+* Execution Session
+* Blueprint
+* Constraints
+* Capability Permissions
+
+⸻
+
+10. Preserve all existing functionality
+
+The following must continue working unchanged:
+
+* Chief of Staff delegation
+* Operations Manager execution
+* Execution Inspector
+* Completed Work
+* Evidence retrieval
+* Knowledge confidence
+* Self Review
+* AI Gateway
+* Approval workflow
+
+No regression is acceptable.
+
+⸻
+
+Deliverables
+
+Produce before writing code:
+
+1. Updated architecture diagrams
+2. Updated execution sequence
+3. Updated service dependency graph
+4. Migration impact analysis
+5. Files affected
+6. Risk assessment
+7. Backward compatibility assessment
+
+Only once the design is internally consistent should implementation begin.
+
+⸻
+
+I like this direction because it aligns with the vision you’ve consistently described: the Chief of Staff thinks, the execution engine executes, the connector provides capabilities, and specialists remain unaware of where resources came from. That separation of responsibilities will make NeedsOps much easier to extend as you add cloud providers, desktop automation, and additional specialists.
