@@ -1,0 +1,208 @@
+Sprint 29B.1 – Refine the Unified Execution Engine (No New Features, Architecture Alignment)
+
+This is an architecture refinement sprint.
+
+Do not add new functionality.
+Do not change external behaviour.
+Do not break existing APIs.
+Do not regress passing tests.
+
+The goal is to align the implementation with the approved Unified Execution Architecture so that every future capability is built on one execution model.
+
+Background
+
+The project has already introduced unifiedExecutionEngine.ts, with workExecutionPipelineService and specialistIntelligenceService acting as adapters.
+
+This is the correct direction.
+
+The objective of this sprint is to strengthen that architecture before adding connector capabilities.
+
+⸻
+
+Objectives
+
+1. Verify there is only ONE execution engine
+
+Inspect the codebase and confirm that every specialist execution ultimately flows through unifiedExecutionEngine.
+
+If any execution path still performs AI execution independently, document it.
+
+Do not duplicate execution logic.
+
+The engine should become the single place responsible for:
+
+* validation
+* evidence assembly
+* prompt construction
+* AI execution
+* self review
+* persistence
+* execution callbacks
+
+Adapters should only translate inputs.
+
+⸻
+
+2. Produce one canonical execution context
+
+Every execution trigger should produce the same execution context.
+
+Conversation
+
+↓
+
+Task
+
+↓
+
+Workflow
+
+↓
+
+Approval
+
+↓
+
+Scheduled execution
+
+↓
+
+UnifiedExecutionEngine
+
+The engine should never care how execution was triggered.
+
+Verify every path eventually produces the same context object.
+
+If not, identify missing fields.
+
+Do not implement connector functionality yet.
+
+⸻
+
+3. Preserve EvidencePack as the single evidence abstraction
+
+EvidencePack remains the authoritative evidence model.
+
+Do NOT rename it.
+
+Do NOT replace it.
+
+Instead verify it can naturally expand later with:
+
+* connector evidence
+* trusted public evidence
+* cloud provider evidence
+
+without changing existing callers.
+
+The guiding principle is:
+
+Specialists consume EvidencePack.
+Specialists never care where evidence came from.
+
+⸻
+
+4. Separate evidence from actions
+
+Verify the architecture cleanly separates:
+
+Evidence
+
+↓
+
+Reasoning
+
+↓
+
+Output
+
+↓
+
+Execution Actions
+
+Evidence must remain read-only.
+
+Execution actions (saving files, sending email, editing Word, updating Excel, etc.) must never become part of EvidencePack.
+
+Document anywhere these responsibilities are still mixed.
+
+⸻
+
+5. Keep KnowledgeResolutionService
+
+KnowledgeResolutionService remains responsible only for evidence retrieval.
+
+It must not become responsible for:
+
+* orchestration
+* execution
+* desktop automation
+* connector write operations
+
+Future providers simply become additional evidence providers.
+
+⸻
+
+6. Review adapter responsibilities
+
+Inspect:
+
+* workExecutionPipelineService
+* specialistIntelligenceService
+* chiefOfStaffOrchestrator
+
+Confirm they are becoming orchestration adapters rather than execution engines.
+
+Where logic still belongs inside UnifiedExecutionEngine, document it.
+
+Do not move code yet unless the change is trivial and risk-free.
+
+⸻
+
+7. Preserve backwards compatibility
+
+No API changes.
+
+No route changes.
+
+No database changes.
+
+No runtime protocol changes.
+
+Existing tests must continue to pass.
+
+⸻
+
+Deliverables
+
+Produce a short architecture report containing:
+
+A.
+
+Execution paths that still bypass the unified engine.
+
+B.
+
+Fields missing from the canonical execution context.
+
+C.
+
+Logic that still exists in adapters but belongs in UnifiedExecutionEngine.
+
+D.
+
+Places where evidence and execution actions are still coupled.
+
+E.
+
+Recommendations for Sprint 29C.
+
+⸻
+
+Success Criteria
+
+After this sprint there should be one clear architectural rule:
+
+The Chief of Staff is the sole orchestrator. Every specialist execution enters through one Unified Execution Engine. Every specialist receives one canonical execution context containing DNA, organisation memory, conversation context, blueprint (if applicable), and a single EvidencePack. Evidence retrieval remains independent from execution actions, allowing future connector, cloud, and trusted-public providers to plug into the same architecture without changing specialist behaviour.
+
+This sprint is an architectural refinement only. If you discover issues, document them before making significant structural changes unless they are low-risk and preserve full backwards compatibility.
