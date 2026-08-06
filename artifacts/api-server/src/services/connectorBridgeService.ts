@@ -30,7 +30,25 @@ import {
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
-export type ConnectorOperationType = "locate" | "search" | "read" | "inspect";
+export type ConnectorOperationType =
+  // ── Evidence retrieval (read-only) — Sprint 29E ───────────────────────────
+  | "locate"
+  | "search"
+  | "read"
+  | "inspect"
+  // ── Execution writes — Sprint 29F ─────────────────────────────────────────
+  // Files domain
+  | "write"          // files.write — overwrite or append to an existing file
+  | "create"         // files.create — create a new file
+  | "move"           // files.move — move or rename a file
+  // Word domain (Microsoft Word / compatible)
+  | "word_create"    // word.create — create a new Word document
+  | "word_edit"      // word.edit — edit content in an existing Word document
+  | "word_export"    // word.export — save/export a Word document to a target path
+  // Excel domain
+  | "excel_update"   // excel.update — update cell values in an Excel workbook
+  // Email domain (Outlook only; send_email is NOT in scope — non-goal)
+  | "email_draft";   // email.draft — create a draft in Outlook Drafts folder
 
 export interface ConnectorOpRequest {
   /** Engine-assigned correlation ID. Every request gets a unique requestId. */
@@ -45,6 +63,12 @@ export interface ConnectorOpRequest {
   path?: string;
   /** Resource identifier returned by a prior locate or search operation */
   resourceId?: string;
+  /**
+   * Sprint 29F: operation-specific parameters for write operations.
+   * Passed verbatim to the connector via relay payload.
+   * Examples: { content, encoding } for write; { to, subject, body } for email_draft.
+   */
+  parameters?: Record<string, unknown>;
 }
 
 export interface ConnectorOpResult {
@@ -235,11 +259,13 @@ function dispatchOnce(
     // Dispatch to connected device
     const dispatched = sendConnectorOpRequest(deviceId, organisationId, {
       requestId,
-      executionId: operation.executionId,
+      executionId:   operation.executionId,
       operationType: operation.operationType,
-      query: operation.query,
-      path: operation.path,
-      resourceId: operation.resourceId,
+      query:         operation.query,
+      path:          operation.path,
+      resourceId:    operation.resourceId,
+      // Sprint 29F: write-operation parameters (content, destination, etc.)
+      ...(operation.parameters ? { parameters: operation.parameters } : {}),
     });
 
     if (!dispatched) {
@@ -330,5 +356,175 @@ export async function connectorInspect(
     executionId,
     operationType: "inspect",
     resourceId,
+  }, opts);
+}
+
+// ─── Convenience: write operations (Sprint 29F) ───────────────────────────────
+// These are the execution write operations for the NeedsOps Connector P6.
+// Each maps to an ExecutionAction domain/type and is dispatched via the relay.
+//
+// ARCHITECTURE RULE: write operations must never be mixed with evidence retrieval
+// operations within the same request chain. The ExecutionActionDispatcher uses
+// these functions; the ConnectorEvidenceResolver does not.
+
+/**
+ * Write content to an existing file on the connector filesystem (files.write).
+ */
+export async function connectorWrite(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "write",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Create a new file on the connector filesystem (files.create).
+ */
+export async function connectorCreate(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "create",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Move or rename a file on the connector filesystem (files.move).
+ */
+export async function connectorMove(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "move",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Create a new Word document on the connector (word.create).
+ */
+export async function connectorWordCreate(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "word_create",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Edit content in an existing Word document on the connector (word.edit).
+ */
+export async function connectorWordEdit(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "word_edit",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Export a Word document to a specified target path (word.export).
+ */
+export async function connectorWordExport(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "word_export",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Update cell values in an Excel workbook on the connector (excel.update).
+ */
+export async function connectorExcelUpdate(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  path: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "excel_update",
+    path,
+    parameters,
+  }, opts);
+}
+
+/**
+ * Create a draft email in Outlook Drafts on the connector (email.draft).
+ *
+ * Note: email.send is NOT implemented — sending is a non-goal for Sprint 29F.
+ * This function creates a draft only; it does NOT send the email.
+ */
+export async function connectorEmailDraft(
+  deviceId: string,
+  organisationId: string,
+  executionId: string,
+  parameters?: Record<string, unknown>,
+  opts?: ConnectorBridgeOptions,
+): Promise<ConnectorOpResult> {
+  return submitConnectorOperation(deviceId, organisationId, {
+    requestId: `opreq_${randomUUID()}`,
+    executionId,
+    operationType: "email_draft",
+    path: "outlook://drafts",
+    parameters,
   }, opts);
 }

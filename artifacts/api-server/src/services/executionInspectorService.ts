@@ -170,6 +170,29 @@ export interface InspectorDiagnostics {
   connector: InspectorConnectorDiagnostics | null;
 }
 
+/**
+ * Sprint 29F — A single execution action as surfaced in the Execution Inspector.
+ * Derived from the ExecutionAction proposal + ConnectorExecutionResult from dispatch.
+ */
+export interface InspectorExecutionAction {
+  actionId: string;
+  actionType: string;
+  description: string;
+  /** Human-readable resolved write destination, or null if unresolved */
+  target: string | null;
+  /**
+   * Effective status — derived from dispatch result where available.
+   * "proposed" | "approved" | "executing" | "completed" | "failed" | "cancelled"
+   */
+  status: string;
+  riskLevel: string;
+  requiresApproval: boolean;
+  proposedAt: string;
+  approvedAt: string | null;
+  /** Null if not yet dispatched */
+  result: import("./executionActionDispatcherService.js").ConnectorExecutionResult | null;
+}
+
 export interface InspectorPerformance {
   blueprintSelectionMs: number | null;
   validationMs: number | null;
@@ -223,6 +246,28 @@ export interface ExecutionInspection {
   diagnostics: InspectorDiagnostics;
 
   performance: InspectorPerformance;
+
+  /**
+   * Sprint 29F — Execution action diagnostics.
+   * Populated when ExecutionActions were proposed or dispatched for this execution.
+   * Null when no execution actions were involved (read-only or evidence-only runs).
+   */
+  executionActions: {
+    /** Actions proposed by the specialist (status="proposed" — awaiting approval) */
+    proposed: InspectorExecutionAction[];
+    /** Actions approved but not yet dispatched to the connector */
+    approved: InspectorExecutionAction[];
+    /** Actions that the connector completed successfully */
+    executed: InspectorExecutionAction[];
+    /** Actions that failed or were cancelled during connector execution */
+    failed: InspectorExecutionAction[];
+    /** Total wall-clock time across all connector write operations (ms) */
+    totalDurationMs: number | null;
+    /** actionIds in the order they were submitted to the connector */
+    executionOrder: string[];
+    /** Raw connector result objects — one per dispatched action */
+    connectorResponses: import("./executionActionDispatcherService.js").ConnectorExecutionResult[];
+  } | null;
 }
 
 // ─── RBAC guard type ──────────────────────────────────────────────────────────
@@ -602,6 +647,57 @@ async function _buildInspection(
     if (parts.length) noEvidenceReason = `Required sources excluded: ${parts.join(", ")}`;
   }
 
+  // ── 17. Sprint 29F — Execution action diagnostics (Deliverable F) ────────────
+  // Populated from the ExecutionActionDispatcher in-memory store.
+  // Non-fatal if unavailable — action diagnostics are supplementary.
+  let executionActionsSection: ExecutionInspection["executionActions"] = null;
+  try {
+    const { getDispatchRecord } = await import("./executionActionDispatcherService.js");
+    const dispatchRecord = getDispatchRecord(executionId);
+    if (dispatchRecord) {
+      const resultById = new Map(dispatchRecord.results.map(r => [r.actionId, r]));
+
+      // Merge proposed and approved without duplicates
+      const approvedIds = new Set(dispatchRecord.approvedActions.map(a => a.actionId));
+      const allActions = [
+        ...dispatchRecord.proposedActions,
+        ...dispatchRecord.approvedActions.filter(a => !approvedIds.has(a.actionId) ||
+          !dispatchRecord.proposedActions.some(p => p.actionId === a.actionId)),
+      ];
+
+      const toInspectorAction = (a: import("../types/canonicalExecutionContext.js").ExecutionAction): InspectorExecutionAction => {
+        const res = resultById.get(a.actionId) ?? null;
+        return {
+          actionId:         a.actionId,
+          actionType:       a.actionType,
+          description:      a.description,
+          target:           a.resolvedDestination?.displayPath ?? null,
+          status:           res?.status ?? a.status,
+          riskLevel:        a.riskLevel,
+          requiresApproval: a.requiresApproval,
+          proposedAt:       a.proposedAt,
+          approvedAt:       a.approvedAt ?? null,
+          result:           res,
+        };
+      };
+
+      const inspectorActions = allActions.map(toInspectorAction);
+      const totalDurationMs  = dispatchRecord.results.reduce((s, r) => s + r.duration, 0);
+
+      executionActionsSection = {
+        proposed:           inspectorActions.filter(a => a.status === "proposed"),
+        approved:           inspectorActions.filter(a => a.status === "approved"),
+        executed:           inspectorActions.filter(a => a.result?.status === "completed"),
+        failed:             inspectorActions.filter(a => a.result?.status === "failed" || a.result?.status === "cancelled"),
+        totalDurationMs:    totalDurationMs > 0 ? totalDurationMs : null,
+        executionOrder:     dispatchRecord.executionOrder,
+        connectorResponses: dispatchRecord.results,
+      };
+    }
+  } catch {
+    // Non-fatal — execution action diagnostics are optional observability
+  }
+
   return {
     executionId,
     manifestId,
@@ -642,6 +738,7 @@ async function _buildInspection(
     },
     diagnostics,
     performance,
+    executionActions: executionActionsSection,
   };
 }
 

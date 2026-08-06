@@ -1,0 +1,232 @@
+Sprint 29F — Connector Execution Actions (Execution Ownership)
+
+Objective
+
+Implement the write-side of the Unified Execution Architecture by enabling the NeedsOps Connector to execute approved ExecutionActions produced by the Unified Execution Engine.
+
+This sprint transfers ownership of external side effects (file writes, document creation, application updates, email drafts, etc.) to the NeedsOps Connector while preserving the architectural principle that the Unified Execution Engine plans actions but never performs them.
+
+⸻
+
+Non-negotiable architecture rules
+
+1. The Chief of Staff remains the sole orchestrator.
+2. Every specialist execution enters only through unifiedExecutionEngine.
+3. The Unified Execution Engine plans execution actions but never performs them.
+4. The NeedsOps Connector exclusively owns all external side effects.
+5. OpenClaw remains an internal runtime and must never appear in any customer-facing output.
+6. Evidence retrieval remains completely separate from execution actions.
+7. No execution action may occur without passing the approval layer when required.
+8. The existing provider architecture, ResourceRegistry and ConnectorSessionManager must remain unchanged except where strictly necessary.
+
+⸻
+
+Deliverable A — ExecutionAction Dispatcher
+
+Implement a dedicated ExecutionActionDispatcher.
+
+Responsibilities:
+
+* receive validated ExecutionAction[]
+* execute sequentially within the active connector session
+* collect results
+* stop on fatal failures
+* produce structured execution results
+* return execution telemetry
+
+The dispatcher must not perform evidence retrieval.
+
+⸻
+
+Deliverable B — Connector Write Operations
+
+Implement connector operations for:
+
+* files.write
+* files.create
+* files.move
+* word.create
+* word.edit
+* word.export
+* excel.update
+* email.draft
+
+Do not implement destructive operations such as delete.
+
+Do not implement terminal execution.
+
+Do not implement browser automation yet.
+
+⸻
+
+Deliverable C — Approval Enforcement
+
+Execution actions requiring approval must never reach the connector before approval.
+
+The approval decision must occur before dispatch.
+
+The connector assumes every received execution action has already been approved.
+
+The connector must never make approval decisions itself.
+
+⸻
+
+Deliverable D — ExecutionAction Lifecycle
+
+Every action must move through explicit lifecycle states.
+
+Required states:
+
+* Proposed
+* Approved
+* Executing
+* Completed
+* Failed
+* Cancelled
+
+Persist lifecycle timestamps and execution metadata.
+
+⸻
+
+Deliverable E — Connector Result Contract
+
+Every connector execution returns a structured result.
+
+Include:
+
+* actionId
+* executionId
+* sessionId
+* operation
+* target
+* status
+* startedAt
+* completedAt
+* duration
+* connectorVersion
+* error (if applicable)
+
+⸻
+
+Deliverable F — Inspector
+
+Extend the Execution Inspector to display:
+
+* proposed actions
+* approved actions
+* executed actions
+* failed actions
+* execution duration
+* execution order
+* connector responses
+
+⸻
+
+Deliverable G — Audit
+
+Every execution action must generate an audit event.
+
+Audit should record:
+
+* who requested it
+* who approved it
+* specialist
+* execution
+* connector device
+* target
+* operation
+* outcome
+
+⸻
+
+Acceptance Scenarios
+
+Scenario 1
+
+Review a desktop policy and save the revised version.
+
+Expected:
+
+* approval
+* connector write
+* completed work
+* audit
+* inspector
+
+⸻
+
+Scenario 2
+
+Generate an incident report and create a Word document.
+
+Expected:
+
+* Word document created
+* connector result returned
+* completed work unchanged
+
+⸻
+
+Scenario 3
+
+Analyse spreadsheet and update workbook.
+
+Expected:
+
+* workbook updated
+* execution recorded
+* audit generated
+
+⸻
+
+Scenario 4
+
+Draft an Outlook email.
+
+Expected:
+
+* email drafted
+* not automatically sent
+* draft location returned
+
+⸻
+
+Scenario 5
+
+Connector disconnects during execution.
+
+Expected:
+
+* graceful failure
+* session closed
+* remaining actions cancelled
+* execution report produced
+
+⸻
+
+Explicit Non-Goals
+
+Do not implement:
+
+* email sending
+* browser interaction
+* terminal execution
+* cloud providers
+* SharePoint
+* Google Drive
+* OneDrive
+* automatic retries for destructive actions
+
+These belong to later sprints.
+
+⸻
+
+Final verification
+
+Before declaring Sprint 29F complete, produce an Execution Ownership Verification Report confirming:
+
+* the Unified Execution Engine never performs external side effects;
+* the NeedsOps Connector owns every filesystem and application interaction;
+* approval is enforced before dispatch;
+* evidence retrieval and execution actions remain completely separated;
+* no architectural regressions have been introduced.

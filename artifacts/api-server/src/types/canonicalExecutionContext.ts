@@ -123,9 +123,13 @@ export interface ResolvedWriteTarget {
  * executes them only after explicit user approval where required.
  *
  * Status progression:
- *   proposed → approved (user approves) → [connector executes] → (not in this sprint)
- *   proposed → rejected (user rejects)
- *   proposed → superseded (specialist revised the action)
+ *   proposed  → approved   (user approves)
+ *   proposed  → rejected   (user rejects)
+ *   proposed  → superseded (specialist revised the action)
+ *   approved  → executing  (connector begins executing — Sprint 29F)
+ *   executing → completed  (connector executed successfully — Sprint 29F)
+ *   executing → failed     (connector returned an error — Sprint 29F)
+ *   executing → cancelled  (execution aborted e.g. connector disconnected — Sprint 29F)
  */
 export interface ExecutionAction {
   /** Unique identifier for this action (engine-assigned) */
@@ -146,8 +150,12 @@ export interface ExecutionAction {
   riskLevel: "low" | "medium" | "high";
   /** When the engine validated and persisted this proposal */
   proposedAt: string;
-  /** Lifecycle state — all proposals start as "proposed" */
-  status: "proposed" | "approved" | "rejected" | "superseded";
+  /**
+   * Lifecycle state.
+   * Proposal states: proposed | approved | rejected | superseded
+   * Execution states (Sprint 29F): executing | completed | failed | cancelled
+   */
+  status: "proposed" | "approved" | "rejected" | "superseded" | "executing" | "completed" | "failed" | "cancelled";
   /** When a user approved this action — undefined until approved */
   approvedAt?: string;
   /** Who approved this action — undefined until approved */

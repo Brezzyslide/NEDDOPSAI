@@ -333,6 +333,13 @@ export const AUDIT_EVENTS = [
   "platform.pack_revoked",
   "platform.pack_trial_started",
   "platform.pack_trial_extended",
+  // Sprint 29F — Connector Execution Actions
+  "execution_action.proposed",
+  "execution_action.approved",
+  "execution_action.dispatched",
+  "execution_action.completed",
+  "execution_action.failed",
+  "execution_action.cancelled",
 ] as const;
 export type AuditEventType = (typeof AUDIT_EVENTS)[number];
 
