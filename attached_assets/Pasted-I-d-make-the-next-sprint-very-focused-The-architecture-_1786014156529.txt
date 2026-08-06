@@ -1,0 +1,228 @@
+I’d make the next sprint very focused. The architecture is now ready, so the connector should become the first real execution provider rather than adding more abstractions.
+
+⸻
+
+Sprint 29E — NeedsOps Connector Runtime (P6) Implementation
+
+Objective
+
+Implement the first production execution provider by enabling the NeedsOps Connector (desktop runtime powered internally by OpenClaw) to participate in the Unified Execution Engine.
+
+This sprint must not introduce new execution paths or orchestration. The Chief of Staff remains the sole orchestrator and the Unified Execution Engine remains the only specialist execution engine.
+
+The connector’s responsibility is to execute the contract already produced by the engine.
+
+⸻
+
+Deliverables
+
+A. Connector Session Manager
+
+Implement a production ConnectorSessionManager that:
+
+* Opens a session before connector operations begin
+* Maintains executionId ↔ session mapping
+* Supports heartbeat and reconnect
+* Enforces idle timeout
+* Closes sessions on success, failure or cancellation
+* Produces session telemetry for the Execution Inspector
+
+No connector operation may execute outside an active session.
+
+⸻
+
+B. ConnectorEvidenceResolver (Read Operations)
+
+Replace the placeholder provider with a real implementation.
+
+Implement:
+
+* files.locate()
+* files.search()
+* files.read()
+* files.inspect()
+
+using the existing NeedsOps Connector runtime.
+
+The provider must return ConnectorEvidence that merges into the existing EvidencePack without changing downstream specialist behaviour.
+
+Evidence from desktop files must participate in:
+
+* ranking
+* confidence
+* citations
+* validation
+
+exactly like organisation library evidence.
+
+⸻
+
+C. Connector Bridge
+
+Implement the bridge between the API server and the desktop connector.
+
+Requirements:
+
+* reuse the existing relay
+* submit connector operations through the existing runtime protocol
+* support timeout
+* cancellation
+* retries
+* structured errors
+* session ownership
+
+The Unified Execution Engine must never communicate directly with OpenClaw.
+
+⸻
+
+D. Connector Capability Validation
+
+Before opening a session verify:
+
+* connector online
+* device registered
+* required capabilities available
+* requested capabilities permitted
+* worker profile compatible
+
+Fail before execution if capability validation fails.
+
+⸻
+
+E. Resource Resolution Integration
+
+ResourceRegistry must support:
+
+Organisation Library
+↓
+Connector
+↓
+Future Cloud Providers
+↓
+Future Trusted Sources
+
+The connector is a first-class provider, not a fallback.
+
+If the user explicitly requests:
+
+“Use my desktop”
+
+the connector must become the primary provider regardless of library availability.
+
+⸻
+
+F. Execution Inspector
+
+Extend the Inspector to display:
+
+* Connector connected
+* Session ID
+* Session duration
+* Connector version
+* Device
+* Operations executed
+* Evidence retrieved
+* Connector latency
+* Session close reason
+
+⸻
+
+Acceptance Criteria
+
+Scenario 1
+
+User:
+
+Review Medication Policy.docx on my desktop.
+
+Result:
+
+* Connector session opens
+* File located
+* File read
+* EvidencePack populated
+* Specialist receives document content
+* Completed Work generated
+* Session closes
+
+⸻
+
+Scenario 2
+
+User:
+
+Search my Documents folder for Incident Report 231.
+
+Result:
+
+* files.search executed
+* Matching file returned
+* Evidence available to specialist
+
+⸻
+
+Scenario 3
+
+User:
+
+Compare the policy on my desktop with the approved version in NeedsOps.
+
+Result:
+
+EvidencePack contains:
+
+* Organisation Library evidence
+* Connector evidence
+
+Both cited independently.
+
+⸻
+
+Scenario 4
+
+Connector unavailable
+
+Result:
+
+Execution fails gracefully with a structured capability error.
+
+No AI execution starts.
+
+No partial session remains open.
+
+⸻
+
+Non-Goals
+
+This sprint must not implement:
+
+* file writes
+* Outlook
+* Word automation
+* Excel updates
+* browser automation
+* terminal execution
+* cloud providers
+* SharePoint
+* Google Drive
+* OneDrive
+* deletion or modification of local files
+
+Those belong to Sprint 29F.
+
+⸻
+
+Architecture Rules (Must Not Be Violated)
+
+1. The Chief of Staff remains the only orchestrator.
+2. Every specialist execution must enter through unifiedExecutionEngine.
+3. KnowledgeResolutionService remains responsible for organisation knowledge.
+4. ConnectorEvidenceResolver is responsible only for desktop evidence retrieval.
+5. The Unified Execution Engine plans execution; it never performs desktop operations directly.
+6. The NeedsOps Connector owns all desktop interactions.
+7. OpenClaw remains an internal runtime and is never exposed in user-facing terminology.
+8. No service outside unifiedExecutionEngine may call the AI Gateway to perform specialist work.
+9. The connector must plug into the existing provider architecture without introducing a second execution pipeline.
+10. The full regression suite must pass with no new failures before Sprint 29F begins.
+
+Finally, before writing any code, perform a full architecture audit of the proposed implementation against the founder-approved Sprint 29B architecture. Challenge assumptions, identify any deviation from the target architecture, and recommend corrections before implementation. The goal is long-term architectural integrity, not merely making the feature work.
