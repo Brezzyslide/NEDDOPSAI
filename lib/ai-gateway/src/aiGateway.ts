@@ -32,6 +32,7 @@ import {
   type AIPurpose,
   type ApprovedProvider,
   type AIProviderHealth,
+  type GatewayOutputMode,
 } from "./types.js";
 import {
   callOpenAI,
@@ -159,8 +160,21 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     eventType: "ai_gateway.request_initiated",
     phase: "request",
     responseId,
-    retrievedFields: request.retrievedFields,
+    retrievedFields: request.retrievedFields ?? [],
+    outputMode: request.outputMode,
   });
+
+  // ── Output mode — resolve with backward-compat default ───────────────────
+  // Sprint 28.7: callers must declare outputMode explicitly.
+  // The legacy default is "json" (historic behavior was always json_object).
+  const outputMode: GatewayOutputMode = request.outputMode ?? (() => {
+    console.warn(
+      `[AI Gateway] WARN: outputMode not declared by caller — defaulting to "json". ` +
+      `correlationId=${ctx.correlationId} purpose=${ctx.purpose}. ` +
+      `Set outputMode explicitly on every gateway.process() call.`,
+    );
+    return "json" as GatewayOutputMode;
+  })();
 
   // ── Provider routing ───────────────────────────────────────────────────────
   const configuredProvider = getConfiguredProvider();
@@ -170,6 +184,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   let inputTokens = 0;
   let outputTokens = 0;
   let actualModel: string | undefined;
+  let actualResponseFormat: string | null = null;
 
   if (ctx.provider === "internal" || configuredProvider === "internal") {
     // Internal deterministic routing — no external call
@@ -177,11 +192,12 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   } else if (configuredProvider === "openai") {
     // OpenAI provider — with automatic fallback to internal on failure
     try {
-      const result = await callOpenAI(request);
+      const result = await callOpenAI({ ...request, outputMode });
       content = result.content;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
       actualModel = result.model;
+      actualResponseFormat = result.responseFormat;
       recordSuccess({
         organizationId: ctx.organizationId,
         inputTokens: result.inputTokens,
@@ -199,7 +215,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
       content = buildInternalResponse(ctx);
       console.warn(
         `[AI Gateway] WARN: OpenAI provider failed — using deterministic fallback. ` +
-        `correlationId=${ctx.correlationId} reason="${fallbackReason}"`,
+        `correlationId=${ctx.correlationId} outputMode=${outputMode} reason="${fallbackReason}"`,
       );
     }
   } else {
@@ -227,6 +243,8 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     usedFallback,
     fallbackReason,
     usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens } : undefined,
+    outputMode,
+    responseFormat: actualResponseFormat,
   };
 
   // ── Post-response audit event ──────────────────────────────────────────────
@@ -236,13 +254,16 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     eventType: "ai_gateway.response_delivered",
     phase: "response",
     responseId,
-    retrievedFields: request.retrievedFields,
+    retrievedFields: request.retrievedFields ?? [],
     requiresHumanApproval: ctx.requiresHumanApproval,
     usedFallback,
     fallbackReason,
     inputTokens,
     outputTokens,
     latencyMs,
+    outputMode,
+    modelUsed: actualModel,
+    responseFormat: actualResponseFormat,
   });
 
   return response;
@@ -284,6 +305,10 @@ interface GatewayAuditParams {
   inputTokens?: number;
   outputTokens?: number;
   latencyMs?: number;
+  /** Sprint 28.7 diagnostics */
+  outputMode?: GatewayOutputMode;
+  modelUsed?: string;
+  responseFormat?: string | null;
 }
 
 /**
@@ -348,6 +373,9 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
       inputTokens: params.inputTokens ?? 0,
       outputTokens: params.outputTokens ?? 0,
       latencyMs: params.latencyMs ?? null,
+      outputMode: params.outputMode ?? null,
+      modelUsed: params.modelUsed ?? null,
+      responseFormat: params.responseFormat ?? null,
     },
     occurredAt: new Date(),
   }).catch(() => {

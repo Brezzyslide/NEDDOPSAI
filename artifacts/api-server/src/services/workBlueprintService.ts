@@ -693,7 +693,9 @@ Return blueprintCode as null if the request is casual conversation, a general qu
     const response = await gateway.process({
       systemPrompt,
       userMessage,
+      retrievedFields: [],
       maxTokens: 150,
+      outputMode: "json", // Blueprint classification returns {blueprintCode, confidence, reasoning}
     });
 
     if (response.usedFallback || !response.content) {

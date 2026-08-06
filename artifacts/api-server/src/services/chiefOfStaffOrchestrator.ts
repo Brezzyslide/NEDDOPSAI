@@ -925,6 +925,7 @@ async function evaluateConflictWithLLM(
       userMessage,
       retrievedFields: ["task.id", "task.title"],
       maxTokens: 400,
+      outputMode: "json", // Conflict evaluator returns structured {prevails, reasoning} JSON
     });
 
     if (response.usedFallback) return null;

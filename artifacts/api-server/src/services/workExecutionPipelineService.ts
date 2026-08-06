@@ -559,6 +559,7 @@ async function generateDraft(
     userMessage,
     retrievedFields,
     maxTokens: 3000,
+    outputMode: "text", // Specialist work execution produces prose/markdown — never JSON
   });
 
   if (response.usedFallback || !response.content) {

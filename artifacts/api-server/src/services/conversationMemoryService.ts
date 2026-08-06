@@ -127,7 +127,9 @@ export async function updateConversationSummary(
         const response = await gateway.process({
           systemPrompt: SUMMARY_SYSTEM_PROMPT,
           userMessage: `Summarise these conversation messages:\n\n${conversationText}`,
-          retrievedFields: ["conversation.id"], maxTokens: 1000,
+          retrievedFields: ["conversation.id"],
+          maxTokens: 1000,
+          outputMode: "json", // Conversation summary returns structured JSON (topics, decisions, actions)
         });
         if (!response.usedFallback) {
           structuredSummary = parseSummaryJson(response.content, existing);

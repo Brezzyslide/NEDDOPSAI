@@ -32,6 +32,8 @@ export interface OpenAICompletionResult {
   model: string;
   latencyMs: number;
   retries: number;
+  /** Sprint 28.7: the response_format value sent, or null when text mode */
+  responseFormat: string | null;
 }
 
 export type OpenAIErrorKind =
@@ -86,18 +88,34 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
   const client = getClient();
   const startMs = Date.now();
 
+  // Sprint 28.7 — Output mode determines whether response_format is sent.
+  //
+  // OpenAI enforces: when response_format: json_object is set, the word "json"
+  // MUST appear in the prompt, or OpenAI returns HTTP 400. Text-mode callers
+  // (specialist work execution, self-review revision, executive briefings) produce
+  // prose/markdown and must never receive the json_object constraint.
+  //
+  // Mapping:
+  //   "text"       → no response_format sent
+  //   "json"       → response_format: { type: "json_object" }
+  //   "structured" → response_format: { type: "json_object" }  (future: JSON Schema)
+  //   undefined    → response_format: { type: "json_object" }  (legacy default, warn)
+  const outputMode = request.outputMode ?? "json";
+  const useJsonMode = outputMode !== "text";
+  const responseFormat = useJsonMode ? "json_object" : null;
+
   let lastError: unknown = null;
   let retries = 0;
 
   while (retries <= cfg.maxRetries) {
     try {
       const completion = await client.chat.completions.create({
-        model: cfg.model,
+        model: request.model ?? cfg.model,
         messages: [
           { role: "system", content: request.systemPrompt },
           { role: "user", content: request.userMessage },
         ],
-        response_format: { type: "json_object" },
+        ...(useJsonMode ? { response_format: { type: "json_object" as const } } : {}),
         max_tokens: request.maxTokens ?? 2048,
         temperature: 0.3, // Low temp for deterministic structured output
       });
@@ -111,9 +129,10 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         inputTokens:  usage?.prompt_tokens     ?? 0,
         outputTokens: usage?.completion_tokens  ?? 0,
         totalTokens:  usage?.total_tokens       ?? 0,
-        model: completion.model ?? cfg.model,
+        model: completion.model ?? (request.model ?? cfg.model),
         latencyMs: Date.now() - startMs,
         retries,
+        responseFormat,
       };
     } catch (err) {
       lastError = err;

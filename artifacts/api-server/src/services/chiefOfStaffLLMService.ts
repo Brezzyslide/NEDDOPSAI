@@ -519,6 +519,7 @@ export async function classifyMessageLLM(
       userMessage,
       retrievedFields,
       maxTokens: 1400,
+      outputMode: "json", // CoS classification returns structured JSON routing decision
     });
 
     if (response.usedFallback) {

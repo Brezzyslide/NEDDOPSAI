@@ -298,6 +298,7 @@ async function callSpecialist(
           retrievedFields: ["task.scope", "organisation.memory", "conversation.messages"],
           model: modelName,
           maxTokens: 4000,
+          outputMode: "json", // Specialist intelligence returns structured SpecialistRunResult JSON
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("Specialist run timeout")), RUN_TIMEOUT_MS),

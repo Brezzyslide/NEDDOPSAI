@@ -94,12 +94,34 @@ export interface InspectorTimeline {
   hasFailure: boolean;
 }
 
+export interface InspectorGatewayDiagnostics {
+  /** Output mode the caller declared on the gateway request */
+  outputMode: string;
+  /** AI provider the gateway routed to */
+  provider: string;
+  /** Model identifier used (null when unknown or fallback) */
+  model: string | null;
+  /** response_format value sent to the provider, or null when text mode */
+  responseFormat: string | null;
+  /** True when the AI provider failed and the deterministic fallback was used */
+  usedFallback: boolean;
+  /** Human-readable reason the fallback was triggered */
+  fallbackReason: string | null;
+}
+
 export interface InspectorDiagnostics {
   state: "running" | "awaiting_clarification" | "failed" | "completed";
   clarificationItems: Array<{ name: string; reason: string }>;
   failedStage: string | null;
   rootCause: string | null;
   retryAvailable: boolean;
+  /**
+   * Sprint 28.7 — gateway execution diagnostics.
+   * Populated from failure info when the root cause is an AI gateway issue.
+   * Null when the execution is still running or completed successfully via a path
+   * that did not record gateway metadata.
+   */
+  gateway: InspectorGatewayDiagnostics | null;
 }
 
 export interface InspectorPerformance {
@@ -418,12 +440,37 @@ async function _buildInspection(
       ? "completed"
       : "running";
 
+  // ── Sprint 28.7 — gateway diagnostics ────────────────────────────────────
+  // Detect whether the failure was caused by an AI gateway issue (provider
+  // failure / fallback). The rootCause message written by generateDraft
+  // contains the marker phrase "gateway used fallback" when the deterministic
+  // fallback fired, and "OpenAI" when a raw API error was the cause.
+  const rootCauseText = failInfo?.rootCause ?? "";
+  const isFallbackRootCause = rootCauseText.includes("gateway used fallback") ||
+    rootCauseText.includes("AI specialist execution did not produce content");
+  const isOpenAIErrorRootCause = rootCauseText.toLowerCase().includes("openai");
+
+  let gatewayDiagnostics: InspectorGatewayDiagnostics | null = null;
+  if (failInfo?.failedStage === "executing" && (isFallbackRootCause || isOpenAIErrorRootCause)) {
+    // Work execution always uses outputMode "text" (Sprint 28.7 fix).
+    // Provider is "openai" for all production orgs on this path.
+    gatewayDiagnostics = {
+      outputMode:     "text",
+      provider:       "openai",
+      model:          null,  // Actual model is in the gateway audit log; not stored in manifest
+      responseFormat: null,  // text mode → no response_format sent
+      usedFallback:   isFallbackRootCause,
+      fallbackReason: isFallbackRootCause ? rootCauseText : null,
+    };
+  }
+
   const diagnostics: InspectorDiagnostics = {
     state: diagnosticsState,
     clarificationItems: failInfo?.clarificationItems ?? [],
     failedStage: failInfo?.failedStage ?? null,
     rootCause: failInfo?.rootCause ?? null,
     retryAvailable: failInfo?.retryAvailable ?? false,
+    gateway: gatewayDiagnostics,
   };
 
   // ── 14. Performance ──────────────────────────────────────────────────────────

@@ -410,6 +410,7 @@ async function callCurationLLM(p: CurationLLMParams): Promise<LLMCurationOutput>
     userMessage,
     retrievedFields: [],
     maxTokens: 2000,
+    outputMode: "json", // Curation returns structured JSON proposals
   });
 
   if (response.usedFallback) {

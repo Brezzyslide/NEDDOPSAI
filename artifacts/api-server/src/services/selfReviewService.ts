@@ -765,6 +765,7 @@ Return only the revised content — no preamble, no explanation.`;
       userMessage,
       retrievedFields: [],
       maxTokens: 2000,
+      outputMode: "text", // Self-review revision produces prose — never JSON
     });
 
     if (response.usedFallback || !response.content) return content;

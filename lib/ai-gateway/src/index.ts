@@ -40,6 +40,7 @@ export {
   type RetentionClass,
   type AITokenUsage,
   type AIProviderHealth,
+  type GatewayOutputMode,
 } from "./types.js";
 
 export {

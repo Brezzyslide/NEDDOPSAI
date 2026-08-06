@@ -150,6 +150,7 @@ router.get(
             userMessage:  buildAIPrompt(briefingCtx),
             retrievedFields: [],
             maxTokens: 200,
+            outputMode: "text", // Executive briefing produces prose — never JSON
           });
 
           if (!response.usedFallback && response.content?.trim()) {

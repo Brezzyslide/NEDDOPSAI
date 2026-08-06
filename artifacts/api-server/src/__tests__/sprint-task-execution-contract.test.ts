@@ -322,6 +322,9 @@ describe("task_execution data-field contract — purpose separation", () => {
       "task_planning", "task_execution", "workforce_routing",
       "compliance_check", "report_generation", "knowledge_retrieval",
       "search_assistance", "conversation_intelligence",
+      // Sprint 28.7: four new internal-system purposes
+      "blueprint_classification", "executive_briefing",
+      "work_self_review_revision", "knowledge_curation",
       "internal_tooling", "testing",
     ];
     expect(registeredPurposes.sort()).toEqual(expectedPurposes.sort());

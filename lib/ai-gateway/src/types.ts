@@ -1,10 +1,32 @@
 /**
- * AI Privacy Gateway — Types — Sprint 7 / Sprint 9.1
+ * AI Privacy Gateway — Types — Sprint 7 / Sprint 9.1 / Sprint 28.7
  *
  * All AI interactions involving customer information must pass through the
  * gateway. The gateway enforces identity, organisation isolation, purpose
  * classification, audit requirements, and provider approval.
  */
+
+// ─── Output mode ──────────────────────────────────────────────────────────────
+
+/**
+ * Declares the expected output format for an AI request.
+ *
+ * Callers MUST set this explicitly — do not rely on provider defaults.
+ *
+ * - "text"       → Free-form prose or markdown. No response_format constraint
+ *                  is sent to the provider. Required for specialist work
+ *                  execution, self-review revision, and executive briefings.
+ *
+ * - "json"       → Structured JSON object. Sends response_format: json_object
+ *                  to the provider. The prompt MUST contain the word "json".
+ *                  Required for classification, scoring, and routing calls.
+ *
+ * - "structured" → Reserved for JSON Schema validation (strict typed output).
+ *                  Architecture prepared; currently behaves identically to
+ *                  "json". Callers should use this to signal intent so the
+ *                  transition to full schema validation requires no caller changes.
+ */
+export type GatewayOutputMode = "text" | "json" | "structured";
 
 // ─── Purpose classification ───────────────────────────────────────────────────
 
@@ -21,6 +43,10 @@ export type AIPurpose =
   | "knowledge_retrieval"        // RAG retrieval from org knowledge base
   | "search_assistance"          // Helping users search records
   | "conversation_intelligence"  // Sprint 9.1: Chief of Staff conversation understanding
+  | "blueprint_classification"   // Sprint 28.7: Semantic work blueprint selection
+  | "executive_briefing"         // Sprint 28.7: Executive dashboard AI briefing
+  | "work_self_review_revision"  // Sprint 28.7: Specialist self-review draft revision
+  | "knowledge_curation"         // Sprint 28.7: Knowledge Hub curation proposals
   | "internal_tooling"           // Platform internal (not customer-facing)
   | "testing";                   // Test and development only
 
@@ -93,7 +119,19 @@ export interface AIRequest {
    * Data fields retrieved for this request — minimum necessary only.
    * Each field must be justified by the declared purpose.
    */
-  retrievedFields: string[];
+  retrievedFields?: string[];
+  /**
+   * Declares the expected output format. Callers MUST set this explicitly.
+   * See GatewayOutputMode for full documentation.
+   *
+   * - "text"       → prose/markdown (specialist work, briefings, revision)
+   * - "json"       → structured JSON object (classification, scoring, routing)
+   * - "structured" → reserved for JSON Schema validation; behaves as "json"
+   *
+   * When omitted, the gateway defaults to "json" for backward compatibility
+   * and emits a console.warn. New callers must always set this field.
+   */
+  outputMode?: GatewayOutputMode;
   /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
@@ -126,6 +164,10 @@ export interface AIResponse {
   fallbackReason?: string;
   /** Sprint 9.1: time from request to response in ms */
   latencyMs?: number;
+  /** Sprint 28.7: output mode declared by the caller */
+  outputMode: GatewayOutputMode;
+  /** Sprint 28.7: response_format value sent to the provider, or null for text mode */
+  responseFormat: string | null;
 }
 
 // ─── Token usage ──────────────────────────────────────────────────────────────
@@ -225,6 +267,11 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
   search_assistance:          ["task.id", "task.title", "task.state"],
   // conversation_intelligence — task/conversation metadata; no evidence chunks
   conversation_intelligence:  ["conversation.id", "task.id", "task.title", "task.state", "task.priority"],
+  // Sprint 28.7 — internal-system purposes (no customer PII permitted)
+  blueprint_classification:   [],    // Blueprint metadata only; no customer content
+  executive_briefing:         ["task.aggregates", "task.state"],  // Aggregates only; no individual records
+  work_self_review_revision:  [],    // Draft content only; passed inline, not retrieved
+  knowledge_curation:         ["knowledge.chunk", "knowledge.source"],  // Chunk content for curation
   internal_tooling:           [],    // No customer data — platform internal only
   testing:                    ["test.mock"],  // Only mock data in test environment
 };
@@ -236,11 +283,16 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
  * Gateway enforces this — members cannot invoke purposes their role doesn't permit.
  */
 export const ROLE_PURPOSE_ALLOWLIST: Record<string, AIPurpose[]> = {
-  owner:         ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
-  administrator: ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
+  owner:         ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence", "executive_briefing"],
+  administrator: ["task_planning", "task_execution", "workforce_routing", "compliance_check", "report_generation", "knowledge_retrieval", "search_assistance", "conversation_intelligence", "executive_briefing"],
   manager:       ["task_planning", "task_execution", "workforce_routing", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
   member:        ["task_planning", "knowledge_retrieval", "search_assistance", "conversation_intelligence"],
   support:       ["search_assistance"],
+  // Sprint 28.7: internal platform operations role — permitted for all system-initiated purposes.
+  // Never granted to org users; only used by background services and specialist runtimes.
+  system:        ["task_execution", "workforce_routing", "compliance_check", "knowledge_retrieval",
+                  "blueprint_classification", "work_self_review_revision", "knowledge_curation",
+                  "conversation_intelligence", "internal_tooling"],
 };
 
 // ─── Error types ──────────────────────────────────────────────────────────────
