@@ -15,6 +15,7 @@
 
 import {
   resolveEvidence,
+  resolveConversationEvidence,
   type EvidencePack,
 } from "../../services/knowledgeResolutionService.js";
 import type { WorkPackageManifest } from "../../services/workPackageService.js";
@@ -63,18 +64,38 @@ export class ResourceRegistry {
   /**
    * Resolve evidence for conversation-driven execution.
    *
-   * Conversation steps currently do not consume the evidence pipeline —
-   * the specialist receives org memory and conversation context instead.
-   * Sprint 29C will wire org library retrieval into conversation context
-   * so both execution paths share the same evidence quality.
+   * Sprint 29C: conversation executions now receive the same EvidencePack
+   * as task executions. Both paths use the same underlying retrieval
+   * infrastructure (hybridRetrievalService) — evidence quality is identical
+   * regardless of how execution was triggered.
+   *
+   * Uses `specialistRunId` as the conversation-scoped cache key so repeated
+   * calls within the same execution turn do not incur duplicate retrieval cost.
+   *
+   * Future: when ConnectorProvider (P6) is implemented, local files retrieved
+   * via the desktop connector will appear in EvidencePack alongside org library
+   * evidence — specialists never know which provider sourced each chunk.
    */
-  async resolveEvidenceForConversation(_params: {
+  async resolveEvidenceForConversation(params: {
     organisationId: string;
     specialistRunId: string;
-    userRequest?: string;
-  }): Promise<null> {
-    // Future: retrieve P5 org library evidence for conversation context
-    return null;
+    specialistCode: string;
+    userRequest: string;
+  }): Promise<EvidencePack | null> {
+    try {
+      return await resolveConversationEvidence({
+        organisationId: params.organisationId,
+        specialistCode: params.specialistCode,
+        query: params.userRequest,
+        conversationId: params.specialistRunId,
+      });
+    } catch (err) {
+      console.warn(
+        "[ResourceRegistry] resolveEvidenceForConversation failed (non-fatal):",
+        err instanceof Error ? err.message : String(err),
+      );
+      return null;
+    }
   }
 }
 

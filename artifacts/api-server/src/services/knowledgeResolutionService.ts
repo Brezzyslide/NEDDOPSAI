@@ -529,6 +529,114 @@ export function buildEvidenceSection(pack: EvidencePack): string {
 }
 
 /**
+ * Resolve evidence for conversation-triggered specialist execution.
+ *
+ * Sprint 29C: gives conversation executions the same evidence model as task
+ * executions. Both paths now receive an EvidencePack before the AI call.
+ *
+ * Uses `conversationId` as the cache key so repeated calls for the same
+ * conversation turn do not incur duplicate retrieval cost.
+ *
+ * This function is the conversation-path entry point to the same underlying
+ * retrieval infrastructure used by `resolveEvidence`. It does NOT duplicate
+ * retrieval logic — it shares `retrieveChunks`, `getVersionLabels`,
+ * `getSourceTypes`, `mapRawChunk`, and `buildPack`.
+ */
+export async function resolveConversationEvidence(input: {
+  organisationId: string;
+  specialistCode: string;
+  query: string;
+  /** Used as cache key — unique per conversation turn */
+  conversationId?: string;
+}): Promise<EvidencePack> {
+  const { organisationId, specialistCode, query } = input;
+  const cacheKey = `conv:${input.conversationId ?? "unknown"}:${specialistCode}`;
+
+  const cached = _packCache.get(cacheKey);
+  if (cached) {
+    return { ...cached, retrievalMetrics: { ...cached.retrievalMetrics, cacheHit: true } };
+  }
+
+  const startMs = Date.now();
+  let queryCount = 0;
+  let totalCandidates = 0;
+  const seenChunkIds = new Set<string>();
+  const allEvidenceChunks: EvidenceChunk[] = [];
+
+  // ── Step 1: Organisation Library — full library search using the conversation query ─
+  // Unlike task execution, conversation evidence always attempts library retrieval
+  // (no gate condition needed — the query drives relevance scoring).
+  queryCount++;
+  const libraryRaw = await retrieveChunks({
+    organisationId,
+    query,
+    queryEmbedding: null,
+    scopeMode: "org_library",
+    limit: MAX_LIBRARY_CHUNKS,
+  });
+  totalCandidates += libraryRaw.length;
+
+  const libVersionIds = [...new Set(libraryRaw.map(c => c.sourceVersionId))];
+  const libVersionLabels = await getVersionLabels(libVersionIds, organisationId);
+
+  for (const raw of libraryRaw) {
+    if (raw.baseScore < MIN_CONFIDENCE) continue;
+    if (seenChunkIds.has(raw.id)) continue;
+    seenChunkIds.add(raw.id);
+    allEvidenceChunks.push(mapRawChunk(raw, libVersionLabels.get(raw.sourceVersionId) ?? null, "organisation_library"));
+  }
+
+  // Enrich sourceType in a single batch query
+  if (allEvidenceChunks.length > 0) {
+    const sourceIds = [...new Set(allEvidenceChunks.map(c => c.sourceId))];
+    const typeMap = await getSourceTypes(sourceIds, organisationId);
+    for (const c of allEvidenceChunks) {
+      const st = typeMap.get(c.sourceId);
+      if (st) c.sourceType = st;
+    }
+  }
+
+  // ── Step 2: Specialist-scoped knowledge ────────────────────────────────────
+  if (specialistCode) {
+    queryCount++;
+    const specialistRaw = await retrieveChunks({
+      organisationId,
+      query,
+      queryEmbedding: null,
+      scopeMode: "specialist_scoped",
+      specialistId: specialistCode,
+      limit: 10,
+      excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
+    });
+    totalCandidates += specialistRaw.length;
+
+    const spVersionIds = [...new Set(specialistRaw.map(c => c.sourceVersionId))];
+    const spVersionLabels = await getVersionLabels(spVersionIds, organisationId);
+
+    for (const raw of specialistRaw) {
+      if (raw.baseScore < MIN_CONFIDENCE) continue;
+      if (seenChunkIds.has(raw.id)) continue;
+      seenChunkIds.add(raw.id);
+      allEvidenceChunks.push(mapRawChunk(raw, spVersionLabels.get(raw.sourceVersionId) ?? null, "specialist_knowledge"));
+    }
+  }
+
+  const retrievalMs = Date.now() - startMs;
+  const sorted = allEvidenceChunks.sort((a, b) => b.confidence - a.confidence);
+
+  const pack = buildPack(cacheKey, organisationId, sorted, {
+    queryCount,
+    totalCandidates,
+    selectedChunks: sorted.length,
+    cacheHit: false,
+    retrievalMs,
+  });
+
+  _packCache.set(cacheKey, pack);
+  return pack;
+}
+
+/**
  * Build a citations summary for storage in completed work evidence provenance.
  */
 export function buildCitationSummary(pack: EvidencePack): Record<string, unknown>[] {

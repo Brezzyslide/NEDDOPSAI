@@ -63,3 +63,4 @@
 - [NeedsOps task_execution Data-Field Contract](needsops-task-execution-contract.md) — flat snake_case vs dotted camelCase naming, 6 data classes, storageKey/vector exclusions, denial audit event, AIGatewayDataError.deniedFields, purpose separation matrix, 3529 tests
 - [NeedsOps Completed Work Version Persistence Fix](needsops-sprint-completed-work-persistence.md) — FK insert order bug (version before parent), colon-prefix marker regex, FallbackDraftError prevents stub→real-work, 3555 tests
 - [NeedsOps Sprint 28.7 Gateway Output-Mode Architecture](needsops-sprint287-output-mode.md) — GatewayOutputMode type, conditional response_format, system role, 4 new AIPurpose values, InspectorGatewayDiagnostics, 3642 tests
+- [NeedsOps Sprint 29C Canonical Execution Context](needsops-sprint29c.md) — executionContextBuilderService, CanonicalExecutionContext both paths, conversation EvidencePack, requester identity, backward-scan extractDocumentSearchTerms, 3453 tests

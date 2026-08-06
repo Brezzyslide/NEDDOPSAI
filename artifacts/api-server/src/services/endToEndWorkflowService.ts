@@ -1,14 +1,26 @@
 /**
- * End-to-End Mocked Workflow Demonstration — Sprint XX
+ * @deprecated Sprint 29C — LEGACY / DISCONNECTED
  *
- * Demonstrates the complete execution path:
+ * This service was written before the Unified Execution Architecture and
+ * implements a parallel execution pipeline that has been superseded by
+ * `UnifiedExecutionEngine` (artifacts/api-server/src/services/unifiedExecutionEngine.ts).
+ *
+ * It has NO live callers — no route, orchestrator, or coordinator imports it.
+ * It is retained here for historical reference ONLY.
+ *
+ * DO NOT reconnect this service. Any new execution path must enter through
+ * UnifiedExecutionEngine. See the Sprint 29B.1 architecture report for details.
+ *
+ * ---
+ *
+ * End-to-End Mocked Workflow Demonstration — Sprint XX (ORIGINAL DESCRIPTION)
+ *
+ * Demonstrated the complete execution path:
  * User Task → CoS Analysis → Specialist Selected → Work Package →
  * Specialist Executes → Mock Connector Invoked → Output Contract →
  * CoS Consolidates → Audit Recorded → Response Ready
  *
- * This workflow is used for integration testing and demonstrates that
- * all platform components work together end-to-end.
- * No real LLM calls. No real connectors. All stages are observable.
+ * Used for integration testing. No real LLM calls. No real connectors.
  */
 
 import { randomUUID } from "crypto";

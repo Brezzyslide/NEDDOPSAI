@@ -49,18 +49,21 @@ import { reviewDraft } from "./selfReviewService.js";
 import { createDraft } from "./completedWorkService.js";
 import {
   buildEvidenceSection,
+  resolveConversationEvidence,
   type EvidencePack,
 } from "./knowledgeResolutionService.js";
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
+import { buildExecutionContext } from "./executionContextBuilderService.js";
 
-// Type-only import — breaks circular runtime dependency.
+// Type-only imports — break circular runtime dependency.
 // specialistIntelligenceService will import createUnifiedExecutionEngine from here.
 import type {
   SpecialistWorkPackage,
   SpecialistContext,
   SpecialistRunResult,
 } from "./specialistIntelligenceService.js";
+import type { CanonicalExecutionContext } from "../types/canonicalExecutionContext.js";
 
 // ─── Shared execution types ───────────────────────────────────────────────────
 // Defined here; re-exported from workExecutionPipelineService for backward compat.
@@ -180,6 +183,18 @@ export interface ExecutionRequest {
   specialistContext?: SpecialistContext;
   additionalInstruction?: string | null;
   specialistRunId?: string;
+
+  /**
+   * Identifier-based conversation mode (Sprint 29C).
+   *
+   * When set, the engine uses ConversationContextBuilder to assemble
+   * SpecialistWorkPackage and SpecialistContext internally from the run ID.
+   * The orchestrator passes identifiers only — it does not prepare execution payloads.
+   *
+   * When absent, the pre-built specialistWorkPackage / specialistContext fields are used
+   * (backward-compat path for revise/resume adapters in specialistIntelligenceService).
+   */
+  conversationSpecialistRunId?: string;
 }
 
 export type UnifiedExecutionResult =
@@ -235,13 +250,106 @@ export class UnifiedExecutionEngine {
   // ─── Conversation execution ─────────────────────────────────────────────────
 
   private async executeConversation(request: ExecutionRequest): Promise<SpecialistRunResult> {
-    const workPackage = request.specialistWorkPackage!;
-    const context = request.specialistContext!;
-    const additionalInstruction = request.additionalInstruction ?? null;
-    const runId = request.specialistRunId ?? workPackage.specialistRunId;
-    const roleCode = workPackage.workforceRoleCode;
+    // ─── Architecture enforcement ─────────────────────────────────────────────
+    // This is the ONLY permitted entry point for conversation-triggered AI execution.
+    // No service outside UnifiedExecutionEngine may call the AI gateway for
+    // specialist execution. Permitted exceptions (orchestration only):
+    //   evaluateConflictWithLLM()   — conflict resolution (compliance_check)
+    //   chiefOfStaffLLMService      — intent classification (cos_classification)
+    //   capabilityIdentificationService — capability planning (cos_capability_identification)
 
-    // Guard: inactive specialist
+    // ─── Stage 1: Context assembly ────────────────────────────────────────────
+    // Identifier-based mode (Sprint 29C): the orchestrator passes a specialistRunId;
+    // the engine owns context assembly via ConversationContextBuilder.
+    //
+    // Pre-built mode (backward compat): revise/resume adapters pass fully
+    // assembled specialistWorkPackage + specialistContext directly.
+    let workPackage: SpecialistWorkPackage;
+    let context: SpecialistContext;
+    let effectiveRequesterId = request.requesterId;
+    let effectiveRequesterRole = request.requesterRole ?? "system";
+
+    if (request.conversationSpecialistRunId) {
+      // Identifier-based mode — engine assembles context internally.
+      // The orchestrator delegates using identifiers, not execution payloads.
+      const built = await buildExecutionContext({
+        specialistRunId:  request.conversationSpecialistRunId,
+        organisationId:   request.organisationId,
+        requesterId:      request.requesterId,
+        requesterRole:    request.requesterRole,
+      });
+      workPackage             = built.workPackage;
+      context                 = built.context;
+      effectiveRequesterId    = built.effectiveRequesterId;
+      effectiveRequesterRole  = built.effectiveRequesterRole;
+    } else {
+      // Pre-built mode — adapter has already assembled objects (revise/resume path).
+      workPackage = request.specialistWorkPackage!;
+      context     = request.specialistContext!;
+    }
+
+    const additionalInstruction = request.additionalInstruction ?? null;
+    const runId                 = request.specialistRunId ?? workPackage.specialistRunId;
+    const roleCode              = workPackage.workforceRoleCode;
+
+    // ─── Stage 2: Evidence resolution ────────────────────────────────────────
+    // Sprint 29C: conversation executions receive the same EvidencePack as task
+    // executions. Both paths now use identical evidence quality — specialists
+    // never know whether evidence came from a conversation or task trigger.
+    const evidencePack = await this.resourceRegistry
+      .resolveEvidenceForConversation({
+        organisationId:  request.organisationId,
+        specialistRunId: runId,
+        specialistCode:  roleCode,
+        userRequest:     workPackage.objective,
+      })
+      .catch(() => null);
+
+    // ─── Stage 3: Build CanonicalExecutionContext ─────────────────────────────
+    // Sprint 29C: CanonicalExecutionContext is now instantiated here and used as
+    // the engine's internal currency. Future stages (connector, cloud, OpenClaw)
+    // will consume ctx rather than individual fields from ExecutionRequest.
+    const ctx: CanonicalExecutionContext = {
+      executionId:    randomUUID(),
+      triggerType:    "conversation",
+      organisationId: request.organisationId,
+      requesterId:    effectiveRequesterId,
+      requesterRole:  effectiveRequesterRole,
+      dnaVersion:     ACTIVE_SPECIALIST_VERSIONS[roleCode] ?? "N/A",
+      specialistCode: roleCode,
+      manifestVersion: 1,
+      conversationContext: {
+        conversationId: workPackage.conversationId,
+        messages:       context.relevantMessages.map(m => ({
+          id:      m.id,
+          role:    (m.role === "assistant" ? "assistant" : m.role === "system" ? "system" : "user") as "user" | "assistant" | "system",
+          content: m.content,
+        })),
+        unresolvedQuestions:      context.unresolvedQuestions,
+        previousSpecialistOutputs: context.previousOutputs,
+      },
+      organisationMemory: {
+        approvedMemory:   context.approvedMemory,
+        pinnedDecisions:  context.pinnedDecisions,
+      },
+      evidence:    evidencePack,
+      resourcePlan: {
+        evidenceSources:         evidencePack?.sourceIds ?? [],
+        connectorSessionOpened:  false,
+        writeTargets:            [],
+      },
+      executionActions: null,
+      blueprint:  null,
+      constraints: {
+        maxDurationSeconds:             Math.floor(RUN_TIMEOUT_MS / 1000),
+        maxTokens:                      4000,
+        requireHumanApprovalBeforeSubmit: false,
+        allowedDataCategories:          ["operational"],
+      },
+      session: null,
+    };
+
+    // ─── Stage 4: Specialist validation ──────────────────────────────────────
     if (!ACTIVE_SPECIALIST_VERSIONS[roleCode]) {
       return {
         specialistRunId: runId,
@@ -275,9 +383,9 @@ export class UnifiedExecutionEngine {
       return buildDeterministicResult(workPackage, runId, instructionVersion);
     }
 
-    // AI path
+    // ─── Stage 5: AI execution ────────────────────────────────────────────────
     const systemInstruction = buildDNASystemInstruction(roleCode);
-    const userPrompt = buildSpecialistUserPrompt(workPackage, context, additionalInstruction);
+    const userPrompt = buildSpecialistUserPrompt(workPackage, context, additionalInstruction, ctx.evidence);
     const modelName = "gpt-4o";
     const versionRecord = captureSpecialistRunVersions(roleCode, modelName);
 
@@ -294,15 +402,17 @@ export class UnifiedExecutionEngine {
       })
       .where(eq(specialistRunsTable.id, runId));
 
+    // Thread requester identity into the gateway context (Sprint 29C).
+    // For audit and future RBAC — no behavioural change at this stage.
     const gatewayContext: AIGatewayContext = {
-      organizationId: workPackage.organizationId,
-      userId: "system",
-      role: "system",
-      permissions: [],
-      purpose: "task_execution",
-      correlationId: runId,
-      provider: "openai",
-      retentionClass: "operational",
+      organizationId:       workPackage.organizationId,
+      userId:               ctx.requesterId,
+      role:                 "system",
+      permissions:          [],
+      purpose:              "task_execution",
+      correlationId:        runId,
+      provider:             "openai",
+      retentionClass:       "operational",
       requiresHumanApproval: false,
     };
 
@@ -317,7 +427,14 @@ export class UnifiedExecutionEngine {
           gateway.process({
             systemPrompt: systemInstruction,
             userMessage: userPrompt,
-            retrievedFields: ["task.scope", "organisation.memory", "conversation.messages"],
+            retrievedFields: [
+              "task.scope",
+              "organisation.memory",
+              "conversation.messages",
+              ...(ctx.evidence && ctx.evidence.totalChunks > 0
+                ? ["organisation.library", "specialist.knowledge"]
+                : []),
+            ],
             model: modelName,
             maxTokens: 4000,
             outputMode: "json",
@@ -340,6 +457,8 @@ export class UnifiedExecutionEngine {
           instructionVersion,
           attempt,
           confidence: parsed.confidence,
+          evidenceChunks: ctx.evidence?.totalChunks ?? 0,
+          requesterId: ctx.requesterId,
         });
 
         return {
@@ -347,7 +466,7 @@ export class UnifiedExecutionEngine {
           instructionVersion,
           modelProvider: "openai",
           modelName,
-          inputTokens: response.usage?.inputTokens,
+          inputTokens:  response.usage?.inputTokens,
           outputTokens: response.usage?.outputTokens,
         } as SpecialistRunResult;
       } catch (err: any) {
@@ -497,6 +616,52 @@ export class UnifiedExecutionEngine {
       })
       .catch(() => null);
     tRetrievalMs = Date.now() - t3evidence;
+
+    // ── Sprint 29C: Build CanonicalExecutionContext for task path ─────────────
+    // Both task and conversation paths now instantiate ctx before validation.
+    // Future stages (connector, cloud, OpenClaw) will consume ctx rather than
+    // individual fields from ExecutionRequest.
+    const ctx: CanonicalExecutionContext = {
+      executionId:    manifest.executionId,
+      triggerType:    request.trigger as "task" | "scheduled" | "workflow",
+      organisationId: organizationId,
+      requesterId,
+      requesterRole:  request.requesterRole!,
+      dnaVersion:     "N/A",
+      specialistCode: manifest.primarySpecialist,
+      manifestVersion: 1,
+      conversationContext: {
+        conversationId:            request.conversationId,
+        messages:                  [],
+        unresolvedQuestions:       [],
+        previousSpecialistOutputs: [],
+      },
+      organisationMemory: {
+        approvedMemory:  manifest.cosMemories.map(m => ({
+          id:       m.memoryId,
+          content:  m.content ?? "",
+          category: m.memoryType ?? "general",
+        })),
+        pinnedDecisions: [],
+      },
+      evidence:     evidencePack,
+      resourcePlan: {
+        evidenceSources:        evidencePack?.sourceIds ?? [],
+        connectorSessionOpened: false,
+        writeTargets:           [],
+      },
+      executionActions: null,
+      blueprint,
+      constraints: {
+        maxDurationSeconds:              300,
+        maxTokens:                       3000,
+        requireHumanApprovalBeforeSubmit: true,
+        allowedDataCategories:           ["operational"],
+      },
+      session: null,
+    };
+    // ctx is available for all downstream stages; suppress unused-variable lint
+    void ctx;
 
     await progress("validating");
     const t4 = Date.now();
@@ -762,6 +927,7 @@ function buildSpecialistUserPrompt(
   workPackage: SpecialistWorkPackage,
   context: SpecialistContext,
   additionalInstruction: string | null,
+  evidencePack?: EvidencePack | null,
 ): string {
   const parts: string[] = [];
 
@@ -809,6 +975,18 @@ function buildSpecialistUserPrompt(
   if (workPackage.assumptions.length > 0) {
     parts.push(`## CURRENT ASSUMPTIONS\n${workPackage.assumptions.map(a => `- ${a}`).join("\n")}`);
   }
+
+  // Sprint 29C: Evidence section — identical quality to task execution path.
+  // Injected before the output schema so the specialist reads evidence before
+  // constructing its response. Evidence chunks are authoritative; they must be
+  // cited in findings that reference policy or legislation.
+  if (evidencePack && evidencePack.totalChunks > 0) {
+    const evidenceSection = buildEvidenceSection(evidencePack);
+    if (evidenceSection) {
+      parts.push(evidenceSection);
+    }
+  }
+
   if (additionalInstruction) {
     parts.push(`## ADDITIONAL INSTRUCTION\n${additionalInstruction}`);
   }

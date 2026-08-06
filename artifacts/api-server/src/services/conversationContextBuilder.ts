@@ -1,237 +1,48 @@
 /**
  * Conversation Context Builder — Sprint 28.5
  *
- * Single authoritative context assembly layer.
+ * Single authoritative builder for the ConversationContext that the Chief of
+ * Staff LLM service consumes. All context components are assembled here in two
+ * parallelised rounds before any provider branch runs. No specialist assembles
+ * context itself — this is the sole authority.
  *
- * Every AI employee (Chief of Staff, Operations Manager, Executive Assistant,
- * future specialists) receives a ConversationContext assembled here.
- * No specialist builds its own context.
+ * Round 1 (parallel):
+ *   buildMessageContext         — task state, approval, plan, proposal flag
+ *   buildChiefOfStaffContext    — organisation memory + conversation history
+ *   getConversationWorkforceContext — workforce availability
+ *   resolveConversationActionState  — current execution / proposal action state
  *
- * Responsibilities:
- *   ✓ Organisation profile and settings
- *   ✓ Organisation memory (approved, summaries, pinned decisions)
- *   ✓ Organisation library presence
- *   ✓ Live workforce availability
- *   ✓ Conversation action state
- *   ✓ Conversation history and metadata
- *   ✓ Execution capability state
+ * Round 2 (conditional):
+ *   checkOrganisationLibraryPresence — only when named document terms detected
  *
- * NOT responsible for:
- *   ✗ Semantic evidence retrieval (chunk search)
- *   ✗ Executing work
- *   ✗ Assigning specialists
- *   ✗ Creating tasks
- *   ✗ Modifying any state
- *   ✗ Calling LLMs
- *   ✗ Dispatching specialists
+ * Design constraints:
+ *   - Never throws; degraded components are captured in runtime.failedComponents
+ *   - Library presence load failure is flagged so the CoS can tell users
+ *     "Library could not be checked" rather than silently skipping
+ *   - extractDocumentSearchTerms is the single source of truth for named-doc
+ *     detection; both builder and LLM service re-export it from this module
  *
- * The builder is strictly read-only.
+ * Note: `extractDocumentSearchTerms` is also re-exported from chiefOfStaffLLMService.ts
+ * to preserve the Sprint 28.2 public API surface.
  */
 
-import type { MessageContext } from "./conversationIntelligenceService.js";
-import type { TaskPlan } from "./chiefOfStaffService.js";
+import { buildChiefOfStaffContext, type ChiefOfStaffContextPackage } from "./contextSelectionService.js";
 import { buildMessageContext } from "./conversationService.js";
-import {
-  buildChiefOfStaffContext,
-  type ChiefOfStaffContextPackage,
-  type OrganisationMemoryItem,
-  type ConversationMemoryStructured,
-  type PinnedDecision,
-  type UnresolvedQuestion,
-  type ConversationMessage,
-  type TaskContext,
-  type ApprovalContext,
-} from "./contextSelectionService.js";
 import {
   getConversationWorkforceContext,
   type ConversationWorkforceContext,
 } from "./conversationWorkforceContextService.js";
 import {
-  checkOrganisationLibraryPresence,
-  type LibraryPresenceResult,
-} from "./organisationLibraryPresenceService.js";
-import {
   resolveConversationActionState,
   type ConversationActionState,
 } from "./conversationActionStateService.js";
+import {
+  checkOrganisationLibraryPresence,
+  type LibraryPresenceResult,
+} from "./organisationLibraryPresenceService.js";
+import type { MessageContext } from "./conversationIntelligenceService.js";
 
-// ─── Document search term extraction (moved from chiefOfStaffLLMService) ──────
-// Extracted here to avoid circular imports — CoS imports from this module.
-
-/**
- * Stop words that interrupt backward scanning for document-name context words.
- */
-const DOC_NAME_STOP_WORDS = new Set([
-  "our", "the", "your", "a", "an", "this", "that", "any", "some", "all", "its",
-  "their", "my", "me", "we", "i", "you", "s",
-  "review", "check", "update", "analyse", "analyze", "assess", "prepare", "create",
-  "build", "improve", "help", "process", "handle", "submit", "complete", "draft",
-  "ensure", "confirm", "verify", "conduct", "perform", "run",
-  "with", "and", "or", "in", "of", "for", "to", "is", "are", "was", "were",
-  "has", "have", "had", "will", "can", "could", "should", "would", "through",
-  "via", "by", "using", "about", "regarding", "on", "at", "from", "as", "into",
-  "participant", "staff", "worker", "client", "service",
-]);
-
-/** Document type keywords that anchor a document name */
-const DOC_TYPE_KEYWORDS = [
-  "policy", "policies", "procedure", "procedures", "sop", "standard", "standards",
-  "guideline", "guidelines", "protocol", "protocols", "manual", "framework",
-  "assessment", "plan", "register", "handbook",
-];
-
-/**
- * Lightweight document-requirement detector for conversation use.
- *
- * Extracts explicitly named documents from the user message.
- * Does NOT invent document requirements the user did not mention.
- */
-export function extractDocumentSearchTerms(text: string): string[] {
-  const lower = text.toLowerCase();
-  const terms: string[] = [];
-
-  for (const docType of DOC_TYPE_KEYWORDS) {
-    let searchFrom = 0;
-    while (true) {
-      const idx = lower.indexOf(docType, searchFrom);
-      if (idx === -1) break;
-      searchFrom = idx + 1;
-
-      const before = idx > 0 ? lower[idx - 1] : " ";
-      const after  = idx + docType.length < lower.length ? lower[idx + docType.length] : " ";
-      if (/[a-z]/i.test(before) || /[a-z]/i.test(after)) continue;
-
-      const beforeText = text.slice(0, idx).trimEnd();
-      const words = beforeText.split(/\s+/).filter(w => w.length > 0);
-      const nameTokens: string[] = [];
-
-      for (let i = words.length - 1; i >= 0 && nameTokens.length < 5; i--) {
-        const raw = words[i].replace(/[^a-zA-Z'-]/g, "").replace(/['']s$/i, "");
-        if (!raw || DOC_NAME_STOP_WORDS.has(raw.toLowerCase())) break;
-        nameTokens.unshift(words[i].replace(/[^a-zA-Z''-]/g, "").replace(/['']s$/i, ""));
-      }
-
-      if (nameTokens.length >= 1) {
-        const titleCase = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        const phrase = [
-          ...nameTokens.map(titleCase),
-          titleCase(docType),
-        ].join(" ");
-        terms.push(phrase);
-      }
-    }
-  }
-
-  const unique = [...new Set(terms)];
-  return unique
-    .filter(t => !unique.some(other => other !== t && other.toLowerCase().includes(t.toLowerCase())))
-    .slice(0, 5);
-}
-
-// ─── ConversationContext types ────────────────────────────────────────────────
-
-export interface ConversationOrganisation {
-  id: string;
-  slug: string;
-  name: string;
-  /** Raw org record — do not expose to LLM directly; use formatted sections. */
-  profile: Record<string, unknown>;
-  settings: {
-    status: string;
-    executionFrozen: boolean;
-    loginsDisabled: boolean;
-    subscriptionTier: string | null;
-  };
-}
-
-export interface ConversationMemoryContext {
-  approvedOrganisationMemory: OrganisationMemoryItem[];
-  conversationSummary: ConversationMemoryStructured;
-  pinnedDecisions: PinnedDecision[];
-  unresolvedQuestions: UnresolvedQuestion[];
-  relevantHistoricalMessages: ConversationMessage[];
-  /** Large-window recent messages for layered prompt (from CoS context package). */
-  recentMessages: ConversationMessage[];
-  currentTasks: TaskContext[];
-  currentApprovals: ApprovalContext[];
-  contextWarnings: string[];
-  tokenEstimate: number;
-  historyStats: { totalAvailable: number; sent: number; summarised: number };
-}
-
-export interface ConversationData {
-  id: string;
-  /** Short-window recent messages for action state and MessageContext compat. */
-  recentMessages: Array<{ senderType: string; content: string; messageType: string }>;
-  latestMessage: string;
-  pendingProposal: boolean;
-  currentTaskId: string | null;
-  currentTaskTitle: string | null;
-  currentTaskState: string | null;
-  pendingApprovalId: string | null;
-  currentPlan: TaskPlan | null;
-  /** Phase 2: resolved when executionId is provided. */
-  currentExecution: null;
-}
-
-export interface ExecutionCapabilities {
-  frozen: boolean;
-  loginsDisabled: boolean;
-}
-
-export interface ContextRuntimeMetadata {
-  buildDurationMs: number;
-  componentsLoaded: string[];
-  componentTimings: Record<string, number>;
-  cacheHits: string[];
-  cacheMisses: string[];
-  failedComponents: string[];
-  fallbacksUsed: string[];
-  isDegraded: boolean;
-  componentErrors: Record<string, string>;
-  extractedSearchTerms: string[];
-  /** True when search terms were extracted but the library check threw an error. */
-  libraryPresenceLoadFailed: boolean;
-}
-
-export interface ConversationContextMetadata {
-  organisationId: string;
-  conversationId: string;
-  userId: string;
-  taskId: string | null;
-  executionId: string | null;
-  builtAt: string;
-  version: string;
-}
-
-/**
- * Immutable context snapshot for one AI employee turn.
- * Assembled by buildConversationContext — never assembled inside an employee.
- */
-export interface ConversationContext {
-  organisation: ConversationOrganisation;
-  /**
-   * Organisation memory, conversation summaries, and historical context.
-   * Null when the CoS context package could not be loaded (degraded mode).
-   */
-  memory: ConversationMemoryContext | null;
-  /** Null when no named documents were detected or the check failed. */
-  libraryPresence: LibraryPresenceResult | null;
-  /** Null when the workforce service could not be reached. */
-  workforce: ConversationWorkforceContext | null;
-  /** Null when action state resolution failed. */
-  actionState: ConversationActionState | null;
-  executionCapabilities: ExecutionCapabilities;
-  conversation: ConversationData;
-  /** Reserved for Phase 2: per-participant profile injection. */
-  participantContext: null;
-  /** Reserved for Phase 2: blueprint execution context. */
-  blueprintContext: null;
-  runtime: ContextRuntimeMetadata;
-  metadata: ConversationContextMetadata;
-}
-
-// ─── Builder input ────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BuildContextInput {
   organisationId: string;
@@ -242,252 +53,324 @@ export interface BuildContextInput {
   executionId?: string;
 }
 
-// ─── Main entry point ─────────────────────────────────────────────────────────
+/**
+ * The fully-assembled context that CoS classifyMessageLLM operates on.
+ *
+ * Both the layered (Sprint 9.2) and legacy prompt builders read exclusively
+ * from this object — no service queries the DB inside the builder functions.
+ */
+export interface ConversationContext {
+  /** Basic org identifier + raw profile record (name, status, slug, settings) */
+  organisation: {
+    id: string;
+    profile: Record<string, unknown>;
+  };
+  /**
+   * Full ChiefOfStaffContextPackage from contextSelectionService.
+   * Null when the memory load fails — legacy prompt path is used instead.
+   */
+  memory: ChiefOfStaffContextPackage | null;
+  /** Organisation library document presence result (null when not searched) */
+  libraryPresence: LibraryPresenceResult | null;
+  /** Available AI workforce for this organisation (null on load failure) */
+  workforce: ConversationWorkforceContext | null;
+  /** Current conversation action state (null on load failure) */
+  actionState: ConversationActionState | null;
+  /**
+   * Conversation metadata + the current user message.
+   * Extends MessageContext so it is drop-compatible with legacy classifiers.
+   */
+  conversation: MessageContext & { latestMessage: string };
+  /** Build performance and degradation metadata */
+  runtime: {
+    isDegraded: boolean;
+    buildDurationMs: number;
+    failedComponents: string[];
+    componentTimings: Record<string, number>;
+    /** Named document terms extracted from the current message */
+    extractedSearchTerms: string[];
+    /** True when library presence was attempted but failed */
+    libraryPresenceLoadFailed?: boolean;
+  };
+  metadata: {
+    organisationId: string;
+    /** Schema version — bump when ConversationContext shape changes */
+    version: "1.0.0";
+    taskId?: string;
+    executionId?: string;
+  };
+}
+
+// ─── Named-document term extractor ───────────────────────────────────────────
 
 /**
- * Assemble a ConversationContext for one AI employee turn.
+ * Extract named document phrases from a user message.
  *
- * Parallelism:
- *   Round 1 (concurrent): message context, CoS package, workforce, library presence
- *   Round 2 (after round 1): action state (requires recent messages)
+ * Scans backwards from each recognised document-type suffix keyword to collect
+ * the specific document name that precedes it. Case-insensitive; output is
+ * always Title-Case normalised.
  *
- * Failure behaviour:
- *   Individual component failures degrade the context rather than failing the
- *   whole request. Each failure is recorded in runtime.failedComponents and
- *   runtime.componentErrors. The returned context has null/empty in the failed
- *   field and isDegraded=true.
+ * Examples:
+ *   "Review our Medication Management Policy"  → ["Medication Management Policy"]
+ *   "Review our incident reporting procedure"  → ["Incident Reporting Procedure"]
+ *   "Check the participant's risk assessment"  → ["Risk Assessment"]
+ *   "Retrieve the Medication Administration SOP" → ["Medication Administration SOP"]
+ *   "Update our policies"                       → []  (no specific name)
+ *   "Help me improve our HR processes"          → []  (processes not a suffix)
+ *
+ * Rules:
+ *   1. Suffix keyword detected case-insensitively (policy, procedure, SOP, etc.)
+ *   2. Words are collected backwards until a generic stop word, possessive ('s), or
+ *      sentence boundary is reached — these act as natural name delimiters.
+ *   3. At least one specific (non-generic) word must precede the suffix.
+ *   4. Output is Title-Case normalised; all-caps acronyms (SOP, NDIS) are preserved.
+ *   5. Results are deduplicated and capped at 5.
+ */
+export function extractDocumentSearchTerms(text: string): string[] {
+  const SUFFIX_SET = new Set([
+    "policy", "policies", "procedure", "procedures", "plan", "plans",
+    "protocol", "protocols", "standard", "standards", "framework", "frameworks",
+    "guide", "guidelines", "guideline", "manual", "handbook",
+    "act", "award", "agreement", "code", "charter",
+    "assessment", "assessments", "sop", "sops",
+  ]);
+
+  // Generic stop words — these do NOT form part of a specific document name.
+  // Includes possessive pronouns, articles, determiners, and common subject/object pronouns.
+  const GENERIC = new Set([
+    // articles, determiners
+    "our", "a", "an", "the", "some", "any", "this", "that", "these",
+    "those", "your", "my", "its", "their", "all", "each", "every",
+    "no", "new", "old", "other", "same", "various",
+    // subject / object pronouns (cannot start a document name)
+    "i", "me", "we", "us", "you", "he", "him", "she", "her", "it",
+    "they", "them", "who", "which",
+    // common verbs that appear before suffix words but are NOT doc-name starters
+    "and", "help", "please", "let", "can", "will", "need",
+  ]);
+
+  // Small connector words that can appear in the middle of a doc name but not at the start
+  const CONNECTORS = new Set(["of", "for", "in", "on", "at", "to", "and"]);
+
+  function titleCaseWord(word: string, isFirst: boolean): string {
+    // Preserve all-caps acronyms (SOP, NDIS, SCHADS…)
+    if (/^[A-Z]{2,}$/.test(word)) return word;
+    const lower = word.toLowerCase();
+    if (!isFirst && CONNECTORS.has(lower)) return lower;
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }
+
+  const rawWords = text.split(/\s+/);
+  const results: string[] = [];
+
+  for (let i = 0; i < rawWords.length; i++) {
+    // Strip trailing punctuation for suffix matching
+    const clean = rawWords[i].replace(/[^a-zA-Z]/g, "");
+    if (!clean) continue;
+
+    if (!SUFFIX_SET.has(clean.toLowerCase())) continue;
+
+    // Scan backwards to collect the document name words
+    const nameWords: string[] = [clean];
+    let j = i - 1;
+
+    while (j >= 0) {
+      const prev = rawWords[j];
+      // Stop at words containing apostrophes (possessives / contractions like "participant's")
+      if (prev.includes("'") || prev.includes("\u2019")) break;
+
+      const prevClean = prev.replace(/[^a-zA-Z]/g, "");
+      if (!prevClean) { j--; continue; }
+
+      const prevLower = prevClean.toLowerCase();
+
+      // Stop at generic stop words — they delimit the sentence from the doc name
+      if (GENERIC.has(prevLower)) break;
+
+      nameWords.unshift(prevClean);
+      j--;
+    }
+
+    // Must have at least one specific word before the suffix
+    const prefixWords = nameWords.slice(0, -1);
+    if (prefixWords.length === 0) continue;
+    if (prefixWords.every(w => GENERIC.has(w.toLowerCase()))) continue;
+
+    // Normalise to Title Case
+    const normalised = nameWords.map((w, idx) => titleCaseWord(w, idx === 0)).join(" ");
+    results.push(normalised);
+  }
+
+  return [...new Set(results)].slice(0, 5);
+}
+
+// ─── Builder ──────────────────────────────────────────────────────────────────
+
+/**
+ * Assemble the authoritative ConversationContext for CoS LLM classification.
+ *
+ * Never throws — degraded components are captured in runtime.failedComponents.
  */
 export async function buildConversationContext(
   input: BuildContextInput,
 ): Promise<ConversationContext> {
-  const buildStart = Date.now();
+  const startMs = Date.now();
+  const failedComponents: string[] = [];
+  const componentTimings: Record<string, number> = {};
+
   const { organisationId, conversationId, userId, currentMessage, taskId, executionId } = input;
 
-  // ── Observability state ───────────────────────────────────────────────────
-  const runtime: ContextRuntimeMetadata = {
-    buildDurationMs: 0,
-    componentsLoaded: [],
-    componentTimings: {},
-    cacheHits: [],
-    cacheMisses: [],
-    failedComponents: [],
-    fallbacksUsed: [],
-    isDegraded: false,
-    componentErrors: {},
-    extractedSearchTerms: [],
-    libraryPresenceLoadFailed: false,
-  };
-
-  const markLoaded = (component: string, startMs: number) => {
-    runtime.componentTimings[component] = Date.now() - startMs;
-    if (!runtime.componentsLoaded.includes(component)) {
-      runtime.componentsLoaded.push(component);
-    }
-  };
-
-  const markFailed = (component: string, error: unknown) => {
-    if (!runtime.failedComponents.includes(component)) {
-      runtime.failedComponents.push(component);
-    }
-    runtime.isDegraded = true;
-    runtime.componentErrors[component] = error instanceof Error ? error.message : String(error);
-  };
-
-  // Extract search terms now (pure function — no I/O cost)
-  const searchTerms = extractDocumentSearchTerms(currentMessage);
-  runtime.extractedSearchTerms = searchTerms;
-
-  // ── Round 1: Independent components — all in parallel ─────────────────────
-
-  const [msgResult, cosResult, wfResult, libResult] = await Promise.allSettled([
-    // messageContext — task state, plan, pending approval, short-window messages
-    (async () => {
-      const t = Date.now();
-      const ctx = await buildMessageContext(organisationId, conversationId, taskId);
-      markLoaded("messageContext", t);
-      return ctx;
-    })(),
-
-    // cosPackage — org profile, org memory, conversation summaries, large-window messages
-    (async () => {
-      const t = Date.now();
-      const pkg = await buildChiefOfStaffContext({
+  // ── Round 1a: Parallel assembly (components independent of each other) ────────
+  // buildChiefOfStaffContext and getConversationWorkforceContext are fully
+  // independent of buildMessageContext output and run concurrently.
+  // resolveConversationActionState MUST receive actual recentMessages to detect
+  // proposals (task_proposal / plan_proposal message types) — it runs after
+  // buildMessageContext resolves (Round 1b).
+  const [msgResult, memResult, workforceResult] = await Promise.allSettled([
+    measureComponent(componentTimings, "messageContext", () =>
+      buildMessageContext(organisationId, conversationId, taskId),
+    ),
+    measureComponent(componentTimings, "memory", () =>
+      buildChiefOfStaffContext({
         organizationId: organisationId,
         conversationId,
         userId,
         taskId,
         currentMessage,
-      });
-      markLoaded("cosPackage", t);
-      return pkg;
-    })(),
-
-    // workforce — live specialist availability (has its own 30s cache)
-    (async () => {
-      const t = Date.now();
-      const ctx = await getConversationWorkforceContext(organisationId);
-      markLoaded("workforce", t);
-      return ctx;
-    })(),
-
-    // libraryPresence — named document check (skipped when no terms found)
-    (async () => {
-      if (searchTerms.length === 0) return null;
-      const t = Date.now();
-      const result = await checkOrganisationLibraryPresence(organisationId, searchTerms);
-      markLoaded("libraryPresence", t);
-      return result;
-    })(),
+      }),
+    ),
+    measureComponent(componentTimings, "workforce", () =>
+      getConversationWorkforceContext(organisationId),
+    ),
   ]);
 
-  // Process round 1 results
-  let messageCtx: MessageContext | null = null;
-  if (msgResult.status === "fulfilled") {
-    messageCtx = msgResult.value;
-  } else {
-    markFailed("messageContext", msgResult.reason);
-    runtime.fallbacksUsed.push("messageContext:empty");
-  }
+  const msgCtx: MessageContext | null = msgResult.status === "fulfilled" ? msgResult.value : null;
+  const memory: ChiefOfStaffContextPackage | null = memResult.status === "fulfilled" ? memResult.value : null;
+  const workforce: ConversationWorkforceContext | null = workforceResult.status === "fulfilled" ? workforceResult.value : null;
 
-  let cosPackage: ChiefOfStaffContextPackage | null = null;
-  if (cosResult.status === "fulfilled") {
-    cosPackage = cosResult.value;
-  } else {
-    markFailed("cosPackage", cosResult.reason);
-    runtime.fallbacksUsed.push("cosPackage:null");
-  }
+  if (msgResult.status === "rejected")       failedComponents.push("messageContext");
+  if (memResult.status === "rejected")       failedComponents.push("memory");
+  if (workforceResult.status === "rejected") failedComponents.push("workforce");
 
-  let workforceCtx: ConversationWorkforceContext | null = null;
-  if (wfResult.status === "fulfilled") {
-    workforceCtx = wfResult.value;
-  } else {
-    markFailed("workforce", wfResult.reason);
-    runtime.fallbacksUsed.push("workforce:null");
-  }
+  // ── Round 1b: Action state (needs recentMessages from buildMessageContext) ────
+  // Sprint 28.5: action state resolver uses recentMessages to detect proposal and
+  // plan_proposal message types. Passing an empty array would miss those signals.
+  const recentMessagesForActionState =
+    (msgCtx?.recentMessages as Array<{ messageType: string; content: string }> | undefined) ?? [];
 
-  let libraryPresence: LibraryPresenceResult | null = null;
-  if (libResult.status === "fulfilled") {
-    libraryPresence = libResult.value;
-  } else {
-    if (searchTerms.length > 0) {
-      // Only flag as failed when we actually tried the lookup
-      markFailed("libraryPresence", libResult.reason);
-      runtime.libraryPresenceLoadFailed = true;
-      runtime.fallbacksUsed.push("libraryPresence:failure");
-    }
-  }
-
-  // ── Round 2: Action state (requires recent messages from round 1) ─────────
   let actionState: ConversationActionState | null = null;
-  {
-    const t = Date.now();
-    try {
-      actionState = await resolveConversationActionState({
+  try {
+    actionState = await measureComponent(componentTimings, "actionState", () =>
+      resolveConversationActionState({
         organisationId,
         conversationId,
-        recentMessages: (messageCtx?.recentMessages ?? []).map(m => ({
-          messageType: m.messageType,
-          content: m.content,
-        })),
+        recentMessages: recentMessagesForActionState,
         taskId,
         executionIntentId: executionId,
-      });
-      markLoaded("actionState", t);
-    } catch (e) {
-      markFailed("actionState", e);
-      runtime.fallbacksUsed.push("actionState:null");
+      }),
+    );
+  } catch {
+    failedComponents.push("actionState");
+  }
+
+  // ── Extract document search terms from the current message ─────────────────
+  const extractedSearchTerms = extractDocumentSearchTerms(currentMessage);
+
+  // ── Round 2: Conditional library presence ──────────────────────────────────
+  let libraryPresence: LibraryPresenceResult | null = null;
+  let libraryPresenceLoadFailed = false;
+
+  if (extractedSearchTerms.length > 0) {
+    const t2 = Date.now();
+    try {
+      libraryPresence = await checkOrganisationLibraryPresence(organisationId, extractedSearchTerms);
+      componentTimings.libraryPresence = Date.now() - t2;
+    } catch (err) {
+      libraryPresenceLoadFailed = true;
+      failedComponents.push("library_presence");
+      componentTimings.libraryPresence = Date.now() - t2;
     }
   }
 
-  runtime.buildDurationMs = Date.now() - buildStart;
+  // ── Build ConversationContext from settled results ─────────────────────────
+  const buildDurationMs = Date.now() - startMs;
+  const isDegraded = failedComponents.length > 0;
 
-  // ── Assemble the immutable ConversationContext ────────────────────────────
-
-  const orgProfile = cosPackage?.organisationProfile ?? {};
-
-  const organisation: ConversationOrganisation = {
-    id: organisationId,
-    slug: (orgProfile.slug as string) ?? "",
-    name: (orgProfile.name as string) ?? "",
-    profile: orgProfile,
-    settings: {
-      status: (orgProfile.status as string) ?? "active",
-      executionFrozen: Boolean(orgProfile.executionFrozen),
-      loginsDisabled: Boolean(orgProfile.loginsDisabled),
-      subscriptionTier: (orgProfile.subscriptionTier as string | null) ?? null,
-    },
-  };
-
-  const memory: ConversationMemoryContext | null = cosPackage
-    ? {
-        approvedOrganisationMemory: cosPackage.approvedOrganisationMemory,
-        conversationSummary:        cosPackage.conversationSummary,
-        pinnedDecisions:            cosPackage.pinnedDecisions,
-        unresolvedQuestions:        cosPackage.unresolvedQuestions,
-        relevantHistoricalMessages: cosPackage.relevantHistoricalMessages,
-        recentMessages:             cosPackage.recentMessages,
-        currentTasks:               cosPackage.currentTasks,
-        currentApprovals:           cosPackage.currentApprovals,
-        contextWarnings:            cosPackage.contextWarnings,
-        tokenEstimate:              cosPackage.tokenEstimate,
-        historyStats:               cosPackage.historyStats,
-      }
-    : null;
-
-  const conversationData: ConversationData = {
-    id:                 conversationId,
-    recentMessages:     messageCtx?.recentMessages ?? [],
-    latestMessage:      currentMessage,
-    pendingProposal:    messageCtx?.proposalExists ?? false,
-    currentTaskId:      messageCtx?.currentTaskId    ?? null,
-    currentTaskTitle:   messageCtx?.currentTaskTitle ?? null,
-    currentTaskState:   messageCtx?.currentTaskState ?? null,
-    pendingApprovalId:  messageCtx?.pendingApprovalId ?? null,
-    currentPlan:        (messageCtx?.currentPlan ?? null) as TaskPlan | null,
-    currentExecution:   null,
+  // Derive the conversation field from msgCtx + the current message
+  const conversationField: MessageContext & { latestMessage: string } = {
+    conversationId,
+    organizationId: organisationId,
+    currentTaskId:    msgCtx?.currentTaskId,
+    currentTaskState: msgCtx?.currentTaskState,
+    currentTaskTitle: msgCtx?.currentTaskTitle,
+    currentPlan:      msgCtx?.currentPlan,
+    pendingApprovalId: msgCtx?.pendingApprovalId,
+    recentMessages:   memory?.recentMessages ?? msgCtx?.recentMessages ?? [],
+    proposalExists:   msgCtx?.proposalExists ?? false,
+    latestMessage:    currentMessage,
   };
 
   return {
-    organisation,
+    organisation: {
+      id:      organisationId,
+      profile: (memory?.organisationProfile ?? {}) as Record<string, unknown>,
+    },
     memory,
     libraryPresence,
-    workforce: workforceCtx,
+    workforce,
     actionState,
-    executionCapabilities: {
-      frozen:          Boolean(orgProfile.executionFrozen),
-      loginsDisabled:  Boolean(orgProfile.loginsDisabled),
+    conversation: conversationField,
+    runtime: {
+      isDegraded,
+      buildDurationMs,
+      failedComponents,
+      componentTimings,
+      extractedSearchTerms,
+      libraryPresenceLoadFailed: libraryPresenceLoadFailed || undefined,
     },
-    conversation: conversationData,
-    participantContext: null,
-    blueprintContext:   null,
-    runtime,
     metadata: {
       organisationId,
-      conversationId,
-      userId,
-      taskId:      taskId      ?? null,
-      executionId: executionId ?? null,
-      builtAt:     new Date().toISOString(),
       version:     "1.0.0",
+      taskId,
+      executionId,
     },
   };
 }
 
+// ─── deriveMessageContext ────────────────────────────────────────────────────
+
 /**
- * Derive a legacy MessageContext from a ConversationContext.
- * Used to maintain compatibility with classifyMessage (deterministic classifier)
- * and parseAndValidateLLMResponse without changing their signatures.
+ * Map a ConversationContext back to a legacy MessageContext.
+ *
+ * Used by functions that pre-date ConversationContext and still expect the
+ * MessageContext shape (e.g. parseAndValidateLLMResponse). Do not use for
+ * new code — read from ConversationContext.conversation directly instead.
  */
 export function deriveMessageContext(context: ConversationContext): MessageContext {
   return {
-    conversationId:    context.conversation.id,
-    organizationId:    context.organisation.id,
-    currentTaskId:     context.conversation.currentTaskId    ?? undefined,
-    currentTaskState:  context.conversation.currentTaskState ?? undefined,
-    currentTaskTitle:  context.conversation.currentTaskTitle ?? undefined,
-    currentPlan:       context.conversation.currentPlan      ?? undefined,
-    pendingApprovalId: context.conversation.pendingApprovalId ?? undefined,
+    conversationId:    context.conversation.conversationId,
+    organizationId:    context.metadata.organisationId,
+    currentTaskId:     context.conversation.currentTaskId,
+    currentTaskState:  context.conversation.currentTaskState,
+    currentTaskTitle:  context.conversation.currentTaskTitle,
+    currentPlan:       context.conversation.currentPlan,
+    pendingApprovalId: context.conversation.pendingApprovalId,
     recentMessages:    context.conversation.recentMessages,
-    proposalExists:    context.conversation.pendingProposal,
+    proposalExists:    context.conversation.proposalExists,
   };
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function measureComponent<T>(
+  timings: Record<string, number>,
+  name: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const t = Date.now();
+  try {
+    return await fn();
+  } finally {
+    timings[name] = Date.now() - t;
+  }
 }

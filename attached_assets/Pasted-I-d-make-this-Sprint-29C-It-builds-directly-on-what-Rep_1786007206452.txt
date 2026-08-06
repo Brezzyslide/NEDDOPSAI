@@ -1,0 +1,269 @@
+I’d make this Sprint 29C. It builds directly on what Replit has just verified, without changing direction or introducing new architecture.
+
+⸻
+
+Sprint 29C — Canonical Execution Context & Conversation Evidence
+
+This is an architecture consolidation sprint.
+
+Do not introduce new features.
+
+Do not implement the Connector.
+
+Do not add new providers.
+
+Do not modify APIs or database schemas unless absolutely required.
+
+The objective is to complete the Unified Execution Architecture by ensuring every specialist execution receives the same execution context and the same evidence model, regardless of how execution was triggered.
+
+This sprint should improve architecture, not functionality.
+
+⸻
+
+Background
+
+Sprint 29B confirmed that:
+
+* all active specialist execution paths now enter through unifiedExecutionEngine
+* adapters are thin
+* Chief of Staff is the sole orchestrator
+
+However, the inspection identified several architectural gaps that should be resolved before introducing Connector support.
+
+These should be addressed now while the architecture is still stabilising.
+
+⸻
+
+Objective 1
+
+Instantiate CanonicalExecutionContext inside UnifiedExecutionEngine
+
+The type already exists.
+
+It should now become the engine’s internal execution currency.
+
+Instead of passing individual objects between stages:
+
+* ExecutionRequest
+* Manifest
+* EvidencePack
+* Blueprint
+* ConversationContext
+* OrganisationMemory
+
+construct one CanonicalExecutionContext immediately after execution begins.
+
+Every internal stage should consume this object.
+
+Do not pass raw ExecutionRequest deeper into the engine.
+
+The engine should become responsible for assembling context.
+
+⸻
+
+Objective 2
+
+Give conversation executions the same evidence model as task executions
+
+Currently:
+
+Task execution
+
+↓
+
+KnowledgeResolutionService
+
+↓
+
+EvidencePack
+
+↓
+
+AI
+
+Conversation execution
+
+↓
+
+null EvidencePack
+
+↓
+
+AI
+
+This should be corrected.
+
+Conversation-triggered specialist executions should resolve evidence through the existing KnowledgeResolutionService and ResourceRegistry.
+
+Do not duplicate retrieval logic.
+
+Do not create a second evidence pipeline.
+
+Both execution modes should consume EvidencePack.
+
+Specialists should never know whether execution originated from:
+
+* conversation
+* task
+* approval
+* workflow
+* schedule
+
+They should simply receive evidence.
+
+⸻
+
+Objective 3
+
+Preserve requester identity
+
+Conversation execution currently loses the original requester and substitutes:
+
+requesterId = “system”
+
+requesterRole = “system”
+
+Thread the original human requester through the execution context.
+
+This is required for:
+
+* audit
+* future RBAC
+* connector execution approval
+* execution history
+
+No behavioural changes should result.
+
+⸻
+
+Objective 4
+
+Introduce ConversationContextBuilder
+
+Currently the Chief of Staff assembles:
+
+* SpecialistContext
+* SpecialistWorkPackage
+* approved memory
+* conversation history
+
+before calling the engine.
+
+This assembly belongs inside the Unified Execution Engine.
+
+Create a dedicated ConversationContextBuilder responsible for constructing conversation execution inputs.
+
+The Chief of Staff should delegate using identifiers rather than constructing execution structures.
+
+Target direction:
+
+Chief of Staff
+
+↓
+
+execution request
+
+↓
+
+UnifiedExecutionEngine
+
+↓
+
+ConversationContextBuilder
+
+↓
+
+CanonicalExecutionContext
+
+↓
+
+execution
+
+The Chief of Staff should orchestrate, not prepare execution payloads.
+
+⸻
+
+Objective 5
+
+Archive legacy execution pipeline
+
+Inspect endToEndWorkflowService.
+
+If it has no runtime callers:
+
+* mark it deprecated
+* move it into the legacy/deprecated area if appropriate
+* clearly document that UnifiedExecutionEngine replaces it
+
+Do not delete it unless completely safe.
+
+Prevent future contributors from accidentally reconnecting it.
+
+⸻
+
+Objective 6
+
+Enforce execution architecture
+
+Introduce one architectural invariant.
+
+Every specialist execution must enter through UnifiedExecutionEngine.
+
+No service outside UnifiedExecutionEngine may directly invoke the AI Gateway for specialist execution.
+
+The following remain valid exceptions because they are orchestration functions:
+
+* intent classification
+* conflict resolution
+* delegation planning
+* capability planning
+
+Any new specialist execution path should fail architecture review if it bypasses the engine.
+
+Where appropriate, document this rule with comments and lightweight guardrails.
+
+⸻
+
+Deliverables
+
+Produce an Architecture Validation Report including:
+
+A
+
+Confirmation that CanonicalExecutionContext is now instantiated inside the engine.
+
+B
+
+Confirmation that both task and conversation executions now receive EvidencePack.
+
+C
+
+Confirmation that requester identity is preserved across execution.
+
+D
+
+Confirmation that ConversationContextBuilder now owns execution context assembly.
+
+E
+
+Confirmation that endToEndWorkflowService is deprecated or archived.
+
+F
+
+Confirmation that UnifiedExecutionEngine is now the only permitted entry point for specialist execution.
+
+⸻
+
+Success Criteria
+
+After this sprint the architecture should satisfy these principles:
+
+* Chief of Staff is the sole orchestrator.
+* Every specialist execution enters through UnifiedExecutionEngine.
+* Every specialist receives one CanonicalExecutionContext.
+* Every specialist receives one EvidencePack.
+* Evidence retrieval is identical regardless of execution trigger.
+* Requester identity is preserved throughout execution.
+* Context assembly belongs to the engine, not the orchestrator.
+* Legacy execution paths are clearly isolated.
+* The architecture is ready for Sprint 29D (Capability Planning) and Sprint 29E (NeedsOps Connector integration) without further structural changes.

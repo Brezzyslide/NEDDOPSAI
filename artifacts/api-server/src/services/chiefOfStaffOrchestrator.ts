@@ -40,6 +40,7 @@ import {
 } from "./specialistWorkPackageService.js";
 import { buildSpecialistContext } from "./specialistContextService.js";
 import { createSpecialistIntelligenceService } from "./specialistIntelligenceService.js";
+import { createUnifiedExecutionEngine } from "./unifiedExecutionEngine.js";
 import { enqueue, markRunning, markCompleted, markFailed, markCancelled } from "./specialistQueueService.js";
 import { logOrgEvent } from "./auditService.js";
 import { addMessage } from "./conversationService.js";
@@ -713,34 +714,29 @@ export async function executeSpecialistStep(
   await transitionRunStatus(specialistRunId, organizationId, "running");
   await markRunning(specialistRunId, organizationId);
 
-  // Build context
-  const context = await buildSpecialistContext({
-    organizationId,
-    conversationId: run.conversationId ?? undefined,
-    taskId: run.taskId,
-    specialistRunId,
-    workforceRoleCode: run.workforceRoleCode,
-    workerProfileCode: run.workerProfileCode,
-    capabilityCode: "",
+  // Sprint 29C: context assembly has moved into UnifiedExecutionEngine via
+  // ConversationContextBuilder. The orchestrator passes identifiers only —
+  // it no longer constructs SpecialistWorkPackage or SpecialistContext.
+  //
+  // Architecture rule: Chief of Staff is the sole orchestrator (decides WHO
+  // does WHAT). UnifiedExecutionEngine is the sole execution authority (decides
+  // HOW). Neither knows about the other's internals.
+  const engine = createUnifiedExecutionEngine();
+  const engineResult = await engine.execute({
+    trigger:                        "conversation",
+    conversationSpecialistRunId:    specialistRunId,
+    organisationId:                 organizationId,
+    requesterId:                    "system", // specialist_runs has no requestingUserId column
+    requesterRole:                  "system",
+    userRequest:                    run.taskId ?? specialistRunId,
   });
 
-  // Build minimal work package from run data
-  const workPackage = await buildWorkPackage({
-    specialistRunId,
-    organizationId,
-    conversationId: run.conversationId ?? undefined,
-    taskId: run.taskId,
-    taskTitle: `Task ${run.taskId}`,
-    capabilityCode: "research.general", // fallback — real orchestrator provides this
-    capabilityLevel: "professional_analysis",
-    workforceRoleCode: run.workforceRoleCode,
-    workerProfileCode: run.workerProfileCode,
-    approvedMemory: context.approvedMemory,
-    conversationContext: context.relevantMessages,
-    previousOutputs: context.previousOutputs,
-  });
-
-  const result = await intelligence.executeRun(workPackage, context);
+  if (engineResult.trigger !== "conversation") {
+    throw new Error(
+      `[CoS Orchestrator] Unexpected task result from conversation trigger for run ${specialistRunId}`,
+    );
+  }
+  const result = engineResult.runResult;
 
   await processRunCompletion(specialistRunId, organizationId, result);
 
