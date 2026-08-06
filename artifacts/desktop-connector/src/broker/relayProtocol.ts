@@ -8,6 +8,9 @@
 
 import { randomUUID } from "node:crypto";
 
+// Sprint 29E: connector evidence operation messages are distinct from work
+// execution messages. Evidence retrieval and specialist work execution are
+// separate concerns and must remain independent within the relay protocol.
 export type RelayMessageType =
   | "auth"
   | "auth_ok"
@@ -23,7 +26,11 @@ export type RelayMessageType =
   | "reconnect_required"
   | "token_expiring"
   | "device_revoked"
-  | "shutdown";
+  | "shutdown"
+  // Sprint 29E: connector evidence operation messages
+  | "connector_op_request"  // server → connector: perform a file operation
+  | "connector_op_result"   // connector → server: operation completed successfully
+  | "connector_op_error";   // connector → server: operation failed with structured error
 
 export interface RelayMessage {
   protocolVersion: 1;
@@ -58,6 +65,8 @@ const VALID_TYPES = new Set<string>([
   "task_dispatch", "task_ack", "task_progress", "task_result", "task_error",
   "config_update", "reconnect_required", "token_expiring",
   "device_revoked", "shutdown",
+  // Sprint 29E: connector evidence operation messages
+  "connector_op_request", "connector_op_result", "connector_op_error",
 ]);
 
 const MAX_MESSAGE_SIZE = 512 * 1024;

@@ -109,6 +109,46 @@ export interface InspectorGatewayDiagnostics {
   fallbackReason: string | null;
 }
 
+/**
+ * Sprint 29E — Connector session diagnostics.
+ *
+ * Populated from ConnectorSessionManager telemetry after execution.
+ * Null when no connector session was required for this execution.
+ *
+ * Architecture note: OpenClaw is an internal runtime only — this interface
+ * surfaces NeedsOps Connector terminology exclusively.
+ */
+export interface InspectorConnectorDiagnostics {
+  /** True when a connector session was opened for this execution */
+  connectorConnected: boolean;
+  /** NeedsOps Connector app version reported by the device */
+  connectorVersion: string | null;
+  /** Session ID assigned by ConnectorSessionManager */
+  sessionId: string;
+  /** Execution ID this session served */
+  executionId: string;
+  /** Device name (user-facing, set during device registration) */
+  device: string | null;
+  /** Host OS platform reported by the device (e.g. "darwin", "win32") */
+  osPlatform: string | null;
+  /** Total connector operations executed during this session */
+  operationsExecuted: number;
+  /** Number of files successfully read into the EvidencePack */
+  evidenceRetrieved: number;
+  /** Average round-trip latency across all connector operations (ms) */
+  avgLatencyMs: number | null;
+  /** ISO timestamp when the session was opened */
+  openedAt: string;
+  /** ISO timestamp when the session was closed (null if still open) */
+  closedAt: string | null;
+  /** Idle duration before the session closed due to timeout (ms) */
+  idleMs: number | null;
+  /** Reason the session was closed */
+  closeReason: string | null;
+  /** Provider code — always "connector" for this diagnostics block */
+  providerUsed: "connector";
+}
+
 export interface InspectorDiagnostics {
   state: "running" | "awaiting_clarification" | "failed" | "completed";
   clarificationItems: Array<{ name: string; reason: string }>;
@@ -122,6 +162,12 @@ export interface InspectorDiagnostics {
    * that did not record gateway metadata.
    */
   gateway: InspectorGatewayDiagnostics | null;
+  /**
+   * Sprint 29E — connector session diagnostics.
+   * Populated when a NeedsOps Connector session was opened for this execution.
+   * Null when no connector was involved.
+   */
+  connector: InspectorConnectorDiagnostics | null;
 }
 
 export interface InspectorPerformance {
@@ -464,6 +510,35 @@ async function _buildInspection(
     };
   }
 
+  // ── Sprint 29E — connector diagnostics ──────────────────────────────────
+  // Populated from ConnectorSessionManager when a connector session was used.
+  // Import lazily to avoid circular dependency; non-fatal if unavailable.
+  let connectorDiagnostics: InspectorConnectorDiagnostics | null = null;
+  try {
+    const { getConnectorSessionTelemetry } = await import("./connectorSessionManagerService.js");
+    const telem = getConnectorSessionTelemetry(manifestRow.executionId ?? "");
+    if (telem) {
+      connectorDiagnostics = {
+        connectorConnected: true,
+        connectorVersion:   telem.connectorVersion,
+        sessionId:          telem.sessionId,
+        executionId:        telem.executionId,
+        device:             telem.deviceName,
+        osPlatform:         telem.osPlatform,
+        operationsExecuted: telem.operationsExecuted,
+        evidenceRetrieved:  telem.evidenceRetrieved,
+        avgLatencyMs:       telem.avgLatencyMs,
+        openedAt:           telem.openedAt,
+        closedAt:           telem.closedAt,
+        idleMs:             telem.idleMs,
+        closeReason:        telem.closeReason,
+        providerUsed:       "connector",
+      };
+    }
+  } catch {
+    // Non-fatal — connector telemetry is optional
+  }
+
   const diagnostics: InspectorDiagnostics = {
     state: diagnosticsState,
     clarificationItems: failInfo?.clarificationItems ?? [],
@@ -471,6 +546,7 @@ async function _buildInspection(
     rootCause: failInfo?.rootCause ?? null,
     retryAvailable: failInfo?.retryAvailable ?? false,
     gateway: gatewayDiagnostics,
+    connector: connectorDiagnostics,
   };
 
   // ── 14. Performance ──────────────────────────────────────────────────────────

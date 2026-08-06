@@ -65,3 +65,4 @@
 - [NeedsOps Sprint 28.7 Gateway Output-Mode Architecture](needsops-sprint287-output-mode.md) — GatewayOutputMode type, conditional response_format, system role, 4 new AIPurpose values, InspectorGatewayDiagnostics, 3642 tests
 - [NeedsOps Sprint 29C Canonical Execution Context](needsops-sprint29c.md) — executionContextBuilderService, CanonicalExecutionContext both paths, conversation EvidencePack, requester identity, backward-scan extractDocumentSearchTerms, 3453 tests
 - [NeedsOps Sprint 29D Execution Contract Completion](needsops-sprint29d.md) — ExecutionSession lifecycle, typed ExecutionActions (proposals only), deterministic write targets, ResourcePlan complete, connector readiness 4 scenarios, 3687 tests
+- [NeedsOps Sprint 29E Connector P6 Foundation](needsops-sprint29e.md) — relay protocol extension, bridge+session manager, three-stage registry (KRS→providers→merge), ConnectorEvidenceResolver, inspector connector diagnostics, 3791 tests

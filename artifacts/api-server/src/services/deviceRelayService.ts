@@ -62,6 +62,18 @@ const connections = new Map<string, ConnectedDevice>();
 export const taskEvents = new EventEmitter();
 taskEvents.setMaxListeners(500);
 
+/**
+ * Sprint 29E: EventEmitter for connector evidence operation results.
+ * Distinct from taskEvents — evidence retrieval and work execution are
+ * separate concerns and must not share the same event space.
+ *
+ * Events emitted:
+ *   op:result:{requestId}  — connector_op_result received from device
+ *   op:error:{requestId}   — connector_op_error received from device
+ */
+export const opEvents = new EventEmitter();
+opEvents.setMaxListeners(1000);
+
 // ── Relay service ─────────────────────────────────────────────────────────────
 
 /**
@@ -268,6 +280,25 @@ async function handleMessage(device: ConnectedDevice, msg: RelayMessage): Promis
     case "task_error":
       await handleTaskError(device, msg);
       break;
+    // ── Sprint 29E: Connector evidence operation responses ─────────────────
+    // These are distinct from task_* messages — evidence retrieval and work
+    // execution are separate concerns and must not share the same event space.
+    case "connector_op_result": {
+      const payload = (msg.payload ?? {}) as Record<string, unknown>;
+      const requestId = payload["requestId"];
+      if (typeof requestId === "string") {
+        opEvents.emit(`op:result:${requestId}`, payload);
+      }
+      break;
+    }
+    case "connector_op_error": {
+      const payload = (msg.payload ?? {}) as Record<string, unknown>;
+      const requestId = payload["requestId"];
+      if (typeof requestId === "string") {
+        opEvents.emit(`op:error:${requestId}`, payload);
+      }
+      break;
+    }
     default:
       logger.debug({ type: msg.type, deviceId: device.deviceId }, "[relay] Unknown message type");
   }
@@ -501,6 +532,43 @@ export async function notifyDeviceRevoked(deviceId: string): Promise<void> {
  */
 export function getConnectedDevices(): string[] {
   return Array.from(connections.keys());
+}
+
+/**
+ * Sprint 29E: Return device IDs of devices currently connected for a specific org.
+ * Used by ConnectorSessionManager to find the target device for a connector session.
+ */
+export function getConnectedDevicesForOrg(organisationId: string): string[] {
+  const result: string[] = [];
+  for (const [deviceId, device] of connections.entries()) {
+    if (device.organizationId === organisationId) {
+      result.push(deviceId);
+    }
+  }
+  return result;
+}
+
+/**
+ * Sprint 29E: Send a connector_op_request to a connected device.
+ *
+ * Returns true if the message was dispatched. Returns false if the device is
+ * not currently connected — the ConnectorBridge should surface a structured error.
+ *
+ * This function sends to the relay only. Session management, timeout, and
+ * retry are handled by ConnectorBridgeService.
+ */
+export function sendConnectorOpRequest(
+  deviceId: string,
+  organizationId: string,
+  payload: Record<string, unknown>,
+): boolean {
+  const conn = connections.get(deviceId);
+  if (!conn) return false;
+  sendMessage(
+    conn.ws,
+    buildRelayMessage("connector_op_request", deviceId, organizationId, payload),
+  );
+  return true;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -42,6 +42,13 @@ export type RelayConnectionState =
   | "revoked"
   | "shutdown";
 
+export interface ConnectorOpResponse {
+  success: boolean;
+  data?: unknown;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export interface RelayClientConfig {
   apiBaseUrl: string;         // e.g. https://api.needsops.com
   deviceId: string;
@@ -53,6 +60,13 @@ export interface RelayClientConfig {
   getAccessToken: () => Promise<string>;
   /** Called when a task_dispatch is received */
   onTaskDispatch: (payload: Record<string, unknown>) => Promise<void>;
+  /**
+   * Sprint 29E: Called when a connector_op_request is received.
+   * The connector performs the requested file operation and returns the result.
+   * If omitted, the relay client sends a NOT_SUPPORTED error response.
+   * Operations: locate | search | read | inspect (read-only only in Sprint 29E)
+   */
+  onConnectorOpRequest?: (payload: Record<string, unknown>) => Promise<ConnectorOpResponse>;
   /** Called when the device is revoked — should shut down the app */
   onRevoked: () => void;
   /** Called on state changes — for status reporting to Electron main */
@@ -130,6 +144,31 @@ export class RelayClient extends EventEmitter {
     this.send(buildRelayMessage("task_progress", this.config.deviceId, this.config.organizationId, {
       executionId,
       ...progress,
+    }));
+  }
+
+  /**
+   * Sprint 29E: Send a connector operation result to the platform.
+   * Called after the connector successfully performs a file operation.
+   */
+  sendConnectorOpResult(requestId: string, data: unknown): void {
+    this.send(buildRelayMessage("connector_op_result", this.config.deviceId, this.config.organizationId, {
+      requestId,
+      success: true,
+      data,
+    }));
+  }
+
+  /**
+   * Sprint 29E: Send a connector operation error to the platform.
+   * Called when the connector fails to perform a file operation.
+   */
+  sendConnectorOpError(requestId: string, errorCode: string, errorMessage: string): void {
+    this.send(buildRelayMessage("connector_op_error", this.config.deviceId, this.config.organizationId, {
+      requestId,
+      success: false,
+      errorCode,
+      errorMessage,
     }));
   }
 
@@ -245,6 +284,36 @@ export class RelayClient extends EventEmitter {
             errorCode: "EXECUTION_FAILED",
             message: err.message,
           });
+        });
+        break;
+      }
+
+      // ── Sprint 29E: Connector evidence operation request ──────────────────
+      // Distinct from task_dispatch — evidence retrieval and work execution
+      // are separate concerns and must not share the same handling path.
+      case "connector_op_request": {
+        const payload = (msg.payload ?? {}) as Record<string, unknown>;
+        const requestId = payload["requestId"];
+        if (!requestId || typeof requestId !== "string") break;
+
+        if (!this.config.onConnectorOpRequest) {
+          this.sendConnectorOpError(requestId, "NOT_SUPPORTED", "This connector does not support evidence operations");
+          break;
+        }
+
+        this.config.onConnectorOpRequest(payload).then(result => {
+          if (result.success) {
+            this.sendConnectorOpResult(requestId, result.data ?? null);
+          } else {
+            this.sendConnectorOpError(
+              requestId,
+              result.errorCode ?? "OPERATION_FAILED",
+              result.errorMessage ?? "Connector operation failed",
+            );
+          }
+        }).catch((err: Error) => {
+          this.config.logger.warn({ err: err.message, requestId }, "[relay-client] connector_op_request handler threw");
+          this.sendConnectorOpError(requestId, "HANDLER_ERROR", err.message);
         });
         break;
       }

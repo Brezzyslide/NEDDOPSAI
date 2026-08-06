@@ -1,0 +1,342 @@
+Here’s a refined prompt that incorporates the architectural corrections while keeping the implementation aligned with the founder-approved vision.
+
+⸻
+
+Sprint 29E — NeedsOps Connector (P6) Foundation & Provider Integration
+
+Before writing any code, perform one final architecture validation against the founder-approved Sprint 29B architecture. If any implementation deviates from the architectural principles below, stop and recommend the correction before implementation. Architecture integrity takes precedence over implementation speed.
+
+Objective
+
+Implement the first production Connector Resource Provider (P6), enabling the NeedsOps Connector (desktop runtime) to become a first-class evidence provider within the Unified Execution Architecture.
+
+This sprint is read-only. It enables specialists to retrieve evidence from desktop resources but must not perform any write, automation or side-effect operations.
+
+⸻
+
+Architectural Principles (Non-Negotiable)
+
+The implementation must preserve the following invariants:
+
+1. Chief of Staff remains the sole orchestrator.
+2. Every specialist execution enters only through unifiedExecutionEngine.
+3. KnowledgeResolutionService continues to own organisation knowledge retrieval.
+4. ResourceRegistry coordinates providers but never interprets user intent.
+5. Provider preference is determined exclusively during Capability Planning and Resource Planning.
+6. The Unified Execution Engine plans execution; it never performs desktop operations.
+7. The NeedsOps Connector owns all desktop interactions.
+8. OpenClaw remains an internal runtime only and must never appear in user-facing terminology.
+9. No service outside unifiedExecutionEngine may call the AI Gateway to perform specialist work.
+10. Connector evidence must merge seamlessly into the existing EvidencePack without altering specialist behaviour.
+
+⸻
+
+Deliverable A — Provider-Based Resource Registry
+
+Upgrade ResourceRegistry into the production provider coordinator.
+
+Do not refactor KnowledgeResolutionService into a provider.
+
+Instead implement a staged resolution model:
+
+Stage 1
+
+Resolve organisation knowledge using the existing KnowledgeResolutionService.
+
+Stage 2
+
+Execute any registered external providers (starting with P6 Connector).
+
+Stage 3
+
+Merge all returned evidence into one unified EvidencePack.
+
+The Unified Execution Engine must remain unaware of which provider supplied each piece of evidence.
+
+⸻
+
+Deliverable B — ResourceHandle → Evidence Adapter
+
+Implement a dedicated adapter inside ResourceRegistry.
+
+All providers must return:
+
+ResourceHandle[]
+
+Only the registry may convert them into:
+
+EvidenceChunk[]
+
+Implement a private adapter similar to:
+
+ResourceHandle[]
+↓
+EvidenceChunk[]
+
+No provider should ever construct EvidenceChunk directly.
+
+This adapter becomes the permanent bridge for future providers (Connector, SharePoint, Google Drive, OneDrive, Notion, Confluence, trusted public sources).
+
+⸻
+
+Deliverable C — Connector Relay Protocol
+
+Do not overload existing work execution messages.
+
+Create dedicated connector operation messages:
+
+* connector_op_request
+* connector_op_result
+* connector_op_error
+
+Evidence retrieval and specialist work execution are different concerns and must remain independent within the relay protocol.
+
+⸻
+
+Deliverable D — Connector Bridge
+
+Implement a bridge between the API Server and the NeedsOps Connector.
+
+Responsibilities:
+
+* operation dispatch
+* timeout
+* retry
+* cancellation
+* structured errors
+* correlation IDs
+* session ownership
+
+The Unified Execution Engine must never communicate directly with the desktop runtime.
+
+⸻
+
+Deliverable E — Connector Session Manager
+
+Implement the execution-scoped session lifecycle.
+
+Responsibilities:
+
+* open session
+* validate entitlement
+* validate registered device
+* validate connector availability
+* validate capabilities
+* maintain executionId ↔ connector session mapping
+* operation telemetry
+* idle timeout
+* graceful close
+* cleanup on failure
+
+Reuse the existing relay connection.
+
+Do not duplicate websocket state.
+
+The relay remains the source of truth.
+
+⸻
+
+Deliverable F — Provider Lifecycle
+
+Rather than implementing providers with only resolve(), establish the permanent provider lifecycle contract.
+
+Every provider should implement:
+
+isAvailable()
+↓
+resolve()
+↓
+close()
+
+If cleanup is unnecessary, close() may be a no-op.
+
+The registry coordinates provider lifecycle.
+
+It must never understand provider-specific connection logic.
+
+This lifecycle will become the standard contract for all future providers.
+
+⸻
+
+Deliverable G — Provider Preference
+
+Do not detect phrases such as:
+
+* “my desktop”
+* “my files”
+* “on my computer”
+
+inside ResourceRegistry.
+
+That logic belongs exclusively to:
+
+Chief of Staff
+
+↓
+
+Intent Classification
+
+↓
+
+Capability Planning
+
+↓
+
+Deterministic Resource Planning
+
+↓
+
+preferredProviders[]
+
+↓
+
+ResourceRegistry
+
+The registry consumes the provider plan.
+
+It never interprets English.
+
+⸻
+
+Deliverable H — Connector Evidence
+
+Implement ConnectorEvidenceResolver.
+
+Support:
+
+* locate
+* search
+* inspect
+* read
+
+Desktop evidence must participate in:
+
+* confidence scoring
+* ranking
+* deduplication
+* citations
+* validation
+
+exactly like organisation library evidence.
+
+⸻
+
+Deliverable I — Execution Inspector
+
+Extend the Execution Inspector with connector diagnostics.
+
+Include:
+
+* connector connected
+* connector version
+* session ID
+* execution ID
+* device
+* operations executed
+* evidence retrieved
+* latency
+* idle time
+* close reason
+* provider used
+
+Return null when no connector session was required.
+
+⸻
+
+Acceptance Scenarios
+
+Scenario 1
+
+Review a document on the desktop.
+
+Expected:
+
+Connector session opens.
+
+Document located.
+
+Document read.
+
+Evidence merged.
+
+Specialist reasons using document.
+
+Completed Work produced.
+
+Session closes.
+
+⸻
+
+Scenario 2
+
+Search local Documents.
+
+Expected:
+
+Connector performs search.
+
+Results returned.
+
+Evidence available to specialist.
+
+⸻
+
+Scenario 3
+
+Compare desktop policy with NeedsOps library.
+
+Expected:
+
+EvidencePack contains:
+
+* organisation evidence
+* connector evidence
+
+Both independently cited.
+
+⸻
+
+Scenario 4
+
+Connector unavailable.
+
+Expected:
+
+Capability validation fails before execution.
+
+No AI execution.
+
+No partial session.
+
+Clear structured error.
+
+⸻
+
+Explicit Non-Goals
+
+Do not implement:
+
+* write operations
+* Outlook
+* Word automation
+* Excel updates
+* browser automation
+* terminal execution
+* SharePoint
+* Google Drive
+* OneDrive
+* cloud providers
+* file deletion
+* file modification
+
+Those belong to Sprint 29F.
+
+⸻
+
+Final Architecture Rule
+
+This rule must be documented in code comments and preserved throughout implementation:
+
+The Unified Execution Engine never selects providers. The ResourceRegistry never interprets user intent. The Chief of Staff determines provider preference through Capability Planning and Resource Planning. The ResourceRegistry simply executes the approved provider plan, while each provider encapsulates its own connection lifecycle (isAvailable → resolve → close).
+
+Finally, produce an Architecture Verification Report confirming that the implementation adheres to every architectural principle, identify any deviations, explain why they exist, and propose corrections before the sprint is considered complete.

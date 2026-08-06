@@ -79,12 +79,26 @@ export interface ResourceHandle {
 /**
  * Parameters passed to the ResourceRegistry when requesting evidence.
  * The registry routes to the appropriate providers based on priority and plan.
+ *
+ * Sprint 29E: preferredProviders[] is set by the Chief of Staff via
+ * Capability Planning and Resource Planning. The registry never interprets
+ * user intent — it consumes the pre-computed plan.
+ *
+ * When "connector" appears in preferredProviders and the connector is
+ * unavailable, the registry throws ConnectorCapabilityError (no AI execution).
+ * When preferredProviders is empty/unset, available providers run as supplements.
  */
 export interface EvidenceRequest {
   executionId: string;
   organisationId: string;
   userRequest: string;
   searchTerms?: string[];
+  /**
+   * Provider codes the Chief of Staff has planned for this execution.
+   * Set during Capability Planning / Resource Planning — the registry never modifies this.
+   * Examples: ["connector"], ["organisation_library", "connector"], []
+   */
+  preferredProviders?: string[];
 }
 
 // ─── Provider contract ────────────────────────────────────────────────────────
@@ -92,8 +106,19 @@ export interface EvidenceRequest {
 /**
  * Contract for all resource providers registered with the ResourceRegistry.
  *
+ * Each provider owns a single stage of the evidence lifecycle:
+ *   isAvailable() → resolve() → close()
+ *
+ * Design rule (Sprint 29E):
+ *   The Unified Execution Engine never selects providers.
+ *   The ResourceRegistry never interprets user intent.
+ *   The Chief of Staff determines provider preference through Capability Planning
+ *   and Resource Planning (EvidenceRequest.preferredProviders[]).
+ *   The ResourceRegistry simply executes the approved provider plan, while each
+ *   provider encapsulates its own connection lifecycle.
+ *
  * Providers are stateless. State lives in the registry and in handles.
- * Future providers (connector, cloud, trusted public) implement this interface
+ * Future providers (cloud, trusted public) implement this interface
  * and register with the registry — the execution engine requires no changes.
  */
 export interface IResourceProvider {
@@ -104,6 +129,31 @@ export interface IResourceProvider {
   readonly isImplemented: boolean;
   isAvailable(organisationId: string): Promise<boolean>;
   resolve(request: EvidenceRequest): Promise<ResourceHandle[]>;
+  /**
+   * Sprint 29E: Provider lifecycle — called by the registry after resolve().
+   * Providers that require cleanup implement this; others may treat it as a no-op.
+   * The registry always calls close() regardless of whether resolve() succeeded.
+   */
+  close(): Promise<void>;
   /** Optional — only write-capable providers implement this */
   write?(handle: ResourceHandle, content: string): Promise<void>;
+}
+
+// ─── ConnectorCapabilityError ─────────────────────────────────────────────────
+
+/**
+ * Thrown by the ResourceRegistry when a preferred provider (e.g. the Connector)
+ * is required by the ResourcePlan but cannot be opened.
+ *
+ * The engine catches this and returns a structured capability failure —
+ * no AI execution starts when a required provider is unavailable.
+ */
+export class ConnectorCapabilityError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ConnectorCapabilityError";
+  }
 }
