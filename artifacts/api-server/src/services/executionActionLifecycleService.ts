@@ -150,6 +150,121 @@ export async function recordActionRejected(
   }
 }
 
+// ─── Pre-dispatch authorisation proof record (BLOCKING) ───────────────────────
+
+/**
+ * Sprint 29F.2 Part B — Durable pre-dispatch authorisation proof.
+ *
+ * BLOCKING — this function THROWS if the DB write fails.
+ * The caller MUST NOT dispatch a write-side connector operation unless this
+ * succeeds. This is the governance invariant: no external side effect without a
+ * durable record proving authorisation.
+ *
+ * Required fields from the 29F.2 brief:
+ *   ✓ executionId        (already in existing row from recordActionProposed)
+ *   ✓ actionId           (primary key)
+ *   ✓ organisation/requester identity
+ *   ✓ deviceId
+ *   ✓ operation/capability  (operationType — new column)
+ *   ✓ resolved target       (target column)
+ *   ✓ idempotency key
+ *   ✓ approval state        (status = "approved")
+ *   ✓ approval actor        (approvedBy)
+ *   ✓ approval timestamp    (approvedAt)
+ *   ✓ approval-plan binding hash (approvalPlanBindingHash — new column)
+ *
+ * If the action row doesn't exist yet (recordActionProposed was fire-and-forget
+ * and failed), this performs an UPSERT to guarantee the row exists before dispatch.
+ */
+export async function recordActionPreDispatch(
+  action: import("../types/canonicalExecutionContext.js").ExecutionAction,
+  ctx: ActionLifecycleContext,
+  params: {
+    operationType: string;
+    idempotencyKey: string;
+    approvalPlanBindingHash?: string | null;
+    approvedBy?: string | null;
+    approvedAt?: Date | null;
+  },
+): Promise<void> {
+  // BLOCKING — do NOT wrap in try/catch here. Let the error propagate to block dispatch.
+  await db.insert(executionActionsTable)
+    .values({
+      id:               action.actionId,
+      executionId:      ctx.executionId,
+      organisationId:   ctx.organisationId,
+      conversationId:   ctx.conversationId ?? null,
+      taskId:           ctx.taskId ?? null,
+      specialistCode:   ctx.specialistCode,
+      actionType:       action.actionType,
+      target:           action.resolvedDestination?.displayPath ?? action.description ?? null,
+      parametersSummary: buildSummary(action),
+      riskLevel:        action.riskLevel ?? "medium",
+      approvalRequired: action.requiresApproval ?? true,
+      requestedBy:      ctx.requestedBy ?? null,
+      approvedBy:       params.approvedBy ?? null,
+      approvedAt:       params.approvedAt ?? null,
+      connectorDeviceId: ctx.deviceId ?? null,
+      sessionId:        ctx.sessionId ?? null,
+      idempotencyKey:   params.idempotencyKey,
+      // New Sprint 29F.2 columns
+      operationType:          params.operationType,
+      approvalPlanBindingHash: params.approvalPlanBindingHash ?? null,
+      status:                 "approved",
+      proposedAt:             action.proposedAt ? new Date(action.proposedAt) : new Date(),
+      correlationId:          buildCorrelationId(ctx.executionId, action.actionId),
+    })
+    .onConflictDoUpdate({
+      target: executionActionsTable.id,
+      set: {
+        // Authorisation proof fields — must be persisted durably before dispatch
+        status:                 "approved",
+        operationType:          params.operationType,
+        target:                 action.resolvedDestination?.displayPath ?? action.description ?? null,
+        idempotencyKey:         params.idempotencyKey,
+        approvalPlanBindingHash: params.approvalPlanBindingHash ?? null,
+        approvedBy:             params.approvedBy ?? null,
+        approvedAt:             params.approvedAt ?? null,
+        connectorDeviceId:      ctx.deviceId ?? null,
+        sessionId:              ctx.sessionId ?? null,
+        updatedAt:              new Date(),
+      },
+    });
+  // If the above throws, the error propagates to the caller which must abort dispatch.
+}
+
+/**
+ * Sprint 29F.2 Part B — Flag reconciliation required.
+ *
+ * Called when the physical connector operation succeeded but the final lifecycle
+ * persistence failed. The physical side effect has already occurred; the action
+ * MUST NOT be retried. This flag marks the record for manual reconciliation.
+ *
+ * Best-effort (wrapped in try/catch) because if the DB is completely down there
+ * is nothing we can do — the operator must reconcile from connector logs.
+ */
+export async function recordReconciliationRequired(
+  actionId: string,
+  organisationId: string,
+  reason: string,
+): Promise<void> {
+  try {
+    await db.update(executionActionsTable)
+      .set({
+        reconciliationRequired: true,
+        errorDetails: { reconciliationReason: reason, setAt: new Date().toISOString() },
+        updatedAt: new Date(),
+      })
+      .where(eq(executionActionsTable.id, actionId));
+  } catch (err) {
+    // Nothing we can do — log as critical for operator attention
+    logger.error(
+      { err, actionId, organisationId, reason },
+      "[action-lifecycle] CRITICAL: Failed to set reconciliationRequired flag — manual reconciliation needed",
+    );
+  }
+}
+
 /**
  * Transition action to "executing".
  * Called immediately before the connector dispatch begins.

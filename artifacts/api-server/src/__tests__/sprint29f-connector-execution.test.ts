@@ -66,7 +66,9 @@ vi.mock("../services/writeIdempotencyService.js", () => ({
   _resetIdempotencyStore:    vi.fn(),
 }));
 
-// Sprint 29F.1 — executionActionLifecycleService (fire-and-forget, all stubs)
+// Sprint 29F.1/29F.2 — executionActionLifecycleService (all stubs)
+// recordActionPreDispatch is BLOCKING in production — stub resolves to allow test dispatch to proceed.
+// recordReconciliationRequired is fire-and-forget — stub resolves silently.
 vi.mock("../services/executionActionLifecycleService.js", () => ({
   recordActionProposed:         vi.fn().mockResolvedValue(undefined),
   recordActionAwaitingApproval: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +78,10 @@ vi.mock("../services/executionActionLifecycleService.js", () => ({
   recordActionCompleted:        vi.fn().mockResolvedValue(undefined),
   recordActionFailed:           vi.fn().mockResolvedValue(undefined),
   recordActionCancelled:        vi.fn().mockResolvedValue(undefined),
+  // Sprint 29F.2 Part B — blocking pre-dispatch record (stubbed to allow normal test flow)
+  recordActionPreDispatch:      vi.fn().mockResolvedValue(undefined),
+  // Sprint 29F.2 Part B — reconciliation flag (fire-and-forget)
+  recordReconciliationRequired: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/connectorSessionManagerService.js", () => ({

@@ -68,3 +68,4 @@
 - [NeedsOps Sprint 29E Connector P6 Foundation](needsops-sprint29e.md) — relay protocol extension, bridge+session manager, three-stage registry (KRS→providers→merge), ConnectorEvidenceResolver, inspector connector diagnostics, 3791 tests
 - [NeedsOps Sprint 29F Connector Execution Actions](needsops-sprint29f.md) — ExecutionActionDispatcher, 8 write op types, ApprovalRequiredError pre-check, fatal/non-fatal distinction, dispatch store for inspector, 6 new audit events, 3856 tests
 - [NeedsOps Sprint 29F.1 Connector Hardening](needsops-sprint29f1.md) — write idempotency (key=execId:actionId), action lifecycle DB persistence (fire-and-forget), approval plan binding hash, 11 review dimensions, manifestHash, REQUIRED_RLS_TABLES=71, 3943 tests
+- [NeedsOps Sprint 29F.2 Connector Production Readiness](needsops-sprint29f2.md) — desktop handler wired, blocking pre-dispatch record, binding revalidation, 3 new DB cols, 55 new tests, 3998 passing, 14 pre-existing failures

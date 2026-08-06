@@ -1,0 +1,220 @@
+Use this as the next Replit prompt:
+
+Sprint 29F.2 — Connector Production Readiness & Real Device Validation
+
+Proceed with implementation. This sprint closes the remaining loose ends before we treat NeedsOps Connector write execution as production-ready.
+
+Do not redesign the architecture. Preserve these established rules:
+
+* Chief of Staff remains the sole orchestrator.
+* All specialist work continues through unifiedExecutionEngine.
+* The Unified Execution Engine proposes and validates actions but never performs external side effects.
+* NeedsOps Connector owns all filesystem and application interaction.
+* Evidence retrieval remains separate from execution actions.
+* OpenClaw remains internal and must never appear in customer-facing terminology.
+* Knowledge Resolution remains responsible for organisation knowledge.
+* ResourceRegistry remains responsible for executing the approved evidence-provider plan.
+* Approval must occur before destructive/external actions are dispatched.
+
+Part A — Wire desktop-side idempotency
+
+idempotencyStore.ts already exists. Wire it into the actual desktop connector operation execution path, preferably at the narrowest common boundary immediately before a side effect occurs.
+
+Idempotency key remains:
+
+executionId:actionId
+
+Required behaviour:
+
+* first request executes normally;
+* duplicate while operation is in progress must not execute again;
+* duplicate after success returns the stored successful result;
+* duplicate after failure must not automatically rerun the destructive action;
+* reconnect/re-delivery of the same operation must remain deduplicated;
+* write/create/move/Word/Excel/email-draft operations must use this protection;
+* read-only evidence operations do not require destructive-operation deduplication;
+* destructive connector operations remain maxRetries = 0;
+* bounded retention/TTL must prevent the desktop store growing indefinitely.
+
+The server-side idempotency layer remains in place. Desktop idempotency is defence in depth because the connector is the final owner of the physical side effect.
+
+Part B — Strengthen action lifecycle durability
+
+Review the current fire-and-forget lifecycle persistence rule.
+
+Preserve non-blocking telemetry where appropriate, but establish this invariant:
+
+No external write-side effect may be dispatched unless the durable action/approval record necessary to prove authorisation has successfully been persisted first.
+
+Before dispatch, ensure durable persistence of at least:
+
+* executionId
+* actionId
+* organisation/requester identity where applicable
+* deviceId
+* operation/capability
+* resolved target
+* idempotency key
+* approval state
+* approval actor
+* approval timestamp
+* approval-plan binding hash
+
+If this pre-dispatch persistence fails, do not execute the connector action.
+
+Progress telemetry may remain best-effort where losing it cannot undermine governance.
+
+If the physical operation succeeds but final lifecycle persistence fails, do not retry the physical action. Record the condition for reconciliation using the existing durable mechanisms where possible. If none exists, implement the smallest appropriate reconciliation mechanism rather than creating another execution pipeline.
+
+Part C — Verify approval binding at dispatch
+
+Immediately before an approved action crosses the connector boundary, revalidate:
+
+executionId + deviceId + actionIds + resolved targets
+
+against the approved binding hash.
+
+Any mutation invalidates approval and blocks dispatch.
+
+Approval must authorise the actual resolved destination, not merely a generic capability such as WRITE_FILES.
+
+Confirm grouped approvals remain valid only for low/medium-risk actions and high/critical/delete operations remain separately approved according to the existing policy.
+
+Part D — Real connector acceptance harness
+
+The existing 10 REAL_CONNECTOR_URL tests must now become the acceptance gate for a real installed NeedsOps Connector.
+
+Do not fake successful physical-device execution.
+
+Run them when a real connector is available. If the current environment cannot reach the user’s physical connector, leave them explicitly skipped and report that clearly rather than converting them to mocks.
+
+Validate in increasing risk order:
+
+1. connector heartbeat/session establishment;
+2. locate a disposable test file;
+3. read it and return evidence;
+4. inspect metadata;
+5. create a disposable file;
+6. write/update that file;
+7. reconnect and verify duplicate delivery does not repeat the write;
+8. create/edit a disposable Word document where supported;
+9. create/update a disposable Excel workbook where supported;
+10. create an Outlook/email draft where supported, but do not send email.
+
+Use a dedicated disposable test directory. Do not modify arbitrary user documents during acceptance testing.
+
+Part E — Failure-path tests
+
+Add explicit tests for:
+
+* connector offline before dispatch;
+* connector disconnect during operation;
+* acknowledgement lost after successful write;
+* same action delivered twice;
+* approval expired;
+* approval target mutated after approval;
+* device changed after approval;
+* DB unavailable before dispatch;
+* DB unavailable after physical success;
+* local permission denied;
+* target file locked;
+* unsupported operation;
+* operation timeout;
+* connector restart between deliveries.
+
+The key invariant is:
+
+Network ambiguity must never cause an external action to be blindly executed twice.
+
+Part F — Inspector and audit trail
+
+Extend existing diagnostics rather than creating another inspection system.
+
+For execution actions expose:
+
+* actionId
+* operation
+* resolved target
+* device
+* approval status
+* binding validation result
+* dispatch timestamp
+* connector acknowledgement
+* idempotency result
+* deduplication prevented
+* duration
+* final status
+* reconciliation required
+
+Do not expose internal OpenClaw terminology.
+
+Part G — Preserve current non-goals
+
+Do not implement in this sprint:
+
+* email sending;
+* browser interaction;
+* terminal execution;
+* SharePoint;
+* Google Drive;
+* OneDrive;
+* automatic destructive-operation retries.
+
+email.send_email, browser_interaction, and terminal_command must continue to fail closed as unsupported.
+
+Part H — Regression and architecture verification
+
+Run the complete suite.
+
+Existing Sprint 29F.1 behaviour must remain intact.
+
+Specifically verify:
+
+1. no specialist AI execution exists outside unifiedExecutionEngine;
+2. CoS remains sole orchestrator;
+3. engine performs no external side effects;
+4. Connector owns physical execution;
+5. ResourceRegistry still owns provider routing;
+6. KRS remains unchanged in responsibility;
+7. evidence and actions remain separate;
+8. writes cannot execute without valid approval;
+9. writes cannot automatically retry;
+10. duplicate connector delivery cannot repeat the physical side effect.
+
+Final report
+
+At completion give me a Go/No-Go report, not simply a change summary.
+
+Separate the result into:
+
+Cloud architecture
+
+Connector protocol
+
+Desktop idempotency
+
+Approval durability
+
+Mock/integration validation
+
+Real macOS validation
+
+Real Windows validation
+
+Real Linux validation
+
+Unsupported capabilities
+
+Do not label a platform validated unless operations actually ran through an installed connector on that platform.
+
+End with one of:
+
+GO — production write execution validated
+
+CONDITIONAL GO — architecture complete, physical validation outstanding
+
+NO-GO — blocking safety/runtime issue remains
+
+For every NO-GO or conditional item, identify the exact blocking file/service and the smallest next change required.
+
+Important: Do not begin Sprint 29G or introduce new architecture during this work. Sprint 29F.2 is specifically about closing the safety boundary and proving the existing connector architecture against a real machine.

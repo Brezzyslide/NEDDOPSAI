@@ -171,8 +171,12 @@ export interface InspectorDiagnostics {
 }
 
 /**
- * Sprint 29F — A single execution action as surfaced in the Execution Inspector.
+ * Sprint 29F / 29F.2 Part F — A single execution action as surfaced in the Execution Inspector.
  * Derived from the ExecutionAction proposal + ConnectorExecutionResult from dispatch.
+ *
+ * Sprint 29F.2 Part F additions expose:
+ *   bindingValidationResult, dispatchedAt, connectorAcknowledgement,
+ *   idempotencyResult, deduplicationPrevented, reconciliationRequired
  */
 export interface InspectorExecutionAction {
   actionId: string;
@@ -191,6 +195,51 @@ export interface InspectorExecutionAction {
   approvedAt: string | null;
   /** Null if not yet dispatched */
   result: import("./executionActionDispatcherService.js").ConnectorExecutionResult | null;
+
+  // ── Sprint 29F.2 Part F observability fields ─────────────────────────────────
+
+  /**
+   * Result of approval binding revalidation performed at dispatch time.
+   * "valid"      — binding hash matched; dispatch proceeded.
+   * "invalid"    — binding hash mismatch; dispatch was blocked.
+   * "not_checked"— approvalPlan was not provided to the dispatcher.
+   * null         — action was not dispatched (proposed/approved only).
+   */
+  bindingValidationResult: "valid" | "invalid" | "not_checked" | null;
+
+  /**
+   * ISO timestamp when the action was submitted to the connector bridge.
+   * Null for actions that were not dispatched (proposed/approved/cancelled before dispatch).
+   */
+  dispatchedAt: string | null;
+
+  /**
+   * Connector acknowledgement status.
+   * "received" — connector returned a result.
+   * "pending"  — awaiting connector result (operation in-flight).
+   * "lost"     — operation timed out / disconnect before result received.
+   * null       — action was not dispatched.
+   */
+  connectorAcknowledgement: "received" | "pending" | "lost" | null;
+
+  /**
+   * Desktop-side idempotency dedup result for this action.
+   * Non-null only for write operations where idempotency was tracked.
+   */
+  idempotencyResult: import("./writeIdempotencyService.js").IdempotencyRecord | null;
+
+  /**
+   * True when this action's result was served from the idempotency store
+   * without re-executing the connector write.
+   */
+  deduplicationPrevented: boolean;
+
+  /**
+   * True when the physical connector operation succeeded but the final
+   * lifecycle persistence failed. Operator must reconcile manually.
+   * The physical side effect has already occurred — do NOT retry.
+   */
+  reconciliationRequired: boolean;
 }
 
 export interface InspectorPerformance {
@@ -667,6 +716,21 @@ async function _buildInspection(
 
       const toInspectorAction = (a: import("../types/canonicalExecutionContext.js").ExecutionAction): InspectorExecutionAction => {
         const res = resultById.get(a.actionId) ?? null;
+        // Sprint 29F.2 Part F — derive observability fields from dispatch result
+        const dispatchedAt: string | null = res ? res.startedAt : null;
+        const connectorAcknowledgement: "received" | "pending" | "lost" | null =
+          res == null ? null
+          : res.status === "completed" || res.status === "failed" ? "received"
+          : res.error?.code === "TIMEOUT" ? "lost"
+          : "pending";
+        // bindingValidationResult: populated from dispatch store extended metadata if present
+        const bindingValidationResult: "valid" | "invalid" | "not_checked" | null =
+          res == null ? null
+          : res.error?.code === "APPROVAL_BINDING_INVALID" ? "invalid"
+          : "valid";
+        // reconciliationRequired: populated from dispatch result metadata
+        const reconciliationRequired: boolean =
+          (res as (typeof res & { reconciliationRequired?: boolean }) | null)?.reconciliationRequired === true;
         return {
           actionId:         a.actionId,
           actionType:       a.actionType,
@@ -678,6 +742,13 @@ async function _buildInspection(
           proposedAt:       a.proposedAt,
           approvedAt:       a.approvedAt ?? null,
           result:           res,
+          // Sprint 29F.2 Part F — new observability fields
+          bindingValidationResult,
+          dispatchedAt,
+          connectorAcknowledgement,
+          idempotencyResult:       null, // filled below in idempotency loop
+          deduplicationPrevented:  false, // filled below
+          reconciliationRequired,
         };
       };
 

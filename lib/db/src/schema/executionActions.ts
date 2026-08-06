@@ -96,6 +96,22 @@ export const executionActionsTable = pgTable(
     /** Structured error from connector or dispatch layer */
     errorDetails:    jsonb("error_details"),
 
+    // ── Connector operation type (resolved at dispatch time) ─────────────────
+    /** The concrete relay operation type: write / create / move / word_create / etc. */
+    operationType:   text("operation_type"),
+
+    // ── Approval binding (Sprint 29F.2 Part B/C) ─────────────────────────────
+    /** Binding hash from the ApprovalPlan — proves the approved target matches what was dispatched */
+    approvalPlanBindingHash: text("approval_plan_binding_hash"),
+
+    // ── Reconciliation flag (Sprint 29F.2 Part B) ─────────────────────────────
+    /**
+     * Set to true when the physical connector operation succeeded but the
+     * final lifecycle persistence failed. Used for reconciliation — the physical
+     * side effect has already occurred, so the action must NOT be retried.
+     */
+    reconciliationRequired: boolean("reconciliation_required").notNull().default(false),
+
     // ── Correlation ──────────────────────────────────────────────────────────
     correlationId:   text("correlation_id"),
 

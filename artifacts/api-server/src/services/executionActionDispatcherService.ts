@@ -53,6 +53,16 @@ import {
   recordActionCancelled,
   type ActionLifecycleContext,
 } from "./executionActionLifecycleService.js";
+// Sprint 29F.2 Part B — Blocking pre-dispatch lifecycle + reconciliation
+import {
+  recordActionPreDispatch,
+  recordReconciliationRequired,
+} from "./executionActionLifecycleService.js";
+// Sprint 29F.2 Part C — Approval binding revalidation
+import {
+  validateApprovalPlan,
+  type ApprovalPlan,
+} from "./executionApprovalPlanService.js";
 
 // ─── Public types ──────────────────────────────────────────────────────────────
 
@@ -68,6 +78,31 @@ export interface DispatchContext {
   specialistCode: string;
   /** Per-action timeout for connector write operations (default: 60 000 ms) */
   actionTimeoutMs?: number;
+  /**
+   * Sprint 29F.2 Part C — the approval plan covering these actions.
+   * When provided, the binding hash is revalidated at dispatch time before any
+   * action crosses the connector boundary. Any mutation invalidates dispatch.
+   * If omitted, binding revalidation is skipped (not enforced).
+   */
+  approvalPlan?: ApprovalPlan;
+  /** Sprint 29F.2 Part B — identity of the user who approved the plan */
+  approvedBy?: string;
+  approvedAt?: Date;
+}
+
+/** Sprint 29F.2 Part C — thrown when approval binding revalidation fails at dispatch */
+export class ApprovalBindingInvalidError extends Error {
+  constructor(
+    public readonly reason: string,
+    public readonly changedFields: string[],
+  ) {
+    super(
+      `Approval binding is no longer valid at dispatch time: ${reason}. ` +
+      `Changed fields: ${changedFields.join(", ")}. ` +
+      "The actions may have been mutated after approval. Fresh approval is required.",
+    );
+    this.name = "ApprovalBindingInvalidError";
+  }
 }
 
 /**
@@ -273,6 +308,25 @@ export async function dispatchExecutionActions(
     sessionId,
   };
 
+  // ── Sprint 29F.2 Part C — Approval binding revalidation ────────────────────────
+  // Revalidate the binding hash against the CURRENT resolved targets before any
+  // connector communication. Any mutation (target change, device change, expiry)
+  // invalidates approval and blocks ALL dispatch.
+  if (context.approvalPlan) {
+    const bindingCheck = validateApprovalPlan(context.approvalPlan, actions, deviceId);
+    if (!bindingCheck.valid) {
+      logger.warn(
+        { executionId, reason: bindingCheck.reason, changedFields: bindingCheck.changedFields },
+        "[action-dispatcher] Approval binding invalid at dispatch time — blocking dispatch",
+      );
+      throw new ApprovalBindingInvalidError(
+        bindingCheck.reason ?? "Approval plan validation failed",
+        bindingCheck.changedFields ?? [],
+      );
+    }
+    logger.info({ executionId, planId: context.approvalPlan.planId }, "[action-dispatcher] Approval binding validated ✓");
+  }
+
   // ── Initialise / update dispatch record for inspector ────────────────────────
   const startedAt = new Date().toISOString();
   const existing = dispatchStore.get(executionId);
@@ -407,7 +461,46 @@ export async function dispatchExecutionActions(
       beginIdempotencyRecord(organisationId, deviceId, idempotencyKey, opRequestId, action.actionId, executionId);
     }
 
-    // Sprint 29F.1 Part 2 — record executing lifecycle (fire-and-forget)
+    // ── Sprint 29F.2 Part B — Blocking pre-dispatch authorisation proof ─────────
+    // MUST succeed before the connector is invoked. If this throws (DB down or
+    // integrity failure), dispatch is aborted for this action without any side
+    // effect on the connector.
+    try {
+      await recordActionPreDispatch(action, lifecycleCtx, {
+        operationType:          opType,
+        idempotencyKey,
+        approvalPlanBindingHash: context.approvalPlan?.bindingHash ?? null,
+        approvedBy:              context.approvedBy ?? null,
+        approvedAt:              context.approvedAt ?? null,
+      });
+    } catch (preDispatchErr) {
+      const errMsg = preDispatchErr instanceof Error ? preDispatchErr.message : String(preDispatchErr);
+      logger.error(
+        { executionId, actionId: action.actionId, err: errMsg },
+        "[action-dispatcher] Pre-dispatch authorisation persistence failed — ABORTING dispatch for this action",
+      );
+      const preDispatchFailResult: ConnectorExecutionResult = {
+        actionId:         action.actionId,
+        executionId,
+        sessionId,
+        operation:        opType,
+        target:           action.resolvedDestination?.displayPath ?? action.description,
+        status:           "failed",
+        startedAt:        actionStartedAt,
+        completedAt:      new Date().toISOString(),
+        duration:         0,
+        connectorVersion,
+        error: { code: "PRE_DISPATCH_PERSISTENCE_FAILED", message: `Authorisation record persistence failed: ${errMsg}` },
+      };
+      results.push(preDispatchFailResult);
+      record.results.push(preDispatchFailResult);
+      record.executionOrder.push(action.actionId);
+      fireAudit(organisationId, "execution_action.failed", requesterId, action, preDispatchFailResult, specialistCode, deviceId).catch(() => {});
+      // Non-fatal by default — remaining actions can still be attempted
+      continue;
+    }
+
+    // Sprint 29F.1 Part 2 — record executing lifecycle (fire-and-forget, progress telemetry)
     recordActionExecuting(action.actionId, organisationId, deviceId, sessionId).catch(() => {});
 
     // ── Submit to connector bridge ────────────────────────────────────────────
@@ -471,9 +564,16 @@ export async function dispatchExecutionActions(
           ...(succeeded ? { data: opResult.data } : { errorCode: opResult.errorCode, errorMessage: opResult.errorMessage }),
         });
       }
-      // Sprint 29F.1 Part 2 — persist lifecycle transition
+      // Sprint 29F.1/29F.2 — persist lifecycle transition (fire-and-forget post-dispatch)
+      // Physical success: if lifecycle persistence fails, set reconciliationRequired flag.
       if (succeeded) {
-        recordActionCompleted(action.actionId, organisationId, connectorResult).catch(() => {});
+        recordActionCompleted(action.actionId, organisationId, connectorResult).catch(async (lifecycleErr: unknown) => {
+          // Physical side effect already completed — MUST NOT retry connector.
+          // Set reconciliation flag so operator can investigate.
+          const reason = `Lifecycle persistence failed after successful write: ${lifecycleErr instanceof Error ? lifecycleErr.message : String(lifecycleErr)}`;
+          logger.error({ executionId, actionId: action.actionId }, `[action-dispatcher] ${reason}`);
+          await recordReconciliationRequired(action.actionId, organisationId, reason);
+        });
       } else {
         recordActionFailed(action.actionId, organisationId, {
           code:    opResult.errorCode ?? "CONNECTOR_ERROR",
@@ -525,7 +625,7 @@ export async function dispatchExecutionActions(
           errorMessage: errMsg,
         });
       }
-      // Sprint 29F.1 Part 2 — persist lifecycle failure
+      // Sprint 29F.1 Part 2 — persist lifecycle failure (fire-and-forget, non-write-side-effect)
       recordActionFailed(action.actionId, organisationId, { code: errCode, message: errMsg }).catch(() => {});
 
       if (isFatal) {

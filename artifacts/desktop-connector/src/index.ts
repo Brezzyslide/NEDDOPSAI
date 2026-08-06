@@ -234,6 +234,16 @@ async function main() {
         // For now, emit a safe test result
         relayClient?.sendTaskResult({ executionId, result: { status: "delegated" } });
       },
+      // Sprint 29F.2 Part A — wire desktop connector operation handler
+      // Handles write/read operations from the relay with desktop-side idempotency.
+      onConnectorOpRequest: async (payload) => {
+        const { handleConnectorOpRequest } = await import("./connectorOperationHandler.js");
+        return handleConnectorOpRequest(payload, {
+          organisationId: process.env["NEEDSOPS_ORG_SLUG"] ?? "",
+          deviceId:       deviceId,
+          logger,
+        });
+      },
       onRevoked: () => {
         logger.warn("[relay] Device has been revoked — shutting down broker");
         void shutdown("DEVICE_REVOKED");
