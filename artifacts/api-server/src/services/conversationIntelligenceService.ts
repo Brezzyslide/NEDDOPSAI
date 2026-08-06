@@ -156,18 +156,32 @@ const RESUME_PATTERNS = [/\b(resume|continue|unpause|restart|carry on|proceed)\b
 // Retry patterns (for failed tasks)
 const RETRY_PATTERNS = [/\b(try again|retry|try it again|have another go|retry the task)\b/i];
 
-// Domain keywords mapped to workforce roles
+// Domain keywords mapped to current v2 workforce role codes.
+// Sprint 28.3: replaced deprecated v1 codes (compliance_officer, quality_officer,
+// policy_officer, operations_officer, hr_officer, marketing_officer) with the
+// canonical v2 catalogue codes. The deterministic path no longer produces
+// obsolete role codes that cannot be dispatched.
 const DOMAIN_ROLE_MAP: Array<{ keywords: string[]; roles: string[] }> = [
-  { keywords: ["compliance", "audit", "ndis", "regulatory", "registration", "safeguard"], roles: ["compliance_officer", "quality_officer"] },
-  { keywords: ["policy", "policies", "procedure", "practice"], roles: ["policy_officer", "compliance_officer"] },
-  { keywords: ["incident", "accident", "injury", "near miss", "behaviour support", "restrictive"], roles: ["compliance_officer", "quality_officer"] },
-  { keywords: ["quality", "standard", "benchmark", "corrective action"], roles: ["quality_officer"] },
-  { keywords: ["roster", "shift", "schedule", "staffing", "capacity", "headcount"], roles: ["operations_officer"] },
-  { keywords: ["invoice", "billing", "payroll", "wages", "budget", "finance", "expenditure"], roles: ["finance_officer"] },
-  { keywords: ["recruit", "hiring", "performance review", "training", "hr policy", "worker screening"], roles: ["hr_officer"] },
-  { keywords: ["marketing", "campaign", "social media", "brand", "content"], roles: ["marketing_officer"] },
-  { keywords: ["document", "report", "draft", "email", "letter"], roles: ["chief_of_staff"] },
-  { keywords: ["sharpoint", "sharepoint", "crm", "system", "database"], roles: ["operations_officer"] },
+  { keywords: ["compliance", "audit", "ndis", "regulatory", "registration", "safeguard"],
+    roles: ["compliance_quality_manager"] },
+  { keywords: ["policy", "policies", "procedure", "practice", "framework"],
+    roles: ["compliance_quality_manager", "operations_manager"] },
+  { keywords: ["incident", "accident", "injury", "near miss", "behaviour support", "restrictive"],
+    roles: ["incident_safeguarding_specialist", "compliance_quality_manager"] },
+  { keywords: ["quality", "standard", "benchmark", "corrective action"],
+    roles: ["compliance_quality_manager"] },
+  { keywords: ["roster", "shift", "schedule", "staffing", "capacity", "headcount", "operations"],
+    roles: ["operations_manager"] },
+  { keywords: ["invoice", "billing", "payroll", "wages", "budget", "finance", "expenditure"],
+    roles: ["finance_officer"] },
+  { keywords: ["recruit", "hiring", "performance review", "training", "hr policy", "worker screening", "people culture"],
+    roles: ["people_culture_manager", "workforce_compliance_specialist"] },
+  { keywords: ["marketing", "campaign", "social media", "brand", "content"],
+    roles: ["marketing_communications_manager"] },
+  { keywords: ["document", "report", "draft", "email", "letter", "knowledge base"],
+    roles: ["knowledge_documentation_specialist", "chief_of_staff"] },
+  { keywords: ["sharepoint", "sharpoint", "crm", "system", "database"],
+    roles: ["operations_manager"] },
 ];
 
 // ─── Intent classification ─────────────────────────────────────────────────────

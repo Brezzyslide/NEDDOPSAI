@@ -42,6 +42,11 @@ import {
   checkOrganisationLibraryPresence,
   type LibraryPresenceResult,
 } from "./organisationLibraryPresenceService.js";
+import {
+  getConversationWorkforceContext,
+  buildWorkforceSection,
+  type ConversationWorkforceContext,
+} from "./conversationWorkforceContextService.js";
 
 // ─── Workforce role validation ────────────────────────────────────────────────
 
@@ -78,7 +83,7 @@ Your role is to understand what the user is asking, determine whether they need 
 Context:
 - You work in the Australian disability sector under the NDIS Quality and Safeguards Commission
 - Common domains: NDIS compliance, SCHADS Award, participant support, incident management, quality standards, workforce management
-- You have an AI Workforce: executive_assistant, compliance_quality_manager, operations_manager, policy_governance_specialist, knowledge_documentation_specialist, incident_safeguarding_specialist, workforce_compliance_specialist, finance_officer, and others
+- Your available AI Workforce is shown in the AVAILABLE AI WORKFORCE section in your context — use ONLY the specialists listed there
 - Tasks are formal operational records — only propose creating one when the user clearly wants action taken
 
 IMPORTANT SECURITY RULES:
@@ -212,6 +217,24 @@ When NO ORGANISATION LIBRARY PRESENCE section is in your context:
 - Do not assume the library was searched.
 - Do not ask the user whether the document exists.
 - State that document availability will be confirmed during execution.
+
+## AVAILABLE AI WORKFORCE — MANDATORY RULES
+
+You are provided with an AVAILABLE AI WORKFORCE section in your context immediately before the user's message. It lists which specialists are dispatchable now and which are available for discussion only.
+
+Rules you MUST follow:
+
+1. Use ONLY the specialists listed in the AVAILABLE AI WORKFORCE section. Never invent a specialist.
+2. Never assign or recommend a specialist listed under "Available for discussion but not dispatch".
+3. Never imply an unavailable specialist will perform work. "I will coordinate with the Compliance & Quality Manager" is prohibited when that specialist is not dispatchable.
+4. When the ideal specialist is unavailable, explain this honestly: "The Compliance & Quality Manager would normally handle this, but that specialist is not currently active."
+5. Offer a safe available alternative where appropriate, but do not silently substitute a specialist when professional ownership matters — disclose the limitation.
+6. Do not claim entitlement or readiness unless the supplied context confirms it.
+7. If the only suitable specialist is unavailable, say so: "This work would normally require [role], which is not currently available. I can prepare the task and confirm specialist availability before execution."
+8. Never include an unavailable specialist in specialistSequence.
+
+Example correct response:
+"The Operations Manager is available and can lead this review. The Compliance & Quality Manager would normally provide additional assurance, but that specialist is not currently active. I can proceed with the Operations Manager only, and flag the assurance gap."
 
 ## KNOWLEDGE SOURCE TRANSPARENCY
 
@@ -483,9 +506,40 @@ export async function classifyMessageLLM(
     }
   }
 
+  // ── Sprint 28.3: Live workforce context ────────────────────────────────────
+  // Loaded once per request. Both LLM and deterministic fallback paths use the
+  // same live eligible set — no path can return an unavailable specialist.
+  let workforceCtx: ConversationWorkforceContext | null = null;
+  let workforceSection: string | null = null;
+
+  if (ctx.organizationId) {
+    try {
+      workforceCtx = await getConversationWorkforceContext(ctx.organizationId);
+      workforceSection = buildWorkforceSection(workforceCtx);
+    } catch (e) {
+      console.warn("[ChiefOfStaffLLM] Workforce context failed:", {
+        organisationId: ctx.organizationId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  // Dispatchable codes used to filter both structured fields and the deterministic path.
+  const dispatchableCodes: Set<string> | null = workforceCtx
+    ? new Set([
+        "chief_of_staff",
+        ...workforceCtx.specialists.filter(s => s.availableForDispatch).map(s => s.code),
+      ])
+    : null;
+
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
   if (provider !== "openai") {
-    return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: false };
+    const base = { ...classifyMessage(text, ctx, namedDocTerms) };
+    if (dispatchableCodes) {
+      const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
+      base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+    }
+    return { ...base, usedFallback: false };
   }
 
   try {
@@ -520,8 +574,8 @@ export async function classifyMessageLLM(
     const gateway = createAIGateway(gatewayCtx);
 
     const userMessage = ctxPackage
-      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined)
-      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined);
+      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined, workforceSection ?? undefined)
+      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined, workforceSection ?? undefined);
 
     const retrievedFields: string[] = [];
     if (ctx.currentTaskId)    retrievedFields.push("task.id");
@@ -538,16 +592,26 @@ export async function classifyMessageLLM(
     });
 
     if (response.usedFallback) {
-      return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: true, fallbackReason: response.fallbackReason };
+      const base = { ...classifyMessage(text, ctx, namedDocTerms) };
+      if (dispatchableCodes) {
+        const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
+        base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+      }
+      return { ...base, usedFallback: true, fallbackReason: response.fallbackReason };
     }
 
-    const parsed = parseAndValidateLLMResponse(response.content, ctx);
+    const parsed = parseAndValidateLLMResponse(response.content, ctx, workforceCtx ?? undefined);
     return { ...parsed, usedFallback: false };
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`[ChiefOfStaffLLM] Fallback: ${reason}`);
-    return { ...classifyMessage(text, ctx, namedDocTerms), usedFallback: true, fallbackReason: reason };
+    const base = { ...classifyMessage(text, ctx, namedDocTerms) };
+    if (dispatchableCodes) {
+      const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
+      base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+    }
+    return { ...base, usedFallback: true, fallbackReason: reason };
   }
 }
 
@@ -558,6 +622,7 @@ function buildLayeredUserMessage(
   ctx: MessageContext,
   pkg: ChiefOfStaffContextPackage,
   presenceSection?: string,
+  workforceSection?: string,
 ): string {
   const sections: string[] = [];
 
@@ -673,8 +738,14 @@ function buildLayeredUserMessage(
     `Token estimate: ${pkg.tokenEstimate}`
   );
 
+  // ── AVAILABLE AI WORKFORCE (Sprint 28.3) ──────────────────────────────────
+  // Injected before presence and user message so the LLM applies workforce
+  // rules when it reads the user's request.
+  if (workforceSection) {
+    sections.push(workforceSection);
+  }
+
   // ── ORGANISATION LIBRARY PRESENCE (Sprint 28.2) ────────────────────────────
-  // Injected immediately before the user message so the LLM reads it in context.
   if (presenceSection) {
     sections.push(presenceSection);
   }
@@ -691,6 +762,7 @@ function buildLegacyUserMessage(
   text: string,
   ctx: MessageContext,
   presenceSection?: string,
+  workforceSection?: string,
 ): string {
   const lines: string[] = [];
   if (ctx.currentTaskId) lines.push(`Current task: "${ctx.currentTaskTitle ?? "Untitled"}" [${ctx.currentTaskState ?? "unknown"}]`);
@@ -702,6 +774,10 @@ function buildLegacyUserMessage(
       const content = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
       lines.push(`${role}: ${content}`);
     }
+  }
+  // Sprint 28.3: inject workforce section before presence and user message
+  if (workforceSection) {
+    lines.push(`\n${workforceSection}`);
   }
   // Sprint 28.2: inject presence result before user message
   if (presenceSection) {
@@ -716,7 +792,8 @@ function buildLegacyUserMessage(
 function parseAndValidateLLMResponse(
   content: string,
   ctx: MessageContext,
-): ConversationUnderstanding & CoSExtendedOutput {
+  workforceCtx?: ConversationWorkforceContext,
+): ConversationUnderstanding & CoSExtendedOutput & { workforceViolationDetected?: boolean } {
   let raw: Record<string, unknown>;
   try { raw = JSON.parse(content) as Record<string, unknown>; }
   catch { throw new Error(`LLM returned invalid JSON: ${content.slice(0, 200)}`); }
@@ -751,9 +828,35 @@ function parseAndValidateLLMResponse(
   const rta = raw.requestedTaskAction as string | null;
   const requestedTaskAction = (rta && VALID_TASK_ACTIONS.has(rta)) ? rta as any : undefined;
 
-  const roles = Array.isArray(raw.relatedWorkforceRoles)
+  // ── Sprint 28.3: Live workforce filtering ─────────────────────────────────
+  // Build lookup sets from the live workforce context so we can enforce
+  // availability in the structured response fields. Only codes that are
+  // dispatchable may appear in specialistSequence or be recommended for action.
+  const dispatchableCodes: Set<string> | null = workforceCtx
+    ? new Set([
+        "chief_of_staff",
+        ...workforceCtx.specialists.filter(s => s.availableForDispatch).map(s => s.code),
+      ])
+    : null;
+  const conversationCodes: Set<string> | null = workforceCtx
+    ? new Set([
+        "chief_of_staff",
+        ...workforceCtx.specialists.filter(s => s.availableForConversation).map(s => s.code),
+      ])
+    : null;
+
+  let roles = Array.isArray(raw.relatedWorkforceRoles)
     ? (raw.relatedWorkforceRoles as unknown[]).filter(r => typeof r === "string" && VALID_WORKFORCE_ROLES.has(r)) as string[]
     : [];
+
+  // Track which roles were removed so we can append a disclosure.
+  const removedRoleCodes: string[] = [];
+
+  if (conversationCodes) {
+    const before = roles;
+    roles = roles.filter(r => conversationCodes.has(r));
+    before.filter(r => !conversationCodes.has(r)).forEach(r => removedRoleCodes.push(r));
+  }
 
   let customerResponse = typeof raw.customerResponse === "string" ? raw.customerResponse.trim() : "";
   if (!customerResponse) customerResponse = "I'm here to help. What would you like to do?";
@@ -785,6 +888,30 @@ function parseAndValidateLLMResponse(
         rationale: typeof s.rationale === "string" ? s.rationale.slice(0, 300) : "",
       }))
       .filter(s => s.roleCode.length > 0);
+
+    // Sprint 28.3: filter specialistSequence to dispatchable codes only.
+    // An unavailable specialist must never appear in a dispatch plan.
+    if (dispatchableCodes && specialistSequence.length > 0) {
+      const before = specialistSequence;
+      specialistSequence = specialistSequence.filter(s => dispatchableCodes.has(s.roleCode));
+      before.filter(s => !dispatchableCodes.has(s.roleCode)).forEach(s => {
+        if (!removedRoleCodes.includes(s.roleCode)) removedRoleCodes.push(s.roleCode);
+      });
+    }
+  }
+
+  // Sprint 28.3: If unavailable specialists were removed from structured fields,
+  // append a factual disclosure to customerResponse so the user is not misled.
+  let workforceViolationDetected = removedRoleCodes.length > 0;
+  if (workforceViolationDetected && workforceCtx) {
+    const removedNames = removedRoleCodes
+      .map(code => workforceCtx.specialists.find(s => s.code === code)?.displayName ?? code)
+      .filter(Boolean);
+    if (removedNames.length > 0) {
+      const plural = removedNames.length > 1;
+      customerResponse +=
+        ` Note: ${removedNames.join(", ")} ${plural ? "are" : "is"} not currently available for dispatch and ${plural ? "have" : "has"} been removed from the proposed workflow.`;
+    }
   }
 
   return {
@@ -803,5 +930,7 @@ function parseAndValidateLLMResponse(
     orchestrationSteps,
     shouldDispatchSpecialists,
     specialistSequence,
+    // Sprint 28.3: flag for callers that need to know structural enforcement fired
+    workforceViolationDetected,
   };
 }

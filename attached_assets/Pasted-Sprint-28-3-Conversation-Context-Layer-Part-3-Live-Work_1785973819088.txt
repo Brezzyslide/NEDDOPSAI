@@ -1,0 +1,380 @@
+Sprint 28.3 — Conversation Context Layer (Part 3)
+Live Workforce Availability
+
+Objective
+
+Replace the Chief of Staff’s hardcoded workforce knowledge with a live, organisation-aware and execution-aware list of specialists.
+
+The Chief of Staff must only mention, recommend, propose, or assign specialists that genuinely exist and are currently eligible for the organisation.
+
+Do not modify execution logic.
+Do not begin delegation integrity yet.
+Do not build the unified Conversation Context Service yet.
+Do not change Employee Files or specialist DNA.
+
+This sprint changes specialist awareness in the conversation layer only.
+
+────────────────────────────────────────
+Background
+
+The inspection found that the Chief of Staff currently receives a hardcoded workforce list in its system prompt.
+
+This causes it to say things such as:
+
+“I will coordinate with the Operations Manager and Compliance & Quality Manager.”
+
+even when the Compliance & Quality Manager:
+
+- has executionStatus = dna_pending
+- has dnaStatus = pending_design
+- has no approved Employee File
+- is not in ACTIVE_SPECIALISTS
+- cannot pass specialist eligibility
+- cannot actually be dispatched
+
+Existing authoritative services already include:
+
+- getCatalogueAwareSpecialists()
+- checkSpecialistEligibility()
+- getEligibleSpecialists()
+- specialist entitlement checks
+- specialist runtime readiness checks
+
+Use the existing architecture rather than creating another static list.
+
+────────────────────────────────────────
+Part 1 — Inspect the current specialist context path
+
+Inspect:
+
+- buildCoSSystemInstructions()
+- buildLayeredUserMessage()
+- classifyMessageLLM()
+- parseAndValidateLLMResponse()
+- conversationIntelligenceService DOMAIN_ROLE_MAP
+- specialistEligibilityService
+- specialistCatalogueService
+- workforceOpsService
+- organisation entitlement services
+
+Identify every place where specialist names or role codes are:
+
+- hardcoded
+- inferred
+- validated
+- stored
+- returned to the user
+
+Choose one authoritative integration point so the eligible workforce is loaded once per conversation request.
+
+────────────────────────────────────────
+Part 2 — Build an organisation-aware workforce context
+
+Create or reuse a service that returns the specialists available to the current organisation.
+
+Suggested result:
+
+{
+  organisationId,
+  specialists: [
+    {
+      code,
+      displayName,
+      department,
+      executionStatus,
+      dnaStatus,
+      catalogueStatus,
+      entitled,
+      runtimeReady,
+      active,
+      availableForConversation,
+      availableForDispatch,
+      unavailableReason,
+      capabilities
+    }
+  ],
+  summary: {
+    availableCount,
+    dispatchableCount,
+    unavailableCount
+  }
+}
+
+The result must combine:
+
+- DB-backed catalogue metadata
+- runtime registry state
+- DNA status
+- Employee File readiness where available
+- archive status
+- coming-soon status
+- suspension status
+- organisation entitlement
+- runtime availability
+- capability ownership
+
+Do not trust the static registry alone.
+
+────────────────────────────────────────
+Part 3 — Define conversation and dispatch availability
+
+Keep these concepts separate.
+
+Available for conversation:
+
+The Chief of Staff may explain that the role exists, but must clearly state that it is unavailable.
+
+Available for dispatch:
+
+The Chief of Staff may assign or recommend the specialist for immediate work.
+
+A specialist should normally be dispatchable only when:
+
+- exists in catalogue
+- not archived
+- not coming soon
+- not suspended
+- executionStatus is available or an explicitly permitted beta status
+- DNA is approved
+- runtime is ready
+- organisation is entitled
+- required organisational context is available
+- no platform freeze blocks execution
+
+Document the exact rules used.
+
+────────────────────────────────────────
+Part 4 — Remove the hardcoded workforce list
+
+Remove or replace the static workforce list from the Chief of Staff system instructions.
+
+Inject a structured section into the conversation context:
+
+=== AVAILABLE AI WORKFORCE ===
+
+Dispatchable now:
+
+- Operations Manager
+  Code: operations_manager
+  Capabilities:
+  - operational assurance
+  - service delivery oversight
+  - operational policy review
+
+Available for discussion but not dispatch:
+
+- Compliance & Quality Manager
+  Status: Professional design pending
+  Reason: Employee File and Professional DNA are not approved
+
+Unavailable roles must never appear in the dispatchable section.
+
+Do not expose internal implementation terms such as dna_pending to customers. Convert them to clear labels.
+
+────────────────────────────────────────
+Part 5 — LLM rules
+
+Add mandatory rules:
+
+- Use only the supplied AVAILABLE AI WORKFORCE section.
+- Never invent a specialist.
+- Never assign a specialist marked unavailable.
+- Never imply an unavailable specialist will perform work.
+- When the ideal specialist is unavailable, explain this honestly.
+- Offer a safe available alternative where appropriate.
+- Do not silently substitute a different specialist when professional ownership matters.
+- Do not claim entitlement or readiness unless the supplied context confirms it.
+
+Example:
+
+“The Operations Manager is available and can lead this review. The Compliance & Quality Manager would normally provide additional assurance, but that specialist is not currently active. I can proceed with the Operations Manager only.”
+
+────────────────────────────────────────
+Part 6 — Post-response validation
+
+Update parseAndValidateLLMResponse so relatedWorkforceRoles and specialistSequence are checked against the live eligible set.
+
+For every returned role:
+
+- confirm the code exists
+- confirm it was supplied in workforce context
+- confirm its dispatchability for the claimed action
+
+Remove or reject unavailable specialists.
+
+Do not silently allow the customer-facing response to continue promising an unavailable specialist.
+
+If the response text mentions an unavailable specialist as though it will work:
+
+- replace it with a truthful availability statement, or
+- return a controlled validation failure and regenerate once
+
+Do not rely only on prompt compliance.
+
+────────────────────────────────────────
+Part 7 — Deterministic fallback alignment
+
+Update DOMAIN_ROLE_MAP handling.
+
+The deterministic path may identify a professional domain, but it must then resolve that domain against the live available workforce.
+
+Example:
+
+“policy review”
+→ preferred domain: compliance
+→ Compliance & Quality Manager unavailable
+→ Operations Manager available
+→ return Operations Manager as available lead where appropriate
+→ disclose that specialist assurance is limited
+
+Do not return obsolete codes such as policy_officer or compliance_officer unless those are real dispatchable catalogue entries.
+
+Create a canonical domain-to-specialist mapping based on actual role codes.
+
+────────────────────────────────────────
+Part 8 — Entitlement behaviour
+
+A specialist may be operationally ready but unavailable to the organisation because its pack is not entitled.
+
+The Chief of Staff should distinguish:
+
+- unavailable platform-wide
+- unavailable because professional design is incomplete
+- available but not included in the organisation’s plan
+- temporarily suspended
+- coming soon
+- archived
+
+Customer-facing examples:
+
+“This specialist is not yet active.”
+
+“This specialist is available on a different workforce pack.”
+
+“This specialist is temporarily unavailable.”
+
+Do not expose private commercial or internal catalogue details beyond what the user is permitted to see.
+
+────────────────────────────────────────
+Part 9 — Preserve structured state boundaries
+
+This sprint controls who the Chief of Staff may mention or recommend.
+
+It does not yet authorise claims that delegation has occurred.
+
+Do not solve delegation integrity in this sprint.
+
+The Chief of Staff may say:
+
+“I can prepare this task for the Operations Manager.”
+
+It must not yet say:
+
+“I have assigned the Operations Manager.”
+
+unless existing structured state already proves that.
+
+Sprint 28.4 will enforce this programmatically.
+
+────────────────────────────────────────
+Part 10 — Caching and performance
+
+The available workforce lookup should be fast.
+
+Use a short-lived organisation-scoped cache if appropriate.
+
+Invalidate when:
+
+- catalogue metadata changes
+- specialist is archived or restored
+- execution status changes
+- DNA status changes
+- entitlement changes
+- specialist is suspended or resumed
+- workforce pack changes
+
+Do not cache across organisations.
+
+────────────────────────────────────────
+Part 11 — Tests
+
+Add tests covering:
+
+Dispatchable specialist
+
+- Operations Manager active, approved, entitled and runtime ready
+- appears in dispatchable section
+- may be recommended
+
+Professional design pending
+
+- Compliance & Quality Manager with pending DNA
+- appears only as unavailable where relevant
+- cannot be placed in specialistSequence
+- cannot be promised as a worker
+
+Entitlement
+
+- active specialist not entitled
+- clearly represented as unavailable to the organisation
+- never assigned
+
+Catalogue states
+
+- archived
+- coming soon
+- suspended
+- beta where allowed
+- active
+- registry/catalogue disagreement, with catalogue-authoritative commercial state
+
+LLM output validation
+
+- invented role removed or rejected
+- unavailable role removed
+- available role preserved
+- text promising unavailable specialist is corrected
+- relatedWorkforceRoles filtered
+- specialistSequence filtered
+
+Deterministic path
+
+- static obsolete role codes are not returned
+- professional domain resolves to a real available specialist
+- no suitable available specialist produces an honest limitation
+
+Tenant isolation
+
+- organisation A cannot see organisation B’s entitlements or specialist availability
+
+Regression scenario
+
+User:
+
+“Review our Medication Management Policy through an operational lens.”
+
+Expected current workforce behaviour:
+
+- Operations Manager may be offered if entitled and ready
+- Compliance & Quality Manager must not be offered as an active worker while professional design is pending
+- CoS may explain that additional compliance assurance is unavailable
+- no unavailable specialist enters structured specialistSequence
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Authoritative workforce integration point
+2. Exact availability and dispatchability rules
+3. Conversation workforce context shape
+4. Removed hardcoded lists and mappings
+5. LLM post-validation behaviour
+6. Files changed
+7. Cache and invalidation behaviour
+8. Test results
+9. Manual result for the Medication Management Policy request
+
+Stop after Sprint 28.3.
+
+Do not begin delegation integrity or the unified Conversation Context Service.
