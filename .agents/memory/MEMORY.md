@@ -59,3 +59,4 @@
 - [NeedsOps Sprint 28.4 Delegation Integrity](needsops-sprint284.md) — action state model+DB resolver, phrase detection+correction, all CoS paths guarded, self-referential DB chain mock pattern, 3394 tests
 - [NeedsOps Test Recovery post-28.4](needsops-test-recovery-sprint284.md) — vi.hoisted+chain fix, stale specialist codes (Sprint 11), BypassServiceError, status count; 0 failures, 3428 passing
 - [NeedsOps Sprint 28.5 Conversation Context Builder](needsops-sprint285.md) — ConversationContext type, builder parallelism (2 rounds), CoS migrated, extractDocumentSearchTerms moved, tests calling classifyMessageLLM must mock buildMessageContext, 3462 tests
+- [NeedsOps Execution Authorisation Fix](needsops-sprint-exec-auth.md) — role:"system"+purpose:"work_execution" gateway bug, EXECUTION_PERMITTED_ROLES guard, orphan recovery gap, vi.resetAllMocks strips implementations, blueprint mock must be complete, 3489 tests
