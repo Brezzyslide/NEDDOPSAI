@@ -138,6 +138,11 @@ vi.mock("../services/workExecutionPipelineService.js", () => ({
   },
 }));
 
+// Coordinator now resolves requesterRole via getMembershipForUser before calling executeWork
+vi.mock("../services/membershipService.js", () => ({
+  getMembershipForUser: vi.fn().mockResolvedValue({ role: "administrator" }),
+}));
+
 // ─── Shared test data ─────────────────────────────────────────────────────────
 
 const ORG    = "org-271";

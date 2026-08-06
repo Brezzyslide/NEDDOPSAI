@@ -136,6 +136,11 @@ vi.mock("../services/workExecutionPipelineService.js", () => ({
   },
 }));
 
+// Coordinator now resolves requesterRole via getMembershipForUser before calling executeWork
+vi.mock("../services/membershipService.js", () => ({
+  getMembershipForUser: vi.fn().mockResolvedValue({ role: "administrator" }),
+}));
+
 // ─── Import services under test (after mocks) ─────────────────────────────────
 import {
   coordinateIntentApproval,

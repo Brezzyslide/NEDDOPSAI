@@ -319,6 +319,7 @@ export const AUDIT_EVENTS = [
   "execution_coordinator.completed",
   "execution_coordinator.pipeline_outcome",
   "execution_coordinator.error",
+  "execution_coordinator.principal_missing",
   "openclaw.handoff_package_created",
   // Sprint 9.7 — Owner Control Plane
   "platform.organisation_updated",

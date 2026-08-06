@@ -81,6 +81,12 @@ export type ExecutionStage =
 export interface ExecuteWorkInput {
   organizationId: string;
   requesterId: string;
+  /**
+   * The requester's verified org membership role (owner / administrator / manager …).
+   * Resolved by the coordinator from the org_memberships table before dispatching.
+   * Required — execution fails with execution_principal_missing if absent.
+   */
+  requesterRole?: string;
   userRequest: string;
   /** Force a specific blueprint code (optional — auto-selected if omitted) */
   blueprintCode?: string;
@@ -114,7 +120,8 @@ export type ExecutionOutcome =
   | "validation_failed"
   | "awaiting_clarification"
   | "no_blueprint"
-  | "execution_failed";
+  | "execution_failed"
+  | "execution_principal_missing";
 
 export interface ExecuteWorkResult {
   outcome: ExecutionOutcome;
@@ -147,8 +154,34 @@ export interface ExecutionCheckpointData {
 
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
+// Roles that are permitted to invoke task_execution through the AI gateway.
+// Execution on behalf of roles outside this set is refused before hitting the gateway.
+const EXECUTION_PERMITTED_ROLES = new Set(["owner", "administrator", "manager"]);
+
 export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkResult> {
   const { organizationId, requesterId } = input;
+
+  // ── Guard: execution principal must be a verified org member with a permitted role ──
+  // Never fall back to "system". Fail explicitly so the coordinator can surface a clear
+  // customer message and preserve retryability after the authority issue is corrected.
+  if (!input.requesterRole || !EXECUTION_PERMITTED_ROLES.has(input.requesterRole)) {
+    const detail = !input.requesterRole
+      ? "requester role could not be resolved"
+      : `role "${input.requesterRole}" is not permitted to execute work`;
+    console.error(
+      "[WorkExecutionPipeline] execution_principal_missing —",
+      detail,
+      "| requesterId:", requesterId,
+      "| correlationId:", input.correlationId,
+    );
+    return {
+      outcome: "execution_principal_missing",
+      message:
+        `The work could not start because its execution authority could not be verified (${detail}). ` +
+        `No work was performed. Please retry or contact support with reference ${input.correlationId ?? "unknown"}.`,
+    };
+  }
+
   // When resuming from a checkpoint, enrich the user request with the clarification answer
   const userRequest = input.checkpointData
     ? `${input.userRequest}\n\nClarification provided: ${input.checkpointData.clarificationAnswer}`
@@ -297,6 +330,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     draftContent = await generateDraft(userRequest, manifest, blueprint, styleGuidance.guidanceBlock, {
       userId: requesterId,
       organizationId,
+      role: input.requesterRole!, // validated non-null above
     }, evidencePack ?? undefined);
     tLlmMs = Date.now() - t5;
   } catch (err) {
@@ -415,7 +449,7 @@ async function generateDraft(
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
   styleGuidanceBlock: string,
-  authCtx: { userId: string; organizationId: string },
+  authCtx: { userId: string; organizationId: string; role: string },
   evidencePack?: EvidencePack,
 ): Promise<string> {
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
@@ -427,12 +461,12 @@ async function generateDraft(
   const gatewayCtx: AIGatewayContext = {
     userId: authCtx.userId,
     organizationId: authCtx.organizationId,
-    role: "system",
+    role: authCtx.role,           // requester's verified org membership role
     permissions: [],
-    purpose: "work_execution",
+    purpose: "task_execution",    // correct AIPurpose for specialist work execution
     correlationId: randomUUID(),
     provider: "openai",
-    retentionClass: "standard",
+    retentionClass: "operational",
     requiresHumanApproval: true,
   };
 

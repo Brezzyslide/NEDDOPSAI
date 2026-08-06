@@ -1,0 +1,278 @@
+Inspection and Fix — Specialist Execution Authorisation Failure
+
+Current error:
+
+Specialist execution failed:
+Role "system" is not authorised for purpose "work_execution".
+Permitted purposes:
+
+The Chief of Staff successfully creates and delegates the task, but the specialist execution fails at the authorisation layer.
+
+Do not bypass the permission system.
+Do not add blanket permission for every system process.
+Do not simply change "system" to "admin" without tracing the principal.
+
+Objective
+
+Identify why the specialist execution path is authorising with role="system" and determine which authenticated or service principal should legitimately perform work_execution.
+
+────────────────────────────────────────
+Part 1 — Reproduce and trace
+
+Reproduce the complete flow:
+
+User request
+→ Chief of Staff
+→ task proposal
+→ task creation
+→ specialist assignment
+→ execution coordinator
+→ work execution pipeline
+→ specialist runtime submission
+→ permission check
+→ failure
+
+Capture the complete stack trace.
+
+Report:
+
+- exact file
+- exact function
+- exact line
+- permission service called
+- role value passed
+- purpose value passed
+- organisationId
+- requesterId
+- actorUserId
+- executionId
+- taskId
+
+Stop at the first application frame where role becomes "system".
+
+────────────────────────────────────────
+Part 2 — Trace the execution principal
+
+For the failed execution, trace these values end to end:
+
+- requesterId
+- createdByUserId
+- approvedByUserId
+- actorUserId
+- delegatedByUserId
+- executionPrincipal
+- role
+- tenantId / organisationId
+
+Determine:
+
+1. Which user created the task?
+2. Which user approved it?
+3. Which identity the coordinator passed to executeWork().
+4. Which identity the runtime permission service received.
+5. Where "system" was introduced.
+6. Whether "system" represents:
+   - a database user role,
+   - an internal service actor,
+   - a fallback when user context is missing,
+   - a background job,
+   - or an audit actor only.
+
+Do not infer. Name the exact assignment.
+
+────────────────────────────────────────
+Part 3 — Inspect permission architecture
+
+Inspect:
+
+- specialist permission service
+- runtimeContextService
+- specialistEligibilityService
+- executionCoordinatorService
+- workExecutionPipelineService
+- executionService / gateway submission
+- permission-purpose registry
+- role-purpose mappings
+- tenant context
+- background job execution context
+
+Find the rule producing:
+
+Role "system" is not authorised for purpose "work_execution"
+
+Report all valid roles and permitted purposes.
+
+Explain why the error message contains an empty "Permitted purposes:" list.
+
+Determine whether:
+
+- the role lookup returned no record,
+- the role name is invalid,
+- the purpose registry is incomplete,
+- the execution path uses the wrong principal type,
+- or the permission checker is being called with the wrong field.
+
+────────────────────────────────────────
+Part 4 — Determine the correct authority model
+
+Define the intended execution model.
+
+Likely possibilities:
+
+A. User-authorised execution
+
+The original authenticated requester remains the authority:
+
+requester user
+→ approved task
+→ background execution acts on behalf of requester
+
+B. Service-authorised execution
+
+A dedicated internal service principal performs execution after user approval:
+
+user approval
+→ execution_service principal
+→ restricted work_execution permission
+
+C. Hybrid
+
+User approval establishes authority and a service principal performs the technical execution with:
+
+- organisation scope
+- task scope
+- execution scope
+- audit attribution to both requester and service
+
+Determine which model the existing architecture was designed to use.
+
+Do not grant permissions until the intended model is proven.
+
+────────────────────────────────────────
+Part 5 — Fix the identity propagation
+
+If work should execute on behalf of the requester:
+
+- preserve requesterId through the coordinator and pipeline,
+- resolve their actual organisation role,
+- pass that role into permission checks,
+- preserve the service actor separately for audit.
+
+If a service principal is intended:
+
+- create or use a dedicated role such as execution_service,
+- grant only the work_execution purpose,
+- scope it to the organisation and execution,
+- never reuse the broad "system" role,
+- require an approved task or execution intent,
+- preserve the human requester and approver in audit fields.
+
+Do not make "system" universally authorised.
+
+────────────────────────────────────────
+Part 6 — Background execution
+
+The execution runs in the background after the HTTP request may have completed.
+
+Ensure background execution has a durable ExecutionPrincipal object, for example:
+
+{
+  organisationId,
+  requesterId,
+  approverId,
+  serviceActor,
+  role,
+  permittedPurposes,
+  taskId,
+  executionId,
+  correlationId
+}
+
+Do not depend on request-local Clerk or TenantContext after the request ends.
+
+Persist or reconstruct only the required authorised context.
+
+────────────────────────────────────────
+Part 7 — Fail safely
+
+When execution authority is missing:
+
+- do not fall back silently to role="system",
+- return a clear domain error such as execution_principal_missing,
+- post a user-friendly failure to the workroom,
+- include the correlationId,
+- keep internal role details out of customer-facing output,
+- preserve retryability after the authority issue is corrected.
+
+Example customer message:
+
+“The work could not start because its execution authority could not be verified. No work was performed. Please retry or contact support with reference [correlation ID].”
+
+────────────────────────────────────────
+Part 8 — Audit
+
+Audit:
+
+- user who requested the work
+- user who approved it
+- service principal that executed it
+- organisation
+- specialist
+- task
+- execution
+- permission decision
+- permitted purpose
+- denial reason
+
+Do not attribute the professional work solely to "system".
+
+────────────────────────────────────────
+Part 9 — Tests
+
+Add tests covering:
+
+- authenticated owner requests and approves work
+- authenticated administrator requests and approves work
+- authorised member where permitted
+- background execution preserves requester identity
+- service principal has work_execution only
+- missing requester does not fall back to system
+- invalid role denied
+- wrong organisation denied
+- unapproved task cannot be executed by service principal
+- system role remains denied unless explicitly designed otherwise
+- audit contains requester, approver and service actor
+- Chief of Staff → Operations Manager flow completes
+- tenant isolation
+- retry after authority correction
+- customer-facing error does not expose internal permission details
+
+Regression scenario:
+
+“Review our Medication Management Policy through an operational lens.”
+
+Expected:
+
+- task created
+- Operations Manager assigned
+- execution principal resolved
+- work_execution permission passes
+- evidence retrieval runs
+- Completed Work produced
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Exact point where role became "system"
+2. Intended principal model
+3. Valid role-purpose mappings
+4. Why permitted purposes was empty
+5. Files changed
+6. Authorisation fix
+7. Audit changes
+8. Test results
+9. Manual end-to-end result
+
+Do not mark complete until the Chief of Staff → Operations Manager execution succeeds without weakening permission controls.

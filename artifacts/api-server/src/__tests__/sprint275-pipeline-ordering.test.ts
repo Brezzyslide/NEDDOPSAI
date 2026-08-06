@@ -115,7 +115,7 @@ describe("Pipeline ordering — resolveEvidence before validateWorkPackage", () 
 
   it("resolveEvidence is called before validateWorkPackage", async () => {
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Review policy" });
+    await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Review policy" });
 
     const evidenceIdx  = callOrder.indexOf("resolveEvidence");
     const validateIdx  = callOrder.indexOf("validateWorkPackage");
@@ -126,7 +126,7 @@ describe("Pipeline ordering — resolveEvidence before validateWorkPackage", () 
 
   it("validateWorkPackage receives the EvidencePack from resolveEvidence as 3rd argument", async () => {
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Review policy" });
+    await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Review policy" });
 
     expect(mockValidateWorkPackage).toHaveBeenCalled();
     const lastCall = mockValidateWorkPackage.mock.calls.at(-1)!;
@@ -150,7 +150,7 @@ describe("Pipeline ordering — resolveEvidence before validateWorkPackage", () 
     });
 
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Review policy" });
+    await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Review policy" });
 
     // resolveEvidence ran first (and failed), then validateWorkPackage ran
     expect(callOrder.indexOf("resolveEvidence")).toBeLessThan(callOrder.indexOf("validateWorkPackage"));
@@ -161,7 +161,7 @@ describe("Pipeline ordering — resolveEvidence before validateWorkPackage", () 
 
   it("validateWorkPackage is called exactly once per pipeline run", async () => {
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Review policy" });
+    await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Review policy" });
     expect(mockValidateWorkPackage).toHaveBeenCalledTimes(1);
   });
 });
@@ -195,7 +195,7 @@ describe("Pipeline clarification message — uses validationResult.clarification
     });
 
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    const result = await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Write policy review" });
+    const result = await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Write policy review" });
 
     expect(result.outcome).toBe("awaiting_clarification");
     // Message should come from clarificationMessage (evidence-aware), not a generic template
@@ -226,7 +226,7 @@ describe("Pipeline clarification message — uses validationResult.clarification
     });
 
     const { executeWork } = await import("../services/workExecutionPipelineService.js");
-    const result = await executeWork({ organizationId: "org-1", requesterId: "user-1", userRequest: "Write review" });
+    const result = await executeWork({ organizationId: "org-1", requesterId: "user-1", requesterRole: "administrator", userRequest: "Write review" });
 
     expect(result.outcome).toBe("awaiting_clarification");
     const rawCodes = ["policy", "risk_assessment", "legislation", "standards"];

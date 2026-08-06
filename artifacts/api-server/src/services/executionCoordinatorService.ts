@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { executeWork, EXECUTION_STAGE_LABELS } from "./workExecutionPipelineService.js";
 import type { ExecutionStage, ExecutionCheckpointData } from "./workExecutionPipelineService.js";
+import { getMembershipForUser } from "./membershipService.js";
 import {
   postExecutionStartedToConversation,
   postExecutionProgressToConversation,
@@ -399,6 +400,11 @@ export async function recoverOrphanedExecutions(organizationId?: string): Promis
 interface BackgroundRunInput {
   organizationId: string;
   requesterId: string;
+  /**
+   * The requester's verified org membership role, pre-resolved by the dispatcher.
+   * Passed to executeWork so the AI gateway can authorise on behalf of the requester.
+   */
+  requesterRole?: string;
   taskId?: string;
   userRequest: string;
   conversationId?: string;
@@ -416,10 +422,52 @@ function runExecutionInBackground(input: BackgroundRunInput): void {
 async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
   const { organizationId, requesterId, taskId, userRequest, conversationId, correlationId } = input;
 
+  // ── Resolve requester's org membership role ──────────────────────────────────
+  // This must happen inside the background runner (not the HTTP handler) so the
+  // role reflects the state at execution time. Never fall back to "system".
+  let requesterRole = input.requesterRole;
+  if (!requesterRole) {
+    const membership = await getMembershipForUser(organizationId, requesterId).catch(() => null);
+    requesterRole = membership?.role ?? undefined;
+    if (!requesterRole) {
+      // Log and surface a clear error — do NOT proceed with a missing principal
+      console.error(
+        "[ExecutionCoordinator] execution_principal_missing — could not resolve org role",
+        "| requesterId:", requesterId,
+        "| organizationId:", organizationId,
+        "| correlationId:", correlationId,
+      );
+      await logOrgEvent({
+        eventType: "execution_coordinator.principal_missing",
+        organizationId,
+        actorType: "system",
+        actorUserId: requesterId,
+        resourceType: "task",
+        resourceId: taskId ?? "unknown",
+        metadata: { correlationId, reason: "role_not_resolved" },
+      }).catch(() => {});
+      if (conversationId) {
+        const msg =
+          `The work could not start because the execution authority for this request could not be verified. ` +
+          `No work was performed. Please retry or contact support with reference ${correlationId}.`;
+        emitExecutionEvent(conversationId, {
+          type: "execution_failed",
+          conversationId, correlationId, organizationId,
+          humanLabel: "Work could not start — execution authority unverified.",
+          errorMessage: msg,
+        });
+        await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", msg, correlationId)
+          .catch(() => {});
+      }
+      return;
+    }
+  }
+
   try {
     const result = await executeWork({
       organizationId,
       requesterId,
+      requesterRole,
       userRequest,
       conversationId,
       correlationId,
@@ -495,7 +543,8 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         ? "execution_coordinator.completed"
         : "execution_coordinator.pipeline_outcome",
       organizationId,
-      actorType: "system",
+      actorType: "user",
+      actorUserId: requesterId,
       resourceType: "task",
       resourceId: taskId ?? "unknown",
       metadata: {
@@ -503,6 +552,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         outcome: result.outcome,
         completedWorkId: result.completedWorkId,
         qualityScore: result.qualityScore,
+        requesterRole,
       },
     }).catch(() => {});
 
@@ -536,12 +586,15 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           .catch(() => {});
       }
     } else if (result.outcome !== "completed" && conversationId) {
+      const humanLabel = result.outcome === "execution_principal_missing"
+        ? "Work could not start — execution authority could not be verified."
+        : "There was a problem completing this work.";
       emitExecutionEvent(conversationId, {
         type: "execution_failed",
         conversationId,
         correlationId,
         organizationId,
-        humanLabel: "There was a problem completing this work.",
+        humanLabel,
         errorMessage: result.message,
       });
 

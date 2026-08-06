@@ -414,6 +414,7 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     const result = await executeWork({
       organizationId: "org-1",
       requesterId: "user-1",
+      requesterRole: "administrator",
       userRequest: "Write an incident report",
     });
 
@@ -444,6 +445,7 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     const result = await executeWork({
       organizationId: "org-1",
       requesterId: "user-1",
+      requesterRole: "administrator",
       userRequest: "Write an incident report",
       checkpointData: {
         correlationId: "corr-resume",
@@ -479,6 +481,7 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     const result = await executeWork({
       organizationId: "org-1",
       requesterId: "user-1",
+      requesterRole: "administrator",
       userRequest: "Write a report",
       checkpointData: {
         correlationId: "corr-enrich",
