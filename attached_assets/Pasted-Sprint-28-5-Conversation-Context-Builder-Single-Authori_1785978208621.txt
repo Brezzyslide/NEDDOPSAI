@@ -1,0 +1,385 @@
+Sprint 28.5 — Conversation Context Builder
+Single Authoritative Context Assembly Layer
+
+Objective
+
+Create a single authoritative Conversation Context Builder that assembles all conversational context before any AI employee (Chief of Staff, Operations Manager, Executive Assistant, or future specialist) receives a prompt.
+
+This is an architectural consolidation sprint.
+
+Do not change execution behaviour.
+Do not change specialist logic.
+Do not change knowledge retrieval.
+Do not redesign task creation.
+
+The goal is to remove fragmented context assembly and replace it with one trusted builder.
+
+────────────────────────────────────────
+
+Background
+
+Previous sprints introduced multiple independent context providers:
+
+✓ Organisation Memory
+✓ Organisation Library Presence
+✓ Conversation Workforce Context
+✓ Conversation Action State
+✓ Conversation History
+✓ Organisation Profile
+
+These currently enter the conversation through different services and message builders.
+
+The platform now needs a single source of truth.
+
+Every AI interaction should receive context assembled by exactly one builder.
+
+────────────────────────────────────────
+
+Architecture
+
+Create:
+
+conversationContextBuilder.ts
+
+Purpose:
+
+Build one immutable ConversationContext object.
+
+No AI employee should assemble context themselves.
+
+Chief of Staff, Operations Manager, Executive Assistant and future specialists should all consume this object.
+
+────────────────────────────────────────
+
+ConversationContext
+
+Design a strongly typed object similar to:
+
+ConversationContext {
+
+    organisation: {
+
+        id,
+        slug,
+        profile,
+        settings
+
+    },
+
+    memory,
+
+    libraryPresence,
+
+    workforce,
+
+    actionState,
+
+    executionCapabilities,
+
+    conversation: {
+
+        id,
+
+        history,
+
+        latestMessage,
+
+        pendingProposal,
+
+        currentTask,
+
+        currentExecution
+
+    },
+
+    participantContext,
+
+    blueprintContext,
+
+    runtime,
+
+    metadata
+
+}
+
+Do not expose internal implementation details to the LLM.
+
+────────────────────────────────────────
+
+Builder responsibilities
+
+The builder becomes responsible for assembling:
+
+Organisation Profile
+
+Organisation Memory
+
+Organisation Library Presence
+
+Available Workforce
+
+Current Action State
+
+Conversation History
+
+Current Task
+
+Pending Proposal
+
+Current Execution
+
+Execution Capability State
+
+Participant Context (when applicable)
+
+Blueprint Context (when applicable)
+
+Runtime Metadata
+
+Each component should be delegated to the existing service responsible for it.
+
+Do not duplicate business logic.
+
+────────────────────────────────────────
+
+Responsibilities that remain outside the builder
+
+The builder must NOT:
+
+retrieve semantic evidence
+
+perform chunk retrieval
+
+execute work
+
+assign specialists
+
+create tasks
+
+modify state
+
+call LLMs
+
+dispatch specialists
+
+The builder is read-only.
+
+────────────────────────────────────────
+
+Single entry point
+
+Provide:
+
+buildConversationContext({
+
+    organisationId,
+
+    conversationId,
+
+    userId,
+
+    currentMessage,
+
+    taskId?,
+
+    executionId?
+
+})
+
+Returns:
+
+ConversationContext
+
+All existing conversation services should call this instead of assembling context manually.
+
+────────────────────────────────────────
+
+Chief of Staff integration
+
+Replace multiple independent injections with:
+
+const context =
+    await buildConversationContext(...);
+
+buildLayeredUserMessage(context);
+
+The Chief of Staff should no longer know where:
+
+library presence
+
+workforce
+
+memory
+
+action state
+
+came from.
+
+It simply receives ConversationContext.
+
+────────────────────────────────────────
+
+Future specialist integration
+
+Operations Manager
+
+Executive Assistant
+
+Future specialists
+
+must all consume the same ConversationContext.
+
+No specialist should rebuild context independently.
+
+────────────────────────────────────────
+
+Performance
+
+The builder should:
+
+reuse cached components
+
+parallelise independent lookups
+
+avoid duplicate DB calls
+
+avoid duplicate entitlement checks
+
+avoid duplicate library lookups
+
+Target:
+
+No measurable regression compared to Sprint 28.4.
+
+────────────────────────────────────────
+
+Observability
+
+Record:
+
+context build duration
+
+components loaded
+
+cache hits
+
+cache misses
+
+failed components
+
+fallbacks used
+
+component timings
+
+Expose this to the existing Inspector.
+
+────────────────────────────────────────
+
+Failure behaviour
+
+If one component fails:
+
+do not fail the whole context.
+
+Return:
+
+partial context
+
+component failure reason
+
+degraded mode indicator
+
+Chief of Staff should continue operating whenever safe.
+
+────────────────────────────────────────
+
+Testing
+
+Add comprehensive tests covering:
+
+full context
+
+partial context
+
+missing organisation memory
+
+missing library
+
+missing participant
+
+no task
+
+active task
+
+active execution
+
+pending proposal
+
+cache behaviour
+
+parallel loading
+
+tenant isolation
+
+component failure
+
+deterministic ordering
+
+Chief of Staff integration
+
+Operations Manager integration
+
+Ensure every existing conversation path produces identical behaviour after migration.
+
+────────────────────────────────────────
+
+Documentation
+
+Create:
+
+docs/architecture/ConversationContextBuilder.md
+
+Include:
+
+Architecture diagram
+
+Component responsibilities
+
+Sequence diagram
+
+Context lifecycle
+
+Caching strategy
+
+Failure strategy
+
+Extension guide for future specialists
+
+────────────────────────────────────────
+
+Deliverables
+
+Return:
+
+1. ConversationContext schema
+
+2. Builder architecture
+
+3. Components migrated
+
+4. Components intentionally excluded
+
+5. Performance measurements
+
+6. Files changed
+
+7. Test results
+
+8. Migration summary
+
+9. Future extension points
+
+Stop after Sprint 28.5.
+
+Do not begin customer-language improvements (Sprint 28.6).
+Do not begin specialist development.

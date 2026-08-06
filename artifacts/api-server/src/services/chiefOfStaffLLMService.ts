@@ -33,25 +33,22 @@ import {
   type MessageContext,
 } from "./conversationIntelligenceService.js";
 import { SPECIALISTS } from "../lib/workforceRegistry.js";
+import type { ConversationMessage } from "./contextSelectionService.js";
+import type { LibraryPresenceResult } from "./organisationLibraryPresenceService.js";
 import {
-  buildChiefOfStaffContext,
-  type ChiefOfStaffContextPackage,
-  type ConversationMessage,
-} from "./contextSelectionService.js";
-import {
-  checkOrganisationLibraryPresence,
-  type LibraryPresenceResult,
-} from "./organisationLibraryPresenceService.js";
-import {
-  getConversationWorkforceContext,
   buildWorkforceSection,
   type ConversationWorkforceContext,
 } from "./conversationWorkforceContextService.js";
 import {
-  resolveConversationActionState,
   buildActionStateSection,
   type ConversationActionState,
 } from "./conversationActionStateService.js";
+import {
+  buildConversationContext,
+  deriveMessageContext,
+  extractDocumentSearchTerms,
+  type ConversationContext,
+} from "./conversationContextBuilder.js";
 import {
   checkDelegationIntegrity,
   buildDelegationIntegrityAuditEvent,
@@ -364,92 +361,10 @@ const VALID_TASK_ACTIONS = new Set([
   "create","revise","approve","reject","pause","resume","cancel","status","follow_up",
 ]);
 
-// ─── Document requirement detector (Sprint 28.2) ──────────────────────────────
-
-/**
- * Stop words that interrupt backward scanning for document-name context words.
- * A stop word here means "the preceding words are not part of the document name".
- */
-const DOC_NAME_STOP_WORDS = new Set([
-  "our", "the", "your", "a", "an", "this", "that", "any", "some", "all", "its",
-  "their", "my", "me", "we", "i", "you", "s",
-  // Common leading verbs / prepositions that are not part of a document name
-  "review", "check", "update", "analyse", "analyze", "assess", "prepare", "create",
-  "build", "improve", "help", "process", "handle", "submit", "complete", "draft",
-  "ensure", "confirm", "verify", "conduct", "perform", "run",
-  "with", "and", "or", "in", "of", "for", "to", "is", "are", "was", "were",
-  "has", "have", "had", "will", "can", "could", "should", "would", "through",
-  "via", "by", "using", "about", "regarding", "on", "at", "from", "as", "into",
-  "participant", "staff", "worker", "client", "service",
-]);
-
-/** Document type keywords that anchor a document name */
-const DOC_TYPE_KEYWORDS = [
-  "policy", "policies", "procedure", "procedures", "sop", "standard", "standards",
-  "guideline", "guidelines", "protocol", "protocols", "manual", "framework",
-  "assessment", "plan", "register", "handbook",
-];
-
-/**
- * Lightweight document-requirement detector for conversation use.
- *
- * Extracts explicitly named documents from the user message.
- * Does NOT invent document requirements the user did not mention.
- * Does NOT run execution blueprint logic.
- * Where the user refers only to a broad topic, returns conservative terms.
- *
- * Examples:
- *   "Review our Medication Management Policy"    → ["Medication Management Policy"]
- *   "Review our incident reporting procedure"   → ["Incident Reporting Procedure"]
- *   "Check the participant's risk assessment"   → ["Risk Assessment"]
- *   "Update our policies"                       → [] (too vague — no specific name)
- */
-export function extractDocumentSearchTerms(text: string): string[] {
-  const lower = text.toLowerCase();
-  const terms: string[] = [];
-
-  for (const docType of DOC_TYPE_KEYWORDS) {
-    let searchFrom = 0;
-    while (true) {
-      const idx = lower.indexOf(docType, searchFrom);
-      if (idx === -1) break;
-      searchFrom = idx + 1;
-
-      // Ensure it is a whole-word match (not part of a longer word)
-      const before = idx > 0 ? lower[idx - 1] : " ";
-      const after  = idx + docType.length < lower.length ? lower[idx + docType.length] : " ";
-      if (/[a-z]/i.test(before) || /[a-z]/i.test(after)) continue;
-
-      // Scan backward in the original text for context words (document name prefix)
-      const beforeText = text.slice(0, idx).trimEnd();
-      const words = beforeText.split(/\s+/).filter(w => w.length > 0);
-
-      const nameTokens: string[] = [];
-      for (let i = words.length - 1; i >= 0 && nameTokens.length < 5; i--) {
-        // Strip trailing punctuation and possessives
-        const raw = words[i].replace(/[^a-zA-Z'-]/g, "").replace(/['']s$/i, "");
-        if (!raw || DOC_NAME_STOP_WORDS.has(raw.toLowerCase())) break;
-        nameTokens.unshift(words[i].replace(/[^a-zA-Z''-]/g, "").replace(/['']s$/i, ""));
-      }
-
-      if (nameTokens.length >= 1) {
-        // Build title-cased full phrase: context words + document type
-        const titleCase = (w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
-        const phrase = [
-          ...nameTokens.map(titleCase),
-          titleCase(docType),
-        ].join(" ");
-        terms.push(phrase);
-      }
-    }
-  }
-
-  // Deduplicate — prefer longer, more specific phrases over shorter subsets
-  const unique = [...new Set(terms)];
-  return unique
-    .filter(t => !unique.some(other => other !== t && other.toLowerCase().includes(t.toLowerCase())))
-    .slice(0, 5);
-}
+// ─── Document search term extraction (Sprint 28.5) ────────────────────────────
+// Moved to conversationContextBuilder.ts to avoid circular imports.
+// Re-exported here for backward compatibility with existing call sites and tests.
+export { extractDocumentSearchTerms } from "./conversationContextBuilder.js";
 
 // ─── Library presence context section builders (Sprint 28.2) ──────────────────
 
@@ -516,71 +431,33 @@ export async function classifyMessageLLM(
   authCtx: { userId: string; organizationId: string; role: string; permissions: string[] },
 ): Promise<ConversationUnderstanding & CoSExtendedOutput & { usedFallback?: boolean; fallbackReason?: string }> {
 
-  // ── Sprint 28.2: Library presence check (authoritative integration point) ──
-  // Runs before provider selection so both LLM and deterministic paths benefit.
-  const namedDocTerms = extractDocumentSearchTerms(text);
-  let presenceSection: string | null = null;
+  // ── Sprint 28.5: Single authoritative context builder ────────────────────
+  // All context components (library presence, action state, workforce, memory)
+  // are assembled in parallel by the builder before any provider branch runs.
+  // No specialist assembles context itself — the builder is the sole authority.
+  const context = await buildConversationContext({
+    organisationId: ctx.organizationId,
+    conversationId: ctx.conversationId ?? "",
+    userId: authCtx.userId,
+    currentMessage: text,
+    taskId: ctx.currentTaskId,
+    executionId: undefined,
+  });
 
-  if (ctx.organizationId && namedDocTerms.length > 0) {
-    const correlationId = randomUUID();
-    try {
-      const libraryPresence = await checkOrganisationLibraryPresence(
-        ctx.organizationId,
-        namedDocTerms,
-      );
-      presenceSection = buildLibraryPresenceSection(libraryPresence, namedDocTerms);
-    } catch (e) {
-      console.warn("[ChiefOfStaffLLM] Library presence check failed", {
-        organisationId: ctx.organizationId,
-        conversationId: ctx.conversationId ?? null,
-        correlationId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-      presenceSection = buildLibraryPresenceFailureSection(namedDocTerms);
-    }
+  // Expose build telemetry for the Inspector
+  if (context.runtime.isDegraded || context.runtime.buildDurationMs > 2000) {
+    console.warn("[ChiefOfStaffLLM] Context build degraded:", {
+      conversationId: ctx.conversationId,
+      organisationId: ctx.organizationId,
+      buildDurationMs: context.runtime.buildDurationMs,
+      failedComponents: context.runtime.failedComponents,
+      componentTimings: context.runtime.componentTimings,
+    });
   }
 
-  // ── Sprint 28.4: Action state resolution (authoritative — DB records only) ──
-  // Resolved before the provider branch so both LLM and deterministic paths
-  // get the same action state truth. Never inferred from conversation text.
-  let actionState: ConversationActionState | null = null;
-  let actionStateSection: string | null = null;
-
-  if (ctx.organizationId && ctx.conversationId) {
-    try {
-      actionState = await resolveConversationActionState({
-        organisationId: ctx.organizationId,
-        conversationId: ctx.conversationId,
-        recentMessages: ctx.recentMessages ?? [],
-        taskId: ctx.currentTaskId ?? undefined,
-      });
-      actionStateSection = buildActionStateSection(actionState);
-    } catch (e) {
-      console.warn("[ChiefOfStaffLLM] Action state resolution failed:", {
-        organisationId: ctx.organizationId,
-        conversationId: ctx.conversationId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
-
-  // ── Sprint 28.3: Live workforce context ────────────────────────────────────
-  // Loaded once per request. Both LLM and deterministic fallback paths use the
-  // same live eligible set — no path can return an unavailable specialist.
-  let workforceCtx: ConversationWorkforceContext | null = null;
-  let workforceSection: string | null = null;
-
-  if (ctx.organizationId) {
-    try {
-      workforceCtx = await getConversationWorkforceContext(ctx.organizationId);
-      workforceSection = buildWorkforceSection(workforceCtx);
-    } catch (e) {
-      console.warn("[ChiefOfStaffLLM] Workforce context failed:", {
-        organisationId: ctx.organizationId,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-  }
+  const namedDocTerms  = context.runtime.extractedSearchTerms;
+  const actionState    = context.actionState;
+  const workforceCtx   = context.workforce;
 
   // Dispatchable codes used to filter both structured fields and the deterministic path.
   const dispatchableCodes: Set<string> | null = workforceCtx
@@ -612,22 +489,6 @@ export async function classifyMessageLLM(
   }
 
   try {
-    // Build full tenant-aware context package (Sprint 9.2)
-    let ctxPackage: ChiefOfStaffContextPackage | null = null;
-    if (ctx.conversationId && ctx.organizationId) {
-      try {
-        ctxPackage = await buildChiefOfStaffContext({
-          organizationId: ctx.organizationId,
-          conversationId: ctx.conversationId,
-          userId: authCtx.userId,
-          taskId: ctx.currentTaskId,
-          currentMessage: text,
-        });
-      } catch (e) {
-        console.warn("[ChiefOfStaffLLM] Context build failed, falling back:", e);
-      }
-    }
-
     const gatewayCtx: AIGatewayContext = {
       userId:               authCtx.userId,
       organizationId:       authCtx.organizationId,
@@ -642,15 +503,15 @@ export async function classifyMessageLLM(
 
     const gateway = createAIGateway(gatewayCtx);
 
-    const userMessage = ctxPackage
-      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined, workforceSection ?? undefined, actionStateSection ?? undefined)
-      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined, workforceSection ?? undefined, actionStateSection ?? undefined);
+    const userMessage = context.memory
+      ? buildLayeredUserMessage(context)
+      : buildLegacyUserMessage(context);
 
     const retrievedFields: string[] = [];
-    if (ctx.currentTaskId)    retrievedFields.push("task.id");
-    if (ctx.currentTaskTitle) retrievedFields.push("task.title");
-    if (ctx.currentTaskState) retrievedFields.push("task.state");
-    if (ctx.conversationId)   retrievedFields.push("conversation.id");
+    if (context.conversation.currentTaskId)    retrievedFields.push("task.id");
+    if (context.conversation.currentTaskTitle) retrievedFields.push("task.title");
+    if (context.conversation.currentTaskState) retrievedFields.push("task.state");
+    if (context.conversation.id)               retrievedFields.push("conversation.id");
     gateway.validateRetrievedFields(retrievedFields);
 
     const response = await gateway.process({
@@ -669,7 +530,7 @@ export async function classifyMessageLLM(
       return { ...base, usedFallback: true, fallbackReason: response.fallbackReason };
     }
 
-    const parsed = parseAndValidateLLMResponse(response.content, ctx, workforceCtx ?? undefined, actionState ?? undefined);
+    const parsed = parseAndValidateLLMResponse(response.content, deriveMessageContext(context), workforceCtx ?? undefined, actionState ?? undefined);
     return { ...parsed, usedFallback: false };
 
   } catch (err) {
@@ -691,37 +552,48 @@ export async function classifyMessageLLM(
   }
 }
 
-// ─── Layered user message builder (Sprint 9.2) ────────────────────────────────
+// ─── Layered user message builder (Sprint 28.5) ──────────────────────────────
+// Accepts an assembled ConversationContext. No context assembly happens here —
+// all components come pre-loaded from buildConversationContext.
 
-function buildLayeredUserMessage(
-  text: string,
-  ctx: MessageContext,
-  pkg: ChiefOfStaffContextPackage,
-  presenceSection?: string,
-  workforceSection?: string,
-  actionStateSection?: string,
-): string {
+function buildLayeredUserMessage(context: ConversationContext): string {
+  const pkg    = context.memory!;   // guarded by caller: only called when memory != null
+  const text   = context.conversation.latestMessage;
+  const orgPrf = context.organisation.profile;
+
+  // Derive sections from context components — all formatting stays in CoS
+  const actionStateSection = context.actionState
+    ? buildActionStateSection(context.actionState)
+    : null;
+  const workforceSection = context.workforce
+    ? buildWorkforceSection(context.workforce)
+    : null;
+  const presenceSection = context.libraryPresence
+    ? buildLibraryPresenceSection(context.libraryPresence, context.runtime.extractedSearchTerms)
+    : context.runtime.libraryPresenceLoadFailed && context.runtime.extractedSearchTerms.length > 0
+      ? buildLibraryPresenceFailureSection(context.runtime.extractedSearchTerms)
+      : null;
+
   const sections: string[] = [];
 
   // ── TENANT PROFILE ──────────────────────────────────────────────────────────
-  if (pkg.organisationProfile && Object.keys(pkg.organisationProfile).length > 0) {
+  if (orgPrf && Object.keys(orgPrf).length > 0) {
     sections.push(
       `=== TENANT PROFILE ===\n` +
-      `Organisation: ${pkg.organisationProfile.name ?? "Unknown"}\n` +
-      `Status: ${pkg.organisationProfile.status ?? "active"}`
+      `Organisation: ${orgPrf.name ?? "Unknown"}\n` +
+      `Status: ${orgPrf.status ?? "active"}`
     );
   }
 
   // ── APPROVED TENANT MEMORY ─────────────────────────────────────────────────
   if (pkg.approvedOrganisationMemory.length > 0) {
     const memLines = pkg.approvedOrganisationMemory
-      .slice(0, 15) // cap for token budget
+      .slice(0, 15)
       .map(m => `[${m.memoryType}] ${m.title}: ${m.content.slice(0, 200)}`);
     sections.push(`=== APPROVED ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
   }
 
-  // ── ORGANISATIONAL PERSONALITY (Sprint 21) ─────────────────────────────────
-  // Terminology, style preferences, and operating rules from approved memory
+  // ── ORGANISATIONAL PERSONALITY ─────────────────────────────────────────────
   {
     const PERSONALITY_TYPES = new Set(["terminology", "operating_preference", "approval_rule"]);
     const personalityMems = pkg.approvedOrganisationMemory
@@ -815,21 +687,14 @@ function buildLayeredUserMessage(
     `Token estimate: ${pkg.tokenEstimate}`
   );
 
-  // ── CURRENT ACTION STATE (Sprint 28.4) ────────────────────────────────────
-  // Injected before workforce/presence so the LLM knows what it may claim.
-  if (actionStateSection) {
-    sections.push(actionStateSection);
-  }
+  // ── CURRENT ACTION STATE ───────────────────────────────────────────────────
+  if (actionStateSection) sections.push(actionStateSection);
 
-  // ── AVAILABLE AI WORKFORCE (Sprint 28.3) ──────────────────────────────────
-  if (workforceSection) {
-    sections.push(workforceSection);
-  }
+  // ── AVAILABLE AI WORKFORCE ─────────────────────────────────────────────────
+  if (workforceSection) sections.push(workforceSection);
 
-  // ── ORGANISATION LIBRARY PRESENCE (Sprint 28.2) ────────────────────────────
-  if (presenceSection) {
-    sections.push(presenceSection);
-  }
+  // ── ORGANISATION LIBRARY PRESENCE ─────────────────────────────────────────
+  if (presenceSection) sections.push(presenceSection);
 
   // ── CURRENT USER MESSAGE (untrusted) ──────────────────────────────────────
   sections.push(`=== CURRENT USER MESSAGE (UNTRUSTED DATA) ===\n${text}`);
@@ -839,36 +704,38 @@ function buildLayeredUserMessage(
 
 // ─── Legacy message builder (fallback when context package unavailable) ────────
 
-function buildLegacyUserMessage(
-  text: string,
-  ctx: MessageContext,
-  presenceSection?: string,
-  workforceSection?: string,
-  actionStateSection?: string,
-): string {
+function buildLegacyUserMessage(context: ConversationContext): string {
+  const conv = context.conversation;
+  const text = conv.latestMessage;
+
+  const actionStateSection = context.actionState
+    ? buildActionStateSection(context.actionState)
+    : null;
+  const workforceSection = context.workforce
+    ? buildWorkforceSection(context.workforce)
+    : null;
+  const presenceSection = context.libraryPresence
+    ? buildLibraryPresenceSection(context.libraryPresence, context.runtime.extractedSearchTerms)
+    : context.runtime.libraryPresenceLoadFailed && context.runtime.extractedSearchTerms.length > 0
+      ? buildLibraryPresenceFailureSection(context.runtime.extractedSearchTerms)
+      : null;
+
   const lines: string[] = [];
-  if (ctx.currentTaskId) lines.push(`Current task: "${ctx.currentTaskTitle ?? "Untitled"}" [${ctx.currentTaskState ?? "unknown"}]`);
-  if (ctx.pendingApprovalId) lines.push(`Pending approval waiting for a decision.`);
-  if (ctx.recentMessages?.length) {
+  if (conv.currentTaskId) {
+    lines.push(`Current task: "${conv.currentTaskTitle ?? "Untitled"}" [${conv.currentTaskState ?? "unknown"}]`);
+  }
+  if (conv.pendingApprovalId) lines.push(`Pending approval waiting for a decision.`);
+  if (conv.recentMessages.length > 0) {
     lines.push("\nRecent conversation:");
-    for (const msg of ctx.recentMessages.slice(-8)) {
+    for (const msg of conv.recentMessages.slice(-8)) {
       const role = msg.senderType === "user" ? "User" : "Chief of Staff";
       const content = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
       lines.push(`${role}: ${content}`);
     }
   }
-  // Sprint 28.4: inject action state before workforce/presence/user message
-  if (actionStateSection) {
-    lines.push(`\n${actionStateSection}`);
-  }
-  // Sprint 28.3: inject workforce section before presence and user message
-  if (workforceSection) {
-    lines.push(`\n${workforceSection}`);
-  }
-  // Sprint 28.2: inject presence result before user message
-  if (presenceSection) {
-    lines.push(`\n${presenceSection}`);
-  }
+  if (actionStateSection) lines.push(`\n${actionStateSection}`);
+  if (workforceSection)   lines.push(`\n${workforceSection}`);
+  if (presenceSection)    lines.push(`\n${presenceSection}`);
   lines.push(`\nUser message: ${text}`);
   return lines.join("\n");
 }

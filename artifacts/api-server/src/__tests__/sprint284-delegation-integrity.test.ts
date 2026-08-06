@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
   const validateRetrievedFields   = vi.fn();
   const createAIGateway           = vi.fn(() => ({ process: gatewayProcess, validateRetrievedFields }));
   const buildChiefOfStaffContext  = vi.fn();
+  const buildMessageContext       = vi.fn();
   const buildSystemInstructionForEmployee = vi.fn().mockReturnValue("SYSTEM");
   const buildDNASystemInstruction = vi.fn().mockReturnValue("DNA");
   const checkOrganisationLibraryPresence = vi.fn();
@@ -43,6 +44,7 @@ const mocks = vi.hoisted(() => {
     gatewayProcess,
     validateRetrievedFields,
     buildChiefOfStaffContext,
+    buildMessageContext,
     buildSystemInstructionForEmployee,
     buildDNASystemInstruction,
     checkOrganisationLibraryPresence,
@@ -56,6 +58,9 @@ const mocks = vi.hoisted(() => {
 vi.mock("@workspace/ai-gateway", () => ({ createAIGateway: mocks.createAIGateway }));
 vi.mock("../services/contextSelectionService.js", () => ({
   buildChiefOfStaffContext: mocks.buildChiefOfStaffContext,
+}));
+vi.mock("../services/conversationService.js", () => ({
+  buildMessageContext: mocks.buildMessageContext,
 }));
 vi.mock("@workspace/workforce-dna", () => ({
   buildSystemInstructionForEmployee: mocks.buildSystemInstructionForEmployee,
@@ -506,6 +511,12 @@ describe("classifyMessageLLM — action state enforcement", () => {
     mocks.dbLimitFn.mockResolvedValue([]); // reset DB to return [] by default
     mocks.buildSystemInstructionForEmployee.mockReturnValue("SYSTEM");
     mocks.buildChiefOfStaffContext.mockResolvedValue(null);
+    // Sprint 28.5: buildConversationContext now calls buildMessageContext.
+    // Return a minimal context so DB mock sequence is preserved for action state resolver.
+    mocks.buildMessageContext.mockResolvedValue({
+      conversationId: CONV_ID, organizationId: ORG_A,
+      recentMessages: [], proposalExists: false,
+    });
     mocks.checkOrganisationLibraryPresence.mockResolvedValue({
       searched: true, matches: [],
       summary: { exactMatch: false, partialMatch: false, searchable: false, usable: false, reason: "Not found" },
@@ -561,6 +572,13 @@ describe("classifyMessageLLM — action state enforcement", () => {
       ],
       proposalExists: true,
     };
+
+    // Sprint 28.5: builder uses buildMessageContext for recentMessages, not ctx directly.
+    mocks.buildMessageContext.mockResolvedValueOnce({
+      conversationId: CONV_ID, organizationId: ORG_A,
+      recentMessages: [{ senderType: "chief_of_staff", content: "Proposal card", messageType: "task_proposal" }],
+      proposalExists: true,
+    });
 
     await classifyMessageLLM("Confirm the proposal", ctxWithProposal, authCtx);
 
@@ -642,6 +660,10 @@ describe("deterministic fallback — same integrity enforcement", () => {
     _clearWorkforceCache();
     vi.resetAllMocks();
     mocks.dbLimitFn.mockResolvedValue([]);
+    mocks.buildMessageContext.mockResolvedValue({
+      conversationId: CONV_ID, organizationId: ORG_A,
+      recentMessages: [], proposalExists: false,
+    });
     mocks.buildSystemInstructionForEmployee.mockReturnValue("SYSTEM");
     mocks.checkOrganisationLibraryPresence.mockResolvedValue({
       searched: true, matches: [],
@@ -779,6 +801,10 @@ describe("regression — Medication Management Policy conversation arc", () => {
     _clearWorkforceCache();
     vi.resetAllMocks();
     mocks.dbLimitFn.mockResolvedValue([]);
+    mocks.buildMessageContext.mockResolvedValue({
+      conversationId: CONV_ID, organizationId: ORG_A,
+      recentMessages: [], proposalExists: false,
+    });
     mocks.buildSystemInstructionForEmployee.mockReturnValue("SYSTEM");
     mocks.buildChiefOfStaffContext.mockResolvedValue(null);
     mocks.checkOrganisationLibraryPresence.mockResolvedValue({
