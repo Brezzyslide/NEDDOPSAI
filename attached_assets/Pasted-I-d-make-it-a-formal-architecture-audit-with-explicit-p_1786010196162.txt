@@ -1,0 +1,266 @@
+I’d make it a formal architecture audit with explicit pass/fail criteria. This forces Replit to prove the runtime matches the intended architecture rather than simply saying it does.
+
+⸻
+
+Sprint 29B.2 — Unified Execution Runtime Audit (Inspection Only)
+
+Do not modify any code.
+
+I want a complete runtime inspection of every active conversation and task execution path. The purpose is to prove that the implemented architecture exactly matches the Unified Execution Architecture and that no legacy execution paths remain.
+
+For every finding, provide:
+
+* PASS / FAIL
+* evidence (file + function + execution path)
+* if FAIL, explain the exact runtime consequence
+* recommended fix (inspection only, do not implement)
+
+⸻
+
+Part 1 — Entry Points
+
+Identify every production entry point that can result in specialist reasoning or work execution.
+
+Include (but do not assume this list is complete):
+
+* Chief of Staff conversation flow
+* Task approval flow
+* Background execution
+* Workflow execution
+* Scheduled execution
+* Clarification resume
+* Revision flow
+* Retry flow
+* Any API route that triggers specialist execution
+
+For each entry point show the complete call graph until AI generation.
+
+⸻
+
+Part 2 — Unified Engine Verification
+
+Verify that every specialist execution passes through:
+
+unifiedExecutionEngine.execute(...)
+
+There must be no production path that performs specialist reasoning without entering the unified engine.
+
+Ignore genuine orchestration cognition such as:
+
+* intent classification
+* conflict resolution
+* delegation decisions
+
+These are CoS reasoning, not specialist execution.
+
+List every remaining direct AI gateway call and classify it as:
+
+* orchestration
+* execution
+* legacy
+* bug
+
+⸻
+
+Part 3 — Canonical Execution Context
+
+Verify that one and only one CanonicalExecutionContext is instantiated per execution.
+
+Show:
+
+* where it is created
+* which stages consume it
+* whether any stage reconstructs context independently
+
+Confirm every field is populated correctly:
+
+* executionId
+* triggerType
+* organisationId
+* requesterId
+* requesterRole
+* specialistCode
+* manifest
+* DNA
+* organisation memory
+* conversation context
+* EvidencePack
+* blueprint
+* capability permissions
+* constraints
+* resource plan
+* execution actions
+
+Report any field that is:
+
+* duplicated
+* reconstructed
+* nullable when it should not be
+* populated differently between conversation and task execution
+
+⸻
+
+Part 4 — Evidence Resolution Audit
+
+For every execution trigger determine whether KnowledgeResolutionService is called.
+
+Verify:
+
+Conversation
+
+↓
+
+KnowledgeResolutionService
+
+↓
+
+EvidencePack
+
+↓
+
+Prompt
+
+↓
+
+AI Gateway
+
+↓
+
+Self Review
+
+↓
+
+Output
+
+Confirm the conversation path receives the same quality of evidence as task execution.
+
+List any trigger that bypasses EvidencePack.
+
+⸻
+
+Part 5 — AI Gateway Audit
+
+Search the entire codebase.
+
+List every call to:
+
+* aiGateway.process(…)
+* createAIGateway()
+* gateway.process(…)
+* OpenAI provider
+* Anthropic provider
+* any direct provider invocation
+
+Classify each as:
+
+* Chief of Staff cognition
+* Specialist execution
+* Validation
+* Classification
+* Summarisation
+* Legacy
+* Bug
+
+Confirm:
+
+No service outside unifiedExecutionEngine may call the AI gateway to perform specialist work.
+
+⸻
+
+Part 6 — Adapter Purity
+
+Verify the following services are adapters only:
+
+* workExecutionPipelineService
+* specialistIntelligenceService
+
+Confirm they contain:
+
+* no orchestration
+* no evidence logic
+* no prompt construction
+* no gateway decisions
+* no business rules
+
+Only translation and delegation.
+
+⸻
+
+Part 7 — Legacy Detection
+
+Search for any disconnected or obsolete execution code.
+
+Examples:
+
+* old execution services
+* duplicated prompt builders
+* duplicated EvidencePack creation
+* duplicated context builders
+* unused pipeline services
+* abandoned orchestration paths
+
+Classify:
+
+SAFE TO DELETE
+
+DEPRECATE
+
+ACTIVE
+
+UNKNOWN
+
+⸻
+
+Part 8 — Runtime Sequence Diagram
+
+Produce the actual runtime sequence for:
+
+Scenario A
+
+User:
+
+Review our Medication Policy.
+
+Scenario B
+
+User:
+
+Go to my desktop, review Medication Policy.docx and save the revised version back into Documents.
+
+Show every service called in order.
+
+⸻
+
+Part 9 — Architecture Compliance Score
+
+Score the implementation (0–100) against the approved architecture.
+
+Evaluate:
+
+* Single orchestrator
+* Single execution engine
+* Single execution context
+* Single evidence pipeline
+* No duplicated execution logic
+* No legacy execution paths
+* Clean separation of:
+    * orchestration
+    * evidence
+    * execution
+    * execution actions
+* Connector readiness
+* Future provider readiness
+
+⸻
+
+Part 10 — Final Verdict
+
+Answer only these questions:
+
+1. Is the runtime architecture now truly unified?
+2. Is there any remaining technical debt that must be removed before Connector P6?
+3. If you were joining this project today, what would you clean up before implementing desktop resources?
+
+Do not implement anything.
+
+This sprint is an architecture audit only. Provide evidence-backed findings, not assumptions.
