@@ -110,6 +110,8 @@ export const REQUIRED_RLS_TABLES = [
   "blueprint_versions",
   // Sprint 27.2 — Durable Execution Checkpoints
   "execution_checkpoints",
+  // Sprint 29F.1 — Persisted Connector Write Action Lifecycle
+  "execution_actions",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

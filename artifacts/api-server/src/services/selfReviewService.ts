@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import { logOrgEvent } from "./auditService.js";
+import type { EvidencePack } from "./knowledgeResolutionService.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -42,22 +43,24 @@ export const REVIEW_DIMENSIONS = [
   "approval_requirements",
   "safety",
   "consistency",
+  "evidence_citation_grounding", // Sprint 29F.1 Part 4
 ] as const;
 
 export type ReviewDimensionName = (typeof REVIEW_DIMENSIONS)[number];
 
 // Default weights (sum to 100)
 const DIMENSION_WEIGHTS: Record<ReviewDimensionName, number> = {
-  instruction_adherence:    15,
-  policy_compliance:        15,
-  writing_style_compliance: 10,
-  source_coverage:          10,
-  completeness:             15,
-  confidence:               10,
-  missing_information:      10,
-  approval_requirements:     5,
-  safety:                   10,
-  consistency:               0, // informational — derived from completeness
+  instruction_adherence:       15,
+  policy_compliance:           15,
+  writing_style_compliance:    10,
+  source_coverage:              5, // reduced 10→5; 5 moved to evidence_citation_grounding
+  completeness:                15,
+  confidence:                  10,
+  missing_information:         10,
+  approval_requirements:        5,
+  safety:                      10,
+  consistency:                  0, // informational — derived from completeness
+  evidence_citation_grounding:  5, // Sprint 29F.1 Part 4 — citation grounding
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -90,6 +93,13 @@ export interface ReviewContext {
   organizationId: string;
   userId: string;
   conversationId?: string;
+  /**
+   * Sprint 29F.1 Part 4 — EvidencePack for citation grounding verification.
+   * When provided, the evidence_citation_grounding dimension checks that cited
+   * sources exist in the pack, connector-derived evidence is clearly identified
+   * by provenance, and claims with weak evidence are marked uncertain.
+   */
+  evidencePack?: EvidencePack | null;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -100,7 +110,7 @@ export async function reviewDraft(
   blueprint: WorkBlueprint | null,
   ctx: ReviewContext,
 ): Promise<ReviewResult> {
-  const dimensions = runDeterministicReview(content, manifest, blueprint);
+  const dimensions = runDeterministicReview(content, manifest, blueprint, ctx.evidencePack);
   const qualityScore = computeWeightedScore(dimensions, blueprint);
   const passed = qualityScore >= QUALITY_THRESHOLD;
   const improvementFeedback = dimensions
@@ -122,7 +132,7 @@ export async function reviewDraft(
     if (revised_ !== content) {
       revised = true;
       finalContent = revised_;
-      finalDimensions = runDeterministicReview(revised_, manifest, blueprint);
+      finalDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx.evidencePack);
       finalScore = computeWeightedScore(finalDimensions, blueprint);
       autoRevisionNote = `Auto-revised from score ${qualityScore} → ${finalScore}`;
     }
@@ -177,6 +187,7 @@ function runDeterministicReview(
   content: string,
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
+  evidencePack?: EvidencePack | null,
 ): DimensionResult[] {
   return [
     reviewInstructionAdherence(content, blueprint),
@@ -189,6 +200,7 @@ function runDeterministicReview(
     reviewApprovalRequirements(content, blueprint),
     reviewSafety(content),
     reviewConsistency(content, blueprint, manifest),
+    reviewEvidenceCitationGrounding(content, manifest, evidencePack), // Sprint 29F.1 Part 4
   ];
 }
 
@@ -648,6 +660,116 @@ function reviewConsistency(
     score,
     passed: score >= 6,
     feedback: `Consistency score ${score}/10; ${foundContradictions.length} contradiction(s); objective coverage checked`,
+    improvementSuggestions: suggestions,
+    evidence,
+  };
+}
+
+// ─── Evidence Citation Grounding — Sprint 29F.1 Part 4 ───────────────────────
+
+/**
+ * Verifies that the specialist output is grounded in the retrieved EvidencePack.
+ *
+ * Checks:
+ *   1. Manifest sources exist in the EvidencePack (retrieval verification)
+ *   2. Connector-derived evidence is identified by provenance in the output
+ *   3. File/document citations are not invented (no citations when pack is empty)
+ *   4. Claims with weak evidence are marked with [UNCERTAIN]/[WEAK_EVIDENCE] markers
+ *
+ * Does NOT require verbatim quotation — semantic coverage is sufficient.
+ * Returns structured evidence for the Execution Inspector.
+ */
+function reviewEvidenceCitationGrounding(
+  content: string,
+  manifest: WorkPackageManifest,
+  evidencePack?: EvidencePack | null,
+): DimensionResult {
+  // No evidence pack provided — skip with informational warning
+  if (!evidencePack) {
+    return warn(
+      "evidence_citation_grounding", 6,
+      "No EvidencePack provided to self-review — citation grounding skipped",
+      ["Pass EvidencePack to reviewDraft to enable citation grounding verification"],
+      ["EvidencePack not available; citation grounding dimension cannot be evaluated"],
+    );
+  }
+
+  const evidence: string[] = [];
+  const suggestions: string[] = [];
+  let score = 8;
+
+  const chunks = evidencePack.chunks ?? [];
+  const sourceIds = evidencePack.sourceIds ?? [];
+
+  // ── 1. Connector-derived evidence provenance ──────────────────────────────
+  // Identify connector sources by checking citationsByType or chunk selectionReason
+  const connectorChunks = chunks.filter(c =>
+    (c.selectionReason ?? "").toLowerCase().includes("connector") ||
+    (c.sourceType ?? "").toLowerCase().includes("connector") ||
+    (c.citation ?? "").toLowerCase().includes("device"),
+  );
+  evidence.push(`EvidencePack: ${chunks.length} chunks from ${sourceIds.length} sources`);
+  if (connectorChunks.length > 0) {
+    const connectorTitles = [...new Set(connectorChunks.map(c => c.sourceTitle ?? c.sourceId))];
+    evidence.push(`Connector-derived sources: ${connectorTitles.join(", ")}`);
+    // Check content acknowledges connector origin
+    const hasConnectorProvenance = /(?:connector|connected device|local file|desktop)\b/i.test(content);
+    if (!hasConnectorProvenance) {
+      score -= 1;
+      suggestions.push("Connector-derived evidence should be attributed to the connected device in the output");
+      evidence.push("Deduction -1: connector evidence present but no device/connector provenance marker found in output");
+    } else {
+      evidence.push("Connector provenance correctly referenced in output");
+    }
+  }
+
+  // ── 2. Manifest source verification against EvidencePack ─────────────────
+  const manifestSources = manifest.organisationLibrarySources ?? [];
+  const evidenceSourceIdSet = new Set(sourceIds);
+  const manifestSourceIds = manifestSources.map(s => s.sourceId);
+  const missing = manifestSourceIds.filter(id => !evidenceSourceIdSet.has(id));
+  const matched = manifestSourceIds.filter(id => evidenceSourceIdSet.has(id));
+
+  if (manifestSourceIds.length > 0) {
+    evidence.push(`Manifest sources verified in EvidencePack: ${matched.length}/${manifestSourceIds.length}`);
+    if (missing.length > 0) {
+      score -= 2;
+      suggestions.push(`${missing.length} source(s) in manifest not found in EvidencePack — verify retrieval completed`);
+      evidence.push(`Deduction -2: ${missing.length} manifest source(s) absent from EvidencePack`);
+    }
+  } else {
+    evidence.push("No Organisation Library sources in manifest — library verification skipped");
+  }
+
+  // ── 3. Invented reference detection ──────────────────────────────────────
+  // Heuristic: document/file citations in content when EvidencePack is empty
+  const hasDocCitation = /(?:per|see|refer to|as per|according to)\s+[A-Z][A-Za-z\s]{2,40}\.(docx?|pdf|xlsx?)/i.test(content);
+  if (hasDocCitation && chunks.length === 0) {
+    score -= 1;
+    suggestions.push("Output cites specific documents but no evidence was retrieved — verify all file references are grounded in retrieved content");
+    evidence.push("Deduction -1: specific file citations found but EvidencePack is empty — potential invented reference");
+  }
+
+  // ── 4. Weak evidence markers — GOOD PRACTICE ─────────────────────────────
+  const uncertainMarkers = (content.match(
+    /\[UNCERTAIN(?::[^\]]+)?\]|\[WEAK_EVIDENCE(?::[^\]]+)?\]|\[UNVERIFIED(?::[^\]]+)?\]/gi,
+  ) ?? []);
+  if (uncertainMarkers.length > 0) {
+    // Correctly marked uncertain claims — reward good practice
+    evidence.push(`Uncertain/weak-evidence markers found: ${uncertainMarkers.length} (correctly self-flagged)`);
+  } else if (chunks.length === 0 && content.length > 300) {
+    // No evidence retrieved and no uncertainty markers — flag
+    score -= 1;
+    suggestions.push("No evidence was retrieved — mark any uncertain claims with [UNCERTAIN] or [WEAK_EVIDENCE]");
+    evidence.push("Deduction -1: no evidence retrieved and no uncertainty markers used — uncertain claims should be flagged");
+  }
+
+  score = Math.max(0, Math.min(10, score));
+  return {
+    dimension: "evidence_citation_grounding",
+    score,
+    passed: score >= 6,
+    feedback: `EvidencePack: ${chunks.length} chunks, ${sourceIds.length} sources; manifest match: ${matched.length}/${manifestSourceIds.length}; connector: ${connectorChunks.length} chunk(s)`,
     improvementSuggestions: suggestions,
     evidence,
   };

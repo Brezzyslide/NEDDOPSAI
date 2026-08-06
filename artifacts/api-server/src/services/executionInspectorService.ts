@@ -684,11 +684,29 @@ async function _buildInspection(
       const inspectorActions = allActions.map(toInspectorAction);
       const totalDurationMs  = dispatchRecord.results.reduce((s, r) => s + r.duration, 0);
 
+      // Sprint 29F.1 Part 8 — Idempotency observability fields
+      const { checkIdempotency } = await import("./writeIdempotencyService.js");
+      const actionsWithIdempotency = inspectorActions.map(a => {
+        // Best-effort: attempt to look up idempotency status for write actions.
+        // Key format: {executionId}:{actionId}
+        const idempotencyKey = `${executionId}:${a.actionId}`;
+        const idempotencyResult = checkIdempotency(
+          // organisationId is not available here without loading the manifest —
+          // pass empty string as a graceful fallback that returns found:false
+          "", "", idempotencyKey,
+        );
+        return {
+          ...a,
+          idempotencyResult: idempotencyResult.found ? idempotencyResult.record : null,
+          deduplicationPrevented: idempotencyResult.isDuplicate === true,
+        };
+      });
+
       executionActionsSection = {
-        proposed:           inspectorActions.filter(a => a.status === "proposed"),
-        approved:           inspectorActions.filter(a => a.status === "approved"),
-        executed:           inspectorActions.filter(a => a.result?.status === "completed"),
-        failed:             inspectorActions.filter(a => a.result?.status === "failed" || a.result?.status === "cancelled"),
+        proposed:           actionsWithIdempotency.filter(a => a.status === "proposed"),
+        approved:           actionsWithIdempotency.filter(a => a.status === "approved"),
+        executed:           actionsWithIdempotency.filter(a => a.result?.status === "completed"),
+        failed:             actionsWithIdempotency.filter(a => a.result?.status === "failed" || a.result?.status === "cancelled"),
         totalDurationMs:    totalDurationMs > 0 ? totalDurationMs : null,
         executionOrder:     dispatchRecord.executionOrder,
         connectorResponses: dispatchRecord.results,

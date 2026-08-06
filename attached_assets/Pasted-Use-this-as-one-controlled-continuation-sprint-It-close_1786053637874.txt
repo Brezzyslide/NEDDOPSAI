@@ -1,0 +1,360 @@
+Use this as one controlled continuation sprint. It closes the loose ends from 29E and 29F, then moves straight into real connector acceptance testing without reopening the architecture.
+
+Sprint 29F.1 — Connector Hardening, Loose Ends & End-to-End Acceptance
+Objective
+Close the remaining execution, safety, audit and reliability gaps from Sprints 29E and 29F, then validate the complete cloud-to-desktop flow on a real installed NeedsOps Connector.
+Do not redesign the architecture.
+Do not introduce a second execution path.
+Do not add cloud providers, browser automation, terminal execution or email sending.
+Preserve these invariants:
+1. Chief of Staff remains the sole orchestrator.
+2. Every specialist execution enters through unifiedExecutionEngine.
+3. UnifiedExecutionEngine plans and validates external actions but never performs them.
+4. NeedsOps Connector owns every desktop and application side effect.
+5. Evidence retrieval and execution actions remain separate.
+6. OpenClaw remains internal and never appears in customer-facing language.
+7. No service outside unifiedExecutionEngine may call the AI Gateway to perform specialist work.
+────────────────────────────────────────
+PART 1 — Write Idempotency and Retry Safety
+Current concern:
+Write operations may inherit maxRetries: 1.
+For non-idempotent actions, a retry can create duplicate files, duplicate edits or duplicate drafts if the first operation succeeded but the acknowledgement was lost.
+Implement:
+- operationId
+- executionId
+- actionId
+- idempotencyKey
+- attemptNumber
+- firstReceivedAt
+- lastReceivedAt
+- finalResult
+Every write-side connector operation must carry an idempotency key.
+The desktop connector must maintain a bounded deduplication store keyed by:
+organisationId
++ deviceId
++ idempotencyKey
+Required behaviour:
+- First request executes normally.
+- Duplicate request while executing returns the existing in-progress state.
+- Duplicate request after completion returns the stored result.
+- Duplicate request after failure returns the stored failure unless an explicit human retry creates a new idempotency key.
+- No operation is executed twice because of transport retry or reconnect.
+Default automatic retry policy:
+Read-only operations:
+- Retry only on safe transport failures.
+- Maximum one retry unless existing policy is stricter.
+Write or side-effect operations:
+- No blind automatic replay.
+- Retry only through idempotent replay using the same idempotency key.
+- Never create a new action or new key automatically.
+Add tests for lost acknowledgements, duplicate relay messages, reconnect replay and timeout-after-success.
+────────────────────────────────────────
+PART 2 — Persist the Full ExecutionAction Lifecycle
+Persist every action from proposal through final outcome.
+Required states:
+- proposed
+- awaiting_approval
+- approved
+- rejected
+- executing
+- completed
+- failed
+- cancelled
+Store:
+- actionId
+- executionId
+- organisationId
+- conversationId
+- taskId
+- specialistCode
+- actionType
+- target
+- parameters summary
+- riskLevel
+- approvalRequired
+- requestedBy
+- approvedBy
+- rejectedBy
+- connectorDeviceId
+- sessionId
+- idempotencyKey
+- status
+- proposedAt
+- approvedAt
+- executionStartedAt
+- completedAt
+- failedAt
+- cancelledAt
+- result summary
+- structured error
+- correlationId
+Do not store credentials, full private file contents or unrestricted prompt payloads.
+Use RLS and tenant isolation.
+If a suitable existing action table supports all requirements, extend it rather than creating a duplicate table.
+────────────────────────────────────────
+PART 3 — Approval UX and Plan-Level Approval
+Do not interrupt the user before every low-level connector operation.
+Group related actions into one understandable execution plan where safe.
+Example:
+NeedsOps wants to:
+- Read Medication Policy.docx
+- Save a revised copy to Documents
+- Create an Outlook draft to Sarah
+Approve this plan?
+Rules:
+Safe reads:
+- No separate approval when the user explicitly requested the read and existing permissions allow it.
+Planned writes:
+- One plan-level approval can cover all clearly described actions and targets.
+High-risk actions:
+- Must remain separately confirmed.
+- Includes file deletion, external email sending, terminal execution, software installation, browser form submission, or any action classified high risk.
+Approval must show:
+- what will happen
+- exact or bounded target
+- which device
+- which specialist proposed it
+- expected side effects
+- whether it can be undone
+- expiry time of approval
+Approval must bind to:
+- exact action set
+- targets
+- content hash or output version
+- executionId
+- connector device
+- expiry time
+Changing any bound field invalidates the approval and requires fresh approval.
+────────────────────────────────────────
+PART 4 — Self-Review with Evidence Verification
+Pass the canonical EvidencePack into selfReviewService.
+Add a citation and evidence-grounding dimension.
+The self-review must check:
+- cited source exists in EvidencePack
+- source title and version match
+- recommendations are supported by retrieved evidence
+- no invented policy, legislation or local file reference
+- connector-derived evidence is clearly identified by provenance
+- claims with weak evidence are marked as uncertain
+Do not require verbatim quotation.
+Return structured evidence verification results for the Execution Inspector.
+This must improve quality without blocking connector implementation unnecessarily.
+────────────────────────────────────────
+PART 5 — Manifest Integrity
+Do not duplicate the full runtime manifest inside CanonicalExecutionContext unless already necessary.
+Add or verify:
+- manifestVersion
+- manifestHash
+- dnaVersion
+- dnaHash where available
+At execution start:
+- resolve the referenced manifest
+- verify its hash
+- reject tampered or mismatched manifests
+- record the verified hash in audit and inspector data
+Connector permissions must be checked against the verified manifest, not an unverified runtime object.
+────────────────────────────────────────
+PART 6 — Move Remaining Adapter Rules into the Engine
+Inspect workExecutionPipelineService.
+Move any remaining business-rule guards into unifiedExecutionEngine.executeTask().
+Adapters must contain only:
+- input translation
+- compatibility mapping
+- delegation
+They must not own:
+- specialist validation
+- capability validation
+- work-package rules
+- evidence rules
+- approval decisions
+- prompt rules
+Add architecture tests proving adapter purity.
+────────────────────────────────────────
+PART 7 — Remove or Isolate Legacy Code
+For endToEndWorkflowService.ts:
+- Delete it if there are genuinely no production callers and tests can be updated safely.
+- Otherwise move it to a clearly marked legacy area and prevent production imports.
+Also inspect:
+- unused buildSpecialistContext imports
+- executionCheckpointStore.ts
+- legacy prompt builders
+- abandoned pipeline services
+- old connector task execution code
+Classify each as:
+- delete
+- archive
+- active
+- retain temporarily
+Do not delete anything with a live runtime path.
+────────────────────────────────────────
+PART 8 — Connector and Session Observability
+Extend the Execution Inspector and platform-owner views with:
+Connector status
+- online/offline
+- device name
+- platform
+- connector version
+- last heartbeat
+- supported capabilities
+Session
+- session ID
+- execution ID
+- opened
+- active
+- idle
+- closed
+- failed
+- duration
+- close reason
+Evidence operations
+- locate/search/read/inspect
+- result count
+- file names where safe
+- latency
+- errors
+Execution actions
+- proposed
+- approved
+- executing
+- completed
+- failed
+- cancelled
+- action order
+- targets
+- duration
+- idempotency result
+- retry/deduplication status
+Never expose OpenClaw, credentials, raw prompts, secret paths outside the approved scope, or private file content in diagnostics.
+────────────────────────────────────────
+PART 9 — Real Connector Acceptance Testing
+After the loose ends are fixed, run end-to-end acceptance tests with a real installed NeedsOps Connector.
+Do not rely only on mocks.
+Use disposable test files and folders.
+Scenario 1 — Desktop read
+User request:
+“Go to my desktop and review Medication Policy.docx through an operational lens.”
+Expected:
+- CoS detects explicit connector preference.
+- Operations Manager selected.
+- Connector session opens.
+- File located and read.
+- Connector evidence enters EvidencePack.
+- Specialist uses actual file content.
+- Completed Work produced.
+- Session closes cleanly.
+Scenario 2 — Hybrid evidence
+User request:
+“Compare the Medication Policy on my desktop with the approved version in NeedsOps.”
+Expected:
+- Organisation Library and Connector both used.
+- EvidencePack contains both sources.
+- Provenance and citations remain separate.
+- Differences are identified.
+- No source is silently preferred without rationale.
+Scenario 3 — Create a file
+User request:
+“Create an operational review and save a copy in Documents.”
+Expected:
+- Output generated first.
+- Write action proposed.
+- Plan-level approval displayed.
+- Approved action dispatched once.
+- File created once.
+- Completed Work remains in NeedsOps.
+- Connector result links to the local file without exposing unsafe path details.
+Scenario 4 — Word document
+User request:
+“Create a Word version of this completed work in Documents.”
+Expected:
+- word.create or equivalent typed action.
+- Approval enforced.
+- Word file created.
+- Action lifecycle and audit complete.
+Scenario 5 — Excel update
+Use a disposable workbook.
+Expected:
+- Spreadsheet read.
+- Proposed update shown clearly.
+- Approval granted.
+- Workbook updated once.
+- Lost acknowledgement simulation does not duplicate the change.
+Scenario 6 — Outlook draft
+Expected:
+- Draft created only.
+- No email sent.
+- Recipient, subject and body visible before approval where required.
+- Draft ID returned.
+- External sending remains unsupported.
+Scenario 7 — Connector disconnect
+Disconnect during a safe test action.
+Expected:
+- Structured failure.
+- Session marked failed and closed.
+- Remaining actions cancelled.
+- No blind replay.
+- Human retry creates a controlled retry path.
+Scenario 8 — Duplicate dispatch
+Send the same approved write operation twice with the same idempotency key.
+Expected:
+- One physical side effect only.
+- Second request returns the existing result.
+- Inspector records duplicate prevention.
+Scenario 9 — Permission denial
+Request a capability not granted to the Operations Manager.
+Expected:
+- Failure before connector dispatch.
+- Clear permission reason.
+- No session side effect.
+- Audit event created.
+Scenario 10 — Approval expiry or action mutation
+Approve a write plan, then alter the target or output hash.
+Expected:
+- Original approval invalidated.
+- Fresh approval required.
+- No dispatch using stale approval.
+────────────────────────────────────────
+PART 10 — Platform and Packaging Verification
+Test on the platforms currently supported by the connector architecture:
+- macOS
+- Windows, where build/test environment is available
+- Linux, where build/test environment is available
+Verify:
+- file path normalisation
+- home/Documents resolution
+- forbidden path protection
+- symlink/path traversal protection
+- filename collision handling
+- Unicode filenames
+- locked file behaviour
+- large file limits
+- application availability
+- graceful unsupported-operation errors
+Do not claim Windows or Linux production readiness unless tested on those platforms.
+────────────────────────────────────────
+PART 11 — Final Go/No-Go Report
+Return:
+1. Loose ends fixed
+2. Files changed
+3. Database/migration changes
+4. Action lifecycle design
+5. Idempotency design
+6. Approval design
+7. Evidence-aware self-review result
+8. Legacy code removed or retained
+9. Real connector acceptance-test results
+10. Platform test results
+11. Full test-suite result
+12. Remaining known limitations
+13. Go/No-Go recommendation for the next capability sprint
+The sprint is complete only when:
+- no new regression exists
+- write operations are idempotent
+- actions have a persisted lifecycle
+- approval binds to the exact plan
+- self-review validates evidence provenance
+- adapters remain pure
+- legacy execution code is isolated
+- real connector read/write scenarios work end to end
+- failures are structured, visible and recoverable
+
+After this, the next sprint can add broader connector capabilities such as Outlook send, browser interaction, more Office automation and approved cloud providers without reopening the execution architecture.

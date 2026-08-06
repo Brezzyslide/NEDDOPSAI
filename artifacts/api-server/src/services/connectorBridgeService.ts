@@ -50,6 +50,22 @@ export type ConnectorOperationType =
   // Email domain (Outlook only; send_email is NOT in scope — non-goal)
   | "email_draft";   // email.draft — create a draft in Outlook Drafts folder
 
+/**
+ * Sprint 29F.1 Part 1 — Write operation types.
+ * Used to enforce the no-blind-retry policy: write ops must never be
+ * automatically replayed with a new request ID.
+ */
+export const WRITE_OPERATION_TYPES = new Set<ConnectorOperationType>([
+  "write",
+  "create",
+  "move",
+  "word_create",
+  "word_edit",
+  "word_export",
+  "excel_update",
+  "email_draft",
+]);
+
 export interface ConnectorOpRequest {
   /** Engine-assigned correlation ID. Every request gets a unique requestId. */
   requestId: string;
@@ -69,6 +85,16 @@ export interface ConnectorOpRequest {
    * Examples: { content, encoding } for write; { to, subject, body } for email_draft.
    */
   parameters?: Record<string, unknown>;
+  /**
+   * Sprint 29F.1 Part 1 — Write idempotency key.
+   * Required for all write operations. Format: `{executionId}:{actionId}`.
+   * The desktop connector uses this to deduplicate re-delivered write requests.
+   * If a write is received with a key already in the dedup store, the stored
+   * result is returned without re-executing the write.
+   *
+   * Read-only operations may omit this field.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ConnectorOpResult {
@@ -136,9 +162,17 @@ export async function submitConnectorOperation(
     );
   }
 
+  // Sprint 29F.1 Part 1 — Enforce no-blind-retry for write operations.
+  // Write ops are non-idempotent unless the same idempotencyKey is used.
+  // Automatic retry with a NEW requestId on write ops would produce duplicates
+  // (e.g. two files created) when the first attempt succeeded but the ack was lost.
+  // Retry is handled externally through the idempotent replay path instead.
+  const isWrite = WRITE_OPERATION_TYPES.has(operation.operationType);
+  const effectiveMaxRetries = isWrite ? 0 : maxRetries;
+
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 0; attempt <= effectiveMaxRetries; attempt++) {
     if (attempt > 0) {
       await delay(RETRY_BACKOFF_MS * attempt);
     }
@@ -155,7 +189,7 @@ export async function submitConnectorOperation(
         }
       }
 
-      if (attempt < maxRetries) {
+      if (attempt < effectiveMaxRetries) {
         logger.warn(
           { requestId: operation.requestId, attempt, err: lastError.message },
           "[connector-bridge] Operation failed — will retry",
@@ -266,6 +300,8 @@ function dispatchOnce(
       resourceId:    operation.resourceId,
       // Sprint 29F: write-operation parameters (content, destination, etc.)
       ...(operation.parameters ? { parameters: operation.parameters } : {}),
+      // Sprint 29F.1 Part 1: idempotency key for desktop-side dedup
+      ...(operation.idempotencyKey ? { idempotencyKey: operation.idempotencyKey } : {}),
     });
 
     if (!dispatched) {

@@ -599,9 +599,9 @@ describe("reviewDraft — quality scoring", () => {
     expect(result.qualityScore).toBeLessThanOrEqual(100);
   });
 
-  it("dimensions array contains all 10 review dimensions", async () => {
+  it("dimensions array contains all 11 review dimensions", async () => {
     const result = await reviewDraft("Content for review", manifest, null, ctx);
-    expect(result.dimensions).toHaveLength(10);
+    expect(result.dimensions).toHaveLength(11);
     const names = result.dimensions.map(d => d.dimension);
     for (const dim of REVIEW_DIMENSIONS) {
       expect(names).toContain(dim);
@@ -626,8 +626,8 @@ describe("reviewDraft — quality scoring", () => {
     expect(QUALITY_THRESHOLD).toBe(70);
   });
 
-  it("REVIEW_DIMENSIONS has exactly 10 items", () => {
-    expect(REVIEW_DIMENSIONS).toHaveLength(10);
+  it("REVIEW_DIMENSIONS has exactly 11 items", () => {
+    expect(REVIEW_DIMENSIONS).toHaveLength(11);
   });
 
   it("finalContent is the original content when not revised", async () => {
@@ -1081,7 +1081,7 @@ describe("Sprint 22 — REQUIRED_RLS_TABLES", () => {
   });
 
   it("total count is 68 after Task #36 (+1 notification_reads from Sprint 22's 67)", () => {
-    expect(REQUIRED_RLS_TABLES).toHaveLength(70); // Sprint 27.2: +1 execution_checkpoints
+    expect(REQUIRED_RLS_TABLES).toHaveLength(71); // Sprint 29F.1: +1 execution_actions
   });
 
   it("still contains all previous core tables", () => {

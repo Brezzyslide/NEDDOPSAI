@@ -98,11 +98,24 @@ async function runStage(
  * Runs the complete mocked end-to-end workflow for a task.
  * All stages are recorded in the returned result.
  */
+/** @internal Sprint 29F.1 Part 7 — production import guard */
+function assertLegacyPermitted(): void {
+  const isTest = process.env.NODE_ENV === "test" ||
+    typeof (globalThis as Record<string, unknown>).__vitest_worker__ !== "undefined";
+  if (!isTest && process.env.ALLOW_LEGACY_WORKFLOW !== "1") {
+    throw new Error(
+      "[endToEndWorkflowService] LEGACY SERVICE — production import is not permitted. " +
+      "Use UnifiedExecutionEngine for all execution paths.",
+    );
+  }
+}
+
 export async function runMockedWorkflow(
   organisationId: string,
   taskDescription: string,
   options?: { specialistRole?: string; useConnector?: boolean },
 ): Promise<EndToEndWorkflowResult> {
+  assertLegacyPermitted();
   const workflowId = randomUUID();
   const totalStart = Date.now();
   const stages: WorkflowStageResult[] = [];

@@ -386,7 +386,7 @@ describe("Audit events for review outcomes", () => {
 
     await Promise.resolve();
     const call = mockLogOrgEvent.mock.calls[0]![0];
-    expect(call.metadata.dimensionCount).toBe(10);
+    expect(call.metadata.dimensionCount).toBe(11);
   });
 
   it("context assembly is not blocked when audit write fails", async () => {
@@ -435,7 +435,7 @@ describe("Evidence summary hash", () => {
 describe("Deterministic fallback", () => {
   it("review completes successfully without blueprint (null)", async () => {
     const result = await reviewDraft(GOOD_CONTENT, makeManifest(), null, ctx);
-    expect(result.dimensions).toHaveLength(10);
+    expect(result.dimensions).toHaveLength(11);
     expect(typeof result.qualityScore).toBe("number");
   });
 

@@ -28,6 +28,7 @@ import type { ConnectorOperationType } from "./connectorBridgeService.js";
 import {
   submitConnectorOperation,
   ConnectorOperationError,
+  WRITE_OPERATION_TYPES,
 } from "./connectorBridgeService.js";
 import {
   openConnectorSession,
@@ -37,6 +38,21 @@ import {
 } from "./connectorSessionManagerService.js";
 import { logOrgEvent } from "./auditService.js";
 import { logger } from "../lib/logger.js";
+// Sprint 29F.1 Part 1 — Write idempotency
+import {
+  checkIdempotency,
+  beginIdempotencyRecord,
+  finaliseIdempotencyRecord,
+} from "./writeIdempotencyService.js";
+// Sprint 29F.1 Part 2 — Persisted action lifecycle
+import {
+  recordActionProposed,
+  recordActionExecuting,
+  recordActionCompleted,
+  recordActionFailed,
+  recordActionCancelled,
+  type ActionLifecycleContext,
+} from "./executionActionLifecycleService.js";
 
 // ─── Public types ──────────────────────────────────────────────────────────────
 
@@ -247,6 +263,16 @@ export async function dispatchExecutionActions(
   const telem = getConnectorSessionTelemetry(executionId);
   const connectorVersion = telem?.connectorVersion ?? null;
 
+  // Sprint 29F.1 Part 2 — Lifecycle context shared across all actions in this run
+  const lifecycleCtx: ActionLifecycleContext = {
+    organisationId,
+    executionId,
+    specialistCode,
+    requestedBy: requesterId,
+    deviceId,
+    sessionId,
+  };
+
   // ── Initialise / update dispatch record for inspector ────────────────────────
   const startedAt = new Date().toISOString();
   const existing = dispatchStore.get(executionId);
@@ -293,6 +319,8 @@ export async function dispatchExecutionActions(
       record.results.push(cancelledResult);
       record.executionOrder.push(action.actionId);
       fireAudit(organisationId, "execution_action.cancelled", requesterId, action, cancelledResult, specialistCode, deviceId).catch(() => {});
+      // Sprint 29F.1 Part 2 — persist cancelled lifecycle
+      recordActionCancelled(action.actionId, organisationId, "Remaining actions cancelled after fatal connector failure").catch(() => {});
       continue;
     }
 
@@ -333,6 +361,55 @@ export async function dispatchExecutionActions(
       continue;
     }
 
+    // ── Sprint 29F.1 Part 1: Write idempotency ───────────────────────────────
+    // Generate a stable idempotency key for this action in this execution.
+    // The key is deterministic: same execution + same action always yields the
+    // same key, so duplicate relay delivery never executes the write twice.
+    const idempotencyKey = `${executionId}:${action.actionId}`;
+    const opRequestId = `opreq_${randomUUID()}`;
+    const isWriteOp = opType !== null && WRITE_OPERATION_TYPES.has(opType);
+
+    // Check server-side dedup store before dispatching
+    if (isWriteOp) {
+      const dedup = checkIdempotency(organisationId, deviceId, idempotencyKey);
+      if (dedup.found) {
+        if (dedup.isDuplicate && dedup.record?.finalResult) {
+          // Duplicate request after completion — return stored result
+          const stored = dedup.record.finalResult;
+          logger.info(
+            { executionId, actionId: action.actionId, idempotencyKey },
+            "[action-dispatcher] Duplicate write detected — returning stored idempotent result",
+          );
+          const dupResult: ConnectorExecutionResult = {
+            actionId:         action.actionId,
+            executionId,
+            sessionId,
+            operation:        opType,
+            target:           action.resolvedDestination?.displayPath ?? action.description,
+            status:           stored.status,
+            startedAt:        actionStartedAt,
+            completedAt:      stored.completedAt,
+            duration:         0,
+            connectorVersion,
+            ...(stored.success ? {} : { error: { code: stored.errorCode ?? "CONNECTOR_ERROR", message: stored.errorMessage ?? "Connector operation failed" } }),
+          };
+          results.push(dupResult);
+          record.results.push(dupResult);
+          record.executionOrder.push(action.actionId);
+          const dupAuditEvent = stored.success ? "execution_action.completed" : "execution_action.failed";
+          fireAudit(organisationId, dupAuditEvent, requesterId, action, dupResult, specialistCode, deviceId).catch(() => {});
+          continue;
+        }
+        // isExecuting: already in-flight on this server — unusual in sequential flow, log and proceed
+        logger.warn({ executionId, actionId: action.actionId }, "[action-dispatcher] In-flight duplicate write detected");
+      }
+      // Begin idempotency tracking before dispatch
+      beginIdempotencyRecord(organisationId, deviceId, idempotencyKey, opRequestId, action.actionId, executionId);
+    }
+
+    // Sprint 29F.1 Part 2 — record executing lifecycle (fire-and-forget)
+    recordActionExecuting(action.actionId, organisationId, deviceId, sessionId).catch(() => {});
+
     // ── Submit to connector bridge ────────────────────────────────────────────
     let connectorResult: ConnectorExecutionResult;
 
@@ -341,11 +418,12 @@ export async function dispatchExecutionActions(
         deviceId,
         organisationId,
         {
-          requestId:     `opreq_${randomUUID()}`,
+          requestId:      opRequestId,
           executionId,
-          operationType: opType,
-          path:          String(action.parameters?.path ?? action.resolvedDestination?.displayPath ?? ""),
-          parameters:    action.parameters,
+          operationType:  opType,
+          path:           String(action.parameters?.path ?? action.resolvedDestination?.displayPath ?? ""),
+          parameters:     action.parameters,
+          idempotencyKey: isWriteOp ? idempotencyKey : undefined,
         },
         { timeoutMs: actionTimeoutMs },
       );
@@ -384,6 +462,25 @@ export async function dispatchExecutionActions(
       const auditEvent = succeeded ? "execution_action.completed" : "execution_action.failed";
       fireAudit(organisationId, auditEvent, requesterId, action, connectorResult, specialistCode, deviceId).catch(() => {});
 
+      // Sprint 29F.1 Part 1 — finalise idempotency record
+      if (isWriteOp) {
+        finaliseIdempotencyRecord(organisationId, deviceId, idempotencyKey, {
+          success: succeeded,
+          status:  succeeded ? "completed" : "failed",
+          completedAt: connectorResult.completedAt,
+          ...(succeeded ? { data: opResult.data } : { errorCode: opResult.errorCode, errorMessage: opResult.errorMessage }),
+        });
+      }
+      // Sprint 29F.1 Part 2 — persist lifecycle transition
+      if (succeeded) {
+        recordActionCompleted(action.actionId, organisationId, connectorResult).catch(() => {});
+      } else {
+        recordActionFailed(action.actionId, organisationId, {
+          code:    opResult.errorCode ?? "CONNECTOR_ERROR",
+          message: opResult.errorMessage ?? "Connector operation failed",
+        }).catch(() => {});
+      }
+
     } catch (err) {
       const duration = Date.now() - startMs;
       const errCode = err instanceof ConnectorOperationError ? err.code : "DISPATCH_ERROR";
@@ -417,6 +514,19 @@ export async function dispatchExecutionActions(
       });
 
       fireAudit(organisationId, "execution_action.failed", requesterId, action, connectorResult, specialistCode, deviceId).catch(() => {});
+
+      // Sprint 29F.1 Part 1 — finalise idempotency record on error
+      if (isWriteOp) {
+        finaliseIdempotencyRecord(organisationId, deviceId, idempotencyKey, {
+          success: false,
+          status: "failed",
+          completedAt: connectorResult.completedAt,
+          errorCode: errCode,
+          errorMessage: errMsg,
+        });
+      }
+      // Sprint 29F.1 Part 2 — persist lifecycle failure
+      recordActionFailed(action.actionId, organisationId, { code: errCode, message: errMsg }).catch(() => {});
 
       if (isFatal) {
         fatalFailure = true;

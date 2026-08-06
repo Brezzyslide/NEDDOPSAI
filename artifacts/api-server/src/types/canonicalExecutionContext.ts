@@ -280,6 +280,13 @@ export interface CanonicalExecutionContext {
 
   // 2. Runtime Manifest (compiled per dispatch)
   manifestVersion: number;
+  /**
+   * Sprint 29F.1 Part 5 — SHA-256 hash of the manifest content at execution start.
+   * Computed by UnifiedExecutionEngine after manifest assembly or checkpoint load.
+   * Verified before connector dispatch to detect tampering or mismatched manifests.
+   * Null for conversation-mode executions (no full manifest exists).
+   */
+  manifestHash?: string;
 
   // 3. Conversation context
   conversationContext: {

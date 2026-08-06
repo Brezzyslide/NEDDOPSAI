@@ -32,6 +32,12 @@ const mockLogOrgEvent              = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/connectorBridgeService.js", () => ({
   submitConnectorOperation:  mockSubmitConnectorOperation,
+  // Sprint 29F.1 — WRITE_OPERATION_TYPES must be exported from the mock
+  WRITE_OPERATION_TYPES: new Set([
+    "write", "create", "move",
+    "word_create", "word_edit", "word_export",
+    "excel_update", "email_draft",
+  ]),
   ConnectorOperationError: class ConnectorOperationError extends Error {
     code: string;
     requestId?: string;
@@ -50,6 +56,26 @@ vi.mock("../services/connectorBridgeService.js", () => ({
   connectorWordExport:  mockSubmitConnectorOperation,
   connectorExcelUpdate: mockSubmitConnectorOperation,
   connectorEmailDraft:  mockSubmitConnectorOperation,
+}));
+
+// Sprint 29F.1 — writeIdempotencyService (fire-and-forget, all stubs)
+vi.mock("../services/writeIdempotencyService.js", () => ({
+  checkIdempotency:          vi.fn().mockReturnValue({ found: false }),
+  beginIdempotencyRecord:    vi.fn(),
+  finaliseIdempotencyRecord: vi.fn(),
+  _resetIdempotencyStore:    vi.fn(),
+}));
+
+// Sprint 29F.1 — executionActionLifecycleService (fire-and-forget, all stubs)
+vi.mock("../services/executionActionLifecycleService.js", () => ({
+  recordActionProposed:         vi.fn().mockResolvedValue(undefined),
+  recordActionAwaitingApproval: vi.fn().mockResolvedValue(undefined),
+  recordActionApproved:         vi.fn().mockResolvedValue(undefined),
+  recordActionRejected:         vi.fn().mockResolvedValue(undefined),
+  recordActionExecuting:        vi.fn().mockResolvedValue(undefined),
+  recordActionCompleted:        vi.fn().mockResolvedValue(undefined),
+  recordActionFailed:           vi.fn().mockResolvedValue(undefined),
+  recordActionCancelled:        vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../services/connectorSessionManagerService.js", () => ({

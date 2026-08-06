@@ -22,7 +22,7 @@
  *   Execution Actions — side effects produced after output (write, send, automate)
  */
 
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { eq } from "drizzle-orm";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
@@ -667,6 +667,20 @@ export class UnifiedExecutionEngine {
       manifest = assembleResult.manifest;
     }
 
+    // ── Sprint 29F.1 Part 5: Manifest integrity hash ──────────────────────────
+    // SHA-256 of stable manifest identity fields. Stored in ctx.manifestHash and
+    // written to audit so tampering or mismatched manifests can be detected before
+    // connector dispatch.  We hash the identity+specialist combination rather than
+    // the full manifest (which includes ephemeral timestamps) for determinism.
+    const manifestHash = createHash("sha256")
+      .update(JSON.stringify({
+        id:         manifest.executionId,
+        specialist: manifest.primarySpecialist,
+        blueprint:  (manifest as any).blueprintId ?? null,
+        version:    (manifest as any).blueprintVersion ?? null,
+      }))
+      .digest("hex");
+
     // Evidence resolution via ResourceRegistry — routes to KnowledgeResolutionService (P1–P5)
     await progress("retrieving_evidence");
     const t3evidence = Date.now();
@@ -710,6 +724,7 @@ export class UnifiedExecutionEngine {
       dnaVersion:     "N/A",
       specialistCode: manifest.primarySpecialist,
       manifestVersion: 1,
+      manifestHash,   // Sprint 29F.1 Part 5
       conversationContext: {
         conversationId:            request.conversationId,
         messages:                  [],

@@ -470,6 +470,6 @@ describe("REQUIRED_RLS_TABLES includes specialist_language_profiles", () => {
   it("contains the new table", async () => {
     const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db");
     expect(REQUIRED_RLS_TABLES).toContain("specialist_language_profiles");
-    expect(REQUIRED_RLS_TABLES).toHaveLength(70); // Sprint 27.2: +1 execution_checkpoints
+    expect(REQUIRED_RLS_TABLES).toHaveLength(71); // Sprint 29F.1: +1 execution_actions
   });
 });

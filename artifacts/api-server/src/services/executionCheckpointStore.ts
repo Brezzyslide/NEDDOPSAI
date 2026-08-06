@@ -1,22 +1,27 @@
 /**
  * Execution Checkpoint Store — Sprint 27.1
  *
+ * @legacy ISOLATED — Sprint 29F.1 classification: RETAIN TEMPORARILY
+ *
+ * This in-memory store has been SUPERSEDED by the DB-backed executionCheckpointService
+ * (lib/db/src/schema/executionCheckpoints.ts + sprint272-checkpoint-persist.sql).
+ * It is retained only because sprint271 tests reference it directly.
+ *
+ * DO NOT add new callers. Use executionCheckpointService for all new code.
+ * Remove when sprint271 tests are migrated.
+ *
+ * ───────────────────────────────────────────────────────
+ * ORIGINAL DESCRIPTION (Sprint 27.1):
+ *
  * In-memory store for pipeline checkpoints.
  * Allows the work execution pipeline to pause at validation when clarification
  * is required, then RESUME from the same point after the user responds —
  * without rebuilding the blueprint or reassembling the work package.
  *
- * Persisted state per checkpoint:
- *   - stage reached (always "validating" for now)
- *   - assembled manifest (expensive to rebuild)
- *   - selected blueprint
- *   - original user request + clarification questions
- *
  * Checkpoints expire after 30 minutes. Cleanup runs on access and on a
  * periodic timer so abandoned checkpoints never accumulate.
  *
  * NOTE: In-process storage only — checkpoints are lost on server restart.
- *       A future sprint can migrate this to a DB table for full durability.
  */
 
 import type { WorkPackageManifest } from "./workPackageService.js";

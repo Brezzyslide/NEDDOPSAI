@@ -38,7 +38,7 @@ import {
   type SpecialistPlan,
   type SpecialistPlanStep,
 } from "./specialistWorkPackageService.js";
-import { buildSpecialistContext } from "./specialistContextService.js";
+// Note: buildSpecialistContext is used by executionContextBuilderService, not here directly.
 import { createSpecialistIntelligenceService } from "./specialistIntelligenceService.js";
 import { createUnifiedExecutionEngine } from "./unifiedExecutionEngine.js";
 import { enqueue, markRunning, markCompleted, markFailed, markCancelled } from "./specialistQueueService.js";
