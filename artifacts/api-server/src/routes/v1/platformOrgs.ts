@@ -71,9 +71,22 @@ router.get("/", ...auth, async (req, res, next) => {
     const trial   = req.query.trial === "true";
     const suspended = req.query.suspended === "true";
 
-    let conditions: ReturnType<typeof eq>[] = [];
-    if (status)    conditions.push(eq(organizationsTable.status, status as any));
-    if (suspended) conditions.push(eq(organizationsTable.status, "suspended"));
+    // Build all WHERE conditions up-front and compose with and() so that
+    // combining search + status never silently drops a condition.
+    // Drizzle's .$dynamic() replaces the WHERE clause on each chained .where()
+    // call — two separate calls means only the last one survives.
+    const searchClause = search
+      ? or(
+          ilike(organizationsTable.name, `%${search}%`),
+          ilike(organizationsTable.slug, `%${search}%`),
+        )
+      : undefined;
+    const statusClause = suspended
+      ? eq(organizationsTable.status, "suspended")
+      : status
+        ? eq(organizationsTable.status, status as any)
+        : undefined;
+    const whereClause = and(searchClause, statusClause);
 
     let qb = db
       .select({ org: organizationsTable, memberCount: count(membershipsTable.id) })
@@ -85,17 +98,17 @@ router.get("/", ...auth, async (req, res, next) => {
       .groupBy(organizationsTable.id)
       .$dynamic();
 
-    if (search) {
-      qb = qb.where(or(
-        ilike(organizationsTable.name, `%${search}%`),
-        ilike(organizationsTable.slug, `%${search}%`),
-      ));
-    }
-    if (status && !suspended) qb = qb.where(eq(organizationsTable.status, status as any));
-    if (suspended) qb = qb.where(eq(organizationsTable.status, "suspended"));
+    if (whereClause) qb = qb.where(whereClause);
 
-    const rows = await qb.limit(limit).offset(offset).orderBy(desc(organizationsTable.createdAt));
-    const [totalRow] = await db.select({ n: count() }).from(organizationsTable);
+    // Count query uses the same search/status clause so the returned total
+    // reflects the filtered set, not the full table.
+    let countQb = db.select({ n: count() }).from(organizationsTable).$dynamic();
+    if (whereClause) countQb = countQb.where(whereClause);
+
+    const [rows, [totalRow]] = await Promise.all([
+      qb.limit(limit).offset(offset).orderBy(desc(organizationsTable.createdAt)),
+      countQb,
+    ]);
 
     const orgIds = rows.map(r => r.org.id);
     const [subs, planRows] = await Promise.all([
