@@ -102,44 +102,53 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
   const versionId = randomUUID();
   const now = new Date();
 
-  // Create initial version
-  await db.insert(completedWorkVersionsTable).values({
-    id: versionId,
-    completedWorkId: id,
-    organizationId: input.organizationId,
-    versionNumber: 1,
-    contentMarkdown: input.contentMarkdown,
-    qualityScore: input.reviewResult?.qualityScore ?? null,
-    reviewDimensions: input.reviewResult?.dimensions ?? [],
-    changeNote: "Initial draft",
-    isAutoRevision: input.reviewResult?.revised ? "true" : "false",
-    createdByUserId: input.createdByUserId,
-    createdAt: now,
+  // Parent + first version are written atomically.
+  // Parent MUST be inserted before the version — completed_work_versions.completed_work_id
+  // carries a FK reference to completed_work.id (onDelete: cascade). Inserting the version
+  // first causes an immediate FK violation (PostgreSQL error 23503).
+  // On any failure the transaction rolls back both writes — no orphaned rows.
+  await db.transaction(async (tx) => {
+    // ── 1. Parent row (must exist before version FK can resolve) ─────────────
+    await tx.insert(completedWorkTable).values({
+      id,
+      organizationId: input.organizationId,
+      conversationId: input.conversationId ?? null,
+      blueprintId: input.blueprintId ?? null,
+      manifestId: input.manifestId ?? null,
+      primarySpecialist: input.primarySpecialist,
+      title: input.title,
+      outputType: input.outputType,
+      status: "draft",
+      currentVersionId: versionId,
+      approvalWorkflow: {},
+      createdByUserId: input.createdByUserId,
+      approvedByUserId: null,
+      approvedAt: null,
+      rejectedAt: null,
+      archivedAt: null,
+      reopenedAt: null,
+      supersededById: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // ── 2. Initial version (FK now satisfiable) ───────────────────────────────
+    await tx.insert(completedWorkVersionsTable).values({
+      id: versionId,
+      completedWorkId: id,
+      organizationId: input.organizationId,
+      versionNumber: 1,
+      contentMarkdown: input.contentMarkdown,
+      qualityScore: input.reviewResult?.qualityScore ?? null,
+      reviewDimensions: input.reviewResult?.dimensions ?? [],
+      changeNote: "Initial draft",
+      isAutoRevision: input.reviewResult?.revised ? "true" : "false",
+      createdByUserId: input.createdByUserId,
+      createdAt: now,
+    });
   });
 
-  // Create work item
-  await db.insert(completedWorkTable).values({
-    id,
-    organizationId: input.organizationId,
-    conversationId: input.conversationId ?? null,
-    blueprintId: input.blueprintId ?? null,
-    manifestId: input.manifestId ?? null,
-    primarySpecialist: input.primarySpecialist,
-    title: input.title,
-    outputType: input.outputType,
-    status: "draft",
-    currentVersionId: versionId,
-    approvalWorkflow: {},
-    createdByUserId: input.createdByUserId,
-    approvedByUserId: null,
-    approvedAt: null,
-    rejectedAt: null,
-    archivedAt: null,
-    reopenedAt: null,
-    supersededById: null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  // ── Post-transaction side-effects (outside tx — these are best-effort) ──────
 
   // Link manifest to completed work
   if (input.manifestId) {

@@ -1,0 +1,111 @@
+Inspection and Fix — Completed Work Version Persistence Failure
+
+Current failure:
+
+Failed query: insert into completed_work_versions (...)
+
+The task reached draft generation and quality review, but failed while inserting version 1.
+
+Do not guess from the Drizzle wrapper.
+Capture and report the underlying PostgreSQL error.
+
+Required work:
+
+1. Reproduce the exact task and capture:
+   - error.cause
+   - PostgreSQL error code
+   - constraint name
+   - detail
+   - schema/table
+   - first application stack frame
+   - transaction state
+
+2. Trace the parent and child writes:
+   - completed_work insert
+   - completed_work_versions insert
+   - whether they run in one transaction
+   - whether the parent row exists before the child insert
+   - organisationId consistency
+   - createdByUserId existence
+   - RLS session/tenant context
+
+3. Verify runtime schema against the database migration for:
+   - content_markdown
+   - quality_score
+   - review_dimensions
+   - change_note
+   - is_auto_revision
+   - created_by_user_id
+   - created_at
+
+4. Identify the exact failing parameter or constraint.
+
+5. Fix the real database contract.
+   Do not remove fields merely to make the insert pass.
+   Do not disable RLS or foreign keys.
+
+6. Add an atomic transaction if the parent and first version are not already written atomically.
+   On failure, do not leave an orphaned completed_work row.
+
+7. Fix fallback-output handling.
+
+The generated content contains:
+- AI provider not configured
+- no library sources retrieved
+- specialist execution required
+
+This must not be treated as successful professional Completed Work.
+
+Required behaviour:
+- return a clear execution/configuration failure, or
+- save only as an explicitly failed/non-reviewable diagnostic artefact if the existing lifecycle supports that
+- never present it as completed specialist work
+
+8. Fix incomplete-marker detection.
+
+The quality review reported zero incomplete markers even though the content contains:
+- [INCOMPLETE: ...]
+
+Recognise:
+- [INCOMPLETE]
+- [INCOMPLETE:
+- [MISSING]
+- [MISSING:
+- [TODO]
+- [TODO:
+
+Incomplete markers must fail completeness and prevent approval-ready status.
+
+9. Investigate why no Organisation Library sources were retrieved for a Medication Management Policy review.
+
+Report whether:
+- the policy does not exist
+- it is unapproved
+- ingestion is incomplete
+- no chunks exist
+- retrieval confidence was below threshold
+- the wrong blueprint/source types were selected
+
+Do not claim this workflow succeeded without evidence.
+
+10. Add regression tests covering:
+- successful parent + version transaction
+- FK failure rolls back both writes
+- RLS/tenant isolation
+- JSONB review_dimensions persistence
+- valid createdByUserId
+- missing AI provider does not create normal Completed Work
+- incomplete fallback cannot become reviewable work
+- [INCOMPLETE: ...] is detected
+- medication-policy workflow with approved indexed evidence creates version 1 successfully
+
+Return:
+1. Exact PostgreSQL root cause
+2. Failed constraint or field
+3. Transaction fix
+4. Fallback handling fix
+5. Incomplete-marker fix
+6. Knowledge retrieval finding
+7. Files changed
+8. Final tests
+9. Manual browser result

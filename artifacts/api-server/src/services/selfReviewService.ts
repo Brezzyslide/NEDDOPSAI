@@ -374,7 +374,12 @@ function reviewCompleteness(content: string, blueprint: WorkBlueprint | null): D
   const minContentLength = 200;
   const hasHeadings = /^#{1,3}\s.+/m.test(content) || /^[A-Z][A-Z\s]{3,}:/m.test(content);
   const hasActionItems = /action|recommend|next step|follow.up/i.test(content);
-  const incompleteMarkers = (content.match(/\[INCOMPLETE\]|\[MISSING\]|\[TODO\]/gi) ?? []).length;
+  // Match both exact form [INCOMPLETE] and colon-prefix form [INCOMPLETE: description].
+  // The blueprint execution addendum instructs the specialist to use the colon form, so
+  // the regex must recognise both variants for all three marker types.
+  const incompleteMarkers = (
+    content.match(/\[INCOMPLETE(?::[^\]]+)?\]|\[MISSING(?::[^\]]+)?\]|\[TODO(?::[^\]]+)?\]/gi) ?? []
+  ).length;
 
   let score = 7;
   const suggestions: string[] = [];
@@ -382,7 +387,7 @@ function reviewCompleteness(content: string, blueprint: WorkBlueprint | null): D
     `Content length: ${content.length} characters (minimum: ${minContentLength})`,
     `Section headings detected: ${hasHeadings}`,
     `Action items / recommendations detected: ${hasActionItems}`,
-    `Incomplete markers ([INCOMPLETE], [MISSING], [TODO]): ${incompleteMarkers}`,
+    `Incomplete markers ([INCOMPLETE], [INCOMPLETE: …], [MISSING], [TODO]): ${incompleteMarkers}`,
   ];
 
   if (content.length < minContentLength) {
@@ -449,7 +454,10 @@ function reviewConfidence(content: string): DimensionResult {
 }
 
 function reviewMissingInformation(content: string): DimensionResult {
-  const missingMarkers = (content.match(/\[INCOMPLETE\]|\[MISSING\]|\[UNKNOWN\]|\[TODO\]|\[REQUIRED\]/gi) ?? []).length;
+  // Match both exact form [INCOMPLETE] and colon-prefix form [INCOMPLETE: description].
+  const missingMarkers = (
+    content.match(/\[INCOMPLETE(?::[^\]]+)?\]|\[MISSING(?::[^\]]+)?\]|\[UNKNOWN(?::[^\]]+)?\]|\[TODO(?::[^\]]+)?\]|\[REQUIRED(?::[^\]]+)?\]/gi) ?? []
+  ).length;
   const questionLines = content.split("\n").filter(l => l.trim().endsWith("?"));
   const questionMarkers = (content.match(/\?\s*$|\?\s*\n/gm) ?? []).length;
   const score = Math.max(0, 10 - missingMarkers * 2 - Math.min(3, questionMarkers));

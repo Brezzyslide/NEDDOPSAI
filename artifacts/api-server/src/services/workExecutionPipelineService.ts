@@ -121,7 +121,20 @@ export type ExecutionOutcome =
   | "awaiting_clarification"
   | "no_blueprint"
   | "execution_failed"
-  | "execution_principal_missing";
+  | "execution_principal_missing"
+  | "configuration_failure";
+
+/**
+ * Thrown when the AI provider is not configured, so the pipeline refuses to
+ * produce and persist a rule-based stub as though it were real specialist work.
+ * Caught by executeWork to return { outcome: "configuration_failure" }.
+ */
+export class FallbackDraftError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FallbackDraftError";
+  }
+}
 
 export interface ExecuteWorkResult {
   outcome: ExecutionOutcome;
@@ -334,13 +347,14 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     }, evidencePack ?? undefined);
     tLlmMs = Date.now() - t5;
   } catch (err) {
+    const isFallback = err instanceof FallbackDraftError;
     // Sprint 27.4 — write failure diagnostics (fire-and-forget)
     updateManifestObservability(manifest.id, {
       failureInfo: {
         state: "failed",
         failedStage: "executing",
         rootCause: err instanceof Error ? err.message : "Unknown error",
-        retryAvailable: false,
+        retryAvailable: isFallback, // configuration issues are retryable once fixed
       },
       performanceMetrics: {
         blueprintSelectionMs: tBlueprintMs,
@@ -352,6 +366,19 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
         evidenceCacheHit: false,
       },
     }).catch(() => {});
+
+    if (isFallback) {
+      // AI provider is not configured — refuse to save a stub as professional work.
+      // Return configuration_failure so the coordinator can post a clear message
+      // without creating a misleading Completed Work record.
+      return {
+        outcome: "configuration_failure",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message: err.message,
+      };
+    }
+
     return {
       outcome: "execution_failed",
       manifestId: manifest.id,
@@ -455,7 +482,13 @@ async function generateDraft(
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
   if (provider !== "openai") {
-    return generateRuleBasedDraft(userRequest, manifest, blueprint);
+    // Rule-based stubs must never be persisted as real Completed Work.
+    // Throw FallbackDraftError so the pipeline returns configuration_failure instead.
+    throw new FallbackDraftError(
+      `AI_PROVIDER is not configured (current: "${provider}"). ` +
+      `AI specialist execution is required for professional work outputs. ` +
+      `Please contact your platform administrator to configure the AI provider.`,
+    );
   }
 
   const gatewayCtx: AIGatewayContext = {
@@ -525,7 +558,12 @@ async function generateDraft(
   });
 
   if (response.usedFallback || !response.content) {
-    return generateRuleBasedDraft(userRequest, manifest, blueprint);
+    // Gateway fell back (e.g. provider returned empty response). Treat the same
+    // as a missing AI_PROVIDER — refuse to persist a stub as real specialist work.
+    throw new FallbackDraftError(
+      "AI specialist execution did not produce content (gateway used fallback). " +
+      "The work output cannot be saved as Completed Work. Please retry or contact your platform administrator.",
+    );
   }
 
   return response.content.trim();
