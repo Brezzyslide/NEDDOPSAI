@@ -321,6 +321,7 @@ export const AUDIT_EVENTS = [
   "execution_coordinator.error",
   "execution_coordinator.principal_missing",
   "openclaw.handoff_package_created",
+  "ai_gateway.field_access_denied",
   // Sprint 9.7 — Owner Control Plane
   "platform.organisation_updated",
   "platform.organisation_closed",

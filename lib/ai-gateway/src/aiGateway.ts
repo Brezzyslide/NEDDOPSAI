@@ -119,6 +119,7 @@ function validateFields(purpose: AIPurpose, fields: string[]): void {
     throw new AIGatewayDataError(
       `Data fields not permitted for purpose "${purpose}": ${forbidden.join(", ")}. ` +
       `Permitted fields: ${allowlisted.join(", ")}`,
+      forbidden,
     );
   }
 }
@@ -130,9 +131,25 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   const requestAuditId = randomUUID();
   const startMs = Date.now();
 
-  // Validate retrieved fields against purpose allowlist
+  // Validate retrieved fields against purpose allowlist.
+  // On denial: write a structured audit event (with denied field paths) THEN re-throw.
+  // The customer-facing message is constructed by the caller from the correlationId.
   if (request.retrievedFields.length > 0) {
-    validateFields(ctx.purpose, request.retrievedFields);
+    try {
+      validateFields(ctx.purpose, request.retrievedFields);
+    } catch (err) {
+      if (err instanceof AIGatewayDataError) {
+        await writeGatewayDenialAuditEvent(ctx, err.deniedFields);
+        // Log denied fields internally; do not surface field names in the thrown message
+        // — the caller should present a safe customer message referencing correlationId.
+        console.error(
+          `[AI Gateway] DATA_NOT_PERMITTED correlationId=${ctx.correlationId} ` +
+          `purpose=${ctx.purpose} org=${ctx.organizationId} ` +
+          `denied=[${err.deniedFields.join(", ")}]`,
+        );
+      }
+      throw err;
+    }
   }
 
   // ── Pre-request audit event ────────────────────────────────────────────────
@@ -267,6 +284,41 @@ interface GatewayAuditParams {
   inputTokens?: number;
   outputTokens?: number;
   latencyMs?: number;
+}
+
+/**
+ * Writes a structured audit event when the gateway denies a data-field request.
+ * Records denied field paths internally; does NOT expose them in the thrown error
+ * message visible to end-users (caller uses correlationId for customer messaging).
+ * Satisfies Part 9 of the task_execution data-field contract.
+ */
+async function writeGatewayDenialAuditEvent(
+  ctx: AIGatewayContext,
+  deniedFields: string[],
+): Promise<void> {
+  await platformDb.insert(orgAuditLogTable).values({
+    id: randomUUID(),
+    organizationId: ctx.organizationId,
+    actorUserId: ctx.userId,
+    actorType: "ai_gateway",
+    eventType: "ai_gateway.field_access_denied" as any,
+    resourceType: "ai_request",
+    resourceId: ctx.correlationId,
+    accessPurpose: ctx.purpose,
+    isSensitive: true,
+    metadata: {
+      correlationId: ctx.correlationId,
+      purpose: ctx.purpose,
+      role: ctx.role,
+      decision: "denied",
+      // Full field paths logged internally for platform operators — never sent to customers.
+      deniedFieldPaths: deniedFields,
+      permittedDataClasses: PURPOSE_FIELD_ALLOWLIST[ctx.purpose as AIPurpose] ?? [],
+    },
+    occurredAt: new Date(),
+  }).catch(() => {
+    console.error("[AI Gateway] WARN: Failed to write field-denial audit event", ctx.correlationId);
+  });
 }
 
 async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void> {

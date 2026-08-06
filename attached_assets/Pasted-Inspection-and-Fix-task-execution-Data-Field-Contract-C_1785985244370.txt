@@ -1,0 +1,379 @@
+Inspection and Fix — task_execution Data Field Contract
+
+Current error:
+
+Specialist execution failed:
+
+Data fields not permitted for purpose "task_execution":
+
+- organisation_library_sources
+- cos_memories
+- entity_knowledge
+- task_uploads
+
+Permitted fields:
+
+- task.id
+- task.title
+- task.description
+- task.executionPlan
+- specialist.name
+- specialist.capabilities
+
+The execution role and purpose are now correct. The remaining failure is that the task_execution data-field allowlist still reflects the old metadata-only execution architecture.
+
+Do not disable field validation.
+Do not add wildcard access.
+Do not allow every runtime field.
+Do not bypass clearance, tenant isolation, or source approval rules.
+
+Objective
+
+Align the task_execution permission contract with the current evidence-aware specialist runtime while preserving least-privilege access.
+
+────────────────────────────────────────
+Part 1 — Trace the exact permission check
+
+Reproduce:
+
+“Review our Medication Management Policy through an operational lens. Use the Operations Manager only.”
+
+Trace:
+
+Chief of Staff
+→ task creation
+→ execution coordinator
+→ work execution pipeline
+→ runtime context construction
+→ AI gateway permission validation
+→ rejected data fields
+
+Report:
+
+- exact permission registry file
+- exact task_execution purpose definition
+- exact data fields passed
+- exact first application frame that rejects them
+- field path format expected by the checker
+- whether fields are top-level names or nested paths
+
+────────────────────────────────────────
+Part 2 — Inspect the current runtime payload
+
+Show the exact safe schema of each rejected field without logging sensitive content.
+
+For:
+
+organisation_library_sources
+
+Report:
+
+- shape
+- whether it contains metadata or evidence text
+- sourceId
+- title
+- sourceType
+- authority
+- version
+- chunk text
+- citations
+- confidence
+
+For:
+
+cos_memories
+
+Report:
+
+- shape
+- approval state
+- memory type
+- whether sensitive/internal memory is included
+- whether all memories or only task-relevant memories are sent
+
+For:
+
+entity_knowledge
+
+Report:
+
+- shape
+- source
+- entity type
+- clearance
+- tenant scope
+- relevance filtering
+
+For:
+
+task_uploads
+
+Report:
+
+- shape
+- file metadata
+- extracted text
+- approval/trust status
+- task ownership
+- malware/validation state
+
+Determine which exact subfields the specialist truly needs.
+
+────────────────────────────────────────
+Part 3 — Define least-privilege field permissions
+
+Create an explicit task_execution field contract.
+
+Do not simply permit the four broad containers unless the permission model is designed for container-level control.
+
+Prefer precise nested paths such as:
+
+organisation_library_sources.sourceId
+organisation_library_sources.title
+organisation_library_sources.sourceType
+organisation_library_sources.version
+organisation_library_sources.authorityLevel
+organisation_library_sources.citation
+organisation_library_sources.relevantChunks.text
+organisation_library_sources.relevantChunks.confidence
+
+cos_memories.id
+cos_memories.type
+cos_memories.title
+cos_memories.content
+cos_memories.confidence
+cos_memories.approvalStatus
+
+entity_knowledge.entityType
+entity_knowledge.entityId
+entity_knowledge.title
+entity_knowledge.relevantContent
+entity_knowledge.provenance
+entity_knowledge.clearance
+
+task_uploads.id
+task_uploads.title
+task_uploads.mimeType
+task_uploads.extractedText
+task_uploads.sourceTrust
+task_uploads.taskId
+
+Use the actual schema names from the codebase.
+
+Do not permit:
+
+- storage keys
+- raw object-storage paths
+- API credentials
+- embedding vectors
+- hidden system prompts
+- internal chain-of-thought
+- unrelated organisation memory
+- other-task uploads
+- unapproved library documents
+- inaccessible participant data
+
+────────────────────────────────────────
+Part 4 — Verify field naming consistency
+
+Determine whether the permission registry expects:
+
+snake_case:
+
+organisation_library_sources
+
+or dotted camelCase paths:
+
+organisationLibrarySources.sourceId
+
+or another canonical format.
+
+The runtime payload and permission registry must use the same naming convention.
+
+Do not fix this by adding duplicate aliases unless backward compatibility requires it.
+
+Create one canonical field-name mapper if necessary.
+
+────────────────────────────────────────
+Part 5 — Purpose-specific access
+
+Review the permitted fields for all AI purposes:
+
+- conversation
+- task_execution
+- specialist_reasoning
+- self_review
+- knowledge_retrieval
+- completed_work_generation
+- clarification
+- any other registered purposes
+
+Ensure task_execution has only the context required to perform professional work.
+
+Do not accidentally grant the same fields to every purpose.
+
+For example:
+
+conversation may receive library presence metadata but not evidence chunks.
+
+task_execution may receive retrieved evidence chunks.
+
+self_review may receive the draft and evidence citations but not unrelated memory.
+
+Document the separation.
+
+────────────────────────────────────────
+Part 6 — Clearance and source safety
+
+Before any field is sent under task_execution, verify:
+
+Organisation library evidence:
+
+- correct organisation
+- approved
+- current
+- indexed
+- relevant to task
+- specialist clearance permits access
+
+Organisation memory:
+
+- approved where required
+- not retired
+- relevant
+- specialist scope permits access
+
+Entity knowledge:
+
+- correct entity
+- correct organisation
+- clearance-compatible
+- task-relevant
+
+Task uploads:
+
+- belong to this task
+- belong to this organisation
+- safe/validated
+- user-authorised
+- only required content included
+
+Field permission is not a substitute for row-level or clearance validation.
+
+────────────────────────────────────────
+Part 7 — Update the permission registry
+
+Add the minimum required current fields to the task_execution allowlist.
+
+If the registry supports data classes, create explicit classes such as:
+
+task_core
+specialist_identity
+approved_organisation_evidence
+approved_organisation_memory
+task_scoped_uploads
+entity_scoped_knowledge
+
+Then map task_execution to only the required classes.
+
+Preserve backward compatibility with existing permitted task and specialist fields.
+
+────────────────────────────────────────
+Part 8 — Fail safely
+
+If a disallowed field is introduced later:
+
+- continue to reject it
+- return a structured domain error
+- include the rejected field names in internal logs
+- show a safe customer-facing message
+- include correlationId
+- do not expose raw internal data-field names to ordinary customers unless developer mode is enabled
+
+Suggested customer message:
+
+“The specialist could not start because part of the task context was not authorised for execution. No work was performed. Please retry or contact support with reference [correlation ID].”
+
+────────────────────────────────────────
+Part 9 — Audit
+
+Audit the permission decision with:
+
+- organisationId
+- requesterId
+- taskId
+- executionId
+- specialistCode
+- purpose
+- permitted data classes
+- denied field paths
+- decision
+- correlationId
+
+Do not log field contents.
+
+────────────────────────────────────────
+Part 10 — Tests
+
+Add tests covering:
+
+Core contract
+
+- task_execution permits task core fields
+- task_execution permits specialist identity fields
+- task_execution permits approved organisation evidence
+- task_execution permits approved relevant organisation memory
+- task_execution permits task-scoped uploads
+- task_execution permits authorised entity knowledge
+
+Denials
+
+- unapproved library source denied
+- superseded source denied
+- wrong-tenant source denied
+- unrelated organisation memory denied
+- other-task upload denied
+- excessive entity knowledge denied
+- storageKey denied
+- embedding vector denied
+- hidden prompt denied
+- unknown new field denied
+
+Purpose separation
+
+- conversation cannot receive evidence chunks
+- task_execution can receive evidence chunks
+- self_review receives only draft/evidence fields it needs
+- purpose names match the central AIPurpose registry
+
+Regression scenario
+
+“Review our Medication Management Policy through an operational lens. Use the Operations Manager only.”
+
+Expected:
+
+- requester role resolved
+- purpose = task_execution
+- approved Medication Management Policy evidence authorised
+- relevant organisation memory authorised
+- task uploads authorised only when present and task-scoped
+- gateway accepts the context
+- Operations Manager executes
+- Completed Work is created
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Exact stale allowlist definition
+2. Exact runtime payload fields
+3. New task_execution field contract
+4. Fields deliberately excluded
+5. Purpose separation matrix
+6. Files changed
+7. Audit changes
+8. Test results
+9. Manual end-to-end result
+
+Do not mark complete until the medication-policy workflow passes through the gateway and produces Completed Work without disabling permission enforcement.

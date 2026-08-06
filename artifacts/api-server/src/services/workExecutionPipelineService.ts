@@ -484,11 +484,35 @@ async function generateDraft(
 
   const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack);
 
+  // Declare every data class field being passed to the specialist runtime.
+  // Naming: dotted camelCase matching PURPOSE_FIELD_ALLOWLIST in @workspace/ai-gateway.
+  // Excluded: storageKey (raw GCS paths), embedding vectors, taskUploads.authorityLevel,
+  //           cosMemories raw content, hidden system prompts, unrelated org memory.
   const retrievedFields: string[] = [
-    "organisation_library_sources",
-    "cos_memories",
-    "entity_knowledge",
-    "task_uploads",
+    // approved_organisation_evidence (ManifestLibrarySource)
+    "organisationLibrarySources.sourceId",
+    "organisationLibrarySources.title",
+    "organisationLibrarySources.sourceType",
+    "organisationLibrarySources.versionLabel",
+    "organisationLibrarySources.authorityLevel",
+    "organisationLibrarySources.relevantChunks.text",
+    "organisationLibrarySources.relevantChunks.confidence",
+    // approved_organisation_memory (ManifestMemoryRef — title reference only)
+    "cosMemories.memoryId",
+    "cosMemories.memoryType",
+    "cosMemories.title",
+    "cosMemories.approvalStatus",
+    // task_scoped_uploads (ManifestLibrarySource — no storageKey or authorityLevel)
+    "taskUploads.sourceId",
+    "taskUploads.title",
+    "taskUploads.sourceType",
+    "taskUploads.versionLabel",
+    // entity_scoped_knowledge (clearance-checked, task-scoped)
+    "entityKnowledge.entityType",
+    "entityKnowledge.entityId",
+    "entityKnowledge.title",
+    "entityKnowledge.relevantContent",
+    "entityKnowledge.clearance",
   ];
 
   const response = await gateway.process({
