@@ -1,0 +1,187 @@
+Architecture Verification Sprint — Cloud vs Desktop Runtime Execution
+
+Do NOT implement any changes.
+
+This is an inspection and architecture verification exercise only.
+
+Objective
+
+Determine whether the current NeedsOps architecture already supports the following two execution scenarios.
+
+Do not infer intent from documentation.
+
+Trace the actual code paths from frontend → API → execution pipeline → gateway → connector → runtime.
+
+────────────────────────────────────────
+
+SCENARIO 1 — Cloud Knowledge Execution
+
+User has uploaded organisational knowledge into NeedsOps.
+
+Example:
+
+Knowledge Hub
+    Medication Policy
+    Incident Policy
+    Behaviour Support Policy
+
+User asks:
+
+"Review our Medication Management Policy through an operational lens."
+
+Expected architecture:
+
+Browser
+↓
+Chief of Staff
+↓
+Operations Manager
+↓
+Knowledge Resolution
+↓
+Organisation Knowledge Library
+↓
+Evidence Pack
+↓
+AI Gateway
+↓
+Completed Work
+
+Determine:
+
+• Is this execution path currently supported?
+• Is it fully implemented?
+• Which services are involved?
+• Does the specialist receive the retrieved evidence?
+• Is Completed Work generated without requiring OpenClaw?
+• Which files implement this flow?
+
+────────────────────────────────────────
+
+SCENARIO 2 — Desktop Runtime Execution (No Knowledge Uploaded)
+
+Assume:
+
+The organisation has NOT uploaded any policies.
+
+However:
+
+• Desktop Connector installed
+• OpenClaw Runtime running
+• User has local files
+
+Example:
+
+Documents/
+Medication Management Policy.docx
+
+User asks:
+
+"Review my Medication Management Policy."
+
+Expected architecture:
+
+Browser
+↓
+Chief of Staff
+↓
+Operations Manager
+↓
+Evidence Resolver detects missing organisation knowledge
+↓
+Desktop Connector
+↓
+OpenClaw Runtime
+↓
+Locate local file
+↓
+Read file
+↓
+Temporary Evidence Pack
+↓
+Operations Manager
+↓
+Completed Work
+
+Determine:
+
+• Is this execution path currently supported?
+• Can the Chief of Staff request local evidence?
+• Can OpenClaw currently locate local files?
+• Can the runtime return document text?
+• Can local document content become temporary execution evidence?
+• Is any orchestration already implemented?
+• If unsupported, identify exactly where execution stops.
+
+────────────────────────────────────────
+
+SCENARIO 3 — Hybrid Execution
+
+Organisation has:
+
+• Some knowledge uploaded
+• Some documents only on desktop
+
+Expected:
+
+Evidence Pack combines:
+
+• Knowledge Library
+• Desktop Connector
+• Task Uploads
+• Organisation Memory
+• Legislation
+
+Determine whether this is currently supported.
+
+────────────────────────────────────────
+
+For each scenario return:
+
+Support Status
+
+✅ Fully supported
+🟡 Partially supported
+❌ Not supported
+
+Execution Trace
+
+Show the actual services called.
+
+Example:
+
+ChiefOfStaffService
+↓
+workPackageService
+↓
+knowledgeResolutionService
+↓
+...
+
+Missing Components
+
+If unsupported, list:
+
+• Missing service
+• Missing orchestration
+• Missing API
+• Missing connector capability
+• Missing runtime capability
+
+Do not speculate.
+
+Use only the current codebase.
+
+────────────────────────────────────────
+
+Finally provide:
+
+1. Current Architecture Diagram
+2. Supported execution modes
+3. Unsupported execution modes
+4. Gap analysis
+5. Recommended implementation order (if any)
+
+Do not modify code.
+
+Inspection only.
