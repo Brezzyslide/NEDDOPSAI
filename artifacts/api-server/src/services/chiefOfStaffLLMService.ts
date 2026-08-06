@@ -47,6 +47,15 @@ import {
   buildWorkforceSection,
   type ConversationWorkforceContext,
 } from "./conversationWorkforceContextService.js";
+import {
+  resolveConversationActionState,
+  buildActionStateSection,
+  type ConversationActionState,
+} from "./conversationActionStateService.js";
+import {
+  checkDelegationIntegrity,
+  buildDelegationIntegrityAuditEvent,
+} from "./delegationIntegrityService.js";
 
 // ─── Workforce role validation ────────────────────────────────────────────────
 
@@ -217,6 +226,31 @@ When NO ORGANISATION LIBRARY PRESENCE section is in your context:
 - Do not assume the library was searched.
 - Do not ask the user whether the document exists.
 - State that document availability will be confirmed during execution.
+
+## ACTION STATE — MANDATORY RULES
+
+You are provided with a CURRENT ACTION STATE section in your context immediately before the user's message. It describes what the platform has actually performed — not what you plan to do.
+
+Rules you MUST follow:
+
+1. Only claim an action has occurred if the CURRENT ACTION STATE confirms it.
+2. Use future or conditional language when no task or proposal exists.
+   ✓ "I can prepare a task proposal."
+   ✗ "I have assigned the specialist."
+3. After a proposal is created, you may say: "I've prepared a proposal — please confirm to proceed."
+4. Never say "I will proceed" when user confirmation is still required.
+5. Never say "I have delegated" or "I've assigned" when only a specialist recommendation exists.
+6. Never say "the specialist is working" or "work is underway" before execution_started.
+7. Never say "completed" or "finished" before a Completed Work record exists.
+8. Use the Allowed claims list in CURRENT ACTION STATE as your authoritative guide.
+
+State language examples:
+- informational: "The Operations Manager is available. Shall I prepare a task proposal?"
+- proposal_created: "I've prepared a proposal for your review. Confirm and I'll create the task."
+- task_created: "The task has been created. I'll coordinate specialist assignment."
+- specialist_assigned: "The Operations Manager has been assigned."
+- execution_started: "The Operations Manager has started the review."
+- completed: "The review is complete. The completed work report is ready."
 
 ## AVAILABLE AI WORKFORCE — MANDATORY RULES
 
@@ -506,6 +540,30 @@ export async function classifyMessageLLM(
     }
   }
 
+  // ── Sprint 28.4: Action state resolution (authoritative — DB records only) ──
+  // Resolved before the provider branch so both LLM and deterministic paths
+  // get the same action state truth. Never inferred from conversation text.
+  let actionState: ConversationActionState | null = null;
+  let actionStateSection: string | null = null;
+
+  if (ctx.organizationId && ctx.conversationId) {
+    try {
+      actionState = await resolveConversationActionState({
+        organisationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        recentMessages: ctx.recentMessages ?? [],
+        taskId: ctx.currentTaskId ?? undefined,
+      });
+      actionStateSection = buildActionStateSection(actionState);
+    } catch (e) {
+      console.warn("[ChiefOfStaffLLM] Action state resolution failed:", {
+        organisationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   // ── Sprint 28.3: Live workforce context ────────────────────────────────────
   // Loaded once per request. Both LLM and deterministic fallback paths use the
   // same live eligible set — no path can return an unavailable specialist.
@@ -538,6 +596,17 @@ export async function classifyMessageLLM(
     if (dispatchableCodes) {
       const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
       base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+    }
+    // Sprint 28.4: Apply delegation integrity to deterministic path responses
+    if (actionState && base.customerResponse) {
+      const integrityResult = checkDelegationIntegrity(base.customerResponse, actionState);
+      if (!integrityResult.passed) {
+        console.warn("[ChiefOfStaffLLM] Deterministic integrity violation:", {
+          ...integrityResult.auditFields,
+          conversationId: ctx.conversationId,
+        });
+        base.customerResponse = integrityResult.correctedResponse;
+      }
     }
     return { ...base, usedFallback: false };
   }
@@ -574,8 +643,8 @@ export async function classifyMessageLLM(
     const gateway = createAIGateway(gatewayCtx);
 
     const userMessage = ctxPackage
-      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined, workforceSection ?? undefined)
-      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined, workforceSection ?? undefined);
+      ? buildLayeredUserMessage(text, ctx, ctxPackage, presenceSection ?? undefined, workforceSection ?? undefined, actionStateSection ?? undefined)
+      : buildLegacyUserMessage(text, ctx, presenceSection ?? undefined, workforceSection ?? undefined, actionStateSection ?? undefined);
 
     const retrievedFields: string[] = [];
     if (ctx.currentTaskId)    retrievedFields.push("task.id");
@@ -600,7 +669,7 @@ export async function classifyMessageLLM(
       return { ...base, usedFallback: true, fallbackReason: response.fallbackReason };
     }
 
-    const parsed = parseAndValidateLLMResponse(response.content, ctx, workforceCtx ?? undefined);
+    const parsed = parseAndValidateLLMResponse(response.content, ctx, workforceCtx ?? undefined, actionState ?? undefined);
     return { ...parsed, usedFallback: false };
 
   } catch (err) {
@@ -610,6 +679,13 @@ export async function classifyMessageLLM(
     if (dispatchableCodes) {
       const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
       base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+    }
+    // Sprint 28.4: apply integrity check to fallback path too
+    if (actionState && base.customerResponse) {
+      const integrityResult = checkDelegationIntegrity(base.customerResponse, actionState);
+      if (!integrityResult.passed) {
+        base.customerResponse = integrityResult.correctedResponse;
+      }
     }
     return { ...base, usedFallback: true, fallbackReason: reason };
   }
@@ -623,6 +699,7 @@ function buildLayeredUserMessage(
   pkg: ChiefOfStaffContextPackage,
   presenceSection?: string,
   workforceSection?: string,
+  actionStateSection?: string,
 ): string {
   const sections: string[] = [];
 
@@ -738,9 +815,13 @@ function buildLayeredUserMessage(
     `Token estimate: ${pkg.tokenEstimate}`
   );
 
+  // ── CURRENT ACTION STATE (Sprint 28.4) ────────────────────────────────────
+  // Injected before workforce/presence so the LLM knows what it may claim.
+  if (actionStateSection) {
+    sections.push(actionStateSection);
+  }
+
   // ── AVAILABLE AI WORKFORCE (Sprint 28.3) ──────────────────────────────────
-  // Injected before presence and user message so the LLM applies workforce
-  // rules when it reads the user's request.
   if (workforceSection) {
     sections.push(workforceSection);
   }
@@ -763,6 +844,7 @@ function buildLegacyUserMessage(
   ctx: MessageContext,
   presenceSection?: string,
   workforceSection?: string,
+  actionStateSection?: string,
 ): string {
   const lines: string[] = [];
   if (ctx.currentTaskId) lines.push(`Current task: "${ctx.currentTaskTitle ?? "Untitled"}" [${ctx.currentTaskState ?? "unknown"}]`);
@@ -774,6 +856,10 @@ function buildLegacyUserMessage(
       const content = msg.content.length > 200 ? msg.content.slice(0, 200) + "…" : msg.content;
       lines.push(`${role}: ${content}`);
     }
+  }
+  // Sprint 28.4: inject action state before workforce/presence/user message
+  if (actionStateSection) {
+    lines.push(`\n${actionStateSection}`);
   }
   // Sprint 28.3: inject workforce section before presence and user message
   if (workforceSection) {
@@ -793,7 +879,8 @@ function parseAndValidateLLMResponse(
   content: string,
   ctx: MessageContext,
   workforceCtx?: ConversationWorkforceContext,
-): ConversationUnderstanding & CoSExtendedOutput & { workforceViolationDetected?: boolean } {
+  actionState?: ConversationActionState,
+): ConversationUnderstanding & CoSExtendedOutput & { workforceViolationDetected?: boolean; actionIntegrityViolationDetected?: boolean } {
   let raw: Record<string, unknown>;
   try { raw = JSON.parse(content) as Record<string, unknown>; }
   catch { throw new Error(`LLM returned invalid JSON: ${content.slice(0, 200)}`); }
@@ -914,6 +1001,26 @@ function parseAndValidateLLMResponse(
     }
   }
 
+  // Sprint 28.4: Delegation integrity check
+  // Detect and correct false action-language claims in customerResponse.
+  let actionIntegrityViolationDetected = false;
+  if (actionState) {
+    const integrityResult = checkDelegationIntegrity(customerResponse, actionState);
+    if (!integrityResult.passed) {
+      actionIntegrityViolationDetected = true;
+      customerResponse = integrityResult.correctedResponse;
+      console.warn("[ChiefOfStaffLLM] Action integrity violation corrected:", {
+        ...buildDelegationIntegrityAuditEvent({
+          organisationId: ctx.organizationId,
+          conversationId: ctx.conversationId,
+          taskId: ctx.currentTaskId ?? undefined,
+          correlationId: "llm-parse",
+          auditFields: integrityResult.auditFields,
+        }),
+      });
+    }
+  }
+
   return {
     conversationMode: mode as ConversationUnderstanding["conversationMode"],
     confidence,
@@ -932,5 +1039,7 @@ function parseAndValidateLLMResponse(
     specialistSequence,
     // Sprint 28.3: flag for callers that need to know structural enforcement fired
     workforceViolationDetected,
+    // Sprint 28.4: flag when delegation integrity correction was applied
+    actionIntegrityViolationDetected,
   };
 }

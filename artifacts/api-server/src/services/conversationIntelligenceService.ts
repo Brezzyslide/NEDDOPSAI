@@ -68,6 +68,8 @@ export interface MessageContext {
   pendingApprovalId?: string;
   recentMessages?: Array<{ senderType: string; content: string; messageType: string }>;
   participantRoles?: string[];
+  /** Sprint 28.4: true when a task_proposal or plan_proposal message exists in the conversation */
+  proposalExists?: boolean;
 }
 
 export interface StructuredContent {

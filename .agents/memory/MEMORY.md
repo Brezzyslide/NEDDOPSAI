@@ -56,3 +56,4 @@
 - [NeedsOps Sprint 28.1 Organisation Library Presence Service](needsops-sprint281.md) — 3-query presence check (sources→chunks→versions), 30s TTL cache, synonym expansion, confidence scoring, wireSelectSequence resets call count, 3247 tests
 - [NeedsOps Sprint 28.2 Knowledge-First Chief of Staff](needsops-sprint282.md) — presence injected before provider check, extractDocumentSearchTerms, buildLibraryPresenceSection, stale prompt rule replaced, "which policies?" skipped when doc named, 3289 tests
 - [NeedsOps Sprint 28.3 Live Workforce Availability](needsops-sprint283.md) — conversationWorkforceContextService, 8-rule dispatchability, DOMAIN_ROLE_MAP v2 codes, structural LLM validation, workforceViolationDetected flag, 3331 tests
+- [NeedsOps Sprint 28.4 Delegation Integrity](needsops-sprint284.md) — action state model+DB resolver, phrase detection+correction, all CoS paths guarded, self-referential DB chain mock pattern, 3394 tests

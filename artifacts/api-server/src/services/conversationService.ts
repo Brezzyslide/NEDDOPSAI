@@ -432,6 +432,13 @@ export async function buildMessageContext(
     .limit(recentLimit);
 
   ctx.recentMessages = recent.reverse();
+
+  // Sprint 28.4: flag whether a task_proposal/plan_proposal message already exists
+  // (used by the action state resolver without an additional DB round-trip)
+  ctx.proposalExists = ctx.recentMessages.some(
+    m => m.messageType === "task_proposal" || m.messageType === "plan_proposal"
+  );
+
   return ctx;
 }
 

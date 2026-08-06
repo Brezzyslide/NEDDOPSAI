@@ -1,0 +1,474 @@
+Sprint 28.4 — Conversation Context Layer (Part 4)
+Delegation Integrity and Truthful Action Language
+
+Objective
+
+Prevent the Chief of Staff from claiming that work has been assigned, coordinated, delegated, started, or completed unless structured platform state proves that the action occurred.
+
+This sprint closes the final P0 conversation-integrity gap.
+
+Do not modify specialist availability logic.
+Do not modify Organisation Library presence logic.
+Do not redesign task execution.
+Do not begin the Unified Conversation Context Service yet.
+
+────────────────────────────────────────
+Background
+
+Sprint 28.2 made the Chief of Staff knowledge-aware.
+
+Sprint 28.3 made the Chief of Staff workforce-aware.
+
+One gap remains:
+
+The Chief of Staff can still produce conversational language such as:
+
+- “I will coordinate with the Operations Manager.”
+- “I will proceed with the Operations Manager.”
+- “I have assigned the specialist.”
+- “The team will complete this review.”
+
+even when no structured task, proposal, specialist assignment, execution intent, or active execution exists.
+
+Conversation must never claim an action that the platform has not performed.
+
+────────────────────────────────────────
+Part 1 — Inspect all action-language paths
+
+Inspect:
+
+- chiefOfStaffLLMService
+- parseAndValidateLLMResponse
+- conversationService
+- conversationIntelligenceService
+- pending task proposal logic
+- task creation flow
+- execution intent creation
+- specialist assignment
+- execution coordinator
+- conversation message rendering
+
+Identify every branch that can return action language before structured state is created.
+
+Produce a map of:
+
+customerResponse phrase
+→ structured state required
+→ current enforcement
+
+────────────────────────────────────────
+Part 2 — Define action-state levels
+
+Create a shared action-state model.
+
+Suggested levels:
+
+informational
+proposal_ready
+proposal_created
+awaiting_confirmation
+task_created
+specialist_assigned
+execution_dispatched
+execution_started
+awaiting_clarification
+completed
+failed
+
+Each level should define what the Chief of Staff may truthfully say.
+
+Examples:
+
+informational
+
+Allowed:
+“The Operations Manager is available.”
+
+Not allowed:
+“I have assigned the Operations Manager.”
+
+proposal_ready
+
+Allowed:
+“I can prepare a task for the Operations Manager.”
+
+proposal_created
+
+Allowed:
+“I’ve prepared a task proposal for the Operations Manager.”
+
+awaiting_confirmation
+
+Allowed:
+“Confirm and I’ll create the task.”
+
+task_created
+
+Allowed:
+“The task has been created.”
+
+specialist_assigned
+
+Allowed:
+“The Operations Manager has been assigned.”
+
+execution_started
+
+Allowed:
+“The Operations Manager has started the review.”
+
+completed
+
+Allowed:
+“The review is complete.”
+
+────────────────────────────────────────
+Part 3 — Structured state resolver
+
+Create a service or helper that resolves the current action state from authoritative records.
+
+Suggested API:
+
+resolveConversationActionState({
+  organisationId,
+  conversationId,
+  taskId?,
+  proposalId?,
+  executionIntentId?
+})
+
+Return:
+
+{
+  level,
+  proposalExists,
+  proposalStatus,
+  taskExists,
+  assignedSpecialists,
+  executionIntentExists,
+  executionStatus,
+  completedWorkId,
+  allowedClaims
+}
+
+Do not infer action state from conversation text.
+
+Use actual DB or execution records.
+
+────────────────────────────────────────
+Part 4 — Prompt rules
+
+Add mandatory Chief of Staff rules:
+
+- Never claim an action has occurred unless the ACTION STATE context confirms it.
+- Use future or conditional language before structured state exists.
+- Distinguish “available”, “proposed”, “assigned”, “started”, and “completed”.
+- Never say “I will proceed” when user confirmation is still required.
+- Never say “I have delegated” when only a specialist recommendation exists.
+- Never say “the specialist is working” before execution_started.
+- Never say “completed” before a Completed Work record exists.
+
+Inject:
+
+=== CURRENT ACTION STATE ===
+
+Example:
+
+Level:
+proposal_ready
+
+Allowed claims:
+- The Operations Manager is available
+- I can prepare a task
+- I can propose the Operations Manager as lead
+
+Disallowed claims:
+- assigned
+- delegated
+- started
+- completed
+
+────────────────────────────────────────
+Part 5 — Programmatic response validation
+
+Do not rely only on prompt compliance.
+
+After the LLM returns customerResponse:
+
+1. Detect prohibited action claims.
+2. Compare each claim with allowedClaims.
+3. If unsupported:
+   - rewrite to truthful language, or
+   - regenerate once with a correction instruction.
+4. Record actionIntegrityViolationDetected=true for diagnostics.
+
+Examples:
+
+Unsupported:
+“I will proceed with the Operations Manager.”
+
+Corrected:
+“The Operations Manager is available to lead this review. Shall I prepare the task?”
+
+Unsupported:
+“I have assigned the Operations Manager.”
+
+Corrected:
+“I can assign the Operations Manager once you confirm the proposal.”
+
+Unsupported:
+“The Operations Manager is reviewing the policy.”
+
+Corrected:
+“The Operations Manager has not started yet. The task is awaiting confirmation.”
+
+────────────────────────────────────────
+Part 6 — Phrase and intent detection
+
+Detect at minimum:
+
+Assignment claims
+
+- assigned
+- delegated
+- allocated
+- handed over
+- asked the specialist
+
+Coordination claims
+
+- I will coordinate
+- I am coordinating
+- the team is working on it
+
+Execution claims
+
+- started
+- underway
+- in progress
+- reviewing now
+
+Completion claims
+
+- completed
+- finished
+- ready
+- delivered
+
+Do not flag ordinary explanatory references, such as:
+
+“The Operations Manager is responsible for operational assurance.”
+
+Context matters.
+
+────────────────────────────────────────
+Part 7 — Task proposal integration
+
+When the user requests work and the system has enough information:
+
+- create or return a structured pending task proposal
+- link the proposal to the conversation
+- include lead specialist and supporting specialists
+- present a real task proposal card
+- ask for confirmation where required
+
+The CoS may only say:
+
+“I have prepared a proposal”
+
+after the proposal record or structured proposal message exists.
+
+If the user gives a direct command that existing rules allow to bypass confirmation:
+
+- create the task
+- persist assignment
+- then acknowledge the action
+
+Do not acknowledge first and persist later.
+
+────────────────────────────────────────
+Part 8 — Specialist availability interaction
+
+Use Sprint 28.3 workforce context.
+
+Example:
+
+Operations Manager:
+dispatchable
+
+Compliance & Quality Manager:
+unavailable
+
+Correct response before proposal:
+
+“The Operations Manager is available to lead. The Compliance & Quality Manager is not currently active. Shall I prepare the task for the Operations Manager only?”
+
+After proposal creation:
+
+“I’ve prepared the task proposal with the Operations Manager as the only specialist.”
+
+After assignment:
+
+“The Operations Manager has been assigned.”
+
+────────────────────────────────────────
+Part 9 — Deterministic fallback alignment
+
+The deterministic path must use the same action-state rules.
+
+Do not allow fallback templates to say:
+
+- “I will coordinate”
+- “I have assigned”
+- “Work is underway”
+
+without state support.
+
+Create shared customer-facing templates for each action-state level.
+
+────────────────────────────────────────
+Part 10 — UI state alignment
+
+Ensure message cards and task proposal UI reflect real state.
+
+Examples:
+
+Suggested
+Awaiting confirmation
+Task created
+Assigned
+Executing
+Awaiting clarification
+Completed
+Failed
+
+Do not show “Assigned” based only on CoS message text.
+
+Buttons must operate on the structured proposal or task ID.
+
+────────────────────────────────────────
+Part 11 — Audit and observability
+
+Record:
+
+- unsupported action claim detected
+- response corrected
+- proposal created
+- task created
+- assignment recorded
+- execution started
+- completion linked
+
+Include:
+
+organisationId
+conversationId
+proposalId
+taskId
+executionId
+correlationId
+original claim category
+resolved action state
+
+Do not log sensitive prompt content.
+
+────────────────────────────────────────
+Part 12 — Tests
+
+Add tests covering:
+
+Before proposal
+
+- specialist available
+- “I will proceed” is corrected
+- “I have assigned” is corrected
+- response asks whether to prepare task
+
+Proposal created
+
+- may say proposal prepared
+- may not say assigned
+- proposal ID present
+
+Awaiting confirmation
+
+- may ask for confirmation
+- may not say execution started
+
+Task created
+
+- may say task created
+- may not say specialist started unless assignment/execution exists
+
+Assigned
+
+- may say assigned
+- may not say completed
+
+Executing
+
+- may say work is underway
+
+Completed
+
+- may say complete only when Completed Work exists
+
+Unavailable specialist
+
+- cannot be promised
+- truthful limitation retained
+
+Deterministic path
+
+- same enforcement as LLM path
+
+Duplicate and failure handling
+
+- failed proposal creation does not produce success claim
+- DB write must happen before acknowledgement
+- double confirmation produces one task
+
+Tenant isolation
+
+- action state from another organisation cannot affect response
+
+Regression scenario
+
+User:
+
+“Review our Medication Management Policy through an operational lens.”
+
+Expected before proposal:
+
+“I found the policy. The Operations Manager is available to lead the review. The Compliance & Quality Manager is not currently active. Shall I prepare the task for the Operations Manager only?”
+
+Expected after proposal creation:
+
+“I’ve prepared the task proposal with the Operations Manager as lead.”
+
+Expected after confirmation and assignment:
+
+“The Operations Manager has been assigned and the review is ready to begin.”
+
+Expected after execution starts:
+
+“The Operations Manager has started the review.”
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Action-state model
+2. Authoritative state resolver
+3. Allowed and disallowed claims by state
+4. Programmatic response validation
+5. Proposal integration changes
+6. Files changed
+7. Audit events added
+8. Test results
+9. Manual medication-policy conversation from request through task creation
+
+Stop after Sprint 28.4.
+
+Do not begin the Unified Conversation Context Service or customer-language polish sprint.
