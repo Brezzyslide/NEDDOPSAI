@@ -64,30 +64,28 @@ describe("activatePaymentBypass", () => {
 
     await expect(
       activatePaymentBypass({
-        orgId: "org-123",
-        orgSlug: "test-org",
+        organizationId: "org-123",
+        userId: "user-abc",
         planCode: "foundation",
         billingCycle: "monthly",
-        actorUserId: "user-abc",
       }),
     ).rejects.toMatchObject({ code: "PAYMENT_BYPASS_DISABLED" });
   });
 
   it("throws ORG_NOT_FOUND when org doesn't exist in DB", async () => {
     process.env.ENABLE_PAYMENT_BYPASS = "true";
-    mockDb.limit.mockResolvedValueOnce([]); // org lookup → empty
-    mockDb.limit.mockResolvedValueOnce([]); // plan lookup → empty
+    // Org lookup returns empty → service throws ORG_NOT_FOUND before reaching plan lookup.
+    mockDb.limit.mockResolvedValueOnce([]); // org lookup → not found
 
     vi.resetModules();
     const { activatePaymentBypass } = await import("../paymentBypassService.js");
 
     await expect(
       activatePaymentBypass({
-        orgId: "org-not-found",
-        orgSlug: "ghost-org",
+        organizationId: "org-not-found",
+        userId: "user-abc",
         planCode: "foundation",
         billingCycle: "monthly",
-        actorUserId: "user-abc",
       }),
     ).rejects.toMatchObject({ code: expect.stringMatching(/NOT_FOUND/) });
   });

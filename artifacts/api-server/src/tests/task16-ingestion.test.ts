@@ -66,8 +66,12 @@ describe("INGESTION_JOB_STATUSES", () => {
     }
   });
 
-  it("has 11 statuses total", () => {
-    expect(INGESTION_JOB_STATUSES.length).toBe(11);
+  // Sprint 19 added dead_lettered (failed jobs that exhausted retries) and
+  // cancelling (safe mid-flight stop signal) → count is now 13.
+  it("has 13 statuses total", () => {
+    expect(INGESTION_JOB_STATUSES.length).toBe(13);
+    expect(INGESTION_JOB_STATUSES).toContain("dead_lettered");
+    expect(INGESTION_JOB_STATUSES).toContain("cancelling");
   });
 });
 

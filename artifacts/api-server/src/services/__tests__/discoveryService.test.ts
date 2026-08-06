@@ -4,7 +4,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ───────────────────────────────────────────────────────────────────
-const mockDb = {
+// vi.mock() is hoisted above all code by vitest; mockDb must be inside
+// vi.hoisted() so it is available when the factory runs.
+const mockDb = vi.hoisted(() => ({
   select: vi.fn().mockReturnThis(),
   from: vi.fn().mockReturnThis(),
   where: vi.fn().mockReturnThis(),
@@ -14,7 +16,7 @@ const mockDb = {
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
   execute: vi.fn().mockResolvedValue(undefined),
-};
+}));
 
 vi.mock("@workspace/db", () => ({
   db: mockDb,
@@ -83,11 +85,13 @@ describe("getDiscoveryProgress (mocked)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("returns default structure when no existing status", async () => {
-    mockDb.limit.mockResolvedValueOnce([]); // status → empty
-    mockDb.limit.mockResolvedValueOnce([]); // answers → empty (via select from)
-    // Mock the chained select for answers
-    mockDb.from.mockReturnThis();
-    mockDb.where.mockResolvedValueOnce([]); // for answers query
+    // Query 1 (status): .where() must return the chain so .limit(1) can be called.
+    // Query 2 (answers): .where() is the terminal call — resolve directly to [].
+    // The service has NO .limit() on the answers query, so the second limit queue is not needed.
+    mockDb.limit.mockResolvedValueOnce([]); // status query → .limit(1) resolves to []
+    mockDb.where
+      .mockReturnValueOnce(mockDb) // 1st call (status query): continue chain to .limit()
+      .mockResolvedValueOnce([]); // 2nd call (answers query): resolve directly to []
 
     const { getDiscoveryProgress } = await import("../discoveryService.js");
     const result = await getDiscoveryProgress("org-123");

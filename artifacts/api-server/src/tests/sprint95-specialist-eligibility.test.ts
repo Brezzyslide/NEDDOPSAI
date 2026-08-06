@@ -41,10 +41,13 @@ const BASE_CONTEXT = {
 
 describe("Sprint 9.5 — Specialist Eligibility", () => {
   describe("validateSpecialistEligibilitySync", () => {
-    it("returns true for compliance_officer + compliance.audit_readiness", () => {
+    // compliance_officer was deprecated in Sprint 11 (merged into compliance_quality_manager).
+    // compliance_quality_manager is dna_pending so the sync check returns false for it too.
+    // Updated to use chief_of_staff + administration.general — a currently approved specialist.
+    it("returns true for chief_of_staff + administration.general", () => {
       const result = validateSpecialistEligibilitySync(
-        "compliance_officer",
-        "compliance.audit_readiness",
+        "chief_of_staff",
+        "administration.general",
       );
       expect(result).toBe(true);
     });
@@ -74,10 +77,13 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(result).toBe(false);
     });
 
-    it("returns true for document_specialist + documents.draft", () => {
+    // document_specialist was renamed to knowledge_documentation_specialist in Sprint 11.
+    // knowledge_documentation_specialist is dna_pending, so the sync check returns false.
+    // Updated to use operations_manager + operations.capacity_analysis — a currently approved specialist.
+    it("returns true for operations_manager + operations.capacity_analysis", () => {
       const result = validateSpecialistEligibilitySync(
-        "document_specialist",
-        "documents.draft",
+        "operations_manager",
+        "operations.capacity_analysis",
       );
       expect(result).toBe(true);
     });
@@ -92,10 +98,12 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
   });
 
   describe("checkSpecialistEligibility — allowed paths", () => {
-    it("returns eligible=true for compliance_officer + compliance.audit_readiness", async () => {
+    // compliance_officer deprecated Sprint 11; compliance_quality_manager (its successor)
+    // is dna_pending and not yet eligible. Use operations_manager — the only approved specialist.
+    it("returns eligible=true for operations_manager + operations.capacity_analysis", async () => {
       const decision = await checkSpecialistEligibility(
-        "compliance_officer",
-        "compliance.audit_readiness",
+        "operations_manager",
+        "operations.capacity_analysis",
         "professional_analysis",
         BASE_CONTEXT,
       );
@@ -105,10 +113,12 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(decision.evaluatedAt).toBeTruthy();
     });
 
-    it("returns eligible=true for document_specialist + documents.draft", async () => {
+    // document_specialist renamed to knowledge_documentation_specialist (dna_pending).
+    // Use chief_of_staff — a currently approved specialist — to preserve test coverage.
+    it("returns eligible=true for chief_of_staff + administration.general", async () => {
       const decision = await checkSpecialistEligibility(
-        "document_specialist",
-        "documents.draft",
+        "chief_of_staff",
+        "administration.general",
         "professional_analysis",
         BASE_CONTEXT,
       );
@@ -217,13 +227,15 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(decision.reasonCode).toBe("workforce_pack_not_included");
     });
 
+    // compliance_officer was blocked before reaching the usage check (check 5: not in eligibleRoles).
+    // Use operations_manager — a valid specialist — so all earlier checks pass before the usage gate.
     it("blocks when usage limit reached", async () => {
       const { checkUsage } = await import("../services/entitlementService.js");
       vi.mocked(checkUsage).mockResolvedValueOnce({ allowed: false } as any);
 
       const decision = await checkSpecialistEligibility(
-        "compliance_officer",
-        "compliance.audit_readiness",
+        "operations_manager",
+        "operations.workflow_review",
         "professional_analysis",
         { ...BASE_CONTEXT, skipAsyncChecks: false },
       );
@@ -244,19 +256,24 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(specialists).toHaveLength(0);
     });
 
-    it("includes compliance_officer for compliance capabilities", () => {
+    // Sprint 11: compliance_officer was deprecated and merged into compliance_quality_manager.
+    // The capability registry now lists compliance_quality_manager as the eligible role.
+    it("includes compliance_quality_manager for compliance capabilities", () => {
       const specialists = getEligibleSpecialists("compliance.audit_readiness");
-      expect(specialists).toContain("compliance_officer");
+      expect(specialists).toContain("compliance_quality_manager");
     });
   });
 
   describe("hasActiveIntelligence", () => {
-    it("returns true for compliance_officer", () => {
-      expect(hasActiveIntelligence("compliance_officer")).toBe(true);
+    // Sprint 11: compliance_officer deprecated → compliance_quality_manager (dna_pending, not active).
+    // Sprint 11: document_specialist renamed → knowledge_documentation_specialist (dna_pending, not active).
+    // These tests now verify that dna_pending successors are correctly NOT listed as active.
+    it("returns false for compliance_quality_manager (dna_pending — intelligence not yet activated)", () => {
+      expect(hasActiveIntelligence("compliance_quality_manager")).toBe(false);
     });
 
-    it("returns true for document_specialist", () => {
-      expect(hasActiveIntelligence("document_specialist")).toBe(true);
+    it("returns false for knowledge_documentation_specialist (dna_pending — intelligence not yet activated)", () => {
+      expect(hasActiveIntelligence("knowledge_documentation_specialist")).toBe(false);
     });
 
     it("returns true for operations_manager", () => {

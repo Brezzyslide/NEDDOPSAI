@@ -30,6 +30,18 @@ import * as auditService from "./auditService.js";
 
 type AuditEventMeta = Pick<auditService.WriteAuditEventParams, "requestId" | "ipAddress" | "userAgent">;
 
+// ── Structured error ───────────────────────────────────────────────────────────
+
+/** Error subclass that carries a machine-readable code for client-side handling. */
+export class BypassServiceError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "BypassServiceError";
+    this.code = code;
+  }
+}
+
 // ── Feature flag check ─────────────────────────────────────────────────────────
 
 export function isPaymentBypassEnabled(): boolean {
@@ -60,10 +72,27 @@ export async function activatePaymentBypass(
   auditMeta: AuditEventMeta = {},
 ): Promise<PaymentBypassResult> {
   if (!isPaymentBypassEnabled()) {
-    throw new Error("Payment bypass is not enabled on this server.");
+    throw new BypassServiceError(
+      "PAYMENT_BYPASS_DISABLED",
+      "Payment bypass is not enabled on this server.",
+    );
   }
 
   const { organizationId, userId, planCode, billingCycle = "monthly", selectedPackCodes = [] } = params;
+
+  // ── 0. Verify organisation exists ─────────────────────────────────────────────
+  const [orgRow] = await db
+    .select({ id: organizationsTable.id })
+    .from(organizationsTable)
+    .where(eq(organizationsTable.id, organizationId))
+    .limit(1);
+
+  if (!orgRow) {
+    throw new BypassServiceError(
+      "ORG_NOT_FOUND",
+      `Organisation not found: ${organizationId}`,
+    );
+  }
 
   // ── 1. Load the plan ──────────────────────────────────────────────────────────
   const [plan] = await db
@@ -73,7 +102,7 @@ export async function activatePaymentBypass(
     .limit(1);
 
   if (!plan) {
-    throw new Error(`Plan not found: ${planCode}`);
+    throw new BypassServiceError("PLAN_NOT_FOUND", `Plan not found: ${planCode}`);
   }
 
   // ── 2. Load the latest active plan version ────────────────────────────────────

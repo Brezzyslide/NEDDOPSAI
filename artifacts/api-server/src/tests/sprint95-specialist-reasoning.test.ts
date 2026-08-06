@@ -21,14 +21,14 @@ vi.mock("@workspace/ai-gateway", () => ({
     processRequest: vi.fn().mockResolvedValue({
       content: JSON.stringify({
         specialistRunId: "run-1",
-        workforceRoleCode: "compliance_officer",
-        capabilityCode: "compliance.audit_readiness",
+        workforceRoleCode: "operations_manager",
+        capabilityCode: "operations.workflow_review",
         status: "completed",
         summary: "Test summary from mock gateway",
         findings: [
           {
             title: "Test finding",
-            description: "Policy gap identified",
+            description: "Workflow bottleneck identified",
             severity: "medium",
             confidence: 0.85,
             evidenceReferences: [],
@@ -48,35 +48,39 @@ vi.mock("@workspace/ai-gateway", () => ({
   }),
 }));
 
+// Sprint 11: compliance_officer was deprecated and merged into compliance_quality_manager (dna_pending).
+// document_specialist was renamed to knowledge_documentation_specialist (dna_pending).
+// ACTIVE_SPECIALIST_VERSIONS now only contains chief_of_staff and operations_manager.
+// All tests that exercised compliance_officer / document_specialist must use an approved specialist.
 const FAKE_WORK_PACKAGE: SpecialistWorkPackage = {
   specialistRunId: "run-1",
   organizationId: "org-1",
   taskId: "task-1",
-  capabilityCode: "compliance.audit_readiness",
+  capabilityCode: "operations.workflow_review",
   capabilityLevel: "professional_analysis",
-  workforceRoleCode: "compliance_officer",
-  workerProfileCode: "compliance_auditor",
-  objective: "Review the organisation's NDIS compliance framework",
-  responsibilities: ["Identify compliance gaps"],
-  expectedOutputs: ["Findings and recommendations report"],
+  workforceRoleCode: "operations_manager",
+  workerProfileCode: "operations_manager_profile",
+  objective: "Review the organisation's operational workflows for bottlenecks and inefficiencies",
+  responsibilities: ["Identify workflow gaps"],
+  expectedOutputs: ["Workflow analysis and recommendations report"],
   approvedOrganisationMemory: [
-    { id: "mem-1", content: "Organisation holds NDIS registration", category: "compliance" },
+    { id: "mem-1", content: "Organisation runs weekly operational reviews", category: "operations" },
   ],
   relevantConversationContext: [
-    { id: "msg-1", role: "user", content: "Please review our incident response policy" },
+    { id: "msg-1", role: "user", content: "Please review our current workflow processes" },
   ],
   taskContext: [
-    { id: "ctx-1", type: "task_description", content: "Review compliance framework" },
+    { id: "ctx-1", type: "task_description", content: "Review operational workflows" },
   ],
   previousSpecialistOutputs: [],
-  allowedCapabilities: ["compliance.audit_readiness"],
+  allowedCapabilities: ["operations.workflow_review"],
   allowedTools: ["search_tools", "reporting_tools"],
   allowedConnectorCategories: [],
   allowedExecutionChannels: ["internal_api"],
   prohibitedActions: ["modify_data", "send_external_communication"],
   approvalRequiredActions: [],
   dependencies: [],
-  assumptions: ["Organisation is currently registered with the NDIS"],
+  assumptions: ["Organisation's workflows are documented"],
   unresolvedQuestions: [],
   riskLevel: "medium",
   expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -114,21 +118,36 @@ describe("Sprint 9.5 — Specialist Intelligence Service", () => {
   });
 
   describe("Deterministic provider (internal)", () => {
-    it("returns a completed result for compliance_officer", async () => {
+    // Sprint 11: compliance_officer → compliance_quality_manager (dna_pending — not in ACTIVE_SPECIALIST_VERSIONS).
+    // Now tests chief_of_staff, which has approved DNA and is in ACTIVE_SPECIALIST_VERSIONS.
+    it("returns a completed result for chief_of_staff", async () => {
       const service = createSpecialistIntelligenceService();
-      const result = await service.executeRun(FAKE_WORK_PACKAGE, FAKE_CONTEXT);
-      expect(result.status).toBe("completed");
-      expect(result.specialistRunId).toBe("run-1");
-      expect(result.workforceRoleCode).toBe("compliance_officer");
-      expect(result.capabilityCode).toBe("compliance.audit_readiness");
-    });
-
-    it("returns a completed result for document_specialist", async () => {
-      const service = createSpecialistIntelligenceService();
-      const pkg = { ...FAKE_WORK_PACKAGE, workforceRoleCode: "document_specialist", capabilityCode: "documents.draft", specialistRunId: "run-2" };
+      const pkg = {
+        ...FAKE_WORK_PACKAGE,
+        workforceRoleCode: "chief_of_staff",
+        capabilityCode: "administration.general",
+        specialistRunId: "run-1-cos",
+      };
       const result = await service.executeRun(pkg, FAKE_CONTEXT);
       expect(result.status).toBe("completed");
-      expect(result.workforceRoleCode).toBe("document_specialist");
+      expect(result.specialistRunId).toBe("run-1-cos");
+      expect(result.workforceRoleCode).toBe("chief_of_staff");
+      expect(result.capabilityCode).toBe("administration.general");
+    });
+
+    // Sprint 11: document_specialist → knowledge_documentation_specialist (dna_pending — not in ACTIVE_SPECIALIST_VERSIONS).
+    // Now tests operations_manager with an alternate capability to complement the workflow_review test below.
+    it("returns a completed result for operations_manager with alternate capability", async () => {
+      const service = createSpecialistIntelligenceService();
+      const pkg = {
+        ...FAKE_WORK_PACKAGE,
+        workforceRoleCode: "operations_manager",
+        capabilityCode: "operations.capacity_analysis",
+        specialistRunId: "run-2",
+      };
+      const result = await service.executeRun(pkg, FAKE_CONTEXT);
+      expect(result.status).toBe("completed");
+      expect(result.workforceRoleCode).toBe("operations_manager");
     });
 
     it("returns a completed result for operations_manager", async () => {

@@ -4,7 +4,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── DB mock ───────────────────────────────────────────────────────────────────
-const mockDb = {
+// vi.mock() is hoisted above all code by vitest; mockDb must be inside
+// vi.hoisted() so it is available when the factory runs.
+const mockDb = vi.hoisted(() => ({
   select: vi.fn().mockReturnThis(),
   from: vi.fn().mockReturnThis(),
   where: vi.fn().mockReturnThis(),
@@ -13,7 +15,7 @@ const mockDb = {
   values: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
-};
+}));
 
 vi.mock("@workspace/db", () => ({
   db: mockDb,

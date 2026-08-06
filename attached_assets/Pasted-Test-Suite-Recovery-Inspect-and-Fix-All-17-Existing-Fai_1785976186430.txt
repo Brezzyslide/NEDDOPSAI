@@ -1,0 +1,233 @@
+Test Suite Recovery — Inspect and Fix All 17 Existing Failures
+
+Objective
+
+The current full test suite reports:
+
+3,394 passing
+17 failing
+
+These failures are described as pre-existing, but they must now be fully investigated and resolved before the next sprint begins.
+
+Do not add new product functionality.
+Do not begin Sprint 28.5 yet.
+Do not suppress, skip, quarantine, or delete failing tests unless a test is proven obsolete and the reason is documented.
+
+The goal is a clean, trustworthy test baseline.
+
+────────────────────────────────────────
+Part 1 — Produce a failure inventory
+
+Run the full test suite and capture every failing test.
+
+Produce a table with:
+
+- test file
+- test suite
+- test name
+- error message
+- stack trace
+- first application frame
+- first known sprint where it began, if determinable
+- whether failure is deterministic or flaky
+- classification:
+  - real production defect
+  - stale test expectation
+  - broken mock
+  - environment dependency
+  - race/timing issue
+  - schema/RLS count drift
+  - external-service dependency
+  - test isolation issue
+  - unknown
+
+Do not fix anything until all 17 are classified.
+
+────────────────────────────────────────
+Part 2 — Reproduce each failure in isolation
+
+Run each failing file alone.
+
+Then run each failing test alone where possible.
+
+For every failure determine:
+
+- does it fail alone?
+- does it fail only in the full suite?
+- does ordering matter?
+- does shared mock state cause it?
+- does the test require an API server or external process?
+- does it rely on stale database state?
+- is there a timeout or async leak?
+
+Record the answer for all 17.
+
+────────────────────────────────────────
+Part 3 — Inspect the known task16 ingestion mismatch
+
+The current report mentions:
+
+“task16-ingestion status-count mismatch dates from sprint 19”
+
+Inspect this specifically.
+
+Determine:
+
+- exact file
+- exact expected count
+- exact actual count
+- why the count changed
+- whether production code or the test is wrong
+- whether ingestion statuses were added or renamed
+- whether archived, failed, superseded, or pending states are counted differently
+- whether tenant filtering changed the result
+
+Fix the real contract.
+
+Do not simply change the expected number without explaining why.
+
+────────────────────────────────────────
+Part 4 — Fix production defects first
+
+If any failure exposes a real production defect:
+
+- fix the production code
+- add or preserve the regression test
+- document the root cause
+- confirm no related paths are broken
+
+Do not weaken assertions to hide a real defect.
+
+────────────────────────────────────────
+Part 5 — Update stale tests correctly
+
+If a test reflects an old architecture:
+
+- identify the architectural change
+- update the test to assert the new intended behaviour
+- preserve the original safety intent
+- do not rewrite the test merely to make it pass
+
+Pay particular attention to earlier architecture changes involving:
+
+- durable checkpoints
+- MessageIngressService
+- EvidencePack validation
+- live workforce context
+- delegation integrity
+- RLS table count
+- ingestion lifecycle
+- document replacement
+- blueprint selection
+- observability fields
+- Completed Work evidence links
+
+────────────────────────────────────────
+Part 6 — Fix mock and isolation issues
+
+Inspect for:
+
+- duplicate vi.mock calls
+- hoisted mocks conflicting across files
+- mockReturnValue implementations lost after clear/reset
+- shared mutable chain mocks
+- fake timers not restored
+- environment variables leaking between tests
+- singleton caches leaking between tests
+- in-process event bus state leaking
+- checkpoint cache/state leaking
+- open handles or unresolved promises
+
+Use:
+
+- vi.hoisted()
+- one mock definition per module per file
+- explicit reset helpers
+- afterEach cleanup
+- dedicated test files when real and mocked implementations cannot coexist
+
+────────────────────────────────────────
+Part 7 — Fix environment-dependent tests
+
+If failures depend on:
+
+- API server availability
+- OpenAI/OpenClaw
+- object storage
+- database connection
+- Redis/queue
+- filesystem state
+- network access
+
+Decide whether each test should be:
+
+- a mocked unit test
+- a local integration test with controlled fixture
+- an explicit end-to-end test requiring a running service
+
+Do not let ordinary unit suites depend on uncontrolled external services.
+
+Do not silently skip end-to-end coverage.
+
+────────────────────────────────────────
+Part 8 — Flaky test verification
+
+For any suspected flaky test:
+
+- run it at least 10 times
+- record pass/fail count
+- identify the race or timing dependency
+- fix the cause rather than increasing timeouts blindly
+
+Use deterministic clocks, await conditions, and controlled event ordering where possible.
+
+────────────────────────────────────────
+Part 9 — Full regression run
+
+After fixes:
+
+1. Run all previously failing tests.
+2. Run all Sprint 27–28 tests.
+3. Run RLS tests.
+4. Run ingestion and knowledge tests.
+5. Run the full suite at least twice.
+
+The result must be stable.
+
+────────────────────────────────────────
+Completion criteria
+
+Do not mark complete until:
+
+- all 17 failures are understood
+- every failure has a documented root cause
+- all genuine defects are fixed
+- all stale tests are updated correctly
+- no test is hidden or skipped without explicit justification
+- API server starts cleanly
+- RLS verifier succeeds
+- full suite is green
+
+Target:
+
+0 failing tests
+
+────────────────────────────────────────
+Deliverables
+
+Return:
+
+1. Failure inventory for all 17 tests
+2. Root-cause classification for each
+3. Production defects found
+4. Stale tests updated
+5. Mock/isolation issues fixed
+6. Environment dependencies corrected
+7. Files changed
+8. Final test count
+9. Confirmation that the suite passes twice consecutively
+10. Any remaining risk that cannot be resolved
+
+Stop after the test baseline is clean.
+
+Do not begin Sprint 28.5 until approval is given.
