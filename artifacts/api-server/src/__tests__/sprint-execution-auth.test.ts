@@ -56,7 +56,7 @@ const mocks = vi.hoisted(() => {
 
   // Services the pipeline calls — mock to unblock the path
   const selectBlueprint   = vi.fn().mockResolvedValue({ blueprint: { id: "bp-001", code: "policy_review", primarySpecialist: "operations_manager", outputTypes: ["review_report"], validationRules: [], requiredLibraryKnowledge: [], requiredEntityKnowledge: {}, requiredMemories: [], requiredApprovals: {} }, confidence: 0.9, matchedKeywords: ["review"], fallbackUsed: false });
-  const assembleWorkPackage = vi.fn().mockResolvedValue({ id: "manifest-001", organizationId: "org-aaa", primarySpecialist: "operations_manager", organisationLibrarySources: [], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null });
+  const assembleWorkPackage = vi.fn().mockResolvedValue({ manifest: { id: "manifest-001", organizationId: "org-aaa", primarySpecialist: "operations_manager", organisationLibrarySources: [], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null }, excludedSources: [] });
   const resolveEvidence   = vi.fn().mockResolvedValue({ chunks: [], snippets: [], totalChunks: 0, wasSearched: false });
   const validateWorkPackage = vi.fn().mockReturnValue({ passed: true, missingItems: [], summary: "OK" });
   const retrieveApprovedExamples = vi.fn().mockResolvedValue([]);
@@ -195,7 +195,7 @@ function setupPipelineMocks(role = "administrator") {
     },
     confidence: 0.9, matchedKeywords: ["review"], fallbackUsed: false,
   });
-  mocks.assembleWorkPackage.mockResolvedValue({ id: "manifest-001", organizationId: ORG_A, primarySpecialist: "operations_manager", organisationLibrarySources: [], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null });
+  mocks.assembleWorkPackage.mockResolvedValue({ manifest: { id: "manifest-001", organizationId: ORG_A, primarySpecialist: "operations_manager", organisationLibrarySources: [], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null }, excludedSources: [] });
   mocks.resolveEvidence.mockResolvedValue({ chunks: [], snippets: [], totalChunks: 0, wasSearched: false });
   mocks.validateWorkPackage.mockReturnValue({ passed: true, missingItems: [], summary: "OK" });
   mocks.retrieveApprovedExamples.mockResolvedValue([]);
@@ -417,7 +417,7 @@ describe("regression — CoS → OM execution flow", () => {
     vi.resetAllMocks();
     setupPipelineMocks();
     // Override with regression-specific data
-    mocks.assembleWorkPackage.mockResolvedValue({ id: "manifest-001", organizationId: ORG_A, primarySpecialist: "operations_manager", organisationLibrarySources: [{ sourceId: "src-001", title: "Medication Management Policy" }], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null });
+    mocks.assembleWorkPackage.mockResolvedValue({ manifest: { id: "manifest-001", organizationId: ORG_A, primarySpecialist: "operations_manager", organisationLibrarySources: [{ sourceId: "src-001", title: "Medication Management Policy" }], taskUploads: [], cosMemories: [], entityKnowledge: {}, selectionMetadata: null }, excludedSources: [] });
     mocks.resolveEvidence.mockResolvedValue({ chunks: [{ sourceId: "src-001", content: "Policy text.", citation: "§1.2", chunkId: "chunk-001" }], snippets: [], totalChunks: 1, wasSearched: true });
     mocks.validateWorkPackage.mockReturnValue({ passed: true, missingItems: [], summary: "All prerequisites met." });
     mocks.buildStyleGuidance.mockResolvedValue({ guidanceBlock: "Use clear language." });

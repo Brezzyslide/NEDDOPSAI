@@ -24,6 +24,12 @@
  *   - No retrieval before approval: chunks are soft-deleted until source is approved
  *   - No raw content in logs: only counts and codes are logged
  *
+ * Error handling (Sprint 28.6):
+ *   - Errors are written to the DB independently of queue.fail() so they survive
+ *     lease-expiry dead-lettering (where recoverStuck() previously lost the message).
+ *   - Every dead-lettered or failed job MUST have a last_error_code.
+ *   - Errors are classified: transient (retry) | permanent (dead-letter now) | unknown.
+ *
  * AWS readiness:
  *   - Designed to run inside any worker process or ECS task
  *   - Replace queue calls with SQS adapter (IIngestionQueue interface)
@@ -35,8 +41,9 @@ import {
   knowledgeChunksTable,
   knowledgeSourceVersionsTable,
   knowledgeSourcesTable,
+  ingestionJobsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getExtractor }            from "../lib/extractors/extractorRegistry.js";
 import { normaliseDocument }       from "./normalisationService.js";
 import { chunkDocument, DEFAULT_CHUNK_OPTIONS } from "./chunkingService.js";
@@ -50,6 +57,38 @@ import {
 } from "./ingestionJobService.js";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
+
+// ─── Error classification ─────────────────────────────────────────────────────
+
+export type IngestionErrorCategory = "transient" | "permanent" | "unknown";
+
+/** Codes that are inherently permanent — the document itself is the problem. */
+const PERMANENT_CODES = new Set([
+  "UNSUPPORTED_FILE_TYPE", "CORRUPTED_DOCUMENT", "CORRUPTED_FILE",
+  "ENCRYPTED_DOCUMENT", "EMPTY_DOCUMENT", "OVERSIZED_CONTENT",
+  "NO_CHUNKS", "SENSITIVITY_BLOCKED", "MISSING_STORAGE_KEY",
+  "INVALID_STORAGE_KEY", "SOURCE_REVOKED", "SOURCE_NOT_FOUND", "VERSION_NOT_FOUND",
+  "OBJECT_NOT_FOUND", "STORAGE_NOT_CONFIGURED", "STORAGE_MISCONFIGURED",
+  "JOB_NOT_FOUND", "EXTRACTION_FAILED_PERMANENT",
+]);
+
+/** Codes that are transient — infrastructure/network, worth retrying. */
+const TRANSIENT_CODES = new Set([
+  "FETCH_FAILED_TRANSIENT", "EMBEDDING_TIMEOUT", "EMBEDDING_UNAVAILABLE",
+  "STORAGE_TIMEOUT", "DB_TIMEOUT",
+]);
+
+export function classifyIngestionError(code: string, err?: unknown): IngestionErrorCategory {
+  if (PERMANENT_CODES.has(code)) return "permanent";
+  if (TRANSIENT_CODES.has(code)) return "transient";
+  const msg = (err instanceof Error ? err.message : String(err ?? "")).toLowerCase();
+  if (
+    msg.includes("timeout") || msg.includes("econnrefused") ||
+    msg.includes("econnreset") || msg.includes("etimedout") ||
+    msg.includes("network error") || msg.includes("socket hang up")
+  ) return "transient";
+  return "unknown";
+}
 
 // ─── Ingestion trigger ────────────────────────────────────────────────────────
 
@@ -67,15 +106,6 @@ export async function triggerIngestion(input: EnqueueIngestionJobInput) {
 /**
  * Run the full ingestion pipeline for a job that has already been claimed.
  * Called by KnowledgeIngestionWorker after claimNext().
- *
- * On pipeline failure the job is automatically failed/dead-lettered via the
- * queue adapter. The worker does not need to call fail() separately.
- *
- * @param jobId           claimed job id
- * @param organizationId  tenant id
- * @param knowledgeSourceId source id
- * @param sourceVersionId   version id
- * @param workerId        identity of the claiming worker (for lease checks)
  */
 export async function runPipelineForJob(
   jobId:             string,
@@ -89,7 +119,6 @@ export async function runPipelineForJob(
 
 /**
  * Legacy single-call entry: claim + run. Kept for backward compatibility.
- * Prefer runPipelineForJob when the worker has already claimed the job.
  */
 export async function processNextIngestionJob(): Promise<boolean> {
   const queue = getIngestionQueue();
@@ -101,7 +130,6 @@ export async function processNextIngestionJob(): Promise<boolean> {
 
 // ─── Cancellation check ───────────────────────────────────────────────────────
 
-/** Thrown when a cancellation is detected between stages. */
 class CancellationError extends Error {
   readonly code = "CANCELLED";
   constructor() { super("Job was cancelled between pipeline stages."); }
@@ -124,6 +152,9 @@ async function runPipeline(
   workerId:          string,
 ): Promise<void> {
   const queue = getIngestionQueue();
+
+  // Track the current stage for diagnostics — updated at each transition.
+  let currentStage = "validating";
 
   try {
     // ── Stage 1: validate job & source ─────────────────────────────────────
@@ -152,6 +183,7 @@ async function runPipeline(
     }
 
     // ── Stage 2: fetch from object storage ─────────────────────────────────
+    currentStage = "fetching";
     await checkCancellation(jobId, organizationId);
     await _transition(jobId, organizationId, "extracting");
     await updateVersionIngestionStatus(sourceVersionId, organizationId, "processing");
@@ -162,6 +194,7 @@ async function runPipeline(
     const buffer = await fetchFromObjectStorage(storageKey);
 
     // ── Stage 3: extract text ───────────────────────────────────────────────
+    currentStage = "extracting";
     await checkCancellation(jobId, organizationId);
 
     const ext = extFromMime(version.mimeType ?? "");
@@ -180,10 +213,12 @@ async function runPipeline(
     });
 
     // ── Stage 4: normalise ──────────────────────────────────────────────────
+    currentStage = "normalising";
     await checkCancellation(jobId, organizationId);
     const normalised = normaliseDocument(extraction);
 
     // ── Stage 5: chunk ──────────────────────────────────────────────────────
+    currentStage = "chunking";
     await checkCancellation(jobId, organizationId);
     await _transition(jobId, organizationId, "chunking");
     const chunks = chunkDocument(normalised, extraction, DEFAULT_CHUNK_OPTIONS);
@@ -193,10 +228,12 @@ async function runPipeline(
     }
 
     // ── Stage 6: injection scan ─────────────────────────────────────────────
+    currentStage = "scanning";
     await checkCancellation(jobId, organizationId);
     const injectionResult = scanForInjection(chunks.map((c) => ({ text: c.text })));
 
     // ── Stage 7: generate embeddings ────────────────────────────────────────
+    currentStage = "embedding";
     await checkCancellation(jobId, organizationId);
     await _transition(jobId, organizationId, "embedding");
 
@@ -222,12 +259,20 @@ async function runPipeline(
           dimensions: provider.getDimensions(),
         },
       }).catch(() => {});
-    } catch {
+    } catch (embErr) {
+      // Log the embedding error so it's visible in worker output.
+      // Chunks are still persisted without embeddings — vector search won't
+      // work until embeddings are generated, but the pipeline completes.
+      const errMsg = embErr instanceof Error ? embErr.message : String(embErr);
+      console.error(
+        `[ingestion-pipeline] Embedding failed for job ${jobId}` +
+          ` (${chunks.length} chunks): ${errMsg}`,
+      );
       embeddingBatch = chunks.map(() => []);
     }
 
     // ── Stage 8: persist chunks ─────────────────────────────────────────────
-    // Check cancellation before writing — no chunks after cancellation observed
+    currentStage = "persisting";
     await checkCancellation(jobId, organizationId);
 
     await db
@@ -271,6 +316,7 @@ async function runPipeline(
     }
 
     // ── Stage 9: update version ingestion status ────────────────────────────
+    currentStage = "completing";
     await updateVersionIngestionStatus(sourceVersionId, organizationId, "complete");
 
     // ── Stage 10: complete job ──────────────────────────────────────────────
@@ -296,6 +342,8 @@ async function runPipeline(
         warnings:            extraction.warnings,
         isSemanticActive:    provider.isActive(),
         injectionFlagCount:  injectionResult.flags.length,
+        failedStage:         null,
+        errorCategory:       null,
       },
     });
 
@@ -333,7 +381,7 @@ async function runPipeline(
     });
 
   } catch (err) {
-    // Cancellation — clean up partial chunks and finalise
+    // ── Cancellation — clean up partial chunks ──────────────────────────────
     if (err instanceof CancellationError) {
       await db
         .update(knowledgeChunksTable)
@@ -351,26 +399,82 @@ async function runPipeline(
         eventType: "knowledge_hub.ingestion_cancelled",
         organizationId, resourceType: "knowledge_source", resourceId: knowledgeSourceId,
       }).catch(() => {});
-      return; // not an error — normal cancellation
+      return;
     }
 
-    // Pipeline error — fail the job (queue adapter handles backoff / dead-letter)
-    const code        = err instanceof PipelineError ? err.code : "PIPELINE_ERROR";
-    const safeMsg     = err instanceof Error ? err.message.slice(0, 400) : "Unknown error";
-    const nonRetryable = err instanceof PipelineError ? err.nonRetryable : false;
+    // ── Pipeline error — persist diagnostics FIRST, independently ──────────
+    const code          = err instanceof PipelineError ? err.code : "PIPELINE_ERROR";
+    const safeMsg       = err instanceof Error ? err.message.slice(0, 400) : "Unknown error";
+    const nonRetryable  = err instanceof PipelineError ? err.nonRetryable : false;
+    const errorCategory = classifyIngestionError(code, err);
 
-    await queue.fail(jobId, organizationId, code, safeMsg, nonRetryable).catch(() => {});
+    // Write error info directly to DB before calling queue.fail().
+    // This is the authoritative diagnostic write: it runs even if queue.fail()
+    // subsequently throws or if the sweeper already moved the job.
+    // nonRetryable OR permanent → dead_letter immediately; else → failed for backoff.
+    const shouldDeadLetter = nonRetryable || errorCategory === "permanent";
+    await _persistErrorDiagnostics(jobId, organizationId, {
+      errorCode: code,
+      errorMessage: safeMsg,
+      failedStage: currentStage,
+      errorCategory,
+      shouldDeadLetter,
+    }).catch(() => {});
+
+    // Update version status
     await updateVersionIngestionStatus(sourceVersionId, organizationId, "failed").catch(() => {});
+
+    // Delegate backoff / dead-letter logic to queue
+    await queue.fail(jobId, organizationId, code, safeMsg, shouldDeadLetter).catch(() => {});
+
+    // Check final job status for worker metrics signal
+    const finalJob = await getIngestionJob(jobId, organizationId).catch(() => null);
+    const deadLettered = finalJob?.status === "dead_lettered";
 
     const failedErr: any = new Error(safeMsg);
     failedErr.code = code;
-    // Signal dead-letter to worker for metrics
-    const job = await getIngestionJob(jobId, organizationId).catch(() => null);
-    if (job?.status === "dead_lettered") {
-      failedErr.deadLettered = true;
-    }
+    failedErr.errorCategory = errorCategory;
+    failedErr.failedStage = currentStage;
+    if (deadLettered) failedErr.deadLettered = true;
     throw failedErr;
   }
+}
+
+// ─── Diagnostic persistence ───────────────────────────────────────────────────
+
+/**
+ * Write error diagnostics directly to the ingestion_jobs row.
+ * Runs independently of queue.fail() so errors survive lease-expiry dead-lettering.
+ * This write must never block or throw in the caller — always called with .catch(() => {}).
+ */
+async function _persistErrorDiagnostics(
+  jobId:          string,
+  organizationId: string,
+  diag: {
+    errorCode:       string;
+    errorMessage:    string;
+    failedStage:     string;
+    errorCategory:   IngestionErrorCategory;
+    shouldDeadLetter: boolean;
+  },
+): Promise<void> {
+  // Direct SQL update so it always reaches the DB even if queue.fail() is about
+  // to fail or the row is in an unexpected state. No status change here — that
+  // is left to queue.fail() / recoverStuck().
+  await db.execute(sql`
+    UPDATE ingestion_jobs
+    SET
+      last_error_code    = LEFT(${diag.errorCode.slice(0, 100)}, 100),
+      last_error_message = LEFT(${diag.errorMessage.slice(0, 500)}, 500),
+      last_failed_at     = NOW(),
+      metadata           = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+        failedStage:   diag.failedStage,
+        errorCategory: diag.errorCategory,
+      })}::jsonb,
+      updated_at         = NOW()
+    WHERE id              = ${jobId}
+      AND organization_id = ${organizationId}
+  `);
 }
 
 // ─── Stage transition helper ──────────────────────────────────────────────────
@@ -398,35 +502,85 @@ class PipelineError extends Error {
   }
 }
 
+/**
+ * Fetch a document buffer from Replit Object Storage using the sidecar-authenticated
+ * GCS client. Parses PRIVATE_OBJECT_DIR (format: /{bucketId}/{prefix}) to construct
+ * the correct bucket name and object path.
+ *
+ * Sprint 28.6: Previous implementation used `new Storage()` (no sidecar credentials)
+ * which produced an empty bucket name and failed with a GCS authentication error on
+ * every attempt — silently, because the lease expired before GCS returned the error.
+ */
 async function fetchFromObjectStorage(storageKey: string): Promise<Buffer> {
   const privateDir = process.env.PRIVATE_OBJECT_DIR;
   if (!privateDir) {
     throw new PipelineError(
       "PRIVATE_OBJECT_DIR not configured — cannot fetch source file.",
       "STORAGE_NOT_CONFIGURED",
+      true,
     );
   }
 
-  const fullPath = `${privateDir}/${storageKey}`;
-  const stripped = fullPath.replace(/^gs:\/\//, "");
-  const slashIdx = stripped.indexOf("/");
-  if (slashIdx === -1) {
-    throw new PipelineError("Invalid storage key — cannot parse bucket path.", "INVALID_STORAGE_KEY", true);
+  // PRIVATE_OBJECT_DIR format: /{bucketId}/{prefix}  e.g. /replit-objstore-xxx/.private
+  // Strip leading slash, split: parts[0] = bucketId, parts[1..] = prefix segments.
+  const parts = privateDir.replace(/^\//, "").split("/").filter(Boolean);
+  if (parts.length < 1 || !parts[0]) {
+    throw new PipelineError(
+      "PRIVATE_OBJECT_DIR has unexpected format — cannot parse bucket ID.",
+      "STORAGE_MISCONFIGURED",
+      true,
+    );
   }
-  const bucketName = stripped.slice(0, slashIdx);
-  const objectName = stripped.slice(slashIdx + 1);
+
+  const bucketId   = parts[0];
+  const prefix     = parts.slice(1).join("/"); // e.g. ".private"
+  const objectName = prefix ? `${prefix}/${storageKey}` : storageKey;
 
   try {
-    const { Storage } = await import("@google-cloud/storage");
-    const bucket = new Storage().bucket(bucketName);
-    const [fileBuffer] = await bucket.file(objectName).download();
-    return fileBuffer as Buffer;
+    // Use the sidecar-authenticated client — the only client that works in Replit.
+    const { objectStorageClient } = await import("../lib/objectStorage.js");
+    const bucket = objectStorageClient.bucket(bucketId);
+
+    // Wrap the download with a hard 30-second timeout so that GCS auth failures
+    // or transient network stalls fail fast with a retryable error rather than
+    // occupying the job lease for the full 120s until recoverStuck() fires.
+    const downloadWithTimeout = new Promise<Buffer>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("GCS download timeout after 30s (STORAGE_TIMEOUT)")),
+        30_000,
+      );
+      bucket.file(objectName).download()
+        .then(([buf]) => { clearTimeout(timer); resolve(buf as Buffer); })
+        .catch((e)  => { clearTimeout(timer); reject(e); });
+    });
+
+    return await downloadWithTimeout;
   } catch (err) {
-    const msg = err instanceof Error ? err.message.slice(0, 200) : "Unknown error";
-    if (msg.includes("No such object") || msg.includes("404")) {
-      throw new PipelineError("Source file not found in storage.", "OBJECT_NOT_FOUND");
+    const msg = err instanceof Error ? err.message.slice(0, 300) : "Unknown error";
+
+    if (msg.includes("No such object") || msg.includes("404") || msg.includes("Not Found")) {
+      throw new PipelineError(
+        `Source file not found in storage (key: ${storageKey.slice(0, 60)}).`,
+        "OBJECT_NOT_FOUND",
+        true,
+      );
     }
-    throw new PipelineError(`Failed to fetch source file: ${msg}`, "FETCH_FAILED");
+    if (
+      msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") ||
+      msg.includes("ETIMEDOUT") || msg.includes("socket hang up") ||
+      msg.includes("network") || msg.includes("timeout")
+    ) {
+      throw new PipelineError(
+        `Storage fetch failed (transient network error): ${msg}`,
+        "FETCH_FAILED_TRANSIENT",
+        false, // retryable
+      );
+    }
+    throw new PipelineError(
+      `Failed to fetch source file: ${msg}`,
+      "FETCH_FAILED",
+      false,
+    );
   }
 }
 

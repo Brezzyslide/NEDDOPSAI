@@ -31,17 +31,20 @@ vi.mock("../services/workBlueprintService.js", () => ({
 }));
 vi.mock("../services/workPackageService.js", () => ({
   assembleWorkPackage: vi.fn().mockResolvedValue({
-    id:                         "mfst-1",
-    executionId:                "exec-1",
-    organizationId:             "org-1",
-    primarySpecialist:          "operations_manager",
-    supportingSpecialists:      [],
-    organisationLibrarySources: [],
-    cosMemories:                [],
-    specialistMemories:         [],
-    taskUploads:                [],
-    entityKnowledge:            {},
-    assembledAt:                new Date(),
+    manifest: {
+      id:                         "mfst-1",
+      executionId:                "exec-1",
+      organizationId:             "org-1",
+      primarySpecialist:          "operations_manager",
+      supportingSpecialists:      [],
+      organisationLibrarySources: [],
+      cosMemories:                [],
+      specialistMemories:         [],
+      taskUploads:                [],
+      entityKnowledge:            {},
+      assembledAt:                new Date(),
+    },
+    excludedSources: [],
   }),
   updateManifestObservability: vi.fn().mockResolvedValue(undefined),
 }));

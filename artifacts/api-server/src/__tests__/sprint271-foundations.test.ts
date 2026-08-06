@@ -355,10 +355,13 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
   }));
   vi.mock("../services/workPackageService.js", () => ({
     assembleWorkPackage:          vi.fn().mockResolvedValue({
-      id: "manifest-x",
-      organisationLibrarySources: [],
-      taskUploads: [],
-      cosMemories: [],
+      manifest: {
+        id: "manifest-x",
+        organisationLibrarySources: [],
+        taskUploads: [],
+        cosMemories: [],
+      },
+      excludedSources: [],
     }),
     updateManifestObservability:  vi.fn().mockResolvedValue(undefined),
   }));

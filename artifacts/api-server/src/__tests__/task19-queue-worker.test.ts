@@ -201,7 +201,15 @@ describe("DatabaseIngestionQueue.claimNext", () => {
     const job = makeJob({ status: "fetching", claimedBy: "worker-1", attemptCount: 1 });
     mockDb.execute.mockResolvedValue({ rows: [job] });
     const result = await queue.claimNext("worker-1");
-    expect(result).toEqual(job);
+    // Sprint 28.6: normalizeRawIngestionJob adds null for optional fields not
+    // present in the mock — use objectContaining to verify only the fields we care about.
+    expect(result).toMatchObject({
+      id:             job.id,
+      organizationId: job.organizationId,
+      status:         "fetching",
+      claimedBy:      "worker-1",
+      attemptCount:   1,
+    });
   });
 
   it("uses SKIP LOCKED SQL pattern (contains FOR UPDATE SKIP LOCKED)", async () => {

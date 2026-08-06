@@ -64,8 +64,13 @@ export class DocxExtractor implements ExtractionProvider {
       );
     }
 
-    // Prefer markdown output for structure; fall back to raw text
-    const markdownText = markdownResult.value ?? "";
+    // Prefer markdown output for structure; fall back to raw text.
+    // Strip base64 data URIs — mammoth inlines embedded images as
+    // `![alt](data:image/...;base64,...)`. These blobs tokenise at ~1 char/token
+    // and a single image can exceed OpenAI's 8 192-token embedding limit.
+    // We replace them with a short placeholder so the chunk index is still
+    // useful for retrieval without sending massive binary data to the LLM.
+    const markdownText = stripBase64DataUris(markdownResult.value ?? "");
     const rawText = rawResult.value ?? markdownText;
 
     if (rawText.trim().length === 0) {
@@ -115,6 +120,22 @@ export class DocxExtractor implements ExtractionProvider {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Replace base64 data URI images with short placeholders.
+ *
+ * mammoth.convertToMarkdown inlines embedded DOCX images as:
+ *   ![alt text](data:image/png;base64,iVBORw0KGg...)
+ * These blobs tokenise at ~1 char/token and a single image can easily
+ * exceed OpenAI's 8 192-token embedding limit.  We keep the alt text so
+ * retrieval context is preserved, but drop the binary payload.
+ */
+function stripBase64DataUris(text: string): string {
+  return text.replace(
+    /!\[([^\]]*)\]\(data:[^)]+\)/g,
+    (_, alt: string) => alt.trim() ? `[embedded image: ${alt.trim()}]` : "[embedded image]",
+  );
+}
 
 function extractSectionsFromMarkdown(markdown: string): ExtractedSection[] {
   const lines = markdown.split("\n");

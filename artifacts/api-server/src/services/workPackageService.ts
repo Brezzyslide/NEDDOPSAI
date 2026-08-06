@@ -5,8 +5,10 @@
  * Retrieves every knowledge source, memory, and entity reference needed for
  * the work, stamps model/prompt versions, and writes an immutable manifest row.
  *
- * The manifest is the complete audit record of what the specialist had access
- * to — it never changes after assembly.
+ * Sprint 28.6: assembleWorkPackage now also queries candidate sources that were
+ * NOT included (wrong status, pending ingestion, zero chunks, etc.) and returns
+ * them as ExcludedSource records. These are stored in selectionMetadata so the
+ * Execution Inspector can surface them without a DB migration.
  */
 
 import { randomUUID } from "crypto";
@@ -14,6 +16,9 @@ import { db } from "@workspace/db";
 import {
   workPackageManifestsTable,
   knowledgeSourcesTable,
+  knowledgeSourceVersionsTable,
+  knowledgeChunksTable,
+  ingestionJobsTable,
   organisationMemoryTable,
   type ManifestLibrarySource,
   type ManifestMemoryRef,
@@ -22,15 +27,11 @@ import {
   type ManifestPerformanceMetrics,
   type ManifestFailureInfo,
 } from "@workspace/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 
-/**
- * Guard: throw a named error if any field in a Drizzle .select({...}) object is
- * undefined or null, which would cause the opaque "Cannot convert undefined or
- * null to object" crash inside drizzle-orm/utils.ts:80 (orderSelectedFields).
- * Call this immediately before the .select() so the error names the exact field.
- */
+// ─── Guard ────────────────────────────────────────────────────────────────────
+
 function assertSelectFields(
   fields: Record<string, unknown>,
   label: string,
@@ -45,8 +46,36 @@ function assertSelectFields(
   }
 }
 
-// ─── Prompt version — increment when system prompt changes materially ─────────
+// ─── Prompt version ───────────────────────────────────────────────────────────
 export const CURRENT_PROMPT_VERSION = "sprint22.1.0";
+
+// ─── Excluded source types (Sprint 28.6) ─────────────────────────────────────
+
+export type ExclusionReason =
+  | "awaiting_approval"        // ingested but not yet approved by admin
+  | "ingestion_pending"        // queued/processing, not yet available
+  | "ingestion_failed"         // dead_lettered or exhausted retries
+  | "zero_chunks"              // approved but no chunks created (corruption / re-embed needed)
+  | "archived"                 // source was archived/retired
+  | "superseded"               // is_current = false, newer version exists
+  | "confidence_below_threshold" // included in manifest but retrieval confidence too low
+  | "clearance_denied";        // sensitivity clearance check failed
+
+export interface ExcludedSource {
+  sourceId:       string;
+  title:          string;
+  exclusionReason: ExclusionReason;
+  /** Current status on knowledge_sources */
+  status:         string;
+  /** Current ingestion_status on the active version */
+  ingestionStatus: string | null;
+  /** Ingestion job status for the active version */
+  jobStatus:      string | null;
+  /** Last ingestion error code, if dead_lettered */
+  lastErrorCode:  string | null;
+  /** Chunk count (0 if ingestion not complete) */
+  chunkCount:     number;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,21 +84,11 @@ export interface AssembleManifestInput {
   requesterId: string;
   conversationId?: string;
   blueprint: WorkBlueprint | null;
-  /** Pre-identified task upload source IDs (conversation-scoped) */
   taskUploadSourceIds?: string[];
-  /** Entity knowledge provided inline */
   entityKnowledge?: Record<string, unknown>;
-  /** Override model version (e.g. from AI gateway) */
   modelVersion?: string;
-  /**
-   * Sprint 27.4 — blueprint selection metadata for the Execution Inspector.
-   * Populated by the pipeline after selectBlueprint completes.
-   * Never affects execution behaviour.
-   */
   selectionMetadata?: BlueprintSelectionMetadata;
 }
-
-// ─── Sprint 27.4 observability update ────────────────────────────────────────
 
 export interface ManifestObservabilityUpdate {
   validationSnapshot?: ManifestValidationSnapshot;
@@ -77,11 +96,6 @@ export interface ManifestObservabilityUpdate {
   failureInfo?: ManifestFailureInfo;
 }
 
-/**
- * Write observability fields to an existing manifest row.
- * Fire-and-forget — failures are silently swallowed so they never affect
- * execution outcomes. Only updates the Sprint 27.4 observability columns.
- */
 export async function updateManifestObservability(
   manifestId: string,
   updates: ManifestObservabilityUpdate,
@@ -119,11 +133,17 @@ export interface WorkPackageManifest {
   createdAt: Date;
 }
 
+/** Extended result that includes excluded-source diagnostics (not persisted in manifest row). */
+export interface AssembleWorkPackageResult {
+  manifest: WorkPackageManifest;
+  excludedSources: ExcludedSource[];
+}
+
 // ─── Assembly ─────────────────────────────────────────────────────────────────
 
 export async function assembleWorkPackage(
   input: AssembleManifestInput,
-): Promise<WorkPackageManifest> {
+): Promise<AssembleWorkPackageResult> {
   const { organizationId, requesterId, blueprint, taskUploadSourceIds = [], entityKnowledge = {} } = input;
 
   const executionId = randomUUID();
@@ -133,6 +153,8 @@ export async function assembleWorkPackage(
 
   // ── Retrieve Organisation Library sources ────────────────────────────────
   let librarySources: ManifestLibrarySource[] = [];
+  let excludedSources: ExcludedSource[] = [];
+
   if (requiredKnowledgeTypes.length > 0) {
     const _libFields = {
       id: knowledgeSourcesTable.id,
@@ -141,22 +163,32 @@ export async function assembleWorkPackage(
       authorityLevel: knowledgeSourcesTable.authorityLevel,
       storageKey: knowledgeSourcesTable.storageKey,
       versionLabel: knowledgeSourcesTable.versionLabel,
+      status: knowledgeSourcesTable.status,
+      isCurrent: knowledgeSourcesTable.isCurrent,
     };
     assertSelectFields(_libFields, "library-sources");
-    const sourceRows = await db
+
+    // Query ALL candidate sources (any status) so we can report exclusions
+    const allCandidates = await db
       .select(_libFields)
       .from(knowledgeSourcesTable)
       .where(
         and(
           eq(knowledgeSourcesTable.organizationId, organizationId),
-          eq(knowledgeSourcesTable.status, "approved"),
           eq(knowledgeSourcesTable.sourceScope, "library"),
           inArray(knowledgeSourcesTable.sourceType, requiredKnowledgeTypes),
         )
       )
-      .limit(40);
+      .limit(80);
 
-    librarySources = sourceRows.map(r => ({
+    const approvedCurrent = allCandidates.filter(
+      r => r.status === "approved" && r.isCurrent,
+    );
+    const excluded = allCandidates.filter(
+      r => !(r.status === "approved" && r.isCurrent),
+    );
+
+    librarySources = approvedCurrent.map(r => ({
       sourceId: r.id,
       title: r.title,
       sourceType: r.sourceType,
@@ -164,15 +196,13 @@ export async function assembleWorkPackage(
       storageKey: r.storageKey ?? undefined,
       versionLabel: r.versionLabel ?? undefined,
     }));
+
+    if (excluded.length > 0) {
+      excludedSources = await _buildExcludedSources(excluded, organizationId);
+    }
   }
 
   // ── Retrieve CoS memory ──────────────────────────────────────────────────
-  // content is included so the specialist can reason about approved org decisions,
-  // not just know their titles. Safeguards applied at query level:
-  //   - status = "approved" (unapproved / retired memories excluded)
-  //   - organizationId = caller's org (tenant isolation)
-  //   - relevance filter applied below via requiredMemoryTypes
-  // Content is truncated to 800 chars per entry to stay within LLM token budget.
   const _memFields = {
     id: organisationMemoryTable.id,
     memoryType: organisationMemoryTable.memoryType,
@@ -195,9 +225,6 @@ export async function assembleWorkPackage(
   const requiredMemoryTypes = new Set(blueprint?.requiredMemories ?? []);
   const cosMemories: ManifestMemoryRef[] = [];
   const specialistMemories: ManifestMemoryRef[] = [];
-
-  // Truncation constant — keeps each memory entry within a safe token envelope
-  // while preserving enough context for professional reasoning.
   const MEMORY_CONTENT_MAX_CHARS = 800;
 
   for (const row of memoryRows) {
@@ -207,7 +234,6 @@ export async function assembleWorkPackage(
       memoryType: row.memoryType,
       title: row.title,
       approvalStatus: row.approvalStatus ?? undefined,
-      // Include approved content, truncated to budget. Omit if empty.
       content: rawContent.length > 0
         ? rawContent.slice(0, MEMORY_CONTENT_MAX_CHARS) +
           (rawContent.length > MEMORY_CONTENT_MAX_CHARS ? " [truncated]" : "")
@@ -254,6 +280,12 @@ export async function assembleWorkPackage(
     (process.env.OPENAI_MODEL_VERSION ?? process.env.AI_MODEL_VERSION ?? null);
 
   // ── Write immutable manifest ─────────────────────────────────────────────
+  // Store excludedSources inside selectionMetadata JSONB so they are available
+  // to the Execution Inspector without requiring a new DB column.
+  const selectionMetadataWithExclusions = input.selectionMetadata
+    ? { ...input.selectionMetadata, excludedSources }
+    : (excludedSources.length > 0 ? { method: "none" as const, confidence: 0, matchedKeywords: [], fallbackUsed: false, excludedSources } : null);
+
   const id = randomUUID();
   const now = new Date();
 
@@ -276,11 +308,10 @@ export async function assembleWorkPackage(
     assembledAt: now,
     requesterId,
     createdAt: now,
-    // Sprint 27.4 observability — selectionMetadata written at assembly time
-    selectionMetadata: input.selectionMetadata ?? null,
+    selectionMetadata: selectionMetadataWithExclusions ?? null,
   });
 
-  return {
+  const manifest: WorkPackageManifest = {
     id,
     organizationId,
     completedWorkId: null,
@@ -300,11 +331,112 @@ export async function assembleWorkPackage(
     requesterId,
     createdAt: now,
   };
+
+  return { manifest, excludedSources };
 }
 
-/**
- * Link a manifest to its completed work item after creation.
- */
+// ─── Excluded source builder ──────────────────────────────────────────────────
+
+async function _buildExcludedSources(
+  candidates: Array<{ id: string; title: string; status: string; isCurrent: boolean }>,
+  organizationId: string,
+): Promise<ExcludedSource[]> {
+  if (candidates.length === 0) return [];
+
+  const sourceIds = candidates.map(c => c.id);
+
+  // Fetch current version ingestion status + job info in one pass
+  const [versionRows, jobRows, chunkCounts] = await Promise.all([
+    db
+      .select({
+        knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId,
+        ingestionStatus:   knowledgeSourceVersionsTable.ingestionStatus,
+      })
+      .from(knowledgeSourceVersionsTable)
+      .where(
+        and(
+          eq(knowledgeSourceVersionsTable.organizationId, organizationId),
+          eq(knowledgeSourceVersionsTable.isCurrent, true),
+          inArray(knowledgeSourceVersionsTable.knowledgeSourceId, sourceIds),
+        )
+      )
+      .limit(sourceIds.length),
+
+    db.execute<{ knowledge_source_id: string; status: string; last_error_code: string | null }>(sql`
+      SELECT DISTINCT ON (knowledge_source_id)
+        knowledge_source_id,
+        status,
+        last_error_code
+      FROM ingestion_jobs
+      WHERE organization_id = ${organizationId}
+        AND knowledge_source_id = ANY(${sql.raw(`ARRAY[${sourceIds.map(id => `'${id}'`).join(",")}]`)})
+      ORDER BY knowledge_source_id, created_at DESC
+    `).then(r => (r.rows ?? r as any) as Array<{ knowledge_source_id: string; status: string; last_error_code: string | null }>),
+
+    db.execute<{ knowledge_source_id: string; cnt: string }>(sql`
+      SELECT knowledge_source_id, COUNT(*)::int AS cnt
+      FROM knowledge_chunks
+      WHERE organization_id = ${organizationId}
+        AND knowledge_source_id = ANY(${sql.raw(`ARRAY[${sourceIds.map(id => `'${id}'`).join(",")}]`)})
+        AND deleted_at IS NULL
+      GROUP BY knowledge_source_id
+    `).then(r => (r.rows ?? r as any) as Array<{ knowledge_source_id: string; cnt: string }>),
+  ]);
+
+  const versionMap  = new Map(versionRows.map(v => [v.knowledgeSourceId, v.ingestionStatus]));
+  const jobMap      = new Map(jobRows.map(j => [j.knowledge_source_id, j]));
+  const chunkMap    = new Map(chunkCounts.map(c => [c.knowledge_source_id, parseInt(c.cnt, 10)]));
+
+  return candidates.map(candidate => {
+    const ingestionStatus = versionMap.get(candidate.id) ?? null;
+    const job             = jobMap.get(candidate.id);
+    const chunkCount      = chunkMap.get(candidate.id) ?? 0;
+    const jobStatus       = job?.status ?? null;
+    const lastErrorCode   = job?.last_error_code ?? null;
+
+    let exclusionReason: ExclusionReason;
+
+    if (!candidate.isCurrent) {
+      exclusionReason = "superseded";
+    } else if (candidate.status === "archived" || candidate.status === "revoked") {
+      exclusionReason = "archived";
+    } else if (candidate.status === "review_required") {
+      exclusionReason = "awaiting_approval";
+    } else if (candidate.status === "approved" && chunkCount === 0) {
+      exclusionReason = "zero_chunks";
+    } else if (
+      jobStatus === "dead_lettered" ||
+      ingestionStatus === "failed" ||
+      ingestionStatus === "cancelled"
+    ) {
+      exclusionReason = "ingestion_failed";
+    } else if (
+      candidate.status === "uploaded" ||
+      ingestionStatus === "pending" ||
+      ingestionStatus === "processing" ||
+      jobStatus === "queued" || jobStatus === "fetching" || jobStatus === "extracting" ||
+      jobStatus === "normalising" || jobStatus === "chunking" || jobStatus === "embedding"
+    ) {
+      exclusionReason = "ingestion_pending";
+    } else {
+      exclusionReason = "ingestion_pending";
+    }
+
+    return {
+      sourceId:        candidate.id,
+      title:           candidate.title,
+      exclusionReason,
+      status:          candidate.status,
+      ingestionStatus: ingestionStatus ?? null,
+      jobStatus,
+      lastErrorCode,
+      chunkCount,
+    };
+  });
+}
+
+// ─── Manifest link ────────────────────────────────────────────────────────────
+
 export async function linkManifestToCompletedWork(
   manifestId: string,
   completedWorkId: string,
@@ -315,9 +447,6 @@ export async function linkManifestToCompletedWork(
     .where(eq(workPackageManifestsTable.id, manifestId));
 }
 
-/**
- * Get a manifest by ID.
- */
 export async function getManifest(
   id: string,
   organizationId: string,

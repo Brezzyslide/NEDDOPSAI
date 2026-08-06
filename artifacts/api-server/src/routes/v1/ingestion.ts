@@ -209,11 +209,64 @@ router.post(
 
       const existingJob = await getIngestionJob(jobId, orgId);
       if (!existingJob) throw new ApiError("JOB_NOT_FOUND", "Ingestion job not found.", 404);
-      if (existingJob.status !== "failed") {
-        throw new ApiError("INVALID_STATUS", "Only failed jobs can be retried.", 409);
+
+      const retryableStatuses = new Set(["failed", "dead_lettered"]);
+      if (!retryableStatuses.has(existingJob.status)) {
+        throw new ApiError(
+          "INVALID_STATUS",
+          `Only failed or dead_lettered jobs can be retried. Current status: ${existingJob.status}`,
+          409,
+        );
       }
 
-      // Re-queue by creating a new job for the same version
+      // For dead_lettered jobs: reset to queued so the worker picks it up again.
+      // The idempotency guard in enqueueIngestionJob checks for active jobs, so
+      // we must NOT route through that path for dead_lettered (it would skip).
+      if (existingJob.status === "dead_lettered") {
+        const { db: _db } = await import("@workspace/db");
+        const { ingestionJobsTable: _t, knowledgeSourceVersionsTable: _v } = await import("@workspace/db");
+        const { sql: _sql, eq: _eq, and: _and } = await import("drizzle-orm");
+
+        // Reset job to queued with cleared error + incremented max_attempts to allow another try
+        await _db.execute(_sql`
+          UPDATE ingestion_jobs
+          SET
+            status              = 'queued',
+            last_error_code     = NULL,
+            last_error_message  = NULL,
+            dead_lettered_at    = NULL,
+            next_attempt_at     = NOW(),
+            claimed_by          = NULL,
+            lease_expires_at    = NULL,
+            max_attempts        = attempt_count + 3,
+            metadata            = COALESCE(metadata, '{}'::jsonb) || '{"manualRetry": true}'::jsonb,
+            updated_at          = NOW()
+          WHERE id               = ${jobId}
+            AND organization_id  = ${orgId}
+            AND status           = 'dead_lettered'
+        `);
+
+        // Reset version ingestion status so UI shows pending
+        await _db.execute(_sql`
+          UPDATE knowledge_source_versions
+          SET ingestion_status = 'pending', updated_at = NOW()
+          WHERE id             = ${existingJob.sourceVersionId}
+            AND organization_id = ${orgId}
+        `);
+
+        logOrgEvent({
+          eventType: "ingestion_job.retried",
+          organizationId: orgId,
+          resourceType: "ingestion_job",
+          resourceId: jobId,
+          actorUserId: userId,
+          metadata: { previousStatus: "dead_lettered", action: "reset_to_queued" },
+        }).catch(() => {});
+
+        return res.status(202).json({ jobId, status: "queued", action: "reset_to_queued" });
+      }
+
+      // For "failed" status: create a new job for the same version
       const newJob = await retryIngestionJob({
         organizationId: orgId,
         knowledgeSourceId: existingJob.knowledgeSourceId,

@@ -141,15 +141,18 @@ function makeBlueprint() {
 
 function makeManifest(libSources: unknown[] = []) {
   return {
-    id: "manifest-001",
-    primarySpecialist: "operations_manager",
-    taskId: "task-001",
-    organizationId: ORG_ID,
-    organisationLibrarySources: libSources,
-    taskUploads: [],
-    cosMemories: [],
-    entityKnowledge: null,
-    selectionMetadata: null,
+    manifest: {
+      id: "manifest-001",
+      primarySpecialist: "operations_manager",
+      taskId: "task-001",
+      organizationId: ORG_ID,
+      organisationLibrarySources: libSources,
+      taskUploads: [],
+      cosMemories: [],
+      entityKnowledge: null,
+      selectionMetadata: null,
+    },
+    excludedSources: [],
   };
 }
 

@@ -29,6 +29,7 @@ import {
   assembleWorkPackage,
   updateManifestObservability,
   type WorkPackageManifest,
+  type ExcludedSource,
 } from "./workPackageService.js";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 import { validateWorkPackage } from "./workValidationService.js";
@@ -208,6 +209,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
 
   let blueprint: WorkBlueprint | null;
   let manifest: WorkPackageManifest;
+  let excludedSources: ExcludedSource[] = [];
 
   // Sprint 27.4 — per-stage timing for the Execution Inspector
   const t0 = Date.now();
@@ -257,7 +259,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
 
     // ── Step 2: Assemble Work Package Manifest ────────────────────────────
     await progress("assembling_package");
-    manifest = await assembleWorkPackage({
+    const assembleResult = await assembleWorkPackage({
       organizationId,
       requesterId,
       conversationId: input.conversationId,
@@ -266,6 +268,8 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
       entityKnowledge: input.entityKnowledge,
       selectionMetadata: selectionMeta,
     });
+    manifest = assembleResult.manifest;
+    excludedSources = assembleResult.excludedSources;
   }
 
   // ── Step 3: Resolve evidence (Sprint 27.5 — runs BEFORE validation) ─────────

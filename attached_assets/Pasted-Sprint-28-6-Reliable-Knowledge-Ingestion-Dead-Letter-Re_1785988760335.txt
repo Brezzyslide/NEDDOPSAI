@@ -1,0 +1,376 @@
+Sprint 28.6 — Reliable Knowledge Ingestion & Dead-Letter Recovery
+Objective
+
+Stabilise the Organisation Library ingestion pipeline so uploaded knowledge sources reliably become retrievable evidence for AI specialists.
+
+This sprint is not about retrieval quality or section-aware ingestion yet.
+
+It is about ensuring every uploaded document can either:
+
+become usable knowledge, or
+fail with a precise, recoverable reason.
+
+Do not implement Knowledge Studio or section-aware document understanding in this sprint.
+
+Current Evidence
+
+Current document:
+
+MH&R_Policy_current_2026.docx
+
+Current state:
+
+status = uploaded
+approved = false
+ingestion_status = pending
+ingestion job = dead_lettered
+attempts = 3
+last_error = NULL
+chunks = 0
+embeddings = 0
+lexical index = 0
+
+The pipeline therefore correctly excludes it before evidence retrieval.
+
+The platform currently provides no explanation why ingestion failed.
+
+This is the architectural gap to fix.
+
+Part 1 — Trace the entire ingestion lifecycle
+
+Inspect the complete pipeline.
+
+Upload
+
+↓
+
+Storage
+
+↓
+
+File retrieval
+
+↓
+
+Document extraction
+
+↓
+
+Text normalisation
+
+↓
+
+Heading detection
+
+↓
+
+Chunking
+
+↓
+
+Embedding generation
+
+↓
+
+Lexical indexing
+
+↓
+
+Chunk persistence
+
+↓
+
+Knowledge version update
+
+↓
+
+Knowledge source update
+
+↓
+
+Approval readiness
+
+Identify the exact stage where the document failed.
+
+Do not infer.
+
+Capture the real exception.
+
+Part 2 — Root cause diagnostics
+
+For every ingestion failure persist:
+
+ingestion stage
+exception type
+error code
+message
+first application stack frame
+correlation ID
+retry count
+sourceId
+sourceVersionId
+ingestionJobId
+timestamp
+
+Never leave:
+
+last_error = NULL
+
+after a dead-lettered job.
+
+That should be impossible.
+
+Part 3 — Dead-letter recovery
+
+Build proper recovery.
+
+Every dead-lettered ingestion must support:
+
+Retry
+
+Retry from failed stage
+
+Restart entire ingestion
+
+Cancel
+
+View diagnostics
+
+Do not require document re-upload.
+
+Part 4 — Explicit ingestion states
+
+Replace vague lifecycle states with explicit progress.
+
+Example:
+
+Uploaded
+
+↓
+
+Queued
+
+↓
+
+Downloading
+
+↓
+
+Extracting text
+
+↓
+
+Detecting structure
+
+↓
+
+Chunking
+
+↓
+
+Generating embeddings
+
+↓
+
+Creating lexical index
+
+↓
+
+Persisting chunks
+
+↓
+
+Ready for approval
+
+↓
+
+Approved
+
+↓
+
+Retrievable
+
+This state should be visible in the Owner Console.
+
+Part 5 — Worker observability
+
+Every ingestion job should record:
+
+Duration
+
+Stage timings
+
+Memory usage
+
+Chunk count
+
+Embedding count
+
+Extracted character count
+
+Extracted page count
+
+Warnings
+
+Retry history
+
+These should appear in diagnostics.
+
+Part 6 — DOCX robustness
+
+Review DOCX extraction.
+
+Specifically inspect:
+
+embedded images
+tables
+headers
+footers
+page breaks
+tracked changes
+comments
+text boxes
+unsupported objects
+
+Do not assume file size caused the issue.
+
+Return the exact failure.
+
+Part 7 — Validation before approval
+
+A document may only become approvable if:
+
+Text extracted
+
+AND
+
+Chunks > 0
+
+AND
+
+Lexical index built
+
+AND
+
+Embedding generation completed
+
+Do not allow approval of unusable knowledge.
+
+Part 8 — Manual diagnostics
+
+Owner Console should display:
+
+Document
+
+MH&R_Policy_current_2026.docx
+
+Status
+
+Dead Lettered
+
+Failed Stage
+
+Chunking
+
+Attempts
+
+3
+
+Last Error
+
+DOCX parser failed on embedded object
+
+Retry
+
+Available
+
+No developer logs required.
+
+Part 9 — Regression
+
+Reprocess the existing policy document.
+
+Expected result:
+
+Text extracted
+
+Chunks created
+
+Embeddings created
+
+Lexical index created
+
+Ready for approval
+
+Approved
+
+Medication sections searchable
+
+Then execute:
+
+Review our Medication Management Policy through an operational lens. Use the Operations Manager only.
+
+Expected:
+
+policy retrieved
+Operations Manager receives evidence
+no clarification asking for the policy
+Completed Work created successfully
+Part 10 — Tests
+
+Add comprehensive tests covering:
+
+Upload
+DOCX
+PDF
+Markdown
+Empty document
+Extraction
+malformed DOCX
+embedded images
+unsupported objects
+tracked changes
+Chunking
+zero text
+large text
+chunk persistence
+Embeddings
+success
+timeout
+provider failure
+Recovery
+retry
+restart
+dead-letter
+diagnostics
+Approval
+cannot approve before ingestion
+ready after ingestion
+Regression
+
+The uploaded MH&R_Policy_current_2026.docx ingests successfully and becomes retrievable.
+
+Deliverables
+
+Return:
+
+Exact root cause of the failed ingestion.
+Failed pipeline stage.
+Why the error was previously lost.
+Files changed.
+Retry result.
+Final chunk count.
+Embedding count.
+Lexical index count.
+Retrieval verification.
+Manual browser verification.
+Final test results.
+Important constraints
+Do not implement section-aware ingestion in this sprint.
+Do not redesign retrieval.
+Do not modify Blueprint Studio.
+Do not bypass approval.
+Do not manually insert chunks.
+Fix the ingestion engine first.
+
+Success criterion: Any uploaded Organisation Library document either becomes usable knowledge or fails with a clear, recoverable diagnostic. Once this is stable, the next phase can focus on Knowledge Studio, Organisation Memory, and section-aware document understanding.

@@ -191,10 +191,19 @@ const EMBEDDING_MODEL   = "text-embedding-3-small";
 const EMBEDDING_DIMS    = 1536;
 const EMBEDDING_BATCH   = 96;  // OpenAI limit is 2048 inputs, but keep batches small
 const EMBEDDING_TIMEOUT = 30_000;
+// text-embedding-3-small supports up to 8191 tokens.
+// Safety net: even after stripping base64 blobs, very long chunks (e.g. tables,
+// dense lists) can exceed the 8 191-token limit. We cap at 24 000 chars
+// (≈ 6 000 tokens at a conservative 4 chars/token for clean prose, or ~8 000
+// tokens worst-case at 3 chars/token for dense medical/legal text).
+// Truncating preserves the start of each chunk (most semantically dense).
+const EMBEDDING_MAX_CHARS = 24_000;
 
 /**
  * Generate embeddings for a batch of texts using OpenAI.
  * Splits into batches of EMBEDDING_BATCH automatically.
+ * Texts longer than ~8000 tokens (≈32 000 chars) are silently truncated
+ * to avoid the model's 8192-token per-input limit (HTTP 400).
  * Never logs raw text content.
  *
  * @throws OpenAIProviderError on unrecoverable failure
@@ -209,7 +218,9 @@ export async function callOpenAIEmbeddings(
 
   // Process in batches
   for (let i = 0; i < texts.length; i += EMBEDDING_BATCH) {
-    const batch = texts.slice(i, i + EMBEDDING_BATCH);
+    // Truncate each text to stay within the model's 8192-token limit.
+    const batch = texts.slice(i, i + EMBEDDING_BATCH)
+      .map((t) => t.length > EMBEDDING_MAX_CHARS ? t.slice(0, EMBEDDING_MAX_CHARS) : t);
     let lastErr: unknown = null;
 
     for (let attempt = 0; attempt <= 2; attempt++) {

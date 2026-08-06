@@ -11,12 +11,15 @@
  *   complete       → SQS.deleteMessage
  *   fail           → SQS.changeMessageVisibility(0) or DLQ send
  *   recoverStuck   → handled by SQS visibility timeout expiry
+ *
+ * Sprint 28.6 fix: recoverStuck() now writes last_error_code='LEASE_EXPIRED' when
+ * dead-lettering jobs due to lease expiry. Previously those fields were left NULL,
+ * making it impossible to diagnose why a job had failed.
  */
 
 import { db } from "@workspace/db";
 import {
   ingestionJobsTable,
-  INGESTION_JOB_TRANSITIONS,
   INGESTION_NON_RETRYABLE_CODES,
   type IngestionJob,
   type IngestionJobStatus,
@@ -29,11 +32,62 @@ import { logOrgEvent } from "../../services/auditService.js";
 // ─── Config defaults ──────────────────────────────────────────────────────────
 
 const DEFAULT_LEASE_MS      = parseInt(process.env.KNOWLEDGE_WORKER_LEASE_MS      ?? "120000", 10);
-const BASE_BACKOFF_S        = 30;   // 30s → 60s → 120s → … → max 1800s (30 min)
+const BASE_BACKOFF_S        = 30;
 const MAX_BACKOFF_S         = 1800;
 const JITTER_MS             = 5_000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Sprint 28.6 fix: db.execute returns raw PostgreSQL snake_case column names.
+ * The IngestionJob type uses camelCase (as Drizzle maps them). This normalizer
+ * converts the raw row so callers can safely access job.organizationId etc.
+ *
+ * Without this, job.organizationId is undefined → runPipeline passes undefined
+ * to getIngestionJob → no rows → JOB_NOT_FOUND on every claim attempt.
+ */
+function normalizeRawIngestionJob(raw: Record<string, unknown>): IngestionJob {
+  const toDate = (v: unknown): Date | null =>
+    v == null ? null : (v instanceof Date ? v : new Date(v as string));
+
+  return {
+    id:                         (raw.id as string),
+    organizationId:             (raw.organization_id ?? raw.organizationId) as string,
+    knowledgeSourceId:          (raw.knowledge_source_id ?? raw.knowledgeSourceId) as string,
+    sourceVersionId:            (raw.source_version_id ?? raw.sourceVersionId) as string,
+    status:                     (raw.status as IngestionJob["status"]),
+    attemptCount:               (raw.attempt_count ?? raw.attemptCount ?? 0) as number,
+    maxAttempts:                (raw.max_attempts ?? raw.maxAttempts ?? 3) as number,
+    lastErrorCode:              (raw.last_error_code ?? raw.lastErrorCode ?? null) as string | null,
+    lastErrorMessage:           (raw.last_error_message ?? raw.lastErrorMessage ?? null) as string | null,
+    extractionProvider:         (raw.extraction_provider ?? raw.extractionProvider ?? null) as string | null,
+    extractionProviderVersion:  (raw.extraction_provider_version ?? raw.extractionProviderVersion ?? null) as string | null,
+    embeddingProvider:          (raw.embedding_provider ?? raw.embeddingProvider ?? null) as string | null,
+    embeddingModel:             (raw.embedding_model ?? raw.embeddingModel ?? null) as string | null,
+    embeddingDimensions:        (raw.embedding_dimensions ?? raw.embeddingDimensions ?? null) as number | null,
+    chunkingStrategy:           (raw.chunking_strategy ?? raw.chunkingStrategy ?? null) as string | null,
+    chunkingStrategyVersion:    (raw.chunking_strategy_version ?? raw.chunkingStrategyVersion ?? null) as string | null,
+    chunkCount:                 (raw.chunk_count ?? raw.chunkCount ?? null) as number | null,
+    embeddingCount:             (raw.embedding_count ?? raw.embeddingCount ?? null) as number | null,
+    promptInjectionFlags:       (raw.prompt_injection_flags ?? raw.promptInjectionFlags ?? []) as unknown[],
+    requiresHumanReview:        Boolean(raw.requires_human_review ?? raw.requiresHumanReview),
+    claimedBy:                  (raw.claimed_by ?? raw.claimedBy ?? null) as string | null,
+    claimedAt:                  toDate(raw.claimed_at ?? raw.claimedAt),
+    leaseExpiresAt:             toDate(raw.lease_expires_at ?? raw.leaseExpiresAt),
+    heartbeatAt:                toDate(raw.heartbeat_at ?? raw.heartbeatAt),
+    nextAttemptAt:              toDate(raw.next_attempt_at ?? raw.nextAttemptAt),
+    recoveryCount:              (raw.recovery_count ?? raw.recoveryCount ?? 0) as number,
+    lastFailedAt:               toDate(raw.last_failed_at ?? raw.lastFailedAt),
+    deadLetteredAt:             toDate(raw.dead_lettered_at ?? raw.deadLetteredAt),
+    startedAt:                  toDate(raw.started_at ?? raw.startedAt),
+    completedAt:                toDate(raw.completed_at ?? raw.completedAt),
+    cancelledAt:                toDate(raw.cancelled_at ?? raw.cancelledAt),
+    lastAttemptAt:              toDate(raw.last_attempt_at ?? raw.lastAttemptAt),
+    createdAt:                  toDate(raw.created_at ?? raw.createdAt)!,
+    updatedAt:                  toDate(raw.updated_at ?? raw.updatedAt)!,
+    metadata:                   (raw.metadata ?? null) as Record<string, unknown> | null,
+  } as IngestionJob;
+}
 
 function backoffSeconds(attemptCount: number): number {
   const base = BASE_BACKOFF_S * Math.pow(2, Math.max(0, attemptCount - 1));
@@ -49,7 +103,6 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   // ── enqueue ────────────────────────────────────────────────────────────────
 
   async enqueue(input: Parameters<IIngestionQueue["enqueue"]>[0]): Promise<IngestionJob> {
-    // Idempotency: return existing active job for this version
     const existing = await this._getActiveJobForVersion(
       input.sourceVersionId,
       input.organizationId,
@@ -120,8 +173,10 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
       RETURNING *
     `);
 
-    const row = (rows.rows ?? rows as unknown as IngestionJob[])[0];
-    return row ?? null;
+    // Sprint 28.6 fix: db.execute returns snake_case keys; normalize to camelCase
+    // so callers can safely access job.organizationId, job.knowledgeSourceId, etc.
+    const rawRow = (rows.rows ?? rows as unknown as Record<string, unknown>[])[0];
+    return rawRow ? normalizeRawIngestionJob(rawRow) : null;
   }
 
   // ── heartbeat ──────────────────────────────────────────────────────────────
@@ -189,7 +244,6 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   ): Promise<IngestionJob> {
     const isNonRetryable = nonRetryable || INGESTION_NON_RETRYABLE_CODES.has(errorCode);
 
-    // Single atomic query: either dead_letter or set backoff
     const rows = await db.execute<IngestionJob>(sql`
       UPDATE ingestion_jobs
       SET
@@ -224,8 +278,10 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
       RETURNING *
     `);
 
-    const row = (rows.rows ?? rows as unknown as IngestionJob[])[0];
-    if (!row) throw new Error("DatabaseIngestionQueue.fail: update returned no rows");
+    // Sprint 28.6 fix: db.execute returns snake_case keys; normalize to camelCase
+    const rawRow2 = (rows.rows ?? rows as unknown as Record<string, unknown>[])[0];
+    if (!rawRow2) throw new Error("DatabaseIngestionQueue.fail: update returned no rows");
+    const row = normalizeRawIngestionJob(rawRow2);
 
     if ((row as any).status === "dead_lettered") {
       logOrgEvent({
@@ -243,7 +299,6 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   // ── cancel ─────────────────────────────────────────────────────────────────
 
   async cancel(jobId: string, organizationId: string, actorUserId: string): Promise<IngestionJob> {
-    // Queued jobs cancel immediately; in-flight jobs move to 'cancelling'
     const rows = await db.execute<IngestionJob>(sql`
       UPDATE ingestion_jobs
       SET
@@ -296,12 +351,15 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
 
   // ── recoverStuck ───────────────────────────────────────────────────────────
 
+  /**
+   * Sprint 28.6: When dead-lettering via lease expiry, now writes
+   * last_error_code = 'LEASE_EXPIRED' so the field is never left NULL.
+   */
   async recoverStuck(): Promise<number> {
     const processingStatuses: IngestionJobStatus[] = [
       "fetching","extracting","normalising","chunking","embedding","cancelling",
     ];
 
-    // Find expired-lease jobs
     const stuck = await db
       .select({
         id:             ingestionJobsTable.id,
@@ -327,17 +385,42 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
       const isExhausted = job.attemptCount >= job.maxAttempts;
       const newStatus   = isExhausted ? "dead_lettered" : "queued";
 
+      // Sprint 28.6: write error info when dead-lettering so last_error_code is never NULL.
+      // For retryable jobs keep any existing error code; we're just re-queuing.
+      const leaseExpiredCode    = "LEASE_EXPIRED";
+      const leaseExpiredMessage = `Job lease expired during stage '${job.status}' after ${job.attemptCount} attempt(s). Worker likely crashed or hung.`;
+
       await db.execute(sql`
         UPDATE ingestion_jobs
         SET
-          status           = ${newStatus},
-          claimed_by       = NULL,
-          lease_expires_at = NULL,
-          heartbeat_at     = NULL,
-          recovery_count   = recovery_count + 1,
-          dead_lettered_at = ${isExhausted ? sql`NOW()` : sql`NULL`},
-          next_attempt_at  = ${!isExhausted ? sql`NOW() + '30 seconds'::interval` : sql`NULL`},
-          updated_at       = NOW()
+          status             = ${newStatus},
+          claimed_by         = NULL,
+          lease_expires_at   = NULL,
+          heartbeat_at       = NULL,
+          recovery_count     = recovery_count + 1,
+          dead_lettered_at   = ${isExhausted ? sql`NOW()` : sql`NULL`},
+          next_attempt_at    = ${!isExhausted ? sql`NOW() + '30 seconds'::interval` : sql`NULL`},
+          -- Always write error info on dead-letter; keep existing code for retries
+          last_error_code    = CASE
+                                 WHEN ${isExhausted}
+                                   THEN COALESCE(last_error_code, ${leaseExpiredCode})
+                                 ELSE last_error_code
+                               END,
+          last_error_message = CASE
+                                 WHEN ${isExhausted} AND last_error_message IS NULL
+                                   THEN ${leaseExpiredMessage}
+                                 ELSE last_error_message
+                               END,
+          last_failed_at     = CASE
+                                 WHEN ${isExhausted} AND last_failed_at IS NULL
+                                   THEN NOW()
+                                 ELSE last_failed_at
+                               END,
+          metadata           = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+            recoveredFromLease: true,
+            stageAtRecovery: job.status,
+          })}::jsonb,
+          updated_at         = NOW()
         WHERE id = ${job.id}
           AND lease_expires_at < NOW()
       `);
@@ -347,7 +430,11 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
         organizationId: job.organizationId,
         resourceType:   "ingestion_job",
         resourceId:     job.id,
-        metadata:       { reason: "lease_expired", previousStatus: job.status },
+        metadata:       {
+          reason:         "lease_expired",
+          previousStatus: job.status,
+          errorCode:      isExhausted ? (job.lastErrorCode ?? leaseExpiredCode) : undefined,
+        },
       }).catch(() => {});
 
       recovered++;

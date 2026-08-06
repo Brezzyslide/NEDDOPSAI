@@ -217,7 +217,7 @@ describe("assembleWorkPackage — column-contract regression", () => {
   });
 
   it("returns a WorkPackageManifest with the expected shape", async () => {
-    const manifest = await assembleWorkPackage({
+    const { manifest } = await assembleWorkPackage({
       organizationId: ORG_ID,
       requesterId: REQUESTER,
     });

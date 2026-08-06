@@ -131,6 +131,14 @@ router.use("/", workforceOpsRouter);
 import executionInspectorRouter from "./executionInspector.js";
 router.use("/", executionInspectorRouter);
 
+// Sprint 28.6 — AI provider health check
+import aiHealthRouter from "./aiHealth.js";
+router.use("/", aiHealthRouter);
+
+// Sprint 28.6 — DOCX extraction debug (platform staff only)
+import docxDebugRouter from "./docxDebug.js";
+router.use("/", docxDebugRouter);
+
 // Sprint 1 error handler
 router.use(apiErrorHandler as unknown as Parameters<typeof router.use>[0]);
 

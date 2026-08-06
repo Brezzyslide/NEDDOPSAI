@@ -54,6 +54,18 @@ export interface InspectorEvidenceSource {
   retrieved: boolean;
 }
 
+/** Sprint 28.6 — a candidate source that was excluded from this execution */
+export interface InspectorExcludedSource {
+  sourceId:        string;
+  title:           string;
+  exclusionReason: string;
+  status:          string;
+  ingestionStatus: string | null;
+  jobStatus:       string | null;
+  lastErrorCode:   string | null;
+  chunkCount:      number;
+}
+
 export interface InspectorBlueprint {
   blueprintId: string | null;
   name: string | null;
@@ -127,6 +139,7 @@ export interface ExecutionInspection {
 
   evidence: {
     sources: InspectorEvidenceSource[];
+    excludedSources: InspectorExcludedSource[];
     memoryEntries: number;
     taskUploads: number;
     totalChunks: number;
@@ -437,6 +450,35 @@ async function _buildInspection(
     noEvidenceReason = "Evidence sources were listed in the manifest but no chunks passed the confidence threshold (≥ 0.05)";
   }
 
+  // ── 16. Excluded sources (Sprint 28.6) ────────────────────────────────────
+  // Read from selectionMetadata.excludedSources stored at assembly time.
+  const selMetaRaw = manifestRow.selectionMetadata as (Record<string, unknown> & { excludedSources?: unknown[] }) | null;
+  const excludedSources: InspectorExcludedSource[] = (selMetaRaw?.excludedSources ?? []).map((s: any) => ({
+    sourceId:        s.sourceId ?? "",
+    title:           s.title ?? "",
+    exclusionReason: s.exclusionReason ?? "unknown",
+    status:          s.status ?? "unknown",
+    ingestionStatus: s.ingestionStatus ?? null,
+    jobStatus:       s.jobStatus ?? null,
+    lastErrorCode:   s.lastErrorCode ?? null,
+    chunkCount:      s.chunkCount ?? 0,
+  }));
+
+  // If no sources were included but excluded sources exist, add that to the no-evidence reason.
+  if (
+    librarySources.length === 0 && taskUploads.length === 0 &&
+    excludedSources.length > 0 && !noEvidenceReason
+  ) {
+    const failedCount = excludedSources.filter(s => s.exclusionReason === "ingestion_failed").length;
+    const pendingCount = excludedSources.filter(s => s.exclusionReason === "ingestion_pending").length;
+    const awaitingCount = excludedSources.filter(s => s.exclusionReason === "awaiting_approval").length;
+    const parts: string[] = [];
+    if (failedCount) parts.push(`${failedCount} source(s) failed ingestion`);
+    if (pendingCount) parts.push(`${pendingCount} source(s) still processing`);
+    if (awaitingCount) parts.push(`${awaitingCount} source(s) awaiting approval`);
+    if (parts.length) noEvidenceReason = `Required sources excluded: ${parts.join(", ")}`;
+  }
+
   return {
     executionId,
     manifestId,
@@ -461,6 +503,7 @@ async function _buildInspection(
 
     evidence: {
       sources: evidenceSources,
+      excludedSources,
       memoryEntries: cosMemories.length + specialistMemories.length,
       taskUploads: taskUploads.length,
       totalChunks: chunkIds.length,
