@@ -1,0 +1,203 @@
+Sprint 29F.3 — Real Mac Connector Acceptance Support
+
+Do not redesign the architecture.
+
+Do not add new connector capabilities.
+
+Do not replace the existing real-connector acceptance tests with mocks.
+
+The objective is to prepare and support a human operator running the NeedsOps Connector on a physical Mac and completing the existing 10 acceptance scenarios.
+
+Assume the cloud agent cannot access physical hardware directly.
+
+Required work:
+
+1. Verify the Mac connector development command
+
+Confirm the exact command required from the repository root to launch the connector on macOS.
+
+Expected candidate:
+
+pnpm --filter @workspace/desktop-connector run dev
+
+Check:
+
+- required Node version
+- pnpm version
+- environment variables
+- build prerequisites
+- Electron prerequisites
+- macOS permissions
+- whether the connector must be packaged or can run in development mode
+
+2. Produce a Mac operator runbook
+
+Create:
+
+docs/connectors/REAL_MAC_ACCEPTANCE_RUNBOOK.md
+
+Include:
+
+- prerequisites
+- connector installation/start steps
+- device activation
+- relay configuration
+- required secrets and environment variables
+- where to obtain REAL_CONNECTOR_URL
+- how to verify the heartbeat
+- how to create the disposable test directory
+- how to run the test suite
+- how to collect logs
+- how to stop and clean up safely
+
+Do not expose real secrets in documentation.
+
+3. Verify device activation flow
+
+Trace the exact current activation path.
+
+Report:
+
+- frontend screen or route
+- API route
+- device token creation
+- challenge/exchange flow
+- relay authentication
+- device registration record
+- organisation binding
+
+Do not assume “Business Discovery” is the correct user-facing path unless the code confirms it.
+
+4. Verify relay topology
+
+Produce the actual runtime flow:
+
+Mac Connector
+→ relay URL
+→ API server/device relay
+→ ConnectorBridgeService
+→ Unified Execution Engine
+
+Confirm whether REAL_CONNECTOR_URL should be:
+
+- the WebSocket relay endpoint
+- the API server URL
+- a device-specific URL
+- another endpoint
+
+State the exact expected format.
+
+5. Add a preflight command or script
+
+Create a safe preflight utility that checks:
+
+- connector process running
+- relay reachable
+- device authenticated
+- heartbeat current
+- connector version
+- required capabilities available
+- acceptance-test directory writable
+- no production files will be touched
+
+The preflight must not perform write-side business actions beyond creating and removing one disposable test file inside:
+
+~/Documents/needsops-acceptance-test/
+
+6. Review the existing 10 real-connector tests
+
+For every scenario report:
+
+- exact operation performed
+- expected local file or app effect
+- whether it is safe and disposable
+- required macOS permission
+- cleanup behaviour
+- likely failure messages
+
+Ensure every test is isolated to:
+
+~/Documents/needsops-acceptance-test/
+
+No test may read or modify unrelated user files.
+
+7. Validate idempotency test design
+
+Review Scenario 7 in detail.
+
+Confirm it genuinely tests:
+
+- first physical write succeeds
+- acknowledgement is interrupted or lost
+- same executionId/actionId is redelivered
+- desktop idempotency store detects the duplicate
+- file is not written twice
+- existing result is returned
+
+Do not accept a test that only proves server-side deduplication.
+
+8. Add structured operator evidence capture
+
+When the tests run, produce a machine-readable result file containing:
+
+- platform
+- macOS version
+- connector version
+- device ID
+- relay URL redacted
+- test scenario
+- result
+- duration
+- operation IDs
+- idempotency result
+- cleanup result
+- failure details
+
+Store it under a disposable test-results directory.
+
+9. Provide exact operator commands
+
+Return a final copy-paste sequence for the human operator:
+
+Terminal 1:
+- install dependencies
+- start connector
+
+Terminal 2:
+- set environment variables
+- run preflight
+- run real connector acceptance tests
+
+Include expected successful output at each major step.
+
+10. Failure support
+
+For each common failure, provide the first diagnostic command and likely cause:
+
+- connector not connected
+- device not activated
+- invalid token
+- wrong relay URL
+- heartbeat stale
+- macOS filesystem permission denied
+- file locked
+- Word unavailable
+- Excel unavailable
+- Outlook unavailable
+- duplicate write protection failed
+- acknowledgement timeout
+- connector restart during operation
+
+11. Final gate
+
+Do not declare production readiness.
+
+Return one of:
+
+READY FOR HUMAN MAC VALIDATION
+
+BLOCKED — MAC RUNBOOK OR TEST HARNESS DEFECT
+
+BLOCKED — CONNECTOR BUILD OR RELAY DEFECT
+
+The sprint is complete when a human operator can follow one documented sequence from a clean Mac checkout to a completed real-device acceptance report without needing to infer missing steps.
