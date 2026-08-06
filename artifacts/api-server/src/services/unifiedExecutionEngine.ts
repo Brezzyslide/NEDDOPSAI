@@ -55,6 +55,22 @@ import {
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
 import { buildExecutionContext } from "./executionContextBuilderService.js";
+import {
+  openExecutionSession,
+  closeExecutionSession,
+  markSessionError,
+  recordProviderState,
+} from "../lib/resources/ExecutionSession.js";
+import {
+  parseExecutionActions,
+  validateExecutionActions,
+  extractWriteTargets,
+  type RawRequestedAction,
+} from "./executionActionService.js";
+import {
+  mapConnectorCategoryToChannel,
+  mapExecutionChannelToSession,
+} from "./writeTargetResolverService.js";
 
 // Type-only imports — break circular runtime dependency.
 // specialistIntelligenceService will import createUnifiedExecutionEngine from here.
@@ -63,7 +79,13 @@ import type {
   SpecialistContext,
   SpecialistRunResult,
 } from "./specialistIntelligenceService.js";
-import type { CanonicalExecutionContext } from "../types/canonicalExecutionContext.js";
+import type {
+  CanonicalExecutionContext,
+  ResourcePlan,
+  EvidenceProvider,
+  ConnectorRequirement,
+} from "../types/canonicalExecutionContext.js";
+import type { SessionChannel } from "../lib/resources/ExecutionSession.js";
 
 // ─── Shared execution types ───────────────────────────────────────────────────
 // Defined here; re-exported from workExecutionPipelineService for backward compat.
@@ -305,10 +327,31 @@ export class UnifiedExecutionEngine {
       })
       .catch(() => null);
 
+    // ─── Sprint 29D: Open execution session before ctx construction ───────────
+    // Session is always opened so every execution carries connection context.
+    // In Sprint 29D, status stays "idle" — no connector traffic yet.
+    // Connector P6 will transition to "active" when relay operations begin.
+    let liveSession = openExecutionSession({
+      executionId:        runId,
+      organisationId:     request.organisationId,
+      triggerType:        "conversation",
+      allowedChannels:    deriveSessionChannels(workPackage.allowedExecutionChannels ?? []),
+      maxDurationSeconds: Math.floor(RUN_TIMEOUT_MS / 1000) + 30,
+    });
+
+    // Record evidence provider state from the just-completed resolution
+    liveSession = recordProviderState(liveSession, {
+      provider:  "organisation_library",
+      status:    evidencePack && evidencePack.totalChunks > 0 ? "available" : "not_attempted",
+      checkedAt: new Date().toISOString(),
+    });
+
     // ─── Stage 3: Build CanonicalExecutionContext ─────────────────────────────
     // Sprint 29C: CanonicalExecutionContext is now instantiated here and used as
     // the engine's internal currency. Future stages (connector, cloud, OpenClaw)
     // will consume ctx rather than individual fields from ExecutionRequest.
+    // Sprint 29D: ctx now carries a live session and a complete ResourcePlan.
+    //   executionActions starts as [] — populated after specialist output.
     const ctx: CanonicalExecutionContext = {
       executionId:    randomUUID(),
       triggerType:    "conversation",
@@ -332,25 +375,23 @@ export class UnifiedExecutionEngine {
         approvedMemory:   context.approvedMemory,
         pinnedDecisions:  context.pinnedDecisions,
       },
-      evidence:    evidencePack,
-      resourcePlan: {
-        evidenceSources:         evidencePack?.sourceIds ?? [],
-        connectorSessionOpened:  false,
-        writeTargets:            [],
-      },
-      executionActions: null,
-      blueprint:  null,
+      evidence:     evidencePack,
+      resourcePlan: buildConversationResourcePlan(workPackage, evidencePack),
+      executionActions: [],   // Sprint 29D: always [], populated after specialist output
+      blueprint:    null,
       constraints: {
-        maxDurationSeconds:             Math.floor(RUN_TIMEOUT_MS / 1000),
-        maxTokens:                      4000,
+        maxDurationSeconds:              Math.floor(RUN_TIMEOUT_MS / 1000),
+        maxTokens:                       4000,
         requireHumanApprovalBeforeSubmit: false,
-        allowedDataCategories:          ["operational"],
+        allowedDataCategories:           ["operational"],
       },
-      session: null,
+      session: liveSession,   // Sprint 29D: always an ExecutionSession
     };
 
     // ─── Stage 4: Specialist validation ──────────────────────────────────────
     if (!ACTIVE_SPECIALIST_VERSIONS[roleCode]) {
+      liveSession = closeExecutionSession(liveSession);
+      ctx.session = liveSession;
       return {
         specialistRunId: runId,
         workforceRoleCode: roleCode,
@@ -380,6 +421,8 @@ export class UnifiedExecutionEngine {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
     if (provider !== "openai") {
+      liveSession = closeExecutionSession(liveSession);
+      ctx.session = liveSession;
       return buildDeterministicResult(workPackage, runId, instructionVersion);
     }
 
@@ -461,6 +504,24 @@ export class UnifiedExecutionEngine {
           requesterId: ctx.requesterId,
         });
 
+        // ─── Sprint 29D: Parse and persist execution action proposals ─────────
+        // Specialist output may contain requestedExternalActions — convert to
+        // typed ExecutionAction proposals, validate against the ResourcePlan,
+        // and persist in ctx. These are planning artefacts only; the connector
+        // (P6) will execute approved actions in a future sprint.
+        const rawActions = (parsed.requestedExternalActions ?? []) as RawRequestedAction[];
+        const parsedActions = parseExecutionActions(rawActions, runId);
+        const actionValidation = validateExecutionActions(parsedActions, ctx.resourcePlan);
+        ctx.executionActions = actionValidation.valid;
+        ctx.resourcePlan = {
+          ...ctx.resourcePlan,
+          writeTargets:        extractWriteTargets(actionValidation.valid),
+          approvalRequirements: actionValidation.approvalRequirements,
+        };
+
+        liveSession = closeExecutionSession(liveSession);
+        ctx.session = liveSession;
+
         return {
           ...parsed,
           instructionVersion,
@@ -489,6 +550,9 @@ export class UnifiedExecutionEngine {
       error: lastError?.message,
       attempts: attempt,
     });
+
+    liveSession = markSessionError(liveSession, lastError?.message ?? "Unknown provider error");
+    ctx.session = liveSession;
 
     return {
       specialistRunId: runId,
@@ -617,10 +681,26 @@ export class UnifiedExecutionEngine {
       .catch(() => null);
     tRetrievalMs = Date.now() - t3evidence;
 
-    // ── Sprint 29C: Build CanonicalExecutionContext for task path ─────────────
-    // Both task and conversation paths now instantiate ctx before validation.
-    // Future stages (connector, cloud, OpenClaw) will consume ctx rather than
-    // individual fields from ExecutionRequest.
+    // ── Sprint 29D: Open task execution session ───────────────────────────────
+    // Task executions carry a session from evidence retrieval through completion.
+    // Status is "idle" in Sprint 29D — Connector P6 will open live channels.
+    let taskSession = openExecutionSession({
+      executionId:        manifest.executionId,
+      organisationId:     organizationId,
+      triggerType:        request.trigger as "task" | "scheduled" | "workflow",
+      allowedChannels:    ["connector", "office"],
+      maxDurationSeconds: 330, // 5 min execution + 30s buffer
+    });
+    taskSession = recordProviderState(taskSession, {
+      provider:  "organisation_library",
+      status:    evidencePack && evidencePack.totalChunks > 0 ? "available" : "not_attempted",
+      checkedAt: new Date().toISOString(),
+    });
+
+    // ── Sprint 29D: Build CanonicalExecutionContext for task path ─────────────
+    // Sprint 29C: Both paths instantiate ctx before validation.
+    // Sprint 29D: ctx now carries a complete ResourcePlan, an active session,
+    // and executionActions is always [] (never null).
     const ctx: CanonicalExecutionContext = {
       executionId:    manifest.executionId,
       triggerType:    request.trigger as "task" | "scheduled" | "workflow",
@@ -644,13 +724,9 @@ export class UnifiedExecutionEngine {
         })),
         pinnedDecisions: [],
       },
-      evidence:     evidencePack,
-      resourcePlan: {
-        evidenceSources:        evidencePack?.sourceIds ?? [],
-        connectorSessionOpened: false,
-        writeTargets:           [],
-      },
-      executionActions: null,
+      evidence:        evidencePack,
+      resourcePlan:    buildTaskResourcePlan(manifest, evidencePack),
+      executionActions: [],   // Sprint 29D: always [], never null
       blueprint,
       constraints: {
         maxDurationSeconds:              300,
@@ -658,10 +734,8 @@ export class UnifiedExecutionEngine {
         requireHumanApprovalBeforeSubmit: true,
         allowedDataCategories:           ["operational"],
       },
-      session: null,
+      session: taskSession,   // Sprint 29D: always an ExecutionSession
     };
-    // ctx is available for all downstream stages; suppress unused-variable lint
-    void ctx;
 
     await progress("validating");
     const t4 = Date.now();
@@ -690,6 +764,8 @@ export class UnifiedExecutionEngine {
           retryAvailable: true,
         },
       }).catch(() => {});
+      taskSession = closeExecutionSession(taskSession);
+      ctx.session = taskSession;
       return {
         outcome: "awaiting_clarification",
         manifestId: manifest.id,
@@ -736,6 +812,8 @@ export class UnifiedExecutionEngine {
       }).catch(() => {});
 
       if (isFallback) {
+        taskSession = closeExecutionSession(taskSession);
+        ctx.session = taskSession;
         return {
           outcome: "configuration_failure",
           manifestId: manifest.id,
@@ -743,6 +821,8 @@ export class UnifiedExecutionEngine {
           message: (err as Error).message,
         };
       }
+      taskSession = markSessionError(taskSession, err instanceof Error ? err.message : "Unknown error");
+      ctx.session = taskSession;
       return {
         outcome: "execution_failed",
         manifestId: manifest.id,
@@ -817,6 +897,9 @@ export class UnifiedExecutionEngine {
         evidenceCacheHit: evidencePack != null,
       },
     }).catch(() => {});
+
+    taskSession = closeExecutionSession(taskSession);
+    ctx.session = taskSession;
 
     return {
       outcome: "completed",
@@ -919,6 +1002,104 @@ export class UnifiedExecutionEngine {
 
 export function createUnifiedExecutionEngine(): UnifiedExecutionEngine {
   return new UnifiedExecutionEngine(createResourceRegistry());
+}
+
+// ─── Sprint 29D: Execution contract helpers ───────────────────────────────────
+
+/**
+ * Derives permitted session channels from a specialist's allowedExecutionChannels.
+ * Falls back to ["connector"] if the list is empty or unrecognised.
+ */
+function deriveSessionChannels(allowedExecutionChannels: string[]): SessionChannel[] {
+  if (!allowedExecutionChannels || allowedExecutionChannels.length === 0) {
+    return ["connector"];
+  }
+  const channels = new Set<SessionChannel>();
+  for (const ch of allowedExecutionChannels) {
+    channels.add(mapExecutionChannelToSession(ch));
+  }
+  return channels.size > 0 ? Array.from(channels) : ["connector"];
+}
+
+/**
+ * Builds a complete ResourcePlan for a conversation execution.
+ *
+ * Evidence providers are populated from the EvidencePack.
+ * Write targets and approval requirements start empty — they are populated
+ * by the engine after the specialist's output is parsed.
+ */
+function buildConversationResourcePlan(
+  workPackage: SpecialistWorkPackage,
+  evidencePack: EvidencePack | null,
+): ResourcePlan {
+  const evidenceProviders: EvidenceProvider[] = [
+    {
+      providerId:   "organisation_library",
+      providerType: "organisation_library",
+      status:       evidencePack && evidencePack.totalChunks > 0 ? "active" : "not_attempted",
+      sourceCount:  evidencePack?.sourceIds.length ?? 0,
+    },
+  ];
+
+  const connectorRequirements: ConnectorRequirement[] = (
+    workPackage.allowedConnectorCategories ?? []
+  ).map(cat => ({
+    channel:  mapConnectorCategoryToChannel(cat),
+    purpose:  "evidence" as const,
+    required: false,
+    satisfied: false,
+  }));
+
+  return {
+    evidenceProviders,
+    preferredProviders: ["organisation_library"],
+    evidenceSources:     evidencePack?.sourceIds ?? [],
+    connectorSessionOpened: false,
+    writeTargets:        [],  // populated after specialist output
+    requiredCapabilities: workPackage.allowedCapabilities ?? [],
+    connectorRequirements,
+    approvalRequirements: [],  // populated after specialist output
+  };
+}
+
+/**
+ * Builds a complete ResourcePlan for a task execution.
+ *
+ * Includes evidence from the Organisation Library, task uploads, and entity
+ * knowledge sources. Write targets and approval requirements start empty.
+ */
+function buildTaskResourcePlan(
+  manifest: WorkPackageManifest,
+  evidencePack: EvidencePack | null,
+): ResourcePlan {
+  const evidenceProviders: EvidenceProvider[] = [
+    {
+      providerId:   "organisation_library",
+      providerType: "organisation_library",
+      status:       evidencePack && evidencePack.totalChunks > 0 ? "active" : "not_attempted",
+      sourceCount:  manifest.organisationLibrarySources.length,
+    },
+    {
+      providerId:   "task_uploads",
+      providerType: "task_upload",
+      status:       manifest.taskUploads.length > 0 ? "active" : "not_attempted",
+      sourceCount:  manifest.taskUploads.length,
+    },
+  ];
+
+  return {
+    evidenceProviders,
+    preferredProviders: ["organisation_library", "task_uploads"],
+    evidenceSources:    evidencePack?.sourceIds ?? [],
+    connectorSessionOpened: false,
+    writeTargets:        [],
+    requiredCapabilities: [],
+    connectorRequirements: [
+      { channel: "connector", purpose: "execution", required: false, satisfied: false },
+      { channel: "office",    purpose: "execution", required: false, satisfied: false },
+    ],
+    approvalRequirements: [],
+  };
 }
 
 // ─── Specialist prompt builder ────────────────────────────────────────────────

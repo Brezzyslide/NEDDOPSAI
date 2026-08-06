@@ -1,0 +1,238 @@
+I would keep the momentum and make this a focused implementation sprint. The objective is not to build the connector yet, but to complete the execution contract so the connector has a stable interface to plug into.
+
+⸻
+
+Sprint 29D — Execution Contract Completion (Inspection + Implementation)
+
+Objective
+
+Complete the execution-side contract before implementing the NeedsOps Connector (P6).
+
+Do not implement desktop connector functionality in this sprint.
+
+Instead, ensure the unified execution engine fully describes what needs to happen so future connector providers become plug-and-play.
+
+Maintain backwards compatibility.
+
+Do not regress any existing execution path.
+
+⸻
+
+Deliverable A — ExecutionSession
+
+Implement ExecutionSession as a first-class runtime object.
+
+The unified execution engine should:
+
+* create an ExecutionSession at execution start
+* populate it into CanonicalExecutionContext
+* maintain lifecycle
+* close it on completion or failure
+
+Initially this should be an internal runtime object only.
+
+Do not communicate with the connector yet.
+
+Provide:
+
+* Session ID
+* Execution ID
+* Trigger Type
+* Session State
+* Started At
+* Closed At
+* Duration
+* Resource Provider States
+
+ExecutionSession should become the future owner of connector sessions.
+
+⸻
+
+Deliverable B — Execution Actions
+
+ExecutionActions must become a real execution contract.
+
+Implement a typed ExecutionAction model.
+
+Examples:
+
+* Write File
+* Create File
+* Update File
+* Move File
+* Draft Email
+* Send Email
+* Update Spreadsheet
+* Browser Interaction
+* Calendar Update
+* Terminal Command
+
+The engine should support:
+
+Specialist Output
+↓
+Proposed Execution Actions
+↓
+Validation
+↓
+Approval Requirement
+↓
+Persist in Execution Context
+↓
+(Not yet executed)
+
+ExecutionActions are planning artefacts only in this sprint.
+
+Nothing should execute.
+
+⸻
+
+Deliverable C — Write Targets
+
+Implement deterministic write target resolution.
+
+Examples:
+
+Desktop/Documents
+
+Desktop/Downloads
+
+Desktop/Desktop
+
+Organisation Library
+
+Completed Work
+
+Outlook Drafts
+
+Excel Workbook
+
+Each ExecutionAction must contain a fully resolved destination.
+
+No connector code yet.
+
+⸻
+
+Deliverable D — Resource Plan Completion
+
+Complete ResourcePlan so it contains:
+
+* evidence providers
+* preferred providers
+* write targets
+* required capabilities
+* connector requirements
+* approval requirements
+
+The plan should become the single source of truth for execution routing.
+
+⸻
+
+Deliverable E — Ownership Rules
+
+Implement and document ownership boundaries.
+
+Chief of Staff owns:
+
+* orchestration
+* delegation
+* capability planning
+* resource planning
+* execution planning
+* approval routing
+
+Specialists own:
+
+* reasoning
+* evidence usage
+* professional judgement
+* output generation
+
+Specialists must not own execution.
+
+ExecutionActions are proposals, never commands.
+
+The engine validates them.
+
+Future connector executes them only after approval.
+
+⸻
+
+Deliverable F — Engine Validation
+
+Move any remaining execution validation from adapters into the unified execution engine.
+
+Adapters should contain:
+
+* translation
+* delegation
+* compatibility
+
+Nothing else.
+
+⸻
+
+Deliverable G — Runtime Inspection
+
+After implementation perform another inspection.
+
+Verify:
+
+* exactly one ExecutionSession exists
+* exactly one ResourcePlan exists
+* exactly one CanonicalExecutionContext exists
+* exactly one EvidencePack exists
+* exactly one ExecutionAction collection exists
+
+Confirm no duplicate ownership.
+
+⸻
+
+Deliverable H — Connector Readiness Assessment
+
+Without writing connector code, confirm the engine is now capable of supporting:
+
+Scenario 1
+
+“Go to my desktop, review Medication Policy.docx.”
+
+Scenario 2
+
+“Review this document then save the revised version into Documents.”
+
+Scenario 3
+
+“Read my Outlook inbox and draft a reply.”
+
+Scenario 4
+
+“Open Excel, update the tracker, and save.”
+
+For each scenario identify:
+
+* ResourcePlan
+* CapabilityPlan
+* Evidence sources
+* ExecutionActions
+* Approval requirements
+
+No execution should occur.
+
+Only verify that the engine can now describe the entire execution contract.
+
+⸻
+
+Success Criteria
+
+The sprint is complete only if:
+
+* Every execution has one CanonicalExecutionContext.
+* Every execution has one ExecutionSession.
+* Every execution has one ResourcePlan.
+* Every execution has one ExecutionAction collection (empty if none required).
+* ExecutionActions are proposals, not executable commands.
+* No service outside the unified execution engine owns execution planning.
+* No connector implementation is introduced.
+* Existing tests continue to pass with no regressions.
+
+This sprint completes the execution contract so that the following sprint (Connector P6) becomes an implementation exercise rather than an architectural refactor.
