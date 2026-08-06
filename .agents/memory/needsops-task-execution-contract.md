@@ -48,5 +48,25 @@ After any change to `lib/ai-gateway/src/types.ts` or `lib/ai-gateway/src/aiGatew
 run `cd lib/ai-gateway && npx tsc --project tsconfig.json` before running tests.
 After `lib/shared/src/index.ts` AUDIT_EVENTS change, run `cd lib/shared && npx tsc --project tsconfig.json`.
 
+## cosMemories.content — added in follow-up sprint
+
+The pipeline originally only selected memory title/type (ManifestMemoryRef had no content field).
+Analysis confirmed the `organisation_memory` table has a `content text not null` column.
+The same safeguards already applied at query time: status=approved, org-scoped, relevance-filtered by requiredMemoryTypes.
+
+Decision: add `content` — the specialist needs approved text to produce org-specific output, not just know titles.
+Truncated to 800 chars per entry (`MEMORY_CONTENT_MAX_CHARS`) to stay within LLM token budget.
+
+Files changed:
+- `lib/db/src/schema/workPackageManifests.ts` — `ManifestMemoryRef.content?: string`
+- `artifacts/api-server/src/services/workPackageService.ts` — selects `organisationMemoryTable.content`, truncates
+- `artifacts/api-server/src/services/workExecutionPipelineService.ts` — adds `cosMemories.content` to retrievedFields; prompt writes content under header when present
+- `lib/ai-gateway/src/types.ts` — `cosMemories.content` added to task_execution allowlist
+
+runtimeContextService and specialistContextService are NOT called by the work execution pipeline — confirmed by code search.
+
+## Full chain (medication-policy flow)
+POST /conversations/:id/messages → messageIngressService.handleIncomingMessage → conversationIntelligenceService.detectConversationIntent (action verb "Review" + policy domain → operations_manager) → autoDispatchService.dispatchWorkExecution → executionCoordinatorService.executeWorkAsync (role resolved via getMembershipForUser) → workExecutionPipelineService.executeWork → assembleWorkPackage (approved library sources, org memory with content now included) → knowledgeResolutionService.resolveEvidence (chunk retrieval) → generateDraft (gateway.process, purpose=task_execution, 21 retrievedFields) → selfReviewService.reviewDraft → completedWorkService.createDraft → Execution Inspector reads work_package_manifests + retrieval_audit_events + completed_work.
+
 ## Test count
 3,529 passing (3,489 previous + 40 new in `sprint-task-execution-contract.test.ts`).

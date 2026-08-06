@@ -30,6 +30,12 @@ export interface ManifestMemoryRef {
   memoryType: string;
   title: string;
   approvalStatus?: string;
+  /**
+   * Approved memory text, truncated to 800 chars to stay within token budget.
+   * Only populated for task_execution contexts. Not present for all callers.
+   * Safeguards applied at query time: approved + org-scoped + relevance-filtered.
+   */
+  content?: string;
 }
 
 // ─── Sprint 27.4 observability types ─────────────────────────────────────────

@@ -196,11 +196,13 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "organisationLibrarySources.authorityLevel",
     "organisationLibrarySources.relevantChunks.text",
     "organisationLibrarySources.relevantChunks.confidence",
-    // approved_organisation_memory (ManifestMemoryRef — full content not passed)
+    // approved_organisation_memory (ManifestMemoryRef — approved text, 800-char truncated)
+    // Safeguards: status=approved, org-scoped, relevance-filtered at assembly time.
     "cosMemories.memoryId",
     "cosMemories.memoryType",
     "cosMemories.title",
     "cosMemories.approvalStatus",
+    "cosMemories.content",
     // task_scoped_uploads (ManifestLibrarySource — storageKey + authorityLevel excluded)
     "taskUploads.sourceId",
     "taskUploads.title",

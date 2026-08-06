@@ -167,10 +167,17 @@ export async function assembleWorkPackage(
   }
 
   // ── Retrieve CoS memory ──────────────────────────────────────────────────
+  // content is included so the specialist can reason about approved org decisions,
+  // not just know their titles. Safeguards applied at query level:
+  //   - status = "approved" (unapproved / retired memories excluded)
+  //   - organizationId = caller's org (tenant isolation)
+  //   - relevance filter applied below via requiredMemoryTypes
+  // Content is truncated to 800 chars per entry to stay within LLM token budget.
   const _memFields = {
     id: organisationMemoryTable.id,
     memoryType: organisationMemoryTable.memoryType,
     title: organisationMemoryTable.title,
+    content: organisationMemoryTable.content,
     approvalStatus: organisationMemoryTable.status,
   };
   assertSelectFields(_memFields, "cos-memory");
@@ -189,12 +196,22 @@ export async function assembleWorkPackage(
   const cosMemories: ManifestMemoryRef[] = [];
   const specialistMemories: ManifestMemoryRef[] = [];
 
+  // Truncation constant — keeps each memory entry within a safe token envelope
+  // while preserving enough context for professional reasoning.
+  const MEMORY_CONTENT_MAX_CHARS = 800;
+
   for (const row of memoryRows) {
+    const rawContent = row.content?.trim() ?? "";
     const ref: ManifestMemoryRef = {
       memoryId: row.id,
       memoryType: row.memoryType,
       title: row.title,
       approvalStatus: row.approvalStatus ?? undefined,
+      // Include approved content, truncated to budget. Omit if empty.
+      content: rawContent.length > 0
+        ? rawContent.slice(0, MEMORY_CONTENT_MAX_CHARS) +
+          (rawContent.length > MEMORY_CONTENT_MAX_CHARS ? " [truncated]" : "")
+        : undefined,
     };
     if (requiredMemoryTypes.has(row.memoryType) || requiredMemoryTypes.size === 0) {
       cosMemories.push(ref);

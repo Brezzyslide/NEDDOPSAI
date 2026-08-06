@@ -497,11 +497,13 @@ async function generateDraft(
     "organisationLibrarySources.authorityLevel",
     "organisationLibrarySources.relevantChunks.text",
     "organisationLibrarySources.relevantChunks.confidence",
-    // approved_organisation_memory (ManifestMemoryRef — title reference only)
+    // approved_organisation_memory (ManifestMemoryRef — approved text, 800-char truncated)
+    // Safeguards: approved + org-scoped + relevance-filtered at assembly time.
     "cosMemories.memoryId",
     "cosMemories.memoryType",
     "cosMemories.title",
     "cosMemories.approvalStatus",
+    "cosMemories.content",
     // task_scoped_uploads (ManifestLibrarySource — no storageKey or authorityLevel)
     "taskUploads.sourceId",
     "taskUploads.title",
@@ -599,8 +601,15 @@ function buildWorkPackagePrompt(
   }
 
   // ── Organisation Memory ────────────────────────────────────────────────────
+  // Approved memory content is included when available so the specialist can
+  // reason about actual organisational decisions, not just know their titles.
+  // Content is truncated at assembly time (800 chars); marked (authoritative)
+  // so the LLM treats it as ground truth, not external untrusted input.
   if (manifest.cosMemories.length > 0) {
-    const memLines = manifest.cosMemories.map(m => `- [${m.memoryType}] ${m.title}`);
+    const memLines = manifest.cosMemories.map(m => {
+      const header = `- [${m.memoryType}] ${m.title}`;
+      return m.content ? `${header}\n  ${m.content}` : header;
+    });
     sections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
   }
 

@@ -122,6 +122,7 @@ describe("task_execution data-field contract — core permissions", () => {
       "cosMemories.memoryType",
       "cosMemories.title",
       "cosMemories.approvalStatus",
+      "cosMemories.content",           // approved text, 800-char truncated
       "taskUploads.sourceId",
       "taskUploads.title",
       "taskUploads.sourceType",
@@ -133,7 +134,7 @@ describe("task_execution data-field contract — core permissions", () => {
       "entityKnowledge.clearance",
     ];
     expect(() => gw.validateRetrievedFields(pipelineFields)).not.toThrow();
-    expect(pipelineFields).toHaveLength(20);
+    expect(pipelineFields).toHaveLength(21);
   });
 });
 
@@ -396,6 +397,7 @@ describe("task_execution data-field contract — regression", () => {
       "cosMemories.memoryType",
       "cosMemories.title",
       "cosMemories.approvalStatus",
+      "cosMemories.content",
       "taskUploads.sourceId",
       "taskUploads.title",
       "taskUploads.sourceType",
