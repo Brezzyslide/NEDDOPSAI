@@ -1,0 +1,369 @@
+SPRINT 29A REVISION 1 — Founder Architecture Review
+
+This is an architecture refinement only.
+
+Do NOT implement code.
+
+Do NOT modify source files.
+
+Do NOT create migrations.
+
+Update the Sprint 29A design to incorporate the following founder decisions.
+
+These decisions supersede any conflicting recommendations in the current design.
+
+====================================================
+FOUNDATIONAL PRINCIPLE
+====================================================
+
+NeedsOps is a cloud-first professional workforce platform.
+
+The NeedsOps Connector is an optional runtime extension.
+
+Internally the connector uses OpenClaw.
+
+OpenClaw remains an internal runtime and must never become part of the customer-facing architecture.
+
+====================================================
+1. CHIEF OF STAFF
+====================================================
+
+Confirmed.
+
+The Chief of Staff remains the ONLY orchestration layer.
+
+No new orchestration service should replace it.
+
+The Chief of Staff owns:
+
+• intent understanding
+• execution planning
+• specialist selection
+• resource planning
+• delegation
+• execution monitoring
+• completion review
+
+Update the architecture to reinforce this principle.
+
+====================================================
+2. SINGLE EXECUTION ENGINE
+====================================================
+
+Confirmed.
+
+Conversation execution.
+
+Task execution.
+
+Workflow execution.
+
+Scheduled execution.
+
+All specialist work must converge into ONE execution engine.
+
+There must never be two runtime contexts.
+
+Every specialist must receive exactly the same execution context regardless of trigger.
+
+====================================================
+3. KNOWLEDGE RESOLUTION
+====================================================
+
+Revise the proposal.
+
+Do NOT rename Knowledge Resolution.
+
+Knowledge Resolution has a very specific responsibility:
+
+Resolve organisation knowledge.
+
+It should not become responsible for every possible resource.
+
+Instead introduce a higher-level planning concept.
+
+Knowledge Resolution remains one specialist component inside that plan.
+
+====================================================
+4. RESOURCE PLANNING
+====================================================
+
+Replace the proposed LLM ResourcePlanBuilder.
+
+Founder decision:
+
+Resource Planning should be deterministic.
+
+Intent Classification already determines:
+
+• specialist
+• capability
+• user intent
+
+Resource planning should then deterministically build a Resource Plan.
+
+For example:
+
+User explicitly says:
+
+"Go to my desktop"
+
+↓
+
+Desktop provider is selected.
+
+User explicitly says:
+
+"Review our medication policy"
+
+↓
+
+Organisation Library first.
+
+No second LLM call should normally be required.
+
+The Resource Planner should consume structured intent rather than call another model.
+
+Update the design accordingly.
+
+====================================================
+5. EVIDENCE VS RESOURCES
+====================================================
+
+Separate these concepts.
+
+Evidence is NOT the same as Resources.
+
+Examples:
+
+Read Medication Policy
+
+↓
+
+Evidence.
+
+Save report to Desktop
+
+↓
+
+Execution resource.
+
+Send Outlook email
+
+↓
+
+Execution resource.
+
+Update Word document
+
+↓
+
+Execution resource.
+
+The architecture should distinguish between:
+
+Evidence
+
+Resources
+
+Execution Actions
+
+Avoid overloading ResourcePackage with concepts that are not evidence.
+
+Recommend the cleanest architecture.
+
+====================================================
+6. CONNECTOR RESPONSIBILITIES
+====================================================
+
+Expand the design.
+
+The NeedsOps Connector is responsible for BOTH:
+
+Resource Retrieval
+
+• locate
+• search
+• read
+• inspect
+
+AND
+
+Execution
+
+• write
+• update
+• move
+• create
+• send
+• automate
+
+OpenClaw executes these capabilities internally.
+
+The connector should not be designed only as a read-only provider.
+
+====================================================
+7. CONNECTOR SESSIONS
+====================================================
+
+Review whether connector operations should execute inside a temporary execution session.
+
+Example:
+
+Execution begins
+
+↓
+
+Connector Session established
+
+↓
+
+Locate
+
+↓
+
+Read
+
+↓
+
+Read
+
+↓
+
+Write
+
+↓
+
+Close Session
+
+rather than reconnecting for every operation.
+
+Recommend the best architecture.
+
+====================================================
+8. PERMISSIONS
+====================================================
+
+Strengthen the runtime permissions model.
+
+Instead of simply:
+
+allowedProviders
+
+Design capability permissions.
+
+Examples:
+
+Read Files
+
+Write Files
+
+Word
+
+Excel
+
+Browser
+
+Email
+
+Terminal
+
+Clipboard
+
+Local AI
+
+Camera
+
+Microphone
+
+etc.
+
+Recommend a scalable permissions model.
+
+====================================================
+9. CAPABILITY PLANNING
+====================================================
+
+Investigate introducing Capability Planning before Resource Planning.
+
+Capability Planning answers:
+
+"What capabilities are required?"
+
+Examples:
+
+Read File
+
+Search Folder
+
+Read Outlook
+
+Update Excel
+
+Print Document
+
+Navigate Browser
+
+Execute Terminal
+
+Once capabilities are known,
+
+Resource Planning determines:
+
+"Where do those capabilities operate?"
+
+Review whether this creates a cleaner architecture than Resource Planning alone.
+
+====================================================
+10. EXECUTION CONTEXT
+====================================================
+
+Recommend the final execution context.
+
+It should clearly separate:
+
+Professional DNA
+
+Runtime Manifest
+
+Conversation Context
+
+Organisation Memory
+
+Evidence
+
+Resource Plan
+
+Execution Actions
+
+Blueprint
+
+Constraints
+
+Capability Permissions
+
+Explain why each belongs there.
+
+====================================================
+11. UPDATED ARCHITECTURE
+====================================================
+
+Produce:
+
+• Updated architecture diagram
+
+• Updated execution flow
+
+• Updated planning flow
+
+• Updated connector architecture
+
+• Updated runtime context
+
+• Updated implementation phases
+
+Highlight every section that changed from the original Sprint 29A proposal.
+
+Do not implement.
+
+This is the final architecture review before implementation approval.
