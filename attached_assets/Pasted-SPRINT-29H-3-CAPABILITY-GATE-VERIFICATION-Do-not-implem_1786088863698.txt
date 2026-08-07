@@ -1,0 +1,229 @@
+SPRINT 29H.3 — CAPABILITY GATE VERIFICATION
+
+Do not implement fixes yet.
+
+We have identified three suspected defects:
+
+1. policy.review false-positive from bare "policy" keyword
+2. LLM requestedLevel bypassing executionAllowed validation
+3. blocked capability rendered as "Requires upgrade" regardless of reason
+
+Verify each one using the mandatory evidence standard.
+
+Evidence levels:
+- unit test
+- mocked integration
+- real database integration
+- live API/runtime
+- live authenticated UI end-to-end
+
+Proof states:
+- PROVEN
+- PARTIALLY PROVEN
+- NOT YET PROVEN
+- BLOCKED
+
+PART A — REAL ENTITLEMENT STATE
+
+Using mhr-holdings-2, prove:
+
+- compliance pack active
+- onboarding trial active
+- expiry date
+- incident.review entitlement
+- compliance gap entitlement
+- evidence review entitlement
+- policy.review entitlement
+- allowed level for each
+
+Show actual DB/config records.
+
+Confirm whether the user truly has access to all four capabilities.
+
+PART B — DETERMINISTIC CAPABILITY MATCH
+
+Run the exact user request:
+
+"Review our current Incident Management Policy using the latest approved evidence and produce a new Incident Management Improvement Plan."
+
+Capture every deterministic capability score.
+
+Show:
+- matched keywords
+- score per capability
+- confidence
+- threshold
+- why policy.review matched
+- why incident.review matched
+- whether "policy" alone caused the policy.review match
+
+Run control cases:
+
+1. "Review our Incident Management Policy"
+2. "Review our incident management process"
+3. "Review our Policy"
+4. "Conduct a Policy Review"
+5. "Review our current Incident Management Policy and identify operational gaps"
+
+Confirm whether the matcher distinguishes document subject from requested service.
+
+PART C — LLM CAPABILITY IDENTIFICATION
+
+When deterministic confidence falls below threshold, capture the structured LLM result for the exact request.
+
+Show:
+- capabilityCode
+- requestedLevel
+- confidence
+- reasoning fields if safely available as structured output
+- supported levels from capability registry
+
+Do not expose chain-of-thought.
+
+Confirm:
+policy.review requestedLevel = execution
+
+Then prove:
+policy.review.executionAllowed = false
+
+PART D — LEVEL VALIDATION GAP
+
+Trace both paths:
+
+DETERMINISTIC RESULT
+→ adjustLevelsForIntent()
+→ executionAllowed checked
+
+LLM RESULT
+→ ?
+→ decideCapabilityAccess()
+
+Prove whether LLM-returned capability levels bypass adjustLevelsForIntent or equivalent validation.
+
+Run a direct test where the LLM returns:
+
+{
+  capabilityCode: "policy.review",
+  requestedLevel: "execution"
+}
+
+Expected:
+the platform must normalize or reject the unsupported level BEFORE entitlement decision.
+
+Actual:
+capture current behaviour.
+
+PART E — BLOCK REASON
+
+Capture decideCapabilityAccess() result for policy.review.
+
+Show:
+- entitlement status
+- requested level
+- allowed levels
+- blocked boolean
+- reasonCode
+
+Expected current reason:
+level_not_supported
+
+Confirm it is NOT:
+missing_entitlement
+upgrade_required
+trial_expired
+pack_missing
+
+PART F — USER-FACING LABEL
+
+Trace:
+
+CapabilityAccessDecision
+→ mixed capability response
+→ user-facing card/text
+
+For each reasonCode show the current label.
+
+Specifically verify whether:
+
+level_not_supported
+→ "Requires upgrade"
+
+If so, prove this is the source of the false upgrade message.
+
+Test at minimum:
+- missing_entitlement
+- trial_expired
+- level_not_supported
+- capability_disabled
+- unsupported_operation
+
+These must not all collapse into the same "Requires upgrade" label.
+
+PART G — GATE ORDERING
+
+Trace the exact request through processUserMessage.
+
+Show the order of:
+
+- capability identification
+- entitlement/access decision
+- mixed capability gate
+- ConversationActionDecision
+- dispatch
+- UEE
+
+Confirm whether mixed capability confirmation currently occurs BEFORE the 29H.2 rerun decision.
+
+Prove whether that is why:
+- rerun_existing never fired
+- no specialist run was created
+- UEE never ran
+
+PART H — PARTIAL EXECUTION
+
+Without actually executing destructive work, determine what happens if user says:
+
+"Continue with available parts."
+
+Show:
+- capability set retained
+- capability removed
+- specialist selected
+- whether policy evidence is still available through KRS
+- resulting output contract
+- whether the final deliverable becomes incomplete
+
+Determine whether partial execution would incorrectly prevent OPS from reading the policy as evidence even though policy.review is not a valid primary capability for this task.
+
+PART I — FINAL CLASSIFICATION
+
+For each suspected defect state:
+
+Defect
+Evidence level
+Runtime evidence
+Proof status
+User impact
+
+Then answer:
+
+1. Is policy.review actually required for this request?
+2. Is the org entitled to policy.review?
+3. Was the block caused by commercial entitlement?
+4. Did LLM level validation bypass cause the block?
+5. Was "Requires upgrade" factually incorrect?
+6. Did the mixed-capability gate prevent 29H.2 rerun dispatch?
+7. Would fixing these defects require changing UEE?
+8. Would fixing these defects require changing the commercial entitlement model?
+
+Final verdict:
+
+PROVEN — CAPABILITY GATE ROOT CAUSE CONFIRMED
+
+PARTIALLY PROVEN — ONE OR MORE DEFECTS STILL UNVERIFIED
+
+NOT YET PROVEN — LIVE RUNTIME EVIDENCE INSUFFICIENT
+
+Do not implement fixes.
+Do not propose the next sprint.
+Stop after the verification report.
