@@ -1,0 +1,298 @@
+SPRINT 29H.3 — LIVE CAPABILITY / ENTITLEMENT BLOCK INVESTIGATION
+
+DO NOT IMPLEMENT A FIX.
+
+We have now performed the authenticated Workforce Chat acceptance request.
+
+The actual user-facing response was:
+
+"Part of this request is available, but some components require additional access.
+
+Available now:
+- Incident Review
+- Compliance Gap Analysis
+- Evidence Review
+
+Requires upgrade:
+- Policy Review
+
+Would you like me to continue with the parts that are available? Or I can explain the full upgrade path."
+
+This is new live runtime evidence.
+
+Investigate exactly why this happened before changing code.
+
+MANDATORY TEST EVIDENCE STANDARD
+
+For every finding state evidence level:
+
+- source inspection
+- unit test
+- mocked integration
+- real DB integration
+- live API/runtime
+- live authenticated UI end-to-end
+
+Classify each:
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not substitute source inspection for the authenticated runtime result.
+
+
+PART A — TRACE THIS EXACT AUTHENTICATED MESSAGE
+
+Locate the newly submitted message in the real mhr-holdings-2 conversation.
+
+Capture:
+
+- conversationId
+- messageId
+- timestamp
+- conversationMode
+- requestedTaskAction
+- ConversationActionDecision
+- shouldCreateTask
+- shouldDispatchSpecialist
+- taskId if created/reused
+- specialistRunId if created
+- executionId if created
+- running build/commit
+
+Determine exactly how far this request travelled.
+
+Did it reach:
+
+User
+→ CoS
+→ ConversationActionDecision
+→ Capability Planning
+→ entitlement validation
+→ task dispatch
+→ UEE
+
+Identify the exact point where execution stopped.
+
+
+PART B — CAPABILITY PLAN
+
+Capture the actual capability plan produced for this message.
+
+Show every capability code, not merely its display label.
+
+For each show:
+
+- capabilityCode
+- displayName
+- reason selected
+- required vs optional
+- specialist(s) capable of performing it
+- selected specialist
+- entitlement required
+- organisation entitlement state
+- source of entitlement decision
+
+Specifically identify the codes corresponding to:
+
+- Incident Review
+- Compliance Gap Analysis
+- Evidence Review
+- Policy Review
+
+Do not infer these from UI labels.
+Show the actual runtime capability records.
+
+
+PART C — WHY WAS POLICY REVIEW REQUIRED?
+
+Trace the exact rule/service/function that added Policy Review.
+
+Determine whether policy.review was selected because:
+
+1. the user explicitly requested a Policy Review;
+2. the task merely requires reading a policy as evidence;
+3. "Incident Management Policy" contains the word "Policy";
+4. the blueprint requires policy.review;
+5. Operations Manager capability dependencies require it;
+6. capability decomposition added it;
+7. entitlement planning added it;
+8. another reason.
+
+Show evidence.
+
+This distinction is critical.
+
+Reading/reviewing a policy document as EVIDENCE for an Incident Review must not
+automatically be assumed equivalent to purchasing/executing a standalone
+Policy Review capability unless that is explicitly part of the product model.
+
+
+PART D — REQUIRED VS SUPPORTING CAPABILITY SEMANTICS
+
+Audit whether NeedsOps currently distinguishes:
+
+PRIMARY EXECUTION CAPABILITY
+The capability representing the work the user asked the specialist to perform.
+
+SUPPORTING REASONING CAPABILITY
+A capability the specialist uses internally to complete the primary task.
+
+EVIDENCE ACCESS
+Permission to retrieve/read approved organisation knowledge.
+
+OUTPUT CAPABILITY
+Ability to produce the required deliverable.
+
+EXTERNAL EXECUTION CAPABILITY
+Permission to perform a side effect through a connector.
+
+Determine where Policy Review falls for THIS exact request.
+
+The user requested:
+
+- review Incident Management controls
+- inspect approved policy evidence
+- identify operational gaps
+- identify compliance risks
+- identify unclear responsibilities
+- produce an Incident Management Improvement Plan
+
+Determine whether policy.review is genuinely a PRIMARY REQUIRED capability
+or merely supporting reasoning/evidence interpretation.
+
+
+PART E — OPERATIONS MANAGER ENTITLEMENT
+
+Inspect the real mhr-holdings-2 entitlement state.
+
+Show:
+
+- OPS/Operations Manager entitlement
+- incident.review entitlement
+- compliance gap capability entitlement
+- evidence review entitlement
+- policy.review entitlement
+
+Then answer:
+
+If Operations Manager is entitled to perform incident.review, can that
+specialist legally/architecturally read and analyse an approved policy from
+the Organisation Library while performing incident.review?
+
+If NO:
+show the explicit architecture/product rule prohibiting it.
+
+If YES:
+explain why policy.review was nevertheless elevated into a separately
+required entitlement.
+
+
+PART F — DOCUMENT ACCESS VS SPECIALIST PRODUCT ACCESS
+
+Verify that Organisation Library evidence access is not incorrectly coupled
+to specialist/capability commercial entitlement.
+
+We need to distinguish:
+
+"Can OPS retrieve and reason over this approved policy as evidence?"
+
+from:
+
+"Has this organisation purchased the dedicated Policy Review capability?"
+
+These must not silently become the same question unless explicitly designed
+that way.
+
+Trace:
+
+Organisation Library
+→ KRS
+→ EvidencePack
+→ Operations Manager
+
+and identify whether policy.review entitlement is checked anywhere in that
+evidence path.
+
+
+PART G — PARTIAL EXECUTION SAFETY
+
+The CoS offered:
+
+"Would you like me to continue with the parts that are available?"
+
+Determine what would happen if the user answers YES.
+
+Would NeedsOps:
+
+- create one partial task?
+- dispatch Operations Manager?
+- remove Policy Review from the plan?
+- still retrieve the Incident Management Policy as evidence?
+- produce a reduced report?
+- mark omitted scope explicitly?
+- create multiple specialist runs?
+- silently produce an incomplete Improvement Plan?
+
+DO NOT actually continue yet.
+
+Inspect and report the deterministic runtime behaviour first.
+
+We must not allow a partial-execution choice to silently turn a requested
+complete business deliverable into an incomplete report.
+
+
+PART H — COMMERCIAL MODEL CHECK
+
+Report whether the current behaviour matches the intended product model.
+
+Distinguish:
+
+A. Capability entitlement:
+which specialist services the organisation has purchased.
+
+B. Knowledge permission:
+which approved organisation documents an entitled specialist may read.
+
+C. Execution permission:
+which external actions/connectors may be performed.
+
+D. Output entitlement:
+which deliverable types/features may be produced.
+
+Do not conflate these four permission classes.
+
+
+FINAL REPORT
+
+Return:
+
+Criterion
+Evidence level
+Actual runtime finding
+Service/function responsible
+Proof status
+User impact
+Architecture impact
+
+Then answer these questions explicitly:
+
+1. Why did Policy Review become required?
+2. Was that requirement correct for this exact request?
+3. Did the authenticated request reach UEE?
+4. Was Operations Manager actually dispatched?
+5. Was any EvidencePack retrieved?
+6. Would clicking/answering "continue with available parts" still allow OPS
+   to read the MH&R Policy and Procedure Manual?
+7. Is this an entitlement configuration problem or a capability-planning bug?
+8. Does fixing it require changing the Unified Execution Engine?
+9. Does it require changing our commercial entitlement model?
+10. What is the smallest correct boundary at which a future fix belongs?
+
+DO NOT IMPLEMENT.
+DO NOT CHANGE ENTITLEMENTS.
+DO NOT CONTINUE THE PARTIAL TASK.
+DO NOT PROPOSE THE NEXT SPRINT.
+
+Stop after the investigation report.
