@@ -1,0 +1,418 @@
+SPRINT 29H.5 — POST-FIX LIVE CLOUD RERUN
+
+TEST ONLY. DO NOT MODIFY CODE.
+
+The previous 29H.4 execution occurred at 07:34–07:35 UTC.
+
+The API server containing the Sprint 29H.3 fixes restarted at approximately 08:07 UTC.
+
+Therefore DO NOT treat findings from the 07:35 execution as proof of defects in the current runtime.
+
+We now need one clean execution created AFTER the 08:07 restart.
+
+==================================================
+MANDATORY RULE
+==================================================
+
+Do not reuse:
+
+- old completed_work
+- old task
+- old specialist execution
+- old retrieval_audit_events
+- old capability decisions
+- old evidence packs
+- old execution IDs
+
+Historical records may be shown for comparison only.
+
+Every PASS/FAIL decision must be tied to the NEW execution.
+
+Record timestamps and IDs so old and new executions cannot be confused.
+
+==================================================
+ACCEPTANCE REQUEST
+==================================================
+
+Using the authenticated mhr-holdings-2 Workforce Chat, submit a NEW message:
+
+“Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations.”
+
+Capture the new messageId and timestamp.
+
+==================================================
+TEST A — CAPABILITY GATE
+==================================================
+
+Capture the exact post-fix capability result.
+
+Show:
+
+capabilityCode
+requestedLevel
+normalisedLevel
+allowed/blocked
+reasonCode
+
+Expected:
+
+- policy.review must NOT false-trigger merely because the document is a policy
+- incident/compliance capabilities resolve at supported levels
+- blockedCapabilities = 0
+- requiresUserConfirmationForPartialWork = false
+- NO upgrade card
+- NO partial-access confirmation card
+
+FAIL if an upgrade/partial-access card appears.
+
+==================================================
+TEST B — SPECIALIST ROUTING
+==================================================
+
+Trace the NEW execution from:
+
+CoS
+→ capability identification
+→ eligibility
+→ specialist selection
+→ dispatch
+→ UnifiedExecutionEngine
+
+Show every eligible candidate and every excluded candidate with the exact exclusion rule.
+
+Expected specialist for this acceptance test:
+
+operations_manager
+
+Specifically prove whether:
+
+incident_safeguarding_specialist
+
+is considered.
+
+If it is excluded, show why.
+
+If it is selected, STOP and identify the exact current-runtime selection rule that caused it to beat operations_manager.
+
+Do not infer this from completed_work.primary_specialist alone.
+
+Trace the actual selection decision.
+
+Also prove whether the legacy CoS selectSpecialists() path participates in this NEW execution.
+
+==================================================
+TEST C — UNIFIED EXECUTION ENGINE
+==================================================
+
+Prove the new execution enters:
+
+unifiedExecutionEngine.execute(...)
+
+Capture:
+
+taskId
+specialistRunId if created
+executionId
+triggerType
+specialistCode
+organisationId
+requesterId
+ExecutionSession if persisted/observable
+
+If DB persistence for specialist_runs or execution_sessions is intentionally absent, use runtime instrumentation/logging/source-correlated trace.
+
+Do not mark this proven merely because conversation lifecycle messages exist.
+
+==================================================
+TEST D — EVIDENCE RETRIEVAL
+==================================================
+
+Trace ONLY evidence belonging to the new executionId.
+
+Expected source:
+
+aab1221b-c489-412e-877d-2061204c12f8
+MH&R Policy and Procedure Manual
+
+Capture:
+
+search query
+candidate chunks
+ranking scores
+selected chunks
+section titles
+chunk text excerpts
+EvidencePack source IDs
+EvidencePack chunk IDs
+
+The important test is semantic relevance.
+
+The request is Incident Management.
+
+Determine whether the source contains more directly relevant sections such as:
+
+incident management
+incident reporting
+incident response
+reportable incidents
+incident investigation
+notification/escalation
+roles/responsibilities relating to incidents
+
+If such chunks exist, explain why they rank above or below generic Risk Management content.
+
+FAIL if generic risk-management content is selected while materially more relevant incident-management chunks exist.
+
+Do NOT fail merely because a Risk Management chunk is present if it is supplementary to stronger incident evidence.
+
+==================================================
+TEST E — RETRIEVAL AUDIT
+==================================================
+
+For the NEW executionId, verify retrieval_audit_events.
+
+Must capture:
+
+executionId
+organisationId
+specialistId/code
+sourceIds
+chunkIds
+ranking data available
+timestamp
+
+There must be no ambiguity about which execution produced the row.
+
+FAIL if:
+
+- no audit row exists
+- executionId is NULL
+- audit belongs to an older execution
+
+If persistence fails, expose the exact DB error.
+
+Do not silently swallow it.
+
+==================================================
+TEST F — OUTPUT CONTRACT
+==================================================
+
+Inspect the NEW completed work.
+
+Classify it:
+
+COMPLETED REVIEW
+
+or
+
+PLAN TO PERFORM REVIEW
+
+A valid completed review should contain:
+
+- executive summary
+- evidence reviewed
+- actual findings
+- operational gaps
+- risks
+- unclear responsibilities where found
+- weaknesses
+- recommendations
+- prioritised improvement actions
+- responsible roles
+- implementation timeframes where appropriate
+- evidence citations
+- limitations/uncertainties
+
+Do not require the specialist to manufacture findings that the evidence does not support.
+
+Recommendations must follow from findings.
+
+Citations must correspond to evidence actually retrieved for THIS execution.
+
+==================================================
+TEST G — QUALITY PIPELINE
+==================================================
+
+Capture:
+
+all review dimensions
+dimension weights
+weighted calculation
+persisted quality_score
+threshold
+auto-revision decision
+
+Recalculate independently.
+
+Expected:
+
+0–100 scale.
+
+If score >= threshold:
+auto-revision must NOT run.
+
+If score < threshold:
+show the revision decision.
+
+==================================================
+TEST H — COMPLETED WORK
+==================================================
+
+For the NEW execution:
+
+capture completedWorkId
+title
+primarySpecialist
+status
+currentVersionId
+content length
+quality score
+conversationId
+taskId
+evidence asset links
+self-review link/data
+
+Expected status:
+
+awaiting_approval
+
+Expected:
+
+substantive professional output, not an empty shell.
+
+==================================================
+TEST I — AUTHENTICATED USER WORKFLOW
+==================================================
+
+This part MUST be performed through the authenticated UI if the environment permits it.
+
+Open the NEW completedWorkId.
+
+Verify:
+
+- full report renders
+- evidence/citations render
+- quality score displays correctly
+- Approve / Request Changes / Reject controls appear
+- approval location is unambiguous
+- CoS direct reference opens this exact record
+
+Approve the disposable test work.
+
+Verify:
+
+awaiting_approval
+→ approved
+
+Then verify the item appears as Completed.
+
+==================================================
+TEST J — EXPORT
+==================================================
+
+From the newly approved record export:
+
+PDF
+DOCX
+
+Verify:
+
+- correct MIME
+- non-trivial size
+- correct title
+- same approved report
+- findings present
+- recommendations present
+- citations present
+
+==================================================
+TEST K — CHAT CONTINUITY
+==================================================
+
+After execution:
+
+navigate away
+return to Workforce Chat
+reload
+
+Verify:
+
+- same canonical conversationId
+- new acceptance request remains visible
+- CoS response remains visible
+- completed-work reference remains visible
+- no empty replacement conversation is created
+
+==================================================
+OLD VS NEW COMPARISON
+==================================================
+
+Provide a small comparison:
+
+07:35 PRE-FIX EXECUTION
+vs
+NEW POST-08:07 EXECUTION
+
+Compare only:
+
+capability gate
+upgrade card
+partial confirmation
+selected specialist
+UEE entry
+evidence chunks
+retrieval audit
+quality score
+completed work status
+
+This is important because we need to distinguish fixed historical behaviour from current defects.
+
+==================================================
+EVIDENCE STANDARD
+==================================================
+
+Classify each result:
+
+1 Unit
+2 Mocked integration
+3 Real DB integration
+4 Live API/runtime
+5 Live authenticated UI E2E
+
+And:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+==================================================
+FINAL DECISION
+==================================================
+
+Answer:
+
+1. Is the capability-gate defect fixed in the actual live workflow?
+2. Is Operations Manager now selected?
+3. Does specialist execution definitely enter UEE?
+4. Does the new execution retrieve incident-relevant evidence?
+5. Is its retrieval audit correctly tied to executionId?
+6. Does it produce a completed review?
+7. Is quality scoring correct?
+8. Does Completed Work reach awaiting_approval?
+9. Can the user review and approve it?
+10. Do PDF/DOCX exports contain the approved output?
+11. Does chat continuity survive navigation/reload?
+
+Then classify every remaining issue as:
+
+CURRENT RUNTIME DEFECT
+HISTORICAL/PRE-FIX ONLY
+UNPROVEN
+UX IMPROVEMENT
+
+Do not implement anything.
+
+Do not propose another sprint.
+
+Stop after the evidence report.
