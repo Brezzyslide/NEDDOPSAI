@@ -471,6 +471,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       userRequest,
       conversationId,
       correlationId,
+      taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan
       checkpointData: input.checkpointData,
       onProgress: async (stage: ExecutionStage) => {
         const humanLabel = EXECUTION_STAGE_LABELS[stage] ?? stage;

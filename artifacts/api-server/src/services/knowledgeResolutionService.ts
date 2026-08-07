@@ -24,8 +24,9 @@
  *   - All chunk text is treated as authoritative — never inverted or discarded
  */
 
+import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { knowledgeChunksTable, knowledgeSourcesTable, knowledgeSourceVersionsTable } from "@workspace/db";
+import { knowledgeChunksTable, knowledgeSourcesTable, knowledgeSourceVersionsTable, retrievalAuditEventsTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 
 import { retrieveChunks, type RawChunk } from "./hybridRetrievalService.js";
@@ -467,7 +468,69 @@ export async function resolveEvidence(
   const pack = buildPack(executionId, organisationId, allEvidenceChunks, metrics);
   _packCache.set(executionId, pack);
 
+  // Sprint 29I (D2): Write retrieval audit row for this physical retrieval.
+  // Cache hits return above — this code is reached only once per executionId.
+  // Fire-and-forget: audit failure must NEVER abort specialist execution.
+  writeKrsRetrievalAudit(pack, input.specialistCode).catch(err => {
+    const meta: Record<string, unknown> = {
+      source:              "writeKrsRetrievalAudit",
+      executionId:         pack.executionId,
+      specialistCode:      input.specialistCode,
+      chunkCount:          pack.totalChunks,
+    };
+    if (err instanceof Error) {
+      meta.errorMessage = err.message;
+      meta.pgCode       = (err as any).code;
+      meta.pgDetail     = (err as any).detail;
+      meta.pgConstraint = (err as any).constraint;
+    }
+    console.warn("[KRS] writeKrsRetrievalAudit failed (non-blocking):", meta);
+  });
+
   return pack;
+}
+
+// ─── KRS Retrieval Audit ─────────────────────────────────────────────────────
+
+/**
+ * Sprint 29I (D2): Write one retrieval_audit_events row for a physical KRS retrieval.
+ *
+ * Called immediately after an EvidencePack is built and cached. NOT called on
+ * cache hits — the cache path returns before reaching this code, so one audit
+ * row exists per physical retrieval and zero duplicate rows exist per cache hit.
+ *
+ * Does not persist raw chunk text, private prompts, or sensitive user data.
+ * Only identifiers, scores, and structural metadata are recorded.
+ */
+async function writeKrsRetrievalAudit(
+  pack: EvidencePack,
+  specialistCode: string,
+): Promise<void> {
+  const id        = randomUUID();
+  const chunkIds  = pack.chunks.map(c => c.chunkId).filter(Boolean);
+  const scores    = pack.chunks.map(c => c.confidence);
+  const topScore  = scores.length > 0 ? Math.max(...scores)                                 : 0;
+  const meanScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length  : 0;
+
+  await db.insert(retrievalAuditEventsTable).values({
+    id,
+    organizationId:      pack.organisationId,
+    specialistId:        specialistCode,
+    executionId:         pack.executionId,
+    entityId:            undefined,
+    sourceIds:           pack.sourceIds            as unknown as any,
+    chunkIds:            chunkIds                  as unknown as any,
+    memoryIds:           []                        as unknown as any,
+    taskUploadIds:       []                        as unknown as any,
+    retrievalMethod:     "lexical",
+    scoreMetadata:       { topScore, meanScore }   as unknown as any,
+    rankingDetails:      []                        as unknown as any,
+    reasonSelected:      {}                        as unknown as any,
+    reasonRejected:      {}                        as unknown as any,
+    conflictCount:       0,
+    tokenCount:          0, // EvidenceChunk interface does not expose tokenCount
+    retrievalDurationMs: pack.retrievalMetrics.retrievalMs,
+  });
 }
 
 // ─── Cache invalidation ───────────────────────────────────────────────────────

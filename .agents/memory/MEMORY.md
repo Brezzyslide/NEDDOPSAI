@@ -78,3 +78,4 @@
 - [NeedsOps Sprint 29H.3 Capability Gate False-Positive](needsops-sprint29h3.md) — bare "policy" keyword + LLM level bypass + misleading "Requires upgrade" label; 3 bugs identified (investigation only)
 - [NeedsOps Sprint 29H.3 Capability Gate Fixes](needsops-sprint29h3-fixes.md) — Fix 1: multi-word keywords only; Fix 2: LLM level normalised against registry; Fix 3: reasonCode-aware gate labels; 41/41 tests pass
 - [NeedsOps Sprint 29H.6 Capability Intent Correction](needsops-sprint29h6.md) — EXECUTION_VERBS trimmed, LLM prompt clarified, post-LLM intent normaliser, incident.review multi-word patterns, corrective_actions phrases; 70 tests; live: task_proposal (no gate card)
+- [NeedsOps Sprint 29I Execution Ownership](needsops-sprint29i.md) — D1 selectedSpecialist precedence, D2 KRS retrieval audit hook, D3 evidencePack to reviewDraft; checkExecutionReadiness private method; 3 new ExecutionOutcome values; 4283 passing

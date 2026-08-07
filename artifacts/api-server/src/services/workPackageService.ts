@@ -88,6 +88,21 @@ export interface AssembleManifestInput {
   entityKnowledge?: Record<string, unknown>;
   modelVersion?: string;
   selectionMetadata?: BlueprintSelectionMetadata;
+  /**
+   * Sprint 29I (D1): Specialist pre-selected by the Chief of Staff plan.
+   * When provided, takes precedence over blueprint.primarySpecialist.
+   *
+   * Architecture boundary:
+   *   blueprint.primarySpecialist = recommended specialist for DIRECT blueprint
+   *     execution (no CoS plan). It is the recipe author's suggestion.
+   *   selectedSpecialist = the CoS decision recorded in task_execution_plans.
+   *     It is the runtime authority for all task-path executions.
+   *
+   * Blueprint remains authoritative for output structure, validation rules,
+   * quality dimensions, mandatory citations, and success criteria — never
+   * for specialist ownership.
+   */
+  selectedSpecialist?: string;
 }
 
 export interface ManifestObservabilityUpdate {
@@ -147,7 +162,18 @@ export async function assembleWorkPackage(
   const { organizationId, requesterId, blueprint, taskUploadSourceIds = [], entityKnowledge = {} } = input;
 
   const executionId = randomUUID();
-  const primarySpecialist = blueprint?.primarySpecialist ?? "chief_of_staff";
+  // Sprint 29I (D1): Specialist precedence
+  //   1. selectedSpecialist — CoS plan authority for all task-path executions
+  //   2. blueprint.primarySpecialist — fallback candidate (direct blueprint execution only)
+  //   3. "chief_of_staff" — last-resort default (should not occur in production)
+  //
+  // Blueprint.primarySpecialist is the RECIPE AUTHOR'S RECOMMENDATION. It is not
+  // authoritative when the Chief of Staff has already selected a specialist via
+  // task_execution_plans.primarySpecialist. Blueprint governs work structure
+  // (output types, validation rules, quality dimensions) — never specialist identity.
+  const primarySpecialist = input.selectedSpecialist
+    ?? blueprint?.primarySpecialist
+    ?? "chief_of_staff";
   const supportingSpecialists = blueprint?.supportingSpecialists ?? [];
   const requiredKnowledgeTypes = blueprint?.requiredLibraryKnowledge ?? [];
 

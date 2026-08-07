@@ -1,0 +1,462 @@
+This is enough to proceed. The proof gate has done what we wanted: the ownership fix is now grounded in real task data, not just code inspection.
+
+The three important corrections are now clear: taskId + missing plan must fail closed, execution readiness should reuse one UEE guard rather than another competing eligibility system, and the newest plan must be selected by created_at DESC until proper plan-version lifecycle exists.
+
+Use this implementation prompt:
+
+SPRINT 29I — EXECUTION OWNERSHIP, RETRIEVAL AUDIT & SELF-REVIEW EVIDENCE CORRECTION
+
+Proceed with implementation using the verified Sprint 29I.1 design.
+
+Do not redesign the architecture.
+
+Scope is limited to the three proven defects:
+
+D1 — Blueprint overrides the CoS-selected specialist
+D2 — Task evidence retrieval produces no retrieval audit
+D3 — EvidencePack is not passed into task self-review
+
+Preserve:
+
+* Chief of Staff is sole orchestrator.
+* UnifiedExecutionEngine is sole specialist execution engine.
+* CoS selects the specialist.
+* Blueprint defines work structure, not runtime specialist ownership.
+* KnowledgeResolutionService remains the organisation-knowledge authority.
+* ResourceRegistry remains the provider-routing boundary.
+* Evidence and external execution actions remain separate.
+
+⸻
+
+A — Thread taskId into task execution
+
+Add optional taskId through:
+
+executionCoordinatorService
+→ workExecutionPipelineService.ExecuteWorkInput
+→ ExecutionRequest
+→ UnifiedExecutionEngine.executeTask
+
+All four CoS-originated execution paths already possess taskId:
+
+* approval dispatch
+* immediate dispatch
+* clarification resume
+* orphan recovery
+
+Forward the existing value. Do not generate a replacement task ID.
+
+Direct blueprint execution remains the only legitimate task execution path without taskId.
+
+⸻
+
+B — Resolve authoritative specialist
+
+At the beginning of executeTask():
+
+If taskId exists:
+
+Query task_execution_plans for that task and organisation.
+
+Until a formal plan lifecycle/version model exists, select:
+
+ORDER BY created_at DESC LIMIT 1
+
+Add a code comment explaining that this is the temporary authoritative-plan rule because:
+
+* no current/status field exists;
+* version is currently always "1";
+* no production task currently has multiple plans;
+* newest plan represents re-planning if multiple rows later exist.
+
+Read:
+
+plan_data.primarySpecialist
+
+This is the authoritative specialist.
+
+If:
+
+* plan missing,
+* plan_data malformed,
+* primarySpecialist missing,
+* specialist code invalid,
+
+FAIL CLOSED.
+
+Return a structured outcome:
+
+execution_plan_missing
+
+or:
+
+execution_plan_invalid
+
+Do NOT fall back to blueprint.primarySpecialist when taskId exists.
+
+CoS must re-plan.
+
+If taskId is absent:
+
+This is genuine direct blueprint execution.
+
+blueprint.primarySpecialist may be used as a fallback candidate, subject to the readiness gate below.
+
+⸻
+
+C — Make CoS-selected specialist authoritative in WorkPackage
+
+Extend assembleWorkPackage() with:
+
+selectedSpecialist?: string
+
+Specialist precedence becomes:
+
+selectedSpecialist
+→ blueprint.primarySpecialist
+→ chief_of_staff
+
+However:
+
+* selectedSpecialist must exist for CoS task executions;
+* blueprint fallback is allowed only for executions without taskId.
+
+The resulting specialist must populate consistently:
+
+* manifest.primarySpecialist
+* CanonicalExecutionContext.specialistCode
+* specialist DNA/system instruction
+* AI gateway execution identity
+* Completed Work primarySpecialist
+* retrieval audit specialist identity
+
+There must be one specialist identity through the whole execution.
+
+⸻
+
+D — Blueprint semantics
+
+Do not migrate or rename work_blueprints.primary_specialist.
+
+Change its runtime semantics only.
+
+It is now:
+
+a fallback/recommended specialist for direct blueprint execution
+
+It is NOT:
+
+an override of a CoS-selected specialist
+
+Blueprint remains authoritative for:
+
+* output structure
+* output types
+* required knowledge
+* validation rules
+* quality rules
+* mandatory citations
+* success criteria
+* escalation rules
+* required memories
+
+Add explicit architecture comments around this boundary.
+
+⸻
+
+E — Unified execution readiness guard
+
+Do not create another eligibility service.
+
+Extract the existing executeConversation specialist-status guard into one private UEE execution-readiness helper and use it from:
+
+* executeConversation
+* executeTask
+
+The execution readiness authority is the runtime registry executionStatus.
+
+Block:
+
+* dna_pending
+* coming_soon
+* archived
+* deprecated
+
+Preserve the existing behaviour for "available".
+
+Do NOT call checkSpecialistEligibility() from this execution-entry guard because that service includes planning/entitlement logic and the current ACTIVE_SPECIALISTS restriction would incorrectly block Chief of Staff.
+
+Planning eligibility and execution readiness are different responsibilities.
+
+If readiness fails:
+
+return:
+
+specialist_not_ready
+
+before:
+
+* evidence retrieval
+* AI gateway execution
+* self-review
+* Completed Work persistence
+
+No silent specialist substitution.
+
+⸻
+
+F — Direct blueprint safety
+
+For direct blueprint execution with no taskId:
+
+blueprint.primarySpecialist
+→ execution readiness check
+
+Available specialist:
+
+proceed.
+
+Blocked specialist:
+
+return specialist_not_ready.
+
+No evidence retrieval.
+No AI call.
+No Completed Work.
+
+This deliberately changes direct execution behaviour for the nine published blueprints currently pointing at non-production-ready specialists.
+
+Do not hide that change.
+
+⸻
+
+G — Retrieval audit for the KRS task path
+
+The verified task path is:
+
+UEE
+→ ResourceRegistry.resolveEvidenceForTask
+→ KnowledgeResolutionService.resolveEvidence
+
+It does NOT run through knowledgeOrchestrationEngine.writeRetrievalAudit.
+
+Add a non-blocking audit write to the actual KRS task retrieval path.
+
+Extend KnowledgeResolutionInput with:
+
+specialistCode?: string
+
+Thread the real resolved execution specialist from ResourceRegistry into KRS.
+
+After a physical retrieval completes and the EvidencePack has been built:
+
+write one retrieval_audit_events record containing where supported:
+
+* executionId
+* organisationId
+* specialist identity
+* source IDs
+* chunk IDs
+* ranking/confidence metadata
+* token count
+* retrieval duration
+* retrieval method
+
+Do not persist raw private prompts.
+
+Do not persist unnecessary full chunk text.
+
+Audit failure must not invalidate successfully retrieved evidence or abort specialist execution, but it must be observable through structured logging.
+
+No silent catch { return null }.
+
+⸻
+
+H — Retrieval audit cache semantics
+
+Preserve the verified rule:
+
+one retrieval audit record per physical retrieval
+
+EvidencePack cache is keyed by executionId.
+
+First physical retrieval:
+
+retrieve
+→ build pack
+→ write audit
+→ cache
+
+Subsequent cache hit for the same execution:
+
+return existing pack
+→ do NOT create duplicate retrieval audit row
+
+Add a regression test proving exactly one audit row.
+
+⸻
+
+I — EvidencePack into self-review
+
+Fix the verified task-path omission.
+
+Current:
+
+reviewDraft(..., { organizationId, userId, conversationId })
+
+Add:
+
+evidencePack: evidencePack ?? null
+
+Do not retrieve evidence again.
+
+The same EvidencePack used for specialist generation must be used for self-review.
+
+Verify:
+
+reviewEvidenceCitationGrounding
+
+now receives the actual pack and does not use the default:
+
+"EvidencePack not available"
+
+Do not expose raw evidence to the user simply because self-review now receives it.
+
+⸻
+
+J — Structured execution outcomes
+
+Add/confirm task execution outcomes:
+
+* specialist_not_ready
+* execution_plan_missing
+* execution_plan_invalid
+
+Existing callers must handle them safely.
+
+No fallback generation.
+
+No deterministic stub saved as Completed Work.
+
+CoS should receive enough structured information to re-plan or explain the block.
+
+⸻
+
+K — Regression suite
+
+Implement the previously specified 15 Sprint 29I tests before sign-off.
+
+At minimum prove:
+
+1. CoS OM + incident blueprint → manifest OM.
+2. CoS OM + care plan → OM.
+3. CoS CoS + executive brief → CoS.
+4. Plan OM beats dna_pending blueprint specialist.
+5. Direct blueprint + available specialist proceeds.
+6. Direct blueprint + dna_pending specialist blocks.
+7. Bad plan containing dna_pending specialist blocks before evidence/AI.
+8. Real DB plan specialist equals resulting manifest specialist.
+9. Completed Work specialist equals actual runtime specialist.
+10. Task execution writes retrieval audit.
+11. Retrieval audit executionId is populated.
+12. Cache hit does not duplicate audit row.
+13. EvidencePack reaches self-review.
+14. Evidence citation grounding no longer reports EvidencePack unavailable.
+15. Quality score remains within 0–100.
+
+⸻
+
+L — Mandatory live acceptance
+
+After implementation and server restart, create a BRAND-NEW Incident Management task in mhr-holdings-2.
+
+Do not reuse:
+
+7fb5dea0...
+
+or any historical execution.
+
+Use:
+
+“Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations.”
+
+Capture the entire NEW identity chain:
+
+CoS plan
+→ task_execution_plan.primarySpecialist
+→ task_specialists
+→ resolved task specialist
+→ manifest.primarySpecialist
+→ CanonicalExecutionContext.specialistCode
+→ AI execution specialist
+→ Completed Work primarySpecialist
+
+Expected:
+
+operations_manager at every stage.
+
+Also prove:
+
+* blocked blueprint ISS never reaches generation;
+* KRS retrieves incident-relevant evidence;
+* retrieval audit contains this exact executionId;
+* EvidencePack reaches self-review;
+* evidence grounding produces a real score;
+* quality remains 0–100;
+* Completed Work reaches awaiting_approval.
+
+⸻
+
+M — Mandatory evidence standard
+
+Report each acceptance item as:
+
+1. Unit
+2. Mocked integration
+3. Real DB integration
+4. Live API/runtime
+5. Live authenticated UI E2E
+
+And label:
+
+* PROVEN
+* PARTIALLY PROVEN
+* NOT YET PROVEN
+* BLOCKED
+
+Do not call mocked or source-level evidence live proof.
+
+⸻
+
+Final report
+
+Return:
+
+1. Files changed
+2. Before/after specialist identity chain
+3. Missing-plan behaviour
+4. Shared readiness guard behaviour
+5. Direct blueprint regression matrix
+6. KRS retrieval audit result
+7. EvidencePack self-review result
+8. Quality scoring result
+9. Full regression result
+10. Real DB tests
+11. New live execution IDs
+12. Live specialist identity chain
+13. Remaining unproven UI items
+
+Final verdict:
+
+PROVEN — EXECUTION OWNERSHIP CORRECTED
+
+PARTIALLY PROVEN — IMPLEMENTED BUT LIVE PROOF INCOMPLETE
+
+BLOCKED — OWNERSHIP OR EVIDENCE DEFECT REMAINS
+
+Do not propose Sprint 29J.
+Stop after verification.
+
+This is the right correction because the forensic data is unusually strong: every one of the four completed task executions in the database diverged from the specialist selected by CoS. So this isn’t an incident-policy edge case. It is a systemic ownership inversion in the task path.
+
+Once 29I is implemented, the blueprint goes back to being what it should have been all along: the recipe, not the person wearing the apron.

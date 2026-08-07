@@ -23,7 +23,7 @@
  */
 
 import { randomUUID, createHash } from "crypto";
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
 import {
@@ -31,7 +31,7 @@ import {
   buildDNASystemInstruction,
   captureSpecialistRunVersions,
 } from "@workspace/workforce-dna";
-import { db, specialistRunsTable } from "@workspace/db";
+import { db, specialistRunsTable, taskExecutionPlansTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import { selectBlueprint, getBlueprintById } from "./workBlueprintService.js";
@@ -140,6 +140,13 @@ export interface ExecuteWorkInput {
   title?: string;
   conversationId?: string;
   correlationId?: string;
+  /**
+   * Sprint 29I (D1): The CoS-originated task ID.
+   * When present, the engine reads task_execution_plans to resolve the
+   * authoritative specialist selected by the Chief of Staff.
+   * Absent only for genuine direct blueprint execution (no CoS plan).
+   */
+  taskId?: string;
   onProgress?: ExecutionProgressCallback;
   checkpointData?: ExecutionCheckpointData;
 }
@@ -151,7 +158,11 @@ export type ExecutionOutcome =
   | "no_blueprint"
   | "execution_failed"
   | "execution_principal_missing"
-  | "configuration_failure";
+  | "configuration_failure"
+  // Sprint 29I outcomes
+  | "specialist_not_ready"     // specialist executionStatus is blocked (dna_pending/archived/etc.)
+  | "execution_plan_missing"   // taskId provided but no task_execution_plan row exists
+  | "execution_plan_invalid";  // plan found but plan_data is malformed or missing primarySpecialist
 
 /**
  * Thrown when the AI provider is not configured, preventing a stub from
@@ -207,6 +218,12 @@ export interface ExecutionRequest {
   title?: string;
   conversationId?: string;
   correlationId?: string;
+  /**
+   * Sprint 29I (D1): CoS-originated task ID.
+   * When present, the engine queries task_execution_plans to resolve the
+   * CoS-selected specialist. Absent for direct blueprint execution only.
+   */
+  taskId?: string;
   onProgress?: ExecutionProgressCallback;
   checkpointData?: ExecutionCheckpointData;
 
@@ -275,6 +292,27 @@ const CONTEXT_TOKEN_BUDGET = parseInt(process.env.SPECIALIST_CONTEXT_TOKEN_BUDGE
 // Roles permitted to invoke task_execution through the AI gateway.
 const EXECUTION_PERMITTED_ROLES = new Set(["owner", "administrator", "manager"]);
 
+// ─── Sprint 29I helpers ───────────────────────────────────────────────────────
+
+/**
+ * Build a structured ExecuteWorkResult for a blocked specialist on the task path.
+ * Used when checkExecutionReadiness() returns blocked:true.
+ */
+function buildSpecialistNotReadyResult(
+  specialistCode: string,
+  blockedStatus: string,
+): ExecuteWorkResult {
+  return {
+    outcome: "specialist_not_ready",
+    message:
+      `Specialist "${specialistCode}" cannot execute production work ` +
+      `(executionStatus: "${blockedStatus}"). Only specialists with ` +
+      `executionStatus "available" may perform task work. ` +
+      `The Chief of Staff should re-plan this task with a production-ready specialist. ` +
+      `No work was performed.`,
+  };
+}
+
 // ─── Unified Execution Engine ─────────────────────────────────────────────────
 
 export class UnifiedExecutionEngine {
@@ -288,6 +326,48 @@ export class UnifiedExecutionEngine {
       const workResult = await this.executeTask(request);
       return { trigger: request.trigger, workResult };
     }
+  }
+
+  // ─── Sprint 29I: Unified execution readiness guard ────────────────────────
+  //
+  // Single authority for production-readiness of any specialist entering the
+  // execution engine. Used by BOTH executeConversation and executeTask.
+  //
+  // Do NOT use checkSpecialistEligibility() here. That service handles planning
+  // and pack-entitlement checks and includes an ACTIVE_SPECIALISTS restriction
+  // that would incorrectly block Chief of Staff at execution time.
+  // Planning eligibility and execution readiness are separate responsibilities.
+  //
+  // Source of truth: workforceRegistry.executionStatus per specialist entry.
+  private checkExecutionReadiness(
+    specialistCode: string,
+    organisationId: string,
+    requesterId: string,
+  ): { blocked: false } | { blocked: true; blockedStatus: string } {
+    const specialistEntry = getSpecialistByCode(specialistCode);
+    const blockedStatus   = specialistEntry?.executionStatus;
+    if (
+      blockedStatus === "dna_pending" ||
+      blockedStatus === "coming_soon" ||
+      blockedStatus === "archived"    ||
+      blockedStatus === "deprecated"
+    ) {
+      void logOrgEvent({
+        organizationId: organisationId,
+        actorUserId:    requesterId,
+        actorType:      "system",
+        eventType:      "specialist.eligibility_checked",
+        resourceType:   "specialist_execution",
+        metadata: {
+          workforceRoleCode: specialistCode,
+          blocked:           true,
+          blockedStatus,
+          reason:            "uee_execution_readiness_guard",
+        },
+      }).catch(() => {});
+      return { blocked: true, blockedStatus: blockedStatus };
+    }
+    return { blocked: false };
   }
 
   // ─── Conversation execution ─────────────────────────────────────────────────
@@ -335,49 +415,30 @@ export class UnifiedExecutionEngine {
     const runId                 = request.specialistRunId ?? workPackage.specialistRunId;
     const roleCode              = workPackage.workforceRoleCode;
 
-    // ─── Sprint 29H Part H: Architectural specialist status guard ─────────────
-    // Hard boundary enforced at the engine entry point — before evidence resolution,
-    // before session open, and before any AI call. Specialists with blocked status
-    // must never execute production work regardless of how they were routed here.
-    // This guard catches bypasses from legacy paths that skip checkSpecialistEligibility.
+    // ─── Sprint 29I: Unified execution readiness guard (conversation path) ──────
+    // Replaced the Sprint 29H inline guard with the shared checkExecutionReadiness()
+    // method so conversation and task paths use exactly one readiness authority.
     {
-      const specialistEntry = getSpecialistByCode(roleCode);
-      const blockedStatus = specialistEntry?.executionStatus;
-      if (
-        blockedStatus === "dna_pending" ||
-        blockedStatus === "coming_soon" ||
-        blockedStatus === "archived" ||
-        blockedStatus === "deprecated"
-      ) {
-        void logOrgEvent({
-          organizationId: request.organisationId,
-          actorUserId:    request.requesterId,
-          actorType:      "system",
-          eventType:      "specialist.eligibility_checked",
-          resourceType:   "specialist_run",
-          metadata: {
-            workforceRoleCode: roleCode,
-            blocked:           true,
-            blockedStatus,
-            reason:            "sprint29h_architectural_guard",
-            runId,
-          },
-        }).catch(() => {});
+      const readiness = this.checkExecutionReadiness(roleCode, request.organisationId, request.requesterId);
+      if (readiness.blocked) {
         return {
-          specialistRunId:         runId,
-          workforceRoleCode:       roleCode,
-          capabilityCode:          (workPackage as any).capabilityCode ?? "unknown",
-          status:                  "blocked" as const,
-          summary:                 `Specialist "${roleCode}" cannot execute production work (status: ${blockedStatus}). Only approved specialists may enter the execution engine.`,
-          findings:                [],
-          recommendations:         [],
-          risks:                   [],
-          assumptions:             [],
-          unresolvedQuestions:     [],
-          requestedExternalActions:[],
-          expectedOutputs:         [],
-          confidence:              0,
-          completedAt:             new Date().toISOString(),
+          specialistRunId:          runId,
+          workforceRoleCode:        roleCode,
+          capabilityCode:           (workPackage as any).capabilityCode ?? "unknown",
+          status:                   "blocked" as const,
+          summary:
+            `Specialist "${roleCode}" cannot execute production work ` +
+            `(executionStatus: "${readiness.blockedStatus}"). ` +
+            `Only specialists with executionStatus "available" may enter the execution engine.`,
+          findings:                 [],
+          recommendations:          [],
+          risks:                    [],
+          assumptions:              [],
+          unresolvedQuestions:      [],
+          requestedExternalActions: [],
+          expectedOutputs:          [],
+          confidence:               0,
+          completedAt:              new Date().toISOString(),
         };
       }
     }
@@ -686,6 +747,64 @@ export class UnifiedExecutionEngine {
     let tLlmMs: number | null = null;
     let tReviewMs: number | null = null;
 
+    // ─── Sprint 29I (D1/B): Resolve authoritative specialist from CoS task plan ─
+    // When taskId is present, the Chief of Staff has already selected the specialist
+    // and written it to task_execution_plans. That plan-selected specialist is the
+    // runtime authority. Blueprint.primarySpecialist is NOT authoritative here.
+    //
+    // PLAN SELECTION RULE: ORDER BY created_at DESC LIMIT 1.
+    // No formal plan-lifecycle/version model exists as of Sprint 29I:
+    //   - the 'version' column is always "1" in all production rows;
+    //   - no 'status' or 'isCurrent' field exists in the schema;
+    //   - no production task has ever had multiple plan rows;
+    //   - the newest row correctly represents re-planning when multiple rows exist.
+    // This rule must be revisited if a formal plan-version lifecycle is introduced.
+    let selectedSpecialist: string | undefined;
+
+    if (request.taskId) {
+      const [plan] = await db
+        .select()
+        .from(taskExecutionPlansTable)
+        .where(and(
+          eq(taskExecutionPlansTable.taskId, request.taskId),
+          eq(taskExecutionPlansTable.organizationId, organizationId),
+        ))
+        .orderBy(desc(taskExecutionPlansTable.createdAt))
+        .limit(1);
+
+      if (!plan) {
+        return {
+          outcome: "execution_plan_missing",
+          message:
+            `No execution plan found for task "${request.taskId}". ` +
+            `The Chief of Staff must plan this task before execution. ` +
+            `No work was performed. (correlationId: ${request.correlationId ?? "unknown"})`,
+        };
+      }
+
+      const planData       = plan.planData as Record<string, unknown>;
+      const planSpecialist = planData.primarySpecialist;
+
+      if (!planSpecialist || typeof planSpecialist !== "string" || !planSpecialist.trim()) {
+        return {
+          outcome: "execution_plan_invalid",
+          message:
+            `The execution plan for task "${request.taskId}" is missing a valid primarySpecialist. ` +
+            `The plan may be malformed. The Chief of Staff should re-plan this task. ` +
+            `(correlationId: ${request.correlationId ?? "unknown"})`,
+        };
+      }
+
+      // Verify the CoS-selected specialist is production-ready before any evidence
+      // retrieval, AI call, or Completed Work persistence.
+      const readiness = this.checkExecutionReadiness(planSpecialist, organizationId, requesterId);
+      if (readiness.blocked) {
+        return buildSpecialistNotReadyResult(planSpecialist, readiness.blockedStatus);
+      }
+
+      selectedSpecialist = planSpecialist;
+    }
+
     let blueprint: WorkBlueprint | null;
     let manifest: WorkPackageManifest;
     let selectionMeta: BlueprintSelectionMetadata | undefined;
@@ -722,6 +841,19 @@ export class UnifiedExecutionEngine {
       }
       tBlueprintMs = Date.now() - t1;
 
+      // ─── Sprint 29I (D1/F): Direct blueprint execution readiness check ────────
+      // When there is no taskId, this is genuine direct blueprint execution
+      // (no CoS plan). Blueprint.primarySpecialist is the fallback candidate.
+      // Apply the production-readiness gate before any evidence retrieval or AI call.
+      // This deliberately blocks blueprints that reference dna_pending/deprecated
+      // specialists — they must not silently execute with blocked specialists.
+      if (!request.taskId && blueprint?.primarySpecialist) {
+        const readiness = this.checkExecutionReadiness(blueprint.primarySpecialist, organizationId, requesterId);
+        if (readiness.blocked) {
+          return buildSpecialistNotReadyResult(blueprint.primarySpecialist, readiness.blockedStatus);
+        }
+      }
+
       await progress("assembling_package");
       const assembleResult = await assembleWorkPackage({
         organizationId,
@@ -731,6 +863,10 @@ export class UnifiedExecutionEngine {
         taskUploadSourceIds: request.taskUploadSourceIds,
         entityKnowledge: request.entityKnowledge,
         selectionMetadata: selectionMeta,
+        // Sprint 29I (D1/C): thread CoS plan specialist through to manifest.
+        // undefined on direct blueprint path — workPackageService falls back
+        // to blueprint.primarySpecialist as designed.
+        selectedSpecialist,
       });
       manifest = assembleResult.manifest;
     }
@@ -920,6 +1056,11 @@ export class UnifiedExecutionEngine {
       organizationId,
       userId: requesterId,
       conversationId: request.conversationId,
+      // Sprint 29I (D3): pass the same EvidencePack used for specialist generation.
+      // ReviewContext already accepts this field. reviewEvidenceCitationGrounding
+      // will now receive real evidence instead of reporting "EvidencePack not available".
+      // No second retrieval is triggered — the same object reference is reused.
+      evidencePack: evidencePack ?? null,
     });
     tReviewMs = Date.now() - t6;
 

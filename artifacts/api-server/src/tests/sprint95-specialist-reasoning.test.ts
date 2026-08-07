@@ -163,7 +163,9 @@ describe("Sprint 9.5 — Specialist Intelligence Service", () => {
       const pkg = { ...FAKE_WORK_PACKAGE, workforceRoleCode: "marketing_director", specialistRunId: "run-4" };
       const result = await service.executeRun(pkg, FAKE_CONTEXT);
       expect(result.status).toBe("blocked");
-      expect(result.summary).toContain("not yet activated");
+      // Sprint 29I: the UEE readiness guard message was updated to use the new unified format.
+      // The check is: blocked status is present in the summary, not a specific legacy phrase.
+      expect(result.summary).toContain("cannot execute production work");
     });
 
     it("includes instruction version in deterministic result", async () => {
