@@ -1,0 +1,113 @@
+SPRINT 29H.1 — HISTORICAL WORK REUSE BEHAVIOUR TEST GATE
+
+Do not implement fixes yet.
+
+The live investigation proved that historical Completed Work prevented a new Operations Manager execution.
+
+Before changing the logic, define and test the intended behavioural contract using the mandatory evidence standard.
+
+Evidence levels:
+
+- unit test
+- mocked integration test
+- real database integration test
+- live API/runtime test
+- live authenticated UI end-to-end test
+
+Proof states:
+
+- PROVEN
+- PARTIALLY PROVEN
+- NOT YET PROVEN
+- BLOCKED
+
+Use the real mhr-holdings-2 organisation and existing historical record where safe.
+
+Test these user intents separately:
+
+1. "Show me the incident management review you already completed."
+Expected:
+Reuse and link the existing Completed Work.
+
+2. "What was the result of the incident management review?"
+Expected:
+Summarise or link the existing work without creating a new execution.
+
+3. "Review our current Incident Management Policy and produce an Improvement Plan."
+Expected:
+Create a new task and execution unless the existing work is proven equivalent and current.
+
+4. "Review the policy again using the latest approved evidence."
+Expected:
+Always create a new execution.
+
+5. "Revise the existing review to include clearer accountabilities."
+Expected:
+Create a revision flow linked to the existing work, not silently declare it complete.
+
+6. "Replace the previous review with a new Operations Manager review."
+Expected:
+Create a new OM execution and preserve the old record for audit.
+
+7. "Approve the completed incident review."
+Expected:
+Use the existing awaiting-approval record and do not create a new task.
+
+For every scenario capture:
+
+- conversationMode
+- resolved action state
+- shouldCreateTask
+- reuse/revision/new-execution decision
+- matched completedWorkId
+- matching criteria
+- specialist attribution source
+- taskId
+- specialistRunId
+- executionId
+- whether UnifiedExecutionEngine ran
+
+Also test factual attribution:
+
+If completed_work.primary_specialist =
+knowledge_documentation_specialist
+
+the CoS must never say Operations Manager produced it.
+
+The CoS response must use the persisted specialist identity or omit attribution.
+
+Test historical incompatibility:
+
+Use the existing record e7f810e9-3554-422f-a892-258973ee5ac6.
+
+Confirm whether it is considered compatible with a new request requiring:
+
+- capability: incident.review
+- specialist: operations_manager
+- completed analysis rather than plan-to-do output
+- current routing rules
+- current approved evidence
+
+Expected:
+It must not short-circuit the new execution.
+
+Return:
+
+Scenario
+Evidence level
+Expected decision
+Actual decision
+UEE invoked?
+Proof status
+
+Then define the smallest deterministic matching contract that distinguishes:
+
+- view existing work
+- approve existing work
+- revise existing work
+- rerun work
+- create new work
+
+Do not implement.
+Do not propose the next sprint.
+Stop after the behavioural test report.
