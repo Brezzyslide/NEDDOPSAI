@@ -1,0 +1,330 @@
+SPRINT 29 — CLOUD COMPLETED WORK RUNTIME PROOF GATE
+
+Do not implement any fixes yet.
+
+We have completed the architecture/database audit. Before accepting its root causes or proceeding to remediation, run a focused runtime verification using our mandatory test parameters.
+
+This is a TEST GATE.
+
+Do not tell me what the code should do.
+Prove what the current cloud workflow actually does.
+
+==================================================
+MANDATORY EVIDENCE PARAMETERS
+==================================================
+
+For every finding classify evidence as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Label every conclusion:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Mocks, fixtures and source inspection do NOT prove live behaviour.
+
+Use the actual organisation and actual cloud runtime where safe.
+
+Do not modify production data except through a disposable test task/work item.
+
+==================================================
+TEST A — SPECIALIST DELEGATION TRACE
+==================================================
+
+Run a fresh request equivalent to:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify operational gaps, risks and weaknesses, and prepare a practical Improvement Plan with recommendations, priorities and responsible roles."
+
+Capture the complete delegation trace.
+
+Show:
+
+user request
+→ CoS classification
+→ identified intent
+→ requested capabilities
+→ eligible specialists
+→ excluded specialists
+→ exclusion reason for each
+→ capabilityIdentificationService result
+→ specialist selected
+→ specialistCode
+→ DNA version
+→ manifest version/hash
+→ blueprint selected
+→ output type selected
+→ final dispatch decision
+
+Specifically determine:
+
+1. Does an incident_management_specialist actually exist?
+2. Is it active?
+3. Is its DNA valid/approved?
+4. Is it present in the runtime workforce manifest?
+5. Is it eligible for this request?
+6. If eligible, why was it not selected?
+7. If not eligible, what exact rule excluded it?
+8. Why did knowledge_documentation_specialist win?
+9. Did the CoS select it, capability identification select it, blueprint routing select it, or did fallback logic select it?
+
+Do NOT accept "wrong specialist selected" as root cause until this trace proves it.
+
+==================================================
+TEST B — OUTPUT CONTRACT
+==================================================
+
+For the same fresh execution capture:
+
+specialist raw response
+→ parsed structured response
+→ self-review input
+→ self-review result
+→ finalContent
+→ createDraft payload
+→ completed_work_versions persisted content
+→ GET completed-work API response
+
+Do not expose private chain-of-thought or hidden prompts.
+
+We only need structured runtime fields and output artifacts.
+
+Verify the final output actually contains:
+
+- review of the supplied policy
+- findings
+- operational gaps
+- risks
+- weaknesses
+- recommendations
+- improvement actions
+- priorities
+- responsible roles
+- evidence citations
+
+Distinguish between:
+
+"plan for how somebody should review the policy"
+
+and
+
+"actual completed review of the policy."
+
+This distinction is critical.
+
+A document telling the user to "conduct a review" does NOT satisfy a request asking NeedsOps to conduct the review.
+
+==================================================
+TEST C — QUALITY SCORE SCALE
+==================================================
+
+Investigate qualityScore = 8.
+
+Trace:
+
+self-review model result
+→ parsed score
+→ internal scoring scale
+→ weighting calculation
+→ persisted completed_work_versions.quality_score
+→ API response
+→ UI rendering
+
+Answer explicitly:
+
+Is 8:
+
+8/10?
+8/100?
+80/100 converted incorrectly?
+an aggregate dimension score?
+a raw model field?
+something else?
+
+Inspect the 11 self-review dimensions and their actual values.
+
+Calculate the score independently from the persisted dimensions.
+
+Compare:
+
+expected score
+actual computed score
+persisted score
+displayed score
+
+If an 8/10 score is being stored/displayed as 8/100, classify this as a scoring pipeline defect.
+
+Do not change labels until the scale is proven.
+
+==================================================
+TEST D — EVIDENCE TRACE
+==================================================
+
+For the fresh execution capture:
+
+ResourceRegistry request
+→ KRS retrieval
+→ source candidates
+→ selected chunks
+→ EvidencePack
+→ specialist evidence input
+→ self-review evidence input
+→ completed_work_assets
+→ retrieval_audit_events
+→ Inspector response
+
+Verify with actual IDs.
+
+We need to prove whether retrieval_audit_events still produces zero rows on a NEW execution.
+
+If zero:
+
+trace the writer and determine whether:
+
+A. writer never called
+B. insert fails
+C. transaction rolls back
+D. wrong executionId
+E. wrong organisationId
+F. audit feature disabled
+G. another cause
+
+Do not infer successful retrieval merely from retrievalMs.
+
+Show the actual selected source/chunk metadata.
+
+==================================================
+TEST E — AUTHENTICATED COMPLETED WORK UI
+==================================================
+
+This is mandatory if an authenticated browser/session is available.
+
+Run the disposable work item through:
+
+Workforce Chat
+→ Active Work
+→ Completed Work Viewer
+→ Awaiting Approval
+→ Approve
+→ Completed
+
+Verify visually/runtime:
+
+1. New work appears in Awaiting Approval.
+2. Clicking the work opens the correct completedWorkId.
+3. Document tab is visible.
+4. Full substantive report renders.
+5. Document tab is the sensible/default view.
+6. Evidence tab displays persisted citations.
+7. Inspector displays self-review information.
+8. Quality score displays with the correct scale.
+9. Approve / Request Changes / Reject controls appear.
+10. Approval succeeds.
+11. Work moves to Completed.
+12. Reopening the completed item still displays the full report.
+13. PDF download works.
+14. DOCX download works.
+15. Downloaded files contain the same substantive report visible in the viewer.
+16. Navigation away/back does not lose the work or open another record.
+
+Capture the route and completedWorkId at every major transition.
+
+If authenticated UI cannot be run:
+
+mark TEST E = NOT YET PROVEN.
+
+Do NOT substitute source inspection.
+
+==================================================
+TEST F — APPROVAL SURFACE
+==================================================
+
+Prove current behaviour of:
+
+CompletedWorkViewer
+ApprovalsPage
+Active Work
+Governance Centre
+
+Determine whether the same awaiting_approval item appears in both:
+
+CompletedWorkViewer
+and
+ApprovalsPage.
+
+If so, approve the disposable test item through ONE surface and verify what the other surface shows immediately afterwards.
+
+Confirm server-side status protection prevents duplicate approval.
+
+Do not change either surface yet.
+
+==================================================
+TEST G — EXPORT
+==================================================
+
+After approval request:
+
+PDF export
+DOCX export
+
+Verify:
+
+HTTP status
+content type
+filename
+file size
+report title
+substantive content
+recommendations
+citations
+
+A successful HTTP 200 with an empty/minimal document is a failure.
+
+Confirm exports are generated from the current approved version, not an earlier draft.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return one compact evidence table:
+
+Test
+Evidence level
+Expected
+Actual
+Proof status
+Failure point
+Root cause
+
+Then answer only these questions:
+
+1. Was the correct specialist selected?
+2. Did NeedsOps perform the requested review, or merely produce a plan to perform it?
+3. Was the EvidencePack genuinely populated with the intended policy?
+4. Why are retrieval_audit_events empty?
+5. What does qualityScore=8 actually mean?
+6. Is the complete professional output visible in the authenticated UI?
+7. Can the user approve it from the CompletedWorkViewer?
+8. Does approval correctly move it to Completed?
+9. Do PDF and DOCX exports contain the complete approved report?
+10. Is ApprovalsPage duplication causing a real UX problem or merely architectural duplication?
+
+Final verdict must be one of:
+
+PROVEN — CLOUD COMPLETED WORKFLOW OPERATES END TO END
+
+PARTIALLY PROVEN — CORE WORKFLOW WORKS BUT SPECIFIC DEFECTS REMAIN
+
+NOT YET PROVEN — AUTHENTICATED UI RUNTIME TEST STILL REQUIRED
+
+BLOCKED — PROFESSIONAL OUTPUT / EVIDENCE / APPROVAL PIPELINE FAILURE
+
+DO NOT IMPLEMENT FIXES.
+DO NOT PROPOSE THE NEXT SPRINT.
+STOP AFTER THE TEST REPORT.
