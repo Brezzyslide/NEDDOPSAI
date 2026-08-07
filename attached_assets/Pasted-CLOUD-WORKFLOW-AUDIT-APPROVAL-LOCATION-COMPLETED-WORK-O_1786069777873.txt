@@ -1,0 +1,321 @@
+CLOUD WORKFLOW AUDIT — APPROVAL LOCATION, COMPLETED WORK OUTPUT & FINAL REPORT ARTIFACTS
+
+Do not implement changes yet.
+
+Inspect the current live NeedsOps workflow and answer the questions below using the mandatory test-evidence standard.
+
+The observed user experience is:
+
+- Work shows as completed or awaiting approval.
+- A self-review score is displayed.
+- No substantive specialist output is visible.
+- No EvidencePack or evidence sources are visible.
+- No operational gaps, recommendations or improvement plan are shown.
+- It is unclear where the approval button should appear.
+- It is unclear whether approval belongs in Active Work or Governance Centre.
+- After approval and user acceptance, no Word or PDF report is visible.
+
+Do not assume the intended design from labels.
+Trace the actual code, persisted records, API responses and UI behaviour.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+For every conclusion classify the evidence as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live UI end-to-end test
+6. Physical-device test, where relevant
+
+Label every result:
+
+- PROVEN
+- PARTIALLY PROVEN
+- NOT YET PROVEN
+- BLOCKED
+
+Do not describe fixtures, mocks or source inspection as proof of the live user experience.
+
+==================================================
+PART 1 — WHERE DOES APPROVAL LIVE?
+==================================================
+
+Determine the intended and actual approval location for Completed Work.
+
+Inspect:
+
+- Active Work page
+- Completed Work Portal
+- Governance Centre
+- approval routes
+- CompletedWorkViewer
+- approval components
+- status-to-tab mapping
+- RBAC and role requirements
+
+Answer clearly:
+
+1. Where should a user approve Completed Work?
+2. Is approval performed inside:
+   - Active Work,
+   - Completed Work Viewer,
+   - Governance Centre,
+   - or more than one location?
+3. What status must the record have for Approve / Request Changes / Reject buttons to appear?
+4. Which roles can see and use those buttons?
+5. Does Governance Centre show Completed Work approvals, connector actions only, or both?
+6. Is “Submit for Approval” still required anywhere after automatic submission was implemented?
+7. Is there duplicate approval UX across multiple pages?
+
+Provide the exact route and UI component containing the approval controls.
+
+==================================================
+PART 2 — TRACE THE AFFECTED COMPLETED WORK RECORD
+==================================================
+
+Inspect the latest Incident Management Policy review in the actual organisation.
+
+Report:
+
+- completedWorkId
+- taskId
+- conversationId
+- specialistRunId
+- executionId
+- title
+- specialist
+- blueprint
+- status
+- approval workflow state
+- approval record ID
+- createdAt / submittedAt / approvedAt
+- self-review score
+- canonical rendered content field
+- content length
+- summary length
+- evidence references count
+- asset IDs
+- revision IDs
+- attachment IDs
+- output format
+
+Do not infer content exists because a score exists.
+
+Inspect the actual database values.
+
+==================================================
+PART 3 — WHERE IS THE SPECIALIST OUTPUT?
+==================================================
+
+Trace:
+
+AI specialist response
+→ parsed output
+→ self-review
+→ reviewed final content
+→ Completed Work persistence
+→ API response
+→ frontend rendering
+
+Determine whether the specialist produced:
+
+- policy review
+- operational gaps
+- risks
+- recommendations
+- improvement actions
+- responsible roles
+- priorities
+- evidence citations
+
+Classify the failure if output is absent:
+
+A. AI returned only a score or JSON metadata
+B. AI output parsing discarded the prose
+C. Self-review replaced content with score-only output
+D. Completed Work persisted the wrong field
+E. API omitted the final content
+F. Viewer renders only review metadata
+G. Wrong Completed Work record opened
+H. Output exists in a revision or asset but is not linked
+I. Another cause
+
+The viewer must not display a score as though it were the completed professional work.
+
+==================================================
+PART 4 — EVIDENCEPACK VISIBILITY
+==================================================
+
+Determine what happened to the EvidencePack.
+
+Verify:
+
+- EvidencePack existed during execution
+- source IDs included
+- incident-management chunks retrieved
+- source titles and citations
+- evidence passed to specialist prompt
+- evidence passed to self-review
+- evidence references persisted with Completed Work
+- evidence shown in Execution Inspector
+- evidence shown or accessible in Completed Work Viewer
+
+Answer:
+
+1. Should the customer see the full EvidencePack?
+2. Should they see a source/citation panel rather than raw chunks?
+3. Does the current UI expose either?
+4. If evidence was used but not persisted, identify the break.
+5. If it was persisted but not shown, identify the rendering gap.
+
+Do not expose private raw prompts or unnecessary chunk content.
+
+==================================================
+PART 5 — WHAT DOES “COMPLETED” MEAN?
+==================================================
+
+Define the actual lifecycle clearly.
+
+Expected possible lifecycle:
+
+draft
+→ awaiting_approval
+→ approved
+→ accepted / completed / published
+
+Confirm the real status model.
+
+Answer:
+
+- Does `approved` mean the specialist work is complete?
+- Is there a separate user acceptance step?
+- Does “Completed” in the UI map to `approved`?
+- What happens after the user accepts the work?
+- Can work be approved but still require requested changes?
+- Is the task status updated separately from Completed Work?
+- Can a task say completed while its professional output is missing?
+
+Ensure task completion, work approval and output generation are not being conflated.
+
+==================================================
+PART 6 — FINAL WORD / PDF REPORT
+==================================================
+
+Determine whether NeedsOps currently generates a downloadable document artifact.
+
+Inspect:
+
+- document generation services
+- PDF generation
+- DOCX generation
+- export routes
+- asset storage
+- completed work attachments
+- output assets
+- download buttons
+- object storage records
+- CompletedWorkViewer export actions
+
+Answer:
+
+1. Is a Word document generated automatically?
+2. Is a PDF generated automatically?
+3. Are they generated:
+   - at draft creation,
+   - submission,
+   - approval,
+   - user acceptance,
+   - or only on explicit export?
+4. Where are generated artifacts stored?
+5. How does the user access them?
+6. If no artifact generation exists, say so clearly.
+7. Is the current intended output only an in-platform document?
+
+Do not claim a Word or PDF exists merely because the professional output exists as text.
+
+==================================================
+PART 7 — LIVE UI VERIFICATION
+==================================================
+
+Using the live organisation and authenticated UI where available, verify:
+
+1. Open Active Work.
+2. Locate the Incident Management review.
+3. Open the work.
+4. Confirm whether substantive content is visible.
+5. Confirm whether approval controls are visible.
+6. Confirm the exact tab and route.
+7. Confirm Evidence/Sources or Inspector data is accessible.
+8. Approve only if using a disposable/test work item.
+9. Confirm post-approval state.
+10. Confirm whether a Word/PDF download appears.
+11. Confirm whether task status updates.
+12. Navigate away and return to confirm persistence.
+
+If authenticated UI cannot be exercised, label it NOT YET PROVEN.
+
+==================================================
+PART 8 — DESIRED USER EXPERIENCE RECOMMENDATION
+==================================================
+
+After inspection, recommend one streamlined workflow.
+
+It should answer:
+
+Where the user reviews work
+Where the user approves it
+Where evidence/citations are viewed
+Where change requests are entered
+When the task becomes complete
+Where the final report lives
+How Word/PDF export works
+
+Avoid requiring users to move unnecessarily between Active Work and Governance.
+
+A preferred model may be:
+
+Active Work / Completed Work Viewer
+→ read full report
+→ inspect evidence and self-review
+→ Approve / Request Changes / Reject
+→ approved report moves to Completed
+→ Export Word/PDF available
+
+Governance Centre should remain for broader governance controls unless there is a strong reason to duplicate Completed Work approval there.
+
+Do not implement this recommendation yet.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Exact approval location today
+2. Intended approval location
+3. Actual affected record state
+4. Whether substantive specialist output exists
+5. Where content was lost or hidden
+6. EvidencePack status and visibility
+7. Meaning of completed/approved/accepted
+8. Word/PDF generation status
+9. Live UI proof status
+10. Root causes
+11. Smallest safe fixes
+12. Evidence-level table
+13. Final verdict:
+
+PROVEN — CLOUD WORKFLOW OUTPUT AND APPROVAL WORK
+
+PARTIALLY PROVEN — OUTPUT EXISTS BUT UI/ARTIFACT GAPS REMAIN
+
+NOT YET PROVEN — LIVE UI NOT VERIFIED
+
+BLOCKED — COMPLETED WORK CONTENT OR APPROVAL DEFECT REMAINS
+
+Do not propose the next sprint.
+This is an inspection and verification gate only.
