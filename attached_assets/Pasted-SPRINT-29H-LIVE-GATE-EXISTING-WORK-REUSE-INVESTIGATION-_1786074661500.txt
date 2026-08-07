@@ -1,0 +1,86 @@
+SPRINT 29H LIVE GATE — EXISTING WORK REUSE INVESTIGATION
+
+Do not implement any fixes.
+
+I submitted the required Sprint 29H acceptance request through the live authenticated Workforce Chat.
+
+Instead of creating a new post-fix Operations Manager execution, the CoS responded:
+
+“The Operations Manager has already completed a review based on the MH&R Policy and Procedure Manual, and the completed work is ready for your approval.”
+
+It referenced completedWorkId:
+
+e7f810e9-3554-422f-a892-258973ee5ac6
+
+The previous verification report identified this exact record as a pre-Sprint-29H record, created at approximately 02:24 UTC, with:
+
+primary_specialist = knowledge_documentation_specialist
+
+and classified its output as FAIL because it contained plan-to-do language rather than completed analysis.
+
+Investigate the live runtime path that produced this response. Do not modify code.
+
+Using the mandatory evidence standard, trace this exact new authenticated chat request from:
+
+Workforce Chat → message ingress → CoS cognition → existing-work detection → task/reuse decision → response
+
+Determine:
+
+Did this new message create a new task?
+Did it create a new specialistRun?
+Did it create a new executionId?
+Did UnifiedExecutionEngine run at all?
+Was Operations Manager actually executed?
+Why was completedWorkId e7f810e9-3554-422f-a892-258973ee5ac6 selected?
+Which service/function selected that completed work?
+What matching criteria caused the old work to be considered sufficient for this new request?
+Does existing-work matching consider:
+specialist identity
+specialist eligibility
+capability code
+DNA version
+manifest/runtime version
+evidence identity/version
+blueprint
+output type
+work quality/status
+creation time
+whether the work predates a material runtime/routing change?
+Was the CoS statement “The Operations Manager has already completed a review” grounded in the actual primary_specialist of this record, or inferred/generated incorrectly?
+Show the database record proving the actual specialist for e7f810e9-3554-422f-a892-258973ee5ac6.
+Show whether a new specialist_runs row exists after this authenticated request.
+Show whether a new EvidencePack was resolved.
+Show whether any new retrieval/evidence-use audit event was created.
+
+Critical test
+
+Determine whether historical Completed Work generated before Sprint 29H is currently allowed to short-circuit a new execution after the user explicitly asks for the work to be performed again.
+
+If yes, classify whether this is the reason our post-29H authenticated acceptance execution did not occur.
+
+Do not delete the historical record.
+Do not force a new execution.
+Do not alter matching logic.
+Do not implement a fix.
+
+Return:
+
+Criterion | Evidence level | Actual runtime evidence | Result | Proof status
+
+Then give one root-cause statement:
+
+Why did this authenticated request reuse the old failed work instead of executing Operations Manager under Sprint 29H?
+
+Final verdict must be one of:
+
+PROVEN — NEW OM EXECUTION OCCURRED
+
+BLOCKED — HISTORICAL WORK REUSE PREVENTED NEW EXECUTION
+
+BLOCKED — OTHER RUNTIME PATH PREVENTED NEW EXECUTION
+
+NOT YET PROVEN — INSUFFICIENT RUNTIME EVIDENCE
+
+Do not implement fixes.
+Do not propose the next sprint.
+Stop after the verification report.
