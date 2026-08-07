@@ -1,0 +1,268 @@
+URGENT FORENSIC INVESTIGATION — Incident Management Policy Was Found Earlier, Now Reported Missing
+
+Do not make further fixes yet.
+
+Thirty minutes ago, the same Incident Management Policy request reportedly succeeded after the recent evidence-discovery changes.
+
+Now, using the same organisation and a substantially identical request, the Chief of Staff responds:
+
+"I couldn't locate the policy in your Organisation Library."
+
+This means the previous root-cause report is incomplete, the running environment is inconsistent, or another path is overriding the result.
+
+Investigate the exact live request that produced this response.
+
+Do not rely only on static source inspection.
+Do not assume the latest code is running.
+Do not assume the same organisation, conversation, database, or server instance was used.
+
+==================================================
+PART 1 — IDENTIFY THE EXACT REQUEST
+==================================================
+
+For the failed request, report:
+
+- timestamp
+- request/correlation ID
+- API server instance/process ID
+- deployment/build version
+- git commit or source version running
+- organisation ID and slug
+- user/requester ID
+- conversation ID
+- conversation type
+- route called
+- server environment
+- database host/database name, redacted
+- whether the request hit a restarted or different server instance
+
+Confirm whether this is the same organisation and environment as the successful request from approximately 30 minutes earlier.
+
+==================================================
+PART 2 — INSPECT THE LIVE DOCUMENT RECORD
+==================================================
+
+Query the active database used by the failed request.
+
+Find all records matching:
+
+- Incident Management Policy
+- Incident Management
+- incident policy
+- incident
+
+For every matching knowledge source/version report:
+
+- source ID
+- version ID
+- organisation ID
+- title
+- source scope
+- source type
+- status
+- isCurrent
+- ingestion status
+- review status
+- approval status
+- superseded status
+- storage key
+- number of knowledge chunks
+- number of active chunks
+- embedding/index presence
+- createdAt / updatedAt
+- approvedAt
+- any recent change within the last hour
+
+Determine whether the document or version changed between the successful and failed requests.
+
+Do not inspect a local/test DB if the live request used another DB.
+
+==================================================
+PART 3 — REPLAY ALL LOOKUPS WITH THE EXACT LIVE INPUT
+==================================================
+
+Using the exact:
+- user message
+- organisation ID
+- conversation ID
+- requester ID
+
+run and log each stage independently:
+
+1. extractDocumentSearchTerms()
+2. generateSubPhrases()
+3. organisationLibraryPresenceService
+4. direct exact-title lookup
+5. direct ILIKE lookup
+6. KnowledgeResolutionService.resolveConversationEvidence()
+7. KnowledgeResolutionService.resolveEvidence()
+8. hybrid lexical retrieval
+9. vector retrieval
+10. ResourceRegistry resolution
+
+For each stage output:
+
+- input
+- generated terms
+- SQL/filter conditions
+- organisation scope
+- status/isCurrent filters
+- candidates returned
+- scores/confidence
+- final result
+
+Do not summarise these as "worked" or "failed."
+Show the actual values.
+
+==================================================
+PART 4 — TRACE THE CoS PROMPT AND RESPONSE
+==================================================
+
+Capture a safe diagnostic representation of the actual Chief of Staff prompt context for the failed request.
+
+Show the exact Organisation Library section included in the prompt:
+
+- Found and usable
+- Not found
+- Not ready
+- omitted
+- malformed
+
+Determine whether:
+
+- the presence service returned found but the prompt said not found;
+- the prompt contained the correct result but the LLM ignored it;
+- buildLayeredUserMessage failed and buildLegacyUserMessage was used;
+- the context builder returned null;
+- a fallback path omitted library evidence;
+- stale cached context was used.
+
+Report which prompt builder was used and why.
+
+==================================================
+PART 5 — CACHE AND PROCESS STATE
+==================================================
+
+Inspect all caches relevant to:
+
+- document presence
+- evidence resolution
+- ResourceRegistry
+- conversation context
+- library availability
+- knowledge chunks
+- organisation context
+
+Report:
+
+- cache key
+- cached value
+- creation time
+- expiry
+- whether organisation ID is included in the key
+- whether a "not found" result is cached
+- whether the cache survived a document approval/re-index event
+- whether multiple server processes have inconsistent in-memory caches
+
+Clear caches only after capturing evidence.
+
+Then rerun the exact lookup and compare results.
+
+==================================================
+PART 6 — DEPLOYMENT VERIFICATION
+==================================================
+
+Verify that the running API server contains the recent fixes:
+
+- "current" is in the relevant stop-word/normalisation logic
+- generateSubPhrases() exists and is called
+- org-library retrieval is unconditional in KRS
+- tightened missing-resource clarification instructions are active
+
+Do not check only the file on disk.
+
+Prove the running process is executing that code.
+
+Possible methods:
+- build/version endpoint
+- startup commit log
+- temporary safe diagnostic
+- runtime function/source hash
+- controlled test call
+
+Determine whether Replit edited source files without rebuilding/restarting the process, or whether an older deployment is serving traffic.
+
+==================================================
+PART 7 — TENANCY AND CONVERSATION CONSISTENCY
+==================================================
+
+Because conversation history was recently repaired, confirm that:
+
+- the active conversation belongs to the expected organisation;
+- the conversation lookup did not create/select a conversation under another org or user;
+- primaryTaskId does not affect tenant/resource lookup;
+- the repaired canonical conversation uses the correct organisation ID;
+- no stale conversation context contains another organisation's library state;
+- the current frontend is not calling a different slug/environment.
+
+Compare the successful and failed conversation IDs and organisation IDs.
+
+==================================================
+PART 8 — EVENT TIMELINE
+
+Build a minute-by-minute timeline for the last hour covering:
+
+- policy source/version changes
+- ingestion/re-indexing
+- approval/status changes
+- API restarts
+- deployments/builds
+- conversation repair
+- cache creation/invalidation
+- successful lookup
+- failed lookup
+
+Identify the first state change after the successful request.
+
+==================================================
+PART 9 — CLASSIFY THE ROOT CAUSE
+
+Return exactly one or more evidence-backed classifications:
+
+A. Running server did not include the fix
+B. Different organisation/tenant/context
+C. Document status/version changed
+D. Stale negative cache
+E. Fallback prompt path bypassed presence results
+F. Presence lookup and KRS use inconsistent databases/filters
+G. Conversation repair selected wrong context
+H. LLM ignored a correct deterministic result
+I. Multiple server instances with inconsistent code/state
+J. Another identified cause
+
+Do not implement a fix until this classification is supported by the live trace.
+
+==================================================
+PART 10 — REQUIRED PERMANENT SAFEGUARD
+
+After identifying the cause, recommend a safeguard so the CoS cannot make an unsupported statement such as:
+
+"I couldn't locate the policy"
+
+unless the deterministic lookup result for the current organisation and request is attached to the response decision.
+
+The CoS must not infer document absence.
+
+Return:
+
+1. live request identity
+2. successful vs failed request comparison
+3. database record state
+4. exact retrieval outputs
+5. prompt path used
+6. cache/process/deployment findings
+7. root cause
+8. smallest safe fix
+9. regression tests needed
+
+Inspection first. Do not patch around the symptom.
