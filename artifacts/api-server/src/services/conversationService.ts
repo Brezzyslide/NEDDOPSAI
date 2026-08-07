@@ -239,11 +239,14 @@ export async function linkConversationToTask(
   conversationId: string,
   taskId: string,
 ): Promise<void> {
+  // Only record the primaryTaskId — do NOT change conversationType.
+  // Mutating a general_workforce conversation to task_workroom causes
+  // findOrCreateGeneralConversation to miss it on the next page load
+  // and spin up a brand-new empty conversation, losing all chat history.
   await db
     .update(conversationsTable)
     .set({
       primaryTaskId: taskId,
-      conversationType: "task_workroom",
       updatedAt: new Date(),
     })
     .where(
