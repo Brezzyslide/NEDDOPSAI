@@ -1,0 +1,66 @@
+SPRINT 29H.1 — ACTION-STATE DECISION CONTRACT VERIFICATION
+
+Do not implement changes.
+
+Using the current live organisation and the existing completed work record, test the proposed deterministic decision contract at the real message-processing boundary.
+
+For each message, capture:
+
+- conversationMode
+- requestedTaskAction
+- resolved action state
+- matched completedWorkId
+- shouldCreateTask
+- shouldDispatchSpecialists
+- intended platform action
+- actual platform action
+- whether a task, revision or specialist run is created
+- whether UnifiedExecutionEngine runs
+
+Test:
+
+1. “Show me the review.”
+Expected: view existing work.
+
+2. “What were the findings?”
+Expected: read/summarise existing work.
+
+3. “Approve the review.”
+Expected: approve only if status=awaiting_approval; otherwise report actual status.
+
+4. “Revise the review to include clearer accountabilities.”
+Expected: revision execution linked to existing work.
+
+5. “Review the policy again using the latest approved evidence.”
+Expected: new execution.
+
+6. “Replace the old review with a new Operations Manager review.”
+Expected: new OM execution; preserve old work.
+
+7. “Review our Incident Management Policy and produce a new Improvement Plan.”
+Expected: new task or new execution, not historical reuse.
+
+8. “Continue discussing the completed review.”
+Expected: no new execution unless a new work request appears.
+
+Also verify factual attribution:
+
+- buildActionStateSection must include persisted completedWorkId, status and primarySpecialist when claims about existing work are allowed.
+- CoS must not attribute work to a specialist unless the persisted record supports it.
+- completed-level integrity rules must reject unsupported specialist attribution.
+
+Use the mandatory evidence levels:
+
+- unit
+- mocked integration
+- real DB integration
+- live API/runtime
+- live authenticated UI
+
+Return:
+
+Scenario | Evidence level | Expected | Actual | Proof status | Failure point
+
+Do not implement.
+Do not propose another sprint.
+Stop after the verification report.
