@@ -1,0 +1,332 @@
+SPRINT 29H.7 — POST-PROPOSAL EXECUTION PROOF GATE
+
+TEST ONLY. DO NOT MODIFY CODE.
+
+The 29H.6 capability and gating fixes are live-proven.
+
+The current post-fix conversation is:
+
+conversationId:
+6c2a346d-d5aa-4011-91b8-e8494cbd03e3
+
+The CoS has issued a task_proposal for the Incident Management Policy review.
+
+The user will now approve/confirm that proposal in the authenticated UI.
+
+From that point forward, trace ONLY the new execution created from this confirmation.
+
+Do not reuse historical execution IDs, retrieval audit rows, completed work records, or specialist runs.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+Classify every result as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Label:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not substitute source inspection for live behaviour.
+
+==================================================
+TEST 1 — PROPOSAL CONFIRMATION
+==================================================
+
+Capture:
+
+- user confirmation message
+- timestamp
+- conversationId
+- resulting taskId
+- task status
+- specialist selected
+- specialist eligibility result
+- whether a new task was actually created
+
+Expected:
+
+operations_manager
+
+FAIL if:
+
+- incident_safeguarding_specialist
+- knowledge_documentation_specialist
+- policy_governance_specialist
+- chief_of_staff
+
+is dispatched for the specialist work.
+
+==================================================
+TEST 2 — UNIFIED EXECUTION ENGINE ENTRY
+==================================================
+
+Prove this exact task enters:
+
+unifiedExecutionEngine.execute(...)
+
+Capture:
+
+- executionId
+- taskId
+- specialistCode
+- triggerType
+- organisationId
+- requesterId
+- execution session identifier/state if observable
+- pipeline stage timestamps
+
+Do not infer UEE entry from conversational text alone.
+
+==================================================
+TEST 3 — EVIDENCE RETRIEVAL
+==================================================
+
+Trace:
+
+ResourceRegistry
+→ KnowledgeResolutionService
+→ candidate chunks
+→ ranked chunks
+→ EvidencePack
+
+Expected source:
+
+aab1221b-c489-412e-877d-2061204c12f8
+MH&R Policy and Procedure Manual
+
+Capture actual selected chunk IDs and section headings.
+
+The task is incident-management focused.
+
+Check whether the highest-ranked evidence includes sections such as:
+
+- Incident and Hazard Reporting
+- Incident Classification
+- Incident Investigation
+- Incident Review
+- Client Incident Management
+- Reportable Incident
+- Incident Response
+
+Generic Risk Management evidence may supplement these, but it must not displace materially more relevant incident sections.
+
+==================================================
+TEST 4 — RETRIEVAL AUDIT
+==================================================
+
+For THIS executionId confirm a new retrieval_audit_events row.
+
+Required:
+
+- executionId populated
+- organisationId
+- operations_manager
+- source IDs
+- chunk IDs
+- ranking/confidence metadata where supported
+- timestamp after proposal confirmation
+
+FAIL if:
+
+- no row
+- executionId NULL
+- row belongs to an old execution
+
+If the write fails, capture the exact DB error.
+
+==================================================
+TEST 5 — OPERATIONS MANAGER OUTPUT
+==================================================
+
+Classify the output:
+
+COMPLETED REVIEW
+
+or
+
+PLAN TO PERFORM REVIEW
+
+Required content:
+
+- executive summary
+- actual findings
+- operational gaps
+- risks
+- unclear responsibilities
+- weaknesses
+- compliance concerns where supported
+- recommendations
+- prioritised actions
+- responsible roles
+- timeframes where appropriate
+- evidence citations
+- limitations / evidence gaps
+
+Reject output that merely tells someone else to:
+
+"conduct a review"
+"identify gaps"
+"develop strategies"
+
+without first doing the analysis.
+
+==================================================
+TEST 6 — QUALITY PIPELINE
+==================================================
+
+Capture:
+
+- review dimensions
+- weights
+- independently recomputed score
+- persisted quality_score
+- threshold
+- is_auto_revision
+
+Expected:
+
+0–100 scale.
+
+If score >= 70:
+no low-quality revision.
+
+==================================================
+TEST 7 — COMPLETED WORK
+==================================================
+
+Capture:
+
+- completedWorkId
+- primarySpecialist
+- title
+- currentVersionId
+- content length
+- status
+- evidence assets
+- self-review data
+- conversationId
+- taskId
+
+Expected:
+
+primarySpecialist = operations_manager
+status = awaiting_approval
+
+Content must be substantive.
+
+==================================================
+TEST 8 — AUTHENTICATED VIEWER
+==================================================
+
+Using the real UI:
+
+1. Open the new Completed Work item.
+2. Confirm full report is visible.
+3. Confirm Document tab is usable/default.
+4. Confirm Evidence tab shows source/citations.
+5. Confirm Inspector shows quality and execution information.
+6. Confirm quality score displays on 0–100 scale.
+7. Confirm Approve / Request Changes / Reject are visible.
+8. Confirm CoS direct link/reference opens the exact same completedWorkId.
+
+==================================================
+TEST 9 — APPROVAL
+==================================================
+
+Approve the disposable work.
+
+Verify:
+
+awaiting_approval
+→ approved
+
+Capture:
+
+- approvedByUserId
+- approvedAt
+- UI movement to Completed
+- duplicate approval blocked
+
+==================================================
+TEST 10 — EXPORT
+==================================================
+
+Download:
+
+- PDF
+- DOCX
+
+Verify both contain:
+
+- actual completed review
+- findings
+- recommendations
+- citations
+
+Not merely a procedural plan.
+
+==================================================
+TEST 11 — CHAT CONTINUITY
+==================================================
+
+Navigate away and back, then reload.
+
+Confirm:
+
+- same conversationId
+- original request visible
+- task proposal visible
+- user confirmation visible
+- completion message visible
+- completed work reference visible
+- no empty replacement conversation created
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return a single evidence table:
+
+Test
+Evidence level
+Expected
+Actual
+Proof status
+Failure point
+
+Then answer:
+
+1. Was Operations Manager actually dispatched?
+2. Did the execution enter UEE?
+3. Were incident-specific chunks retrieved?
+4. Was retrieval audit tied to this executionId?
+5. Did OPS perform the actual review?
+6. Was quality scoring correct?
+7. Did Completed Work reach awaiting_approval?
+8. Was full content visible?
+9. Could the user approve it?
+10. Did approval move it to Completed?
+11. Did PDF/DOCX contain the approved review?
+12. Did chat continuity survive navigation/reload?
+
+Classify remaining issues only as:
+
+CURRENT RUNTIME DEFECT
+FIXED AND LIVE-PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+UX IMPROVEMENT
+
+Do not implement fixes.
+Do not propose another sprint.
+Stop after the verification report.
