@@ -154,21 +154,19 @@ describe("PART B — Deterministic capability match", () => {
     const policyMatch = result.requestedCapabilities.find(c => c.capabilityCode === "policy.review");
     const incidentMatch = result.requestedCapabilities.find(c => c.capabilityCode === "incident.review");
 
-    console.log("\n=== B1: KEYWORD MATCH EXPLANATION ===");
+    console.log("\n=== B1: KEYWORD MATCH EXPLANATION (post-fix) ===");
     console.log("Message (lowercase) contains:");
     const msgLower = ACCEPTANCE_MESSAGE.toLowerCase();
-    console.log(`  "policy"   → ${msgLower.includes("policy") ? "YES (2pts for policy.review)": "no"}`);
-    console.log(`  "policies" → ${msgLower.includes("policies") ? "YES": "no"}`);
-    console.log(`  "review policy" → ${msgLower.includes("review policy") ? "YES (analysisPhrases +4pts)": "no"}`);
-    console.log(`  "incident" → ${msgLower.includes("incident") ? "YES (2pts for incident.review)": "no"}`);
-    console.log(`  "review incident" → ${msgLower.includes("review incident") ? "YES (+4pts analysisPhrases)": "no"}`);
-    console.log(`Both score 2pts (single keyword). maxScore=2, confidence=2/max(2,8)=0.25`);
-    console.log(`Threshold = max(2, maxScore*0.4) = max(2, 0.8) = 2. Both codes ≥ threshold.`);
-    console.log(`Deterministic confidence 0.25 < 0.70 → LLM path WILL fire (when AI_PROVIDER=openai)`);
+    console.log(`  "policy"       → ${msgLower.includes("policy") ? "yes (word present but no longer a keyword)" : "no"}`);
+    console.log(`  "policy review"→ ${msgLower.includes("policy review") ? "YES (multi-word match)" : "no — word order differs"}`);
+    console.log(`  "incident"     → ${msgLower.includes("incident") ? "YES (keyword for incident.review)" : "no"}`);
+    console.log(`Fix 1: bare "policy" removed — "Incident Management Policy" no longer triggers policy.review`);
+    console.log(`policy.review identified: ${policyMatch ? "❌ false-positive (fix failed)" : "✅ absent (fix confirmed)"}`);
+    console.log(`incident.review identified: ${incidentMatch ? "✅ present" : "no"}`);
 
-    expect(policyMatch).toBeDefined();
+    // Post-fix: policy.review must NOT be identified from a document name
+    expect(policyMatch).toBeUndefined();
     expect(incidentMatch).toBeDefined();
-    expect(policyMatch!.confidence).toBeLessThan(0.7); // confirms LLM fallback
   });
 
   it("B2: control cases — document name vs service intent", async () => {
@@ -191,22 +189,20 @@ describe("PART B — Deterministic capability match", () => {
       console.log(`    policy.review false-positive: ${hasPolicyFP ? "❌ YES" : "✅ no"}`);
     }
 
-    // All control cases except #4 should ideally NOT trigger policy.review
-    // Control 1: "Review our Incident Management Policy" — bare "policy" WILL trigger
+    // Post-fix: document reference must NOT trigger; explicit service intent MUST trigger
     const ctrl1 = await runDeterministic("Review our Incident Management Policy");
     const ctrl4 = await runDeterministic("Conduct a Policy Review");
 
-    console.log("\n=== B2: KEY FINDING ===");
+    console.log("\n=== B2: KEY FINDING (post-fix) ===");
     const ctrl1HasPolicy = ctrl1.requestedCapabilities.some(c => c.capabilityCode === "policy.review");
     const ctrl4HasPolicy = ctrl4.requestedCapabilities.some(c => c.capabilityCode === "policy.review");
-    console.log(`"Review our Incident Management Policy" triggers policy.review: ${ctrl1HasPolicy}`);
-    console.log(`"Conduct a Policy Review" triggers policy.review: ${ctrl4HasPolicy}`);
-    console.log("→ Deterministic matcher CANNOT distinguish document subject from product service.");
-    console.log("→ Bare keyword 'policy' is the false-positive source.");
+    console.log(`"Review our Incident Management Policy" triggers policy.review: ${ctrl1HasPolicy ? "❌ (fix failed)" : "✅ absent (fixed)"}`);
+    console.log(`"Conduct a Policy Review" triggers policy.review: ${ctrl4HasPolicy ? "✅ correctly matched" : "⚠️ false-negative"}`);
+    console.log("→ Fix 1: document names no longer trigger policy.review");
+    console.log("→ Explicit 'Conduct a Policy Review' still correctly matched via 'policy review' multi-word keyword");
 
-    // Defect confirmed: both doc-reference and service-intent trigger the same code
-    expect(ctrl1HasPolicy).toBe(true); // documents the defect
-    expect(ctrl4HasPolicy).toBe(true); // both trigger
+    expect(ctrl1HasPolicy).toBe(false); // FIX CONFIRMED: document name no longer false-positive
+    expect(ctrl4HasPolicy).toBe(true);  // explicit service intent still matched
   });
 });
 
@@ -604,19 +600,18 @@ describe("PART F — User-facing label", () => {
       console.log(`  ${reason.padEnd(35)} → ${label}`);
     }
 
-    // DEFECT: level_not_supported shows "Requires upgrade" — factually wrong
+    // Post-fix: level_not_supported now shows "Not supported for this request type"
     const levelNotSupportedText = buildMixedCapabilityResponse(makeMixed("level_not_supported"));
-    expect(levelNotSupportedText).toContain("**Requires upgrade:**");
+    expect(levelNotSupportedText).toContain("**Not supported for this request type:**");
+    expect(levelNotSupportedText).not.toContain("**Requires upgrade:**");
 
-    // All reason codes collapse to the same label
-    const labels = REASON_CODES.map(r => buildMixedCapabilityResponse(makeMixed(r)).includes("**Requires upgrade:**"));
-    console.log("\n→ DEFECT CONFIRMED: ALL reason codes produce '**Requires upgrade:**' label");
-    console.log("→ 'level_not_supported' should read 'Not supported for this request type'");
-    console.log("→ The label is sourced from capabilityGateService.ts line 85:");
-    console.log('→   response += `**Requires upgrade:**\\n${blocked.map(b => `- ${b}`).join("\\n")}\\n\\n`');
-    console.log("→ No switch/if on reasonCode — one template for all blocked decisions");
+    // Commercial reasons still show "Requires upgrade"
+    const packText = buildMixedCapabilityResponse(makeMixed("workforce_pack_not_included"));
+    expect(packText).toContain("**Requires upgrade:**");
 
-    expect(labels.every(v => v === true)).toBe(true); // all collapse to same label
+    console.log("\n→ FIX CONFIRMED: level_not_supported → '**Not supported for this request type:**'");
+    console.log("→ workforce_pack_not_included → '**Requires upgrade:**' (correct)");
+    console.log("→ Reason codes now produce distinct labels");
   });
 
   it("F2: structured card (buildMixedCapabilityCard) also omits reasonCode from blocked items", async () => {
@@ -628,12 +623,17 @@ describe("PART F — User-facing label", () => {
     const blocked = (card.data as any).blockedCapabilities[0];
     console.log(JSON.stringify(blocked, null, 2));
 
-    // reasonCode is not surfaced to the card — only requiredPack and upgradeOptions
+    // Post-fix: reasonCode and reasonLabel now surfaced in card
     const hasReasonCode = "reasonCode" in blocked;
+    const hasReasonLabel = "reasonLabel" in blocked;
     console.log(`Card blocked entry has reasonCode field: ${hasReasonCode}`);
-    console.log("→ Front-end has no way to distinguish level_not_supported from pack_missing");
-    console.log("→ reasonCode is stripped before the card is serialised");
-    expect(hasReasonCode).toBe(false); // confirmed: no reasonCode in card
+    console.log(`Card blocked entry has reasonLabel field: ${hasReasonLabel}`);
+    console.log(`  reasonCode  = ${blocked.reasonCode}`);
+    console.log(`  reasonLabel = ${blocked.reasonLabel}`);
+    console.log("→ FIX CONFIRMED: front-end can now distinguish level_not_supported from pack_missing");
+    expect(hasReasonCode).toBe(true);
+    expect(hasReasonLabel).toBe(true);
+    expect(blocked.reasonLabel).toBe("Not supported for this request type");
   });
 });
 

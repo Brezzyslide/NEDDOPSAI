@@ -75,4 +75,5 @@
 - [NeedsOps Sprint 29G.1 Document Identity](needsops-sprint29g1.md) — canonical_title+search_aliases cols, scoreMultiSignal, type-fallback→possible_match, approved≠isSourceEligible, 4098 tests
 - [NeedsOps Sprint 29H Routing Quality Audit Correction](needsops-sprint29h.md) — OM for incident.review, quality score 0-100 fix, cache-bypass audit root-cause, UEE guard, cosMemories manifest field, 3886 tests
 - [NeedsOps Sprint 29H.2 Action State Decision Contract](needsops-sprint29h2.md) — Part A level fix (no completedWorkId short-circuit), Part B ConversationActionDecision, Part C rerun dispatch in route handler (not conversationService — circular dep), Part D grounded metadata, Part E attribution integrity, 4157 tests
-- [NeedsOps Sprint 29H.3 Capability Gate False-Positive](needsops-sprint29h3.md) — bare "policy" keyword + LLM level bypass + misleading "Requires upgrade" label; 3 bugs, no impl; Tasks #126–128
+- [NeedsOps Sprint 29H.3 Capability Gate False-Positive](needsops-sprint29h3.md) — bare "policy" keyword + LLM level bypass + misleading "Requires upgrade" label; 3 bugs identified (investigation only)
+- [NeedsOps Sprint 29H.3 Capability Gate Fixes](needsops-sprint29h3-fixes.md) — Fix 1: multi-word keywords only; Fix 2: LLM level normalised against registry; Fix 3: reasonCode-aware gate labels; 41/41 tests pass

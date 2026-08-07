@@ -812,9 +812,12 @@ export const CAPABILITY_KEYWORD_PATTERNS: CapabilityKeywordPattern[] = [
     executionPhrases: ["create corrective", "submit corrective", "lodge corrective"],
     analysisPhrases: ["plan corrective", "review corrective"] },
   { capabilityCode: "policy.review",
-    keywords: ["policy", "policies", "procedure", "procedures", "policy review"],
+    // Fix 29H.3 Defect 1: bare "policy" / "policies" / "procedure" / "procedures" matched
+    // document names (e.g. "Incident Management Policy") — not service intent.
+    // Replaced with multi-word phrases that can only match explicit policy-review requests.
+    keywords: ["policy review", "policy audit", "policy and procedure", "policies and procedures", "procedure review"],
     executionPhrases: [],
-    analysisPhrases: ["review policy", "check policy", "assess policy", "update policy"] },
+    analysisPhrases: ["review our policy", "check our policy", "assess our policy", "conduct a policy review", "update our policy", "audit our policy"] },
   { capabilityCode: "incident.review",
     keywords: ["incident", "incidents", "near miss", "adverse event", "reportable incident"],
     executionPhrases: ["submit incident", "lodge incident", "report incident", "create incident"],

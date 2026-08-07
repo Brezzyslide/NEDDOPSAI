@@ -51,13 +51,56 @@ export function buildBlockedCapabilityResponse(decision: CapabilityAccessDecisio
   return response.trim();
 }
 
+// Fix 29H.3 Defect 3: segment blocked capabilities by reasonCode so each group
+// gets an accurate label rather than collapsing everything into "Requires upgrade".
+// Commercial reasons (pack/subscription) → "Requires upgrade"
+// Level mismatch       → "Not supported for this request type"
+// Execution entitlement → "Requires execution entitlement"
+// Explicit denial       → "Access restricted by your administrator"
+
+const COMMERCIAL_REASON_CODES = new Set([
+  "workforce_pack_not_included",
+  "subscription_inactive",
+  "capability_not_included",
+  "usage_limit_reached",
+]);
+
+const LEVEL_REASON_CODES = new Set([
+  "level_not_supported",
+]);
+
+const EXECUTION_REASON_CODES = new Set([
+  "execution_not_included",
+  "connector_not_eligible",
+]);
+
+const ADMIN_REASON_CODES = new Set([
+  "explicitly_denied",
+]);
+
+function blockedLabel(reasonCode: string): string {
+  if (LEVEL_REASON_CODES.has(reasonCode))      return "Not supported for this request type";
+  if (EXECUTION_REASON_CODES.has(reasonCode))  return "Requires execution entitlement";
+  if (ADMIN_REASON_CODES.has(reasonCode))      return "Access restricted by your administrator";
+  return "Requires upgrade"; // commercial / subscription / unknown
+}
+
+function groupBlockedByLabel(decisions: CapabilityAccessDecision[]): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const d of decisions) {
+    const label = blockedLabel(d.reasonCode);
+    const cap = getCapability(d.capabilityCode);
+    const name = cap?.displayName ?? d.capabilityCode;
+    const existing = groups.get(label) ?? [];
+    existing.push(name);
+    groups.set(label, existing);
+  }
+  return groups;
+}
+
 /** Build a polite response for a partially blocked mixed-capability request. */
 export function buildMixedCapabilityResponse(mixed: MixedCapabilityDecision): string {
   const allowed = mixed.allowedCapabilities.map(d => {
-    const cap = getCapability(d.capabilityCode);
-    return cap?.displayName ?? d.capabilityCode;
-  });
-  const blocked = mixed.blockedCapabilities.map(d => {
     const cap = getCapability(d.capabilityCode);
     return cap?.displayName ?? d.capabilityCode;
   });
@@ -69,20 +112,25 @@ export function buildMixedCapabilityResponse(mixed: MixedCapabilityDecision): st
 
   let response = "";
 
-  if (!mixed.canProceedPartially && blocked.length > 0) {
+  if (!mixed.canProceedPartially && mixed.blockedCapabilities.length > 0) {
     response += `I'm unable to proceed with that request under the current plan.\n\n`;
     response += `The following capabilities are not included:\n`;
-    response += blocked.map(b => `- ${b}`).join("\n") + "\n\n";
-  } else if (blocked.length > 0 || partial.length > 0) {
-    response += `Part of this request is available, but some components require additional access.\n\n`;
+    response += mixed.blockedCapabilities.map(d => {
+      const cap = getCapability(d.capabilityCode);
+      return `- ${cap?.displayName ?? d.capabilityCode}`;
+    }).join("\n") + "\n\n";
+  } else if (mixed.blockedCapabilities.length > 0 || partial.length > 0) {
+    response += `Part of this request is available, but some components have restrictions.\n\n`;
     if (allowed.length > 0) {
       response += `**Available now:**\n${allowed.map(a => `- ${a}`).join("\n")}\n\n`;
     }
     if (partial.length > 0) {
       response += `**Available with limitations:**\n${partial.map(p => `- ${p}`).join("\n")}\n\n`;
     }
-    if (blocked.length > 0) {
-      response += `**Requires upgrade:**\n${blocked.map(b => `- ${b}`).join("\n")}\n\n`;
+    // Group blocked by accurate reason label
+    const blockedGroups = groupBlockedByLabel(mixed.blockedCapabilities);
+    for (const [label, names] of blockedGroups) {
+      response += `**${label}:**\n${names.map(n => `- ${n}`).join("\n")}\n\n`;
     }
   }
 
@@ -93,7 +141,7 @@ export function buildMixedCapabilityResponse(mixed: MixedCapabilityDecision): st
   }
 
   if (mixed.canProceedPartially && mixed.requiresUserConfirmationForPartialWork) {
-    response += `Would you like me to continue with the parts that are available? Or I can explain the full upgrade path.`;
+    response += `Would you like me to continue with the parts that are available? Or I can explain what's needed to unlock the rest.`;
   }
 
   return response.trim();
@@ -159,6 +207,8 @@ export function buildMixedCapabilityCard(
         code: d.capabilityCode,
         name: getCapability(d.capabilityCode)?.displayName ?? d.capabilityCode,
         level: d.requestedLevel,
+        reasonCode: d.reasonCode,
+        reasonLabel: blockedLabel(d.reasonCode),
         requiredPack: d.requiredWorkforcePack ? packDisplayName(d.requiredWorkforcePack) + " Workforce Pack" : undefined,
         upgradeOptions: d.upgradeOptions,
       })),

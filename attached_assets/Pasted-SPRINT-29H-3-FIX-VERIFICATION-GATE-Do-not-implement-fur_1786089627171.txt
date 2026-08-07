@@ -1,0 +1,185 @@
+SPRINT 29H.3 — FIX VERIFICATION GATE
+
+Do not implement further changes after the current fixes are applied.
+
+Verify the three capability-gate corrections using the mandatory evidence standard.
+
+Expected fixes:
+
+1. Remove the bare "policy" false-positive from capability identification.
+2. Normalise LLM-returned requestedLevel against capabilityRegistry support before access evaluation.
+3. Render user-facing blocked reasons from reasonCode rather than always saying "Requires upgrade".
+
+Evidence levels:
+- unit test
+- mocked integration test
+- real database integration test
+- live API/runtime test
+- live authenticated UI end-to-end test
+
+Proof states:
+- PROVEN
+- PARTIALLY PROVEN
+- NOT YET PROVEN
+- BLOCKED
+
+PART A — CAPABILITY MATCH
+
+Run the exact live request:
+
+"Review our current Incident Management Policy using the latest approved evidence and produce a new Incident Management Improvement Plan."
+
+Prove:
+
+- incident.review selected
+- compliance.gap_analysis selected if genuinely required
+- compliance.evidence_review selected if genuinely required
+- policy.review NOT selected merely because the document name contains "Policy"
+
+Run controls:
+
+1. "Review our Incident Management Policy"
+2. "Review our incident management process"
+3. "Conduct a Policy Review"
+4. "Review our Policy"
+5. "Review our current Incident Management Policy and identify operational gaps"
+
+Expected:
+Only explicit Policy Review intent should select policy.review.
+
+PART B — LLM LEVEL NORMALISATION
+
+Force or simulate an LLM identification result:
+
+policy.review
+requestedLevel = execution
+
+Verify:
+
+- registry says executionAllowed=false
+- result is normalised before decideCapabilityAccess
+- supported level becomes professional_analysis or another valid supported level
+- no level_not_supported block occurs purely because the LLM chose an invalid level
+
+Also test one capability where execution is valid and confirm it is not incorrectly downgraded.
+
+PART C — USER-FACING REASON LABELS
+
+Verify mappings for:
+
+- workforce_pack_not_included
+- subscription_inactive
+- level_not_supported
+- explicitly_denied
+- execution_not_included
+- unsupported_operation
+
+Do not show "Requires upgrade" unless the reason is genuinely commercial/entitlement-related.
+
+For level_not_supported, expected wording should be equivalent to:
+"Not supported for this request type."
+
+PART D — REAL ENTITLEMENT STATE
+
+Using live mhr-holdings-2 DB prove:
+
+- compliance pack active
+- trial active
+- policy.review allowed at professional_analysis
+- incident.review allowed
+- compliance.gap_analysis allowed
+- compliance.evidence_review allowed
+
+Prove that no commercial upgrade is required for the acceptance task.
+
+PART E — LIVE AUTHENTICATED WORKFORCE CHAT
+
+Submit the exact acceptance request through the authenticated Workforce Chat.
+
+Expected:
+
+- NO mixed capability upgrade card
+- ConversationActionDecision = rerun_existing
+- shouldDispatchSpecialist = true
+- new execution starts
+- Operations Manager selected
+- UEE invoked
+
+Capture:
+
+- conversationId
+- taskId
+- specialistRunId
+- executionId
+- historical completedWorkId
+- new completedWorkId if produced
+
+PART F — EVIDENCE
+
+Verify the new OM execution retrieves:
+
+- MH&R Policy and Procedure Manual
+- incident-management-relevant chunks
+- source IDs
+- chunk IDs
+- headings
+- confidence
+- token count
+- cacheHit
+- citation references
+
+Confirm policy.review entitlement is NOT required for reading this evidence.
+
+PART G — OUTPUT
+
+Verify OPS produces:
+
+- actual findings
+- operational gaps
+- compliance risks
+- unclear responsibilities
+- recommendations
+- prioritised actions
+- responsible roles
+- evidence citations
+
+Reject plan-to-do language as a successful outcome.
+
+PART H — COMPLETED WORK
+
+Verify:
+
+- new completedWorkId created
+- appears under Awaiting Approval
+- Document tab shows full report
+- Evidence tab shows citations
+- Inspector shows OM and correct score
+- Approve / Request Changes / Reject controls appear
+
+PART I — FINAL TABLE
+
+Return:
+
+Criterion
+Evidence level
+Environment
+Real org?
+Real DB?
+Running server?
+Authenticated UI?
+Actual result
+Proof status
+Remaining gap
+
+Final verdict:
+
+PROVEN — CAPABILITY GATE FIX WORKS END TO END
+
+PARTIALLY PROVEN — CAPABILITY GATE FIX WORKS BUT DOWNSTREAM DEFECT REMAINS
+
+NOT YET PROVEN — LIVE AUTHENTICATED EXECUTION NOT RUN
+
+BLOCKED — CAPABILITY GATE OR DISPATCH STILL FAILS
+
+Do not propose the next sprint.
+Stop after verification.

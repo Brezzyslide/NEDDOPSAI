@@ -251,15 +251,33 @@ async function identifyWithLLM(
     return cap?.status === "active";
   });
 
+  // Fix 29H.3 Defect 2: LLM can freely return any requestedLevel value, bypassing the
+  // cap.executionAllowed / cap.analysisAllowed guards applied on the deterministic path.
+  // Normalise each LLM-returned level against the registry before entitlement evaluation.
+  const normalised = validated.map(c => {
+    const cap = getCapability(c.capabilityCode);
+    if (!cap) return c;
+    if (c.requestedLevel === "execution" && !cap.executionAllowed) {
+      const downgraded = cap.analysisAllowed ? "professional_analysis" : "general_information";
+      console.info(`[CapabilityIdentification] LLM returned unsupported level "execution" for "${c.capabilityCode}" (executionAllowed=false) — normalised to "${downgraded}"`);
+      return { ...c, requestedLevel: downgraded as typeof c.requestedLevel };
+    }
+    if (c.requestedLevel === "professional_analysis" && !cap.analysisAllowed) {
+      console.info(`[CapabilityIdentification] LLM returned unsupported level "professional_analysis" for "${c.capabilityCode}" (analysisAllowed=false) — normalised to "general_information"`);
+      return { ...c, requestedLevel: "general_information" as typeof c.requestedLevel };
+    }
+    return c;
+  });
+
   // Merge with deterministic: deterministic codes not in LLM result → add them if high confidence
-  const llmCodes = new Set(validated.map(c => c.capabilityCode));
+  const llmCodes = new Set(normalised.map(c => c.capabilityCode));
   for (const det of deterministicResults) {
     if (!llmCodes.has(det.capabilityCode) && det.confidence >= 0.6) {
-      validated.push(det);
+      normalised.push(det);
     }
   }
 
-  return buildResult(validated, input.message.toLowerCase(), "llm_validated", parsed.understoodIntent, parsed.ambiguous, parsed.clarificationQuestions);
+  return buildResult(normalised, input.message.toLowerCase(), "llm_validated", parsed.understoodIntent, parsed.ambiguous, parsed.clarificationQuestions);
 }
 
 function parseLLMIdentificationResponse(content: string): {
