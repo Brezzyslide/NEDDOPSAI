@@ -320,7 +320,16 @@ export async function resolveEvidence(
 
   // ── Step 1: Organisation Library evidence via hybrid retrieval ─────────────
   // hybridRetrievalService filters: status=approved, isCurrent=true, scope=org_library
-  if (workPackage.organisationLibrarySources.length > 0 || input.blueprint?.requiredLibraryKnowledge?.length) {
+  //
+  // NOTE: We always run the org-library query for every task execution.
+  // The previous conditional gate (`organisationLibrarySources.length > 0 ||
+  // requiredLibraryKnowledge.length`) silently skipped library evidence when a
+  // blueprint with an empty requiredLibraryKnowledge[] was selected, even when
+  // the user's request explicitly named a policy that existed in the library.
+  // The hybrid retrieval already applies its own approved/current/org-library
+  // filters, so running it unconditionally is safe — it returns nothing when
+  // no relevant documents exist.
+  {
     queryCount++;
     const libraryRaw = await retrieveChunks({
       organisationId,

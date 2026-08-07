@@ -147,6 +147,12 @@ export function extractDocumentSearchTerms(text: string): string[] {
     "they", "them", "who", "which",
     // common verbs that appear before suffix words but are NOT doc-name starters
     "and", "help", "please", "let", "can", "will", "need",
+    // temporal / contextual adjectives — describe a document's state, NOT its name
+    // e.g. "Review our current Incident Management Policy" → "Incident Management Policy"
+    // e.g. "Prepare a practical Incident Management Plan" → "Incident Management Plan"
+    "current", "existing", "latest", "recent", "updated", "proposed",
+    "practical", "applicable", "relevant", "key", "approved", "actual",
+    "available", "effective", "required", "specific", "particular",
   ]);
 
   // Small connector words that can appear in the middle of a doc name but not at the start

@@ -146,6 +146,33 @@ function expandSearchTerms(terms: string[]): string[] {
   return Array.from(expanded);
 }
 
+/**
+ * Generate suffix sub-phrases for each multi-word term.
+ *
+ * Protects against context adjectives that slipped into an extracted term.
+ * e.g. "current incident management policy" → also yields:
+ *   "incident management policy"   (drop first word)
+ *   "management policy"            (drop first two words — min 2-word phrases)
+ *
+ * The caller scores candidates using the ORIGINAL terms, so a document titled
+ * "Incident Management Policy" still receives a ≥0.65 confidence score even
+ * when located via the "incident management policy" sub-phrase ILIKE.
+ *
+ * Only terms with ≥3 words generate sub-phrases; 1-2 word terms are already
+ * minimal and sub-phrasing them would produce noise.
+ */
+function generateSubPhrases(terms: string[]): string[] {
+  const subPhrases: string[] = [];
+  for (const term of terms) {
+    const words = term.toLowerCase().trim().split(/\s+/);
+    // Generate suffix sub-phrases of length ≥ 2, dropping 1..N-2 leading words
+    for (let drop = 1; drop <= words.length - 2; drop++) {
+      subPhrases.push(words.slice(drop).join(" "));
+    }
+  }
+  return subPhrases;
+}
+
 // ─── Confidence scoring ───────────────────────────────────────────────────────
 
 /**
@@ -275,8 +302,15 @@ export async function checkOrganisationLibraryPresence(
   if (cached) return cached;
 
   // ── Query 1: candidate sources by ILIKE title match ───────────────────────
+  // expandedTerms: synonym-substituted variants of each search term
+  // subPhrases:    suffix sub-sequences of multi-word terms, guarding against
+  //               context adjectives that slipped into the extracted term
+  //               e.g. "current incident management policy" → also searches
+  //               "incident management policy" so the document is not missed
   const expandedTerms = expandSearchTerms(searchTerms);
-  const ilikeConditions = expandedTerms.map(t =>
+  const subPhrases    = generateSubPhrases(expandedTerms);
+  const allIlikeTerms = [...new Set([...expandedTerms, ...subPhrases])];
+  const ilikeConditions = allIlikeTerms.map(t =>
     ilike(knowledgeSourcesTable.title, `%${t}%`),
   );
 

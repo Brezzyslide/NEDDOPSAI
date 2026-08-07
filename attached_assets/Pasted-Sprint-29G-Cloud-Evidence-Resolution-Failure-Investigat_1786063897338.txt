@@ -1,0 +1,184 @@
+Sprint 29G — Cloud Evidence Resolution Failure Investigation
+
+We have reproduced a live cloud workflow failure.
+
+User request:
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify operational gaps, unclear responsibilities, weaknesses in the process and areas requiring improvement. Prepare a practical Incident Management Improvement Plan with priorities, responsible roles and recommended actions. Do not assume information that is not supported by approved organisational knowledge."
+
+Actual CoS response:
+"I understand you want to review your current Incident Management Policy and prepare an Improvement Plan. However, I couldn't find any documents related to this in your Organisation Library. To proceed effectively, could you clarify if there are specific incident types or scenarios you want the review to focus on?"
+
+This is not acceptable if Incident Management Policy evidence exists in the Organisation Library.
+
+Do not patch the response text.
+
+Trace the complete cloud evidence path and identify exactly where the policy is being missed.
+
+PART A — PROVE WHETHER THE EVIDENCE EXISTS
+
+Inspect the actual organisation library/database for the organisation used in this conversation.
+
+Search for:
+- Incident Management Policy
+- Incident Management
+- Incident
+- incident policy
+- relevant semantic matches
+
+Report:
+- source/document ID
+- title
+- status
+- approval/publishing state
+- organisationId
+- number of indexed chunks
+- chunk text samples
+- embeddings/indexing state
+- whether KRS can retrieve it directly
+- retrieval confidence/ranking
+
+We need factual proof whether the document exists and is retrievable.
+
+PART B — TRACE BOTH RETRIEVAL ROUNDS
+
+The architecture currently has two relevant evidence checks:
+
+1. CoS pre-dispatch library-presence lookup
+chiefOfStaffLLMService
+→ extractDocumentSearchTerms()
+→ checkOrganisationLibraryPresence()
+→ KnowledgeResolutionService
+
+2. Specialist execution evidence resolution
+UnifiedExecutionEngine
+→ ResourceRegistry
+→ KnowledgeResolutionService
+→ EvidencePack
+
+Trace both independently using this exact request.
+
+For each stage report:
+- search terms generated
+- organisationId
+- specialistCode if applicable
+- query passed to KRS
+- filters applied
+- similarity threshold
+- chunks returned
+- confidence scores
+- reason chunks were accepted/rejected
+
+Determine whether the failure occurs in:
+A. document-term extraction
+B. library presence lookup
+C. KRS query construction
+D. organisation scoping
+E. approval/status filtering
+F. embedding/index state
+G. similarity threshold/ranking
+H. ResourceRegistry
+I. another cause
+
+PART C — CHECK THE CoS DECISION
+
+Determine why CoS concluded:
+
+"couldn't find any documents related to this"
+
+Was that statement based on:
+- an actual zero-result KRS response,
+- LibraryPresenceResult,
+- malformed context,
+- a confidence threshold,
+- or LLM inference?
+
+The CoS must never claim evidence is absent merely because a preliminary lookup failed.
+
+Evidence absence must be a deterministic runtime fact.
+
+PART D — FIX EVIDENCE DISCOVERY
+
+The desired behaviour is:
+
+User asks for named organisational document
+→ CoS extracts resource identity
+→ approved Organisation Library searched
+→ semantic + lexical/title matching used
+→ relevant evidence located
+→ task dispatched
+→ UnifiedExecutionEngine
+→ ResourceRegistry
+→ KRS
+→ EvidencePack
+→ OPS specialist
+→ self-review grounded against EvidencePack
+→ Completed Work
+→ submitForApproval()
+→ Awaiting Approval
+→ CoS direct work reference
+
+For named organisational documents, exact/title/token matching must not be defeated by weak semantic similarity.
+
+"Incident Management Policy" should reliably find a document titled:
+"Incident Management Policy"
+
+even if embedding similarity is unexpectedly weak.
+
+Do not weaken organisation isolation or approval-state filtering.
+
+PART E — FIX CLARIFICATION BEHAVIOUR
+
+There is also a reasoning/routing defect.
+
+When required evidence cannot be resolved, clarification must address the missing resource.
+
+Bad:
+"Are there specific incident types or scenarios you want the review to focus on?"
+
+That does not solve the missing evidence.
+
+Correct behaviour should be equivalent to:
+
+"I couldn't locate the Incident Management Policy in the approved Organisation Library. Please identify or upload the policy, or tell me where it is stored."
+
+Later, when Connector P6 is available and authorised, resource planning may also use the connector according to the approved provider plan.
+
+Do NOT implement:
+missing evidence → automatically request desktop.
+
+Desktop/Connector is a first-class provider selected by user intent or an approved ResourcePlan, not an emergency fallback invented by the model.
+
+If the user explicitly says:
+"Go to my desktop and find Incident Management Policy.docx"
+
+then connector must be preferred regardless of whether similar evidence exists in Organisation Library.
+
+PART F — ACCEPTANCE TESTS
+
+Add tests proving:
+
+1. Exact document title is found.
+2. Case variation is found.
+3. Partial title is found when sufficiently specific.
+4. Semantic request finds the correct approved document.
+5. Wrong organisation's document is never returned.
+6. Unapproved/invalid library content is not treated as authoritative.
+7. CoS presence check and specialist KRS retrieval agree on document availability.
+8. EvidencePack contains the retrieved policy.
+9. Specialist prompt receives the EvidencePack.
+10. Self-review receives the same EvidencePack.
+11. Genuine missing evidence produces a resource-specific clarification.
+12. Missing evidence does NOT automatically route to desktop.
+13. Explicit "use my desktop" produces connector preference through Capability/Resource Planning.
+14. No specialist AI execution occurs outside UnifiedExecutionEngine.
+
+Do not change connector architecture in this fix.
+This is a CLOUD evidence-resolution defect.
+
+Return:
+1. root cause,
+2. exact files/functions involved,
+3. before/after retrieval trace,
+4. changes made,
+5. regression results,
+6. whether this exact Incident Management Policy task now reaches specialist execution with real EvidencePack content.
