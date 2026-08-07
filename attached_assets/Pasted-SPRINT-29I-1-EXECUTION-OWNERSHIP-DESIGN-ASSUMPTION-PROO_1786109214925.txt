@@ -1,0 +1,373 @@
+SPRINT 29I.1 — EXECUTION OWNERSHIP DESIGN ASSUMPTION PROOF GATE
+
+TEST ONLY. NO IMPLEMENTATION.
+
+The Sprint 29I design proposes:
+
+CoS-selected specialist is authoritative.
+task_execution_plans.plan_data.primarySpecialist is the source of truth when taskId exists.
+Blueprint primarySpecialist is fallback only when there is genuinely no CoS task/plan.
+
+Before implementing, prove that the proposed source-of-truth and fallback rules are safe against the real database and all production callers.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+Classify every result as:
+
+1. Unit
+2. Mocked integration
+3. Real database integration
+4. Live API/runtime
+5. Live authenticated UI E2E
+
+Label each:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+No implementation in this gate.
+
+==================================================
+TEST A — PLAN DATA RELIABILITY
+==================================================
+
+Using real production-shaped task records, inspect task_execution_plans.
+
+For every task created by the Chief of Staff in the current organisation, report:
+
+taskId
+planId
+plan status/version
+createdAt
+updatedAt
+plan_data.primarySpecialist
+blueprintCode
+task_specialists executor
+completed_work.primarySpecialist where execution occurred
+
+Answer:
+
+1. Is plan_data.primarySpecialist always present?
+2. Is it always a valid specialist code?
+3. Can a task have multiple execution plans?
+4. If multiple plans exist, which one is authoritative?
+5. Is there an active/current marker?
+6. Can an old/superseded plan accidentally be selected?
+7. Does task_specialists agree with plan_data.primarySpecialist?
+8. Are there existing tasks where they disagree?
+
+Do not assume one row per task.
+
+==================================================
+TEST B — EXACT LIVE INCIDENT TASK
+==================================================
+
+Anchor to the task that produced:
+
+completedWorkId:
+7fb5dea0-966b-4555-bc7e-9fc21d6b7508
+
+Show:
+
+taskId
+all task_execution_plans rows
+plan_data.primarySpecialist
+task_specialists rows
+blueprint.primarySpecialist
+manifest.primarySpecialist
+completed_work.primarySpecialist
+
+Prove that selecting the correct plan row would have produced:
+
+operations_manager
+
+==================================================
+TEST C — ALL PRODUCTION TASK CREATION PATHS
+==================================================
+
+Trace every production path that can create a task which eventually reaches executeTask.
+
+For each path report whether it creates:
+
+taskId
+task_execution_plan
+plan_data.primarySpecialist
+task_specialists
+blueprintCode
+
+Classify each caller:
+
+CoS-planned task
+manual task
+approval-created task
+direct blueprint execution
+scheduled/workflow task if implemented
+recovered/orphan execution
+clarification resume
+
+The ownership rule must cover all actual task origins.
+
+==================================================
+TEST D — MISSING PLAN BEHAVIOUR
+==================================================
+
+Determine whether any real taskId exists without a task_execution_plan.
+
+Use real DB evidence.
+
+Then evaluate the proposed fallback rule.
+
+Required architectural decision to test:
+
+IF taskId exists
+AND task originated through CoS/task orchestration
+AND authoritative execution plan is missing or malformed
+
+Expected:
+FAIL CLOSED with structured outcome such as:
+
+execution_plan_missing
+or
+execution_plan_invalid
+
+CoS may then re-plan.
+
+DO NOT silently fall back to blueprint.primarySpecialist.
+
+Blueprint fallback should apply only when the execution genuinely originates from a direct blueprint invocation without a CoS task/plan.
+
+Prove whether this distinction can be made reliably from the current ExecutionRequest/trigger metadata.
+
+==================================================
+TEST E — PLAN SPECIALIST VALIDATION
+==================================================
+
+Test real catalogue states:
+
+chief_of_staff
+operations_manager
+executive_assistant
+incident_safeguarding_specialist
+knowledge_documentation_specialist
+policy_governance_specialist
+
+For each capture:
+
+executionStatus
+isActive
+isArchived
+comingSoon
+DNA readiness
+deprecated state
+
+Verify the proposed readiness helper checks ALL relevant readiness dimensions.
+
+Do not rely solely on executionStatus if readiness can also be represented by:
+
+comingSoon
+isActive
+isArchived
+DNA state
+deprecated flag
+
+Determine whether one canonical production-readiness service already exists.
+
+If one exists, the engine should call that shared validator rather than duplicating another Set of statuses.
+
+==================================================
+TEST F — EXISTING ELIGIBILITY SERVICE REUSE
+==================================================
+
+Inspect:
+
+checkSpecialistEligibility
+validateSpecialistEligibilitySync
+workforce registry readiness helpers
+executeConversation guard
+
+Determine whether Sprint 29I should:
+
+A. reuse an existing canonical readiness validator
+or
+B. introduce a new helper
+
+Prefer one readiness authority.
+
+Do not create:
+
+conversation readiness logic
+task readiness logic
+planning readiness logic
+
+that can drift independently.
+
+Return the recommended single service/function.
+
+==================================================
+TEST G — BLUEPRINT FALLBACK SAFETY
+==================================================
+
+Enumerate every published blueprint.
+
+For each show:
+
+blueprintCode
+primarySpecialist
+specialist readiness
+whether direct execution route can invoke it today
+
+Then simulate direct blueprint execution.
+
+Expected:
+
+available blueprint specialist
+→ allowed
+
+dna_pending / coming_soon / archived / deprecated specialist
+→ specialist_not_ready
+
+No AI call.
+No evidence retrieval.
+No Completed Work.
+
+==================================================
+TEST H — TASKID THREADING
+==================================================
+
+Trace taskId from:
+
+executionCoordinatorService
+→ workExecutionPipelineService
+→ ExecutionRequest
+→ unifiedExecutionEngine.executeTask
+
+Prove adding taskId is sufficient to locate the authoritative plan.
+
+Check:
+
+clarification resume
+orphan recovery
+approval resume
+background dispatch
+
+Make sure taskId remains available in all of these flows.
+
+==================================================
+TEST I — PLAN MUTATION / VERSIONING
+==================================================
+
+Determine what happens if:
+
+CoS initially selects specialist A
+then task is modified
+then CoS re-plans to specialist B
+
+Which plan should execute?
+
+Prove the engine can deterministically select the latest approved/current plan.
+
+Do not use:
+
+ORDER BY created_at DESC LIMIT 1
+
+unless that is actually the defined lifecycle rule.
+
+If plan version/status semantics exist, use them.
+
+==================================================
+TEST J — KRS AUDIT SEMANTICS
+==================================================
+
+Before adding the proposed audit hook, confirm expected audit cardinality.
+
+Question:
+
+Should there be:
+
+one retrieval audit row per physical retrieval
+
+or
+
+one retrieval audit record per execution, including cache-hit metadata?
+
+The current design proposes:
+
+cache miss → audit row
+cache hit → no row
+
+Assess whether this leaves an execution with no retrieval provenance if it reuses cached evidence.
+
+Since EvidencePack cache is keyed by executionId, demonstrate when a cache hit can occur in production.
+
+Recommend the semantics but do not implement.
+
+==================================================
+TEST K — SELF-REVIEW THREADING
+==================================================
+
+Run a focused mocked/live-runtime trace confirming:
+
+EvidencePack object available in executeTask
+ReviewContext accepts EvidencePack
+reviewEvidenceCitationGrounding consumes the same fields produced by KRS
+no incompatible EvidencePack variant exists
+no second retrieval is triggered
+
+Prove the one-field change is genuinely sufficient.
+
+==================================================
+TEST L — BACKWARD COMPATIBILITY
+==================================================
+
+Test the proposed ownership resolution against:
+
+care_plan
+project_plan
+executive_brief
+meeting_minutes
+incident_investigation
+operational_procedure
+policy_draft
+
+For each compare:
+
+current CoS-selected specialist
+current blueprint specialist
+proposed resolved specialist
+readiness outcome
+
+Explicitly identify any workflow whose runtime behaviour WOULD change.
+
+Do not state “no currently-working path changes” unless proven against real/current task data.
+
+==================================================
+FINAL DECISION
+==================================================
+
+Return:
+
+1. Is task_execution_plans.plan_data.primarySpecialist reliable enough to be authoritative?
+2. How is the current plan selected when multiple plan rows exist?
+3. Should taskId + missing plan fail closed or use blueprint fallback?
+4. What is the single canonical readiness validator?
+5. Are all task execution callers able to thread taskId?
+6. Is blueprint fallback safe for direct execution?
+7. What should retrieval-audit cache-hit semantics be?
+8. Is the one-field EvidencePack self-review fix sufficient?
+9. Which existing workflows change behaviour?
+10. Does the Sprint 29I implementation plan require modification before coding?
+
+Final verdict:
+
+SAFE TO IMPLEMENT AS DESIGNED
+
+SAFE TO IMPLEMENT WITH SPECIFIED CHANGES
+
+NOT SAFE TO IMPLEMENT YET
+
+Do not implement.
+Stop after verification.
