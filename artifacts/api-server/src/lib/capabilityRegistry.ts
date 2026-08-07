@@ -394,13 +394,15 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
   {
     code: "incident.review",
     displayName: "Incident Review",
-    description: "Investigate, document, and analyse incidents and near-misses",
+    description: "Investigate, document, and analyse incidents and near-misses. Until incident_safeguarding_specialist is approved for production, routed to operations_manager.",
     category: "incident", packCode: "compliance",
-    eligibleRoles: ["compliance_quality_manager", "incident_safeguarding_specialist"],
-    requiredWorkerProfiles: ["compliance_auditor"], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    // Sprint 29H Part B: operations_manager is the approved production specialist for incident
+    // management operational review until incident_safeguarding_specialist completes DNA design.
+    eligibleRoles: ["operations_manager", "compliance_quality_manager", "incident_safeguarding_specialist"],
+    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
     defaultRiskLevel: "critical", defaultApprovalRequired: true,
     informationAllowed: true, analysisAllowed: true, executionAllowed: true,
-    status: "active", version: "1.0", effectiveDate: "2025-01-01",
+    status: "active", version: "1.1", effectiveDate: "2026-08-07",
   },
   {
     code: "restrictive_practice.review",

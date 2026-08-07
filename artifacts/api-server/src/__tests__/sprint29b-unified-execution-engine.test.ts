@@ -584,7 +584,10 @@ describe("UnifiedExecutionEngine — conversation execution", () => {
     });
     if (result.trigger !== "conversation") return;
     expect(result.runResult.status).toBe("blocked");
-    expect(result.runResult.summary).toContain("not yet activated");
+    // Sprint 29H Part H: UEE architectural guard now intercepts before intelligence check.
+    // Previous message was "not yet activated" (from ACTIVE_SPECIALISTS check in eligibility
+    // service). Guard now fires first with a clearer "cannot execute production work" message.
+    expect(result.runResult.summary).toMatch(/cannot execute production work|not yet activated|blocked/i);
   });
 
   it("returns deterministic result when AI_PROVIDER is not openai", async () => {

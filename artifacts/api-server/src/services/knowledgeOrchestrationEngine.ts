@@ -551,8 +551,37 @@ async function writeRetrievalAudit(params: {
     });
 
     return id;
-  } catch {
-    // Audit failure MUST NOT block execution
+  } catch (err) {
+    // Audit failure MUST NOT block execution — but must be observable.
+    // Sprint 29H Part F: capture structured error metadata in non-production
+    // environments so the exact insert failure can be diagnosed.
+    // Never log raw chunk content, prompt text, or sensitive evidence.
+    if (process.env.NODE_ENV !== 'production') {
+      const meta: Record<string, unknown> = {
+        source:              'writeRetrievalAudit',
+        executionIdPresent:  params.executionId !== null,
+        specialistId:        params.specialistId,
+        // Partial UUID only — never log full organisationId in diagnostic output
+        organisationIdPrefix: params.organisationId.slice(0, 8) + '…',
+        allItemsCount:       params.allItems.length,
+        chunkItemsCount:     params.allItems.filter(i => i.item.chunkId !== null).length,
+      };
+      if (err instanceof Error) {
+        meta.errorMessage    = err.message;
+        // PostgreSQL error fields (populated when err originates from pg driver)
+        meta.pgCode          = (err as any).code;        // e.g. "23502" NOT NULL violation
+        meta.pgDetail        = (err as any).detail;      // constraint detail string
+        meta.pgConstraint    = (err as any).constraint;  // constraint name
+        meta.pgTable         = (err as any).table;       // table name
+        meta.pgColumn        = (err as any).column;      // column name if available
+        meta.pgSchema        = (err as any).schema;      // schema name if available
+        meta.pgDataType      = (err as any).dataType;    // data type if available
+      }
+      console.error(
+        '[retrieval-audit][SPRINT-29H] INSERT FAILED (non-blocking):',
+        JSON.stringify(meta),
+      );
+    }
     return null;
   }
 }

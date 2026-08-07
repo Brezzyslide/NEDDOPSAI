@@ -48,6 +48,67 @@ export const REVIEW_DIMENSIONS = [
 
 export type ReviewDimensionName = (typeof REVIEW_DIMENSIONS)[number];
 
+// ─── Plan-language detection (Sprint 29H Part C) ─────────────────────────────
+
+/**
+ * Output types that require COMPLETED analysis — not a plan for how to do analysis.
+ * When a blueprint specifies one of these types, plan-to-do language is invalid
+ * and triggers a completeness deduction.
+ */
+const COMPLETED_ANALYSIS_OUTPUT_TYPES = new Set([
+  "investigation_report",
+  "gap_analysis",
+  "compliance_review",
+  "analysis",
+  "review",
+  "incident_review",
+  "policy_review",
+  "operational_procedure",   // must be the procedure itself, not a plan to write it
+]);
+
+/**
+ * Phrases that indicate the specialist is describing a plan to do the work,
+ * rather than having already performed it. Each matched pattern triggers a deduction
+ * when the blueprint output type requires completed analysis.
+ *
+ * Acceptable AFTER completed findings: "Step 4: Conduct stakeholder review [following
+ * the above findings]" — but NOT as the primary deliverable.
+ */
+const PLAN_LANGUAGE_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /\bconduct\s+a\s+(thorough\s+)?review\b/i,                  label: '"Conduct a review" — work must be performed, not planned' },
+  { pattern: /\bcarry\s+out\s+a\s+review\b/i,                            label: '"Carry out a review" — work must be performed, not planned' },
+  { pattern: /\bperform\s+a\s+(full\s+)?review\b/i,                      label: '"Perform a review" — review must already be done in output' },
+  { pattern: /\bidentif(y|ies)\s+(all\s+)?(operational\s+)?gaps\b/i,     label: '"Identify gaps" — gaps must already be identified in output' },
+  { pattern: /\bdevelops?\s+(targeted\s+)?strategies\b/i,                label: '"Develop strategies" — strategies must be present in output' },
+  { pattern: /\bengages?\s+stakeholders\s+(to\s+gather|for\s+feedback)\b/i, label: '"Engage stakeholders" — engagement plan is not a completed review' },
+  { pattern: /\bconduct\s+stakeholder\s+consultation\b/i,                label: '"Conduct stakeholder consultation" — plan-to-do phrase' },
+  { pattern: /\bconduct\s+a\s+gap\s+analysis\b/i,                       label: '"Conduct a gap analysis" — analysis must already be in output' },
+  { pattern: /\bconduct\s+a\s+(comprehensive\s+)?assessment\b/i,         label: '"Conduct an assessment" — assessment must already be in output' },
+];
+
+/**
+ * Detects plan-to-do language when the output type requires completed analysis.
+ * Returns whether the check applies and which patterns were detected.
+ */
+function detectPlanLanguage(
+  content: string,
+  blueprint: WorkBlueprint | null,
+): { requiresCompletedAnalysis: boolean; detectedPatterns: string[] } {
+  const requiresCompletedAnalysis =
+    blueprint?.outputTypes != null &&
+    blueprint.outputTypes.some(t => COMPLETED_ANALYSIS_OUTPUT_TYPES.has(t));
+
+  if (!requiresCompletedAnalysis) {
+    return { requiresCompletedAnalysis: false, detectedPatterns: [] };
+  }
+
+  const detectedPatterns = PLAN_LANGUAGE_PATTERNS
+    .filter(({ pattern }) => pattern.test(content))
+    .map(({ label }) => label);
+
+  return { requiresCompletedAnalysis, detectedPatterns };
+}
+
 // Default weights (sum to 100)
 const DIMENSION_WEIGHTS: Record<ReviewDimensionName, number> = {
   instruction_adherence:       15,
@@ -426,6 +487,26 @@ function reviewCompleteness(content: string, blueprint: WorkBlueprint | null): D
 
   if (blueprint?.successCriteria && blueprint.successCriteria.length > 0) {
     evidence.push(`Blueprint success criteria count: ${blueprint.successCriteria.length}`);
+  }
+
+  // ── Plan-language detection (Sprint 29H Part C) ───────────────────────────
+  // For output types that require completed analysis, detect "plan-to-do" phrases.
+  // These phrases indicate the specialist described how to do the work rather than
+  // having performed it — e.g. "Conduct a review" instead of presenting findings.
+  const { requiresCompletedAnalysis, detectedPatterns } = detectPlanLanguage(content, blueprint);
+  if (requiresCompletedAnalysis) {
+    if (detectedPatterns.length > 0) {
+      const deduction = Math.min(4, detectedPatterns.length);
+      score -= deduction;
+      detectedPatterns.forEach(p => evidence.push(`Plan-language detected: ${p}`));
+      suggestions.push(
+        `Output contains ${detectedPatterns.length} plan-to-do phrase(s). ` +
+        `The specialist must perform the analysis and present findings — not instruct another person to do it.`,
+      );
+      evidence.push(`Deduction -${deduction}: plan-to-do language in completed-analysis output type`);
+    } else {
+      evidence.push("Plan-language check: no plan-to-do phrases detected ✓");
+    }
   }
 
   score = Math.max(0, Math.min(10, score));
@@ -908,8 +989,12 @@ function computeWeightedScore(
 
   for (const dim of dimensions) {
     const weight = getWeight(dim.dimension, blueprint);
+    // dim.score is 0–10. Multiply by 10 to convert to 0–100 range per dimension,
+    // then divide by sum of weights (not sum of weights×10) to produce a 0–100 result.
+    // Sprint 29H Part D: previous formula had `totalWeight += weight * 10` which
+    // cancelled the ×10 and produced a 0–10 result, making QUALITY_THRESHOLD=70 unreachable.
     weightedSum += dim.score * 10 * weight;
-    totalWeight += weight * 10;
+    totalWeight += weight;   // FIX: was `weight * 10`; result is now 0–100 scale
   }
 
   if (totalWeight === 0) return 70;

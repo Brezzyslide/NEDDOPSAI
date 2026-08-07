@@ -73,3 +73,4 @@
 - [NeedsOps Sprint 29G Cloud Evidence Resolution](needsops-sprint29g.md) — "current" missing from GENERIC→bad ILIKE; sub-phrase expansion; KRS gate removed; CoS Not-found rule tightened; 4078 tests
 - [NeedsOps Sprint 122-123 Completed Work Lifecycle](needsops-sprint122-123.md) — submitForApproval must be called after createDraft; postCompletedWorkCreatedToConversation now 8 args; simulation+source-contract test strategy; 4036 tests
 - [NeedsOps Sprint 29G.1 Document Identity](needsops-sprint29g1.md) — canonical_title+search_aliases cols, scoreMultiSignal, type-fallback→possible_match, approved≠isSourceEligible, 4098 tests
+- [NeedsOps Sprint 29H Routing Quality Audit Correction](needsops-sprint29h.md) — OM for incident.review, quality score 0-100 fix, cache-bypass audit root-cause, UEE guard, cosMemories manifest field, 3886 tests

@@ -11,9 +11,12 @@ import {
   SPECIALISTS,
   CAPABILITIES,
   getSpecialistsByCapability,
+  getSpecialistByCode,
   resolveAlias,
   type RegistrySpecialist,
 } from "../lib/workforceRegistry.js";
+// Sprint 29H Part A: canonical capability registry for eligibility-aware routing
+import { getCapability } from "../lib/capabilityRegistry.js";
 import type { ApprovalType } from "@workspace/shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,44 +52,49 @@ interface RouteRule {
   weight: number;
 }
 
+// Sprint 29H Part A: ROUTING_RULES now use canonical capability codes (dot-format)
+// from capabilityRegistry.ts. Legacy snake_case codes (review_incident, review_policy, …)
+// are replaced with their canonical equivalents so selectSpecialists() can use
+// capabilityRegistry.eligibleRoles for eligibility-aware selection.
 const ROUTING_RULES: RouteRule[] = [
   // Compliance
-  { keywords: ["compliance", "audit", "ndis", "regulatory", "regulation"], capabilities: ["audit_preparation", "review_policy"], weight: 10 },
-  { keywords: ["policy", "policies"], capabilities: ["review_policy", "draft_policy"], weight: 9 },
-  { keywords: ["incident", "accident", "injury", "near miss", "safeguard"], capabilities: ["review_incident", "corrective_action"], weight: 10 },
-  { keywords: ["restrictive practice", "restrictive", "behaviour support", "bsp"], capabilities: ["restrictive_practice_review"], weight: 10 },
-  { keywords: ["quality", "standard", "benchmark"], capabilities: ["quality_review"], weight: 8 },
-  { keywords: ["corrective action", "improvement", "non-conformance"], capabilities: ["corrective_action"], weight: 9 },
+  { keywords: ["compliance", "audit", "ndis", "regulatory", "regulation"], capabilities: ["compliance.audit_readiness", "policy.review"], weight: 10 },
+  { keywords: ["policy", "policies"], capabilities: ["policy.review", "documents.draft"], weight: 9 },
+  { keywords: ["incident", "accident", "injury", "near miss", "safeguard", "safety incident"], capabilities: ["incident.review", "compliance.corrective_actions"], weight: 10 },
+  { keywords: ["restrictive practice", "restrictive", "behaviour support", "bsp"], capabilities: ["restrictive_practice.review"], weight: 10 },
+  { keywords: ["quality", "standard", "benchmark", "practice standard"], capabilities: ["quality.practice_standard_review"], weight: 8 },
+  { keywords: ["corrective action", "improvement", "non-conformance", "non-compliance"], capabilities: ["compliance.corrective_actions"], weight: 9 },
+  { keywords: ["gap analysis", "gap", "gaps"], capabilities: ["compliance.gap_analysis", "incident.review"], weight: 9 },
   // Operations
-  { keywords: ["roster", "shift", "schedule", "scheduling", "staff allocation"], capabilities: ["review_roster"], weight: 9 },
-  { keywords: ["workflow", "process", "procedure", "sop"], capabilities: ["create_workflow"], weight: 8 },
-  { keywords: ["capacity", "resource", "staffing level", "headcount"], capabilities: ["capacity_analysis"], weight: 8 },
-  { keywords: ["service delivery", "participant", "support coordination"], capabilities: ["service_delivery_review"], weight: 8 },
-  { keywords: ["asset", "equipment", "vehicle", "property", "maintenance"], capabilities: ["asset_management"], weight: 7 },
+  { keywords: ["roster", "shift", "schedule", "scheduling", "staff allocation"], capabilities: ["roster.review"], weight: 9 },
+  { keywords: ["workflow", "process", "procedure", "sop"], capabilities: ["operations.workflow_review"], weight: 8 },
+  { keywords: ["capacity", "resource", "staffing level", "headcount"], capabilities: ["operations.capacity_analysis"], weight: 8 },
+  { keywords: ["service delivery", "participant", "support coordination"], capabilities: ["service_delivery.review"], weight: 8 },
+  { keywords: ["asset", "equipment", "vehicle", "property", "maintenance"], capabilities: ["asset.review"], weight: 7 },
   // Finance
-  { keywords: ["invoice", "invoicing", "claim", "billing"], capabilities: ["review_invoice"], weight: 9 },
-  { keywords: ["payroll", "pay run", "wages", "salary", "award"], capabilities: ["payroll_review"], weight: 9 },
-  { keywords: ["budget", "spending", "expenditure", "variance"], capabilities: ["budget_summary"], weight: 8 },
-  { keywords: ["financial report", "financial statement", "p&l", "profit", "loss"], capabilities: ["financial_reporting"], weight: 8 },
-  { keywords: ["accounts", "reconciliation", "bank", "reconcile"], capabilities: ["accounts_reconciliation"], weight: 7 },
+  { keywords: ["invoice", "invoicing", "claim", "billing"], capabilities: ["finance.invoice_review"], weight: 9 },
+  { keywords: ["payroll", "pay run", "wages", "salary", "award"], capabilities: ["payroll.review"], weight: 9 },
+  { keywords: ["budget", "spending", "expenditure", "variance"], capabilities: ["finance.budget_analysis"], weight: 8 },
+  { keywords: ["financial report", "financial statement", "p&l", "profit", "loss"], capabilities: ["finance.financial_reporting"], weight: 8 },
+  { keywords: ["accounts", "reconciliation", "bank", "reconcile"], capabilities: ["accounting.reconciliation"], weight: 7 },
   // HR
-  { keywords: ["recruit", "hiring", "job ad", "candidate", "interview"], capabilities: ["recruitment_support"], weight: 9 },
-  { keywords: ["performance review", "performance", "kpi", "goal setting"], capabilities: ["performance_review"], weight: 8 },
-  { keywords: ["training", "learning", "development", "certification", "cpd"], capabilities: ["learning_coordination"], weight: 8 },
-  { keywords: ["worker screening", "wwcc", "police check", "credential", "clearance"], capabilities: ["staff_compliance_check"], weight: 9 },
-  { keywords: ["hr policy", "leave", "workplace", "employee relations"], capabilities: ["hr_policy_review"], weight: 7 },
+  { keywords: ["recruit", "hiring", "job ad", "candidate", "interview"], capabilities: ["hr.recruitment"], weight: 9 },
+  { keywords: ["performance review", "performance", "kpi", "goal setting"], capabilities: ["hr.performance"], weight: 8 },
+  { keywords: ["training", "learning", "development", "certification", "cpd"], capabilities: ["learning.training_gap_analysis"], weight: 8 },
+  { keywords: ["worker screening", "wwcc", "police check", "credential", "clearance"], capabilities: ["staff_compliance.qualification_review"], weight: 9 },
+  { keywords: ["hr policy", "leave", "workplace", "employee relations"], capabilities: ["policy.review"], weight: 7 },
   // Marketing
-  { keywords: ["campaign", "marketing campaign", "promotion"], capabilities: ["campaign_planning"], weight: 8 },
-  { keywords: ["content", "blog", "article", "copy"], capabilities: ["content_strategy"], weight: 7 },
-  { keywords: ["brand", "branding", "logo", "identity"], capabilities: ["brand_management"], weight: 7 },
-  { keywords: ["social media", "facebook", "instagram", "linkedin", "twitter"], capabilities: ["social_media"], weight: 8 },
-  { keywords: ["marketing report", "roi", "analytics"], capabilities: ["marketing_reporting"], weight: 6 },
+  { keywords: ["campaign", "marketing campaign", "promotion"], capabilities: ["marketing.campaign_planning"], weight: 8 },
+  { keywords: ["content", "blog", "article", "copy"], capabilities: ["marketing.content_strategy"], weight: 7 },
+  { keywords: ["brand", "branding", "logo", "identity"], capabilities: ["marketing.brand_management"], weight: 7 },
+  { keywords: ["social media", "facebook", "instagram", "linkedin", "twitter"], capabilities: ["marketing.content_strategy"], weight: 8 },
+  { keywords: ["marketing report", "roi", "analytics"], capabilities: ["reporting.marketing"], weight: 6 },
   // Generic
-  { keywords: ["document", "report", "draft", "write", "template"], capabilities: ["draft_document"], weight: 5 },
-  { keywords: ["research", "analyse", "analysis", "investigate", "find out"], capabilities: ["research"], weight: 5 },
-  { keywords: ["email", "letter", "message", "communicate", "notify"], capabilities: ["draft_communication"], weight: 5 },
-  { keywords: ["meeting", "appointment", "calendar", "book"], capabilities: ["manage_calendar", "schedule_meeting"], weight: 5 },
-  { keywords: ["summarise", "summary", "overview", "brief"], capabilities: ["summarise"], weight: 4 },
+  { keywords: ["document", "report", "draft", "write", "template"], capabilities: ["documents.draft"], weight: 5 },
+  { keywords: ["research", "analyse", "analysis", "investigate", "find out"], capabilities: ["research.general"], weight: 5 },
+  { keywords: ["email", "letter", "message", "communicate", "notify"], capabilities: ["communications.draft"], weight: 5 },
+  { keywords: ["meeting", "appointment", "calendar", "book"], capabilities: ["calendar.management", "calendar.propose_times"], weight: 5 },
+  { keywords: ["summarise", "summary", "overview", "brief"], capabilities: ["communications.summarise"], weight: 4 },
 ];
 
 // ─── Alias resolution ─────────────────────────────────────────────────────────
@@ -130,30 +138,57 @@ function classifyIntent(text: string): IntentScore[] {
     .sort((a, b) => b.score - a.score);
 }
 
+// Sprint 29H Part A: statuses that are permanently blocked from dispatch.
+// A specialist with any of these statuses must never enter UnifiedExecutionEngine.
+const BLOCKED_EXECUTION_STATUSES = new Set([
+  "deprecated",
+  "dna_pending",
+  "archived",
+  "coming_soon",
+]);
+
 // ─── Specialist selection ─────────────────────────────────────────────────────
 
+/**
+ * Sprint 29H Part A: Eligibility-aware specialist selection.
+ *
+ * Uses the canonical capabilityRegistry.eligibleRoles list (not the legacy
+ * workforce registry capability codes) to resolve which specialists can handle
+ * each capability. Applies status filtering at selection time — dna_pending,
+ * coming_soon, archived, and deprecated specialists are never selected.
+ *
+ * Full async eligibility enforcement (pack entitlements, org access, worker
+ * profiles) remains in chiefOfStaffOrchestrator.checkSpecialistEligibility().
+ */
 function selectSpecialists(intentScores: IntentScore[]): RegistrySpecialist[] {
   const seen = new Set<string>();
   const selected: RegistrySpecialist[] = [];
 
   for (const { capabilityCode } of intentScores.slice(0, 5)) {
-    const specialists = getSpecialistsByCapability(capabilityCode)
-      .filter(s => s.executionStatus === "available" || s.executionStatus === "beta");
-      // Sprint 11: Full async eligibility enforcement happens in chiefOfStaffOrchestrator.
-      // planTask() uses the workforce registry for intent routing only.
-      // Deprecated role codes are resolved via resolveSpecialistAlias before dispatch.
+    // Use canonical registry to get the eligibleRoles for this capability.
+    const cap = getCapability(capabilityCode);
+    if (!cap) {
+      // Capability not in canonical registry — skip (legacy code no longer accepted)
+      continue;
+    }
 
-    for (const s of specialists) {
-      // Resolve alias: if this role has been deprecated, route to its replacement
-      const resolvedCode = resolveSpecialistAlias(s.code);
-      if (!seen.has(resolvedCode) && selected.length < 4) {
-        seen.add(resolvedCode);
-        // Use the resolved specialist if different, otherwise use original
-        const resolvedSpecialist = resolvedCode !== s.code
-          ? (SPECIALISTS.find(sp => sp.code === resolvedCode) ?? s)
-          : s;
-        selected.push(resolvedSpecialist);
-      }
+    const eligibleRoles = cap.eligibleRoles ?? [];
+    for (const roleCode of eligibleRoles) {
+      // Resolve any deprecated alias first
+      const resolvedCode = resolveSpecialistAlias(roleCode);
+      if (seen.has(resolvedCode) || selected.length >= 4) continue;
+
+      const specialist = getSpecialistByCode(resolvedCode)
+        ?? SPECIALISTS.find(sp => sp.code === resolvedCode);
+      if (!specialist) continue;
+
+      // Sprint 29H Part A: Hard status gate — blocked statuses must never be dispatched.
+      // This enforces the same boundary as UnifiedExecutionEngine's architectural guard
+      // at the planning stage so dna_pending specialists are excluded from task plans.
+      if (BLOCKED_EXECUTION_STATUSES.has(specialist.executionStatus)) continue;
+
+      seen.add(resolvedCode);
+      selected.push(specialist);
     }
   }
 
@@ -194,9 +229,14 @@ export function planTask(taskTitle: string, taskDescription?: string): TaskPlan 
   const hasSpecialists = selectedSpecialists.length > 0;
   const cos = SPECIALISTS.find(s => s.code === "chief_of_staff")!;
 
-  const allAssigned = hasSpecialists
-    ? [cos, ...selectedSpecialists]
-    : [cos];
+  // Deduplicate: cos is always added first; selectSpecialists may also return it
+  // if it is eligible for a matched capability (e.g. resource.locate).
+  const _seenAssigned = new Set<string>();
+  const allAssigned = [cos, ...selectedSpecialists].filter(s => {
+    if (_seenAssigned.has(s.code)) return false;
+    _seenAssigned.add(s.code);
+    return true;
+  });
 
   const approvalType = determineApprovalType(selectedSpecialists);
   const requiresApproval = approvalType !== "no_approval";

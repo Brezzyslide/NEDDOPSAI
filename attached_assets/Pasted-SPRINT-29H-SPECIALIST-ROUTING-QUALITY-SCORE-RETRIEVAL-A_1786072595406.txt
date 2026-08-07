@@ -1,0 +1,318 @@
+SPRINT 29H — SPECIALIST ROUTING, QUALITY SCORE & RETRIEVAL AUDIT CORRECTION
+
+Proceed with implementation based on the completed runtime proof gate.
+
+Do not introduce new specialists.
+
+Only Chief of Staff, Operations Manager and Executive Assistant are currently approved for production execution.
+
+The incident_safeguarding_specialist, knowledge_documentation_specialist and policy_governance_specialist remain dna_pending / coming_soon and must not execute production work.
+
+==================================================
+A — REMOVE LEGACY SPECIALIST DISPATCH BYPASS
+==================================================
+
+The live CoS path currently uses:
+
+chiefOfStaffService.selectSpecialists()
+→ getSpecialistsByCapability()
+
+This bypasses:
+
+capabilityIdentificationService
+checkSpecialistEligibility
+ACTIVE_SPECIALISTS
+DNA readiness gates
+
+Replace or route this live selection path through the canonical eligibility service.
+
+Do not create another selector.
+
+All specialist dispatch must apply:
+
+- active status
+- not archived
+- not coming soon
+- DNA approved/ready
+- capability recognised
+- role approved for production
+- organisation access
+- requested execution level
+
+Add an architectural guard:
+
+No dna_pending or coming_soon specialist may be dispatched into UnifiedExecutionEngine.
+
+==================================================
+B — ROUTE INCIDENT OPERATIONS WORK TO OPS
+==================================================
+
+Until the Incident Safeguarding Specialist is fully workshopped and approved, the Operations Manager is the approved production specialist for:
+
+- incident management operational review
+- incident reporting process review
+- policy operationalisation
+- operational compliance gaps
+- implementation plans
+- participant/staff/community safety considerations
+
+Do not activate or silently complete the DNA of the incident specialist.
+
+For the exact request:
+
+“Review our current Incident Management Policy, identify operational gaps, risks and weaknesses, and prepare an Improvement Plan.”
+
+Expected specialist:
+
+operations_manager
+
+Expected capability mapping:
+
+incident.review
+→ canonical capability code used by OPS
+
+Resolve the dot-format vs snake_case mismatch permanently.
+
+Define one canonical representation and normalise all callers at the system boundary.
+
+Do not maintain competing capability codes such as:
+
+incident.review
+review_incident
+
+without an explicit canonical mapping.
+
+==================================================
+C — FIX OUTPUT INTENT
+==================================================
+
+The specialist must perform the requested work, not produce instructions telling another person to do it.
+
+For review requests, the output contract must require:
+
+- executive summary
+- evidence reviewed
+- actual findings
+- operational gaps
+- risks and consequences
+- unclear responsibilities
+- compliance concerns
+- recommendations
+- prioritised improvement actions
+- responsible roles
+- implementation timeframes
+- evidence citations
+- limitations or missing evidence
+
+Prohibit plan-to-do language where the request requires completed analysis.
+
+Examples of unacceptable output:
+
+“Conduct a review”
+“Identify gaps”
+“Develop strategies”
+
+unless those appear as future actions after the actual review findings have already been completed.
+
+Add an execution-intent test distinguishing:
+
+TASK TYPE: perform review
+from
+TASK TYPE: create a review methodology or project plan
+
+==================================================
+D — CORRECT QUALITY SCORE SCALE
+==================================================
+
+The current dimension scores are 0–10.
+
+The persisted quality score and threshold are designed for 0–100.
+
+Fix computeWeightedScore so:
+
+dimension score 8/10
+→ persisted quality score approximately 80/100
+
+Expected formula:
+
+weighted average of 0–10 scores
+× 10
+→ 0–100 result
+
+Do not change QUALITY_THRESHOLD=70 merely to hide the computation bug unless approved scoring requirements say otherwise.
+
+Verify:
+
+- persisted quality_score
+- API response
+- Inspector
+- CompletedWorkViewer label
+- revision threshold
+- approval decision logic
+- historical records
+
+Determine whether existing 0–10 historical scores require display migration or backfill.
+
+Do not blindly multiply historical values if any records already use 0–100.
+
+Add a safe scale-version or detection strategy if necessary.
+
+==================================================
+E — FIX AUTO-REVISION BEHAVIOUR
+==================================================
+
+After score correction:
+
+- scores below 70 may trigger revision
+- scores at or above 70 must not trigger low-quality revision
+- revision limit remains enforced
+- evidence-grounding failures may still trigger revision independently where required
+
+Add a live-equivalent test using the current dimensions:
+
+weighted result 8.25/10
+→ 83/100 after rounding according to the approved method
+→ passes threshold 70
+→ no unnecessary revision
+
+==================================================
+F — PROVE RETRIEVAL AUDIT INSERT FAILURE
+==================================================
+
+Do not fix this from probability.
+
+The current writeRetrievalAudit() silently catches the actual database exception.
+
+In development/test environments:
+
+- capture safe structured error code
+- table/constraint name
+- relevant field names
+- executionId presence
+- specialist identifier format
+- organisationId
+- correlationId
+
+Do not log raw chunk content or sensitive evidence.
+
+Run a real database retrieval execution and capture the exact insert failure.
+
+Classify the proven cause:
+
+- executionId null
+- specialist FK/code mismatch
+- missing required field
+- schema mismatch
+- type mismatch
+- another exact database error
+
+Only then implement the smallest correction.
+
+Production behaviour may remain non-blocking, but failures must be observable and reconciled.
+
+==================================================
+G — AUDIT EVENT CORRECTNESS
+==================================================
+
+After correction, a real execution must persist retrieval audit data including:
+
+- executionId
+- organisationId
+- specialistCode or valid specialist identifier
+- source IDs
+- selected chunk IDs
+- ranking/confidence metadata
+- retrieval duration
+- query fingerprint where appropriate
+- timestamp
+
+Do not persist raw private prompts or unnecessary full chunk content.
+
+Confirm Execution Inspector reads these records and displays source/section-level provenance.
+
+==================================================
+H — LEGACY PATH ISOLATION
+==================================================
+
+Identify every caller of the legacy specialist selection path.
+
+For each classify:
+
+- migrate now
+- legitimate orchestration helper
+- deprecate
+- delete safely
+
+Add a test ensuring no production execution can enter UnifiedExecutionEngine with a specialist whose status is:
+
+dna_pending
+coming_soon
+archived
+inactive
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+Before calling the sprint complete, classify each result as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Label:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not call fixture success a live workflow success.
+
+==================================================
+LIVE ACCEPTANCE REQUEST
+==================================================
+
+Use the real mhr-holdings-2 organisation and policy source.
+
+Request:
+
+“Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations.”
+
+Prove:
+
+1. CoS selects Operations Manager.
+2. No dna_pending specialist is considered executable.
+3. EvidencePack contains real incident-related policy chunks.
+4. OPS performs the review rather than telling someone to perform it.
+5. Output contains actual findings and recommendations.
+6. Quality score is persisted and displayed on a 0–100 scale.
+7. A score above 70 does not trigger unnecessary revision.
+8. retrieval_audit_events contains a real row for this execution.
+9. Completed Work contains the full substantive output.
+10. Work reaches awaiting_approval.
+
+If authenticated UI cannot be tested, label UI proof outstanding rather than substituting source inspection.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+- specialist routing before/after trace
+- canonical capability mapping
+- output contract before/after
+- quality formula before/after
+- historical score handling
+- exact retrieval audit DB error
+- retrieval audit correction
+- files and migrations changed
+- regression results
+- evidence-level table
+- live acceptance result
+
+Do not propose the next sprint.
+Stop after verification.

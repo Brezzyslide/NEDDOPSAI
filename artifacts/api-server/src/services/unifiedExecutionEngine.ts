@@ -54,6 +54,8 @@ import {
 } from "./knowledgeResolutionService.js";
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
+// Sprint 29H Part H: architectural specialist status guard
+import { getSpecialistByCode } from "../lib/workforceRegistry.js";
 import { buildExecutionContext } from "./executionContextBuilderService.js";
 import {
   openExecutionSession,
@@ -332,6 +334,53 @@ export class UnifiedExecutionEngine {
     const additionalInstruction = request.additionalInstruction ?? null;
     const runId                 = request.specialistRunId ?? workPackage.specialistRunId;
     const roleCode              = workPackage.workforceRoleCode;
+
+    // ─── Sprint 29H Part H: Architectural specialist status guard ─────────────
+    // Hard boundary enforced at the engine entry point — before evidence resolution,
+    // before session open, and before any AI call. Specialists with blocked status
+    // must never execute production work regardless of how they were routed here.
+    // This guard catches bypasses from legacy paths that skip checkSpecialistEligibility.
+    {
+      const specialistEntry = getSpecialistByCode(roleCode);
+      const blockedStatus = specialistEntry?.executionStatus;
+      if (
+        blockedStatus === "dna_pending" ||
+        blockedStatus === "coming_soon" ||
+        blockedStatus === "archived" ||
+        blockedStatus === "deprecated"
+      ) {
+        void logOrgEvent({
+          organizationId: request.organisationId,
+          actorUserId:    request.requesterId,
+          actorType:      "system",
+          eventType:      "specialist.eligibility_checked",
+          resourceType:   "specialist_run",
+          metadata: {
+            workforceRoleCode: roleCode,
+            blocked:           true,
+            blockedStatus,
+            reason:            "sprint29h_architectural_guard",
+            runId,
+          },
+        }).catch(() => {});
+        return {
+          specialistRunId:         runId,
+          workforceRoleCode:       roleCode,
+          capabilityCode:          (workPackage as any).capabilityCode ?? "unknown",
+          status:                  "blocked" as const,
+          summary:                 `Specialist "${roleCode}" cannot execute production work (status: ${blockedStatus}). Only approved specialists may enter the execution engine.`,
+          findings:                [],
+          recommendations:         [],
+          risks:                   [],
+          assumptions:             [],
+          unresolvedQuestions:     [],
+          requestedExternalActions:[],
+          expectedOutputs:         [],
+          confidence:              0,
+          completedAt:             new Date().toISOString(),
+        };
+      }
+    }
 
     // ─── Stage 2: Evidence resolution ────────────────────────────────────────
     // Sprint 29C: conversation executions receive the same EvidencePack as task
