@@ -1,0 +1,362 @@
+SPRINT 29H.9 — EXECUTION OWNERSHIP LIVE PROOF GATE
+
+TEST ONLY. NO CODE CHANGES.
+
+Anchor this investigation exclusively to:
+
+completedWorkId:
+7fb5dea0-966b-4555-bc7e-9fc21d6b7508
+
+Do not propose fixes yet.
+
+The previous forensic report identified three likely defects:
+
+D1 — blueprint.primarySpecialist overrides the CoS-selected Operations Manager
+D2 — task evidence retrieval does not write retrieval_audit_events
+D3 — EvidencePack is dropped before self-review
+
+It also identified a likely architecture violation:
+
+executeTask does not enforce the specialist readiness guard that exists in executeConversation.
+
+These findings are currently based heavily on source inspection.
+
+Now prove or disprove them against the REAL execution.
+
+==================================================
+MANDATORY EVIDENCE STANDARD
+==================================================
+
+Classify every result as:
+
+1. Unit test
+2. Mocked integration
+3. Real database integration
+4. Live API/runtime
+5. Live authenticated UI E2E
+
+For every claim state:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not elevate source inspection to runtime proof.
+
+==================================================
+TEST A — EXECUTION IDENTITY CHAIN
+==================================================
+
+Starting from completedWorkId 7fb5dea0..., retrieve the REAL persisted chain:
+
+completed_work
+→ work package manifest
+→ executionId
+→ task
+→ task_execution_plan
+→ task_specialists
+→ blueprint
+→ runtime manifest/context if persisted
+→ AI gateway diagnostics / execution logs if available
+
+Produce a side-by-side table containing:
+
+CoS planned specialist
+task_execution_plan.primarySpecialist
+task_specialists executor
+blueprint.primarySpecialist
+manifest.primarySpecialist
+CanonicalExecutionContext.specialistCode
+AI gateway specialist identity
+Completed Work primarySpecialist
+
+The first value that changes from operations_manager to another specialist is the factual divergence point.
+
+Do not infer the AI identity solely from source code.
+
+Use runtime logs, persisted manifest/context, gateway diagnostics, captured specialist code, manifest hash/version, or equivalent runtime evidence wherever available.
+
+Expected design:
+
+CoS-selected production specialist remains authoritative.
+
+Blueprint may define:
+- structure
+- output type
+- validation
+- citations
+- quality criteria
+
+Blueprint must not silently replace the selected specialist.
+
+==================================================
+TEST B — BLUEPRINT OVERRIDE REPRODUCTION
+==================================================
+
+Without modifying production code, reproduce the specialist-resolution calculation using the exact task and blueprint from completedWorkId 7fb5dea0.
+
+Show:
+
+planned specialist
+selected blueprint
+blueprint primary specialist
+assembleWorkPackage output
+manifest primary specialist
+
+Then prove whether task_execution_plans.primarySpecialist is read anywhere during executeTask.
+
+Search all production callers/readers of:
+
+task_execution_plans.primarySpecialist
+
+Classify:
+
+ACTIVE EXECUTION INPUT
+PLANNING-ONLY METADATA
+UNUSED/DECORATIVE
+
+Do the same for task_specialists.
+
+==================================================
+TEST C — PRODUCTION READINESS
+==================================================
+
+Using the REAL specialist catalogue state, capture:
+
+operations_manager:
+- executionStatus
+- comingSoon
+- active
+- archived
+- DNA readiness
+
+incident_safeguarding_specialist:
+same fields
+
+Then exercise the readiness validator directly against both roles using the same execution level.
+
+Finally determine whether executeTask invokes that validator in the real path.
+
+Prove this invariant:
+
+A specialist that is dna_pending, coming_soon, inactive, archived or deprecated cannot reach specialist AI execution.
+
+If the task path violates this invariant, mark:
+
+PROVEN ARCHITECTURE VIOLATION
+
+only if runtime evidence confirms such a specialist actually reached generation.
+
+==================================================
+TEST D — AI SPECIALIST IDENTITY
+==================================================
+
+For completedWorkId 7fb5dea0, retrieve whatever execution/gateway diagnostic information exists.
+
+Establish:
+
+- specialistCode sent into generation
+- DNA/employee file version
+- manifest hash/version
+- system instruction role identifier where safely observable
+- model call correlationId
+- output persisted specialist
+
+Do NOT expose hidden chain-of-thought or full system prompts.
+
+We need identity metadata only.
+
+Answer:
+
+Was the output genuinely generated under incident_safeguarding_specialist DNA?
+
+or
+
+Was Operations Manager used and only metadata later changed?
+
+This must be PROVEN at runtime or remain PARTIALLY PROVEN.
+
+==================================================
+TEST E — TASK EVIDENCE PATH
+==================================================
+
+Trace the REAL execution's evidence resolution:
+
+UEE
+→ ResourceRegistry
+→ KnowledgeResolutionService
+→ retrieval functions
+→ EvidencePack
+
+Capture:
+
+executionId
+organisationId
+specialistCode
+source IDs
+chunk IDs
+section headings
+ranking/confidence where available
+
+Then inspect retrieval_audit_events for THIS executionId.
+
+If there is no row, determine through runtime instrumentation/logging whether:
+
+1. audit writer was never called
+2. audit insert was attempted and failed
+3. write used another executionId
+4. another audit mechanism was used
+
+Do not accept source inspection alone.
+
+If safe instrumentation is required, use test/development logging only and do not alter execution behaviour.
+
+==================================================
+TEST F — RETRIEVAL ENGINE DUPLICATION
+==================================================
+
+Map the two apparent evidence paths:
+
+KnowledgeResolutionService / ResourceRegistry
+
+versus
+
+knowledgeOrchestrationEngine / writeRetrievalAudit
+
+For each list live production callers.
+
+Determine whether they are:
+
+- two legitimate layers in one flow
+- two separate retrieval engines
+- legacy vs current
+- conversation vs task variants
+
+Answer clearly:
+
+Does the task path currently have a retrieval audit mechanism?
+
+If not, prove this by execution trace.
+
+==================================================
+TEST G — EVIDENCEPACK SELF-REVIEW THREADING
+==================================================
+
+For completedWorkId 7fb5dea0:
+
+prove:
+
+EvidencePack created?
+YES/NO
+
+Passed to specialist generation?
+YES/NO
+
+Passed to self-review?
+YES/NO
+
+Evidence grounding dimension input?
+actual EvidencePack / null / undefined
+
+Evidence grounding score?
+value
+
+Evidence grounding diagnostic?
+value
+
+If runtime state is not persisted, run the same call chain in the live server/test environment with safe instrumentation and the same task inputs.
+
+Do not expose evidence content beyond source/chunk metadata needed for verification.
+
+The claim:
+
+“EvidencePack existed but was omitted from ReviewContext”
+
+must be confirmed at runtime before being fixed.
+
+==================================================
+TEST H — CURRENT BLUEPRINT OWNERSHIP MODEL
+==================================================
+
+Inspect all published built-in blueprints.
+
+Return:
+
+blueprint code
+primarySpecialist
+specialist readiness status
+
+Flag every blueprint whose primarySpecialist is:
+
+dna_pending
+coming_soon
+inactive
+archived
+deprecated
+
+Then determine:
+
+If each blueprint were executed today, would executeTask permit that specialist to reach AI generation?
+
+This is important because the Incident Investigation blueprint may be one instance of a systemic problem.
+
+==================================================
+TEST I — AUTHENTICATED VIEWER
+==================================================
+
+If a human authenticated session is available, inspect:
+
+/app/mhr-holdings-2/work/7fb5dea0-966b-4555-bc7e-9fc21d6b7508
+
+Verify only:
+
+- report visible
+- Evidence tab visible
+- Inspector specialist identity
+- quality score 83/100
+- Awaiting Approval controls
+
+Do NOT approve yet.
+
+If UI cannot be driven:
+
+NOT YET PROVEN
+
+Do not substitute source inspection.
+
+==================================================
+FINAL EVIDENCE TABLE
+==================================================
+
+Return:
+
+Claim
+Evidence level
+Expected
+Actual
+Proof status
+
+Then answer exactly:
+
+1. Did CoS select Operations Manager?
+2. Did the blueprint subsequently replace that selection?
+3. What was the actual AI specialist identity?
+4. Did a dna_pending specialist actually execute production work?
+5. Does executeTask enforce production readiness?
+6. Does task evidence retrieval produce a retrieval audit?
+7. Are there genuinely two separate retrieval engines?
+8. Was EvidencePack passed into generation?
+9. Was EvidencePack passed into self-review?
+10. Is this one bad blueprint or a systemic blueprint-ownership defect?
+
+Classify D1, D2 and D3 only as:
+
+PROVEN CURRENT RUNTIME DEFECT
+PARTIALLY PROVEN
+DISPROVEN
+UNPROVEN
+
+Do not implement fixes.
+Do not propose the next sprint.
+Stop after the verification report.
