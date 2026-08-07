@@ -1,0 +1,206 @@
+SPRINT 29H — LIVE CLOUD OUTCOME VERIFICATION GATE
+
+Do not implement further changes.
+
+The Sprint 29H report proves routing, score computation and non-cached retrieval auditing at source/runtime level. It does not yet prove the actual authenticated user workflow.
+
+Use the mandatory test-evidence standard.
+
+For every criterion state:
+
+- Evidence level:
+  unit test
+  mocked integration test
+  real database integration test
+  live API/runtime test
+  live authenticated UI end-to-end test
+
+- Proof status:
+  PROVEN
+  PARTIALLY PROVEN
+  NOT YET PROVEN
+  BLOCKED
+
+Do not substitute source inspection, probes or fixtures for authenticated execution.
+
+==================================================
+A — RUN A NEW OPERATIONS MANAGER EXECUTION
+==================================================
+
+Using the real mhr-holdings-2 organisation, submit through the actual Workforce Chat:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, compliance risks, unclear responsibilities and weaknesses. Produce a completed Incident Management Improvement Plan with findings, prioritised recommendations, responsible roles and evidence citations. Do not merely describe how a future review should be conducted."
+
+Confirm the possible-match clarification if it appears, then answer:
+
+"Yes, use the MH&R Policy and Procedure Manual."
+
+Capture:
+
+- conversationId
+- taskId
+- specialistRunId
+- executionId
+- completedWorkId
+- specialist selected
+- capability code
+- blueprint
+- output type
+- running build/commit
+
+==================================================
+B — ROUTING PROOF
+==================================================
+
+Prove from the live execution record:
+
+- Operations Manager was selected
+- no dna_pending, coming_soon, archived or deprecated specialist was considered eligible
+- no later blueprint or fallback step replaced Operations Manager
+- the Runtime Manifest and DNA actually loaded belong to Operations Manager
+
+A planning probe alone is not sufficient.
+
+==================================================
+C — EVIDENCE PROOF
+==================================================
+
+Capture the actual EvidencePack used by the execution:
+
+- sourceId
+- source title/canonical title
+- selected chunk IDs
+- section headings
+- confidence
+- token count
+- cacheHit value
+- citation references
+
+Prove the selected chunks contain relevant incident-management material.
+
+Verify the specialist prompt and self-review both receive the same evidence identity.
+
+Do not expose hidden chain-of-thought or private prompts.
+
+==================================================
+D — CACHE AUDIT PROOF
+==================================================
+
+Run two equivalent executions safely:
+
+1. cold/non-cached retrieval
+2. cache-hit retrieval
+
+For both executions verify that an evidence-use audit record exists.
+
+Distinguish:
+
+- retrieval event
+- evidence-use event
+- cache-hit event
+
+A cache hit may skip physical retrieval, but it must not erase execution provenance.
+
+If the second execution still has no audit record, classify task #124 as BLOCKING for reliable evidence audit.
+
+==================================================
+E — OUTPUT CONTRACT PROOF
+==================================================
+
+Inspect the actual OPS output before and after self-review.
+
+Confirm it contains:
+
+- executive summary
+- evidence reviewed
+- actual policy findings
+- operational gaps
+- compliance/reporting risks
+- unclear accountabilities
+- concrete recommendations
+- prioritised improvement actions
+- responsible roles
+- citations
+
+Explicitly distinguish:
+
+PASS:
+"The policy currently lacks..."
+"The evidence indicates..."
+"Recommended corrective action..."
+
+FAIL:
+"Conduct a review..."
+"Identify gaps..."
+"Develop strategies..."
+
+Calculate whether the output genuinely completes the work rather than instructing another person to complete it.
+
+Do not rely solely on the plan-language regex.
+
+==================================================
+F — QUALITY SCORE PROOF
+==================================================
+
+For this live execution show:
+
+- all 11 dimension scores
+- weights
+- independently recomputed weighted result
+- parsed score
+- persisted score
+- API score
+- UI-displayed score
+
+Confirm all layers use 0–100.
+
+Verify whether historical backfilled scores retained provenance indicating they were corrected from the former 0–10 calculation.
+
+==================================================
+G — COMPLETED WORK AND APPROVAL PROOF
+==================================================
+
+Through the authenticated UI verify:
+
+1. The new work appears under Awaiting Approval.
+2. The correct completedWorkId opens.
+3. The Document tab shows the complete OPS output.
+4. The Evidence tab shows source/citation information.
+5. The Inspector shows the correct specialist, score and evidence.
+6. Approve / Request Changes / Reject controls appear.
+7. Approval moves the item to Completed.
+8. Reopening it preserves the full content.
+9. PDF export contains the complete approved report.
+10. DOCX export contains the complete approved report.
+11. Workforce Chat retains the same conversation after navigation.
+
+==================================================
+H — FINAL EVIDENCE TABLE
+==================================================
+
+Return:
+
+Criterion
+Evidence level
+Environment
+Real organisation?
+Real DB?
+Running server?
+Authenticated UI?
+Actual result
+Proof status
+What remains unproven
+
+Final verdict must be one of:
+
+PROVEN — OPS CLOUD WORKFLOW OPERATES END TO END
+
+PARTIALLY PROVEN — ROUTING AND RUNTIME WORK, UI OR OUTPUT DEFECT REMAINS
+
+NOT YET PROVEN — AUTHENTICATED EXECUTION NOT RUN
+
+BLOCKED — OPS OUTPUT, EVIDENCE OR APPROVAL FAILURE REMAINS
+
+Do not implement fixes.
+Do not recommend the next sprint.
+Stop after the verification report.
