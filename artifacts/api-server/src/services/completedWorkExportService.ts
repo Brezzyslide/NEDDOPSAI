@@ -246,7 +246,7 @@ export class PdfExporter {
       pdf.on("end",   () => resolve({
         buffer: Buffer.concat(chunks),
         mimeType: "application/pdf",
-        filename: sanitiseFilename(doc.title) + ".pdf",
+        filename: sanitiseFilename(doc.title) + `-v${doc.version}.pdf`,
       }));
 
       // ── Cover metadata ──────────────────────────────────────────────────────
@@ -534,7 +534,7 @@ export class DocxExporter {
     return {
       buffer,
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      filename: sanitiseFilename(doc.title) + ".docx",
+      filename: sanitiseFilename(doc.title) + `-v${doc.version}.docx`,
     };
   }
 }

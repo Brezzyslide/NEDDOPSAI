@@ -24,7 +24,7 @@ import {
   COMPLETED_WORK_STATUSES,
   type CompletedWorkStatus,
 } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import type { ReviewResult } from "./selfReviewService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
@@ -229,7 +229,28 @@ export async function listCompletedWork(
     .limit(limit)
     .offset(offset);
 
-  return rows.map(mapRow);
+  const items = rows.map(mapRow);
+
+  // Batch-fetch latest quality score per item (one extra query, not N)
+  if (items.length > 0) {
+    const ids = items.map(i => i.id);
+    const qualityRows = await db
+      .selectDistinctOn([completedWorkVersionsTable.completedWorkId], {
+        completedWorkId: completedWorkVersionsTable.completedWorkId,
+        qualityScore: completedWorkVersionsTable.qualityScore,
+      })
+      .from(completedWorkVersionsTable)
+      .where(inArray(completedWorkVersionsTable.completedWorkId, ids))
+      .orderBy(completedWorkVersionsTable.completedWorkId, desc(completedWorkVersionsTable.versionNumber));
+
+    const qualityMap = new Map<string, number | null>();
+    for (const r of qualityRows) {
+      qualityMap.set(r.completedWorkId, r.qualityScore ?? null);
+    }
+    return items.map(item => ({ ...item, latestQualityScore: qualityMap.get(item.id) ?? null }));
+  }
+
+  return items;
 }
 
 export async function getVersions(

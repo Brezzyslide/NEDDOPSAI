@@ -29,17 +29,18 @@ type WorkStatus = "draft" | "awaiting_approval" | "approved" | "rejected"
                 | "archived" | "superseded" | "reopened";
 
 interface CompletedWorkItem {
-  id:               string;
-  title:            string;
-  outputType:       string;
-  primarySpecialist:string;
-  status:           WorkStatus;
-  createdAt:        string;
-  updatedAt:        string;
-  blueprintId:      string | null;
-  conversationId:   string | null;
-  createdByUserId:  string | null;
-  approvedByUserId: string | null;
+  id:                 string;
+  title:              string;
+  outputType:         string;
+  primarySpecialist:  string;
+  status:             WorkStatus;
+  createdAt:          string;
+  updatedAt:          string;
+  blueprintId:        string | null;
+  conversationId:     string | null;
+  createdByUserId:    string | null;
+  approvedByUserId:   string | null;
+  latestQualityScore?: number | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -133,19 +134,26 @@ function recordRecent(slug: string, id: string) {
 // ─── Work Card ────────────────────────────────────────────────────────────────
 
 function WorkCard({
-  item, pinned, onPin, onOpen,
+  item, pinned, onPin, onOpen, onDownload,
 }: {
   item: CompletedWorkItem;
   pinned: boolean;
   onPin: (id: string) => void;
   onOpen: (id: string) => void;
+  onDownload?: (id: string, format: "pdf" | "docx") => void;
 }) {
+  const [dlOpen, setDlOpen] = useState(false);
   const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.draft;
+  const isApproved = item.status === "approved";
+  const scoreColor = item.latestQualityScore == null ? "" :
+    item.latestQualityScore >= 80 ? "text-emerald-300" :
+    item.latestQualityScore >= 70 ? "text-amber-300" : "text-red-300";
+
   return (
     <div
-      onClick={() => onOpen(item.id)}
+      onClick={() => { if (!dlOpen) onOpen(item.id); }}
       className="group relative bg-[#112033] border border-[#1E3A5F] rounded-xl p-5 cursor-pointer
-                 hover:border-[#00D4FF]/40 hover:bg-[#152840] transition-all duration-200"
+                 hover:border-[#00D4FF]/40 hover:bg-[#152840] transition-all duration-200 flex flex-col"
     >
       {/* pin button */}
       <button
@@ -171,16 +179,61 @@ function WorkCard({
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.bg} ${badge.text}`}>
               {badge.label}
             </span>
-            <span className="text-[#64748B] text-xs">{outLabel(item.outputType)}</span>
+            {item.latestQualityScore != null && (
+              <span className={`text-xs font-semibold ${scoreColor}`}>
+                {item.latestQualityScore}/100
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* footer */}
-      <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#1E3A5F]/60">
+      {/* footer: specialist + date */}
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-[#1E3A5F]/60">
         <span className="text-[#64748B] text-xs">{specLabel(item.primarySpecialist)}</span>
         <span className="text-[#64748B] text-xs">{timeAgo(item.updatedAt ?? item.createdAt)}</span>
       </div>
+
+      {/* Approved: View Work (primary) + Download (secondary) */}
+      {isApproved && (
+        <div
+          className="mt-3 flex items-center gap-2"
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            onClick={() => onOpen(item.id)}
+            className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-[#00D4FF] text-[#0B1829] font-semibold hover:bg-cyan-300 transition-colors"
+          >
+            View Work
+          </button>
+          {onDownload && (
+            <div className="relative">
+              <button
+                onClick={() => setDlOpen(o => !o)}
+                className="px-2.5 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 flex items-center gap-1 transition-colors"
+              >
+                Download <span className="text-xs">▾</span>
+              </button>
+              {dlOpen && (
+                <div className="absolute right-0 bottom-full mb-1 bg-[#112033] border border-[#1E3A5F] rounded-xl shadow-xl z-30 w-40 py-1">
+                  <button
+                    onClick={() => { setDlOpen(false); onDownload(item.id, "pdf"); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-t-xl"
+                  >
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => { setDlOpen(false); onDownload(item.id, "docx"); }}
+                    className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-b-xl"
+                  >
+                    Word (.docx)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -264,6 +317,21 @@ export default function CompletedWorkPortal() {
   function handlePin(id: string) {
     togglePin(slug!, id);
     setPinnedIds(getPinnedIds(slug!));
+  }
+
+  async function handleDownload(id: string, format: "pdf" | "docx") {
+    try {
+      const item = items.find(i => i.id === id);
+      const resp = await apiFetch(`/v1/organisations/${slug}/completed-work/${id}/export?format=${format}`);
+      if (!resp.ok) return;
+      const blob     = await resp.blob();
+      const url      = URL.createObjectURL(blob);
+      const filename = resp.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1]
+        ?? `${(item?.title ?? "document").replace(/[^a-z0-9]/gi, "_")}.${format}`;
+      const a = document.createElement("a");
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent — user can retry from the viewer */ }
   }
 
   return (
@@ -382,7 +450,7 @@ export default function CompletedWorkPortal() {
                 <h2 className="text-[#64748B] text-xs uppercase tracking-widest mb-3">📌 Pinned</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {pinned.map(item => (
-                    <WorkCard key={item.id} item={item} pinned onPin={handlePin} onOpen={openWork} />
+                    <WorkCard key={item.id} item={item} pinned onPin={handlePin} onOpen={openWork} onDownload={handleDownload} />
                   ))}
                 </div>
               </section>
@@ -395,7 +463,7 @@ export default function CompletedWorkPortal() {
                 <div className="flex gap-4 overflow-x-auto pb-1">
                   {recent.slice(0, 4).map(item => (
                     <div key={item.id} className="shrink-0 w-64">
-                      <WorkCard item={item} pinned={pinnedIds.includes(item.id)} onPin={handlePin} onOpen={openWork} />
+                      <WorkCard item={item} pinned={pinnedIds.includes(item.id)} onPin={handlePin} onOpen={openWork} onDownload={handleDownload} />
                     </div>
                   ))}
                 </div>
@@ -438,6 +506,7 @@ export default function CompletedWorkPortal() {
                       pinned={pinnedIds.includes(item.id)}
                       onPin={handlePin}
                       onOpen={openWork}
+                      onDownload={handleDownload}
                     />
                   ))}
                 </div>

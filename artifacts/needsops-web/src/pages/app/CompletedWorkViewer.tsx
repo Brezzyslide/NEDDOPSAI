@@ -413,16 +413,17 @@ function formatRole(role: string) {
 // ─── Quality Review Section (Task #39) ───────────────────────────────────────
 
 const DIMENSION_LABELS: Record<string, string> = {
-  instruction_adherence:    "Instruction Adherence",
-  policy_compliance:        "Policy Compliance",
-  writing_style_compliance: "Writing Style",
-  source_coverage:          "Source Coverage",
-  completeness:             "Completeness",
-  confidence:               "Confidence",
-  missing_information:      "Missing Information",
-  approval_requirements:    "Approval Requirements",
-  safety:                   "Safety",
-  consistency:              "Consistency",
+  instruction_adherence:      "Instruction Adherence",
+  policy_compliance:          "Policy Compliance",
+  writing_style_compliance:   "Writing Style",
+  source_coverage:            "Source Coverage",
+  evidence_citation_grounding:"Evidence Citation Grounding",
+  completeness:               "Completeness",
+  confidence:                 "Confidence",
+  missing_information:        "Missing Information",
+  approval_requirements:      "Approval Requirements",
+  safety:                     "Safety",
+  consistency:                "Consistency",
 };
 
 function QualityReviewSection({
@@ -624,11 +625,6 @@ function ExecutionTab({
           </div>
         ))}
       </div>
-
-      {/* Validation & self-review — Quality Review Section (Task #39) */}
-      {reviewDim.length > 0 && (
-        <QualityReviewSection dimensions={reviewDim} qualityScore={latest?.qualityScore ?? null} isAutoRevision={latest?.isAutoRevision === "true"} />
-      )}
 
       {/* Related conversation */}
       {work.conversationId && (
@@ -979,9 +975,59 @@ function CommentsTab({
   );
 }
 
+// ─── Download Menu ────────────────────────────────────────────────────────────
+
+function DownloadMenu({
+  onDownload, exporting,
+}: {
+  onDownload: (format: "pdf" | "docx") => void;
+  exporting: "pdf" | "docx" | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        disabled={!!exporting}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#E2E8F0] hover:border-[#00D4FF]/30 hover:text-[#00D4FF] disabled:opacity-40 transition-colors"
+      >
+        {exporting ? "Exporting…" : "Download"} <span className="text-xs text-[#64748B]">▾</span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 bg-[#112033] border border-[#1E3A5F] rounded-xl shadow-xl w-44 py-1">
+          <button
+            onClick={() => { setOpen(false); onDownload("pdf"); }}
+            disabled={!!exporting}
+            className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/40 disabled:opacity-40 flex items-center gap-2"
+          >
+            <span className="text-base">📄</span> PDF
+          </button>
+          <button
+            onClick={() => { setOpen(false); onDownload("docx"); }}
+            disabled={!!exporting}
+            className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/40 disabled:opacity-40 flex items-center gap-2"
+          >
+            <span className="text-base">📝</span> Word (.docx)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Viewer ──────────────────────────────────────────────────────────────
 
-type Tab = "document" | "evidence" | "execution" | "inspector" | "versions" | "comments";
+type Tab = "work" | "evidence" | "quality" | "details" | "inspector" | "versions" | "comments";
 
 export default function CompletedWorkViewer() {
   const { slug, id } = useParams<{ slug: string; id: string }>();
@@ -989,7 +1035,7 @@ export default function CompletedWorkViewer() {
   const apiFetch  = useAuthFetch();
   const qc        = useQueryClient();
 
-  const [tab,          setTab]          = useState<Tab>("document");
+  const [tab,          setTab]          = useState<Tab>("work");
   const [approvalModal,setApprovalModal]= useState<null | "approve"|"reject"|"request_changes">(null);
   const [promoteModal, setPromoteModal] = useState(false);
   const [toast,        setToast]        = useState<string|null>(null);
@@ -1134,25 +1180,9 @@ export default function CompletedWorkViewer() {
             ↩ Reopen
           </button>
         )}
-        {(status === "approved" || status === "draft") && currentContent && (<>
-          <button onClick={downloadMd} className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0]">
-            ↓ MD
-          </button>
-          <button
-            onClick={() => downloadExport("pdf")}
-            disabled={exportingFmt === "pdf"}
-            className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40"
-          >
-            {exportingFmt === "pdf" ? "…" : "↓ PDF"}
-          </button>
-          <button
-            onClick={() => downloadExport("docx")}
-            disabled={exportingFmt === "docx"}
-            className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40"
-          >
-            {exportingFmt === "docx" ? "…" : "↓ DOCX"}
-          </button>
-        </>)}
+        {(status === "approved" || status === "draft") && currentContent && (
+          <DownloadMenu onDownload={downloadExport} exporting={exportingFmt} />
+        )}
         {status !== "archived" && (
           <button onClick={() => transition.mutate({ action: "archive" })} className="px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] ml-auto">
             Archive
@@ -1218,6 +1248,15 @@ export default function CompletedWorkViewer() {
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>
                     <span className="text-[#64748B] text-xs">{specLabel(work.primarySpecialist)}</span>
+                    {versions[0]?.qualityScore != null && (
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        (versions[0].qualityScore ?? 0) >= 80 ? "bg-emerald-900/40 text-emerald-300" :
+                        (versions[0].qualityScore ?? 0) >= 70 ? "bg-amber-900/40 text-amber-300" :
+                        "bg-red-900/40 text-red-300"
+                      }`}>
+                        Quality: {versions[0].qualityScore}/100
+                      </span>
+                    )}
                     <span className="text-[#64748B] text-xs">·</span>
                     <span className="text-[#64748B] text-xs">{fmtDate(work.updatedAt)}</span>
                     {versions.length > 0 && <span className="text-[#64748B] text-xs">· v{versions[0]?.versionNumber}</span>}
@@ -1228,23 +1267,31 @@ export default function CompletedWorkViewer() {
             </div>
 
             {/* Tabs */}
-            <div className="flex items-center gap-1 mt-3">
-              {(["document","evidence","execution","inspector","versions","comments"] as Tab[]).map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-3 py-2 text-sm capitalize border-b-2 transition-colors ${
-                    tab === t
-                      ? "border-[#00D4FF] text-[#00D4FF]"
-                      : "border-transparent text-[#64748B] hover:text-[#E2E8F0]"
-                  }`}
-                >
-                  {t === "inspector" ? "🔍 Inspector" : t}
-                  {t === "comments"  && comments.length  > 0 && <span className="ml-1 text-xs opacity-60">{comments.length}</span>}
-                  {t === "evidence"  && assets.length    > 0 && <span className="ml-1 text-xs opacity-60">{assets.length}</span>}
-                  {t === "versions"  && versions.length  > 0 && <span className="ml-1 text-xs opacity-60">{versions.length}</span>}
-                </button>
-              ))}
+            <div className="flex items-center gap-1 mt-3 overflow-x-auto">
+              {(["work","evidence","quality","details","inspector","versions","comments"] as Tab[]).map(t => {
+                const TAB_LABELS: Record<Tab, string> = {
+                  work: "Work", evidence: "Evidence", quality: "Quality",
+                  details: "Details", inspector: "🔍 Inspector",
+                  versions: "Versions", comments: "Comments",
+                };
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`shrink-0 px-3 py-2 text-sm border-b-2 transition-colors ${
+                      tab === t
+                        ? "border-[#00D4FF] text-[#00D4FF]"
+                        : "border-transparent text-[#64748B] hover:text-[#E2E8F0]"
+                    }`}
+                  >
+                    {TAB_LABELS[t]}
+                    {t === "comments" && comments.length  > 0 && <span className="ml-1 text-xs opacity-60">{comments.length}</span>}
+                    {t === "evidence" && assets.length    > 0 && <span className="ml-1 text-xs opacity-60">{assets.length}</span>}
+                    {t === "versions" && versions.length  > 0 && <span className="ml-1 text-xs opacity-60">{versions.length}</span>}
+                    {t === "quality"  && versions[0]?.qualityScore != null && <span className="ml-1 text-xs opacity-60">{versions[0].qualityScore}/100</span>}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1260,8 +1307,8 @@ export default function CompletedWorkViewer() {
           {/* ── Content ── */}
           <div className={`flex gap-0 ${printMode ? "p-8" : "px-6 py-6"}`}>
 
-            {/* Document outline (only in document tab) */}
-            {tab === "document" && !printMode && currentContent && (
+            {/* Document outline (only in Work tab) */}
+            {tab === "work" && !printMode && currentContent && (
               <div className="mr-6">
                 <DocumentOutline content={currentContent} />
               </div>
@@ -1269,7 +1316,7 @@ export default function CompletedWorkViewer() {
 
             {/* Main panel */}
             <div className="flex-1 min-w-0 max-w-4xl">
-              {tab === "document" && (
+              {tab === "work" && (
                 currentContent
                   ? <MarkdownRenderer content={currentContent} />
                   : <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -1278,8 +1325,21 @@ export default function CompletedWorkViewer() {
                       <p className="text-[#64748B] text-sm">This document is still being produced by your AI Workforce</p>
                     </div>
               )}
-              {tab === "evidence"  && <EvidenceTab assets={assets} />}
-              {tab === "execution" && <ExecutionTab work={work} versions={versions} />}
+              {tab === "evidence" && <EvidenceTab assets={assets} />}
+              {tab === "quality"  && (
+                versions[0] && (versions[0].reviewDimensions as any[]).length > 0
+                  ? <QualityReviewSection
+                      dimensions={versions[0].reviewDimensions as any[]}
+                      qualityScore={versions[0].qualityScore ?? null}
+                      isAutoRevision={versions[0].isAutoRevision === "true"}
+                    />
+                  : <div className="flex flex-col items-center justify-center py-20 text-center">
+                      <div className="text-4xl mb-4">📊</div>
+                      <p className="text-[#E2E8F0] font-medium mb-1">No quality review data</p>
+                      <p className="text-[#64748B] text-sm">Quality scores are recorded automatically when your AI Workforce produces work</p>
+                    </div>
+              )}
+              {tab === "details"  && <ExecutionTab work={work} versions={versions} />}
               {tab === "inspector" && (
                 <ExecutionInspectorPanel slug={slug!} completedWorkId={id!} />
               )}

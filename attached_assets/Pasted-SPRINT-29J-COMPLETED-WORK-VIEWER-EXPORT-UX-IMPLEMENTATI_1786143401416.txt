@@ -1,0 +1,506 @@
+SPRINT 29J — COMPLETED WORK VIEWER & EXPORT UX
+
+IMPLEMENTATION SPRINT
+
+Goal:
+Turn Completed Work into a proper professional deliverable experience.
+
+The execution pipeline is now producing Completed Work and approved items move into the Completed state. The next requirement is that a user can easily open, read, inspect, understand, and download the approved work from the UI.
+
+Do not redesign the wider application. Work within the existing NeedsOps design system, routes, Completed Work data model, approval workflow, quality data, evidence assets, and export infrastructure wherever they already exist.
+
+FIRST: INSPECT BEFORE CODING
+
+Before making changes, inspect and report:
+
+1. Current Completed Work list/card component.
+2. Current Completed Work detail/viewer route.
+3. Current awaiting_approval and completed states.
+4. Existing approval controls.
+5. Existing PDF export implementation, if any.
+6. Existing DOCX/Word export implementation, if any.
+7. completed_work and completed_work_versions data available to the UI.
+8. review_dimensions / quality data available to the UI.
+9. completed_work_assets and evidence/citation data available to the UI.
+10. Version history support already present.
+11. Existing authenticated API endpoints for viewing/downloading Completed Work.
+12. Whether an approved version is already immutable or can currently be modified.
+
+Do not create duplicate infrastructure if equivalent functionality already exists.
+
+==================================================
+PART A — COMPLETED WORK CARD
+==================================================
+
+For a work item with status = completed/approved, the card must clearly expose a primary action:
+
+[ View Work ]
+
+This is the main CTA.
+
+Add a secondary:
+
+[ Download ▾ ]
+
+Download menu:
+
+PDF
+Word (.docx)
+
+Secondary/rare actions may sit under an overflow menu if required.
+
+Do not clutter every card with separate large PDF and Word buttons.
+
+The card should clearly communicate at minimum:
+
+Title
+Status
+Primary specialist
+Quality score, when available
+Completion/approval date
+View Work CTA
+Download CTA
+
+The hierarchy should make View Work visually dominant over Download.
+
+Awaiting Approval items should continue to use the existing approval workflow and should not be confused with Completed items.
+
+==================================================
+PART B — PROFESSIONAL WORK VIEWER
+==================================================
+
+Clicking View Work must open the real Completed Work viewer.
+
+This should feel like opening a finished professional business deliverable, not an internal database/debug record.
+
+Header should contain approximately:
+
+<Work title>
+
+Completed
+Quality: <score>/100
+Specialist: <human-readable specialist name>
+
+[ Download ▾ ]   [ ... ]
+
+Use the existing design system and responsive layout.
+
+The main content area must render the approved work cleanly:
+
+Headings
+Subheadings
+Paragraphs
+Bullets
+Numbered lists
+Tables
+Recommendations
+Action plans
+Citations
+Other supported structured content
+
+Formatting must be readable and professional.
+
+Do not display raw markdown syntax to the user where formatted rendering is possible.
+
+Long reports must remain comfortable to read.
+
+==================================================
+PART C — INFORMATION ARCHITECTURE
+==================================================
+
+The report itself must remain the dominant element.
+
+Supporting information should be accessible without overwhelming the document.
+
+Use the existing UI patterns where possible.
+
+Suitable sections/tabs/inspector areas are:
+
+Work
+Evidence
+Quality
+Details / Versions
+
+Do not introduce tabs simply for decoration. If the existing design supports a side inspector better, use it.
+
+WORK
+
+Displays the approved deliverable.
+
+EVIDENCE
+
+Displays evidence actually associated with this Completed Work.
+
+Where available show:
+
+Source title
+Source type
+Citation/reference
+Relevant source/chunk information
+Evidence role
+Other useful provenance already persisted
+
+Do not fabricate source passages or evidence that is not stored.
+
+QUALITY
+
+Display:
+
+Overall quality score: XX/100
+
+Then expose the persisted review dimensions.
+
+For each available dimension show:
+
+Human-readable dimension name
+Score
+Pass/fail where applicable
+Feedback
+Evidence/reasoning where appropriate
+Improvement suggestions where persisted
+
+Examples include:
+
+Instruction adherence
+Completeness
+Source coverage
+Evidence citation grounding
+Policy compliance
+Consistency
+Confidence
+Safety
+Writing quality
+
+Do not hard-code dimensions that are not actually present.
+
+The purpose is to answer:
+
+"Why did NeedsOps give this work this quality score?"
+
+DETAILS / VERSIONS
+
+Where supported show:
+
+Primary specialist
+Created date
+Approved date
+Approved by
+Version
+Execution/reference information where appropriate
+Version history
+
+Do not expose unnecessary internal implementation/debug information to ordinary users.
+
+==================================================
+PART D — EVIDENCE INTERACTION
+==================================================
+
+Where the completed work contains evidence citations and the underlying evidence is available, make citations useful.
+
+Preferred behaviour:
+
+Click citation
+→ show associated source
+→ show relevant evidence information/passage if available
+
+The user should be able to understand:
+
+"What evidence supports this statement?"
+
+Do not invent relationships between citations and chunks.
+
+If the database does not currently persist enough information to map a citation to an exact passage, gracefully show the source-level provenance that is actually available.
+
+Report any missing provenance capability rather than manufacturing it.
+
+==================================================
+PART E — DOWNLOAD EXPERIENCE
+==================================================
+
+Provide one Download control:
+
+Download ▾
+
+PDF
+Word (.docx)
+
+Downloads must represent the APPROVED VERSION of the work.
+
+Do not regenerate materially different content at export time.
+
+The UI representation, PDF and DOCX should all represent the same approved substantive content.
+
+Verify correct MIME types and filenames.
+
+Suggested filename pattern:
+
+<sanitised-work-title>-v<version>.pdf
+<sanitised-work-title>-v<version>.docx
+
+Use existing export infrastructure where available.
+
+If export infrastructure does not exist or is incomplete, report the exact gap before building a parallel implementation.
+
+==================================================
+PART F — PDF QUALITY
+==================================================
+
+The PDF must be a professional document, not merely HTML dumped into a PDF.
+
+Verify:
+
+Title hierarchy
+Margins
+Paragraph spacing
+Bullets
+Numbering
+Tables
+Page breaks
+No clipped text
+No overlapping elements
+No missing report sections
+No raw markdown artifacts
+Readable citations
+Special characters
+Long headings
+Multi-page output
+Header/footer behaviour if currently supported
+
+The complete approved report must be present.
+
+==================================================
+PART G — WORD/DOCX QUALITY
+==================================================
+
+The Word export must be a real readable .docx document.
+
+Verify:
+
+Heading styles
+Paragraphs
+Bullets
+Numbered lists
+Tables
+Page breaks
+Citations
+Special characters
+No missing/truncated content
+
+The document should remain reasonably editable in Microsoft Word.
+
+Do not export HTML renamed as .docx.
+
+==================================================
+PART H — APPROVED VERSION INTEGRITY
+==================================================
+
+This is important.
+
+Once a work version is approved, that approved artefact must remain historically stable.
+
+View Work and Download must use the approved/current approved version.
+
+If a later user requests changes, do not silently mutate the previously approved content.
+
+Determine the existing version semantics first.
+
+If immutability/versioning is already correctly implemented, preserve it and test it.
+
+If it is not implemented, report the exact issue before making a potentially breaking data-model change.
+
+Do not introduce a database migration merely for convenience.
+
+==================================================
+PART I — QUALITY SCORE UX
+==================================================
+
+Do not treat "83/100" as decorative text.
+
+The score should be inspectable.
+
+A user should be able to move from:
+
+Quality 83/100
+
+to an understandable breakdown of why the score was 83.
+
+Important distinction:
+
+Evidence Citation Grounding and Source Coverage are not necessarily the same thing.
+
+For example, a report may have evidence available to the quality pipeline while still failing to expose/cite enough of that evidence in the generated deliverable.
+
+Preserve the real persisted dimensions rather than combining them into a misleading generic "evidence quality" score.
+
+==================================================
+PART J — SECURITY / TENANCY
+==================================================
+
+All Completed Work viewer and export operations must preserve organisation isolation.
+
+A user from Tenant A must not be able to view or export Tenant B's Completed Work by changing an ID in the URL.
+
+Verify:
+
+Authenticated access
+Organisation ownership
+CompletedWork ownership
+Version ownership
+Evidence asset ownership
+Export ownership
+
+Do not weaken existing RLS/authentication controls.
+
+==================================================
+PART K — RESPONSIVE UX
+==================================================
+
+Test desktop and mobile/tablet layouts.
+
+On smaller screens:
+
+The report must remain readable.
+Actions must remain accessible.
+Tabs/inspector must not crush the document width.
+Download menu must remain usable.
+Tables should handle overflow sensibly.
+
+Do not solve responsiveness by simply shrinking everything.
+
+==================================================
+PART L — TESTS
+==================================================
+
+Add regression tests covering at minimum:
+
+1. Completed card exposes View Work.
+2. Completed card exposes Download.
+3. Download menu contains PDF and DOCX.
+4. View Work opens correct completed_work ID.
+5. Viewer loads approved/current version.
+6. Main report content renders.
+7. Quality score renders on 0–100 scale.
+8. Persisted quality dimensions render.
+9. Evidence assets render where present.
+10. Missing evidence is handled gracefully.
+11. PDF endpoint returns correct MIME type.
+12. DOCX endpoint returns correct MIME type.
+13. PDF contains the approved report content.
+14. DOCX contains the approved report content.
+15. Cross-tenant Completed Work access is denied.
+16. Cross-tenant export is denied.
+17. Awaiting Approval behaviour is not broken.
+18. Existing approval flow still works.
+19. Approved version remains the version used by viewer/export.
+20. Long content does not truncate in viewer/export.
+
+Run relevant existing Completed Work, approval, export, RLS and authentication tests as regression coverage.
+
+==================================================
+PART M — LIVE ACCEPTANCE TEST
+==================================================
+
+Use the newly completed Complaints Management Policy work as the live acceptance artefact if available.
+
+In the authenticated tenant UI verify:
+
+Completed
+→ locate work
+→ View Work
+→ read complete report
+→ inspect Quality
+→ inspect Evidence
+→ Download PDF
+→ open PDF
+→ Download Word
+→ open Word
+
+Record:
+
+completedWorkId
+versionId
+status
+specialist
+quality score
+number of quality dimensions
+number of evidence assets
+PDF filename
+PDF MIME
+PDF size
+DOCX filename
+DOCX MIME
+DOCX size
+
+Then compare:
+
+UI content
+PDF content
+DOCX content
+
+Confirm that all three contain the same substantive approved report.
+
+==================================================
+PART N — QUALITY OF THE ACTUAL WORK
+==================================================
+
+Do not confuse successful rendering/export with good work.
+
+For the live Complaints Management Policy output, separately assess:
+
+Does the output actually perform the requested review?
+Are findings specific rather than generic?
+Are claimed gaps supported by the source evidence?
+Are risks explained?
+Are responsibilities clear?
+Are recommendations practical?
+Are actions prioritised?
+Are implementation timeframes present where appropriate?
+Are evidence citations actually exposed in the report?
+Do citations correspond to retrieved evidence?
+Are unsupported claims clearly distinguished?
+Are limitations identified where evidence is insufficient?
+
+Report this separately from technical UI/export success.
+
+A technically perfect PDF containing weak analysis is not a successful Completed Work product.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Existing architecture discovered.
+2. Files changed.
+3. Whether any schema migration was required.
+4. Completed card before/after.
+5. Viewer implementation.
+6. Evidence viewer implementation.
+7. Quality breakdown implementation.
+8. PDF implementation/result.
+9. DOCX implementation/result.
+10. Approved-version integrity result.
+11. Tenant isolation/security result.
+12. Responsive result.
+13. Test results.
+14. Live authenticated acceptance-test result.
+15. Actual Complaints Policy work-quality assessment.
+16. Any remaining defects.
+
+Use evidence classifications:
+
+Level 1 — Unit/source
+Level 2 — Mocked integration
+Level 3 — Real database
+Level 4 — Live API/runtime
+Level 5 — Live authenticated UI
+
+Do not mark UI, PDF, DOCX or approval behaviour PROVEN from database state alone.
+
+FINAL VERDICT must be one of:
+
+PROVEN — production ready
+PARTIALLY PROVEN — specify remaining gaps
+FAILED — specify defects
+
+Do not claim success merely because the UI renders or an export endpoint returns 200. The final gate is whether a real authenticated user can comfortably read, understand, inspect evidence/quality, and download the same approved professional work.
