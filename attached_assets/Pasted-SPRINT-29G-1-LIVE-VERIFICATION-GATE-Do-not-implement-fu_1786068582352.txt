@@ -1,0 +1,246 @@
+SPRINT 29G.1 — LIVE VERIFICATION GATE
+
+Do not implement further changes.
+
+Verify the document identity and Organisation Library retrieval fix using the mandatory test-evidence standard.
+
+The latest implementation report states:
+
+- canonical_title and search_aliases were added
+- MH&R_Policy_current_2026 was backfilled as:
+  canonical_title = "MH&R Policy and Procedure Manual"
+- the Incident Management Policy request now returns POSSIBLE_MATCH
+- CoS should ask whether the manual is the intended document
+- 4,098 automated tests pass
+
+Automated test success is not enough.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+For every acceptance criterion classify evidence as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live UI end-to-end test
+6. Physical-device test, where relevant
+
+For every conclusion state:
+
+- PROVEN
+- PARTIALLY PROVEN
+- NOT YET PROVEN
+- BLOCKED
+
+Do not call fixture tests or source inspection a live success.
+
+==================================================
+PART 1 — REAL DATABASE VERIFICATION
+==================================================
+
+Using the actual mhr-holdings-2 organisation and live database, verify:
+
+- knowledge source ID
+- original title
+- original filename
+- canonical title
+- search aliases
+- source type
+- status
+- approval provenance
+- ingestion state
+- current-version state
+- active chunk count
+- whether the source is eligible under the shared eligibility rule
+
+Confirm the backfill is present in the actual database, not only in a migration or test fixture.
+
+Evidence level:
+REAL DATABASE INTEGRATION TEST
+
+==================================================
+PART 2 — LIVE PRESENCE LOOKUP
+==================================================
+
+Run the exact live lookup using the running API process:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps."
+
+Capture:
+
+- running build/commit
+- organisation ID
+- conversation ID
+- extracted terms
+- canonical title search result
+- alias search result
+- original filename result
+- type fallback result
+- final PresenceState
+- possibleMatches returned
+- retrievable value
+- approval/eligibility result
+
+Expected:
+
+PresenceState = POSSIBLE_MATCH
+
+Candidate:
+MH&R Policy and Procedure Manual
+
+The result must come from the running server and real database.
+
+Evidence level:
+LIVE API/RUNTIME TEST
+
+==================================================
+PART 3 — LIVE CoS RESPONSE
+==================================================
+
+Send the exact request through the real conversation API.
+
+Capture the actual CoS response.
+
+Expected meaning:
+
+"I found an approved policy document titled MH&R Policy and Procedure Manual. It may contain the Incident Management Policy. Is this the document you want me to use?"
+
+Verify:
+
+- CoS does not say the document is absent
+- CoS does not claim the manual is definitely the Incident Management Policy
+- CoS does not automatically route to the desktop
+- the clarification is document-specific
+- the same conversation ID is preserved
+
+Evidence level:
+LIVE API/RUNTIME TEST
+
+==================================================
+PART 4 — LIVE UI END-TO-END TEST
+==================================================
+
+Using the actual NeedsOps browser UI:
+
+1. Open Workforce Chat.
+2. Send the exact Incident Management Policy request.
+3. Confirm the possible-match clarification appears.
+4. Reply:
+
+"Yes, use the MH&R Policy and Procedure Manual."
+
+5. Confirm CoS continues from the same conversation.
+6. Confirm CoS creates/delegates the work to Operations Manager.
+7. Confirm UnifiedExecutionEngine executes the specialist work.
+8. Confirm KRS retrieves real chunks from source:
+   aab1221b-c489-412e-877d-2061204c12f8
+9. Confirm EvidencePack contains actual text from that source.
+10. Confirm self-review receives the same EvidencePack.
+11. Confirm Completed Work is created.
+12. Confirm it transitions to awaiting_approval.
+13. Confirm it appears under Awaiting Approval.
+14. Confirm the document content is visible when opened.
+15. Navigate away and back.
+16. Confirm the same Workforce Chat conversation and messages remain.
+
+Evidence level:
+LIVE UI END-TO-END TEST
+
+==================================================
+PART 5 — CONTENT RELEVANCE VERIFICATION
+==================================================
+
+A possible match by source type is not enough.
+
+After the user confirms the manual, inspect the chunks retrieved for the task.
+
+Determine whether the manual actually contains substantive Incident Management content.
+
+Report:
+
+- chunk IDs
+- section headings
+- page/section references
+- sample summaries
+- retrieval confidence
+- whether incident management content is present
+- whether the output is genuinely grounded in those sections
+
+If the manual does not contain meaningful incident-management content, the system must say the evidence is insufficient rather than producing an unsupported review.
+
+Evidence level:
+REAL DATABASE + LIVE RUNTIME TEST
+
+==================================================
+PART 6 — APPROVAL PROVENANCE VERIFICATION
+==================================================
+
+The earlier forensic report identified:
+
+status = approved
+approved_by_user_id = NULL
+
+Verify the new eligibility model against the actual record.
+
+State:
+
+- whether the record is considered legitimately approved
+- whether approval was human, system or migrated
+- which rule permits it
+- whether this provenance is visible in audit
+- whether the inconsistency was repaired or deliberately represented
+
+Do not merely report status = approved.
+
+==================================================
+PART 7 — NEGATIVE AND AMBIGUITY TESTS
+==================================================
+
+Using the real database where safe, verify:
+
+1. A request for a clearly unrelated policy does not automatically select the MH&R manual.
+2. Multiple plausible policy sources produce a candidate list rather than silent selection.
+3. NOT_FOUND is only returned when no plausible document exists.
+4. NOT_READY is returned for unavailable/unapproved content.
+5. POSSIBLE_MATCH never becomes a categorical absence statement.
+6. Wrong-organisation sources are never returned.
+
+Clearly distinguish real database tests from fixtures.
+
+==================================================
+PART 8 — FINAL EVIDENCE TABLE
+==================================================
+
+Return a table with:
+
+Acceptance criterion
+Evidence level
+Environment
+Real organisation used?
+Real database used?
+Running server used?
+Real UI used?
+Result
+Proof status
+What remains unproven
+
+==================================================
+FINAL VERDICT
+==================================================
+
+Return one:
+
+PROVEN — LIVE CLOUD WORKFLOW WORKS
+
+PARTIALLY PROVEN — AUTOMATED AND RUNTIME TESTS PASS, UI PROOF OUTSTANDING
+
+NOT YET PROVEN — ONLY UNIT/MOCKED TESTS PASS
+
+BLOCKED — LIVE DEFECT REMAINS
+
+Do not recommend the next sprint.
+
+This is a verification gate only.
