@@ -1,0 +1,317 @@
+SPRINT 29H.4 — AUTHENTICATED CLOUD WORKFLOW PROOF GATE
+
+Do not implement any new fixes.
+
+The capability gate changes from Sprint 29H.3 are proven at runtime/API level.
+
+Now verify the actual cloud user workflow with a real authenticated session.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+For every finding classify the evidence as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Label every result:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not substitute source inspection for UI proof.
+
+==================================================
+TEST 1 — LIVE CHAT REQUEST
+==================================================
+
+Using the actual mhr-holdings-2 authenticated Workforce Chat, send:
+
+“Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations.”
+
+Capture:
+
+- conversationId
+- requesterId
+- CoS response
+- capability identification result
+- capability gate result
+- selected specialist
+- specialist eligibility result
+- whether a task is created
+- taskId
+- specialistRunId
+- executionId
+
+Expected:
+
+- no upgrade card
+- no capability-blocking clarification
+- Operations Manager selected
+- no dna_pending or coming_soon specialist dispatched
+- task enters UnifiedExecutionEngine
+
+Evidence level:
+LIVE AUTHENTICATED UI END-TO-END
+
+==================================================
+TEST 2 — SPECIALIST SELECTION
+==================================================
+
+Prove that the live execution selects:
+
+operations_manager
+
+Show:
+
+- eligible specialists
+- excluded specialists
+- exclusion reasons
+- canonical capability mapping
+- final dispatch decision
+
+Confirm no legacy selector bypass occurs.
+
+Expected:
+
+Chief of Staff
+→ canonical eligibility gate
+→ Operations Manager
+→ UnifiedExecutionEngine
+
+==================================================
+TEST 3 — EVIDENCE RESOLUTION
+==================================================
+
+For the real execution, capture:
+
+ResourceRegistry
+→ KRS
+→ selected source
+→ selected chunks
+→ EvidencePack
+→ specialist prompt evidence references
+→ self-review evidence context
+
+Expected source:
+
+MH&R Policy and Procedure Manual
+sourceId:
+aab1221b-c489-412e-877d-2061204c12f8
+
+Verify the retrieved chunks contain incident-management content.
+
+Evidence must include actual incident sections, not generic policy material.
+
+==================================================
+TEST 4 — OUTPUT CONTRACT
+==================================================
+
+Inspect the live Operations Manager output.
+
+The output must actually perform the review.
+
+It must contain:
+
+- executive summary
+- evidence reviewed
+- actual findings
+- operational gaps
+- risks
+- unclear responsibilities
+- compliance weaknesses
+- recommendations
+- prioritised improvement actions
+- responsible roles
+- implementation timeframes where appropriate
+- evidence citations
+- limitations
+
+Reject as failure if the output merely says:
+
+- conduct a review
+- identify gaps
+- consult stakeholders
+- develop strategies
+
+without actually producing the findings first.
+
+Classify:
+
+COMPLETED REVIEW
+
+or
+
+PLAN TO PERFORM REVIEW
+
+==================================================
+TEST 5 — QUALITY SCORE
+==================================================
+
+Capture:
+
+- raw dimension scores
+- computed weighted score
+- persisted quality_score
+- API value
+- UI-displayed value
+- whether auto-revision fired
+
+Expected:
+
+0–100 scale
+
+Example:
+8.25/10 weighted
+→ approximately 83/100
+
+A result above 70 must not trigger low-quality auto-revision.
+
+==================================================
+TEST 6 — RETRIEVAL AUDIT
+==================================================
+
+Verify a real retrieval_audit_events row is written for this execution.
+
+Show:
+
+- executionId
+- organisationId
+- specialist identifier
+- source IDs
+- selected chunk IDs
+- confidence/ranking data
+- timestamp
+
+If no row exists:
+
+capture the exact DB error.
+
+Do not suppress or guess.
+
+==================================================
+TEST 7 — COMPLETED WORK
+==================================================
+
+Confirm:
+
+- Completed Work record created
+- correct completedWorkId
+- status becomes awaiting_approval
+- full substantive content persisted
+- evidence assets linked
+- self-review data linked
+- correct specialist recorded
+
+==================================================
+TEST 8 — AUTHENTICATED VIEWER
+==================================================
+
+Open the actual Completed Work item.
+
+Verify:
+
+1. Correct record opens.
+2. Document tab shows the full report.
+3. Evidence tab shows source/citation information.
+4. Inspector shows quality score and execution evidence.
+5. Quality score uses correct 0–100 scale.
+6. Approve / Request Changes / Reject controls are visible.
+7. No separate “Submit for Approval” step is required for this automated execution.
+8. Direct link from CoS opens the same completedWorkId.
+
+==================================================
+TEST 9 — APPROVAL
+==================================================
+
+Approve the disposable work item.
+
+Verify:
+
+- status changes from awaiting_approval → approved
+- approvedByUserId populated
+- approvedAt populated
+- item moves to Completed
+- reopening the item still shows the full report
+- approval cannot be repeated
+
+==================================================
+TEST 10 — EXPORT
+==================================================
+
+From the approved item:
+
+- download PDF
+- download DOCX
+
+Verify:
+
+- correct MIME
+- non-trivial file size
+- correct title
+- same approved content
+- actual findings and recommendations included
+- citations included where expected
+
+==================================================
+TEST 11 — CHAT CONTINUITY
+==================================================
+
+After work completion:
+
+- navigate away from Workforce Chat
+- return
+- reload page
+
+Verify:
+
+- same canonical conversationId
+- original request still visible
+- CoS response still visible
+- task/completed-work reference still visible
+- no new empty chat created
+
+==================================================
+FINAL EVIDENCE TABLE
+==================================================
+
+Return:
+
+Test
+Evidence level
+Expected
+Actual
+Proof status
+Failure point
+
+Then answer:
+
+1. Was Operations Manager selected?
+2. Did the task enter UnifiedExecutionEngine?
+3. Was real incident evidence retrieved?
+4. Did OPS perform the review rather than create a plan-to-review?
+5. Is quality scoring now correct?
+6. Is retrieval audit persisted?
+7. Is full Completed Work visible?
+8. Is approval usable from the viewer?
+9. Does approval move the item to Completed?
+10. Do PDF/DOCX exports contain the approved review?
+11. Does chat history persist?
+
+Final verdict must be:
+
+PROVEN — LIVE CLOUD WORKFLOW OPERATES END TO END
+
+PARTIALLY PROVEN — CORE WORKFLOW WORKS BUT SPECIFIC DEFECTS REMAIN
+
+BLOCKED — LIVE DEFECT REMAINS
+
+Do not implement further fixes.
+Do not propose the next sprint.
+Stop after the verification report.
