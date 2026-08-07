@@ -70,3 +70,4 @@
 - [NeedsOps Sprint 29F.1 Connector Hardening](needsops-sprint29f1.md) — write idempotency (key=execId:actionId), action lifecycle DB persistence (fire-and-forget), approval plan binding hash, 11 review dimensions, manifestHash, REQUIRED_RLS_TABLES=71, 3943 tests
 - [NeedsOps Sprint 29F.2 Connector Production Readiness](needsops-sprint29f2.md) — desktop handler wired, blocking pre-dispatch record, binding revalidation, 3 new DB cols, 55 new tests, 3998 passing, 14 pre-existing failures
 - [NeedsOps Sprint 29F.3 Real Mac Acceptance Support](needsops-sprint29f3.md) — preflight script, operator runbook, 11-scenario acceptance test (relay injection for desktop dedup), evidence JSON, REAL_CONNECTOR_URL is gate-only (set to API base URL)
+- [NeedsOps Sprint 122-123 Completed Work Lifecycle](needsops-sprint122-123.md) — submitForApproval must be called after createDraft; postCompletedWorkCreatedToConversation now 8 args; simulation+source-contract test strategy; 4036 tests

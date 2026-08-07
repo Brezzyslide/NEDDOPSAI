@@ -557,14 +557,22 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }).catch(() => {});
 
     if (result.outcome === "completed" && result.completedWorkId && conversationId) {
-      const title = userRequest.slice(0, 80) + (userRequest.length > 80 ? "…" : "");
+      // Use the persisted title and status from the engine result — never derive
+      // these from the userRequest or assume a successful lifecycle transition.
+      const persistedTitle  = result.completedWorkTitle
+        ?? (userRequest.slice(0, 80) + (userRequest.length > 80 ? "…" : ""));
+      const persistedStatus = result.completedWorkStatus ?? "draft";
+
+      const humanLabel = persistedStatus === "awaiting_approval"
+        ? "Work completed and ready for your approval."
+        : "Work completed — draft saved for review.";
 
       emitExecutionEvent(conversationId, {
         type: "execution_completed",
         conversationId,
         correlationId,
         organizationId,
-        humanLabel: "Work completed and ready for review.",
+        humanLabel,
         completedWorkId: result.completedWorkId,
       });
 
@@ -573,7 +581,8 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         conversationId,
         taskId ?? "",
         result.completedWorkId,
-        title,
+        persistedTitle,
+        persistedStatus,
         result.qualityScore ?? null,
         correlationId,
       ).catch(err => console.warn("[ExecutionCoordinator] Completed work message failed:", err?.message));

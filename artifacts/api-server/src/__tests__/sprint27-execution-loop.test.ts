@@ -343,7 +343,7 @@ describe("dispatchWorkExecution", () => {
     });
     await new Promise(r => setTimeout(r, 50));
     expect(mockPostCompleted).toHaveBeenCalledWith(
-      ORG, CONV, TASK, "cw-2", expect.any(String), 90, expect.any(String)
+      ORG, CONV, TASK, "cw-2", expect.any(String), "draft", 90, expect.any(String)
     );
   });
 

@@ -46,7 +46,7 @@ import { validateWorkPackage } from "./workValidationService.js";
 import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
-import { createDraft } from "./completedWorkService.js";
+import { createDraft, submitForApproval } from "./completedWorkService.js";
 import {
   buildEvidenceSection,
   resolveConversationEvidence,
@@ -165,6 +165,14 @@ export class FallbackDraftError extends Error {
 export interface ExecuteWorkResult {
   outcome: ExecutionOutcome;
   completedWorkId?: string;
+  /**
+   * The persisted status of the CompletedWork record after all lifecycle
+   * transitions have run. Coordinators and message builders must use this
+   * instead of assuming a successful approval transition.
+   */
+  completedWorkStatus?: string;
+  /** The persisted title of the CompletedWork record (used by coordinators for accurate messaging). */
+  completedWorkTitle?: string;
   manifestId?: string;
   blueprintCode?: string;
   qualityScore?: number;
@@ -217,6 +225,17 @@ export interface ExecutionRequest {
    * (backward-compat path for revise/resume adapters in specialistIntelligenceService).
    */
   conversationSpecialistRunId?: string;
+
+  /**
+   * Whether the resulting CompletedWork item requires human approval.
+   * When true (default), the engine calls submitForApproval() after createDraft(),
+   * transitioning the record from draft → awaiting_approval before returning.
+   * When false, the record remains in draft status.
+   *
+   * This flag must not be used to bypass the existing submitForApproval() lifecycle
+   * method — it is the sole mechanism controlling whether that method is called.
+   */
+  outputRequiresApproval?: boolean;
 }
 
 export type UnifiedExecutionResult =
@@ -901,6 +920,29 @@ export class UnifiedExecutionEngine {
       assetIds,
     });
 
+    // ── Lifecycle: draft → awaiting_approval ─────────────────────────────────
+    // All cloud OPS work requires human approval unless the caller explicitly
+    // opts out via outputRequiresApproval: false. The existing submitForApproval()
+    // lifecycle method is the sole mechanism for this transition — never update
+    // the DB status column directly.
+    const requiresApproval = request.outputRequiresApproval !== false;
+    let finalWork = completedWork;
+
+    if (requiresApproval) {
+      try {
+        finalWork = await submitForApproval(completedWork.id, organizationId, requesterId);
+      } catch (err) {
+        // submitForApproval failed — preserve the draft and surface the real
+        // status. Do NOT claim the work is awaiting approval when it is not.
+        console.warn(
+          "[UnifiedExecutionEngine] submitForApproval failed — preserving draft:",
+          err instanceof Error ? err.message : err,
+          "| completedWorkId:", completedWork.id,
+        );
+        // finalWork remains as the draft — status is "draft"
+      }
+    }
+
     updateManifestObservability(manifest.id, {
       performanceMetrics: {
         blueprintSelectionMs: tBlueprintMs,
@@ -918,11 +960,13 @@ export class UnifiedExecutionEngine {
 
     return {
       outcome: "completed",
-      completedWorkId: completedWork.id,
+      completedWorkId: finalWork.id,
+      completedWorkStatus: finalWork.status,
+      completedWorkTitle: finalWork.title ?? title,
       manifestId: manifest.id,
       blueprintCode: blueprint?.code,
       qualityScore: reviewResult.qualityScore,
-      message: buildCompletionMessage(completedWork.id, blueprint, reviewResult),
+      message: buildCompletionMessage(finalWork.id, finalWork.status, blueprint, reviewResult),
     };
   }
 
@@ -1405,6 +1449,7 @@ function deriveTitleFromRequest(userRequest: string, blueprint: WorkBlueprint | 
 
 function buildCompletionMessage(
   completedWorkId: string,
+  completedWorkStatus: string,
   blueprint: WorkBlueprint | null,
   reviewResult: Awaited<ReturnType<typeof reviewDraft>>,
 ): string {
@@ -1414,7 +1459,17 @@ function buildCompletionMessage(
 
   let msg = `I've completed the ${bpName} (quality score: ${score}/100`;
   if (revised) msg += ", with one automatic revision applied";
-  msg += `). The draft is ready for your review and approval.`;
+  msg += `).`;
+
+  // Status-accurate closing line — must reflect the actual persisted state.
+  if (completedWorkStatus === "awaiting_approval") {
+    msg += " The work is ready for your approval.";
+  } else if (completedWorkStatus === "approved") {
+    msg += " The work has been approved.";
+  } else {
+    // draft or unexpected — do NOT claim it is awaiting approval
+    msg += " The draft has been saved for your review.";
+  }
 
   if (score < 70) {
     msg += " Note: the quality score is below the preferred threshold — human review is particularly important for this output.";

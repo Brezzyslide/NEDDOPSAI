@@ -720,7 +720,19 @@ export async function postExecutionProgressToConversation(
 
 /**
  * Posts a "completed work created" system message to the conversation.
- * Links directly to the completed work item for immediate review.
+ *
+ * The message content is derived from the PERSISTED CompletedWork status —
+ * never assumed. This prevents the CoS from saying "ready for your approval"
+ * when submitForApproval() failed and the record is still in draft.
+ *
+ * Status-to-message mapping:
+ *   awaiting_approval → "ready for your approval" + direct reference
+ *   draft             → "saved as a draft for your review" + direct reference
+ *   approved          → "has been completed and approved" + direct reference
+ *   any other         → generic "ready for your review" + direct reference
+ *
+ * Always includes a direct reference to the CompletedWork item ID so users
+ * can navigate to it without hunting through portal tabs.
  */
 export async function postCompletedWorkCreatedToConversation(
   organizationId: string,
@@ -728,12 +740,29 @@ export async function postCompletedWorkCreatedToConversation(
   taskId: string,
   completedWorkId: string,
   title: string,
+  completedWorkStatus: string,
   qualityScore: number | null,
   correlationId: string,
 ): Promise<ConversationMessage> {
   const scoreNote = qualityScore !== null
     ? ` Quality score: ${qualityScore}/100.`
     : "";
+
+  // Status-aware action line — must reflect the actual persisted state.
+  let actionLine: string;
+  switch (completedWorkStatus) {
+    case "awaiting_approval":
+      actionLine = `"${title}" is ready for your approval. You'll find it under **Awaiting Approval** in the Completed Work portal (ref: \`${completedWorkId}\`).`;
+      break;
+    case "approved":
+      actionLine = `"${title}" has been completed and approved. You'll find it in the Completed Work portal (ref: \`${completedWorkId}\`).`;
+      break;
+    case "draft":
+      actionLine = `"${title}" has been saved as a draft. Open it from the Completed Work portal and click **Submit for Approval** when ready (ref: \`${completedWorkId}\`).`;
+      break;
+    default:
+      actionLine = `"${title}" is ready for your review in the Completed Work portal (ref: \`${completedWorkId}\`).`;
+  }
 
   const card = buildExecutionUpdateCard({
     eventType: "execution.completed",
@@ -743,6 +772,7 @@ export async function postCompletedWorkCreatedToConversation(
 
   // Augment the card data with completed work details
   (card.data as Record<string, unknown>).completedWorkId = completedWorkId;
+  (card.data as Record<string, unknown>).completedWorkStatus = completedWorkStatus;
   (card.data as Record<string, unknown>).title = title;
   (card.data as Record<string, unknown>).qualityScore = qualityScore;
 
@@ -753,7 +783,7 @@ export async function postCompletedWorkCreatedToConversation(
     senderType: "chief_of_staff",
     workforceRoleCode: "chief_of_staff",
     messageType: "execution_update",
-    content: `The work is complete and ready for your review.${scoreNote} I've created a draft of "${title}" for your approval.`,
+    content: `The work is complete.${scoreNote} ${actionLine}`,
     structuredContent: card,
     correlationId,
   });
