@@ -1,0 +1,225 @@
+SPRINT 29H.2 — AUTHENTICATED RUNTIME ACCEPTANCE TEST
+
+Do not implement anything.
+Do not fix anything.
+Verification only.
+
+The Sprint 29H.2 implementation report is accepted as source-level, test-level and live-DB decision evidence.
+
+Now verify the actual user workflow using our mandatory evidence standard.
+
+Use the real mhr-holdings-2 organisation and the currently running application/build.
+
+Use the existing Workforce Chat conversation where historical completed work exists.
+
+Submit through the authenticated Workforce Chat UI:
+
+"Review our current Incident Management Policy using the latest approved evidence and produce a new Incident Management Improvement Plan. This is a new review, not a request to show the previous completed work. Identify actual operational gaps, compliance risks, unclear responsibilities and weaknesses. Produce completed findings, prioritised recommendations, responsible roles and evidence citations. Do not merely describe how a future review should be conducted."
+
+If the MH&R Policy and Procedure Manual possible-match clarification appears, answer:
+
+"Yes, use the MH&R Policy and Procedure Manual."
+
+MANDATORY RULE
+
+Do not treat:
+- source inspection
+- unit tests
+- mocked tests
+- direct service invocation
+- DB decision probes
+- planning probes
+
+as proof of authenticated runtime behaviour.
+
+For every result state the evidence level:
+- unit test
+- mocked integration
+- real DB integration
+- live API/runtime
+- live authenticated UI end-to-end
+
+and classify:
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+
+PART A — DECISION AND DISPATCH
+
+Capture the actual authenticated message and prove:
+
+1. ConversationActionDecision = rerun_existing.
+2. shouldDispatchSpecialist = true.
+3. Historical completedWorkId e7f810e9-3554-422f-a892-258973ee5ac6 is preserved and not overwritten.
+4. A new execution actually begins.
+
+Capture:
+- conversationId
+- historical completedWorkId
+- taskId
+- specialistRunId
+- executionId
+- running build/commit
+- timestamps
+
+
+PART B — SPECIALIST IDENTITY
+
+Prove from the actual execution record, not planning logic:
+
+- Operations Manager is selected.
+- capabilityCode is the expected canonical capability.
+- Runtime Manifest belongs to Operations Manager.
+- loaded DNA belongs to Operations Manager.
+- no dna_pending, coming_soon, archived or deprecated specialist replaces OM later in execution.
+- no blueprint/fallback stage changes specialist ownership.
+
+Show the persisted/runtime values.
+
+
+PART C — EVIDENCE
+
+Capture the EvidencePack actually used by this execution.
+
+Show:
+- sourceId
+- source title
+- canonical title
+- selected chunk IDs
+- section headings
+- confidence
+- token count
+- cacheHit
+- citation references
+
+Confirm the evidence actually contains Incident Management relevant material from the MH&R Policy and Procedure Manual.
+
+Prove the specialist execution and self-review refer to the same evidence identity.
+
+Do not expose private chain-of-thought or hidden prompts.
+
+
+PART D — ACTUAL OUTPUT
+
+Inspect the new Operations Manager output.
+
+It must actually perform the requested work.
+
+Confirm presence and substance of:
+
+- executive summary
+- evidence reviewed
+- actual policy findings
+- operational gaps
+- compliance/reporting risks
+- unclear responsibilities/accountabilities
+- concrete recommendations
+- prioritised improvement actions
+- responsible roles
+- evidence citations
+
+PASS examples:
+"The policy currently lacks..."
+"The evidence indicates..."
+"Recommended corrective action..."
+
+FAIL examples:
+"Conduct a review..."
+"Identify gaps..."
+"Develop strategies..."
+
+Do not pass this merely because headings exist.
+Inspect whether substantive findings exist underneath them.
+
+
+PART E — SELF REVIEW / QUALITY
+
+Capture all 11 self-review dimensions.
+
+Show:
+- dimension
+- raw score
+- weight
+- weighted contribution
+
+Then show:
+- independently recomputed weighted score
+- parsed score
+- persisted completed_work score
+- API-returned score
+- UI-displayed score
+
+All must use the 0–100 scale.
+
+Confirm evidence_citation_grounding evaluated the actual EvidencePack.
+
+
+PART F — COMPLETED WORK LIFECYCLE
+
+Prove that this NEW execution creates a NEW completedWorkId.
+
+Verify through authenticated UI:
+
+1. New work appears under Awaiting Approval.
+2. It does not incorrectly reuse e7f810e9.
+3. Opening the new completedWorkId displays the full OM report.
+4. Document tab contains substantive output.
+5. Evidence tab contains the evidence/citations.
+6. Inspector identifies Operations Manager and the correct score/evidence.
+7. Approve / Request Changes / Reject controls appear.
+
+Do NOT approve it yet if approval would interfere with evidence capture.
+
+
+PART G — CONVERSATION CONTINUITY
+
+Navigate away from Workforce Chat and return.
+
+Verify:
+- same conversationId remains active
+- original message remains
+- clarification remains if one occurred
+- completion message remains
+- no new blank Workforce Chat conversation is created
+
+
+PART H — HISTORICAL ATTRIBUTION
+
+Ask in the same conversation:
+
+"Who produced the previous completed Incident Management review?"
+
+Verify the CoS attributes e7f810e9 to the persisted historical specialist:
+knowledge_documentation_specialist
+
+It must NOT claim Operations Manager produced that historical work.
+
+
+RETURN ONE VERIFICATION TABLE:
+
+Criterion
+Evidence level
+Environment
+Real organisation?
+Real DB?
+Running server?
+Authenticated UI?
+Actual observed result
+Proof status
+Remaining gap
+
+FINAL VERDICT MUST BE EXACTLY ONE OF:
+
+PROVEN — 29H.2 AUTHENTICATED RERUN WORKFLOW OPERATES END TO END
+
+PARTIALLY PROVEN — RERUN DISPATCH WORKS BUT DOWNSTREAM DEFECT REMAINS
+
+NOT YET PROVEN — AUTHENTICATED RERUN WAS NOT EXECUTED
+
+BLOCKED — HISTORICAL REUSE, ROUTING, EVIDENCE OR OUTPUT FAILURE REMAINS
+
+Do not implement fixes.
+Do not propose the next sprint.
+Stop after the verification report.
