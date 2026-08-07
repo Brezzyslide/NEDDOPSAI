@@ -194,46 +194,53 @@ function WorkCard({
         <span className="text-[#64748B] text-xs">{timeAgo(item.updatedAt ?? item.createdAt)}</span>
       </div>
 
-      {/* Approved: View Work (primary) + Download (secondary) */}
-      {isApproved && (
-        <div
-          className="mt-3 flex items-center gap-2"
-          onClick={e => e.stopPropagation()}
-        >
+      {/* CTA row — always visible */}
+      <div
+        className="mt-3 flex items-center gap-2"
+        onClick={e => e.stopPropagation()}
+      >
+        {isApproved ? (
           <button
             onClick={() => onOpen(item.id)}
             className="flex-1 px-3 py-1.5 text-sm rounded-lg bg-[#00D4FF] text-[#0B1829] font-semibold hover:bg-cyan-300 transition-colors"
           >
             View Work
           </button>
-          {onDownload && (
-            <div className="relative">
-              <button
-                onClick={() => setDlOpen(o => !o)}
-                className="px-2.5 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 flex items-center gap-1 transition-colors"
-              >
-                Download <span className="text-xs">▾</span>
-              </button>
-              {dlOpen && (
-                <div className="absolute right-0 bottom-full mb-1 bg-[#112033] border border-[#1E3A5F] rounded-xl shadow-xl z-30 w-40 py-1">
-                  <button
-                    onClick={() => { setDlOpen(false); onDownload(item.id, "pdf"); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-t-xl"
-                  >
-                    PDF
-                  </button>
-                  <button
-                    onClick={() => { setDlOpen(false); onDownload(item.id, "docx"); }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-b-xl"
-                  >
-                    Word (.docx)
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={() => onOpen(item.id)}
+            className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#E2E8F0] hover:border-[#00D4FF]/30 hover:text-[#00D4FF] transition-colors"
+          >
+            Open
+          </button>
+        )}
+        {isApproved && onDownload && (
+          <div className="relative">
+            <button
+              onClick={() => setDlOpen(o => !o)}
+              className="px-2.5 py-1.5 text-sm rounded-lg border border-[#1E3A5F] text-[#64748B] hover:text-[#E2E8F0] hover:border-[#00D4FF]/30 flex items-center gap-1 transition-colors"
+            >
+              Download <span className="text-xs">▾</span>
+            </button>
+            {dlOpen && (
+              <div className="absolute right-0 bottom-full mb-1 bg-[#112033] border border-[#1E3A5F] rounded-xl shadow-xl z-30 w-40 py-1">
+                <button
+                  onClick={() => { setDlOpen(false); onDownload(item.id, "pdf"); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-t-xl"
+                >
+                  PDF
+                </button>
+                <button
+                  onClick={() => { setDlOpen(false); onDownload(item.id, "docx"); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-[#E2E8F0] hover:bg-[#1E3A5F]/50 rounded-b-xl"
+                >
+                  Word (.docx)
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
