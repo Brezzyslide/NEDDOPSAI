@@ -32,7 +32,8 @@ const USER_ID    = "0a5e1c84-84f7-437b-a000-e34a5dd9e75d"; // mhr-holdings-2 adm
 const EXPECTED_SOURCE = "aab1221b-c489-412e-877d-2061204c12f8"; // MH&R Policy Manual
 
 /** All new records must be AFTER this moment (API restart with 29H.3 fixes). */
-const RESTART_CUTOFF = new Date("2026-08-07T08:07:00.000Z");
+// Updated: Sprint 29H.6 server restart (capability intent + incident pattern fixes)
+const RESTART_CUTOFF = new Date("2026-08-07T11:46:00.000Z");
 
 const ACCEPTANCE_MESSAGE =
   "Review our current Incident Management Policy using the approved knowledge available in NeedsOps. " +

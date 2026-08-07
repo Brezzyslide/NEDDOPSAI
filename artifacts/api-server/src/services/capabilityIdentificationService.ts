@@ -39,11 +39,17 @@ export interface CapabilityIdentificationResult {
 }
 
 // ─── Execution-level signal words ─────────────────────────────────────────────
+//
+// Sprint 29H.6: Only include verbs that clearly signal EXTERNAL-STATE changes.
+// Ambiguous verbs removed: "prepare", "create", "generate", "run", "complete" —
+// these are common in work-product requests ("prepare a report", "create a plan")
+// and must NOT escalate analytical capabilities to execution level.
+// Specific execution intent for those capabilities is caught by pattern executionPhrases.
 
 const EXECUTION_VERBS = new Set([
-  "prepare", "lodge", "submit", "create", "generate", "send", "file",
-  "complete", "execute", "process", "do", "run", "perform", "finalise",
-  "finalize", "issue", "publish", "launch", "implement", "set up",
+  "lodge", "submit", "send", "file",
+  "execute", "process", "perform", "finalise", "finalize",
+  "issue", "publish", "launch", "implement", "apply",
   "update", "modify", "change", "delete", "remove",
 ]);
 
@@ -206,10 +212,32 @@ Return JSON:
   "clarificationQuestions": ["question if ambiguous"]
 }
 
-Level rules:
-- general_information: user is asking "what is" or "explain" (no org data needed)
-- professional_analysis: user wants analysis using their organisation's records
-- execution: user wants action taken (prepare, submit, create, update)`;
+LEVEL RULES — read carefully before classifying:
+
+general_information
+  User is asking "what is" or "explain" — no org data needed.
+  Examples: "what is a corrective action plan?", "explain NDIS audit readiness"
+
+professional_analysis
+  User wants analysis, recommendations, or a DELIVERABLE using their organisation's records.
+  Producing intellectual work inside NeedsOps is ALWAYS professional_analysis, even when the
+  output is a plan, report, action list, or roadmap. The output stays inside NeedsOps.
+  Examples: review a policy, identify compliance gaps, recommend corrective actions,
+  prepare an improvement plan, produce a corrective action plan, draft a remediation roadmap,
+  prioritise recommendations, assign responsible roles, analyse an incident process.
+
+execution
+  User wants to change EXTERNAL STATE — something happens outside NeedsOps.
+  Use ONLY when the user is asking to DO something in a real system, not to produce a document.
+  Examples: submit a form to a regulator, send an email, update a live policy in a system,
+  implement corrective actions in production, assign staff records, lodge a report externally.
+
+CRITICAL DISTINCTION:
+  "Prepare a corrective action plan"   → professional_analysis  (produces a document)
+  "Implement the corrective actions"   → execution              (changes external state)
+  "Produce an improvement plan"        → professional_analysis  (produces a document)
+  "Apply these corrections to the system" → execution          (changes external state)
+  Creating, writing, drafting, or producing a PLAN/REPORT/RECOMMENDATION is NOT execution.`;
 
 async function identifyWithLLM(
   input: { organizationId: string; userId: string; conversationId?: string; message: string },
@@ -254,7 +282,7 @@ async function identifyWithLLM(
   // Fix 29H.3 Defect 2: LLM can freely return any requestedLevel value, bypassing the
   // cap.executionAllowed / cap.analysisAllowed guards applied on the deterministic path.
   // Normalise each LLM-returned level against the registry before entitlement evaluation.
-  const normalised = validated.map(c => {
+  const withRegistryNormalisation = validated.map(c => {
     const cap = getCapability(c.capabilityCode);
     if (!cap) return c;
     if (c.requestedLevel === "execution" && !cap.executionAllowed) {
@@ -265,6 +293,28 @@ async function identifyWithLLM(
     if (c.requestedLevel === "professional_analysis" && !cap.analysisAllowed) {
       console.info(`[CapabilityIdentification] LLM returned unsupported level "professional_analysis" for "${c.capabilityCode}" (analysisAllowed=false) — normalised to "general_information"`);
       return { ...c, requestedLevel: "general_information" as typeof c.requestedLevel };
+    }
+    return c;
+  });
+
+  // Sprint 29H.6 Fix C: Intent-aware execution normalisation.
+  // When the LLM returns "execution" for a capability that supports execution (executionAllowed=true),
+  // cross-check against the deterministic execution phrase patterns. If NO execution phrase from
+  // the pattern matches the message, the LLM has misclassified a work-product request as external
+  // execution (e.g. "produce an improvement plan" → should be professional_analysis, not execution).
+  // This guards against the LLM conflating "produce/create/prepare a document" with external action.
+  const msgLowerCheck = input.message.toLowerCase();
+  const normalised = withRegistryNormalisation.map(c => {
+    if (c.requestedLevel !== "execution") return c;
+    const pattern = CAPABILITY_KEYWORD_PATTERNS.find(p => p.capabilityCode === c.capabilityCode);
+    const hasDetExecPhrase = pattern?.executionPhrases.some(ep => msgLowerCheck.includes(ep)) ?? false;
+    if (!hasDetExecPhrase) {
+      console.info(
+        `[CapabilityIdentification] Sprint 29H.6: LLM returned "execution" for "${c.capabilityCode}" ` +
+        `but no deterministic execution phrase confirmed — normalised to "professional_analysis" ` +
+        `(work-product intent, not external-state action)`,
+      );
+      return { ...c, requestedLevel: "professional_analysis" as typeof c.requestedLevel };
     }
     return c;
   });

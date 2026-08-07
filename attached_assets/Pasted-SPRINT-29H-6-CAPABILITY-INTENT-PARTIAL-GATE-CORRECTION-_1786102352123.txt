@@ -1,0 +1,409 @@
+SPRINT 29H.6 — CAPABILITY INTENT & PARTIAL-GATE CORRECTION
+
+Proceed with implementation.
+
+The post-fix live rerun at 11:13 UTC proved that Sprint 29H.3 fixed:
+
+- policy.review false-positive blocking
+- policy.review level normalisation
+- incorrect "Requires upgrade" labels
+- confirmation gating behaviour
+
+The CURRENT runtime blocker is now:
+
+User asks NeedsOps to analyse an Incident Management Policy and PRODUCE an Improvement Plan.
+
+Capability identification returns:
+
+policy.review @ professional_analysis          allowed
+compliance.gap_analysis @ professional_analysis allowed
+compliance.corrective_actions @ execution      partially_allowed
+
+The phrase "Produce a prioritised Improvement Plan" is being interpreted as execution of corrective actions.
+
+That is incorrect.
+
+Creating an improvement/corrective-action PLAN is professional reasoning.
+
+Actually carrying out corrective actions is execution.
+
+Do not weaken the entitlement gate.
+Fix the capability intent classification feeding it.
+
+==================================================
+A — DEFINE ANALYSIS VS EXECUTION SEMANTICS
+==================================================
+
+Establish one canonical distinction:
+
+PROFESSIONAL ANALYSIS
+
+Examples:
+
+- review policy
+- identify compliance gaps
+- assess risks
+- recommend corrective actions
+- create corrective action plan
+- prepare improvement plan
+- prioritise recommendations
+- assign recommended responsible roles
+- propose remediation
+- draft implementation roadmap
+- analyse incident process
+- produce action plan
+
+These produce intellectual/work-product output inside NeedsOps.
+
+They do NOT constitute external execution.
+
+EXECUTION
+
+Examples:
+
+- implement corrective action
+- update the live policy
+- change participant records
+- send notification
+- lodge report
+- assign staff
+- modify workflow/system
+- email regulator
+- save/write external file
+- execute remediation
+- perform connector side effect
+
+These change external state.
+
+The word "plan" must never by itself imply execution.
+
+==================================================
+B — FIX compliance.corrective_actions LEVEL
+==================================================
+
+Inspect every path that can emit:
+
+compliance.corrective_actions
+
+Determine whether the requested level comes from:
+
+- deterministic keyword rules
+- LLM classification
+- normalisation
+- capability metadata
+- fallback logic
+
+For requests such as:
+
+"Produce an Improvement Plan"
+"Prepare corrective actions"
+"Recommend corrective actions"
+"Develop an action plan"
+
+expected:
+
+compliance.corrective_actions
+requestedLevel = professional_analysis
+
+For requests such as:
+
+"Implement the corrective actions"
+"Apply these corrective actions now"
+
+expected:
+
+compliance.corrective_actions
+requestedLevel = execution
+
+Do not simply downgrade every compliance.corrective_actions request.
+
+The distinction must follow user intent.
+
+==================================================
+C — EXPAND LEVEL NORMALISATION SAFELY
+==================================================
+
+The boundary normaliser introduced for policy.review should become a general capability-level normaliser where appropriate.
+
+Use capability metadata such as:
+
+executionAllowed
+supportedLevels
+defaultLevel
+
+combined with structured intent.
+
+Rules:
+
+If user asks for an analytical deliverable and the capability supports professional_analysis:
+→ professional_analysis
+
+If user explicitly asks to perform external changes:
+→ execution
+
+If execution is unsupported:
+→ retain the entitlement/confirmation behaviour
+
+Do not silently reinterpret genuine execution requests as analysis merely to avoid the gate.
+
+==================================================
+D — INCIDENT INTENT IDENTIFICATION
+==================================================
+
+The post-fix request failed to identify incident.review even though the request clearly says:
+
+"Incident Management Policy"
+
+Inspect why.
+
+Do not rely on bare keyword "incident" alone if that creates false positives.
+
+Add robust multi-word deterministic patterns such as:
+
+- incident management
+- incident management policy
+- incident review
+- incident investigation
+- incident reporting
+- reportable incident
+- incident response
+- incident procedure
+
+Expected for the live acceptance request:
+
+incident.review @ professional_analysis
+
+or the canonical equivalent after normalisation.
+
+If incident.review is not required for correct OPS selection under the canonical model, document that explicitly. Do not invent a capability merely to make the test green.
+
+==================================================
+E — OPERATIONS MANAGER ROUTING
+==================================================
+
+Only production-ready specialists may execute.
+
+Current production-ready workforce:
+
+- chief_of_staff
+- operations_manager
+- executive_assistant
+
+Do not dispatch:
+
+- incident_safeguarding_specialist
+- knowledge_documentation_specialist
+- policy_governance_specialist
+
+while they remain:
+
+dna_pending
+coming_soon
+or otherwise non-production-ready.
+
+For this request:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations."
+
+Expected specialist:
+
+operations_manager
+
+Trace the canonical routing decision.
+
+Do not hardcode this exact sentence to OPS.
+
+The routing should follow capability + specialist readiness.
+
+==================================================
+F — PARTIAL ACCESS GATE
+==================================================
+
+Keep the partial-access confirmation mechanism.
+
+It is working correctly now.
+
+But it should only fire when the user genuinely requested a capability that cannot be performed at the requested level.
+
+Expected after this fix for the acceptance request:
+
+blockedCapabilities = 0
+partialCapabilities = 0
+requiresUserConfirmationForPartialWork = false
+
+Execution proceeds normally.
+
+Control case:
+
+"Implement these corrective actions in our live systems."
+
+If execution entitlement is unavailable:
+
+partial/block state MUST still fire.
+
+==================================================
+G — EXECUTION ACTION DISTINCTION
+==================================================
+
+Ensure this aligns with the existing Connector architecture.
+
+Creating:
+
+- recommendation
+- improvement plan
+- corrective action plan
+
+is NOT an ExecutionAction.
+
+Actually performing:
+
+- file update
+- email send
+- spreadsheet change
+- system modification
+
+IS an ExecutionAction.
+
+Do not let Capability Planning confuse professional work product with external side effects.
+
+==================================================
+H — TEST MATRIX
+==================================================
+
+Add tests covering:
+
+1. "Prepare an Improvement Plan"
+   → corrective_actions @ professional_analysis
+
+2. "Recommend corrective actions"
+   → professional_analysis
+
+3. "Develop a remediation plan"
+   → professional_analysis
+
+4. "Prioritise corrective actions"
+   → professional_analysis
+
+5. "Implement corrective actions"
+   → execution
+
+6. "Apply the corrective actions now"
+   → execution
+
+7. "Update the live policy with these corrections"
+   → execution
+
+8. "Review Incident Management Policy and prepare Improvement Plan"
+   → incident.review + gap analysis + corrective_actions at professional_analysis
+
+9. Genuine execution request still triggers entitlement gate when execution unavailable.
+
+10. Analytical task does not trigger partial-access confirmation.
+
+11. No dna_pending specialist is dispatchable.
+
+12. Operations Manager is eligible for incident operational review.
+
+==================================================
+I — ARCHITECTURE GUARD
+==================================================
+
+Add or verify this invariant:
+
+Capability identification describes WHAT work is requested.
+
+Capability level describes whether the request is:
+
+- reasoning/work-product generation
+or
+- external-state execution.
+
+The presence of words such as:
+
+plan
+action
+recommendation
+improvement
+
+must never alone escalate a request to execution level.
+
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+
+Before reporting completion, classify every result as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Each conclusion:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not call fixtures live proof.
+
+==================================================
+POST-FIX LIVE RERUN
+==================================================
+
+After implementation and server restart, submit a BRAND-NEW request after the restart timestamp using the actual mhr-holdings-2 organisation:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations."
+
+Do not reuse previous records.
+
+Prove:
+
+1. policy.review correctly classified.
+2. incident-management intent recognised appropriately.
+3. corrective_actions classified at professional_analysis.
+4. blockedCapabilities = 0.
+5. partialCapabilities = 0.
+6. no confirmation card.
+7. Operations Manager selected.
+8. UEE entered.
+9. new executionId generated.
+10. KRS retrieval runs.
+11. incident-specific chunks outrank generic risk-management chunks where available.
+12. retrieval audit row contains THIS executionId.
+13. OPS output is a completed review.
+14. quality score uses 0–100.
+15. no unnecessary auto-revision.
+16. Completed Work reaches awaiting_approval.
+
+If authenticated UI cannot be driven, mark viewer/approval/export UI as NOT YET PROVEN.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+- before/after capability trace
+- analysis-vs-execution rule
+- incident intent mapping
+- selected specialist trace
+- partial gate before/after
+- post-fix execution IDs
+- evidence retrieval result
+- retrieval audit result
+- Completed Work result
+- regression result
+- evidence-level table
+
+Then classify remaining issues as:
+
+CURRENT RUNTIME DEFECT
+FIXED AND LIVE-PROVEN
+PARTIALLY PROVEN
+UNPROVEN
+UX IMPROVEMENT
+
+Do not propose the next sprint.
+Stop after the verification report.

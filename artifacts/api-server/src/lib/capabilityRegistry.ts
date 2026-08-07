@@ -808,9 +808,22 @@ export const CAPABILITY_KEYWORD_PATTERNS: CapabilityKeywordPattern[] = [
     executionPhrases: [],
     analysisPhrases: ["review evidence", "assess evidence", "check evidence"] },
   { capabilityCode: "compliance.corrective_actions",
-    keywords: ["corrective action", "corrective actions", "remediation", "non-conformance"],
-    executionPhrases: ["create corrective", "submit corrective", "lodge corrective"],
-    analysisPhrases: ["plan corrective", "review corrective"] },
+    // Sprint 29H.6: Expanded keyword and phrase patterns to correctly distinguish
+    // work-product deliverables (professional_analysis) from external-state changes (execution).
+    // "Produce/prepare an improvement plan" → analysisPhrase → professional_analysis.
+    // "Implement/apply corrective actions" → executionPhrase → execution.
+    keywords: ["corrective action", "corrective actions", "remediation", "non-conformance",
+               "improvement plan", "corrective action plan", "action plan", "remediation plan"],
+    executionPhrases: ["create corrective", "submit corrective", "lodge corrective",
+                       "implement corrective", "apply corrective", "execute corrective",
+                       "apply the corrective", "implement the corrective",
+                       "apply these corrective", "implement these corrective"],
+    analysisPhrases: ["plan corrective", "review corrective", "recommend corrective",
+                      "prepare corrective", "produce corrective", "prioritise corrective",
+                      "prepare improvement", "develop improvement", "produce improvement",
+                      "prioritised improvement plan", "corrective action plan",
+                      "remediation plan", "develop a remediation", "prepare a remediation",
+                      "prepare an improvement", "action plan"] },
   { capabilityCode: "policy.review",
     // Fix 29H.3 Defect 1: bare "policy" / "policies" / "procedure" / "procedures" matched
     // document names (e.g. "Incident Management Policy") — not service intent.
@@ -819,9 +832,20 @@ export const CAPABILITY_KEYWORD_PATTERNS: CapabilityKeywordPattern[] = [
     executionPhrases: [],
     analysisPhrases: ["review our policy", "check our policy", "assess our policy", "conduct a policy review", "update our policy", "audit our policy"] },
   { capabilityCode: "incident.review",
-    keywords: ["incident", "incidents", "near miss", "adverse event", "reportable incident"],
+    // Sprint 29H.6 Fix D: Bare "incident"/"incidents" matched document names
+    // (e.g. "Incident Management Policy") without signalling a service request.
+    // Replaced with multi-word phrases that confirm explicit incident-management intent.
+    // Multi-word keywords score +4 each (vs +2 for single words), pushing confidence
+    // above the 0.7 deterministic threshold so the LLM path is bypassed.
+    // "incident management policy" added as analysisPhrase: appearing in an analysis
+    // request confirms the user wants the incident review service (not just references the doc).
+    keywords: ["incident management", "incident review", "incident investigation",
+               "incident response", "incident reporting", "incident procedure",
+               "near miss", "adverse event", "reportable incident"],
     executionPhrases: ["submit incident", "lodge incident", "report incident", "create incident"],
-    analysisPhrases: ["review incident", "investigate incident", "analyse incident"] },
+    analysisPhrases: ["review incident management", "analyse incident management",
+                      "incident management review", "incident management policy",
+                      "review our incident", "investigate incident", "analyse incident"] },
   { capabilityCode: "restrictive_practice.review",
     keywords: ["restrictive practice", "restrictive practices", "behaviour support", "bsp", "restrictive intervention"],
     executionPhrases: [],
