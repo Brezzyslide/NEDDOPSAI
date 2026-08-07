@@ -1,0 +1,303 @@
+SPRINT 29H.8 — EXECUTION IDENTITY & EVIDENCE INTEGRITY FORENSIC GATE
+
+TEST ONLY. NO CODE CHANGES.
+
+Anchor execution:
+
+completedWorkId:
+7fb5dea0-966b-4555-bc7e-9fc21d6b7508
+
+taskId:
+1ea04bb2-4e54-43ae-8c8f-1ff355a19e47
+
+conversationId:
+c90b36b0-e54a-47f9-92e9-cb37390ff612
+
+This execution is already complete and remains awaiting_approval.
+
+We have three proven symptoms:
+
+D1
+Task plan primarySpecialist = operations_manager
+task_specialists executor = operations_manager
+completed_work.primary_specialist = incident_safeguarding_specialist
+
+D2
+No retrieval_audit_events row exists for this execution.
+
+D3
+Self-review reports:
+"EvidencePack not provided to self-review"
+
+Do not fix yet.
+
+Find the exact transition point for each defect.
+
+==================================================
+MANDATORY EVIDENCE STANDARD
+==================================================
+
+Classify every result as:
+
+1. Unit
+2. Mocked integration
+3. Real database integration
+4. Live API/runtime
+5. Live authenticated UI E2E
+
+Label:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Source inspection alone may identify candidate code paths but does not prove live runtime behaviour.
+
+==================================================
+PART A — SPECIALIST IDENTITY TRACE
+==================================================
+
+Trace this exact task from:
+
+CoS specialist selection
+→ task_execution_plans
+→ task_specialists
+→ work blueprint selection
+→ work package assembly
+→ canonical execution context
+→ runtime manifest
+→ generateDraft / specialist system instruction
+→ AI Gateway call
+→ Completed Work persistence
+
+At every stage capture:
+
+specialistCode
+primarySpecialist
+assignedSpecialists
+blueprint.primarySpecialist
+manifest.primarySpecialist
+ctx.specialistCode
+AI gateway specialist/role context
+completed_work.primary_specialist
+
+We need the exact first stage where:
+
+operations_manager
+becomes
+incident_safeguarding_specialist
+
+Do not infer that blueprint selection caused it.
+
+Prove the exact assignment statement/function.
+
+Answer:
+
+1. Did selectBlueprint() return Incident Investigation?
+2. What is that blueprint's primarySpecialist?
+3. Does assembleWorkPackage override the planned specialist?
+4. Does canonical execution context use plan specialist or blueprint specialist?
+5. Which specialist DNA/system instruction was actually used for generation?
+6. Which specialist code was sent to AI Gateway?
+7. Which value was persisted into Completed Work?
+8. Was the generated content actually produced using ISS DNA, or was only the metadata mislabelled?
+
+This distinction is critical.
+
+Classify D1 as either:
+
+IDENTITY OVERRIDE
+METADATA MISLABEL
+BLUEPRINT OVERRIDE
+CONTEXT CONSTRUCTION BUG
+PERSISTENCE BUG
+OTHER
+
+==================================================
+PART B — PRODUCTION READINESS ENFORCEMENT
+==================================================
+
+Trace all runtime gates between selected specialist and AI execution.
+
+For:
+
+operations_manager
+incident_safeguarding_specialist
+
+report:
+
+executionStatus
+comingSoon
+dna status
+active status
+archived status
+canonical eligibility
+manifest eligibility
+runtime eligibility
+
+Determine whether unifiedExecutionEngine performs a final readiness check before generation.
+
+Required architectural invariant:
+
+No specialist with:
+dna_pending
+coming_soon
+inactive
+archived
+
+may reach specialist AI execution even if a blueprint references that specialist.
+
+Prove whether that invariant currently exists at the final execution boundary.
+
+==================================================
+PART C — RETRIEVAL AUDIT TRACE
+==================================================
+
+Trace the exact retrieval call for this execution.
+
+Capture:
+
+executionId
+organisationId
+specialistCode
+query
+sourceId
+selected chunk IDs
+writeAudit flag
+writeRetrievalAudit invocation
+insert payload
+DB result/error
+
+Temporarily enable safe diagnostic logging in TEST/DEVELOPMENT only if required to expose the actual insert failure.
+
+Do not expose chunk text or private prompts.
+
+Answer:
+
+1. Was writeRetrievalAudit called?
+2. Was writeAudit=true?
+3. What executionId was passed?
+4. What specialist identifier was passed?
+5. Did db.insert execute?
+6. If insert failed, what exact Postgres/Drizzle error occurred?
+7. If it was never called, which execution path bypassed it?
+8. Why does the historic 03:25 run have one row with executionId and another without?
+
+Do not accept "likely NULL constraint" or "likely FK mismatch."
+
+Return the exact cause.
+
+==================================================
+PART D — EVIDENCEPACK THREADING
+==================================================
+
+Trace:
+
+ResourceRegistry
+→ KnowledgeResolutionService
+→ EvidencePack
+→ generateDraft
+→ selfReviewService
+
+Capture only structure/IDs, not raw evidence text.
+
+At each stage report:
+
+EvidencePack exists?
+executionId
+source count
+chunk count
+citation count
+
+Find the exact point where the EvidencePack stops being passed.
+
+Answer:
+
+1. Did generateDraft receive the pack?
+2. Did selfReviewService.reviewDraft / performSelfReview receive it?
+3. Is ReviewContext constructed without evidence?
+4. Is there a compatibility adapter dropping the field?
+5. Is the task path different from the conversation path?
+6. Is the evidence_citation_grounding dimension defaulting to 6 because evidence is truly absent or merely omitted from ReviewContext?
+
+Classify D3 exactly.
+
+==================================================
+PART E — BLUEPRINT OWNERSHIP RULE
+==================================================
+
+Inspect the current architectural rule between:
+
+CoS-selected specialist
+and
+blueprint.primarySpecialist
+
+Determine which is supposed to be authoritative.
+
+The expected design is:
+
+CoS selects/delegates the production specialist.
+
+Blueprint determines:
+- output structure
+- validation rules
+- citations
+- quality criteria
+
+A blueprint must not silently replace the CoS-selected specialist with a dna_pending role.
+
+Verify whether current code violates this.
+
+Do not change it yet.
+
+==================================================
+PART F — AUTHENTICATED VIEWER SMOKE TEST
+==================================================
+
+No approval yet.
+
+Using the authenticated UI, open:
+
+7fb5dea0-966b-4555-bc7e-9fc21d6b7508
+
+Verify only:
+
+1. Full 4,296-character report is visibly rendered.
+2. Document tab opens correctly.
+3. Evidence tab is visible.
+4. Evidence source/citations are visible.
+5. Inspector shows 83/100, not 8/100.
+6. Approve / Request Changes / Reject controls are visible.
+7. CoS reference opens this exact work ID.
+
+Do NOT approve yet.
+
+This closes the remaining viewer uncertainty without mutating the test record.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+D1 exact first divergence point
+D1 actual AI specialist identity
+D2 exact retrieval-audit failure
+D3 exact EvidencePack drop point
+Blueprint-vs-CoS ownership finding
+Final readiness-gate finding
+Viewer smoke-test result
+
+Then classify each:
+
+CURRENT RUNTIME DEFECT
+METADATA ONLY
+ARCHITECTURE VIOLATION
+OBSERVABILITY DEFECT
+UI DEFECT
+NOT YET PROVEN
+
+Do not implement fixes.
+Do not propose the next sprint.
+Stop after the forensic report.
