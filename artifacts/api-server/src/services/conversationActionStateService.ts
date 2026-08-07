@@ -1,17 +1,16 @@
 /**
- * Conversation Action State Service — Sprint 28.4
+ * Conversation Action State Service — Sprint 28.4 / 29H.2
  *
  * Resolves the current action state of a Chief of Staff conversation from
  * authoritative platform records (DB only — never from conversation text).
  *
- * The action state determines what the Chief of Staff may truthfully claim:
- * - Actions that have occurred (past tense)
- * - Actions that are currently happening (present progressive)
- * - Actions that are definitively possible (confirmed future)
- *
- * Security: No action state is inferred from LLM output or message content.
- * State is derived exclusively from platform records (tasks, specialists,
- * execution intents, completed work).
+ * Sprint 29H.2 changes:
+ * - Removed unconditional completedWorkId → "completed" short-circuit (Part A).
+ *   Historical completed work is now surfaced as grounded metadata context
+ *   (Part D) without overriding the level for active execution state.
+ * - Added CompletedWorkRecord with full persisted provenance.
+ * - buildActionStateSection now exposes grounded completed-work metadata
+ *   including primarySpecialist, status, title, createdAt, qualityScore.
  */
 
 import { db } from "@workspace/db";
@@ -19,15 +18,12 @@ import {
   taskSpecialistsTable,
   executionIntentsTable,
   completedWorkTable,
+  completedWorkVersionsTable,
 } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 
 // ─── Action State Level ────────────────────────────────────────────────────────
 
-/**
- * Ordered lifecycle of a conversation action.
- * Each level defines what the CoS may truthfully claim.
- */
 export type ActionStateLevel =
   | "informational"          // No task or proposal — discovery phase
   | "proposal_ready"         // LLM has enough info to propose but hasn't yet
@@ -38,8 +34,24 @@ export type ActionStateLevel =
   | "execution_dispatched"   // Execution intent approved/dispatched; not yet started
   | "execution_started"      // Execution runtime has started work
   | "awaiting_clarification" // Work paused; clarification checkpoint active
-  | "completed"              // Completed Work record exists
+  | "completed"              // Current execution intent is completed
   | "failed";                // Task or execution failed/rejected
+
+// ─── Grounded completed-work metadata ─────────────────────────────────────────
+
+/**
+ * Persisted metadata from completed_work + current version.
+ * Injected into the LLM prompt as grounded context (Part D).
+ */
+export interface CompletedWorkRecord {
+  id: string;
+  status: string;
+  title: string;
+  primarySpecialist: string;
+  createdAt: Date | null;
+  approvedAt: Date | null;
+  qualityScore: number | null;
+}
 
 // ─── Allowed and disallowed claims per level ─────────────────────────────────
 
@@ -119,13 +131,13 @@ const CLAIMS_BY_LEVEL: Record<ActionStateLevel, AllowedClaims> = {
   specialist_assigned: {
     allowed: [
       "The specialist has been assigned",
-      "The Operations Manager has been assigned",
+      "The Operations Manager has been assigned to this task",
     ],
     disallowed: [
       "started / underway / in progress (execution not yet dispatched)",
       "completed / finished",
     ],
-    becauseExplanation: "Specialist is assigned but execution has not started.",
+    becauseExplanation: "Specialist is assigned to the task but execution has not started.",
   },
   execution_dispatched: {
     allowed: [
@@ -191,10 +203,18 @@ export interface ConversationActionState {
   taskExists: boolean;
   taskId?: string;
   taskState?: string;
+  /** Specialists assigned to the task record (task intent, not execution provenance). */
   assignedSpecialists: string[];
   executionIntentExists: boolean;
   executionStatus?: string;
+  /** ID of the most recent completed_work in this conversation (kept for compatibility). */
   completedWorkId?: string;
+  /**
+   * Full grounded metadata of the most recent completed_work (Part D).
+   * primarySpecialist reflects who actually produced the work — distinct from
+   * assignedSpecialists which reflects who was assigned to the task.
+   */
+  completedWork?: CompletedWorkRecord;
   allowedClaims: readonly string[];
   disallowedClaims: readonly string[];
   becauseExplanation: string;
@@ -212,7 +232,7 @@ export async function resolveConversationActionState(input: {
   const { organisationId, conversationId, recentMessages, taskId, executionIntentId } = input;
 
   if (!organisationId || !conversationId) {
-    return makeState("informational", false, undefined, false, undefined, [], false, undefined, undefined);
+    return makeState("informational", false, undefined, false, undefined, [], false, undefined, undefined, undefined);
   }
 
   // 1. Proposal existence — check recent message types (no extra DB query needed)
@@ -272,12 +292,28 @@ export async function resolveConversationActionState(input: {
     }
   }
 
-  // 4. Completed work (by conversation — most recent)
+  // 4. Completed work — fetch full provenance metadata (Part D).
+  //    The primary_specialist field is the actual producer of the work.
+  //    This is DISTINCT from assignedSpecialists (the task assignment).
+  //    Sprint 29H.2: no longer drives level resolution (Part A).
   let completedWorkId: string | undefined;
+  let completedWork: CompletedWorkRecord | undefined;
   try {
     const [cw] = await db
-      .select({ id: completedWorkTable.id })
+      .select({
+        id:               completedWorkTable.id,
+        status:           completedWorkTable.status,
+        title:            completedWorkTable.title,
+        primarySpecialist: completedWorkTable.primarySpecialist,
+        createdAt:        completedWorkTable.createdAt,
+        approvedAt:       completedWorkTable.approvedAt,
+        qualityScore:     completedWorkVersionsTable.qualityScore,
+      })
       .from(completedWorkTable)
+      .leftJoin(
+        completedWorkVersionsTable,
+        eq(completedWorkVersionsTable.id, completedWorkTable.currentVersionId),
+      )
       .where(
         and(
           eq(completedWorkTable.organizationId, organisationId),
@@ -286,22 +322,37 @@ export async function resolveConversationActionState(input: {
       )
       .orderBy(desc(completedWorkTable.createdAt))
       .limit(1);
-    if (cw) completedWorkId = cw.id;
+
+    if (cw) {
+      completedWorkId = cw.id;
+      completedWork = {
+        id:               cw.id,
+        status:           cw.status,
+        title:            cw.title,
+        primarySpecialist: cw.primarySpecialist,
+        createdAt:        cw.createdAt,
+        approvedAt:       cw.approvedAt,
+        qualityScore:     cw.qualityScore ?? null,
+      };
+    }
   } catch (e) {
     console.warn("[ActionState] completed_work query failed:", e instanceof Error ? e.message : e);
   }
 
-  // 5. Resolve level
+  // 5. Resolve level.
+  //    Sprint 29H.2 (Part A): historical completed work no longer overrides level.
+  //    Level reflects current active execution state only. Historical completed
+  //    work is surfaced as grounded context via completedWork field.
   const level = resolveLevel({
     proposalExists,
     taskId,
     assignedSpecialists,
     executionIntentExists,
     executionStatus,
-    completedWorkId,
+    // completedWorkId intentionally excluded from level resolution
   });
 
-  return makeState(level, proposalExists, taskId, !!taskId, undefined, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId);
+  return makeState(level, proposalExists, taskId, !!taskId, undefined, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId, completedWork);
 }
 
 function resolveLevel(s: {
@@ -310,9 +361,10 @@ function resolveLevel(s: {
   assignedSpecialists: string[];
   executionIntentExists: boolean;
   executionStatus?: string;
-  completedWorkId?: string;
 }): ActionStateLevel {
-  if (s.completedWorkId) return "completed";
+  // Sprint 29H.2: removed `if (s.completedWorkId) return "completed"`.
+  // Historical completed work is shown as grounded context (Part D) but does
+  // NOT override the active execution state level.
 
   if (s.executionIntentExists && s.executionStatus) {
     const st = s.executionStatus;
@@ -343,6 +395,7 @@ function makeState(
   executionIntentExists: boolean,
   executionStatus: string | undefined,
   completedWorkId: string | undefined,
+  completedWork: CompletedWorkRecord | undefined,
 ): ConversationActionState {
   const claims = CLAIMS_BY_LEVEL[level];
   return {
@@ -355,6 +408,7 @@ function makeState(
     executionIntentExists,
     executionStatus,
     completedWorkId,
+    completedWork,
     allowedClaims: claims.allowed,
     disallowedClaims: claims.disallowed,
     becauseExplanation: claims.becauseExplanation,
@@ -369,17 +423,25 @@ const LEVEL_LABEL: Record<ActionStateLevel, string> = {
   proposal_created:       "proposal_created (awaiting user confirmation)",
   awaiting_confirmation:  "awaiting_confirmation",
   task_created:           "task_created (task exists, no specialist assigned)",
-  specialist_assigned:    "specialist_assigned",
+  specialist_assigned:    "specialist_assigned (task has an assigned specialist; no active execution)",
   execution_dispatched:   "execution_dispatched (sent to runtime, not yet started)",
   execution_started:      "execution_started (specialist is actively working)",
   awaiting_clarification: "awaiting_clarification (work paused)",
-  completed:              "completed",
+  completed:              "completed (execution just finished)",
   failed:                 "failed",
 };
 
 /**
  * Build the === CURRENT ACTION STATE === context section for the LLM prompt.
- * Injected before workforce/presence sections and before the user message.
+ *
+ * Sprint 29H.2 (Part D): when historical completed work exists, a grounded
+ * === HISTORICAL COMPLETED WORK === block is appended with persisted metadata
+ * including primarySpecialist (who actually produced the work), status, title,
+ * createdAt, approvedAt, and qualityScore.
+ *
+ * CRITICAL: assignedSpecialists = who was assigned to the task record.
+ * primarySpecialist = who actually produced the completed work output.
+ * These must never be conflated in LLM attribution.
  */
 export function buildActionStateSection(state: ConversationActionState): string {
   const lines: string[] = [
@@ -389,7 +451,10 @@ export function buildActionStateSection(state: ConversationActionState): string 
   ];
 
   if (state.assignedSpecialists.length > 0) {
-    lines.push(`Assigned specialists: ${state.assignedSpecialists.join(", ")}`);
+    lines.push(
+      `Task-assigned specialists: ${state.assignedSpecialists.join(", ")}`,
+      "(These specialists are assigned to the task record — not necessarily who produced the completed work.)",
+    );
   }
   if (state.executionStatus) {
     lines.push(`Execution status: ${state.executionStatus}`);
@@ -408,6 +473,40 @@ export function buildActionStateSection(state: ConversationActionState): string 
   }
 
   lines.push("", `Because: ${state.becauseExplanation}`);
+
+  // ── Part D: Grounded historical completed-work block ─────────────────────
+  // Injected when a completed_work record exists for this conversation.
+  // Provides persisted provenance the CoS must use for attribution.
+  if (state.completedWork) {
+    const cw = state.completedWork;
+    const createdStr = cw.createdAt ? cw.createdAt.toISOString() : "unknown";
+
+    lines.push(
+      "",
+      "=== HISTORICAL COMPLETED WORK ===",
+      `Completed Work ID: ${cw.id}`,
+      `Title: ${cw.title}`,
+      `Status: ${cw.status}`,
+      `Primary specialist who produced this work: ${cw.primarySpecialist}`,
+      `Created at: ${createdStr}`,
+    );
+
+    if (cw.approvedAt) {
+      lines.push(`Approved at: ${cw.approvedAt.toISOString()}`);
+    }
+    if (cw.qualityScore != null) {
+      lines.push(`Quality score: ${cw.qualityScore}/100`);
+    }
+
+    lines.push(
+      "",
+      "ATTRIBUTION RULE: You MUST NOT attribute this completed work to any specialist",
+      "other than the primary specialist listed above. If you refer to who produced",
+      "this work, use the primary specialist code above or omit attribution entirely.",
+      "The task-assigned specialists listed earlier are the intended task roles —",
+      "not necessarily who actually produced the completed output.",
+    );
+  }
 
   return lines.join("\n");
 }

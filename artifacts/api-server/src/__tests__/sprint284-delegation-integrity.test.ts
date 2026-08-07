@@ -33,9 +33,10 @@ const mocks = vi.hoisted(() => {
 
   // Self-referential DB chain mock for action state resolver.
   // All chaining methods return the same `dbChain` object; only `.limit()` resolves.
+  // Sprint 29H.2: leftJoin added so the completedWork query chain doesn't crash.
   const dbLimitFn = vi.fn().mockResolvedValue([]);
   const dbChain: any = { limit: dbLimitFn };
-  (["select", "from", "where", "orderBy"] as const).forEach(m => {
+  (["select", "from", "where", "orderBy", "leftJoin"] as const).forEach(m => {
     dbChain[m] = vi.fn(() => dbChain);
   });
 
@@ -193,17 +194,34 @@ describe("resolveConversationActionState", () => {
     expect(state.taskExists).toBe(true);
   });
 
-  it("returns completed when completedWork DB query returns a record", async () => {
+  it("populates completedWork metadata but does NOT override level to 'completed' (Sprint 29H.2 Part A)", async () => {
+    // Sprint 29H.2: historical completed_work is shown as grounded context but
+    // does not short-circuit level resolution. Level is determined from the
+    // current execution state (task + specialists + execution intent) only.
     mocks.dbLimitFn
-      .mockResolvedValueOnce([])                  // specialists
-      .mockResolvedValueOnce([])                  // execution intents
-      .mockResolvedValueOnce([{ id: "cw-001" }]); // completed work
+      .mockResolvedValueOnce([])                  // specialists → none → task_created
+      .mockResolvedValueOnce([])                  // execution intents → none
+      .mockResolvedValueOnce([{                   // completed work found
+        id:               "cw-001",
+        status:           "approved",
+        title:            "Incident Management Review",
+        primarySpecialist: "knowledge_documentation_specialist",
+        createdAt:        new Date("2026-08-07T02:24:00Z"),
+        approvedAt:       new Date("2026-08-07T02:30:00Z"),
+        qualityScore:     80,
+      }]);
 
     const state = await resolveConversationActionState({
       organisationId: ORG_A, conversationId: CONV_ID, recentMessages: [], taskId: "task-abc",
     });
+    // completedWork is populated with grounded metadata
     expect(state.completedWorkId).toBe("cw-001");
-    expect(state.level).toBe("completed");
+    expect(state.completedWork?.id).toBe("cw-001");
+    expect(state.completedWork?.primarySpecialist).toBe("knowledge_documentation_specialist");
+    expect(state.completedWork?.qualityScore).toBe(80);
+    // Level is task_created (task exists, no specialists, no execution intent)
+    // NOT "completed" — historical work does not override level
+    expect(state.level).toBe("task_created");
   });
 
   it("returns empty state gracefully when organisationId is empty", async () => {

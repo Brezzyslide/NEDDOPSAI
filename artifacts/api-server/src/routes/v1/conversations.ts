@@ -235,8 +235,10 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
 
     // Task #27 — Auto-dispatch: if CoS proposes a task with high confidence and
     // this conversation has no linked task yet, create + dispatch without user clicking.
+    // Sprint 29H.2: also fires when the action decision resolves create_new_work
+    // (bypasses the hardcoded shouldCreateTask=false in parseAndValidateLLMResponse).
     if (
-      result.understanding.shouldCreateTask &&
+      (result.understanding.shouldCreateTask || result.actionDecision?.action === "create_new_work") &&
       result.understanding.confidence >= AUTO_EXECUTE_CONFIDENCE_THRESHOLD &&
       result.understanding.proposedTask &&
       !conv.primaryTaskId
@@ -253,6 +255,30 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
         // Non-fatal — CoS response already delivered; don't surface task creation errors
         console.warn("[conversations] Auto-dispatch failed (non-fatal):", (err as Error)?.message);
       }
+    }
+
+    // Sprint 29H.2 (Part C) — Wire rerun_existing / revise_existing dispatch.
+    // executionCoordinatorService is imported here (not in conversationService)
+    // to avoid a circular dependency. Both actions reuse the existing taskId so
+    // UEE selects the current routing (Sprint 29H fixed: OM for incident.review).
+    if (
+      (result.actionDecision?.action === "rerun_existing" ||
+        result.actionDecision?.action === "revise_existing") &&
+      result.actionDecision.taskId
+    ) {
+      const ad = result.actionDecision;
+      dispatchWorkExecution({
+        organizationId: ctx.tenantId,
+        taskId: ad.taskId!,
+        taskTitle: ad.action === "revise_existing"
+          ? "Revision of previous work"
+          : "Rerun of previous work",
+        taskDescription: `${ad.action === "revise_existing" ? "Revision" : "Rerun"} requested: ${content.trim()}${ad.completedWorkId ? ` (source: ${ad.completedWorkId})` : ""}`,
+        requesterId: user.id,
+        conversationId: conv.id,
+      }).catch(err =>
+        console.warn("[conversations] Rerun/revise dispatch failed (non-fatal):", (err as Error)?.message),
+      );
     }
 
     sendEvent({ type: "done" });

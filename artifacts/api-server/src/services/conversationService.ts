@@ -35,6 +35,11 @@ import {
   buildStatusSummaryCard,
 } from "./conversationIntelligenceService.js";
 import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
+// Sprint 29H.2 — Action State Decision Contract (Part B)
+// Note: dispatchWorkExecution lives in executionCoordinatorService which already
+// imports from conversationService — wiring is in the route/ingress layer instead.
+import { resolveConversationActionState } from "./conversationActionStateService.js";
+import { resolveActionDecision, type ConversationActionDecision } from "./conversationActionDecisionService.js";
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { detectAndProposeConversationKnowledge } from "./conversationLearningService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
@@ -368,6 +373,8 @@ export interface ProcessMessageResult {
   agentMessage: ConversationMessage | null;
   understanding: ConversationUnderstanding;
   structuredContent: StructuredContent | null;
+  /** Sprint 29H.2 — deterministic platform action decision after CoS classification */
+  actionDecision?: ConversationActionDecision;
 }
 
 export async function buildMessageContext(
@@ -545,6 +552,30 @@ export async function processUserMessage(
     }
   }
 
+  // 3c. Sprint 29H.2 — Resolve deterministic action decision (Part B)
+  // Called after LLM classification. Converts semantic intent + DB state into
+  // a typed platform operation returned to the caller.
+  //
+  // Part C dispatch (rerun_existing / revise_existing / create_new_work) is
+  // wired in the route/ingress layer to avoid a circular dependency:
+  // executionCoordinatorService already imports from conversationService.
+  let actionDecision: ConversationActionDecision | undefined;
+  try {
+    const actionState = await resolveConversationActionState({
+      organisationId: organizationId,
+      conversationId,
+      recentMessages: (ctx.recentMessages ?? []).map(m => ({
+        messageType: m.messageType ?? "text",
+        content: m.content ?? "",
+      })),
+      taskId: taskId ?? ctx.currentTaskId,
+    });
+    actionDecision = resolveActionDecision(text, understanding, actionState);
+  } catch (err) {
+    // Action decision errors must never break conversation flow
+    console.warn("[ConversationService] Action decision failed (non-fatal):", (err as Error)?.message);
+  }
+
   // 4. Build structured content if applicable
   let structuredContent: StructuredContent | null = null;
   let messageType: InsertConversationMessage["messageType"] = "text";
@@ -599,7 +630,7 @@ export async function processUserMessage(
     ).catch(() => {});
   }
 
-  return { userMessage, agentMessage, understanding, structuredContent };
+  return { userMessage, agentMessage, understanding, structuredContent, actionDecision };
 }
 
 /** Post a plan card to the conversation thread after task creation. */

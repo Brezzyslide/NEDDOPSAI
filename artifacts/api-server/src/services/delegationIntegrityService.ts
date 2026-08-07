@@ -24,11 +24,12 @@ import type { ActionStateLevel, ConversationActionState } from "./conversationAc
 // ─── Violation category ────────────────────────────────────────────────────────
 
 export type ViolationCategory =
-  | "assignment"      // claiming an assignment occurred that hasn't
-  | "coordination"    // claiming active coordination or "proceeding"
-  | "execution"       // claiming execution is underway when it isn't
-  | "completion"      // claiming work is complete when it isn't
-  | "premature_proceed"; // claiming to proceed without confirmation
+  | "assignment"           // claiming an assignment occurred that hasn't
+  | "coordination"         // claiming active coordination or "proceeding"
+  | "execution"            // claiming execution is underway when it isn't
+  | "completion"           // claiming work is complete when it isn't
+  | "premature_proceed"    // claiming to proceed without confirmation
+  | "specialist_attribution"; // attributing completed work to the wrong specialist
 
 // ─── Detection patterns ────────────────────────────────────────────────────────
 
@@ -315,6 +316,58 @@ const STATE_SUFFIX: Record<ActionStateLevel, string> = {
   failed:                 " Please contact support or retry the task.",
 };
 
+// ─── Specialist attribution check (Sprint 29H.2 — Part E) ────────────────────
+
+/**
+ * Known specialist codes mapped to their display-name variants.
+ * Used to detect false attribution in CoS responses.
+ */
+const SPECIALIST_CODE_TO_DISPLAY_NAMES: Record<string, string[]> = {
+  operations_manager:                ["operations manager"],
+  executive_assistant:               ["executive assistant"],
+  compliance_manager:                ["compliance manager"],
+  hr_manager:                        ["hr manager"],
+  financial_analyst:                 ["financial analyst"],
+  knowledge_documentation_specialist:["knowledge documentation specialist"],
+  chief_of_staff:                    ["chief of staff"],
+  workforce_specialist:              ["workforce specialist"],
+  incident_management_specialist:    ["incident management specialist"],
+};
+
+/** Completion verbs used to detect attribution claims. */
+const ATTRIBUTION_VERBS =
+  "completed|reviewed|produced|delivered|finished|generated|created|prepared|conducted";
+
+/**
+ * Detects false specialist attribution in a CoS response.
+ *
+ * A claim is false when:
+ *   - A known specialist display name appears before a completion verb
+ *   - That specialist code does NOT match the persisted primarySpecialist
+ *
+ * Returns the detected violation or null if attribution is correct/absent.
+ */
+function checkSpecialistAttribution(
+  response: string,
+  primarySpecialist: string,
+): DetectedViolation | null {
+  for (const [code, names] of Object.entries(SPECIALIST_CODE_TO_DISPLAY_NAMES)) {
+    if (code === primarySpecialist) continue; // correct specialist — never flag
+    for (const name of names) {
+      const escapedName = name.replace(/\s+/g, "\\s+");
+      const pattern = new RegExp(
+        `\\b(the\\s+)?${escapedName}\\s+(has(\\s+already)?\\s+)?(${ATTRIBUTION_VERBS})\\b`,
+        "i",
+      );
+      const match = response.match(pattern);
+      if (match) {
+        return { category: "specialist_attribution", matchedPhrase: match[0] };
+      }
+    }
+  }
+  return null;
+}
+
 // ─── Main check function ───────────────────────────────────────────────────────
 
 /**
@@ -322,16 +375,44 @@ const STATE_SUFFIX: Record<ActionStateLevel, string> = {
  *
  * Returns a corrected response and audit fields.
  * When no violations are found, `correctedResponse` equals the original `response`.
+ *
+ * Sprint 29H.2 (Part E): also checks specialist attribution when
+ * actionState.completedWork?.primarySpecialist is present. This check is
+ * context-aware (requires the grounded persisted specialist) and is enforced
+ * at ALL action state levels including "completed".
  */
 export function checkDelegationIntegrity(
   response: string,
   actionState: ConversationActionState,
 ): DelegationIntegrityResult {
-  // 1. Detect all potential action claims
+  // 1. Detect action-language violations
   const rawViolations = detectActionClaims(response);
 
   // 2. Filter to state-relevant violations
   const violations = filterViolationsForState(rawViolations, actionState);
+
+  // 3. Sprint 29H.2 (Part E): Specialist attribution check — context-aware,
+  //    enforced at ALL levels including "completed". Must run before the
+  //    early-return so attribution errors are caught even when no action
+  //    language violations exist.
+  let attrCorrectedResponse = response;
+  if (actionState.completedWork?.primarySpecialist) {
+    const attrViolation = checkSpecialistAttribution(
+      response,
+      actionState.completedWork.primarySpecialist,
+    );
+    if (attrViolation) {
+      violations.push(attrViolation);
+      const actual = actionState.completedWork.primarySpecialist;
+      const escapedPhrase = attrViolation.matchedPhrase.replace(
+        /[.*+?^${}()|[\]\\]/g, "\\$&",
+      );
+      attrCorrectedResponse = response.replace(
+        new RegExp(escapedPhrase, "gi"),
+        `work was produced by ${actual}`,
+      );
+    }
+  }
 
   const actionIntegrityViolationDetected = violations.length > 0;
   const violationCategories = [...new Set(violations.map(v => v.category))];
@@ -351,10 +432,10 @@ export function checkDelegationIntegrity(
     };
   }
 
-  // 3. Apply corrections
-  let correctedResponse = applyPatternCorrections(response, violations);
+  // 4. Apply action-language corrections (on the attribution-corrected base)
+  let correctedResponse = applyPatternCorrections(attrCorrectedResponse, violations);
 
-  // 4. Append state-level suffix if the correction changed the response text
+  // 5. Append state-level suffix if the correction changed the response text
   if (correctedResponse !== response) {
     const suffix = STATE_SUFFIX[actionState.level];
     if (suffix && !correctedResponse.endsWith(suffix.trim())) {

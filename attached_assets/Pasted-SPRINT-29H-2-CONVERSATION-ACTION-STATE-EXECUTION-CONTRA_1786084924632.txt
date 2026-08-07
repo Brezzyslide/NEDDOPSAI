@@ -1,0 +1,269 @@
+SPRINT 29H.2 — CONVERSATION ACTION-STATE EXECUTION CONTRACT
+
+Implement the correction proven necessary by the Sprint 29H.1 verification.
+
+Do not modify the Unified Execution Engine architecture.
+Do not add OpenClaw.
+Do not create a second orchestrator.
+Do not solve this with prompt wording alone.
+
+OBJECTIVE
+
+Make Workforce Chat correctly distinguish:
+
+1. VIEW existing completed work
+2. DISCUSS/SUMMARISE existing completed work
+3. APPROVE existing work
+4. REVISE existing work
+5. RERUN work using current evidence
+6. CREATE genuinely new work
+
+A prior completedWorkId must provide historical context.
+It must NOT automatically suppress a legitimate new execution.
+
+PART A — REMOVE THE UNCONDITIONAL COMPLETED SHORT-CIRCUIT
+
+Replace:
+
+if (s.completedWorkId) return "completed"
+
+with deterministic action-state resolution that considers:
+
+- requestedTaskAction
+- conversationMode
+- explicit rerun/new/revise intent
+- completed work status
+- current task state
+- current specialist eligibility where relevant
+
+Existing completed work should suppress execution only for intents that are
+actually asking to view, discuss, summarise, inspect or act on that existing work.
+
+Examples:
+
+"Show me the review"
+→ existing work
+
+"What were the findings?"
+→ existing work
+
+"Approve the review"
+→ approval/status action against existing work
+
+"Revise the review..."
+→ revision execution
+
+"Review this again using latest evidence"
+→ new execution
+
+"Replace the old review with a new Operations Manager review"
+→ new execution, preserve old work
+
+"Produce a new Improvement Plan"
+→ new task/execution
+
+PART B — CREATE A DETERMINISTIC ACTION DECISION
+
+Introduce one typed platform decision after CoS classification.
+
+Example:
+
+ConversationActionDecision {
+  action:
+    | "respond"
+    | "view_existing"
+    | "summarise_existing"
+    | "approve_existing"
+    | "revise_existing"
+    | "rerun_existing"
+    | "create_new_work";
+
+  completedWorkId?: string;
+  taskId?: string;
+
+  shouldCreateTask: boolean;
+  shouldDispatchSpecialist: boolean;
+
+  reasonCode: string;
+}
+
+The LLM may classify semantic intent.
+
+The platform must deterministically decide what operation follows.
+
+Do NOT allow shouldCreateTask or shouldDispatchSpecialists to remain
+informational fields with no consumer.
+
+PART C — WIRE THE ACTIONS
+
+create_new_work
+→ existing task creation/dispatch path
+→ UEE
+
+rerun_existing
+→ create new execution/run using current routing/evidence
+→ preserve historical completed work
+→ UEE
+
+revise_existing
+→ existing revision mechanism
+→ reference source completedWorkId
+→ UEE
+
+approve_existing
+→ use actual persisted completed_work status
+→ only perform approval when transition is valid
+
+view_existing / summarise_existing
+→ no specialist execution
+
+PART D — FIX COMPLETED-WORK FACTUAL CONTEXT
+
+When historical completed work is relevant, buildActionStateSection must expose
+grounded persisted metadata:
+
+- completedWorkId
+- status
+- title
+- primarySpecialist
+- createdAt
+- approvedAt where applicable
+- source taskId
+- qualityScore if available
+
+Do NOT present task_specialists as evidence of who produced completed work.
+
+Keep these concepts distinct:
+
+assignedSpecialists = who was assigned/intended
+primarySpecialist = who actually produced persisted completed work
+
+PART E — ATTRIBUTION INTEGRITY
+
+Add a specialist attribution integrity rule.
+
+If CoS says:
+
+"Operations Manager completed..."
+"Executive Assistant produced..."
+"X specialist reviewed..."
+
+the named specialist must match persisted execution/completed-work provenance.
+
+Otherwise:
+- reject/correct the claim
+- use persisted primarySpecialist
+- or omit specialist attribution
+
+Completed state must NOT bypass this integrity rule.
+
+PART F — STATUS-AWARE APPROVAL
+
+CoS must distinguish at minimum:
+
+draft
+awaiting_approval
+approved
+rejected / changes_requested if supported
+
+"Approve the review" against an already-approved record must NOT claim that an
+approval occurred.
+
+Return the actual persisted status.
+
+PART G — PRESERVE ARCHITECTURE
+
+Must remain true:
+
+User
+→ Chief of Staff
+→ deterministic ConversationActionDecision
+→ task/revision/rerun dispatch where required
+→ Unified Execution Engine
+→ specialist
+
+CoS remains sole orchestrator.
+
+UEE remains sole specialist execution engine.
+
+No service outside UEE performs specialist AI execution.
+
+Existing completed work is historical state, not an execution lock.
+
+PART H — MANDATORY VERIFICATION
+
+Before reporting completion, rerun the exact 8 scenarios from Sprint 29H.1.
+
+For each capture:
+
+message
+conversationMode
+requestedTaskAction
+completedWorkId
+completedWork.status
+persisted primarySpecialist
+ConversationActionDecision
+task created?
+specialist run created?
+UEE invoked?
+actual result
+
+Required behavioural outcomes:
+
+1 Show me review
+→ existing work; no execution
+
+2 What were findings?
+→ grounded existing-work retrieval; no execution
+
+3 Approve review
+→ status-aware approval behaviour
+
+4 Revise review...
+→ revision execution
+
+5 Review policy again using latest approved evidence
+→ new execution
+
+6 Replace old review with new Operations Manager review
+→ new OM execution; old work preserved
+
+7 Review policy and produce a new Improvement Plan
+→ new task/execution; historical work must not suppress it
+
+8 Continue discussing completed review
+→ conversation only; no execution
+
+MANDATORY TEST EVIDENCE STANDARD
+
+For every result state:
+
+- unit test
+- mocked integration test
+- real database integration test
+- live API/runtime test
+- live authenticated UI end-to-end test
+
+Do not call a scenario PROVEN from source inspection alone.
+
+CRITICAL LIVE ACCEPTANCE
+
+Using the existing conversation containing e7f810e9, submit:
+
+"Review our current Incident Management Policy using the latest approved
+evidence and produce a new Incident Management Improvement Plan. This is a
+new review, not a request to show the previous completed work."
+
+Prove:
+
+- old e7f810e9 remains unchanged
+- a new execution is created
+- Operations Manager is actually selected
+- a new specialistRunId exists
+- UEE executes
+- new EvidencePack is resolved
+- new completedWorkId is created
+- new work reaches awaiting_approval
+- CoS attributes the work to the actual persisted producing specialist
+
+Return the mandatory verification report BEFORE proposing any further work.
