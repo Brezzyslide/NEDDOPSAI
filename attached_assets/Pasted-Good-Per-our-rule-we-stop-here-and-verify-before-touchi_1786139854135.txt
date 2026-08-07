@@ -1,0 +1,439 @@
+Good. Per our rule, we stop here and verify before touching anything else.
+
+This implementation sounds correct, but right now the strongest proof is still regression-suite level. We need to prove that the actual post-fix cloud workflow now keeps Operations Manager all the way from CoS planning through manifest, AI execution, evidence, self-review, Completed Work and Awaiting Approval.
+
+Use this next:
+
+SPRINT 29I.1 — LIVE POST-FIX EXECUTION OWNERSHIP VERIFICATION
+
+TEST ONLY. NO CODE CHANGES.
+
+Sprint 29I reports:
+
+* CoS plan now owns specialist identity
+* blueprint.primarySpecialist is fallback only
+* taskId is threaded into executeTask
+* missing/invalid plans fail closed
+* task and conversation paths share one execution-readiness guard
+* KRS now writes retrieval audit rows
+* EvidencePack now reaches self-review
+* 15/15 new regression tests pass
+
+None of that should be treated as full live proof until a new post-fix execution is run.
+
+⸻
+
+MANDATORY TEST EVIDENCE STANDARD
+
+Every conclusion must state one evidence level:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+And one proof status:
+
+* PROVEN
+* PARTIALLY PROVEN
+* NOT YET PROVEN
+* BLOCKED
+
+Do not use historical executions as proof of the new runtime.
+
+⸻
+
+TEST A — SERVER / BUILD ANCHOR
+
+First confirm the running server contains Sprint 29I.
+
+Capture:
+
+* restart timestamp
+* build/git identifier if available
+* running API process identifier
+
+Every new execution used for this gate must have timestamps AFTER that restart.
+
+⸻
+
+TEST B — CREATE A BRAND-NEW LIVE TASK
+
+In the real mhr-holdings-2 Workforce Chat, create a NEW task using:
+
+“Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify actual operational gaps, risks, unclear responsibilities and weaknesses. Produce a prioritised Improvement Plan with recommendations, responsible roles and evidence citations.”
+
+Confirm the CoS task proposal through the normal authenticated UI.
+
+Capture:
+
+* conversationId
+* confirmation event/message
+* taskId
+* planId
+* executionId
+* completedWorkId
+
+Do not reuse any Sprint 29H execution.
+
+⸻
+
+TEST C — SPECIALIST OWNERSHIP CHAIN
+
+For the new task, show the REAL values at every stage:
+
+task_execution_plans.plan_data.primarySpecialist
+
+task_specialists executor
+
+blueprint.primarySpecialist
+
+resolved selectedSpecialist
+
+work_package_manifests.primary_specialist
+
+CanonicalExecutionContext.specialistCode
+
+AI generation specialist identity
+
+completed_work.primary_specialist
+
+Expected:
+
+operations_manager at every authoritative execution stage.
+
+The blueprint may still contain incident_safeguarding_specialist, but it must NOT replace Operations Manager.
+
+Explicitly prove that the AI call used Operations Manager DNA/system identity.
+
+⸻
+
+TEST D — READINESS GUARD
+
+Prove the new shared checkExecutionReadiness() runs on the task path.
+
+For the actual execution:
+
+operations_manager
+→ available
+→ allowed
+
+Add a safe controlled test showing:
+
+incident_safeguarding_specialist
+→ dna_pending
+→ specialist_not_ready
+
+and prove this block occurs before:
+
+* evidence retrieval
+* AI generation
+* Completed Work creation
+
+⸻
+
+TEST E — MISSING / INVALID PLAN
+
+Test without altering real production records:
+
+1. taskId exists but no plan can be resolved
+    → execution_plan_missing
+2. plan exists but primarySpecialist missing/malformed
+    → execution_plan_invalid
+
+Prove neither case falls back to blueprint.primarySpecialist.
+
+⸻
+
+TEST F — INCIDENT EVIDENCE RETRIEVAL
+
+Trace the new execution through:
+
+ResourceRegistry
+→ KnowledgeResolutionService
+→ EvidencePack
+
+Expected source:
+
+aab1221b-c489-412e-877d-2061204c12f8
+MH&R Policy and Procedure Manual
+
+Capture:
+
+* query
+* selected chunk IDs
+* section headings
+* confidence/ranking where available
+
+Verify incident-specific evidence is actually selected.
+
+Preferred sections include:
+
+* Incident and Hazard Reporting
+* Incident Classification
+* Incident Investigation
+* Incident Review
+* Client Incident Management
+* Reportable Incident
+* Incident Response
+
+Generic Risk Management evidence may supplement these but must not replace materially more relevant incident evidence.
+
+⸻
+
+TEST G — RETRIEVAL AUDIT
+
+For the NEW executionId, prove retrieval_audit_events contains a row.
+
+Required:
+
+* exact executionId
+* organisationId
+* specialist = operations_manager
+* source IDs
+* chunk IDs
+* retrieval metadata
+* timestamp after the new execution began
+
+FAIL if:
+
+* row absent
+* executionId null
+* wrong specialist
+* row belongs to an older execution
+
+Then exercise the same EvidencePack cache path twice with the same executionId in a controlled test and prove:
+
+one physical retrieval = one audit row
+
+cache hit = no duplicate row
+
+⸻
+
+TEST H — EVIDENCEPACK INTO SELF-REVIEW
+
+Prove the SAME EvidencePack instance/data used for specialist generation is passed to reviewDraft.
+
+Capture:
+
+* EvidencePack source IDs before generation
+* ReviewContext evidencePack source IDs
+* evidence_citation_grounding score
+* grounding diagnostic
+
+Expected:
+
+It must NOT say:
+
+EvidencePack not available
+
+and must produce a real grounding evaluation based on the retrieved evidence.
+
+⸻
+
+TEST I — OUTPUT CONTRACT
+
+Inspect the new Operations Manager output.
+
+Classify:
+
+COMPLETED REVIEW
+
+or
+
+PLAN TO PERFORM REVIEW
+
+Required professional output:
+
+* executive summary
+* actual findings
+* operational gaps
+* risks
+* unclear responsibilities
+* weaknesses
+* recommendations
+* prioritised improvement actions
+* responsible roles
+* timeframes where appropriate
+* evidence citations
+* limitations/evidence gaps
+
+Fail if the output merely instructs another person to conduct the review.
+
+⸻
+
+TEST J — QUALITY PIPELINE
+
+Capture:
+
+* all review dimensions
+* weights
+* evidence grounding dimension
+* independently recomputed score
+* persisted quality_score
+* threshold
+* is_auto_revision
+
+Expected:
+
+0–100 score.
+
+If score >= 70:
+
+no low-quality auto-revision.
+
+⸻
+
+TEST K — COMPLETED WORK
+
+For the new execution verify:
+
+* primarySpecialist = operations_manager
+* substantive content exists
+* evidence assets linked
+* self-review dimensions persisted
+* status becomes awaiting_approval
+* direct Completed Work reference generated
+
+⸻
+
+TEST L — AUTHENTICATED VIEWER
+
+Using the real authenticated UI, open the NEW Completed Work item.
+
+Verify:
+
+1. full report visible
+2. Operations Manager shown as specialist
+3. Evidence tab populated
+4. Inspector shows correct execution specialist
+5. quality score displayed correctly
+6. evidence-grounding result visible where intended
+7. Approve / Request Changes / Reject controls visible
+8. no manual Submit for Approval step required
+
+Do NOT substitute source inspection if UI cannot be driven.
+
+⸻
+
+TEST M — APPROVAL
+
+Approve the disposable work through the authenticated UI.
+
+Verify:
+
+awaiting_approval
+→ approved
+
+Capture:
+
+* approvedByUserId
+* approvedAt
+* item moves to Completed
+* duplicate approval rejected
+
+⸻
+
+TEST N — EXPORT
+
+From the newly approved record generate:
+
+* PDF
+* DOCX
+
+Verify:
+
+* correct MIME
+* meaningful file size
+* same approved report
+* actual findings
+* recommendations
+* citations
+
+⸻
+
+TEST O — CHAT CONTINUITY
+
+Navigate away from Workforce Chat and return, then reload.
+
+Confirm:
+
+* same conversationId
+* original request visible
+* proposal visible
+* confirmation visible
+* completion message visible
+* Completed Work link/reference visible
+* no new empty Workforce Chat created
+
+⸻
+
+BEFORE / AFTER OWNERSHIP TABLE
+
+Compare:
+
+Pre-29I execution 7fb5dea0...
+
+versus
+
+New post-29I execution
+
+Show only:
+
+* CoS plan specialist
+* blueprint specialist
+* manifest specialist
+* AI specialist identity
+* Completed Work specialist
+* retrieval audit specialist
+* evidence grounding status
+
+Expected before:
+
+OM → ISS → ISS → ISS → ISS
+
+Expected after:
+
+OM → blueprint may still suggest ISS → OM → OM → OM
+
+⸻
+
+FINAL EVIDENCE TABLE
+
+For every test return:
+
+Test | Evidence level | Expected | Actual | Proof status | Failure point
+
+Then answer exactly:
+
+1. Did the CoS plan select Operations Manager?
+2. Did the blueprint stop overriding that decision?
+3. Did Operations Manager DNA actually generate the work?
+4. Does the task path now enforce production readiness?
+5. Do missing/invalid plans fail closed?
+6. Does KRS create an audit row tied to this execution?
+7. Is the audit specialist Operations Manager?
+8. Does EvidencePack reach self-review?
+9. Does evidence grounding now use real evidence?
+10. Did OPS perform the requested review?
+11. Is quality scoring still correct?
+12. Did Completed Work reach Awaiting Approval?
+13. Is the full work visible in the real UI?
+14. Can the user approve it?
+15. Do PDF/DOCX exports contain the approved report?
+16. Does chat continuity survive navigation/reload?
+
+Final verdict:
+
+PROVEN — EXECUTION OWNERSHIP CORRECTED END TO END
+
+PARTIALLY PROVEN — IMPLEMENTATION WORKS BUT LIVE/UI PROOF REMAINS
+
+BLOCKED — OWNERSHIP, EVIDENCE OR COMPLETION DEFECT REMAINS
+
+Do not implement further fixes.
+Do not propose the next sprint.
+Stop after verification.
+
+That is the only thing I would do now. The implementation report is encouraging, but the crucial proof is whether a brand-new live run now stays OPS from planning all the way through the actual AI call and Completed Work.
