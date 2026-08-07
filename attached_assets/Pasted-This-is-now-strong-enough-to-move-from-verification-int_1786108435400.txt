@@ -1,0 +1,223 @@
+This is now strong enough to move from verification into correction.
+
+The three defects are no longer speculative:
+
+* D1 is proven current runtime behaviour: CoS selected Operations Manager, but the blueprint replaced that choice with incident_safeguarding_specialist, and that value propagated into the manifest and Completed Work.
+* D2 is proven: the task execution evidence path uses KRS and never writes retrieval_audit_events.
+* D3 is proven: the EvidencePack exists for generation but is not forwarded into self-review, and the persisted quality dimension literally records that the pack was unavailable.
+
+The most serious one is D1 because it breaks the ownership rule across the whole task engine, and the report shows it is systemic: 10 of 14 published blueprints point to specialists that are not production-ready.
+
+Before we jump to implementation, though, I want to honour our standing rule one last time at the exact boundary we are about to change: we should ask Replit for a fix plan + regression impact test specification, not another forensic test. The defects are proven; what we need next is to prove the proposed correction will not break working flows like care plans/project plans that already use OPS.
+
+Use this prompt:
+
+SPRINT 29I — EXECUTION OWNERSHIP CORRECTION PLAN & REGRESSION SAFETY GATE
+Do not implement yet.
+D1, D2 and D3 are now PROVEN CURRENT RUNTIME DEFECTS.
+The objective of this gate is to design the smallest safe correction and prove that the proposed change will not break existing working task execution.
+==================================================
+PROVEN DEFECTS
+==================================================
+D1 — Blueprint overrides CoS specialist selection
+CoS plan:
+operations_manager
+Blueprint:
+incident_safeguarding_specialist
+Manifest:
+incident_safeguarding_specialist
+Completed Work:
+incident_safeguarding_specialist
+executeTask ignores task_execution_plans.primarySpecialist and task_specialists.
+D2 — Task evidence retrieval has no retrieval audit path
+UEE.executeTask
+→ ResourceRegistry
+→ KnowledgeResolutionService.resolveEvidence
+This path never calls writeRetrievalAudit.
+D3 — EvidencePack omitted from self-review
+EvidencePack exists and is used for generation, but ReviewContext omits evidencePack.
+==================================================
+PART A — DEFINE SPECIALIST OWNERSHIP RULE
+==================================================
+Design and state one canonical precedence rule.
+Preferred model:
+1. Chief of Staff selects the production specialist.
+2. That specialist is persisted into the task execution plan.
+3. UnifiedExecutionEngine receives/resolves that selected specialist.
+4. Blueprint may define:
+   - output structure
+   - required sections
+   - validation rules
+   - citation requirements
+   - quality dimensions
+   - suggested specialist metadata
+5. Blueprint MUST NOT replace an already-selected eligible specialist.
+6. If no specialist was selected upstream, blueprint.primarySpecialist may be used only as a fallback candidate and must pass production-readiness checks.
+Prove whether this model can be implemented without breaking existing callers.
+==================================================
+PART B — TRACE ALL TASK EXECUTION CALLERS
+==================================================
+List every production caller of:
+workExecutionPipelineService.executeWork()
+unifiedExecutionEngine.execute({ trigger: "task" })
+For each caller show whether it currently has access to:
+- taskId
+- task_execution_plan
+- selected specialist
+- specialist run
+- task_specialists executor
+- blueprint
+- requester identity
+Determine the safest source of truth for specialist identity.
+Do not add a new specialist selector inside the engine.
+The engine should consume the orchestrator's decision, not make another competing one.
+==================================================
+PART C — BACKWARD COMPATIBILITY MATRIX
+==================================================
+Test the proposed ownership rule against existing blueprint scenarios:
+- care_plan → operations_manager
+- project_plan → operations_manager
+- executive_brief → chief_of_staff
+- meeting_minutes → executive_assistant (currently dna_pending)
+- incident_investigation → CoS-selected OPS
+- operational_procedure → CoS-selected production-ready specialist
+- policy_draft → CoS-selected production-ready specialist
+For each scenario answer:
+Current specialist
+Proposed specialist
+Why
+Would behaviour change?
+Is change intended?
+Production readiness status
+The fix must not accidentally force all tasks to Operations Manager.
+==================================================
+PART D — READINESS GATE DESIGN
+==================================================
+The production-readiness guard that exists in executeConversation must also apply to task execution.
+Define the shared validator.
+Required blocked states:
+- dna_pending
+- coming_soon
+- inactive
+- archived
+- deprecated
+If the CoS-selected specialist is not production-ready:
+Do NOT silently fall back to the blueprint specialist.
+Return a structured routing/availability error to the CoS so it can select another approved specialist.
+Current production-ready specialists:
+- chief_of_staff
+- operations_manager
+- executive_assistant only if current live registry says available
+Use live registry state, not assumptions.
+==================================================
+PART E — BLUEPRINT DATA MODEL
+==================================================
+Determine what to do with work_blueprints.primary_specialist.
+Options to assess:
+A. Keep it as recommendedSpecialist / fallback metadata
+B. Rename field later
+C. Keep current field but change runtime semantics
+D. Remove field
+Prefer the smallest backward-compatible change.
+Do not perform a migration unless necessary.
+==================================================
+PART F — RETRIEVAL AUDIT UNIFICATION
+==================================================
+Do not replace KRS with knowledgeOrchestrationEngine merely to gain auditing.
+Design the smallest audit hook inside the current KRS execution path.
+Preferred:
+KRS resolves EvidencePack
+→ write retrieval audit using the same executionId
+→ return pack
+Audit failure must remain non-blocking for work execution but MUST be observable.
+Capture:
+- executionId
+- organisationId
+- specialistCode
+- sourceIds
+- chunkIds
+- ranking/confidence metadata available
+- retrieval duration
+Avoid duplicate audit rows on cache hits unless explicitly intended.
+Define cache-hit audit semantics.
+==================================================
+PART G — SELF-REVIEW EVIDENCE THREADING
+==================================================
+Proposed minimal fix:
+reviewDraft(..., {
+  organizationId,
+  userId,
+  conversationId,
+  evidencePack
+})
+Verify this does not create serialization/token issues.
+The same EvidencePack instance used for generation should be passed to self-review.
+Confirm:
+- evidence_citation_grounding becomes real instead of default 6/10
+- no duplicate retrieval is triggered
+- no raw evidence is unnecessarily persisted
+- quality score remains 0–100
+==================================================
+PART H — REGRESSION SAFETY TEST PLAN
+==================================================
+Before implementation, define tests for:
+1. CoS-selected OPS + incident blueprint
+   → OPS remains specialist
+2. CoS-selected OPS + care_plan blueprint
+   → OPS remains specialist
+3. CoS-selected CoS + executive_brief
+   → CoS remains specialist
+4. CoS-selected production-ready specialist + blueprint suggests dna_pending role
+   → selected production-ready specialist wins
+5. No selected specialist + blueprint suggests available role
+   → fallback allowed
+6. No selected specialist + blueprint suggests dna_pending role
+   → blocked
+7. dna_pending specialist can never reach executeTask AI call
+8. task_execution_plan specialist and manifest specialist match
+9. completed_work.primarySpecialist matches actual AI specialist
+10. retrieval audit row written for task execution
+11. retrieval audit executionId populated
+12. cache hit does not create misleading duplicate audit records
+13. EvidencePack passed to self-review
+14. evidence grounding dimension no longer reports "EvidencePack not available"
+15. quality score remains correctly scaled 0–100
+==================================================
+MANDATORY TEST EVIDENCE STANDARD
+==================================================
+Classify the proposed regression evidence as:
+1. Unit
+2. Mocked integration
+3. Real DB integration
+4. Live API/runtime
+5. Live authenticated UI
+For implementation completion later, require:
+- unit/regression suite
+- real DB integration
+- live runtime rerun
+- authenticated UI where applicable
+Do not call the eventual fix complete on unit tests alone.
+==================================================
+FINAL OUTPUT
+==================================================
+Return:
+1. Recommended specialist ownership rule
+2. Exact source-of-truth field/service
+3. All task execution callers
+4. Backward compatibility matrix
+5. Readiness gate design
+6. Blueprint field treatment
+7. KRS audit hook design
+8. EvidencePack self-review wiring design
+9. Regression test matrix
+10. Files likely to change
+11. Migration required? yes/no
+12. Risk assessment
+Final verdict:
+SAFE TO IMPLEMENT
+NEEDS DESIGN REVISION
+BLOCKED BY CALLER/SCHEMA GAP
+Do not implement.
+Stop after the design + regression safety report.
+
+This is the right checkpoint now because we already know what is broken. The next risk is fixing it in a way that accidentally turns blueprint routing upside down elsewhere. The ownership rule needs to be locked first, then we implement D1/D2/D3 together.
