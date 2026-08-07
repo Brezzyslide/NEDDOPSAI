@@ -214,15 +214,18 @@ describe("organisationLibraryPresenceService — sub-phrase ILIKE expansion (sou
     expect(src).toMatch(/and\([^)]*eq\(knowledgeSourcesTable\.organizationId/);
   });
 
-  it("Inv 6: unapproved content — retrievable requires approved+indexed+isCurrent", () => {
+  it("Inv 6: unapproved content — retrievable requires approved+indexed+isCurrent (Sprint 29G.1)", () => {
     const src = readSrc("src/services/organisationLibraryPresenceService.ts");
-    expect(src).toContain("approved && indexed && src.isCurrent === true");
+    // Sprint 29G.1: retrievable uses isSourceEligible (which checks status+isCurrent+deletedAt) AND indexed
+    expect(src).toContain("isSourceEligible(");
+    expect(src).toContain("retrievable = isSourceEligible(");
   });
 
-  it("scoreMatch uses ORIGINAL terms (not expanded/sub-phrase) for confidence scoring", () => {
+  it("scoreMatch uses ORIGINAL terms (not expanded/sub-phrase) for confidence scoring (Sprint 29G.1)", () => {
     const src = readSrc("src/services/organisationLibraryPresenceService.ts");
-    // scoreMatch is called with searchTerms (original), not expandedTerms
-    expect(src).toContain("const confidence = scoreMatch(src.title, searchTerms)");
+    // Sprint 29G.1: multi-signal scoring via scoreMultiSignal (replaces single-field scoreMatch)
+    expect(src).toContain("scoreMultiSignal(");
+    expect(src).toContain("searchTerms,");
   });
 });
 

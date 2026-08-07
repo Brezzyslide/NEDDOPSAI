@@ -32,7 +32,7 @@
  * Only 'approved' sources in scope 'library' are eligible for specialist
  * context injection (Task #17).
  */
-import { pgTable, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations.js";
 
 export const knowledgeSourcesTable = pgTable("knowledge_sources", {
@@ -167,6 +167,29 @@ export const knowledgeSourcesTable = pgTable("knowledge_sources", {
    * Superseded records remain queryable for authorised audit access.
    */
   supersededBySourceId: text("superseded_by_source_id"),
+
+  // ─── Document identity (Sprint 29G.1) ────────────────────────────────────
+
+  /**
+   * Canonical human-readable document title — derived at ingestion time.
+   *
+   * Priority: explicit upload title (if not filename-like) → first document
+   * heading extracted from content → cleaned originalFileName.
+   *
+   * Presence service and KRS search this field in addition to `title`.
+   * Allows "Incident Management Policy" to be found even when the uploaded
+   * file was named "MH&R_Policy_current_2026.docx".
+   */
+  canonicalTitle: text("canonical_title"),
+
+  /**
+   * JSON array of alternative search names for this document.
+   * e.g. ["Incident Policy", "Incident Management Procedure", "MH&R Policy"]
+   *
+   * Populated at ingestion time via type-synonym expansion and alias derivation.
+   * Presence service searches these in addition to title and canonicalTitle.
+   */
+  searchAliases: jsonb("search_aliases").$type<string[]>(),
 
   // ─── Approval & audit ─────────────────────────────────────────────────────
 

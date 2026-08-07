@@ -207,7 +207,8 @@ Rules you MUST follow when a presence result is available:
    → Ingestion failed: "I found the policy, but processing failed. It will need to be reprocessed."
    → Archived or superseded: "I found an older version, but it is archived or superseded and cannot be used as current evidence."
 
-4. **Not found**
+4. **Not found (State: not_found)**
+   → Applies ONLY when State is "not_found" AND there are zero plausible candidates in the library.
    → Say: "I searched your Organisation Library but could not locate a current [document name]."
    → The clarification you ask MUST address the missing resource — not the topic.
    → PROHIBITED: asking about scope, incidents, priorities, or roles when the evidence is the only blocker.
@@ -218,12 +219,23 @@ Rules you MUST follow when a presence result is available:
    → Do NOT invent missing document scenarios — if the presence search was conducted and returned Not found, that is the definitive runtime answer.
    → Do NOT suggest seeking information from desktop or connectors without an explicit user instruction to do so.
 
-5. **Partial or related match (Match type: partial)**
+5. **Possible match (State: possible_match)**
+   → Applies when the system found approved documents of the right type but no exact title match for the requested document.
+   → The "Candidate" lines in the presence section list the plausible documents.
+   → Surface the best candidate to the user before creating a task:
+     "I found an approved [type] document titled '[Candidate Title]' in your Organisation Library. This may be the [requested document] you need — I can use it for this work if that's the right document."
+   → If multiple candidates are listed, name the top one and note others are available.
+   → If context makes it clear the candidate IS the requested document (same topic, same org, broadly correct type), proceed with a task proposal — do not ask the user to confirm what is obvious.
+   → PROHIBITED: treating State: possible_match as "Not found". Do NOT say "I couldn't locate" when a candidate exists.
+   → PROHIBITED: saying "please upload the document" when a plausible candidate is already in the library.
+   → PROHIBITED: using the document without surfacing the candidate title to the user first.
+
+6. **Partial or related match (Match type: partial, State: found)**
    → Describe as "a related document" — not as the exact document requested.
    → Say: "I found a related document titled '[Title]', but not an exact [requested document]."
    → Do NOT treat a synonym-expanded match as a confirmed exact match. A procedure is not a policy.
 
-6. **Presence service unavailable (Result: Service unavailable)**
+7. **Presence service unavailable (Result: Service unavailable)**
    → Say: "I could not check the Organisation Library just now. I can still prepare the task, but document availability will need to be confirmed during execution."
 
 When NO ORGANISATION LIBRARY PRESENCE section is in your context:
@@ -388,27 +400,59 @@ export function buildLibraryPresenceSection(
     `Search: ${searchTerms.join(", ")}`,
   ];
 
-  if (result.matches.length === 0) {
-    lines.push("Result: Not found");
+  // Backward-compat: infer state when old callers don't supply it
+  const possibleMatches = result.possibleMatches ?? [];
+  const state: string = result.summary.state ?? (
+    result.matches.length > 0
+      ? (result.summary.usable ? "found" : "not_ready")
+      : (possibleMatches.length > 0 ? "possible_match" : "not_found")
+  );
+
+  // ── Possible match: type-fallback candidates (no direct title match) ──────
+  if (state === "possible_match" && result.matches.length === 0 && possibleMatches.length > 0) {
+    lines.push("Result: Possible match");
+    lines.push(`State: possible_match`);
+    lines.push(`Direct title match: No`);
+    lines.push(`Plausible candidates: ${possibleMatches.length}`);
+    possibleMatches.slice(0, 3).forEach((m, i) => {
+      const displayTitle = m.canonicalTitle ?? m.title;
+      const avail = m.retrievable ? "approved and indexed" : `status: ${m.status}`;
+      lines.push(`Candidate ${i + 1}: ${displayTitle} (${m.sourceType}) — ${avail}`);
+    });
     lines.push(`Reason: ${result.summary.reason}`);
     return lines.join("\n");
   }
 
-  const top = result.matches[0];
-  const matchType = result.summary.exactMatch ? "exact" : "partial";
-  const resultLabel = result.summary.usable
-    ? "Found and usable"
-    : "Found but unavailable";
+  // ── Not found ─────────────────────────────────────────────────────────────
+  if ((result.matches.length === 0) && (possibleMatches.length === 0)) {
+    lines.push("Result: Not found");
+    lines.push(`State: not_found`);
+    lines.push(`Reason: ${result.summary.reason}`);
+    return lines.join("\n");
+  }
+
+  // ── Direct match (found / possible_match via title / not_ready) ───────────
+  const top = result.matches[0] ?? result.possibleMatches?.[0];
+  const displayTitle = top.canonicalTitle ?? top.title;
+  const matchType    = result.summary.exactMatch ? "exact" : "partial";
+
+  let resultLabel: string;
+  if (state === "found")           resultLabel = "Found and usable";
+  else if (state === "possible_match") resultLabel = "Possible match";
+  else if (state === "not_ready")  resultLabel = "Found but unavailable";
+  else                             resultLabel = "Not found";
 
   lines.push(`Result: ${resultLabel}`);
+  lines.push(`State: ${state}`);
   lines.push(`Match type: ${matchType}`);
-  lines.push(`Best match: ${top.title}`);
-  if (top.version) lines.push(`Version: ${top.version}`);
+  lines.push(`Best match: ${displayTitle}`);
+  if (top.version)          lines.push(`Version: ${top.version}`);
   lines.push(`Status: ${top.status}`);
   lines.push(`Indexed: ${top.indexed ? "yes" : "no"}`);
   lines.push(`Retrievable: ${top.retrievable ? "yes" : "no"}`);
-  if (top.ingestionStatus) lines.push(`Ingestion: ${top.ingestionStatus}`);
+  if (top.ingestionStatus)  lines.push(`Ingestion: ${top.ingestionStatus}`);
   lines.push(`Confidence: ${top.confidence.toFixed(2)}`);
+  if ((top as any).matchedSignal) lines.push(`Matched via: ${(top as any).matchedSignal}`);
 
   if (!result.summary.usable) {
     lines.push(`Reason: ${result.summary.reason}`);

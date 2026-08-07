@@ -407,8 +407,8 @@ describe("organisationLibraryPresenceService", () => {
     expect(r1.matches).toHaveLength(1);
     expect(r2.matches).toHaveLength(0);
     // org-1: 3 queries (sources + chunks + versions)
-    // other-org: 1 query (sources empty → early return, no chunk/version queries)
-    expect(mocks.selectFn).toHaveBeenCalledTimes(4);
+    // other-org: 2 queries (sources empty → type-fallback runs → 1 more query, no chunks/versions)
+    expect(mocks.selectFn).toHaveBeenCalledTimes(5);
   });
 
   // ── 11c. Cache cleared between tests ──────────────────────────────────────

@@ -1,0 +1,346 @@
+SPRINT 29G.1 — ORGANISATION LIBRARY DOCUMENT IDENTITY & RETRIEVAL HARDENING
+
+Objective:
+
+Fix the architectural weakness exposed by the Incident Management Policy forensic investigation.
+
+Do not patch only the phrase "Incident Management Policy".
+Do not add document-specific aliases.
+Do not make filename matching the primary retrieval mechanism.
+
+The Organisation Library must allow users and specialists to find documents by what the document IS, not merely by what the uploaded file was called.
+
+Example live failure:
+
+User asks:
+"Review our current Incident Management Policy"
+
+Actual source title:
+MH&R_Policy_current_2026
+
+The document exists, is indexed, and contains 957 active chunks, but the deterministic presence layer returns Not Found because it relies primarily on title ILIKE matching.
+
+A second data-integrity defect exists:
+
+knowledge_sources.status = "approved"
+approved_by_user_id = NULL
+
+This causes presence resolution to treat an apparently approved document as not retrievable.
+
+==================================================
+A — DEFINE CANONICAL DOCUMENT IDENTITY
+==================================================
+
+Introduce a clear distinction between:
+
+1. original filename
+2. display title
+3. canonical document title
+4. document type
+5. aliases/search names
+6. document content
+
+Do not destroy or overwrite the original filename.
+
+Determine what fields already exist before introducing schema.
+
+If additional metadata is required, introduce the smallest compatible schema change.
+
+Canonical identity should be derivable from:
+
+- document headings
+- first-page/title-page content
+- existing metadata
+- source type
+- filename as a fallback only
+
+Example:
+
+Original filename:
+MH&R_Policy_current_2026.docx
+
+Canonical/display identity could resolve to:
+Incident Management Policy
+
+Aliases could include:
+MH&R Policy
+Incident Policy
+Incident Management Procedure
+
+Do not use AI at query time merely to identify a document if deterministic indexed metadata can do the job.
+
+==================================================
+B — INGESTION-TIME IDENTITY EXTRACTION
+==================================================
+
+At ingestion/indexing time, derive searchable document identity.
+
+Priority:
+
+1. explicit human title if supplied
+2. document title/heading extracted from content
+3. document metadata
+4. cleaned filename fallback
+
+Store the resulting identity so conversation-time lookup does not need to rediscover it.
+
+Existing library documents must remain valid.
+
+Provide a safe backfill strategy for existing sources.
+
+Do not require users to manually rename legacy files.
+
+==================================================
+C — MULTI-SIGNAL PRESENCE RESOLUTION
+==================================================
+
+Refactor organisationLibraryPresenceService so document presence is not decided solely by title ILIKE.
+
+Resolution should use deterministic signals in an appropriate order:
+
+1. canonical title
+2. aliases/search names
+3. display title
+4. original filename
+5. document/source type
+6. indexed lexical content where appropriate
+
+The presence service must distinguish:
+
+FOUND
+A strong document match exists.
+
+POSSIBLE_MATCH
+Library contains plausible documents but deterministic confidence is insufficient.
+
+NOT_FOUND
+No plausible resource exists.
+
+NOT_READY
+A matching resource exists but is genuinely unavailable/unapproved/unindexed.
+
+The CoS must never translate POSSIBLE_MATCH into:
+"I couldn't find the document."
+
+==================================================
+D — SAFE FALLBACK BEHAVIOUR
+==================================================
+
+If direct identity matching returns zero but the organisation contains plausible documents of the requested type:
+
+return POSSIBLE_MATCH with candidates.
+
+Example:
+
+User asks for Incident Management Policy.
+
+Library contains:
+MH&R_Policy_current_2026
+
+Presence result should expose the candidate rather than categorical absence.
+
+The CoS may say, conceptually:
+
+"I found an approved policy document titled MH&R Policy Current 2026 which may be the Incident Management Policy. I can use that document if that's the one you mean."
+
+If confidence is sufficiently strong from indexed content/identity metadata, it should proceed without unnecessary clarification.
+
+Do not silently choose unrelated policies.
+
+==================================================
+E — APPROVAL DATA INTEGRITY
+==================================================
+
+Investigate how this live state was created:
+
+status = approved
+approved_by_user_id = NULL
+
+Trace every production path capable of setting status = approved.
+
+Determine whether:
+
+- historical ingestion created it
+- migration created it
+- approval endpoint failed to populate actor
+- automated/system approval intentionally allows null actor
+
+Do not blindly add a NOT NULL constraint until historical/system behaviour is understood.
+
+Define a valid approval provenance model.
+
+If system approval is legitimate, represent it explicitly rather than making valid resources appear unapproved.
+
+Then make presence retrieval use that canonical approval rule.
+
+Backfill inconsistent existing records safely where provenance can be determined.
+
+==================================================
+F — ALIGN PRESENCE RESOLUTION WITH KRS
+==================================================
+
+The deterministic conversation presence layer and KnowledgeResolutionService must not disagree about whether an organisation resource exists.
+
+Audit their:
+
+- organisation filters
+- source scopes
+- approval rules
+- current-version rules
+- deletion rules
+- ingestion readiness rules
+
+Create a shared resource-eligibility predicate/service if appropriate.
+
+We must not have:
+
+Presence service: document does not exist
+
+while:
+
+KRS: 957 active retrievable chunks exist
+
+for the same source.
+
+==================================================
+G — CoS GROUNDING CONTRACT
+==================================================
+
+Strengthen the contract between deterministic library discovery and the Chief of Staff.
+
+The CoS may only make categorical statements such as:
+
+"I couldn't find that document"
+
+when the deterministic result is genuinely NOT_FOUND.
+
+FOUND:
+proceed using the resource.
+
+POSSIBLE_MATCH:
+surface/use candidate according to confidence and ask document-specific clarification only if necessary.
+
+NOT_READY:
+explain that the resource exists but is unavailable/not ready.
+
+NOT_FOUND:
+ask the user to upload or identify the missing resource.
+
+The LLM must not independently infer resource absence.
+
+==================================================
+H — BACKFILL EXISTING ORGANISATION LIBRARY
+==================================================
+
+Create a safe backfill for existing sources with machine-style titles.
+
+Do not modify source content or provenance.
+
+For each existing source:
+
+- preserve original filename/title
+- derive canonical identity where possible
+- derive aliases
+- retain source/version relationships
+- do not re-ingest unchanged content unnecessarily
+
+Report ambiguous documents rather than inventing identities.
+
+==================================================
+I — REGRESSION TESTS
+==================================================
+
+Add tests covering at minimum:
+
+1. Exact human title match.
+2. Machine filename but matching canonical title.
+3. Machine filename with matching indexed content.
+4. Alias match.
+5. Multiple plausible policies.
+6. Genuine no-match.
+7. Matching but unapproved document.
+8. Matching but ingestion incomplete.
+9. status=approved with invalid/missing provenance.
+10. system-approved resource if supported.
+11. Cross-organisation isolation.
+12. Historical version excluded when current version exists.
+13. "current", "latest", "approved" etc do not corrupt lookup.
+14. Incident Management Policy live reproduction:
+    source filename/title = MH&R_Policy_current_2026
+    user query = "Review our current Incident Management Policy"
+    expected result != NOT_FOUND.
+15. Presence service and KRS agree on resource eligibility.
+16. CoS cannot state document absence from POSSIBLE_MATCH.
+
+==================================================
+J — LIVE ACCEPTANCE
+==================================================
+
+After implementation, rerun against the actual mhr-holdings-2 library.
+
+Use the existing real source:
+
+MH&R_Policy_current_2026
+
+Run:
+
+"Review our current Incident Management Policy using the approved knowledge available in NeedsOps. Identify operational gaps and prepare a practical Incident Management Improvement Plan."
+
+Capture:
+
+user request
+→ extracted terms
+→ canonical identity lookup
+→ candidate ranking
+→ presence result
+→ CoS resource context
+→ task dispatch
+→ KRS retrieval
+→ EvidencePack source IDs
+→ specialist execution
+→ self-review
+→ Completed Work
+→ Awaiting Approval
+
+The acceptance test passes only if the real document is actually used as evidence.
+
+==================================================
+ARCHITECTURE INVARIANTS
+==================================================
+
+Do not alter:
+
+Chief of Staff = sole orchestrator.
+
+UnifiedExecutionEngine = sole specialist execution engine.
+
+ResourceRegistry = provider routing boundary.
+
+KRS = organisation knowledge retrieval authority.
+
+Evidence != execution actions.
+
+Connector ownership remains unchanged.
+
+No AI Gateway call outside UEE may perform specialist work.
+
+This sprint is retrieval and document-identity hardening, not an execution architecture rewrite.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. root cause confirmed
+2. existing schema discovered
+3. canonical identity design
+4. approval provenance diagnosis
+5. presence/KRS eligibility alignment
+6. files changed
+7. migrations/backfill performed
+8. tests added
+9. total regression results
+10. exact live Incident Management Policy trace
+11. architecture invariant verification
+12. GO / NO-GO for continued cloud workflow testing

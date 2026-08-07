@@ -1,5 +1,5 @@
 /**
- * Organisation Library Presence Service (Sprint 28.1)
+ * Organisation Library Presence Service (Sprint 28.1 → Sprint 29G.1)
  *
  * Fast, lightweight inspection of the Organisation Library.
  * Determines whether a document exists and whether specialists can currently use it.
@@ -8,49 +8,74 @@
  * NOT chunk retrieval.
  * NOT KnowledgeResolutionService.
  *
- * It only answers:
- *   • Does the document exist?
- *   • Can specialists currently use it?
+ * Sprint 29G.1 changes:
+ *   - Multi-signal resolution: canonical_title + search_aliases + title + original_file_name
+ *   - New PresenceState discriminant: found | possible_match | not_found | not_ready
+ *   - Approval fix: approved = status === "approved" (dropped approvedByUserId !== null;
+ *     aligns with KRS which checks status only — system/auto-approved sources are valid)
+ *   - Type-fallback: when direct search returns 0 candidates, return POSSIBLE_MATCH when
+ *     org has approved documents of the requested type
+ *   - Shared eligibility predicate (isSourceEligible from documentIdentityService)
  *
  * Target: <100ms. Results are cached for 30 seconds per (org, terms) pair.
  */
 
 import { db, knowledgeSourcesTable, knowledgeChunksTable, knowledgeSourceVersionsTable } from "@workspace/db";
 import { eq, and, or, isNull, inArray, ilike } from "drizzle-orm";
+import {
+  isSourceEligible,
+  scoreMultiSignal,
+  extractTypeWordsFromTerms,
+} from "./documentIdentityService.js";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
+
+/** Primary result discriminant — replaces the old boolean flags as the authoritative state. */
+export type PresenceState =
+  | "found"            // Direct title/canonical/alias match; document is retrievable
+  | "possible_match"   // No direct title match; a plausible type-matched candidate exists
+  | "not_found"        // No matching or plausible document exists in the library
+  | "not_ready";       // Matching document exists but is not yet retrievable (unapproved/unindexed)
 
 export interface LibraryPresenceMatch {
   /** knowledge_sources.id */
   sourceId: string;
-  /** Human-readable document title */
+  /** Human-readable document title (from knowledge_sources.title) */
   title: string;
+  /** Canonical title derived at ingestion time (null if not yet set) */
+  canonicalTitle: string | null;
   /** e.g. "policy", "procedure", "care_plan" */
   sourceType: string;
   /** Version label from the source row (null if unversioned) */
   version: string | null;
-  /** true when status === "approved" and approvedByUserId is set */
+  /** true when status === "approved" (system or human — see isSourceEligible) */
   approved: boolean;
   /** true when at least one knowledge_chunk row exists for this source */
   indexed: boolean;
-  /** true when approved AND indexed AND isCurrent */
+  /** true when approved AND indexed AND isCurrent (matches KRS eligibility) */
   retrievable: boolean;
-  /** knowledge_sources.status — uploaded | processing | review_required | approved | failed | revoked | superseded | archived */
+  /** knowledge_sources.status */
   status: string;
-  /** ingestion_status from the current knowledge_source_versions row — pending | processing | complete | failed | null */
+  /** ingestion_status from the current knowledge_source_versions row */
   ingestionStatus: string | null;
-  /** 0.0–1.0 title-match confidence */
+  /** 0.0–1.0 confidence across all identity signals */
   confidence: number;
+  /** Which field produced the best match */
+  matchedSignal: string;
+  /** true when this candidate came from the type-fallback path (not direct title match) */
+  isTypeFallback: boolean;
 }
 
 export interface LibraryPresenceSummary {
-  /** Best match was an exact or near-exact title */
+  /** Primary state — use this for all decision logic */
+  state: PresenceState;
+  /** Best match was an exact or near-exact title (kept for backward compat) */
   exactMatch: boolean;
-  /** Best match was a partial title or keyword match */
+  /** Best match was a partial title or keyword match (kept for backward compat) */
   partialMatch: boolean;
-  /** At least one match is indexed (has chunks) */
+  /** At least one match is indexed (has chunks) (kept for backward compat) */
   searchable: boolean;
-  /** At least one match is fully retrievable by specialists */
+  /** At least one match is fully retrievable by specialists (kept for backward compat) */
   usable: boolean;
   /** Human-readable explanation of the result state */
   reason: string;
@@ -58,46 +83,26 @@ export interface LibraryPresenceSummary {
 
 export interface LibraryPresenceResult {
   searched: true;
+  /** Direct title/canonical/alias matches (may be empty) */
   matches: LibraryPresenceMatch[];
+  /** Type-fallback candidates when direct search returned 0 (may be empty) */
+  possibleMatches: LibraryPresenceMatch[];
   summary: LibraryPresenceSummary;
 }
 
 // ─── Internal constants ───────────────────────────────────────────────────────
 
-/** Cache TTL in milliseconds */
-const CACHE_TTL_MS = 30_000;
+const CACHE_TTL_MS   = 30_000;
+const MAX_SOURCES    = 20;
+const MAX_CHUNKS     = 500;
+const MAX_VERSIONS   = 50;
+const MAX_MATCHES    = 10;
 
-/** Maximum candidate sources to fetch from DB */
-const MAX_SOURCES = 20;
-
-/** Sample ceiling for chunk-existence check (we only care whether any chunks exist) */
-const MAX_CHUNKS = 500;
-
-/** Maximum version rows to fetch */
-const MAX_VERSIONS = 50;
-
-/** Maximum matches returned to callers */
-const MAX_MATCHES = 10;
-
-/** Confidence floor — results below this are discarded as noise */
+/** Confidence floor for direct matches — below this, consider type-fallback only */
 const MIN_CONFIDENCE = 0.30;
 
-// ─── Document-type synonym map ────────────────────────────────────────────────
-//
-// Broadens ILIKE title searches across natural name variants:
-//   "Medication Management Policy" also searches "… Procedure", "… SOP", etc.
-
-const TYPE_SYNONYMS: Record<string, string[]> = {
-  policy:    ["procedure", "sop", "standard", "guideline", "protocol", "manual"],
-  procedure: ["policy", "sop", "standard", "protocol", "process"],
-  sop:       ["policy", "procedure", "standard", "protocol"],
-  guideline: ["policy", "procedure", "standard"],
-  standard:  ["policy", "procedure", "guideline", "framework"],
-  protocol:  ["policy", "procedure", "standard", "sop"],
-  manual:    ["policy", "procedure", "handbook", "guide"],
-  framework: ["policy", "standard", "guideline"],
-  handbook:  ["manual", "guide", "policy"],
-};
+/** Confidence threshold separating FOUND from POSSIBLE_MATCH for direct matches */
+const FOUND_THRESHOLD = 0.65;
 
 // ─── In-process TTL cache ─────────────────────────────────────────────────────
 
@@ -118,16 +123,25 @@ export function _clearPresenceCache(): void {
   presenceCache.clear();
 }
 
+// ─── Document-type synonym map ────────────────────────────────────────────────
+//
+// Broadens ILIKE title searches across natural name variants.
+// "Medication Management Policy" also searches "… Procedure", "… SOP", etc.
+
+const TYPE_SYNONYMS: Record<string, string[]> = {
+  policy:    ["procedure", "sop", "standard", "guideline", "protocol", "manual"],
+  procedure: ["policy", "sop", "standard", "protocol", "process"],
+  sop:       ["policy", "procedure", "standard", "protocol"],
+  guideline: ["policy", "procedure", "standard"],
+  standard:  ["policy", "procedure", "guideline", "framework"],
+  protocol:  ["policy", "procedure", "standard", "sop"],
+  manual:    ["policy", "procedure", "handbook", "guide"],
+  framework: ["policy", "standard", "guideline"],
+  handbook:  ["manual", "guide", "policy"],
+};
+
 // ─── Search term expansion ────────────────────────────────────────────────────
 
-/**
- * Expand the caller's search terms by substituting document-type synonyms.
- *
- * "Medication Management Policy" → also yields:
- *   "medication management procedure", "medication management sop", etc.
- *
- * This broadens the ILIKE queries without requiring semantic search.
- */
 function expandSearchTerms(terms: string[]): string[] {
   const expanded = new Set<string>();
   for (const term of terms) {
@@ -138,7 +152,6 @@ function expandSearchTerms(terms: string[]): string[] {
       const synonyms = TYPE_SYNONYMS[word];
       if (!synonyms) continue;
       for (const syn of synonyms) {
-        // Replace just the type word with its synonym, keeping the rest of the phrase
         expanded.add(lower.replace(word, syn));
       }
     }
@@ -146,26 +159,10 @@ function expandSearchTerms(terms: string[]): string[] {
   return Array.from(expanded);
 }
 
-/**
- * Generate suffix sub-phrases for each multi-word term.
- *
- * Protects against context adjectives that slipped into an extracted term.
- * e.g. "current incident management policy" → also yields:
- *   "incident management policy"   (drop first word)
- *   "management policy"            (drop first two words — min 2-word phrases)
- *
- * The caller scores candidates using the ORIGINAL terms, so a document titled
- * "Incident Management Policy" still receives a ≥0.65 confidence score even
- * when located via the "incident management policy" sub-phrase ILIKE.
- *
- * Only terms with ≥3 words generate sub-phrases; 1-2 word terms are already
- * minimal and sub-phrasing them would produce noise.
- */
 function generateSubPhrases(terms: string[]): string[] {
   const subPhrases: string[] = [];
   for (const term of terms) {
     const words = term.toLowerCase().trim().split(/\s+/);
-    // Generate suffix sub-phrases of length ≥ 2, dropping 1..N-2 leading words
     for (let drop = 1; drop <= words.length - 2; drop++) {
       subPhrases.push(words.slice(drop).join(" "));
     }
@@ -173,104 +170,88 @@ function generateSubPhrases(terms: string[]): string[] {
   return subPhrases;
 }
 
-// ─── Confidence scoring ───────────────────────────────────────────────────────
-
-/**
- * Score how closely a source title matches any of the original search terms.
- *
- * Scoring bands:
- *   1.00  exact full-title match
- *   0.90  full search phrase is contained in the title
- *   0.85  all search words found in the title (any order)
- *   0.65  ≥60% of search words found in the title
- *   0.45  ≥30% of search words found in the title
- *   0.00  below threshold (caller discards)
- *
- * "Meaningful words" are tokens longer than 2 characters; short words like
- * "of", "in", "the" are excluded from word-overlap scoring.
- */
-function scoreMatch(sourceTitle: string, originalTerms: string[]): number {
-  const titleLower = sourceTitle.toLowerCase().trim();
-  let best = 0;
-
-  for (const term of originalTerms) {
-    const termLower = term.toLowerCase().trim();
-
-    // 1. Exact full-title match
-    if (titleLower === termLower) return 1.0;
-
-    // 2. Full search phrase contained in the title
-    if (titleLower.includes(termLower)) {
-      best = Math.max(best, 0.90);
-      continue;
-    }
-
-    // 3. Word-overlap — only meaningful tokens (length > 2)
-    const termWords = termLower.split(/\s+/).filter(w => w.length > 2);
-    if (termWords.length === 0) continue;
-
-    const titleTokens = new Set(
-      titleLower.split(/[\s\-_/,.()+[\]]+/).filter(w => w.length > 0),
-    );
-
-    const matchedCount = termWords.filter(
-      w => titleTokens.has(w) || titleLower.includes(w),
-    ).length;
-
-    const ratio = matchedCount / termWords.length;
-
-    if      (ratio >= 1.0) best = Math.max(best, 0.85);
-    else if (ratio >= 0.6) best = Math.max(best, 0.65);
-    else if (ratio >= 0.3) best = Math.max(best, 0.45);
-  }
-
-  return best;
-}
-
 // ─── Result builders ──────────────────────────────────────────────────────────
 
-function emptyResult(reason: string): LibraryPresenceResult {
+function emptyResult(state: PresenceState, reason: string): LibraryPresenceResult {
   return {
     searched: true,
     matches: [],
-    summary: { exactMatch: false, partialMatch: false, searchable: false, usable: false, reason },
+    possibleMatches: [],
+    summary: {
+      state,
+      exactMatch: false, partialMatch: false, searchable: false, usable: false,
+      reason,
+    },
   };
 }
 
-function buildSummary(matches: LibraryPresenceMatch[]): LibraryPresenceSummary {
-  if (matches.length === 0) {
+function buildSummary(
+  matches: LibraryPresenceMatch[],
+  possibleMatches: LibraryPresenceMatch[],
+): LibraryPresenceSummary {
+  const allCandidates = [...matches, ...possibleMatches];
+
+  if (allCandidates.length === 0) {
     return {
+      state: "not_found",
       exactMatch: false, partialMatch: false, searchable: false, usable: false,
       reason: "No matching documents found in the Organisation Library",
     };
   }
 
-  const top        = matches[0];
-  const exactMatch  = top.confidence >= 0.90;
-  const partialMatch = !exactMatch && top.confidence >= 0.45;
-  const searchable   = matches.some(m => m.indexed);
-  const usable       = matches.some(m => m.retrievable);
+  const topDirect   = matches[0];
+  const topPossible = possibleMatches[0];
 
+  // Usable = any retrievable candidate exists (direct or possible)
+  const usable      = allCandidates.some(m => m.retrievable);
+  const searchable  = allCandidates.some(m => m.indexed);
+
+  // State classification
+  let state: PresenceState;
   let reason: string;
-  if (usable) {
-    reason = exactMatch
-      ? `Found "${top.title}" — approved and ready for specialist use`
-      : `Found partial match "${top.title}" — approved and ready for specialist use`;
-  } else if (searchable) {
-    reason = `Found "${top.title}" — indexed but not yet approved`;
-  } else if (matches.some(m => m.approved)) {
-    reason = `Found "${top.title}" — approved but not yet indexed (ingestion pending)`;
-  } else if (matches.some(m => m.status === "uploaded" || m.status === "processing")) {
-    reason = `Found "${top.title}" — pending ingestion, not yet usable by specialists`;
-  } else if (matches.some(m => m.status === "superseded")) {
-    reason = `Found "${top.title}" — superseded; no current approved version available`;
-  } else if (matches.some(m => m.status === "archived")) {
-    reason = `Found "${top.title}" — archived and not available for use`;
+  let exactMatch  = false;
+  let partialMatch = false;
+
+  if (topDirect) {
+    exactMatch   = topDirect.confidence >= 0.90;
+    partialMatch = !exactMatch && topDirect.confidence >= 0.45;
+
+    if (topDirect.retrievable && topDirect.confidence >= FOUND_THRESHOLD) {
+      state = "found";
+      reason = exactMatch
+        ? `Found "${topDirect.canonicalTitle ?? topDirect.title}" — approved and ready for specialist use`
+        : `Found "${topDirect.canonicalTitle ?? topDirect.title}" — partial match, approved and ready`;
+    } else if (topDirect.retrievable) {
+      // Weak direct match — still usable
+      state = "possible_match";
+      reason = `Found related document "${topDirect.canonicalTitle ?? topDirect.title}" — approved and ready`;
+    } else if (topDirect.indexed && !topDirect.approved) {
+      state = "not_ready";
+      reason = `Found "${topDirect.canonicalTitle ?? topDirect.title}" — indexed but not yet approved`;
+    } else if (topDirect.approved && !topDirect.indexed) {
+      state = "not_ready";
+      reason = `Found "${topDirect.canonicalTitle ?? topDirect.title}" — approved but ingestion pending`;
+    } else if (topDirect.status === "uploaded" || topDirect.status === "processing") {
+      state = "not_ready";
+      reason = `Found "${topDirect.canonicalTitle ?? topDirect.title}" — pending ingestion (status: ${topDirect.status})`;
+    } else {
+      state = "not_ready";
+      reason = `Found "${topDirect.canonicalTitle ?? topDirect.title}" — not currently usable (status: ${topDirect.status})`;
+    }
+  } else if (topPossible) {
+    // No direct title match; type-fallback found something
+    state = "possible_match";
+    if (topPossible.retrievable) {
+      reason = `Found a plausible document "${topPossible.canonicalTitle ?? topPossible.title}" — no exact title match but document is approved and indexed`;
+    } else {
+      reason = `Found a plausible document "${topPossible.canonicalTitle ?? topPossible.title}" — no exact title match and document is not currently usable (status: ${topPossible.status})`;
+    }
   } else {
-    reason = `Found "${top.title}" — not currently usable (status: ${top.status})`;
+    state = "not_found";
+    reason = "No matching documents found in the Organisation Library";
   }
 
-  return { exactMatch, partialMatch, searchable, usable, reason };
+  return { state, exactMatch, partialMatch, searchable, usable, reason };
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -279,45 +260,44 @@ function buildSummary(matches: LibraryPresenceMatch[]): LibraryPresenceSummary {
  * Check whether documents matching the given search terms exist in the
  * Organisation Library and whether specialists can currently use them.
  *
- * Three DB queries are performed (sources → chunk existence → version status).
- * Results are cached for 30 seconds per (organisationId, searchTerms) pair.
- *
- * @param organisationId  Tenant organisation ID.
- * @param searchTerms     Title fragments, document names, or keywords.
- *                        e.g. ["Medication Management Policy"]
- *                        e.g. ["Medication Policy", "Medication SOP"]
+ * Sprint 29G.1: Multi-signal resolution using canonical_title, search_aliases,
+ * title, and original_file_name. Falls back to type-matched candidates when
+ * direct search finds nothing.
  */
 export async function checkOrganisationLibraryPresence(
   organisationId: string,
   searchTerms: string[],
 ): Promise<LibraryPresenceResult> {
-  // Guard: both arguments required
   if (!organisationId || searchTerms.length === 0) {
-    return emptyResult("No search terms provided");
+    return emptyResult("not_found", "No search terms provided");
   }
 
-  // Cache lookup — key is stable regardless of term ordering
+  // Cache key — stable regardless of term ordering
   const cacheKey = `${organisationId}::${[...searchTerms].sort().join("|")}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  // ── Query 1: candidate sources by ILIKE title match ───────────────────────
-  // expandedTerms: synonym-substituted variants of each search term
-  // subPhrases:    suffix sub-sequences of multi-word terms, guarding against
-  //               context adjectives that slipped into the extracted term
-  //               e.g. "current incident management policy" → also searches
-  //               "incident management policy" so the document is not missed
+  // ── Build expanded ILIKE terms ─────────────────────────────────────────────
   const expandedTerms = expandSearchTerms(searchTerms);
   const subPhrases    = generateSubPhrases(expandedTerms);
   const allIlikeTerms = [...new Set([...expandedTerms, ...subPhrases])];
-  const ilikeConditions = allIlikeTerms.map(t =>
-    ilike(knowledgeSourcesTable.title, `%${t}%`),
-  );
+
+  // ── Query 1: multi-signal source candidates ────────────────────────────────
+  // Search across: title, canonical_title, original_file_name
+  // (search_aliases are JSON — checked post-query in TypeScript)
+  const ilikeConditions = allIlikeTerms.flatMap(t => [
+    ilike(knowledgeSourcesTable.title,         `%${t}%`),
+    ilike(knowledgeSourcesTable.canonicalTitle, `%${t}%`),
+    ilike(knowledgeSourcesTable.originalFileName, `%${t}%`),
+  ]);
 
   const sources = await db
     .select({
       id:               knowledgeSourcesTable.id,
       title:            knowledgeSourcesTable.title,
+      canonicalTitle:   knowledgeSourcesTable.canonicalTitle,
+      searchAliases:    knowledgeSourcesTable.searchAliases,
+      originalFileName: knowledgeSourcesTable.originalFileName,
       sourceType:       knowledgeSourcesTable.sourceType,
       versionLabel:     knowledgeSourcesTable.versionLabel,
       status:           knowledgeSourcesTable.status,
@@ -330,70 +310,85 @@ export async function checkOrganisationLibraryPresence(
       and(
         eq(knowledgeSourcesTable.organizationId, organisationId),
         isNull(knowledgeSourcesTable.deletedAt),
+        eq(knowledgeSourcesTable.sourceScope, "library"),
         or(...ilikeConditions),
       ),
     )
     .limit(MAX_SOURCES);
 
-  if (sources.length === 0) {
-    const result = emptyResult("No matching documents found in the Organisation Library");
-    setCached(cacheKey, result);
-    return result;
-  }
-
+  // Collect all source IDs for chunk + version queries
   const sourceIds = sources.map(s => s.id);
 
-  // ── Query 2: chunk-existence check (determines "indexed") ─────────────────
-  // Fetch a sample of chunk rows — we only need to know which source IDs
-  // have at least one live chunk, not the chunk content.
-  const chunkRows = await db
-    .select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
-    .from(knowledgeChunksTable)
-    .where(
-      and(
-        inArray(knowledgeChunksTable.knowledgeSourceId, sourceIds),
-        isNull(knowledgeChunksTable.deletedAt),
-      ),
-    )
-    .limit(MAX_CHUNKS);
+  // ── Query 2: chunk existence ───────────────────────────────────────────────
+  const chunkRows = await (sourceIds.length > 0
+    ? db
+        .select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
+        .from(knowledgeChunksTable)
+        .where(
+          and(
+            inArray(knowledgeChunksTable.knowledgeSourceId, sourceIds),
+            isNull(knowledgeChunksTable.deletedAt),
+          ),
+        )
+        .limit(MAX_CHUNKS)
+    : Promise.resolve([]));
 
   const indexedSourceIds = new Set<string>(chunkRows.map(r => r.knowledgeSourceId));
 
-  // ── Query 3: ingestion status from the current source version ─────────────
-  const versionRows = await db
-    .select({
-      knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId,
-      ingestionStatus:   knowledgeSourceVersionsTable.ingestionStatus,
-    })
-    .from(knowledgeSourceVersionsTable)
-    .where(
-      and(
-        inArray(knowledgeSourceVersionsTable.knowledgeSourceId, sourceIds),
-        eq(knowledgeSourceVersionsTable.isCurrent, true),
-      ),
-    )
-    .limit(MAX_VERSIONS);
+  // ── Query 3: ingestion status ──────────────────────────────────────────────
+  const versionRows = await (sourceIds.length > 0
+    ? db
+        .select({
+          knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId,
+          ingestionStatus:   knowledgeSourceVersionsTable.ingestionStatus,
+        })
+        .from(knowledgeSourceVersionsTable)
+        .where(
+          and(
+            inArray(knowledgeSourceVersionsTable.knowledgeSourceId, sourceIds),
+            eq(knowledgeSourceVersionsTable.isCurrent, true),
+          ),
+        )
+        .limit(MAX_VERSIONS)
+    : Promise.resolve([]));
 
   const ingestionStatusBySourceId = new Map<string, string>(
     versionRows.map(r => [r.knowledgeSourceId, r.ingestionStatus]),
   );
 
-  // ── Score, filter, rank ───────────────────────────────────────────────────
-  const matches: LibraryPresenceMatch[] = [];
+  // ── Score candidates across all identity signals ───────────────────────────
+  const directMatches: LibraryPresenceMatch[] = [];
 
   for (const src of sources) {
-    const confidence = scoreMatch(src.title, searchTerms);
+    const { confidence, signal } = scoreMultiSignal(
+      {
+        title:            src.title,
+        canonicalTitle:   src.canonicalTitle ?? null,
+        searchAliases:    (src.searchAliases as string[] | null) ?? null,
+        originalFileName: src.originalFileName ?? null,
+        sourceType:       src.sourceType,
+      },
+      searchTerms,
+    );
+
     if (confidence < MIN_CONFIDENCE) continue;
 
-    const approved    = src.status === "approved" && src.approvedByUserId !== null;
+    // Sprint 29G.1:
+    //   approved    = source has been approved (status only — no approvedByUserId requirement)
+    //   retrievable = isSourceEligible (approved + isCurrent + not-deleted) AND indexed
+    //
+    // This separates "has this document been approved?" from "can specialists retrieve it now?"
+    // It aligns with KRS (which checks status + isCurrent only, not approvedByUserId) while
+    // preserving the `approved` field's original semantic (approval status, not retrieval readiness).
+    const approved    = src.status === "approved";
     const indexed     = indexedSourceIds.has(src.id);
-    // retrievable: must be approved, indexed, and the current active version
-    const retrievable = approved && indexed && src.isCurrent === true;
+    const retrievable = isSourceEligible({ status: src.status, isCurrent: src.isCurrent, deletedAt: src.deletedAt }) && indexed;
     const ingestionStatus = ingestionStatusBySourceId.get(src.id) ?? null;
 
-    matches.push({
+    directMatches.push({
       sourceId:        src.id,
       title:           src.title,
+      canonicalTitle:  src.canonicalTitle ?? null,
       sourceType:      src.sourceType,
       version:         src.versionLabel ?? null,
       approved,
@@ -402,17 +397,127 @@ export async function checkOrganisationLibraryPresence(
       status:          src.status,
       ingestionStatus,
       confidence,
+      matchedSignal:   signal,
+      isTypeFallback:  false,
     });
   }
 
-  // Sort descending by confidence, cap at MAX_MATCHES
-  matches.sort((a, b) => b.confidence - a.confidence);
-  const topMatches = matches.slice(0, MAX_MATCHES);
+  // Sort by confidence descending
+  directMatches.sort((a, b) => b.confidence - a.confidence);
+  const topDirect = directMatches.slice(0, MAX_MATCHES);
+
+  // ── Type-fallback: when no direct matches, check for plausible type-matched sources ──
+  let typeFallbackMatches: LibraryPresenceMatch[] = [];
+
+  if (topDirect.length === 0) {
+    const typeWords = extractTypeWordsFromTerms(searchTerms);
+    if (typeWords.length > 0) {
+      // Map type words to source_type values
+      const TYPE_MAP: Record<string, string[]> = {
+        policy:    ["policy"],
+        policies:  ["policy"],
+        procedure: ["procedure"],
+        procedures:["procedure"],
+        sop:       ["procedure", "policy"],
+        manual:    ["hr_manual", "operational_manual", "policy", "procedure"],
+        manuals:   ["hr_manual", "operational_manual", "policy", "procedure"],
+        guideline: ["policy", "procedure"],
+        guidelines:["policy", "procedure"],
+        standard:  ["policy", "procedure", "compliance_document"],
+        standards: ["policy", "procedure", "compliance_document"],
+        framework: ["policy", "procedure", "playbook"],
+        protocol:  ["policy", "procedure"],
+        handbook:  ["hr_manual", "operational_manual"],
+        plan:      ["playbook", "policy"],
+        plans:     ["playbook", "policy"],
+      };
+
+      const matchedTypes = new Set<string>();
+      for (const word of typeWords) {
+        const types = TYPE_MAP[word] ?? [];
+        types.forEach(t => matchedTypes.add(t));
+      }
+
+      if (matchedTypes.size > 0) {
+        // Fetch approved+current library sources of the matching types
+        const fallbackSources = await db
+          .select({
+            id:               knowledgeSourcesTable.id,
+            title:            knowledgeSourcesTable.title,
+            canonicalTitle:   knowledgeSourcesTable.canonicalTitle,
+            searchAliases:    knowledgeSourcesTable.searchAliases,
+            originalFileName: knowledgeSourcesTable.originalFileName,
+            sourceType:       knowledgeSourcesTable.sourceType,
+            versionLabel:     knowledgeSourcesTable.versionLabel,
+            status:           knowledgeSourcesTable.status,
+            approvedByUserId: knowledgeSourcesTable.approvedByUserId,
+            isCurrent:        knowledgeSourcesTable.isCurrent,
+            deletedAt:        knowledgeSourcesTable.deletedAt,
+          })
+          .from(knowledgeSourcesTable)
+          .where(
+            and(
+              eq(knowledgeSourcesTable.organizationId, organisationId),
+              isNull(knowledgeSourcesTable.deletedAt),
+              eq(knowledgeSourcesTable.sourceScope, "library"),
+              eq(knowledgeSourcesTable.status, "approved"),
+              eq(knowledgeSourcesTable.isCurrent, true),
+              inArray(knowledgeSourcesTable.sourceType, [...matchedTypes]),
+            ),
+          )
+          .limit(MAX_SOURCES);
+
+        if (fallbackSources.length > 0) {
+          const fallbackIds = fallbackSources.map(s => s.id);
+
+          const [fallbackChunks, fallbackVersions] = await Promise.all([
+            db.select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
+              .from(knowledgeChunksTable)
+              .where(and(inArray(knowledgeChunksTable.knowledgeSourceId, fallbackIds), isNull(knowledgeChunksTable.deletedAt)))
+              .limit(MAX_CHUNKS),
+            db.select({ knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId, ingestionStatus: knowledgeSourceVersionsTable.ingestionStatus })
+              .from(knowledgeSourceVersionsTable)
+              .where(and(inArray(knowledgeSourceVersionsTable.knowledgeSourceId, fallbackIds), eq(knowledgeSourceVersionsTable.isCurrent, true)))
+              .limit(MAX_VERSIONS),
+          ]);
+
+          const fallbackIndexed = new Set(fallbackChunks.map(r => r.knowledgeSourceId));
+          const fallbackIngestionStatus = new Map(fallbackVersions.map(r => [r.knowledgeSourceId, r.ingestionStatus]));
+
+          for (const src of fallbackSources) {
+            const approved    = src.status === "approved";
+            const indexed     = fallbackIndexed.has(src.id);
+            const retrievable = isSourceEligible({ status: src.status, isCurrent: src.isCurrent, deletedAt: src.deletedAt }) && indexed;
+
+            typeFallbackMatches.push({
+              sourceId:        src.id,
+              title:           src.title,
+              canonicalTitle:  src.canonicalTitle ?? null,
+              sourceType:      src.sourceType,
+              version:         src.versionLabel ?? null,
+              approved,
+              indexed,
+              retrievable,
+              status:          src.status,
+              ingestionStatus: fallbackIngestionStatus.get(src.id) ?? null,
+              confidence:      0.20,   // type-match only — below direct FOUND threshold
+              matchedSignal:   "type_only",
+              isTypeFallback:  true,
+            });
+          }
+
+          // Prefer retrievable candidates first
+          typeFallbackMatches.sort((a, b) => Number(b.retrievable) - Number(a.retrievable));
+        }
+      }
+    }
+  }
 
   const result: LibraryPresenceResult = {
     searched: true,
-    matches:  topMatches,
-    summary:  buildSummary(topMatches),
+    matches:         topDirect,
+    possibleMatches: typeFallbackMatches.slice(0, MAX_MATCHES),
+    summary:         buildSummary(topDirect, typeFallbackMatches),
   };
 
   setCached(cacheKey, result);

@@ -72,3 +72,4 @@
 - [NeedsOps Sprint 29F.3 Real Mac Acceptance Support](needsops-sprint29f3.md) — preflight script, operator runbook, 11-scenario acceptance test (relay injection for desktop dedup), evidence JSON, REAL_CONNECTOR_URL is gate-only (set to API base URL)
 - [NeedsOps Sprint 29G Cloud Evidence Resolution](needsops-sprint29g.md) — "current" missing from GENERIC→bad ILIKE; sub-phrase expansion; KRS gate removed; CoS Not-found rule tightened; 4078 tests
 - [NeedsOps Sprint 122-123 Completed Work Lifecycle](needsops-sprint122-123.md) — submitForApproval must be called after createDraft; postCompletedWorkCreatedToConversation now 8 args; simulation+source-contract test strategy; 4036 tests
+- [NeedsOps Sprint 29G.1 Document Identity](needsops-sprint29g1.md) — canonical_title+search_aliases cols, scoreMultiSignal, type-fallback→possible_match, approved≠isSourceEligible, 4098 tests

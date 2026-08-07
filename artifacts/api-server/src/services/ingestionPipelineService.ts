@@ -43,7 +43,7 @@ import {
   knowledgeSourcesTable,
   ingestionJobsTable,
 } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, isNull } from "drizzle-orm";
 import { getExtractor }            from "../lib/extractors/extractorRegistry.js";
 import { normaliseDocument }       from "./normalisationService.js";
 import { chunkDocument, DEFAULT_CHUNK_OPTIONS } from "./chunkingService.js";
@@ -57,6 +57,7 @@ import {
 } from "./ingestionJobService.js";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
+import { deriveCanonicalTitle, deriveSearchAliases } from "./documentIdentityService.js";
 
 // ─── Error classification ─────────────────────────────────────────────────────
 
@@ -225,6 +226,43 @@ async function runPipeline(
 
     if (chunks.length === 0) {
       throw new PipelineError("Chunking produced zero chunks — document may be empty.", "NO_CHUNKS", true);
+    }
+
+    // ── Stage 5.5: derive canonical document identity ───────────────────────
+    // Extracts a human-readable canonical title from content headings and stores
+    // it on knowledge_sources for multi-signal presence lookup.
+    // Only writes when canonical_title is not already set — re-runs are idempotent.
+    {
+      const canonicalTitle = deriveCanonicalTitle({
+        explicitTitle:    source.title ?? undefined,
+        originalFileName: source.originalFileName ?? undefined,
+        chunks: chunks.slice(0, 5).map(c => ({
+          sectionTitle: c.sectionTitle ?? null,
+          text:         c.text,
+          chunkIndex:   c.chunkIndex,
+        })),
+      });
+      const aliases = deriveSearchAliases({
+        canonicalTitle,
+        originalFileName: source.originalFileName ?? undefined,
+        sourceType:       source.sourceType,
+      });
+      if (canonicalTitle) {
+        await db
+          .update(knowledgeSourcesTable)
+          .set({
+            canonicalTitle,
+            searchAliases: aliases.length > 0 ? aliases : [],
+            updatedAt:     new Date(),
+          })
+          .where(
+            and(
+              eq(knowledgeSourcesTable.id,             knowledgeSourceId),
+              eq(knowledgeSourcesTable.organizationId, organizationId),
+              isNull(knowledgeSourcesTable.canonicalTitle),
+            ),
+          );
+      }
     }
 
     // ── Stage 6: injection scan ─────────────────────────────────────────────
