@@ -1,0 +1,319 @@
+SPRINT 29J.1 — APPROVED VERSION IMMUTABILITY LIVE PROOF GATE
+
+TEST ONLY. NO CODE CHANGES.
+
+Sprint 29J.1 reports that approved_version_id now pins the exact signed-off Completed Work version.
+
+Before proceeding to any new feature or export-quality work, verify this against the real database and authenticated UI.
+
+==================================================
+MANDATORY EVIDENCE STANDARD
+==================================================
+
+Classify every result as:
+
+1. Unit test
+2. Mocked integration test
+3. Real database integration test
+4. Live API/runtime test
+5. Live authenticated UI end-to-end test
+
+Label every conclusion:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not use source inspection or passing unit tests as proof of live viewer/export behaviour.
+
+==================================================
+TEST A — DATABASE PIN AT APPROVAL
+==================================================
+
+Create or use a disposable Completed Work item.
+
+Ensure it has at least:
+
+V1
+V2
+
+Approve V2.
+
+Then inspect the real DB and prove:
+
+completed_work.status = approved
+completed_work.approved_version_id = V2.id
+approved_by_user_id populated
+approved_at populated
+current_version_id may move later, but approved_version_id remains V2
+
+Capture exact IDs.
+
+Evidence level:
+REAL DATABASE INTEGRATION
+
+==================================================
+TEST B — VIEWER USES APPROVED VERSION
+==================================================
+
+After approving V2, create V3.
+
+Open the approved item in the authenticated Completed Work viewer.
+
+Expected:
+
+The normal Completed/approved view displays V2 content.
+
+It must NOT silently display V3 merely because V3 is latest.
+
+If the UI offers a newer-revision indicator, verify the amber integrity banner appears.
+
+Capture:
+
+approvedVersionId
+latestVersionId
+version rendered by Work tab
+quality version used by Quality tab
+
+Evidence level:
+LIVE AUTHENTICATED UI END-TO-END
+
+==================================================
+TEST C — DANGEROUS RESTORE SCENARIO
+==================================================
+
+Run the exact regression scenario:
+
+1. Create V1.
+2. Create V2.
+3. Approve V2.
+4. Restore V1 after approval.
+5. Confirm restore creates/activates a later working version as designed.
+6. Open Completed Work.
+7. Download PDF.
+8. Download DOCX.
+
+Expected:
+
+Approved deliverable remains V2.
+
+Viewer must show the approved V2 when presenting the approved artefact.
+PDF must export V2.
+DOCX must export V2.
+
+The restored/newer version must NOT inherit V2's approval.
+
+==================================================
+TEST D — NEW REVISION AFTER APPROVAL
+==================================================
+
+Approve V2.
+
+Create a new V3 through normal revision/change flow.
+
+Verify:
+
+V2 remains the approved artefact.
+V3 is not automatically approved.
+V3 must require its own approval before becoming an approved deliverable.
+
+Answer explicitly:
+
+Does the parent completed_work status remain approved while an unapproved newer revision exists?
+
+If yes, explain how the UI distinguishes:
+
+APPROVED VERSION
+from
+NEWER UNAPPROVED REVISION
+
+Ensure this is understandable to the user.
+
+==================================================
+TEST E — EXPORT VERSION INTEGRITY
+==================================================
+
+For the approved item with a newer revision present:
+
+Request PDF and DOCX.
+
+Capture:
+
+approvedVersionId
+latestVersionId
+exportedVersionId
+filename
+version number in filename
+MIME type
+content fingerprint / known unique text
+
+Expected:
+
+exportedVersionId = approvedVersionId
+
+Filename must use the APPROVED version number, not latest version number.
+
+==================================================
+TEST F — QUALITY TAB VERSION INTEGRITY
+==================================================
+
+Approve a version whose quality score differs from a later revision.
+
+Example:
+
+V2 quality = 82
+V3 quality = 91
+
+Expected approved viewer:
+
+Quality tab shows V2's review dimensions and V2's quality score.
+
+It must not show V3 quality against V2 approved content.
+
+==================================================
+TEST G — LEGACY APPROVED ROW
+==================================================
+
+Test a legacy approved completed_work row where:
+
+approved_version_id IS NULL
+
+Verify documented compatibility behaviour.
+
+Expected:
+
+Legacy fallback may resolve to the historically appropriate/latest known version IF that is the explicit migration compatibility policy.
+
+Clearly mark this as LEGACY FALLBACK.
+
+Do not treat legacy fallback semantics as the rule for newly approved records.
+
+==================================================
+TEST H — BROKEN PIN SAFETY
+==================================================
+
+This test is important.
+
+Simulate safely in test data:
+
+status = approved
+approved_version_id points to a missing/deleted/non-owned version
+
+For a NEW-format approved record, determine expected behaviour.
+
+Preferred invariant:
+
+FAIL CLOSED / INTEGRITY ERROR
+
+Do NOT silently fall back to versions[0], because that could cause NeedsOps to represent content as approved when it was never signed off.
+
+If current implementation silently falls back for this condition, classify it as an integrity defect.
+
+Differentiate:
+
+LEGACY NULL PIN
+from
+BROKEN MODERN PIN
+
+These must not necessarily have the same fallback semantics.
+
+==================================================
+TEST I — CROSS-TENANT VERSION ISOLATION
+==================================================
+
+Attempt:
+
+Tenant A approved completedWorkId
+Tenant B versionId
+cross-tenant approvedVersionId manipulation / fetch
+cross-tenant viewer access
+cross-tenant export
+
+Expected:
+
+Denied at every layer.
+
+Verify:
+
+completed_work ownership
+completed_work_versions ownership
+approvedVersion relationship
+export ownership
+
+==================================================
+TEST J — AUDIT TRAIL
+==================================================
+
+Verify approval audit/event information records enough information to answer:
+
+Who approved?
+When?
+Which Completed Work?
+Which exact version?
+
+If approvedVersionId is not represented in the relevant approval/audit event, report that as an audit gap.
+
+Do not assume the parent completed_work row alone is sufficient for long-term audit reconstruction.
+
+==================================================
+TEST K — AUTHENTICATED USER EXPERIENCE
+==================================================
+
+Using a disposable real item:
+
+Approve it.
+Return to Completed.
+Open View Work.
+Inspect version information.
+Create/restore a later revision if the UI allows.
+Return to Completed.
+
+Verify the user can clearly tell:
+
+"This is the approved version"
+
+and
+
+"A newer revision exists but is not approved."
+
+The UI must not make the newer revision look signed off.
+
+==================================================
+FINAL EVIDENCE TABLE
+==================================================
+
+Return:
+
+Test
+Evidence level
+Expected
+Actual
+Proof status
+Failure point
+
+Then answer exactly:
+
+1. Is approvedVersionId written at approval time?
+2. Does the approved viewer always resolve to that exact version?
+3. Do PDF and DOCX resolve to the same approved version?
+4. Can a restore change what the approval points to?
+5. Can a later revision inherit the approval?
+6. Does Quality show the approved version's score?
+7. Is legacy null-pin fallback safe and clearly isolated?
+8. What happens if a modern approvedVersionId is broken?
+9. Is the exact approved version present in the audit trail?
+10. Is cross-tenant version access blocked?
+11. Can the user distinguish approved content from a newer revision?
+
+Final verdict:
+
+PROVEN — APPROVED VERSION IMMUTABILITY LIVE-PROVEN
+
+PARTIALLY PROVEN — PINNING WORKS BUT LIVE/INTEGRITY GAP REMAINS
+
+BLOCKED — APPROVAL CAN STILL BECOME DETACHED FROM SIGNED CONTENT
+
+Do not implement fixes.
+Do not move to #133.
+Stop after verification.
