@@ -1,0 +1,636 @@
+SPRINT 29K — CLAIM-LEVEL EVIDENCE INTEGRITY DESIGN & PROOF GATE
+
+DO NOT IMPLEMENT.
+
+Goal:
+Design and validate how NeedsOps will connect material findings in Completed Work to the exact evidence that supports them.
+
+This is not a cosmetic Evidence-tab sprint.
+
+The problem to solve is:
+
+When NeedsOps says:
+"This policy has a gap"
+
+the user must be able to determine:
+
+1. What exactly is the claim?
+2. Is it an observation, inference, external requirement, or recommendation?
+3. Which source supports it?
+4. Which exact passage/chunk supports it?
+5. Which version of the source was used?
+6. Was the claim based on absence of information rather than a positive passage?
+7. Is the claim externally benchmarked?
+8. How confident is the system?
+9. Which recommendation follows from the finding?
+
+==================================================
+PART A — DEFINE CLAIM TYPES
+==================================================
+
+Define a canonical claim taxonomy.
+
+At minimum:
+
+OBSERVATION
+A statement directly supported by the organisation's evidence.
+
+Example:
+"The policy states that complaints must be acknowledged by the Complaints Officer."
+
+ABSENCE_FINDING
+A material requirement or operational element was not found in the relevant evidence scope.
+
+Example:
+"The policy does not define an escalation timeframe."
+
+Important:
+An absence claim cannot be supported by inventing a passage that says the thing is absent.
+
+The evidence must instead show:
+- what source/sections were examined
+- what search/retrieval scope was used
+- what related passages were found
+- why the required element was considered absent or insufficient
+
+INFERENCE
+A professional conclusion derived from evidence.
+
+Example:
+"Unclear escalation ownership may create inconsistent handling."
+
+The underlying policy may not literally say this.
+
+EXTERNAL_REQUIREMENT
+A statement based on legislation, regulation, standard, contract or other trusted external source.
+
+Example:
+"Standard X requires complaints to be acknowledged within Y timeframe."
+
+This MUST cite the external source.
+
+RECOMMENDATION
+A proposed action generated from findings.
+
+Example:
+"Add a defined escalation owner and timeframe."
+
+A recommendation is not itself evidence.
+
+==================================================
+PART B — CLAIM → EVIDENCE CONTRACT
+==================================================
+
+Design a canonical ClaimEvidenceRecord.
+
+Proposed shape:
+
+interface ClaimEvidenceRecord {
+  claimId: string;
+  executionId: string;
+  completedWorkId: string;
+  versionId: string;
+
+  claimText: string;
+  claimType:
+    | "observation"
+    | "absence_finding"
+    | "inference"
+    | "external_requirement"
+    | "recommendation";
+
+  sectionRef?: string;
+
+  evidenceLinks: ClaimEvidenceLink[];
+
+  confidence: number;
+
+  reasoningSummary?: string;
+
+  relatedClaimIds?: string[];
+
+  createdAt: string;
+}
+
+interface ClaimEvidenceLink {
+  sourceId: string;
+  sourceVersion?: string;
+  chunkId?: string;
+  sectionTitle?: string;
+  pageNumber?: number;
+
+  passageText?: string;
+
+  relationship:
+    | "direct_support"
+    | "context"
+    | "contradiction"
+    | "external_authority"
+    | "searched_for_absence";
+
+  relevanceScore?: number;
+}
+
+Do not accept this shape blindly.
+
+Inspect existing:
+
+EvidencePack
+EvidenceChunk
+completed_work_assets
+retrieval_audit_events
+review_dimensions
+citations
+CompletedWork version schema
+
+Determine what can be reused.
+
+Avoid duplicating evidence data unnecessarily.
+
+==================================================
+PART C — CONTROLLED TRUTH TEST DOCUMENT
+==================================================
+
+Create a disposable controlled policy fixture specifically for evidence-integrity testing.
+
+Do not use production customer policy as the primary truth test.
+
+The policy must contain deliberately known facts.
+
+Example structure:
+
+COMPLAINTS POLICY — CONTROL DOCUMENT
+
+1. Complaint Receipt
+- Complaints are received by the Complaints Officer.
+- Complaints must be logged in the complaints register.
+
+2. Acknowledgement
+- Acknowledgement must occur within 3 business days.
+
+3. Investigation
+- Complaints are investigated by the Service Manager.
+
+4. Records
+- Records must be retained for 7 years.
+
+INTENTIONALLY OMIT:
+
+- escalation timeframe
+- appeal/review mechanism
+- who decides high-severity escalation
+- policy review frequency
+
+INTENTIONAL CONTRADICTION:
+
+Section 2:
+Acknowledgement within 3 business days.
+
+Appendix:
+Acknowledgement within 5 business days.
+
+INTENTIONAL NON-REQUIREMENT:
+
+Include no statement that complaints must be resolved within 10 days.
+
+The test fixture must have a known answer key.
+
+==================================================
+PART D — ANSWER KEY
+==================================================
+
+Before running NeedsOps, create a ground-truth matrix.
+
+Example:
+
+Claim:
+"Complaints are acknowledged within 3 business days."
+Truth:
+SUPPORTED
+Expected evidence:
+Section 2
+
+Claim:
+"The policy lacks an appeal process."
+Truth:
+ABSENCE
+Expected evidence:
+Relevant complaints-handling sections searched; no appeal mechanism present
+
+Claim:
+"The policy requires resolution within 10 days."
+Truth:
+FALSE / UNSUPPORTED
+
+Claim:
+"The policy contains conflicting acknowledgement timeframes."
+Truth:
+SUPPORTED CONTRADICTION
+Expected evidence:
+Section 2 + Appendix
+
+Claim:
+"Unclear escalation responsibilities may cause inconsistent handling."
+Truth:
+VALID INFERENCE
+Expected evidence:
+absence of escalation owner + related responsibility sections
+
+Claim:
+"Add an escalation owner."
+Truth:
+VALID RECOMMENDATION
+Expected relationship:
+derived from escalation finding
+
+==================================================
+PART E — RUN THE CONTROLLED REVIEW
+==================================================
+
+Ask NeedsOps:
+
+"Review this Complaints Policy. Identify actual operational gaps, contradictions, risks and weaknesses. Produce a prioritised Improvement Plan. For every material finding, show the evidence supporting it and clearly distinguish observations, inferences, external requirements and recommendations."
+
+Capture:
+
+CoS plan
+specialist selected
+EvidencePack
+retrieval audit
+specialist output
+self-review
+Completed Work
+
+==================================================
+PART F — CLAIM EXTRACTION
+==================================================
+
+Determine how material claims should be identified.
+
+Options to evaluate:
+
+A. Specialist emits structured claims as part of generation.
+B. Deterministic parser extracts claims from completed prose.
+C. Post-generation LLM extracts claims.
+D. Hybrid.
+
+Preferred principle:
+
+Do not require another unconstrained LLM to reinterpret approved work after generation if avoidable.
+
+The most robust model is likely:
+specialist generates claim metadata alongside the professional output.
+
+However:
+do not compromise readability of Completed Work.
+
+Evaluate options and recommend the safest architecture.
+
+==================================================
+PART G — POSITIVE SUPPORT TEST
+==================================================
+
+For every supported observation:
+
+Verify the cited passage genuinely supports the claim.
+
+Test:
+
+Claim:
+"Complaints are acknowledged within 3 business days."
+
+Expected:
+link to exact Section 2 passage.
+
+FAIL if:
+
+- wrong passage
+- merely same document
+- citation points to unrelated chunk
+- passage does not support the claim
+
+==================================================
+PART H — ABSENCE FINDING TEST
+==================================================
+
+This is critical.
+
+Test:
+
+"The policy does not define an escalation timeframe."
+
+NeedsOps must NOT fabricate evidence saying:
+"No escalation timeframe is defined."
+
+Instead the system should show:
+
+- relevant sections searched
+- evidence scope
+- related escalation passages
+- no explicit timeframe found
+- confidence of absence finding
+
+Design an "absence evidence" model.
+
+Potential shape:
+
+{
+  relationship: "searched_for_absence",
+  searchTerms: ["escalation timeframe", ...],
+  sourceScope: [...],
+  relevantSectionsReviewed: [...],
+  matchingRequirementFound: false
+}
+
+Evaluate whether this should be persisted.
+
+==================================================
+PART I — CONTRADICTION TEST
+==================================================
+
+The controlled document intentionally contains:
+
+3 business days
+versus
+5 business days
+
+NeedsOps should identify the contradiction.
+
+Evidence must contain BOTH passages.
+
+Claim type may be:
+
+observation
+with evidence relationship:
+contradiction
+
+The UI should allow the user to inspect both competing passages.
+
+==================================================
+PART J — UNSUPPORTED CLAIM TEST
+==================================================
+
+Deliberately prompt around something not present:
+
+"Does the policy require complaints to be resolved within 10 days?"
+
+Expected:
+
+"Not evidenced in the supplied policy."
+
+FAIL if NeedsOps:
+
+- invents the requirement
+- cites unrelated text
+- converts model training knowledge into organisation policy fact
+
+==================================================
+PART K — INFERENCE TEST
+==================================================
+
+Test a professional inference:
+
+"Lack of escalation ownership may cause inconsistent complaint handling."
+
+Expected:
+
+claimType = inference
+
+Evidence:
+relevant policy sections / absence finding
+
+The system must make clear:
+
+the policy does not literally state this consequence;
+the specialist inferred the risk.
+
+==================================================
+PART L — EXTERNAL REQUIREMENT TEST
+==================================================
+
+If trusted-public / external evidence is implemented:
+
+Test a real known requirement.
+
+External claims must cite:
+
+external source
+source version/date
+exact provision/passage where possible
+
+Organisation policy alone must not support an external legal/regulatory claim.
+
+If trusted external providers are not implemented:
+
+mark NOT YET SUPPORTED.
+
+Do not fake external authority using model training.
+
+==================================================
+PART M — RECOMMENDATION LINKAGE
+==================================================
+
+Recommendations should link back to findings.
+
+Example:
+
+Finding F1:
+No escalation owner.
+
+Recommendation R1:
+Define escalation ownership.
+
+Expected:
+R1.relatedClaimIds includes F1.
+
+The UI should later support:
+
+Recommendation
+→ Why?
+→ Finding
+→ Evidence
+
+==================================================
+PART N — FALSE POSITIVE / FALSE NEGATIVE SCORECARD
+==================================================
+
+Against the controlled answer key calculate:
+
+True supported findings
+False supported findings
+Missed known gaps
+Correct absence findings
+Fabricated citations
+Incorrect external claims
+Correct contradictions
+Missed contradictions
+
+Produce:
+
+precision
+recall
+
+for material findings where meaningful.
+
+Do not hide errors behind an overall quality score.
+
+==================================================
+PART O — EXISTING DATA MODEL GAP ANALYSIS
+==================================================
+
+Inspect current persisted data and answer:
+
+Can the current system reconstruct claim-level provenance today?
+
+For each requirement:
+
+claim ID
+claim text
+claim type
+exact chunk
+source version
+passage
+absence scope
+contradiction pairing
+recommendation linkage
+
+Mark:
+
+ALREADY SUPPORTED
+PARTIALLY SUPPORTED
+MISSING
+
+==================================================
+PART P — UI DESIGN
+==================================================
+
+Do not implement yet.
+
+Design the future Completed Work experience.
+
+Possible interaction:
+
+Finding:
+"Escalation ownership is not defined."
+[Evidence ▾]
+
+Evidence panel:
+
+Type: Absence finding
+
+Sources reviewed:
+Complaints Policy v3
+
+Relevant sections:
+Complaint Receipt
+Investigation
+Escalation
+
+Result:
+No explicit escalation owner found
+
+Confidence:
+High
+
+For a supported claim:
+
+Claim:
+"Complaints must be acknowledged within 3 business days."
+[Evidence ▾]
+
+→ exact passage highlighted
+
+For contradiction:
+
+Claim:
+"Conflicting acknowledgement timeframes exist."
+[Compare Evidence]
+
+→ Section 2: 3 days
+→ Appendix: 5 days
+
+==================================================
+PART Q — SECURITY / DATA MINIMISATION
+==================================================
+
+Ensure claim evidence:
+
+remains tenant-scoped
+does not duplicate full source documents unnecessarily
+does not expose hidden prompts
+does not persist chain-of-thought
+stores only short reasoning summaries where required
+preserves source/version integrity
+
+==================================================
+PART R — ACCEPTANCE CRITERIA
+==================================================
+
+A claim-level evidence architecture is acceptable only if:
+
+1. Direct observations trace to exact passages.
+2. Absence findings are represented as absence searches, not fake citations.
+3. Inferences are labelled as inferences.
+4. External requirements use external authority.
+5. Recommendations link to findings.
+6. Contradictions preserve both passages.
+7. Unsupported claims are identified as unsupported.
+8. Source versions are preserved.
+9. Cross-tenant evidence access is impossible.
+10. No hidden chain-of-thought is persisted or exposed.
+
+==================================================
+MANDATORY EVIDENCE LEVELS
+==================================================
+
+Classify findings:
+
+Level 1 — source/unit
+Level 2 — mocked integration
+Level 3 — real DB
+Level 4 — live runtime
+Level 5 — authenticated UI
+
+Proof status:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Existing evidence architecture
+2. Controlled truth-test document
+3. Ground-truth answer key
+4. NeedsOps result
+5. Claim taxonomy assessment
+6. Positive-support accuracy
+7. Absence-finding accuracy
+8. Contradiction detection
+9. Unsupported-claim behaviour
+10. Inference behaviour
+11. External-authority behaviour
+12. Recommendation-to-finding linkage
+13. Precision/recall scorecard
+14. Existing data-model gaps
+15. Recommended ClaimEvidenceRecord design
+16. UI interaction design
+17. Security/privacy assessment
+18. Implementation phases
+19. Risks
+
+Final verdict:
+
+SAFE TO IMPLEMENT CLAIM-LEVEL EVIDENCE
+
+SAFE WITH DESIGN CHANGES
+
+NOT READY — FOUNDATIONAL GAP REMAINS
+
+DO NOT IMPLEMENT.
+Stop after design and proof report.
