@@ -1,0 +1,645 @@
+SPRINT 29L — FULL PRODUCT MODULE, SUBMENU & FUNCTION OVERLAP AUDIT
+
+THIS IS AN INVESTIGATION / ARCHITECTURE AUDIT ONLY.
+
+DO NOT IMPLEMENT, REFACTOR, DELETE, RENAME OR MOVE ANYTHING.
+
+I want a complete audit of the NeedsOps AI+ product from the USER-FACING MODULE level down to the actual backend services.
+
+The concern is that as the platform has grown, we may now have:
+
+- modules that overlap
+- different screens exposing the same underlying function
+- duplicated workflows
+- duplicated outputs
+- modules that appear connected in the UI but are not technically wired end-to-end
+- old/dead screens or legacy routes
+- multiple ways of creating the same Completed Work
+- unclear ownership between Chat, Tasks, Active Work, Operations Centre, Workforce, Inbox and Completed Work
+- unnecessary complexity that could slow the product or confuse users
+
+Do not assume something works because a component, route, service or test exists.
+
+Trace the real execution path.
+
+==================================================
+PART A — INVENTORY THE ENTIRE USER-FACING PRODUCT
+==================================================
+
+Start from the actual navigation configuration/router and identify every current user-facing module.
+
+At minimum investigate:
+
+Dashboard
+Inbox
+Active Work
+Notifications
+
+Chat
+Workforce
+Operations Centre
+Tasks
+Completed Work
+
+Platform Console
+
+Also identify any other primary modules that exist in code but are not visible in the screenshot/navigation.
+
+For EACH module identify:
+
+1. Main purpose
+2. Intended user outcome
+3. Routes
+4. Submenus
+5. Tabs
+6. Major buttons/actions
+7. Data displayed
+8. Data created
+9. Backend APIs called
+10. Services invoked
+11. Database tables read
+12. Database tables written
+13. Whether AI/LLM execution occurs
+14. Whether KRS/evidence retrieval occurs
+15. Whether it can create Completed Work
+16. Whether it can trigger Tasks
+17. Whether it can trigger Workforce specialists
+18. Whether it sends notifications
+19. Whether another module provides substantially the same function
+
+Produce a complete module map.
+
+==================================================
+PART B — WHAT IS EACH MODULE ACTUALLY FOR?
+==================================================
+
+For every major module answer this in plain English:
+
+"What job is the user hiring this module to do?"
+
+I specifically want the boundaries clarified between:
+
+CHAT
+What should Chat do that Tasks does not?
+
+TASKS
+What should Tasks do that Chat does not?
+
+ACTIVE WORK
+Is Active Work a working queue, execution monitor, task list, or something else?
+
+OPERATIONS CENTRE
+What is its unique purpose?
+What does it expose that Active Work / Tasks / Workforce do not?
+
+WORKFORCE
+Is Workforce primarily:
+- specialist management
+- specialist selection
+- employee configuration
+- execution
+- monitoring
+or some combination?
+
+INBOX
+What enters Inbox?
+Is it communications, approvals, AI work, task results, system messages, or several of these?
+
+NOTIFICATIONS
+How is this different from Inbox?
+Are the same events appearing in both?
+
+COMPLETED WORK
+Is this correctly the canonical repository for finished substantive work?
+What other modules display or duplicate Completed Work?
+
+DASHBOARD
+Is it purely a summary/navigation layer or does it independently implement workflows available elsewhere?
+
+PLATFORM CONSOLE
+What functions belong here rather than normal organisation operations?
+
+Give each module ONE primary responsibility.
+
+If a module currently has several unrelated responsibilities, identify them.
+
+==================================================
+PART C — SUBMENU AND TAB AUDIT
+==================================================
+
+Do not stop at the sidebar.
+
+Open the implementation of every module and inventory its:
+
+- tabs
+- sub-navigation
+- drawers
+- action menus
+- modal workflows
+- secondary screens
+
+For each one explain:
+
+WHAT IT DOES
+WHAT SERVICE IT USES
+WHAT DATA IT READS/WRITES
+WHETHER IT IS FUNCTIONAL
+WHAT OTHER SCREEN DOES SOMETHING SIMILAR
+
+Produce a hierarchy such as:
+
+Completed Work
+  → Work
+  → Quality
+  → Versions
+  → Comments
+  → Evidence
+  → etc.
+
+Do this for every major module.
+
+==================================================
+PART D — TECHNICAL PLUG-IN AUDIT
+==================================================
+
+Now determine whether every visible function is actually wired.
+
+For each user-facing action trace:
+
+UI
+↓
+route/component
+↓
+API client
+↓
+API endpoint
+↓
+service
+↓
+DB / execution engine / external connector
+↓
+result
+↓
+UI update
+
+Classify each feature:
+
+GREEN — fully wired end-to-end
+AMBER — partially wired / mocked / incomplete
+RED — UI exists but underlying function is broken or absent
+GREY — legacy/dead/unreachable
+
+Do NOT classify something GREEN based only on code inspection if runtime proof is required.
+
+Clearly separate evidence levels:
+
+L1 — static/code inspection
+L2 — unit/mock tests
+L3 — real DB/integration
+L4 — live backend execution
+L5 — authenticated UI behaviour
+
+Tell me exactly what evidence exists for each classification.
+
+==================================================
+PART E — DUPLICATED FUNCTION AUDIT
+==================================================
+
+This is extremely important.
+
+Look for cases where two or more modules perform the same business function.
+
+Examples to investigate, but do not assume:
+
+Chat vs Tasks
+Chat vs Workforce execution
+Tasks vs Active Work
+Active Work vs Operations Centre
+Operations Centre vs Workforce
+Inbox vs Notifications
+Dashboard vs Operations Centre
+Completed Work vs task result views
+Completed Work vs Chat-generated artefacts
+Workforce specialist execution vs task specialist execution
+
+Build a duplication matrix:
+
+Function
+Module A
+Module B
+Same backend service?
+Same DB record?
+Same output?
+Intentional alternate entry point?
+True duplication?
+Recommendation
+
+Distinguish between:
+
+1. SAME CAPABILITY, DIFFERENT ENTRY POINT
+
+This may be desirable.
+
+Example:
+A user asks for a policy review through Chat or creates it explicitly through Tasks, but both eventually use the same execution engine.
+
+That is NOT necessarily duplication if there is one canonical backend workflow.
+
+2. DUPLICATED IMPLEMENTATION
+
+Two separate services implement essentially the same business process.
+
+This is technical debt.
+
+3. DUPLICATED OUTPUT
+
+Two modules independently create records/documents representing the same completed piece of work.
+
+This is potentially dangerous.
+
+4. DUPLICATED UI
+
+Two screens expose almost identical information without a clear reason.
+
+This may create user confusion even if the backend is shared.
+
+==================================================
+PART F — OUTPUT OWNERSHIP
+==================================================
+
+Trace where outputs from every execution type go.
+
+For example:
+
+User request
+→ Chat / Task / Workforce / Operations Centre
+→ execution
+→ specialist
+→ review
+→ Completed Work
+→ notification
+→ approval
+→ export
+
+Determine whether this is actually the architecture.
+
+For every execution entry point identify the canonical final object.
+
+I want a clear answer to:
+
+IS COMPLETED WORK THE SINGLE CANONICAL FINAL ARTEFACT?
+
+If yes, prove all relevant execution paths converge on it.
+
+If no, identify every alternative output store.
+
+Check for situations where:
+
+- Chat stores one result
+- Tasks stores another
+- specialist runs store another
+- Completed Work stores another
+- Operations Centre stores another
+
+for what is conceptually the same work.
+
+==================================================
+PART G — TASK ROUTING & EVIDENCE ROUTING
+==================================================
+
+This is especially important after Sprint 29K.
+
+Determine which kinds of work currently enter:
+
+1. normal lightweight execution
+2. specialist execution
+3. knowledge retrieval
+4. claim emission
+5. evidence persistence
+6. semantic claim validation
+7. absence verification
+8. Completed Work approval workflow
+
+We DO NOT want every task going through the expensive evidence/provenance machinery.
+
+Audit whether task classification currently differentiates things such as:
+
+"Write a polite email to Sarah."
+
+versus:
+
+"Review our Complaints Management Policy against our organisational requirements."
+
+The first should normally NOT need:
+
+KRS retrieval
+claim emission
+evidence persistence
+absence verification
+claim semantic validation
+
+The second probably SHOULD.
+
+Determine whether this routing distinction exists today.
+
+If it does, prove where.
+
+If it does not, identify exactly where the decision gate should live.
+
+DO NOT IMPLEMENT IT.
+
+==================================================
+PART H — MULTIPLE EXECUTION PATHS
+==================================================
+
+Find every way AI work can currently be started.
+
+Examples may include:
+
+Chat
+Task creation
+Workforce specialist
+Operations Centre
+Inbox action
+Dashboard shortcut
+automated execution
+scheduled execution
+other internal workflow
+
+Map all paths into unifiedExecutionEngine or any alternative engines.
+
+Produce an execution topology.
+
+I want to know whether we truly have ONE execution architecture with several entry points, or several overlapping execution architectures.
+
+This is one of the most important questions in the audit.
+
+==================================================
+PART I — DATABASE OWNERSHIP
+==================================================
+
+For major operational tables determine which module owns the record and which modules merely view it.
+
+Examples:
+
+tasks
+completed_work
+completed_work_versions
+specialist runs
+executions
+notifications
+inbox/messages
+workforce records
+retrieval audit
+evidence snapshots
+claims
+
+Create:
+
+TABLE
+CANONICAL OWNER
+WRITERS
+READERS
+PURPOSE
+POSSIBLE DUPLICATION
+
+Look particularly for multiple tables representing essentially the same state.
+
+==================================================
+PART J — USER JOURNEY TEST
+==================================================
+
+Walk through these representative journeys in the existing architecture.
+
+J1 — SIMPLE EMAIL
+
+"Write an email reminding the team that timesheets are due Friday."
+
+Expected:
+fast, lightweight execution.
+No unnecessary evidence machinery.
+
+J2 — BUSINESS TASK
+
+"Prepare a staff onboarding checklist."
+
+Determine whether this needs specialist execution and whether it becomes Completed Work.
+
+J3 — EVIDENCE-HEAVY POLICY TASK
+
+"Review our Complaints Management Policy and identify gaps."
+
+Expected:
+KRS
+EvidencePack
+specialist
+claim integrity
+self-review
+Completed Work
+evidence UI
+approval/export where applicable.
+
+J4 — DIRECT SPECIALIST REQUEST
+
+User chooses a Workforce specialist and asks for the same policy review.
+
+Does this converge onto the SAME backend execution and Completed Work architecture as J3?
+
+J5 — TASK CREATED FROM CHAT
+
+User discusses something in Chat and converts it into a Task.
+
+Check whether execution is duplicated or correctly transferred.
+
+J6 — COMPLETED WORK FOLLOW-UP
+
+User opens Completed Work and requests a revision.
+
+Does this create a version of the existing work or accidentally create another independent work item?
+
+For each journey show the actual technical path.
+
+==================================================
+PART K — PERFORMANCE / OVER-ENGINEERING AUDIT
+==================================================
+
+For each journey estimate or measure where possible:
+
+LLM calls
+KRS retrieval calls
+DB writes
+review passes
+claim validation passes
+evidence persistence operations
+network/API round trips
+
+Identify anything that runs despite not being required for the task.
+
+Specifically flag:
+
+UNNECESSARY LLM CALL
+UNNECESSARY RETRIEVAL
+UNNECESSARY SELF-REVIEW
+UNNECESSARY CLAIM PROCESSING
+DUPLICATED DATABASE WRITE
+DUPLICATED EXECUTION
+
+This is not an exercise in removing robustness.
+
+The objective is:
+
+LIGHT TASK → LIGHT PATH
+EVIDENCE-HEAVY TASK → DEEP PATH
+
+==================================================
+PART L — DEAD / LEGACY FUNCTIONALITY
+==================================================
+
+Search for:
+
+unused routes
+orphan components
+old execution engines
+legacy API endpoints
+buttons with no working action
+tabs backed by mock data
+duplicate service implementations
+feature flags permanently enabled/disabled
+old Completed Work paths
+old Workforce paths
+deprecated task flows
+
+Do not delete them.
+
+List them and provide evidence.
+
+==================================================
+PART M — ARCHITECTURAL OVERLAP SCORE
+==================================================
+
+Give every major module an overlap score:
+
+0 — unique responsibility
+1 — minor intentional overlap
+2 — moderate overlap
+3 — significant overlap
+4 — largely duplicates another module
+5 — effectively redundant
+
+For scores 2–5 explain exactly what overlaps.
+
+==================================================
+PART N — RECOMMENDED PRODUCT BOUNDARIES
+==================================================
+
+After investigating the ACTUAL system, propose the cleanest responsibility model.
+
+Do not redesign the product merely for elegance.
+
+Preserve useful multiple entry points where they make sense.
+
+A possible model might be:
+
+Dashboard = overview
+Inbox = incoming actionable items
+Notifications = alerts
+Chat = conversational entry point
+Tasks = explicit work requests / commitments
+Active Work = work currently executing
+Workforce = AI workforce/specialist configuration and selection
+Operations Centre = operational oversight and orchestration
+Completed Work = canonical finished artefacts
+Platform Console = platform administration
+
+But DO NOT simply accept this model.
+
+Compare it against what the system actually does and recommend changes only where justified.
+
+==================================================
+PART O — FINAL QUESTIONS
+==================================================
+
+Answer explicitly:
+
+1. What is each major module actually supposed to do?
+
+2. Are all visible modules technically connected to real backend functionality?
+
+3. Which modules are fully functional today?
+
+4. Which are only partially functional?
+
+5. Which contain dead/legacy functionality?
+
+6. Where are we doing the same thing twice?
+
+7. Where do two screens merely provide different entry points to the SAME capability?
+
+8. Are Chat, Tasks, Workforce and Operations Centre all using the same execution architecture?
+
+9. Can the same user request accidentally execute twice through different paths?
+
+10. Can the same substantive work produce duplicate Completed Work records?
+
+11. Is Completed Work genuinely the canonical final output?
+
+12. Are Inbox and Notifications meaningfully different?
+
+13. Are Tasks and Active Work meaningfully different?
+
+14. Are Workforce and Operations Centre meaningfully different?
+
+15. Does Dashboard contain functionality that belongs elsewhere?
+
+16. Does ordinary lightweight work avoid the evidence/claim-integrity pipeline?
+
+17. Which functions currently trigger unnecessary LLM calls or retrieval?
+
+18. Where are the largest latency risks?
+
+19. What are the top five architectural overlaps we should resolve before launch?
+
+20. What should NOT be changed because the apparent duplication is actually useful?
+
+==================================================
+FINAL DELIVERABLE
+==================================================
+
+Return:
+
+A. Full module/submenu/tab inventory
+B. Module purpose map
+C. Technical wiring matrix
+D. Duplication matrix
+E. Execution topology
+F. Database ownership map
+G. Six user-journey traces
+H. Performance/over-engineering findings
+I. Dead/legacy functionality
+J. Module overlap scores
+K. Recommended responsibility boundaries
+L. Top 5 issues before launch
+M. Top 5 things that should remain as they are
+N. Explicit answers to Questions 1–20
+
+FINAL VERDICT must be one of:
+
+CLEAN — responsibilities are clear and architecture converges correctly
+
+FUNCTIONAL WITH OVERLAP — system works but boundaries need simplification
+
+SIGNIFICANT DUPLICATION — overlapping execution/output paths should be consolidated before launch
+
+ARCHITECTURALLY FRAGMENTED — major modules operate through competing systems and require consolidation
+
+EVIDENCE STANDARD:
+
+Do not tell me what the code appears intended to do.
+
+Tell me what is actually wired.
+
+Use L1–L5 evidence levels.
+
+Where runtime proof is unavailable, say UNPROVEN.
+
+Do not make implementation changes during this sprint.
