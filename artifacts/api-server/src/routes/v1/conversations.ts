@@ -248,11 +248,22 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
       !conv.primaryTaskId
     ) {
       try {
+        // Sprint 29M: forward the execution lane so auto-dispatch audit records
+        // the classification (professional_work vs evidence_bearing_work) and
+        // downstream pipeline can confirm the correct path was taken.
+        const cls = result.executionClassification;
         const autoResult = await autoCreateAndDispatch({
           organizationId: ctx.tenantId,
           conversationId: conv.id,
           requesterId:    user.id,
           proposedTask:   result.understanding.proposedTask,
+          laneContext: cls ? {
+            executionClass:         cls.executionClass,
+            requiresCompletedWork:  cls.requiresCompletedWork,
+            requiresEvidence:       cls.requiresEvidence,
+            requiresClaimIntegrity: cls.requiresClaimIntegrity,
+            requiresApproval:       cls.requiresApproval,
+          } : undefined,
         });
         sendEvent({ type: "task_auto_created", ...autoResult });
       } catch (err) {

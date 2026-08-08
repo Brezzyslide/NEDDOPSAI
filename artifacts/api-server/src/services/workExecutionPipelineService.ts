@@ -57,6 +57,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     taskId: input.taskId,           // Sprint 29I (D1): thread CoS task ID through to engine
     onProgress: input.onProgress,
     checkpointData: input.checkpointData,
+    laneContext: input.laneContext, // Sprint 29M: forward classifier lane for evidence override
   });
 
   if (result.trigger === "conversation") {

@@ -47,14 +47,46 @@ export interface MemoryConflict {
   description: string;
 }
 
-// ─── Create (proposed) ────────────────────────────────────────────────────────
+// ─── Auto-adoption eligibility ────────────────────────────────────────────────
+//
+// Sprint 29M Part I (step 16): memory records created by the system with high
+// confidence and a low-risk type are auto-approved without human review.
+//
+// Auto-adopt when ALL of the following are true:
+//   1. sourceType is "ai_proposed" or "import" (system-originated, not manual)
+//   2. confidence >= 0.8
+//   3. memoryType is one of the safe factual types below
+//   4. No conflicts detected against existing approved records
+//
+// Manually-proposed records (sourceType = "manual" | "conversation") continue
+// to require explicit administrator approval.
+
+const AUTO_ADOPT_TYPES: MemoryType[] = [
+  "operating_preference",
+  "system_information",
+  "terminology",
+  "organisation_profile",
+];
+
+export function canAutoAdoptMemory(input: CreateMemoryInput, conflicts: MemoryConflict[]): boolean {
+  if (input.sourceType !== "ai_proposed" && input.sourceType !== "import") return false;
+  if ((input.confidence ?? 0.8) < 0.8) return false;
+  if (!AUTO_ADOPT_TYPES.includes(input.memoryType)) return false;
+  if (conflicts.length > 0) return false;
+  return true;
+}
+
+// ─── Create (proposed / auto-adopted) ─────────────────────────────────────────
 
 export async function proposeOrganisationMemory(
   organizationId: string,
   input: CreateMemoryInput,
-): Promise<{ id: string; conflicts: MemoryConflict[] }> {
+): Promise<{ id: string; conflicts: MemoryConflict[]; autoAdopted: boolean }> {
   const id = randomUUID();
   const conflicts = await detectConflictsForNew(organizationId, input);
+
+  const autoAdopted = canAutoAdoptMemory(input, conflicts);
+  const now = new Date();
 
   await db.insert(organisationMemoryTable).values({
     id,
@@ -65,7 +97,10 @@ export async function proposeOrganisationMemory(
     structuredContent: input.structuredContent ?? {},
     sourceType: input.sourceType,
     sourceId: input.sourceId,
-    status: "proposed",
+    // Auto-adopted records go directly to "approved" to reduce governance queue noise.
+    status:    autoAdopted ? "approved" : "proposed",
+    approvedBy: autoAdopted ? "system:auto-adopt" : undefined,
+    approvedAt: autoAdopted ? now : undefined,
     confidence: String(Math.min(1, Math.max(0, input.confidence ?? 0.8))),
     importance: Math.min(10, Math.max(1, input.importance ?? 5)),
     effectiveFrom: input.effectiveFrom,
@@ -74,10 +109,12 @@ export async function proposeOrganisationMemory(
     createdBy: input.createdBy,
   });
 
-  await writeMemoryAudit(organizationId, input.createdBy, "memory.proposed", id, {
-    memoryType: input.memoryType, title: input.title.slice(0, 100), conflicts: conflicts.length,
+  const eventType = autoAdopted ? "memory.approved" : "memory.proposed";
+  await writeMemoryAudit(organizationId, input.createdBy, eventType, id, {
+    memoryType: input.memoryType, title: input.title.slice(0, 100),
+    conflicts: conflicts.length, autoAdopted,
   });
-  return { id, conflicts };
+  return { id, conflicts, autoAdopted };
 }
 
 // ─── Approve ──────────────────────────────────────────────────────────────────

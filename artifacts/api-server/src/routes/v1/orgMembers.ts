@@ -1,5 +1,6 @@
 /**
  * GET    /v1/organisations/:slug/members               — list members
+ * GET    /v1/organisations/:slug/members/me            — current user's membership (Sprint 29M)
  * PATCH  /v1/organisations/:slug/members/:id           — change role
  * POST   /v1/organisations/:slug/members/:id/suspend   — suspend
  * POST   /v1/organisations/:slug/members/:id/reactivate — reactivate
@@ -42,6 +43,25 @@ router.get(
         },
       }));
       res.json({ members });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /v1/organisations/:slug/members/me — current user's membership role (Sprint 29M Part H)
+// Used by AppShell to gate the Knowledge Admin nav section.
+router.get(
+  "/me",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      res.json({
+        role:   ctx.role,
+        userId: ctx.userId,
+      });
     } catch (err) {
       next(err);
     }

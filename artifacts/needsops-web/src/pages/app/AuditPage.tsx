@@ -79,16 +79,61 @@ function formatTs(s: string) {
   });
 }
 
+// Sprint 29M Part F: Governance events shown as a Timeline tab inside the Audit Log.
+// The separate /governance/timeline route is preserved for backward compatibility
+// but the primary entry point is now this page's "Governance" tab.
+const GOV_EVENT_CODES = [
+  "knowledge.approved", "knowledge.rejected", "knowledge.source.approved",
+  "knowledge.source.rejected", "knowledge.source.revoked", "knowledge.curation.completed",
+  "memory.approved", "memory.rejected", "memory.proposed", "memory.superseded",
+  "approval.granted", "approval.rejected", "approval.requested",
+  "specialist.trained", "specialist.readiness.changed",
+  "work.approved", "work.rejected", "pack.activated", "pack.deactivated",
+  "organisation.updated", "membership.role_changed",
+];
+
+const GOV_EVENT_CONFIG: Record<string, { icon: string; label: string; colour: string }> = {
+  "knowledge.approved":          { icon: "✅", label: "Policy approved",    colour: "bg-emerald-400" },
+  "knowledge.rejected":          { icon: "✗",  label: "Policy rejected",    colour: "bg-red-400" },
+  "knowledge.source.approved":   { icon: "📄", label: "Document approved",  colour: "bg-emerald-400" },
+  "knowledge.source.rejected":   { icon: "📄", label: "Document rejected",  colour: "bg-red-400" },
+  "knowledge.source.revoked":    { icon: "🚫", label: "Document revoked",   colour: "bg-red-400" },
+  "knowledge.curation.completed":{ icon: "🧠", label: "Curation completed", colour: "bg-cyan-400" },
+  "memory.approved":             { icon: "💡", label: "Memory approved",    colour: "bg-emerald-400" },
+  "memory.rejected":             { icon: "💡", label: "Memory rejected",    colour: "bg-red-400" },
+  "memory.proposed":             { icon: "💡", label: "Memory proposed",    colour: "bg-amber-400" },
+  "memory.superseded":           { icon: "💡", label: "Memory superseded",  colour: "bg-slate-400" },
+  "approval.granted":            { icon: "✅", label: "Approval granted",   colour: "bg-emerald-400" },
+  "approval.rejected":           { icon: "✗",  label: "Approval rejected",  colour: "bg-red-400" },
+  "approval.requested":          { icon: "⏳", label: "Approval requested", colour: "bg-amber-400" },
+  "specialist.trained":          { icon: "🤖", label: "Specialist trained", colour: "bg-purple-400" },
+  "work.approved":               { icon: "📋", label: "Work approved",      colour: "bg-emerald-400" },
+  "work.rejected":               { icon: "📋", label: "Work rejected",      colour: "bg-red-400" },
+  "pack.activated":              { icon: "📦", label: "Pack activated",     colour: "bg-emerald-400" },
+  "pack.deactivated":            { icon: "📦", label: "Pack deactivated",   colour: "bg-slate-400" },
+  "organisation.updated":        { icon: "🏢", label: "Org updated",        colour: "bg-blue-400" },
+  "membership.role_changed":     { icon: "👤", label: "Role changed",       colour: "bg-blue-400" },
+};
+
+function TimelineDot({ colour }: { colour: string }) {
+  return <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${colour}`} />;
+}
+
 export default function AuditPage() {
   const { slug }        = useParams<{ slug: string }>();
   const [, setLocation] = useLocation();
   const apiFetch        = useAuthFetch();
 
+  // Sprint 29M Part F: two tabs — All Events (full audit) + Governance (timeline view)
+  const [activeTab,  setActiveTab]  = useState<"all" | "governance">("all");
   const [page,       setPage]       = useState(1);
   const [eventType,  setEventType]  = useState("");
   const [fromDate,   setFromDate]   = useState("");
   const [toDate,     setToDate]     = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Governance timeline pagination (separate)
+  const [govPage, setGovPage] = useState(1);
 
   const { data, isLoading } = useQuery({
     queryKey: ["org-audit-v2", slug, page, eventType, fromDate, toDate],
@@ -99,11 +144,20 @@ export default function AuditPage() {
       if (toDate)    p.set("to",   new Date(toDate + "T23:59:59").toISOString());
       return apiFetch(`/v1/organisations/${slug}/audit?${p}`).then(r => r.json());
     },
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && activeTab === "all", staleTime: 30_000,
+  });
+
+  const { data: govData, isLoading: govLoading } = useQuery({
+    queryKey: ["org-audit-gov", slug, govPage],
+    queryFn: () => {
+      const p = new URLSearchParams({ page: String(govPage), limit: "50" });
+      return apiFetch(`/v1/organisations/${slug}/audit?${p}`).then(r => r.json());
+    },
+    enabled: !!slug && activeTab === "governance", staleTime: 60_000,
   });
 
   // Normalise field names
-  const events = (data?.events ?? []).map((e: any) => ({
+  const normalise = (e: any) => ({
     id:            e.id,
     eventType:     e.event_type     ?? e.eventType     ?? "",
     resourceType:  e.resource_type  ?? e.resourceType  ?? "",
@@ -116,9 +170,11 @@ export default function AuditPage() {
     isSensitive:   e.is_sensitive   ?? e.isSensitive   ?? false,
     metadata:      e.metadata       ?? {},
     occurredAt:    e.occurred_at    ?? e.occurredAt    ?? "",
-  }));
+  });
 
-  const govCount = events.filter((e: any) => GOVERNANCE_TYPES.has(e.eventType)).length;
+  const events    = (data?.events    ?? []).map(normalise);
+  const govEvents = (govData?.events ?? []).map(normalise)
+    .filter((e: any) => GOVERNANCE_TYPES.has(e.eventType));
 
   return (
     <>
@@ -127,23 +183,96 @@ export default function AuditPage() {
         <div className="p-8 max-w-6xl mx-auto">
 
           {/* Header */}
-          <div className="mb-7 flex items-start justify-between gap-4">
-            <div>
-              <button onClick={() => setLocation(`/app/${slug}/governance`)}
-                className="text-[#64748B] text-xs hover:text-[#E2E8F0] mb-2 block">← Governance Centre</button>
-              <h1 className="text-2xl font-bold text-[#E2E8F0]">Audit Log</h1>
-              <p className="text-[#64748B] text-sm mt-1">Complete activity record for this organisation</p>
-            </div>
-            {govCount > 0 && (
-              <button onClick={() => setLocation(`/app/${slug}/governance/timeline`)}
-                className="px-4 py-2 bg-[#112033] border border-[#1E3A5F] text-[#64748B] text-sm rounded-lg hover:text-[#E2E8F0] transition-colors shrink-0">
-                Governance timeline →
-              </button>
-            )}
+          <div className="mb-6">
+            <button onClick={() => setLocation(`/app/${slug}/governance`)}
+              className="text-[#64748B] text-xs hover:text-[#E2E8F0] mb-2 block">← Governance Centre</button>
+            <h1 className="text-2xl font-bold text-[#E2E8F0]">Audit Log</h1>
+            <p className="text-[#64748B] text-sm mt-1">Complete activity record for this organisation</p>
           </div>
 
+          {/* Tab switcher */}
+          <div className="flex gap-0.5 p-1 bg-[#112033] border border-[#1E3A5F] rounded-xl mb-6 w-fit">
+            {([
+              { key: "all",        label: "All Events"  },
+              { key: "governance", label: "Governance"  },
+            ] as const).map(t => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === t.key
+                    ? "bg-[#00D4FF]/10 text-[#00D4FF]"
+                    : "text-[#64748B] hover:text-[#E2E8F0]"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Governance / Timeline tab ──────────────────────────────────── */}
+          {activeTab === "governance" && (
+            <div>
+              <p className="text-[#64748B] text-sm mb-5">
+                Chronological record of knowledge, memory, approval, and specialist governance events.
+              </p>
+              {govLoading ? (
+                <div className="text-center text-[#64748B] text-sm py-10">Loading…</div>
+              ) : govEvents.length === 0 ? (
+                <div className="bg-[#112033] border border-[#1E3A5F] rounded-2xl p-12 text-center">
+                  <p className="text-[#64748B] text-sm">No governance events recorded yet.</p>
+                </div>
+              ) : (
+                <div className="relative">
+                  <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-[#1E3A5F]" />
+                  <div className="space-y-3 pl-10">
+                    {govEvents.map((e: any) => {
+                      const cfg = GOV_EVENT_CONFIG[e.eventType] ?? { icon: "•", label: e.eventType, colour: "bg-[#64748B]" };
+                      return (
+                        <div key={e.id} className="relative">
+                          <div className="absolute -left-7 top-1/2 -translate-y-1/2">
+                            <TimelineDot colour={cfg.colour} />
+                          </div>
+                          <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-4 hover:border-[#00D4FF]/20 transition-colors">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base">{cfg.icon}</span>
+                                <div>
+                                  <p className="text-sm font-medium text-[#E2E8F0]">{cfg.label}</p>
+                                  {e.resourceId && (
+                                    <p className="text-xs text-[#64748B] font-mono">{e.resourceId.slice(0, 16)}…</p>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-xs text-[#64748B] whitespace-nowrap shrink-0">{formatTs(e.occurredAt)}</p>
+                            </div>
+                            {Object.keys(e.metadata ?? {}).length > 0 && (
+                              <pre className="text-[#64748B] text-xs bg-[#0B1829] rounded-lg p-2 mt-2 overflow-x-auto">
+                                {JSON.stringify(e.metadata, null, 2)}
+                              </pre>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="flex justify-between mt-5">
+                <button onClick={() => setGovPage(p => Math.max(1, p - 1))} disabled={govPage === 1}
+                  className="text-sm text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40">← Previous</button>
+                <span className="text-[#64748B] text-sm">Page {govPage}</span>
+                <button onClick={() => setGovPage(p => p + 1)} disabled={govEvents.length < 20}
+                  className="text-sm text-[#64748B] hover:text-[#E2E8F0] disabled:opacity-40">Next →</button>
+              </div>
+            </div>
+          )}
+
+          {/* ── All Events tab ─────────────────────────────────────────────── */}
+          {activeTab === "all" && (<>
+
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-5">
+          <div className="flex flex-col sm:flex-row gap-3 mb-5 mt-2">
             {/* Event type */}
             <select value={eventType}
               onChange={e => { setEventType(e.target.value); setPage(1); }}
@@ -285,6 +414,8 @@ export default function AuditPage() {
               </div>
             )}
           </div>
+          </>)}
+
         </div>
       </AppShell>
     </>

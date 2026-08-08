@@ -446,10 +446,13 @@ export default function OrgMemoryPage() {
     onSuccess: invalidate,
   });
 
+  // Sprint 29M Part I: "Retire" archives the entry (marks it rejected/archived).
+  // Previously called the /supersede endpoint with the same ID (self-reference —
+  // correctly rejected by the server with 400). Retire = archive, not supersede-with-self.
   const retire = useMutation({
     mutationFn: (id: string) =>
-      apiFetch(`/v1/organisations/${slug}/memory/${id}/supersede`, {
-        method: "POST", body: JSON.stringify({ newMemoryId: id }),
+      apiFetch(`/v1/organisations/${slug}/memory/${id}/reject`, {
+        method: "POST",
       }),
     onSuccess: invalidate,
   });

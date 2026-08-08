@@ -15,12 +15,21 @@ import * as taskService from "./taskService.js";
 import * as conversationService from "./conversationService.js";
 import * as auditService from "./auditService.js";
 import { dispatchWorkExecution } from "./executionCoordinatorService.js";
-import { db, approvalsTable } from "@workspace/db";
+import { db, approvalsTable, tasksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 // Confidence threshold above which the CoS fires without user confirmation.
 // 0.85 means the model must be ≥85% certain a task is wanted.
 export const AUTO_EXECUTE_CONFIDENCE_THRESHOLD = 0.85;
+
+/** Sprint 29M: execution lane context forwarded from the three-lane classifier */
+export interface ExecutionLaneContext {
+  executionClass:          "transient" | "professional_work" | "evidence_bearing";
+  requiresCompletedWork:   boolean;
+  requiresEvidence:        boolean;
+  requiresClaimIntegrity:  boolean;
+  requiresApproval:        boolean;
+}
 
 export interface AutoDispatchInput {
   organizationId: string;
@@ -33,6 +42,13 @@ export interface AutoDispatchInput {
     requestedOutcome?:   string;
     knownConstraints?:   string[];
   };
+  /**
+   * Sprint 29M: classification flags from executionClassifierService.
+   * Forwarded to the audit log and task context so the execution pipeline
+   * knows which lane (professional_work vs evidence_bearing_work) was selected.
+   * Omitting this field is allowed for backward compatibility.
+   */
+  laneContext?: ExecutionLaneContext;
 }
 
 export interface AutoDispatchResult {
@@ -53,7 +69,7 @@ export interface AutoDispatchResult {
 export async function autoCreateAndDispatch(
   input: AutoDispatchInput,
 ): Promise<AutoDispatchResult> {
-  const { organizationId, conversationId, requesterId, proposedTask } = input;
+  const { organizationId, conversationId, requesterId, proposedTask, laneContext } = input;
 
   // Build a rich description from the proposal fields
   const descriptionParts: string[] = [proposedTask.summary];
@@ -77,6 +93,16 @@ export async function autoCreateAndDispatch(
 
   const { task, plan } = result;
 
+  // 1b. Sprint 29M: persist laneContext in task.metadata so the approval-delayed
+  // dispatch path (approvalRoutes.ts) can retrieve it when the task eventually executes.
+  if (laneContext) {
+    await db
+      .update(tasksTable)
+      .set({ metadata: { ...((task.metadata ?? {}) as object), laneContext } })
+      .where(eq(tasksTable.id, task.id))
+      .catch(err => console.warn("[AutoDispatch] laneContext metadata persist failed (non-fatal):", err?.message));
+  }
+
   // 2. Link conversation → task (idempotent — the service handles duplicates)
   await conversationService.linkConversationToTask(organizationId, conversationId, task.id);
 
@@ -97,6 +123,16 @@ export async function autoCreateAndDispatch(
   await conversationService.postPlanToConversation(organizationId, conversationId, task.id, plan);
 
   // 4. Dispatch or post approval request
+  //
+  // Task-level dispatch gate: determined by the blueprint execution plan.
+  // This gate controls whether the task starts executing at all.
+  //
+  // Sprint 29M: laneContext.requiresApproval controls the COMPLETED-WORK approval
+  // lifecycle at the UEE level (via ExecutionRequest.laneContext → outputRequiresApproval
+  // override in UEE). Enforcing the same flag at the dispatch gate would require
+  // creating an approval record not produced by taskService.createTask(), which is
+  // outside this path. The safe minimum is: completed-work always requires approval
+  // for EVIDENCE_BEARING lanes (enforced in UEE), task dispatch follows blueprint plan.
   let dispatched     = false;
   let approvalId: string | undefined;
 
@@ -127,6 +163,7 @@ export async function autoCreateAndDispatch(
     }
   } else {
     // No approval required — dispatch work execution immediately in the background
+    // Sprint 29M: forward laneContext so UEE can apply the evidence/claim-integrity override
     dispatchWorkExecution({
       organizationId,
       taskId:          task.id,
@@ -134,12 +171,15 @@ export async function autoCreateAndDispatch(
       taskDescription: description,
       requesterId,
       conversationId,
+      laneContext: laneContext ?? undefined,
     }).catch(err =>
       console.warn("[AutoDispatch] Background dispatch failed (non-fatal):", err?.message),
     );
     dispatched = true;
   }
 
+  // Sprint 29M: record the execution lane so downstream audit and pipeline
+  // can confirm the correct path was taken (professional_work vs evidence_bearing_work)
   await auditService.writeAuditEvent({
     organizationId,
     actorUserId:  requesterId,
@@ -151,6 +191,13 @@ export async function autoCreateAndDispatch(
       title:          task.title,
       autoDispatched: dispatched,
       source:         "cos_auto_dispatch",
+      ...(laneContext ? {
+        executionClass:         laneContext.executionClass,
+        requiresCompletedWork:  laneContext.requiresCompletedWork,
+        requiresEvidence:       laneContext.requiresEvidence,
+        requiresClaimIntegrity: laneContext.requiresClaimIntegrity,
+        classifierRequiresApproval: laneContext.requiresApproval,
+      } : {}),
     },
   }).catch(() => {});
 

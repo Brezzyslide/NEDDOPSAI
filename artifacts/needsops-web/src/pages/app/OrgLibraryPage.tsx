@@ -215,17 +215,9 @@ export default function OrgLibraryPage() {
   });
 
   // ── Source mutations ──────────────────────────────────────────────────────────
-
-  const approveSource = useMutation({
-    mutationFn: async (sourceId: string) => {
-      const res = await authFetch(
-        `/v1/organisations/${slug}/knowledge/sources/${sourceId}/approve`,
-        { method: "POST" },
-      );
-      if (!res.ok) throw new Error("Approve failed");
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["library-sources", slug] }),
-  });
+  // Sprint 29M Part G: approveSource (POST /approve) removed — no longer called
+  // from this page. The backend route remains for any other callers. Auto-approval
+  // for low-risk uploads is handled server-side in ingestionPipelineService.ts.
 
   const approveIngestion = useMutation({
     mutationFn: async (sourceId: string) => {

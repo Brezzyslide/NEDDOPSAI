@@ -62,6 +62,12 @@ export interface DispatchWorkExecutionInput {
   requesterId: string;
   conversationId?: string;
   correlationId?: string;
+  /**
+   * Sprint 29M: execution-lane context from the three-lane classifier.
+   * Forwarded to executeWork → UEE so evidence/claim-integrity gates reflect
+   * the classifier's decision, not just the blueprint's declared output type.
+   */
+  laneContext?: import("./unifiedExecutionEngine.js").ExecutionLaneContext;
 }
 
 export interface ResumeFromCheckpointInput {
@@ -230,6 +236,7 @@ export async function dispatchWorkExecution(
     conversationId,
     correlationId,
     intentId: undefined,
+    laneContext: input.laneContext,  // Sprint 29M: forward classifier lane to UEE
   });
 }
 
@@ -411,6 +418,8 @@ interface BackgroundRunInput {
   correlationId: string;
   intentId?: string;
   checkpointData?: ExecutionCheckpointData;
+  /** Sprint 29M: classifier lane context forwarded through the background runner to UEE */
+  laneContext?: import("./unifiedExecutionEngine.js").ExecutionLaneContext;
 }
 
 function runExecutionInBackground(input: BackgroundRunInput): void {
@@ -473,6 +482,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       correlationId,
       taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan
       checkpointData: input.checkpointData,
+      laneContext: input.laneContext,  // Sprint 29M: classifier lane → UEE evidence override
       onProgress: async (stage: ExecutionStage) => {
         const humanLabel = EXECUTION_STAGE_LABELS[stage] ?? stage;
 

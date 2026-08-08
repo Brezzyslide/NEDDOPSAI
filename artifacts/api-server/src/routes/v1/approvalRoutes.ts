@@ -237,16 +237,23 @@ router.post("/:approvalId/resolve", requireAuth, resolveTenantFromSlug, async (r
     // This covers Chat approvals, Governance Centre, Executive Dashboard, and Mobile —
     // all routes call POST /approvals/:id/resolve, so wiring it here covers every source.
     // The coordinator is idempotent and safe to call even if already dispatched.
+    //
+    // Sprint 29M: read laneContext from task.metadata (persisted by autoCreateAndDispatch)
+    // and forward it so UEE applies the correct evidence/claim-integrity overrides even
+    // when the task executed via the approval-delayed path.
     if (action === "approved" && approval.taskId) {
       getTaskById(approval.taskId, ctx.tenantId)
         .then(task => {
           if (!task) return;
+          const taskMeta = (task.metadata ?? {}) as Record<string, unknown>;
+          const laneContext = taskMeta.laneContext as import("../../services/unifiedExecutionEngine.js").ExecutionLaneContext | undefined;
           return dispatchWorkExecution({
             organizationId: ctx.tenantId,
             taskId: task.id,
             taskTitle: task.title,
             taskDescription: task.description ?? undefined,
             requesterId: user.id,
+            laneContext,
           });
         })
         .catch(err =>

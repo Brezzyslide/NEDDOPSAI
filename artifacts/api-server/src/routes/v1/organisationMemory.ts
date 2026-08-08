@@ -32,6 +32,23 @@ import { eq, and } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Sprint 29M Part H: Knowledge-tier operations require owner or administrator.
+ * Accepts "owner", "administrator", and legacy "admin" to cover all role variants.
+ */
+function requireOwnerOrAdmin(req: any, res: any): boolean {
+  const role = req.tenantContext?.role;
+  if (role !== "owner" && role !== "admin" && role !== "administrator") {
+    res.status(403).json({
+      error: { code: "INSUFFICIENT_ROLE", message: "Owner or administrator role required." },
+    });
+    return false;
+  }
+  return true;
+}
+
 // ─── List ─────────────────────────────────────────────────────────────────────
 router.get(
   "/organisations/:slug/memory",
@@ -74,12 +91,16 @@ router.post(
         return;
       }
 
+      // Sprint 29M security: public API callers are always treated as "manual"
+      // regardless of the sourceType they send. Only internal system callers
+      // (conversationLearningService, knowledgeCurationService) bypass this
+      // route and call proposeOrganisationMemory directly with "ai_proposed".
       const { id, conflicts } = await proposeOrganisationMemory(ctx.tenantId, {
         memoryType: body.memoryType,
         title: body.title,
         content: body.content,
         structuredContent: body.structuredContent,
-        sourceType: body.sourceType ?? "manual",
+        sourceType: "manual",          // always manual via public API — no auto-adoption
         sourceId: body.sourceId,
         confidence: body.confidence,
         importance: body.importance,
@@ -116,6 +137,7 @@ router.get(
 );
 
 // ─── Update ───────────────────────────────────────────────────────────────────
+// Sprint 29M: update requires owner/administrator (content edits alter CoS context)
 router.patch(
   "/organisations/:slug/memory/:memoryId",
   requireAuth,
@@ -123,6 +145,7 @@ router.patch(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
+      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -134,6 +157,7 @@ router.patch(
 );
 
 // ─── Approve ──────────────────────────────────────────────────────────────────
+// Sprint 29M: approve requires owner/administrator (governance decision)
 router.post(
   "/organisations/:slug/memory/:memoryId/approve",
   requireAuth,
@@ -141,6 +165,7 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
+      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -179,6 +204,7 @@ router.post(
 );
 
 // ─── Reject ───────────────────────────────────────────────────────────────────
+// Sprint 29M: reject requires owner/administrator (governance decision)
 router.post(
   "/organisations/:slug/memory/:memoryId/reject",
   requireAuth,
@@ -186,6 +212,7 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
+      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -197,6 +224,7 @@ router.post(
 );
 
 // ─── Supersede ────────────────────────────────────────────────────────────────
+// Sprint 29M: supersede requires owner/administrator (alters live memory graph)
 router.post(
   "/organisations/:slug/memory/:memoryId/supersede",
   requireAuth,
@@ -204,6 +232,7 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
+      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -224,6 +253,7 @@ router.post(
 // POST /v1/organisations/:slug/memory/:memoryId/merge
 // Body: { sourceId, mergedTitle?, mergedContent? }
 // Absorbs sourceId into memoryId (target), superseding the source.
+// Sprint 29M: merge requires owner/administrator (destructive governance operation)
 router.post(
   "/organisations/:slug/memory/:memoryId/merge",
   requireAuth,
@@ -231,6 +261,7 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
+      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx  = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };

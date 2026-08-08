@@ -139,6 +139,14 @@ export type ExecutionStage =
   | "reviewing"
   | "creating_completed_work";
 
+/** Sprint 29M: immutable execution-lane context from the three-lane classifier */
+export interface ExecutionLaneContext {
+  executionClass:          "transient" | "professional_work" | "evidence_bearing";
+  requiresCompletedWork:   boolean;
+  requiresEvidence:        boolean;
+  requiresClaimIntegrity:  boolean;
+  requiresApproval:        boolean;
+}
 export interface ExecuteWorkInput {
   organizationId: string;
   requesterId: string;
@@ -164,6 +172,13 @@ export interface ExecuteWorkInput {
   taskId?: string;
   onProgress?: ExecutionProgressCallback;
   checkpointData?: ExecutionCheckpointData;
+  /**
+   * Sprint 29M: execution-lane context from the classifier.
+   * When present, requiresEvidence=true forces evidence mode to "required"
+   * regardless of what the blueprint declares. This ensures EVIDENCE_BEARING
+   * tasks always run the full provenance pipeline.
+   */
+  laneContext?: ExecutionLaneContext;
 }
 
 export type ExecutionOutcome =
@@ -270,6 +285,13 @@ export interface ExecutionRequest {
    * method — it is the sole mechanism controlling whether that method is called.
    */
   outputRequiresApproval?: boolean;
+  /**
+   * Sprint 29M: execution-lane context from the three-lane classifier.
+   * When requiresEvidence=true, UEE forces evidenceMode="required" regardless
+   * of what the blueprint declares, ensuring the full provenance pipeline runs
+   * for EVIDENCE_BEARING tasks even if the blueprint did not specify it.
+   */
+  laneContext?: ExecutionLaneContext;
 }
 
 export type UnifiedExecutionResult =
@@ -933,6 +955,33 @@ export class UnifiedExecutionEngine {
       .catch(() => null);
     tRetrievalMs = Date.now() - t3evidence;
 
+    // ── Sprint 29M: Pre-generation evidence gate ──────────────────────────────
+    // When the three-lane classifier flagged laneContext.requiresEvidence=true,
+    // evidence retrieval is a hard pre-condition — not best-effort. If the
+    // knowledge library returned no chunks (empty or failed retrieval), block
+    // execution rather than producing evidence-free Completed Work.
+    //
+    // This prevents EVIDENCE_BEARING tasks from silently creating work items
+    // with no sourced evidence or provenance, which is a governance violation.
+    // PROFESSIONAL_WORK and TRANSIENT tasks are unaffected (requiresEvidence=false).
+    if (request.laneContext?.requiresEvidence && (!evidencePack || evidencePack.totalChunks === 0)) {
+      console.warn(
+        "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresEvidence=true but " +
+        `evidence retrieval returned ${evidencePack ? `0 chunks` : "null (failure)"} — ` +
+        `blocking execution to prevent evidence-free EVIDENCE_BEARING work ` +
+        `(correlationId=${request.correlationId ?? "unknown"})`,
+      );
+      return {
+        outcome: "execution_failed",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message:
+          "This task requires knowledge library evidence to proceed, but no relevant " +
+          "documents were found in your organisation's library. Please upload the " +
+          "relevant policy or procedure documents and then re-run this task.",
+      };
+    }
+
     // ── Sprint 29D: Open task execution session ───────────────────────────────
     // Task executions carry a session from evidence retrieval through completion.
     // Status is "idle" in Sprint 29D — Connector P6 will open live channels.
@@ -1150,7 +1199,20 @@ export class UnifiedExecutionEngine {
     // ── Sprint 29K.3: Full provenance chain (evidence + claims) ──────────────
     // Sprint 29K.4: Evidence mode gate — skip claim provenance for non-evidence tasks
     // (e.g. emails, meeting notes) to avoid unnecessary overhead.
-    const evidenceMode = classifyEvidenceMode(blueprint);
+    // Sprint 29M: if the three-lane classifier flagged requiresEvidence=true, force
+    // evidenceMode="required" regardless of blueprint declaration so EVIDENCE_BEARING
+    // tasks always run the full provenance pipeline.
+    const blueprintEvidenceMode = classifyEvidenceMode(blueprint);
+    const evidenceMode: ReturnType<typeof classifyEvidenceMode> =
+      (request.laneContext?.requiresEvidence && blueprintEvidenceMode !== "required")
+        ? "required"
+        : blueprintEvidenceMode;
+    if (request.laneContext?.requiresEvidence && blueprintEvidenceMode !== "required") {
+      console.info(
+        "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresEvidence=true overrides " +
+        `blueprint evidenceMode from "${blueprintEvidenceMode}" to "required" (correlationId=${request.correlationId ?? "unknown"})`,
+      );
+    }
     const runProvenance = shouldRunClaimProvenance(evidenceMode, evidencePack);
 
     // Order: persistExecutionEvidence → persistClaims → bind claims → evidence
@@ -1244,7 +1306,18 @@ export class UnifiedExecutionEngine {
     // opts out via outputRequiresApproval: false. The existing submitForApproval()
     // lifecycle method is the sole mechanism for this transition — never update
     // the DB status column directly.
-    const requiresApproval = request.outputRequiresApproval !== false;
+    //
+    // Sprint 29M: if laneContext.requiresApproval=true, force approval regardless
+    // of outputRequiresApproval, so EVIDENCE_BEARING tasks can never skip the
+    // approval gate even when routed through a no-approval blueprint.
+    const laneRequiresApproval = request.laneContext?.requiresApproval === true;
+    const requiresApproval = laneRequiresApproval || request.outputRequiresApproval !== false;
+    if (laneRequiresApproval && request.outputRequiresApproval === false) {
+      console.info(
+        "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresApproval=true overrides " +
+        `outputRequiresApproval=false — approval enforced (correlationId=${request.correlationId ?? "unknown"})`,
+      );
+    }
     let finalWork = completedWork;
 
     if (requiresApproval) {
