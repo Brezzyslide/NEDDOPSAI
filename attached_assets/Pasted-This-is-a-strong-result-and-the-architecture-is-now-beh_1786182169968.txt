@@ -1,0 +1,231 @@
+This is a strong result, and the architecture is now behaving the way we wanted: light requests stay light, professional work becomes durable, and evidence-heavy work gets the full machinery.
+
+I would still not move to the next sprint yet, because our proof standard says the final step is the live authenticated runtime test. The report itself is clear that everything important is currently L1/L2 and that the 0.5–2s / 8–25s / 20–60s figures are estimates rather than measured user-session timings.
+
+So before we touch another feature, I want one very small final gate. Send Replit this:
+
+SPRINT 29M.2 — AUTHENTICATED THREE-LANE LIVE ACCEPTANCE
+
+TEST ONLY. NO CODE CHANGES unless the test exposes a genuine runtime defect.
+
+Sprint 29M.1 has proven the routing architecture at L1/L2.
+
+This gate exists only to prove the same behaviour through a real authenticated organisation session and to measure actual wall-clock performance.
+
+Use a fresh execution timestamp as the cutoff. Do not reuse historical records.
+
+TEST A — TRANSIENT LIVE REQUEST
+
+In authenticated Workforce Chat send:
+
+“Write a polite email to Sarah asking if we can move tomorrow’s meeting to Friday.”
+
+Capture:
+
+* conversationId
+* messageId
+* classification
+* server timestamps
+* time to first visible assistant response
+* total completion time
+* LLM call count if observable
+
+Query DB after completion.
+
+Expected:
+
+* classification = TRANSIENT
+* normal Chat response visible
+* no new completed_work
+* no completed_work_version
+* no task unless user explicitly promotes it
+* no approval record
+* no retrieval_audit_event
+* no completed_work_evidence_snapshot
+* no completed_work_evidence_link
+* no completed_work_claim
+* no absence-verification retrieval
+
+Confirm the user can subsequently choose Create Task / Save as Task and that promotion works without executing the original transient response twice.
+
+TEST B — PROFESSIONAL WORK LIVE REQUEST
+
+Send:
+
+“Prepare a 90-day onboarding plan for a new Operations Manager, including objectives, milestones, responsibilities and review points.”
+
+Do not reference any organisation document.
+
+Expected:
+
+* classification = PROFESSIONAL_WORK
+* UEE entered
+* new task/execution IDs where applicable
+* Completed Work created
+* version created
+* substantive professional deliverable
+* evidence/claim provenance does not run unnecessarily
+* approval follows the actual blueprint/governance contract rather than being blindly forced
+
+Capture real total runtime.
+
+TEST C — EVIDENCE-BEARING LIVE REQUEST
+
+Use an actual approved organisation document and send:
+
+“Review our Complaints Management Policy and identify material gaps, contradictions and recommendations.”
+
+Expected:
+
+* classification = EVIDENCE_BEARING
+* UEE entered
+* KRS retrieval occurred
+* EvidencePack populated
+* self-review received that EvidencePack
+* evidence persisted
+* claims emitted
+* claim bindings persisted
+* absence verification occurs where appropriate
+* Completed Work created
+* provenance status durable
+* appropriate approval lifecycle reached
+
+Capture:
+
+* taskId
+* executionId
+* completedWorkId
+* versionId
+* specialist
+* source IDs
+* chunk count
+* claim count
+* quality score
+* actual end-to-end runtime
+
+TEST D — LIVE PERFORMANCE COMPARISON
+
+Report actual measured values:
+
+Metric	TRANSIENT	PROFESSIONAL	EVIDENCE
+Time to first visible response			
+Total runtime			
+LLM calls			
+KRS retrievals			
+DB writes if measurable			
+Completed Work created			
+Claim/provenance operations			
+
+Do not substitute architectural estimates for measurements.
+
+TEST E — LIVE MISROUTING CHECK
+
+Test:
+
+“What should a good performance review include?”
+
+This is the known D2 case.
+
+Record current classification and user experience.
+
+Do NOT fix it during this gate.
+
+Determine whether the over-routing has a meaningful latency/UX cost or is merely a minor efficiency defect.
+
+TEST F — ACTIVE WORK
+
+While Test C is physically executing:
+
+open Active Work.
+
+Prove:
+
+* current work appears while running
+* correct status displayed
+* specialist/run relationship makes sense
+* no Completed Work record is masquerading as execution
+* item disappears/transitions when execution ends
+
+This requires authenticated UI evidence.
+
+TEST G — INBOX / NOTIFICATIONS
+
+When Test C reaches awaiting approval:
+
+Expected:
+
+* actionable item appears in Inbox
+* it does NOT simultaneously appear as the same actionable item in Notifications
+
+After approval:
+
+Expected:
+
+* actionable Inbox state disappears
+* informational completion/approval event may appear in Notifications
+
+Capture screenshots/state if the test harness allows.
+
+TEST H — TASK #143 SCOPE RECONCILIATION
+
+Before final closure, reconcile the original 20-step Task #143 plan.
+
+Specifically report status for:
+
+* transient Create Task / Save as Task promotion
+* Blueprint sandbox isolation
+* Active Work
+* Inbox/Notifications
+* Library auto-ingestion
+* Library/Memory/Blueprint navigation hiding
+* duplicate Memory nav removal
+* memory auto-adoption
+* memory supersede body alignment
+* self-reference guard
+* Team member removal UI
+* Account Settings cache invalidation
+* dead approveSource mutation
+* Timeline/Audit conditional decision
+* connector-gap documentation
+
+Use:
+
+IMPLEMENTED & PROVEN
+
+IMPLEMENTED BUT NOT LIVE-PROVEN
+
+ALREADY EXISTED — VERIFIED
+
+NOT IMPLEMENTED
+
+CONDITION NOT MET — NO CHANGE REQUIRED
+
+DEFERRED WITH REASON
+
+Do not implement omissions during this test.
+
+FINAL VERDICT
+
+Return one:
+
+PROVEN — SPRINT 29M CLOSED AT LIVE RUNTIME
+
+FUNCTIONAL — LIVE UX/PERFORMANCE GAP REMAINS
+
+NOT PROVEN — ROUTING DOES NOT HOLD IN AUTHENTICATED RUNTIME
+
+Answer plainly:
+
+1. Did TRANSIENT genuinely stay in Chat?
+2. What was its actual runtime?
+3. Did PROFESSIONAL_WORK produce durable work without unnecessary evidence overhead?
+4. Did EVIDENCE_BEARING execute the full integrity chain?
+5. Was the difference between the three lanes noticeable to the user?
+6. Did Active Work reflect actual runtime?
+7. Did Inbox and Notifications behave according to their new contract?
+8. Is every original Task #143 commitment either delivered or explicitly accounted for?
+
+NO CODE CHANGES.
+STOP AFTER THE REPORT.
+
+If that passes, I would close 29M and stop touching routing. We will have proven not just that the classifier looks good in tests, but that the actual product feels faster when the work is simple and retains the full rigour when the work is serious.
