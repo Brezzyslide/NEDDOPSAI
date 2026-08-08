@@ -202,7 +202,11 @@ describe("semanticSupportValidator — classifySpanSupport (Part C / L1–L7)", 
     // Timeframe is same here, so no timeframe conflict — but the test documents residual semantic risk
     // The test documents that purely lexical span passing does NOT catch subject-predicate changes
     // This is a RESIDUAL SEMANTIC RISK
-    expect(["supporting", "uncertain", "contradictory"]).toContain(result.classification);
+    // Sprint 29K.4.1: action_predicate_mismatch now catches "acknowledge ≠ resolve"
+    // The RESIDUAL SEMANTIC RISK documented here is now CLOSED by the materialActionExtractor.
+    expect(result.classification).not.toBe("supporting");
+    // Action predicate mismatch must be detected — acknowledge ≠ resolve
+    expect(result.conflicts.some(c => c.signalType === "action_predicate_mismatch")).toBe(true);
     // No timeframe conflict because both have "five business days"
     expect(result.conflicts.filter(c => c.signalType === "timeframe_mismatch")).toHaveLength(0);
   });

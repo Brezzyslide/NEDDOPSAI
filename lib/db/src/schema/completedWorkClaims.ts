@@ -43,6 +43,32 @@ export interface SourceCoverageItem {
   searchable: boolean;
 }
 
+/**
+ * Sprint 29K.4.1 — per-candidate classification record for absence verification.
+ *
+ * Only REQUIREMENT_PRESENT for the actual missing element → contradicted_absence.
+ * REQUIREMENT_ABSENT_OR_PENDING, CONTEXT_ONLY, AMBIGUOUS → NOT contradicted_absence.
+ */
+export interface AbsenceCandidateRecord {
+  chunkId: string;
+  relevanceScore: number;
+  candidateClassification:
+    | "requirement_present"
+    | "requirement_absent_or_pending"
+    | "context_only"
+    | "ambiguous";
+  matchedElement:
+    | "timeframe"
+    | "owner"
+    | "procedure"
+    | "appeal"
+    | "review"
+    | "classification"
+    | "resolution"
+    | "other";
+  reasonCodes: string[];
+}
+
 export interface AbsenceEvidenceRecord {
   searchTerms: string[];
   sourceScope: string[];
@@ -64,7 +90,16 @@ export interface AbsenceEvidenceRecord {
   passedThresholdCount: number;
   topRelevanceScores: number[];
   matchingRequirementFound: boolean;
-  /** Chunk IDs that contradicted the absence claim (from targeted search). */
+  /**
+   * Sprint 29K.4.1: per-candidate classification for above-threshold results.
+   * Only candidates classified as "requirement_present" contribute to contradicted_absence.
+   * Empty array when no candidates passed threshold.
+   */
+  candidates?: AbsenceCandidateRecord[];
+  /**
+   * Chunk IDs that were classified as REQUIREMENT_PRESENT for the missing element.
+   * ONLY these may contribute to contradicted_absence (not merely high-relevance chunks).
+   */
   contradictoryEvidenceLinkIds?: string[];
   /** Null when confidence cannot be defensibly derived from measurable signals. */
   confidenceOfAbsence: number | null;

@@ -34,7 +34,8 @@ import { retrieveChunks } from "./hybridRetrievalService.js";
 import { detectScopeOverreach } from "./semanticSupportValidator.js";
 import type { EvidencePack, EvidenceChunk } from "./knowledgeResolutionService.js";
 import type { ValidatedClaim } from "./claimValidationService.js";
-import type { AbsenceEvidenceRecord } from "@workspace/db";
+import type { AbsenceEvidenceRecord, AbsenceCandidateRecord } from "@workspace/db";
+import { classifyAbsenceCandidate } from "./absenceCandidateClassifier.js";
 import { db } from "@workspace/db";
 import {
   knowledgeSourceVersionsTable,
@@ -451,6 +452,7 @@ export async function performTargetedAbsenceSearch(
   const topScores: number[] = [];
   const sectionsExamined: string[] = [];
   const contradictoryChunkIds: string[] = [];
+  const allCandidateRecords: AbsenceCandidateRecord[] = []; // Sprint 29K.4.1
   const evidencePackChunkIds = new Set(evidencePack.chunks.map((c) => c.chunkId));
   let hadRetrievalFailure = false;
   let queriesExecuted = 0;
@@ -482,12 +484,23 @@ export async function performTargetedAbsenceSearch(
       if (r.baseScore >= ABSENCE_MATCH_THRESHOLD) {
         passedThreshold++;
 
-        // Check it's not the same chunks already in the EvidencePack
-        // (those were already seen — only flag as contradictory if it's NEW evidence)
-        if (!evidencePackChunkIds.has(r.id)) {
-          contradictoryChunkIds.push(r.id);
-        } else {
-          // Even if in original pack, if it passed threshold it contradicts the absence
+        // Sprint 29K.4.1: RETRIEVAL RELEVANCE ≠ REQUIREMENT PRESENT.
+        // Classify the candidate to determine whether it actually establishes
+        // the specific missing element — not just that it's topic-relevant.
+        const candidateResult = classifyAbsenceCandidate(claim.claimText, r.text ?? "");
+
+        const candidateRecord: AbsenceCandidateRecord = {
+          chunkId:                  r.id,
+          relevanceScore:           r.baseScore,
+          candidateClassification:  candidateResult.classification,
+          matchedElement:           candidateResult.matchedElement,
+          reasonCodes:              candidateResult.reasonCodes,
+        };
+        allCandidateRecords.push(candidateRecord);
+
+        // Only REQUIREMENT_PRESENT triggers contradicted_absence.
+        // requirement_absent_or_pending, context_only, ambiguous → NOT contradicted_absence.
+        if (candidateResult.classification === "requirement_present") {
           contradictoryChunkIds.push(r.id);
         }
 
@@ -538,6 +551,7 @@ export async function performTargetedAbsenceSearch(
     passedThresholdCount: passedThreshold,
     topRelevanceScores: topN,
     matchingRequirementFound: contradictoryEvidenceFound,
+    candidates: allCandidateRecords,               // Sprint 29K.4.1
     contradictoryEvidenceLinkIds: [...new Set(contradictoryChunkIds)],
     confidenceOfAbsence,
     verificationStatus,

@@ -27,6 +27,10 @@
  *   These are documented in test comments as RESIDUAL SEMANTIC RISK.
  */
 
+// ─── Sprint 29K.4.1 import ────────────────────────────────────────────────────
+// eslint-disable-next-line import/no-cycle
+import { detectActionConflict } from "./materialActionExtractor.js";
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export type SupportClassification =
@@ -47,6 +51,7 @@ export interface ConflictSignal {
     | "obligation_level_mismatch"
     | "negation_reversal"
     | "actor_mismatch"
+    | "action_predicate_mismatch"      // Sprint 29K.4.1 — acknowledge ≠ resolve etc.
     | "causal_language_in_observation"
     | "uncertainty_language_in_observation"
     | "absence_language_in_observation";
@@ -292,6 +297,16 @@ export function detectMaterialConflicts(
         description: `Claim assigns responsibility to "${claimExclusive.join(", ")}" but evidence names "${chunkExclusive.join(", ")}"`,
       });
     }
+  }
+
+  // ── 5. Action / predicate mismatch (Sprint 29K.4.1) ──────────────────────
+  // Compares the primary action verb/group in the claim against the reference
+  // text. acknowledge ≠ resolve, investigate ≠ resolve, review ≠ approve, etc.
+  // Only fires when BOTH sides have a recognised domain action verb and they
+  // map to different semantic groups (safe default: unknown → no conflict here).
+  const actionConflict = detectActionConflict(claimText, referenceText);
+  if (actionConflict) {
+    conflicts.push(actionConflict);
   }
 
   return conflicts;

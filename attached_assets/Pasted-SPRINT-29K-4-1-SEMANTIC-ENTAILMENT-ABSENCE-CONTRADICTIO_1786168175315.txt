@@ -1,0 +1,832 @@
+SPRINT 29K.4.1 — SEMANTIC ENTAILMENT & ABSENCE-CONTRADICTION HARDENING GATE
+
+This is a narrow proof/hardening sprint following Sprint 29K.4.
+
+DO NOT build the Evidence UI.
+DO NOT redesign the claim architecture.
+DO NOT redesign KRS.
+DO NOT introduce broad new functionality.
+DO NOT weaken any Sprint 29J, 29K.2, 29K.3 or 29K.4 guarantees.
+
+The purpose of this gate is to investigate and close, or precisely bound, TWO residual integrity risks exposed by Sprint 29K.4:
+
+RISK 1 — POSITIVE CLAIM SEMANTIC SUPPORT
+
+A passage can be genuine, contain the same words/numbers/actors, and still not support the proposition made by the claim.
+
+Example:
+
+Evidence:
+“The Complaints Officer must acknowledge complaints within five business days.”
+
+Claim:
+“The Complaints Officer must resolve complaints within five business days.”
+
+Exact span verification can succeed.
+Actor matches.
+Timeframe matches.
+Obligation matches.
+Negation matches.
+
+But the claim is NOT supported because acknowledge ≠ resolve.
+
+RISK 2 — ABSENCE CONTRADICTION SEMANTICS
+
+A targeted absence search can retrieve a highly relevant passage without that passage proving the supposedly absent requirement actually exists.
+
+Example absence claim:
+“The policy does not define an escalation procedure.”
+
+Retrieved passage:
+“An escalation procedure is currently under development.”
+
+This is highly relevant to the search query.
+
+But it SUPPORTS the absence finding rather than contradicting it.
+
+A high retrieval relevance score must therefore NOT automatically produce contradicted_absence.
+
+CORE PRINCIPLE:
+
+RELEVANCE ≠ ENTAILMENT.
+
+A real quotation does not automatically support a claim.
+
+A relevant search result does not automatically contradict an absence claim.
+
+========================================================
+PART A — VERIFY CURRENT 29K.4 BEHAVIOUR FIRST
+========================================================
+
+Before changing code, inspect the current implementation and demonstrate exactly how these two cases behave.
+
+Inspect:
+
+- semanticSupportValidator.ts
+- classifySpanSupport()
+- ConflictSignal extraction
+- detectClaimTypeRisk()
+- absenceVerificationService.ts
+- performAbsenceVerificationBatch()
+- relevance threshold logic
+- contradicted_absence transition
+- verified_absence transition
+- validateClaimBatch()
+- provenance status downgrade logic
+
+Answer:
+
+1. Can acknowledge → resolve currently escape as "supporting"?
+2. Can investigate → resolve escape?
+3. Can review → approve escape?
+4. Can recommend → require escape?
+5. Can permitted → mandatory escape where modal words are not explicitly present?
+6. Can a highly relevant passage that merely discusses a missing requirement trigger contradicted_absence?
+7. Does contradicted_absence currently require semantic proof that the supposedly absent requirement exists?
+8. Or does it currently require only retrieval relevance above threshold?
+
+Do not infer.
+Prove current behaviour with executable tests.
+
+========================================================
+PART B — REMOVE THE WEAK L1 ACCEPTANCE CONDITION
+========================================================
+
+Sprint 29K.4 documented an adversarial L1 case where:
+
+expect(["supporting","uncertain"]).toContain(result.classification)
+
+was accepted.
+
+This is NOT sufficient as an integrity proof.
+
+For a deliberately semantically mismatched proposition, "supporting" must not be an acceptable passing result.
+
+Replace weak tests with explicit expected outcomes.
+
+For known semantic substitutions such as:
+
+acknowledge → resolve
+
+the result must NOT be "supporting".
+
+Expected minimum result:
+
+support_uncertain
+
+or a stronger contradictory/unsupported state if the architecture supports it.
+
+No adversarial test may pass merely because either the safe OR unsafe result occurred.
+
+========================================================
+PART C — MATERIAL PROPOSITION MODEL
+========================================================
+
+Investigate whether deterministic validation can be strengthened by representing the material proposition of a claim.
+
+At minimum consider:
+
+SUBJECT / ACTOR
+Who performs the action?
+
+ACTION
+What is actually being done?
+Examples:
+- acknowledge
+- investigate
+- resolve
+- escalate
+- approve
+- review
+- retain
+- notify
+- record
+- report
+
+OBJECT
+What is the action applied to?
+
+OBLIGATION
+- must
+- shall
+- required
+- should
+- may
+- can
+- prohibited
+
+NEGATION
+Does / does not.
+Must / must not.
+
+QUANTITY / TIMEFRAME
+Numbers, periods, thresholds, percentages.
+
+CONDITION
+Under what circumstances does the rule apply?
+
+SCOPE
+Which complaints, employees, records, departments, etc.
+
+Do NOT build a general natural-language understanding engine.
+
+We need enough material-fact extraction to prevent obvious proposition substitution.
+
+========================================================
+PART D — ACTION / PREDICATE CONFLICT
+========================================================
+
+Add a deterministic action/predicate integrity check if technically viable.
+
+Examples that MUST NOT be treated as equivalent:
+
+acknowledge ≠ resolve
+investigate ≠ resolve
+review ≠ approve
+recommend ≠ require
+record ≠ report
+notify ≠ escalate
+retain ≠ archive/delete
+consult ≠ obtain approval
+
+Be careful with legitimate equivalents/synonyms.
+
+Examples that MAY be equivalent depending on wording:
+
+acknowledge ≈ confirm receipt
+record ≈ log
+retain ≈ keep
+notify ≈ inform
+
+Do not create an enormous uncontrolled synonym dictionary.
+
+Use a bounded domain vocabulary suitable for NeedsOps operational/compliance work.
+
+If the validator cannot determine whether two actions are equivalent, classify support as uncertain rather than supporting.
+
+SAFE DEFAULT:
+
+UNKNOWN SEMANTIC RELATIONSHIP → UNCERTAIN
+
+not:
+
+UNKNOWN SEMANTIC RELATIONSHIP → SUPPORTING
+
+========================================================
+PART E — ENTAILMENT DECISION LADDER
+========================================================
+
+Rework or extend semantic support classification around a conservative decision ladder.
+
+Conceptually:
+
+1. Is the supporting span genuine?
+   NO → invalid_binding
+
+2. Are there deterministic material conflicts?
+   YES → support_uncertain or contradictory
+
+3. Does the evidence contain the same material action/proposition?
+   YES → continue
+
+4. Are actor, obligation, negation, timeframe, quantity and scope consistent?
+   NO → support_uncertain / contradictory
+
+5. Can semantic support be established confidently?
+   YES → supporting
+
+6. Is semantic relationship unresolved?
+   YES → uncertain
+
+Unknown must not default to supporting.
+
+Do not downgrade obviously valid claims merely because the wording is not identical.
+
+The purpose is conservative evidence integrity, not literal string matching.
+
+========================================================
+PART F — DECIDE WHETHER A BOUNDED SEMANTIC VERIFIER IS NECESSARY
+========================================================
+
+After strengthening deterministic checks, run the adversarial suite.
+
+ONLY THEN determine whether a bounded semantic verifier is needed.
+
+Do not introduce an unrestricted second LLM automatically.
+
+If deterministic validation cannot reliably distinguish material propositions, investigate a bounded semantic validation stage.
+
+If a model-based verifier is proposed or implemented, it MUST:
+
+- receive only:
+  - claim text
+  - claim type
+  - supporting passage(s)
+  - source metadata required for context
+- NOT receive hidden prompts
+- NOT receive specialist chain-of-thought
+- NOT rewrite the claim
+- NOT rewrite Completed Work
+- NOT generate new evidence
+- NOT perform retrieval
+- NOT use training knowledge as evidence
+- return only a constrained classification such as:
+
+  supported
+  unsupported
+  uncertain
+  contradictory
+
+plus short machine-readable reason codes.
+
+Its result must be a validation signal.
+
+It must NEVER manufacture evidence.
+
+Failure/timeout must result in uncertain, never supported.
+
+If no model-based verifier is implemented, explicitly demonstrate why deterministic validation is sufficient for the tested operational domain.
+
+========================================================
+PART G — ABSENCE CANDIDATE CLASSIFICATION
+========================================================
+
+Fix the assumption:
+
+candidate relevance >= threshold
+    therefore
+contradicted_absence
+
+This is unsafe.
+
+A targeted absence search result must first be classified.
+
+At minimum distinguish:
+
+1. REQUIREMENT_PRESENT
+The passage positively establishes the supposedly absent requirement.
+
+Example:
+“High-severity complaints must be escalated to the Head of Operations within two business days.”
+
+For absence claim:
+“No escalation timeframe is defined.”
+
+→ contradicted_absence
+
+2. REQUIREMENT_ABSENT_OR_PENDING
+The passage discusses the concept but confirms it is missing, undefined, pending or under development.
+
+Example:
+“An escalation procedure is currently under development.”
+
+→ this does NOT contradict the absence claim.
+
+3. CONTEXT_ONLY
+The passage discusses escalation but does not establish whether the specific requirement exists.
+
+Example:
+“Escalated complaints are reviewed at management meetings.”
+
+For:
+“No escalation timeframe is defined.”
+
+This proves escalation exists but does NOT prove a timeframe exists.
+
+→ absence remains unverified unless the full search satisfies absence-proof conditions.
+
+4. AMBIGUOUS
+Meaning cannot be safely classified.
+
+→ unverified_absence
+
+A relevant candidate must never automatically equal REQUIREMENT_PRESENT.
+
+========================================================
+PART H — ABSENCE CLAIM COMPONENT MATCHING
+========================================================
+
+Absence verification must verify the actual missing ELEMENT.
+
+Example 1:
+
+Claim:
+“No escalation timeframe is defined.”
+
+Evidence:
+“Complaints may be escalated to the Service Manager.”
+
+This establishes escalation and ownership.
+
+It does NOT establish a timeframe.
+
+Therefore:
+NOT contradicted_absence for the timeframe claim.
+
+Example 2:
+
+Claim:
+“No escalation owner is defined.”
+
+Evidence:
+“Complaints must be escalated within two days.”
+
+This establishes a timeframe.
+
+It does NOT establish ownership.
+
+Therefore:
+NOT contradicted_absence for the owner claim.
+
+Example 3:
+
+Claim:
+“No escalation owner is defined.”
+
+Evidence:
+“The Head of Operations decides whether a complaint is escalated.”
+
+This DOES establish ownership.
+
+→ contradicted_absence.
+
+The verifier must compare the missing proposition against what the candidate passage actually establishes.
+
+========================================================
+PART I — ABSENCE SEARCH RESULT MODEL
+========================================================
+
+Extend the absence verification result if needed to preserve candidate classification.
+
+For each high-relevance candidate, persist or represent:
+
+{
+  chunkId,
+  relevanceScore,
+  candidateClassification:
+    | "requirement_present"
+    | "requirement_absent_or_pending"
+    | "context_only"
+    | "ambiguous",
+  matchedElement:
+    | "timeframe"
+    | "owner"
+    | "procedure"
+    | "appeal"
+    | "review"
+    | "classification"
+    | "resolution"
+    | "other",
+  reasonCodes: string[]
+}
+
+Do not store chain-of-thought.
+
+Only short deterministic/model classification reasons.
+
+contradictoryEvidenceLinkIds must contain only evidence classified as requirement_present for the actual missing proposition.
+
+========================================================
+PART J — ADVERSARIAL POSITIVE-CLAIM SUITE
+========================================================
+
+Create a dedicated adversarial suite.
+
+At minimum:
+
+S1
+Evidence:
+“Complaints must be acknowledged within five business days.”
+Claim:
+“Complaints must be resolved within five business days.”
+Expected:
+NOT grounded.
+
+S2
+Evidence:
+“Complaints must be investigated within ten business days.”
+Claim:
+“Complaints must be resolved within ten business days.”
+Expected:
+NOT grounded.
+
+S3
+Evidence:
+“The Service Manager reviews investigation findings.”
+Claim:
+“The Service Manager approves investigation findings.”
+Expected:
+NOT grounded.
+
+S4
+Evidence:
+“The Complaints Officer may recommend escalation.”
+Claim:
+“The Complaints Officer must escalate the complaint.”
+Expected:
+NOT grounded.
+
+S5
+Evidence:
+“Complaint records must be retained for seven years.”
+Claim:
+“Complaint records must be destroyed after seven years.”
+Expected:
+NOT grounded.
+
+S6
+Evidence:
+“The Complaints Officer must acknowledge receipt.”
+Claim:
+“The Service Manager must acknowledge receipt.”
+Expected:
+NOT grounded.
+
+S7
+Evidence:
+“The Complaints Officer must acknowledge receipt within three days.”
+Claim:
+“The Complaints Officer must acknowledge receipt within five days.”
+Expected:
+NOT grounded.
+
+S8
+Evidence:
+“The Complaints Officer may acknowledge verbally.”
+Claim:
+“The Complaints Officer must acknowledge in writing.”
+Expected:
+NOT grounded.
+
+S9 — VALID PARAPHRASE
+Evidence:
+“Complaint records must be retained for seven years.”
+Claim:
+“Complaint records must be kept for seven years.”
+Expected:
+grounded/supporting.
+
+S10 — VALID PARAPHRASE
+Evidence:
+“The Complaints Officer must acknowledge receipt.”
+Claim:
+“The Complaints Officer is required to confirm receipt.”
+Expected:
+grounded/supporting if bounded synonym logic supports it;
+otherwise support_uncertain is acceptable, but NOT invalid_binding solely due to paraphrase.
+
+Measure false-positive and false-negative behaviour.
+
+========================================================
+PART K — ADVERSARIAL ABSENCE SUITE
+========================================================
+
+A1
+Absence claim:
+“No escalation procedure is defined.”
+
+Candidate:
+“An escalation procedure is currently under development.”
+
+Expected:
+NOT contradicted_absence.
+
+A2
+Claim:
+“No escalation timeframe is defined.”
+
+Candidate:
+“Complaints may be escalated to the Service Manager.”
+
+Expected:
+NOT contradicted_absence.
+
+A3
+Claim:
+“No escalation owner is defined.”
+
+Candidate:
+“Complaints must be escalated within two business days.”
+
+Expected:
+NOT contradicted_absence.
+
+A4
+Claim:
+“No escalation timeframe is defined.”
+
+Candidate:
+“High-severity complaints must be escalated within two business days.”
+
+Expected:
+contradicted_absence.
+
+A5
+Claim:
+“No escalation owner is defined.”
+
+Candidate:
+“The Head of Operations decides whether escalation is required.”
+
+Expected:
+contradicted_absence.
+
+A6
+Claim:
+“No appeal mechanism is defined.”
+
+Candidate:
+“Appeals will be considered in a future policy revision.”
+
+Expected:
+NOT contradicted_absence.
+
+A7
+Claim:
+“No appeal mechanism is defined.”
+
+Candidate:
+“A complainant may appeal the decision to the Review Panel within 14 days.”
+
+Expected:
+contradicted_absence.
+
+A8
+Claim:
+“No complaint resolution timeframe is defined.”
+
+Candidate:
+“Complaints must be acknowledged within three business days.”
+
+Expected:
+NOT contradicted_absence.
+
+A9
+Claim:
+“No complaint resolution timeframe is defined.”
+
+Candidate:
+“All complaints must receive a final written outcome within 20 business days.”
+
+Expected:
+contradicted_absence.
+
+A10
+Incomplete ingestion + no candidate.
+Expected:
+unverified_absence.
+
+A11
+Retrieval failure.
+Expected:
+unverified_absence.
+
+A12
+Organisation-wide absence based on one policy.
+Expected:
+unverified_absence / scope_overreach.
+
+========================================================
+PART L — DUPLICATE CLIENT CLAIM ID HARDENING
+========================================================
+
+Investigate the existing Sprint 29K.3/29K.4 limitation:
+
+Duplicate clientClaimId values can cause a Map to retain only the final claim.
+
+Do not silently allow this.
+
+Preferred behaviour:
+
+- detect duplicate clientClaimId values before validation/persistence
+- reject or mark the duplicate batch invalid
+- never silently overwrite one claim with another
+- produce durable provenance failure/audit information if this occurs in a real execution
+
+Add regression tests.
+
+This is secondary to the two semantic risks but should be closed while claim validation is being hardened.
+
+========================================================
+PART M — EVIDENCE MODE REGRESSION
+========================================================
+
+Re-prove the evidenceMode gate.
+
+Required:
+
+ordinary customer email
+→ evidenceMode none
+→ zero claim-provenance execution
+→ zero absence retrievals
+
+policy review
+→ evidenceMode required
+→ claim provenance runs
+
+evidence-optional task with no evidence
+→ no unnecessary provenance overhead
+
+Do not let any semantic verifier introduced in this sprint run for evidenceMode none.
+
+========================================================
+PART N — RETRIEVAL COST MEASUREMENT
+========================================================
+
+Report exact retrieval/call counts.
+
+For:
+
+1. ordinary email
+2. positive observation only
+3. contradiction claim
+4. one absence claim
+5. three absence claims
+6. mixed policy review with observations + inference + recommendations + 3 absence findings
+
+Report:
+
+- initial KRS retrievals
+- targeted absence retrieval queries
+- semantic verifier calls if any
+- total additional latency where measurable
+- whether calls are sequential or parallel
+
+We need to understand integrity cost before scaling this.
+
+========================================================
+PART O — LIVE / REAL DATA PROOF
+========================================================
+
+Use evidence levels honestly:
+
+L1 — unit
+L2 — mocked integration
+L3 — real DB / real schema / real retrieval data
+L4 — authenticated runtime
+L5 — authenticated UI
+
+Achieve at least L3 where possible.
+
+Use real NeedsOps knowledge chunks to test:
+
+- same-topic but wrong-action evidence
+- high-relevance absence candidate that does not prove the missing requirement
+- genuine requirement-present candidate
+
+If L4 remains blocked by Clerk authentication, report BLOCKED.
+
+Do not substitute L3 for L4.
+
+========================================================
+PART P — REGRESSION INVARIANTS
+========================================================
+
+Re-prove:
+
+- approvedVersionId integrity
+- approved version claims remain version-pinned
+- evidence remains version-pinned
+- newer revisions do not mutate approved provenance
+- restore does not mutate approved provenance
+- broken approved pin fails closed
+- evidence hashes/snapshots remain immutable
+- cross-tenant evidence binding denied
+- external_requirement still requires approved authority source
+- training knowledge cannot ground external requirement
+- PDF/DOCX remain clean human-readable output
+- claim metadata does not leak into exported work
+- ordinary non-evidence work avoids provenance overhead
+
+========================================================
+PART Q — FINAL METRICS
+========================================================
+
+Report:
+
+POSITIVE CLAIM INTEGRITY
+
+- unsupported semantic substitution escape rate
+- valid paraphrase acceptance rate
+- wrong actor detection
+- wrong timeframe detection
+- wrong obligation detection
+- negation reversal detection
+- wrong action/predicate detection
+
+ABSENCE INTEGRITY
+
+- false contradicted_absence rate
+- true contradicted_absence detection rate
+- incomplete-ingestion downgrade rate
+- retrieval-failure downgrade rate
+- scope-overreach downgrade rate
+
+TARGET:
+
+No deliberately unsupported S1–S8 claim may finish grounded.
+
+No A1, A2, A3, A6 or A8 candidate may produce contradicted_absence.
+
+A4, A5, A7 and A9 must produce contradicted_absence.
+
+A10–A12 must not produce verified_absence.
+
+========================================================
+PART R — REQUIRED FINAL ANSWERS
+========================================================
+
+Answer explicitly:
+
+1. Can a genuine quotation that does not support the claim still become grounded?
+2. Can acknowledge → resolve become grounded?
+3. Can investigate → resolve become grounded?
+4. What happens when the action relationship is unknown?
+5. Does unknown default to supporting or uncertain?
+6. Can a high-relevance absence-search result automatically cause contradicted_absence?
+7. What additional proof is required before contradicted_absence?
+8. Can evidence about escalation ownership contradict an absence claim specifically about escalation timeframe?
+9. Can “procedure under development” contradict “no procedure is currently defined”?
+10. Can acknowledgement timeframe evidence contradict an absence claim about resolution timeframe?
+11. How are ambiguous candidates handled?
+12. Did you introduce a semantic model verifier?
+13. If yes, exactly when does it run and what can it see?
+14. If no, what residual semantic cases remain impossible to determine deterministically?
+15. Can duplicate clientClaimId silently overwrite a claim?
+16. Does an ordinary email invoke any of this machinery?
+17. What is the maximum additional retrieval/model-call cost for a policy review with three absence findings?
+18. Are approved claim/evidence guarantees unchanged?
+19. What remains genuinely model-dependent?
+20. Is claim integrity now safe enough to expose through the Evidence UI?
+
+========================================================
+FINAL VERDICT STANDARD
+========================================================
+
+Only return:
+
+PROVEN — CLAIM INTEGRITY READY FOR EVIDENCE UI
+
+if BOTH statements are demonstrated:
+
+A. A genuine but semantically irrelevant/mismatched passage cannot silently produce a grounded claim in the tested integrity domain.
+
+B. A merely relevant absence-search candidate cannot silently become proof that the absence claim is false.
+
+Otherwise return:
+
+PARTIALLY PROVEN — SEMANTIC INTEGRITY GAP REMAINS
+
+and identify the exact remaining failure mode.
+
+Remember:
+
+EXACT QUOTATION ≠ ENTAILMENT.
+
+RETRIEVAL RELEVANCE ≠ REQUIREMENT PRESENT.
+
+MODEL CONFIDENCE ≠ EVIDENCE.
+
+UNKNOWN → UNCERTAIN.
+
+Never convert uncertainty into evidence.

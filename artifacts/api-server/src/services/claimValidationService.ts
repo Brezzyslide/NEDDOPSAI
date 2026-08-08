@@ -108,7 +108,13 @@ export interface ValidatedClaim {
   validationFailures: string[];
 }
 
+/**
+ * Sprint 29K.4.1: clientClaimIds that appeared more than once in the submitted batch.
+ * Duplicates (all but the first occurrence) are dropped and counted in malformedDropped.
+ */
 export interface ClaimBatchValidationResult {
+  /** clientClaimIds with more than one occurrence in the batch. */
+  duplicateClientClaimIds?: string[];
   claims: ValidatedClaim[];
   /** Number of claims that were structurally malformed (not ClaimType etc). */
   malformedDropped: number;
@@ -490,10 +496,35 @@ export function validateClaimBatch(
     }
   }
 
-  const allClientIds = new Set(normalisedClaims.map((c) => c.clientClaimId));
+  // ── Sprint 29K.4.1: Duplicate clientClaimId detection ─────────────────────
+  // Two claims sharing the same clientClaimId can never be safely disambiguated
+  // at persistence time. Drop all but the first occurrence and record the IDs
+  // for the caller to surface as a validation warning.
+  const seenClientIds = new Set<string>();
+  const duplicateClientClaimIds: string[] = [];
+  const deduplicatedClaims: RawClaim[] = [];
+
+  for (const claim of normalisedClaims) {
+    if (seenClientIds.has(claim.clientClaimId)) {
+      // Second (or later) occurrence — drop it
+      if (!duplicateClientClaimIds.includes(claim.clientClaimId)) {
+        duplicateClientClaimIds.push(claim.clientClaimId);
+      }
+      malformedDropped++;
+      console.warn(
+        `[ClaimValidation] Duplicate clientClaimId "${claim.clientClaimId}" — ` +
+        `second occurrence dropped (would silently overwrite first at persistence).`,
+      );
+    } else {
+      seenClientIds.add(claim.clientClaimId);
+      deduplicatedClaims.push(claim);
+    }
+  }
+
+  const allClientIds = new Set(deduplicatedClaims.map((c) => c.clientClaimId));
 
   const validated: ValidatedClaim[] = [];
-  for (const claim of normalisedClaims) {
+  for (const claim of deduplicatedClaims) {
     const result = validateSingleClaim(claim, evidencePack, allClientIds);
     bindingsRejected += result.validationFailures.filter((f) =>
       f.includes("NOT in this execution's EvidencePack"),
@@ -501,7 +532,12 @@ export function validateClaimBatch(
     validated.push(result);
   }
 
-  return { claims: validated, malformedDropped, bindingsRejected };
+  return {
+    claims: validated,
+    malformedDropped,
+    bindingsRejected,
+    duplicateClientClaimIds: duplicateClientClaimIds.length > 0 ? duplicateClientClaimIds : undefined,
+  };
 }
 
 // ─── Specialist response parsing ───────────────────────────────────────────────
