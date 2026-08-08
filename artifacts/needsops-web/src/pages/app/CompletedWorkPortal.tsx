@@ -266,7 +266,7 @@ export default function CompletedWorkPortal() {
   // fetch all work (large limit — server already caps at sensible levels)
   const { data, isLoading } = useQuery({
     queryKey: ["completed-work-portal", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=200`),
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=200`).then(r => r.json()),
     select: (d: any) => (d?.completedWork ?? []) as CompletedWorkItem[],
     enabled: !!slug,
   });
