@@ -84,3 +84,4 @@
 - [NeedsOps Sprint 29J.2 Fail-Closed & Audit](needsops-sprint29j2.md) — resolveApprovedVersion canonical resolver, !=(loose) not !==(strict) for undefined, broken modern pin throws 409, audit metadata complete, DB FK prevents broken pins at storage level, 4367 tests
 - [NeedsOps Sprint 29J.3 Export Quality](needsops-sprint29j3.md) — normaliseCompletedWorkContent() layer (server+web mirror), JSON→markdown, SKIP_FIELDS, fenced JSON detection, malformed fallback, no LLM guard, 4412 tests
 - [NeedsOps Sprint 29K.2 Durable Evidence Foundation](needsops-sprint29k2.md) — 2 new tables (snapshots+links), Hybrid model, fail-soft fire-and-forget, soft chunkId ref, verifyEvidencePassageIntegrity, REQUIRED_RLS_TABLES=73, 4445 tests
+- [NeedsOps Sprint 29K.3 Claim Emission](needsops-sprint29k3.md) — UEE outputMode text→json, spanRejected field, absence=unverified_absence (KRS limitation), provenance_status on versions, REQUIRED_RLS_TABLES=75, 4509 tests

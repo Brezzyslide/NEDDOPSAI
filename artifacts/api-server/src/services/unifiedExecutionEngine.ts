@@ -49,6 +49,18 @@ import { reviewDraft } from "./selfReviewService.js";
 import { createDraft, submitForApproval } from "./completedWorkService.js";
 import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
+  validateClaimBatch,
+  parseSpecialistJsonOutput,
+  rejectCrossTenantChunks,
+  type RawClaim,
+  type ValidatedClaim,
+} from "./claimValidationService.js";
+import {
+  persistProvenanceChain,
+  setVersionProvenanceStatus,
+  type VersionProvenanceStatus,
+} from "./claimPersistenceService.js";
+import {
   buildEvidenceSection,
   resolveConversationEvidence,
   type EvidencePack,
@@ -1004,12 +1016,15 @@ export class UnifiedExecutionEngine {
     await progress("executing");
     const t5 = Date.now();
     let draftContent: string;
+    let rawClaims: RawClaim[] = [];
     try {
-      draftContent = await this.generateTaskDraft(
+      const draftResult = await this.generateTaskDraft(
         userRequest, manifest, blueprint, styleGuidance.guidanceBlock,
         { userId: requesterId, organizationId, role: request.requesterRole! },
         evidencePack ?? undefined,
       );
+      draftContent = draftResult.content;
+      rawClaims = draftResult.claims;
       tLlmMs = Date.now() - t5;
     } catch (err) {
       const isFallback = err instanceof FallbackDraftError;
@@ -1111,24 +1126,66 @@ export class UnifiedExecutionEngine {
       assetIds,
     });
 
-    // ── Sprint 29K.2: Persist EvidencePack provenance (Hybrid model) ─────────
-    // Binds the exact chunks used for generation + self-review to this version.
-    // Uses the SAME evidencePack instance — no second retrieval.
-    // Fails soft: a provenance gap is logged but does NOT fail the work item.
+    // ── Sprint 29K.3: Full provenance chain (evidence + claims) ──────────────
+    // Order: persistExecutionEvidence → persistClaims → bind claims → evidence
+    //        links → setVersionProvenanceStatus.
+    //
+    // Claim validation runs synchronously (no LLM, no KRS) before fire-and-forget.
+    // The version starts as "pending"; the chain updates it to complete/partial/failed.
+    // Completed Work itself is never blocked by provenance failure.
     if (evidencePack && evidencePack.totalChunks > 0 && completedWork.currentVersionId) {
-      persistExecutionEvidence({
-        executionId:     evidencePack.executionId,
-        completedWorkId: completedWork.id,
-        versionId:       completedWork.currentVersionId,
+      const vId = completedWork.currentVersionId;
+
+      // Validate claims synchronously — no second retrieval, no second LLM call.
+      // Cross-tenant chunk IDs are rejected before any DB write.
+      let validatedClaims: ValidatedClaim[] = [];
+      if (rawClaims.length > 0) {
+        const batchResult = validateClaimBatch(rawClaims, evidencePack);
+        validatedClaims = batchResult.claims;
+        const xTenant = rejectCrossTenantChunks(validatedClaims, evidencePack);
+        if (xTenant.length > 0) {
+          console.warn(
+            "[UnifiedExecutionEngine] Cross-tenant chunk IDs rejected from claim bindings:",
+            xTenant.join(", "),
+          );
+        }
+        if (batchResult.malformedDropped > 0) {
+          console.warn(
+            "[UnifiedExecutionEngine] Dropped", batchResult.malformedDropped,
+            "malformed claim(s) from specialist response.",
+          );
+        }
+      }
+
+      // Mark version as pending synchronously so the gap window is visible
+      // even if the async chain takes time or fails.
+      setVersionProvenanceStatus(vId, organizationId, "pending").catch(() => {});
+
+      // Fire-and-forget provenance chain
+      const execId = evidencePack.executionId;
+      const cwId   = completedWork.id;
+      persistProvenanceChain({
+        executionId:     execId,
+        completedWorkId: cwId,
+        versionId:       vId,
         organisationId:  organizationId,
         evidencePack,
+        validatedClaims,
+        persistEvidence: () =>
+          persistExecutionEvidence({
+            executionId:     execId,
+            completedWorkId: cwId,
+            versionId:       vId,
+            organisationId:  organizationId,
+            evidencePack,
+          }),
       }).catch(err => {
         console.warn(
-          "[UnifiedExecutionEngine] Evidence persistence failed — provenance gap:",
+          "[UnifiedExecutionEngine] Provenance chain failed — durably recorded in audit log:",
           err instanceof Error ? err.message : err,
-          "| completedWorkId:", completedWork.id,
-          "| versionId:", completedWork.currentVersionId,
-          "| chunkCount:", evidencePack.totalChunks,
+          "| completedWorkId:", cwId,
+          "| versionId:", vId,
+          "| claimCount:", validatedClaims.length,
         );
       });
     }
@@ -1192,7 +1249,7 @@ export class UnifiedExecutionEngine {
     styleGuidanceBlock: string,
     authCtx: { userId: string; organizationId: string; role: string },
     evidencePack?: EvidencePack,
-  ): Promise<string> {
+  ): Promise<{ content: string; claims: RawClaim[] }> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
     if (provider !== "openai") {
@@ -1225,6 +1282,11 @@ export class UnifiedExecutionEngine {
     }
 
     systemPrompt += buildWorkExecutionAddendum(blueprint);
+    // Sprint 29K.3: add claim emission addendum — instructs the specialist to
+    // return { content, claims } JSON rather than plain text. outputMode changes
+    // to "json" below.  Claim JSON must NOT appear inside contentMarkdown.
+    systemPrompt += buildClaimEmissionAddendum(evidencePack);
+
     const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack);
 
     const retrievedFields: string[] = [
@@ -1251,12 +1313,14 @@ export class UnifiedExecutionEngine {
       "entityKnowledge.clearance",
     ];
 
+    // Sprint 29K.3: outputMode "json" — specialist returns { content, claims }.
+    // The word "json" in the system prompt satisfies OpenAI's json_object requirement.
     const response = await gateway.process({
       systemPrompt,
       userMessage,
       retrievedFields,
-      maxTokens: 3000,
-      outputMode: "text",
+      maxTokens: 4000,
+      outputMode: "json",
     });
 
     if (response.usedFallback || !response.content) {
@@ -1266,7 +1330,18 @@ export class UnifiedExecutionEngine {
       );
     }
 
-    return response.content.trim();
+    // Sprint 29K.3: parse { content, claims } from the JSON response.
+    // parseSpecialistJsonOutput never throws — if parsing fails it returns the
+    // raw text as content with an empty claims array, preserving backward compat.
+    const parsed = parseSpecialistJsonOutput(response.content);
+    if (!parsed.content) {
+      throw new FallbackDraftError(
+        "AI specialist returned a JSON response but the 'content' field was missing or empty. " +
+        "The work output cannot be saved. Please retry.",
+      );
+    }
+
+    return { content: parsed.content, claims: parsed.claims };
   }
 }
 
@@ -1558,6 +1633,106 @@ function buildDeterministicResult(
 }
 
 // ─── Task pipeline helpers ────────────────────────────────────────────────────
+
+// ─── Sprint 29K.3: Claim emission addendum ───────────────────────────────────
+
+/**
+ * Appended to the specialist system prompt when evidence is available.
+ * Instructs the specialist to return { content, claims } JSON in one response.
+ *
+ * CONTRACT (non-negotiable):
+ * 1. "content" field = the complete human-readable Completed Work (same as before).
+ *    No claim JSON, no chunkIds, no clientClaimIds may appear inside "content".
+ * 2. "claims" array = structured provenance metadata ONLY. Not a summary, not
+ *    a rewrite of the report. Empty array is valid.
+ * 3. Each claim references only chunkIds present in the AUTHORITATIVE EVIDENCE section.
+ * 4. Do not fabricate evidence. If a chunk does not directly support a claim,
+ *    do not cite it. Unsupported claims are acceptable — false citations are not.
+ * 5. supportingSpan must be a verbatim exact quotation from the chunk text.
+ *    The server will reject spans that are not exact substrings.
+ */
+function buildClaimEmissionAddendum(evidencePack?: EvidencePack): string {
+  if (!evidencePack || evidencePack.totalChunks === 0) {
+    // No evidence available — still request dual JSON output for consistency
+    return `
+
+---
+
+## RESPONSE FORMAT (REQUIRED — JSON)
+
+You must return valid JSON in this exact shape:
+
+{
+  "content": "<your complete professional work output as a string>",
+  "claims": []
+}
+
+The "content" field must contain the full human-readable Completed Work document.
+No claim JSON, no chunk IDs, and no provenance metadata may appear inside "content".
+Return an empty "claims" array when no evidence is available.`;
+  }
+
+  const chunkSummary = evidencePack.chunks
+    .slice(0, 20)
+    .map((c) => `  { "chunkId": "${c.chunkId}", "source": "${c.sourceTitle}" }`)
+    .join("\n");
+
+  return `
+
+---
+
+## RESPONSE FORMAT (REQUIRED — JSON)
+
+You must return valid JSON in this exact shape:
+
+{
+  "content": "<your complete professional work output as a string>",
+  "claims": [
+    {
+      "clientClaimId": "C1",
+      "claimText": "Exact statement from your report",
+      "claimType": "observation",
+      "sectionRef": "Findings",
+      "confidence": 0.94,
+      "reasoningSummary": "Directly stated in cited passage (max 200 chars)",
+      "evidence": [
+        {
+          "chunkId": "<ID from the list below>",
+          "relationship": "direct_support",
+          "supportingSpan": "<verbatim exact quotation from the chunk text>"
+        }
+      ],
+      "relatedClaimIds": []
+    }
+  ]
+}
+
+CLAIM TYPES (use exactly one):
+  observation          — directly supported by evidence
+  absence_finding      — a requirement, control or element was searched for but not found
+  inference            — professional analysis derived from supported observations
+  external_requirement — reference to legislation, regulation or external standard
+  recommendation       — proposed action derived from one or more findings
+
+RELATIONSHIP TYPES (use exactly one per evidence binding):
+  direct_support       — chunk directly supports the claim
+  context              — chunk provides background context
+  contradiction        — chunk is one side of a conflicting pair
+  external_authority   — chunk is from a recognised external/legislative source
+  searched_for_absence — chunk was retrieved when searching for absent content
+
+RULES:
+1. The "content" field must contain the complete human-readable report. No claim JSON inside it.
+2. Only reference chunkIds from the list below. Do not invent chunk IDs.
+3. supportingSpan must be a verbatim exact quotation from the chunk text (not a paraphrase).
+   The server verifies this as an exact substring — fabricated spans will be rejected.
+4. Do not include chain-of-thought in reasoningSummary (max 200 chars).
+5. relatedClaimIds references other clientClaimIds in the same response.
+6. Empty "claims" array is valid and preferred over fabricated claims.
+
+AVAILABLE EVIDENCE CHUNK IDs (from your AUTHORITATIVE EVIDENCE section):
+${chunkSummary}`;
+}
 
 function buildWorkExecutionAddendum(blueprint: WorkBlueprint | null): string {
   if (!blueprint) return "";

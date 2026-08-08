@@ -659,7 +659,11 @@ describe("UnifiedExecutionEngine — conversation execution", () => {
     );
   });
 
-  it("uses outputMode=text for task execution", async () => {
+  it("uses outputMode=json for task execution (Sprint 29K.3: dual content+claims output)", async () => {
+    // Sprint 29K.3: generateTaskDraft now uses outputMode="json" so the specialist
+    // returns { content, claims } in a single LLM call — no second LLM pass.
+    // The gateway receives json_object mode; parseSpecialistJsonOutput extracts
+    // the content string and the claims array from the response.
     vi.clearAllMocks();
     process.env.AI_PROVIDER = "openai";
     setupTaskMocks();
@@ -672,7 +676,7 @@ describe("UnifiedExecutionEngine — conversation execution", () => {
       userRequest: "Review incident policy",
     });
     expect(mockGatewayProcess).toHaveBeenCalledWith(
-      expect.objectContaining({ outputMode: "text" }),
+      expect.objectContaining({ outputMode: "json" }),
     );
   });
 });

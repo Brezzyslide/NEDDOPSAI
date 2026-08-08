@@ -115,6 +115,9 @@ export const REQUIRED_RLS_TABLES = [
   // Sprint 29K.2 — Durable Evidence Foundation (Hybrid EvidencePack persistence)
   "completed_work_evidence_snapshots",
   "completed_work_evidence_links",
+  // Sprint 29K.3 — Claim Emission & Claim-to-Evidence Binding
+  "completed_work_claims",
+  "completed_work_claim_evidence",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

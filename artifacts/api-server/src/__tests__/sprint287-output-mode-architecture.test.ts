@@ -443,13 +443,15 @@ describe("Sprint 28.7 — Gateway.process(): outputMode threaded to AIResponse",
 
 describe("Sprint 28.7 — Caller outputMode declaration audit (source-level)", () => {
 
-  it("workExecutionPipelineService: outputMode='text' (produces prose, not JSON)", async () => {
-    // Sprint 29B: execution logic moved to unifiedExecutionEngine.ts (thin adapter pattern).
-    // The outputMode="text" declaration for task-driven prose generation lives in the engine.
+  it("workExecutionPipelineService: outputMode='json' (Sprint 29K.3: task execution uses json for dual content+claims output)", async () => {
+    // Sprint 29K.3: generateTaskDraft changed from outputMode="text" to "json" so the specialist
+    // can return { content, claims } in a single LLM call with no second pass.
+    // The content field contains the full human-readable Completed Work.
+    // The claims field contains structured provenance metadata.
     const src = await readService("unifiedExecutionEngine.ts");
-    expect(src).toContain(`outputMode: "text"`);
-    // Comment must explain the reasoning: prose / markdown output
-    expect(src.toLowerCase()).toMatch(/prose|markdown|never json/i);
+    expect(src).toContain(`outputMode: "json"`);
+    // Claim emission addendum must be present in the source
+    expect(src).toContain("buildClaimEmissionAddendum");
   });
 
   it("selfReviewService: outputMode='text' (revision produces prose)", async () => {

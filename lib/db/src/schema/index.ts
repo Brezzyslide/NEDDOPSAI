@@ -144,3 +144,6 @@ export * from "./executionActions";
 // Sprint 29K.2 — Durable Evidence Foundation (Hybrid EvidencePack persistence)
 export * from "./completedWorkEvidenceSnapshots";
 export * from "./completedWorkEvidenceLinks";
+// Sprint 29K.3 — Claim Emission & Claim-to-Evidence Binding
+export * from "./completedWorkClaims";
+export * from "./completedWorkClaimEvidence";

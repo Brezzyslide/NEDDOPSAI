@@ -759,6 +759,6 @@ describe("orchestrateKnowledge — retrieval pipeline", () => {
   it("REQUIRED_RLS_TABLES count is 67 and includes retrieval_audit_events", async () => {
     const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db");
     expect(REQUIRED_RLS_TABLES).toContain("retrieval_audit_events");
-    expect(REQUIRED_RLS_TABLES).toHaveLength(73); // Sprint 29K.2: +2 evidence tables
+    expect(REQUIRED_RLS_TABLES).toHaveLength(75); // Sprint 29K.2: +2 evidence tables
   });
 });

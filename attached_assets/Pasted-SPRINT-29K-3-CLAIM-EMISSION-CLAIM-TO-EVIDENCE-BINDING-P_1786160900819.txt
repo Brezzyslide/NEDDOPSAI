@@ -1,0 +1,916 @@
+SPRINT 29K.3 — CLAIM EMISSION & CLAIM-TO-EVIDENCE BINDING
+
+PURPOSE
+
+Implement claim-level provenance on top of the durable evidence foundation proven in Sprint 29K.2.
+
+We are NOT building the Evidence UI in this sprint.
+
+The objective is to prove that when a specialist produces Completed Work, important findings and recommendations can be represented as structured claims and bound to the evidence actually available during that execution.
+
+The human-readable Completed Work remains the primary deliverable.
+
+Claim metadata is provenance metadata. It must not replace, rewrite, summarise, or degrade the report.
+
+==================================================
+NON-NEGOTIABLE PRINCIPLES
+==================================================
+
+1. Do not run a second LLM pass over Completed Work to reconstruct claims.
+
+2. Do not perform a second KRS retrieval for claim binding.
+
+3. Claims must be emitted during the same specialist generation that produces the work.
+
+4. Claim evidence may reference ONLY EvidenceChunks present in the EvidencePack used for that execution.
+
+5. Never treat passageSnapshot (first 800 chars) as automatically being the supporting passage.
+
+6. Direct observations require positive evidence.
+
+7. Absence findings require an explicit absence-search record, not merely "the model did not see anything".
+
+8. Inferences must be distinguishable from statements directly contained in source material.
+
+9. Recommendations must link to the finding(s) that justify them.
+
+10. External requirements must NOT be represented as authoritative unless supported by an approved external evidence source.
+
+11. No chain-of-thought is to be stored.
+
+12. Existing Completed Work prose, quality review, approval, export and evidence persistence behaviour must remain intact.
+
+13. Evidence provenance failure must not silently become fabricated provenance.
+
+==================================================
+PART A — CLAIM TAXONOMY
+==================================================
+
+Implement canonical:
+
+type ClaimType =
+  | "observation"
+  | "absence_finding"
+  | "inference"
+  | "external_requirement"
+  | "recommendation";
+
+Definitions:
+
+observation
+= something directly supported by source evidence.
+
+Example:
+"Complaints must be acknowledged within three business days."
+
+absence_finding
+= a relevant requirement, control, responsibility, timeframe, process or other element was searched for but not found within the defined evidence scope.
+
+Example:
+"The policy does not define escalation ownership."
+
+inference
+= professional analysis derived from one or more supported observations/absence findings but not directly stated by the source.
+
+Example:
+"Unclear escalation ownership may result in inconsistent complaint handling."
+
+external_requirement
+= statement about legislation, regulation, standard, regulator guidance or other external authority.
+
+This type MUST fail validation unless a supporting evidence link comes from an explicitly recognised external/legislative source.
+
+Model training knowledge is NOT evidence.
+
+recommendation
+= proposed action derived from one or more findings.
+
+Example:
+"Define a named escalation owner and document their authority."
+
+==================================================
+PART B — DATABASE SCHEMA
+==================================================
+
+Create:
+
+completed_work_claims
+
+Minimum fields:
+
+id TEXT PRIMARY KEY
+execution_id TEXT NOT NULL
+completed_work_id TEXT NOT NULL
+version_id TEXT NOT NULL
+organization_id TEXT NOT NULL
+
+claim_text TEXT NOT NULL
+claim_type TEXT NOT NULL
+
+section_ref TEXT NULL
+confidence REAL NULL
+reasoning_summary TEXT NULL
+
+related_claim_ids TEXT[] DEFAULT '{}'
+
+absence_record JSONB NULL
+
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+Constraints:
+
+claim_type CHECK IN:
+observation
+absence_finding
+inference
+external_requirement
+recommendation
+
+confidence, when present:
+0 <= confidence <= 1
+
+reasoning_summary:
+maximum 200 characters
+
+version_id FK → completed_work_versions.id
+
+Apply tenant RLS using the same organisation isolation model as the other completed_work tables.
+
+Indexes:
+
+(completed_work_id, organization_id)
+(version_id, organization_id)
+(execution_id)
+(claim_type)
+
+--------------------------------------------------
+
+Create:
+
+completed_work_claim_evidence
+
+Fields:
+
+id TEXT PRIMARY KEY
+claim_id TEXT NOT NULL
+evidence_link_id TEXT NOT NULL
+organization_id TEXT NOT NULL
+
+relationship TEXT NOT NULL
+
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+FK:
+
+claim_id
+→ completed_work_claims.id
+ON DELETE CASCADE
+
+evidence_link_id
+→ completed_work_evidence_links.id
+ON DELETE CASCADE
+
+relationship CHECK IN:
+
+direct_support
+context
+contradiction
+external_authority
+searched_for_absence
+
+UNIQUE:
+(claim_id, evidence_link_id, relationship)
+
+Apply tenant RLS.
+
+==================================================
+PART C — SPECIALIST OUTPUT CONTRACT
+==================================================
+
+Do NOT place claim JSON inside contentMarkdown.
+
+The specialist response should have two logical outputs:
+
+1. Human-readable work
+2. Structured claim metadata
+
+Use structured response/output capabilities already available in the current specialist execution architecture where possible.
+
+Canonical shape:
+
+{
+  "content": "<normal human-readable Completed Work>",
+  "claims": [
+    {
+      "clientClaimId": "F1",
+      "claimText": "...",
+      "claimType": "observation",
+      "sectionRef": "Findings",
+      "confidence": 0.94,
+      "reasoningSummary": "Directly stated in Section 2.1",
+      "evidence": [
+        {
+          "chunkId": "<EvidencePack chunk ID>",
+          "relationship": "direct_support",
+          "supportingSpan": "..."
+        }
+      ],
+      "relatedClaimIds": []
+    }
+  ]
+}
+
+clientClaimId is temporary execution-local identity.
+
+Generate permanent UUID claim IDs during persistence.
+
+Resolve relatedClaimIds from temporary clientClaimId → persisted UUID.
+
+==================================================
+PART D — SUPPORTING SPAN
+==================================================
+
+This is important.
+
+EvidencePack contains full chunk text.
+
+The specialist may identify:
+
+supportingSpan
+
+for a claim.
+
+But the server MUST verify that supportingSpan exists verbatim within the referenced EvidenceChunk.text.
+
+Do not trust the LLM blindly.
+
+If:
+
+chunkId exists in EvidencePack
+AND
+supportingSpan is an exact substring of EvidenceChunk.text
+
+then persist the binding.
+
+If the span does not exist:
+
+do not fabricate or fuzzy-rewrite the quotation.
+
+Mark/reject that evidence binding.
+
+Do not fail the entire Completed Work because one claim binding is invalid.
+
+Record the provenance validation failure.
+
+Do NOT replace the supportingSpan with passageSnapshot.
+
+==================================================
+PART E — CLAIM EVIDENCE VALIDATION
+==================================================
+
+Before persistence validate every claim.
+
+OBSERVATION
+
+Requires:
+at least one valid direct_support evidence link.
+
+The referenced chunkId MUST exist in the execution EvidencePack.
+
+If not:
+claim provenance status = unsupported.
+
+Do not present it internally as grounded.
+
+--------------------------------------------------
+
+INFERENCE
+
+Requires:
+at least one relatedClaimId pointing to:
+
+observation
+or
+absence_finding
+or another supported inference where recursion is safely bounded.
+
+Evidence links may additionally provide context.
+
+Inference must not masquerade as direct source wording.
+
+--------------------------------------------------
+
+RECOMMENDATION
+
+Requires:
+at least one relatedClaimId pointing to a finding.
+
+A recommendation may have supporting evidence but must primarily derive from findings.
+
+Example:
+
+F1 = absence_finding
+"No escalation owner is defined."
+
+R1 = recommendation
+"Define a named escalation owner."
+
+R1.relatedClaimIds = ["F1"]
+
+--------------------------------------------------
+
+EXTERNAL_REQUIREMENT
+
+Requires:
+
+relationship = external_authority
+
+AND evidence source type / authority classification demonstrates that the source is an approved external authority.
+
+Until an approved external evidence provider/source exists:
+
+external_requirement claims without such evidence MUST be marked unsupported/rejected.
+
+Training knowledge does not satisfy this requirement.
+
+==================================================
+PART F — CONTRADICTIONS
+==================================================
+
+Support structured contradiction findings.
+
+Example:
+
+Claim:
+
+"The policy contains conflicting acknowledgement timeframes."
+
+Evidence:
+
+chunk A:
+"within three (3) business days"
+
+chunk B:
+"within five (5) business days"
+
+Both evidence links must be persisted.
+
+Use relationship:
+
+contradiction
+
+for both relevant evidence links.
+
+Both supportingSpan values must independently pass exact-substring validation.
+
+Do not attempt to decide which statement is authoritative unless evidence supports that conclusion.
+
+==================================================
+PART G — ABSENCE FINDINGS
+==================================================
+
+This is the highest-integrity part of the sprint.
+
+Do NOT allow an absence_finding merely because the specialist says:
+
+"I could not find X."
+
+An absence claim requires structured retrieval evidence.
+
+Minimum AbsenceEvidenceRecord:
+
+{
+  "searchTerms": [],
+  "sourceScope": [],
+  "retrievalFilters": {
+    "specialistCode": "...",
+    "scopeMode": "...",
+    "minConfidenceThreshold": 0
+  },
+  "sectionsExamined": [],
+  "totalCandidatesRetrieved": 0,
+  "passedThresholdCount": 0,
+  "topRelevanceScores": [],
+  "matchingRequirementFound": false,
+  "confidenceOfAbsence": 0
+}
+
+IMPORTANT:
+
+Investigate the existing KRS architecture before implementing this.
+
+If the current single retrieval operation cannot truthfully provide claim-specific absence-search evidence, DO NOT invent it.
+
+In that case:
+
+1. implement the claim schema,
+2. allow the specialist to propose an absence claim,
+3. classify it as absence_unverified / unsupported provenance,
+4. document exactly what KRS extension would be required in Sprint 29K.4.
+
+Do NOT perform hidden additional retrievals in this sprint merely to make the absence claim appear proven.
+
+We need truth, not a green test.
+
+==================================================
+PART H — PROVENANCE STATUS
+==================================================
+
+Add an explicit provenance state to claims if required by the architecture.
+
+Recommended:
+
+type ClaimProvenanceStatus =
+  | "grounded"
+  | "unsupported"
+  | "unverified_absence"
+  | "invalid_binding";
+
+This prevents an emitted claim from automatically being treated as proven merely because a row exists.
+
+Persist the status.
+
+A claim row is NOT equivalent to a grounded claim.
+
+==================================================
+PART I — PERSISTENCE ORDER
+==================================================
+
+Required order:
+
+Evidence retrieval
+↓
+Specialist generation
+↓
+Claim metadata available
+↓
+Self-review
+↓
+createDraft()
+↓
+versionId known
+↓
+persistExecutionEvidence()
+↓
+persist claims
+↓
+bind claims to persisted evidence links
+
+Claim binding must use:
+
+executionId
+versionId
+chunkId
+
+to resolve the correct completed_work_evidence_links row.
+
+Never bind by source title or citation string.
+
+==================================================
+PART J — PROVENANCE PERSISTENCE FAILURE OBSERVABILITY
+==================================================
+
+Sprint 29K.2 found:
+
+evidence persistence failure is only logged.
+
+Close this small gap while implementing claim persistence.
+
+Add a durable provenance status at the Completed Work version or equivalent execution provenance level.
+
+Suggested states:
+
+pending
+complete
+partial
+failed
+not_available_legacy
+
+Choose the location that best fits the existing schema after inspection.
+
+Requirements:
+
+New post-29K executions start as pending.
+
+Evidence + claim persistence successful:
+complete
+
+Evidence persisted but one or more claim bindings invalid:
+partial
+
+Evidence persistence fails:
+failed
+
+Historical versions created before provenance support:
+not_available_legacy or equivalent derived state.
+
+Do NOT retroactively label historical work as failed.
+
+Persist a structured audit event for provenance failure containing:
+
+organizationId
+executionId
+completedWorkId
+versionId
+failureStage
+errorCode/message
+timestamp
+
+No source passage text in error logs.
+
+Completed Work itself must survive provenance failure.
+
+==================================================
+PART K — CONTROLLED TRUTH FIXTURE
+==================================================
+
+Use the controlled Complaints Management Policy from Sprint 29K.
+
+Ground truth:
+
+C1
+"Complaints are received and recorded by the Complaints Officer."
+Type: observation
+Expected: grounded
+
+C2
+"All complaints must be logged in the Complaints Register within one business day."
+Type: observation
+Expected: grounded
+
+C3
+"Complaints must be acknowledged in writing within three business days."
+Type: observation
+Expected: grounded
+
+C4
+"The policy requires complaints to be resolved within 10 days."
+Expected:
+MUST NOT become grounded.
+No supporting passage exists.
+
+C5
+"The policy contains conflicting acknowledgement timeframes."
+Type: observation/contradiction
+Expected:
+grounded only when BOTH:
+3-day passage
+AND
+5-day passage
+are linked.
+
+C6
+"The policy does not define an escalation timeframe."
+Type: absence_finding
+
+Expected:
+If claim-specific absence retrieval is not currently available:
+unverified_absence
+
+DO NOT falsely mark grounded.
+
+C7
+"The policy does not define who is responsible for escalation decisions."
+Same rule as C6.
+
+C8
+"No appeal or review mechanism is specified."
+Same rule.
+
+C9
+"Unclear escalation responsibilities may result in inconsistent handling of high-severity complaints."
+Type: inference
+
+Expected:
+must link to C6/C7 or equivalent underlying findings.
+Must not be represented as direct policy wording.
+
+C10
+"Complaint records must be retained for seven years."
+Type: observation
+Expected: grounded.
+
+C11
+"ISO 10002 requires organisations to acknowledge complaints within a defined timeframe."
+Type: external_requirement
+
+Expected:
+unsupported unless an approved ISO/external authority source is actually present in EvidencePack.
+
+R1
+"Define a named escalation owner and document their authority."
+Type: recommendation
+Expected:
+links to C6/C7.
+
+R2
+"Reconcile the conflicting acknowledgement timeframes."
+Type: recommendation
+Expected:
+links to C5.
+
+R3
+"Establish and document a complaint resolution timeframe."
+Type: recommendation
+Expected:
+links to the relevant absence finding.
+
+==================================================
+PART L — ADVERSARIAL TESTS
+==================================================
+
+Test these deliberately.
+
+1. Specialist references chunkId not present in EvidencePack.
+
+Expected:
+binding rejected.
+
+2. Specialist references a valid chunk but invents supportingSpan.
+
+Expected:
+exact substring validation fails.
+
+3. Specialist uses a passage that discusses complaints but does not support the claim.
+
+Determine what validation currently catches and what remains semantic/model-level risk.
+
+Do not overclaim deterministic semantic verification if none exists.
+
+4. Observation has zero evidence.
+
+Expected:
+unsupported.
+
+5. Recommendation has no parent finding.
+
+Expected:
+unsupported or invalid_binding.
+
+6. Inference is presented as observation.
+
+Determine whether schema/prompt validation catches this.
+
+If semantic classification remains model-dependent, state this explicitly.
+
+7. External requirement uses organisational policy as evidence.
+
+Expected:
+not grounded as external authority.
+
+8. Contradiction has only one passage.
+
+Expected:
+not grounded as contradiction.
+
+9. Cross-tenant chunk ID supplied.
+
+Expected:
+rejected before binding.
+
+10. Evidence persistence fails but claims exist.
+
+Expected:
+Completed Work survives.
+provenance status = failed/partial as appropriate.
+No orphan claim-evidence links.
+
+==================================================
+PART M — APPROVED VERSION INTEGRITY
+==================================================
+
+Claims must belong to completed_work_versions.
+
+Scenario:
+
+V1 generated
+→ claims A
+
+V2 generated
+→ claims B
+
+Approve V2
+
+Create V3
+
+Expected:
+
+Approved viewer/evidence resolution:
+V2 content
+V2 quality
+V2 evidence
+V2 claims
+
+V1 claims remain historical.
+V3 claims remain newer/unapproved.
+
+No claim metadata may float at completedWorkId level without version ownership.
+
+==================================================
+PART N — TENANT ISOLATION
+==================================================
+
+Apply and prove RLS for:
+
+completed_work_claims
+completed_work_claim_evidence
+
+Tenant A must not read:
+
+Tenant B claims
+Tenant B claim evidence
+Tenant B evidence via a guessed claimId
+Tenant B evidence via a guessed chunk/evidenceLinkId
+
+Also validate organisation consistency during persistence.
+
+Do not rely solely on RLS after bad data has already been inserted.
+
+==================================================
+PART O — HUMAN-READABLE OUTPUT REGRESSION
+==================================================
+
+Prove claim emission does NOT degrade Completed Work.
+
+Compare before/after:
+
+content length
+heading structure
+findings
+recommendations
+citations
+quality score
+
+contentMarkdown must contain:
+
+NO claim JSON
+NO clientClaimId
+NO internal chunk IDs
+NO specialistRunId
+NO workforceRoleCode
+NO provenance metadata
+
+Viewer/PDF/DOCX must remain clean human-readable documents.
+
+Sprint 29J.2 approved-version integrity remains intact.
+
+Sprint 29J.3 normalisation remains intact.
+
+==================================================
+PART P — SELF-REVIEW
+==================================================
+
+Do not replace existing self-review.
+
+EvidencePack still reaches:
+
+reviewEvidenceCitationGrounding()
+
+Existing quality dimensions remain operational.
+
+Claim validation is an additional provenance layer.
+
+Do not confuse:
+
+quality score
+with
+claim provenance status.
+
+A report may score 85/100 while containing an unsupported individual claim.
+
+That distinction is intentional.
+
+==================================================
+PART Q — REQUIRED TEST LEVELS
+==================================================
+
+Unit tests:
+
+taxonomy validation
+substring verification
+claim relationship validation
+external authority restriction
+contradiction requirements
+provenance status calculation
+
+Mocked integration:
+
+specialist response parsing
+claim persistence
+claim → evidence binding
+invalid chunk rejection
+cross-work/version binding rejection
+persistence failure behaviour
+
+Real DB:
+
+migration
+RLS
+FKs
+version ownership
+claim rows
+claim-evidence rows
+cross-tenant denial
+idempotency
+
+Controlled truth fixture:
+
+run the Complaints Management Policy answer key through the implementation.
+
+Do not call a result "grounded" unless the stored evidence actually satisfies the grounding rules.
+
+==================================================
+PART R — FINAL EVIDENCE TABLE
+==================================================
+
+Report for every controlled claim:
+
+Claim
+Claim type
+Emitted?
+Provenance status
+Evidence chunk count
+Supporting span verified?
+Related claims
+Expected ground truth
+Actual result
+PASS / FAIL
+
+Then calculate:
+
+SUPPORTED OBSERVATION PRECISION
+
+grounded observations that are genuinely supported
+/
+all observations marked grounded
+
+UNSUPPORTED CLAIM ESCAPE RATE
+
+unsupported claims incorrectly marked grounded
+/
+all intentionally unsupported test claims
+
+CONTRADICTION ACCURACY
+
+correctly grounded contradictions
+/
+known contradictions
+
+RECOMMENDATION LINKAGE
+
+recommendations with valid parent findings
+/
+all recommendations
+
+ABSENCE INTEGRITY
+
+absence claims correctly classified as grounded OR unverified_absence according to available retrieval proof
+/
+all known absence claims
+
+The target is not maximum claim count.
+
+The target is that the system does not lie about provenance.
+
+==================================================
+FINAL QUESTIONS
+==================================================
+
+Answer explicitly:
+
+1. Are claims emitted during the original specialist generation?
+2. Is a second LLM used to reconstruct claims?
+3. Is a second KRS retrieval performed?
+4. Can a claim bind to a chunk outside its EvidencePack?
+5. Can an invented quotation be persisted as a verified supporting span?
+6. Can an observation with no evidence be marked grounded?
+7. Can a contradiction be grounded with only one side?
+8. Are inference claims visibly distinct in stored metadata?
+9. Are recommendations linked to their parent findings?
+10. Can training knowledge satisfy an external_requirement?
+11. Can absence findings currently be genuinely proven?
+12. If not, are they honestly marked unverified_absence?
+13. Are claims pinned to the exact Completed Work version?
+14. Can newer revisions alter approved-version claims?
+15. Does provenance failure remain durably visible?
+16. Does Completed Work survive provenance failure?
+17. Does claim metadata leak into viewer/PDF/DOCX?
+18. Is tenant isolation enforced at both write and read boundaries?
+19. What semantic grounding risks remain model-dependent?
+20. Is the architecture ready for the Evidence UI?
+
+==================================================
+FINAL VERDICT
+==================================================
+
+Return exactly one:
+
+PROVEN — CLAIM-LEVEL PROVENANCE READY FOR EVIDENCE UI
+
+PARTIALLY PROVEN — CLAIM BINDING WORKS BUT SPECIFY REMAINING INTEGRITY GAP
+
+BLOCKED — CLAIM PROVENANCE CAN MISREPRESENT SUPPORT
+
+Do not build the Evidence UI in this sprint.
+
+Stop after implementation, tests, controlled truth evaluation and final report.

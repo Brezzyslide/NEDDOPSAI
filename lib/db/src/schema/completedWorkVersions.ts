@@ -49,4 +49,18 @@ export const completedWorkVersionsTable = pgTable("completed_work_versions", {
 
   createdByUserId: text("created_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+  /**
+   * Sprint 29K.3 — Durable provenance lifecycle for this version.
+   *
+   *   not_available_legacy — version created before Sprint 29K provenance support
+   *   pending              — provenance persistence in progress (set before fire-and-forget)
+   *   complete             — evidence + all claims persisted successfully
+   *   partial              — evidence persisted but one or more claim bindings invalid
+   *   failed               — evidence persistence itself failed
+   *
+   * A row with provenanceStatus = "not_available_legacy" is not the same as "failed".
+   * Do not retroactively label historical work as failed.
+   */
+  provenanceStatus: text("provenance_status").notNull().default("not_available_legacy"),
 });
