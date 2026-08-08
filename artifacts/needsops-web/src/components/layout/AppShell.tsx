@@ -99,6 +99,18 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const base   = `/app/${orgSlug}`;
   const active = (path: string) => location === base + path;
 
+  // Role-gated nav: fetch the current user's membership role in this org.
+  // Knowledge system (Library / Memory / Blueprint Studio) is admin/owner-only.
+  const { data: meOrgsData } = useQuery({
+    queryKey:  ["me-orgs"],
+    queryFn:   () => apiFetch("/v1/me/organisations").then(r => r.ok ? r.json() : { organisations: [] }),
+    staleTime: 5 * 60_000,
+  });
+  const orgRole: string =
+    (meOrgsData?.organisations as Array<{ slug: string; role: string }> | undefined)
+      ?.find(o => o.slug === orgSlug)?.role ?? "member";
+  const isKnowledgeAdmin = orgRole === "owner" || orgRole === "admin";
+
   // Navigation badge — server-derived unread count, refreshed every 60s
   // and invalidated by notification mutations via queryClient.invalidateQueries
   const { data: unreadData } = useQuery({
@@ -144,9 +156,11 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
           <div className="border-t border-[#1E3A5F]/60 pt-3">
             <NavSection items={OPERATIONS_NAV} base={base} active={active} setLocation={setLocation} label="Operations" />
           </div>
-          <div className="border-t border-[#1E3A5F]/60 pt-3">
-            <NavSection items={KNOWLEDGE_NAV}   base={base} active={active} setLocation={setLocation} label="Knowledge" />
-          </div>
+          {isKnowledgeAdmin && (
+            <div className="border-t border-[#1E3A5F]/60 pt-3">
+              <NavSection items={KNOWLEDGE_NAV} base={base} active={active} setLocation={setLocation} label="Knowledge" />
+            </div>
+          )}
           <div className="border-t border-[#1E3A5F]/60 pt-3">
             <NavSection items={GOVERNANCE_NAV}  base={base} active={active} setLocation={setLocation} label="Governance" />
           </div>

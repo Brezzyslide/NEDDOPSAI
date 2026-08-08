@@ -826,8 +826,13 @@ export class UnifiedExecutionEngine {
 
     if (request.checkpointData) {
       blueprint = request.checkpointData.blueprint;
-      manifest  = request.checkpointData.manifest;
-    } else {
+      // manifest may be null when clarification was required before the work
+      // package was assembled (i.e. clarification fired during evidence gathering).
+      // In that case fall through to the normal assembly path below.
+      manifest = request.checkpointData.manifest ?? (null as unknown as WorkPackageManifest);
+    }
+
+    if (!request.checkpointData) {
       await progress("selecting_blueprint");
       blueprint = null;
       const t1 = Date.now();
@@ -884,6 +889,20 @@ export class UnifiedExecutionEngine {
         selectedSpecialist,
       });
       manifest = assembleResult.manifest;
+    }
+
+    // ── Guard: manifest must be present before proceeding ────────────────────
+    // manifest can be null when a durable checkpoint was created BEFORE the work
+    // package was assembled (e.g. clarification was needed during evidence gathering).
+    // In that case, assembling from the checkpoint is impossible — surface a clear,
+    // actionable error rather than crashing with a TypeError on manifest.executionId.
+    if (!manifest!) {
+      return {
+        outcome: "error" as const,
+        message:
+          "This task cannot be resumed — the work package was not captured before " +
+          "your question. Please start a new conversation and describe the task again.",
+      };
     }
 
     // ── Sprint 29F.1 Part 5: Manifest integrity hash ──────────────────────────

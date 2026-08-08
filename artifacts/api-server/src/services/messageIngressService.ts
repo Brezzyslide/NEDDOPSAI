@@ -160,7 +160,7 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     // acknowledge immediately.
     resumeFromCheckpointById({
       checkpointId:        checkpoint.id,
-      checkpoint:          resumeResult.checkpoint!,
+      checkpoint:          resumeResult.checkpoint ?? ({} as any),
       conversationId,
       organizationId,
       requesterId:         userId,

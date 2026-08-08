@@ -512,7 +512,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           payload: {
             originalRequest: userRequest,
             blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
-            manifest: (result as { manifest?: WorkPackageManifest }).manifest!,
+            manifest: (result as { manifest?: WorkPackageManifest }).manifest ?? null,
           },
         }).catch(err =>
           console.warn("[ExecutionCoordinator] Failed to persist checkpoint (in-memory fallback active):", err?.message),
