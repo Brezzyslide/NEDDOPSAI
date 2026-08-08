@@ -25,25 +25,55 @@ export type ClaimType =
   | "recommendation";
 
 export type ClaimProvenanceStatus =
-  | "grounded"
-  | "unsupported"
-  | "unverified_absence"
-  | "invalid_binding";
+  | "grounded"              // all validation rules satisfied
+  | "support_uncertain"     // span verified but deterministic material conflict detected
+  | "unsupported"           // required evidence or parent links absent/invalid
+  | "unsupported_external"  // external_requirement with no approved external-authority source
+  | "invalid_binding"       // evidence bindings failed span/chunk validation
+  | "verified_absence"      // absence_finding: targeted search complete, no matching requirement found
+  | "unverified_absence"    // absence_finding: retrieval insufficient to prove absence
+  | "contradicted_absence"  // absence_finding: targeted search found the supposedly absent requirement
+  | "provenance_unavailable"; // provenance chain could not be computed
+
+export interface SourceCoverageItem {
+  sourceId: string;
+  sourceVersionId: string;
+  sourceTitle?: string;
+  fullyIngested: boolean;
+  searchable: boolean;
+}
 
 export interface AbsenceEvidenceRecord {
   searchTerms: string[];
   sourceScope: string[];
+  /** Source version IDs searched — extends 29K.3 sourceScope (which was source IDs). */
+  sourceVersionScope?: string[];
+  /** Human-readable scope label (e.g. "document scope: \"Complaints Management Policy v1.0\""). */
+  scopeLabel?: string;
   retrievalFilters: {
-    specialistCode: string;
+    specialistCode: string | null;
     scopeMode: string;
+    /** Retrieval method used: lexical | semantic | hybrid */
+    retrievalMethod?: string;
     minConfidenceThreshold: number;
   };
+  /** Per-source ingestion/searchability coverage. */
+  sourceCoverage?: SourceCoverageItem[];
   sectionsExamined: string[];
   totalCandidatesRetrieved: number;
   passedThresholdCount: number;
   topRelevanceScores: number[];
   matchingRequirementFound: boolean;
-  confidenceOfAbsence: number;
+  /** Chunk IDs that contradicted the absence claim (from targeted search). */
+  contradictoryEvidenceLinkIds?: string[];
+  /** Null when confidence cannot be defensibly derived from measurable signals. */
+  confidenceOfAbsence: number | null;
+  /** Final absence verification outcome. */
+  verificationStatus?: "verified_absence" | "unverified_absence" | "contradicted_absence";
+  /** True when the claim scope exceeds the search scope. */
+  scopeOverreachDetected?: boolean;
+  /** Human-readable explanation when scope overreach is detected. */
+  scopeOverreachReason?: string;
 }
 
 export const completedWorkClaimsTable = pgTable(

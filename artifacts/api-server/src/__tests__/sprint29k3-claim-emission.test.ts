@@ -548,7 +548,8 @@ describe("claimValidationService — unit tests", () => {
       expect(claims[0].provenanceStatus).toBe("grounded");
     });
 
-    // EXTERNAL REQUIREMENT (C11) — unsupported because no external source in pack
+    // EXTERNAL REQUIREMENT (C11) — unsupported_external because no approved source in pack
+    // Sprint 29K.4: renamed "unsupported" → "unsupported_external" for external_requirement misses
     it("C11: external_requirement unsupported when no approved external source in EvidencePack", () => {
       const raw: RawClaim[] = [{
         clientClaimId: "C11",
@@ -559,7 +560,7 @@ describe("claimValidationService — unit tests", () => {
         relatedClaimIds: [],
       }];
       const { claims } = validateClaimBatch(raw, CMP_EVIDENCE_PACK);
-      expect(claims[0].provenanceStatus).toBe("unsupported");
+      expect(claims[0].provenanceStatus).toBe("unsupported_external");
     });
 
     it("C11 variant: external_requirement grounded when actual external source present", () => {
@@ -752,7 +753,7 @@ describe("claimValidationService — unit tests", () => {
     });
 
     // L7: External requirement uses org policy as evidence (not external authority)
-    it("L7: external_requirement using org policy as evidence is unsupported", () => {
+    it("L7: external_requirement using org policy as evidence is unsupported_external", () => {
       const raw: RawClaim[] = [{
         clientClaimId: "X7",
         claimText: "Legislation requires acknowledgement within 3 days.",
@@ -762,7 +763,8 @@ describe("claimValidationService — unit tests", () => {
       }];
       const { claims } = validateClaimBatch(raw, CMP_EVIDENCE_PACK);
       // cmp-03 is sourceType "policy" — not approved external authority
-      expect(claims[0].provenanceStatus).toBe("unsupported");
+      // Sprint 29K.4: renamed to "unsupported_external" for external_requirement misses
+      expect(claims[0].provenanceStatus).toBe("unsupported_external");
     });
 
     // L8: Contradiction has only one passage
@@ -1159,7 +1161,7 @@ describe("Sprint 29K.3 — Final Evidence Table", () => {
     expect(byId.get("C8")!.provenanceStatus).toBe("unverified_absence");
     expect(byId.get("C9")!.provenanceStatus).toBe("grounded"); // links C6/C7
     expect(byId.get("C10")!.provenanceStatus).toBe("grounded");
-    expect(byId.get("C11")!.provenanceStatus).toBe("unsupported"); // no external source
+    expect(byId.get("C11")!.provenanceStatus).toBe("unsupported_external"); // no external source (Sprint 29K.4)
     expect(byId.get("R1")!.provenanceStatus).toBe("grounded"); // links C6/C7
     expect(byId.get("R2")!.provenanceStatus).toBe("grounded"); // links C5
     expect(byId.get("R3")!.provenanceStatus).toBe("grounded"); // links C6
@@ -1211,8 +1213,10 @@ describe("Sprint 29K.3 — Final Evidence Table", () => {
 
     const allPass = claims.every(c => {
       if (c.clientClaimId === "C4") return c.provenanceStatus !== "grounded";
+      // Sprint 29K.4: C11 (external_requirement with no approved source) → "unsupported_external"
       const exp = ["C1","C2","C3","C5","C9","C10","R1","R2","R3"].includes(c.clientClaimId) ? "grounded"
                 : ["C6","C7","C8"].includes(c.clientClaimId) ? "unverified_absence"
+                : c.clientClaimId === "C11" ? "unsupported_external"
                 : "unsupported";
       return c.provenanceStatus === exp;
     });

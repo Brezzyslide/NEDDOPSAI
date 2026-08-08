@@ -35,6 +35,12 @@ import type {
   AbsenceEvidenceRecord,
 } from "@workspace/db";
 import type { ClaimRelationship } from "@workspace/db";
+import {
+  classifySpanSupport,
+  detectClaimTypeRisk,
+  type SupportClassification,
+  type ConflictSignal,
+} from "./semanticSupportValidator.js";
 
 // ─── Raw claim shape as emitted by the specialist LLM ─────────────────────────
 
@@ -73,6 +79,16 @@ export interface ValidatedEvidenceBinding {
   spanRejected: boolean;
   /** Rejection reason if span failed verification. */
   spanRejectionReason?: string;
+  /**
+   * Sprint 29K.4: semantic support classification for the verified span.
+   * null when no span was provided or span failed verification.
+   */
+  semanticSupport: SupportClassification | null;
+  /**
+   * Sprint 29K.4: material fact conflict signals detected by the deterministic checker.
+   * Empty when semanticSupport = "supporting" or no span was verified.
+   */
+  semanticConflicts: ConflictSignal[];
 }
 
 export interface ValidatedClaim {
@@ -123,8 +139,10 @@ const REASONING_SUMMARY_MAX_CHARS = 200;
 /** Source types that qualify as approved external authority. */
 const APPROVED_EXTERNAL_SOURCE_TYPES = new Set([
   "legislation",
+  "legislation_reference",
   "regulation",
   "standard",
+  "standards",          // plural form used by the enrichment pipeline
   "regulator_guidance",
   "external_authority",
 ]);
@@ -230,10 +248,25 @@ function validateSingleClaim(
 
     let spanRejected = false;
 
+    // Sprint 29K.4: semantic support classification for verified spans
+    let semanticSupport: SupportClassification | null = null;
+    let semanticConflicts: ConflictSignal[] = [];
+
     if (ev.supportingSpan) {
       if (verifySpan(ev.supportingSpan, chunk.text)) {
         supportingSpan = ev.supportingSpan;
         spanVerified = true;
+        // Sprint 29K.4: classify semantic support — does the span actually support the claim?
+        const spanResult = classifySpanSupport(ev.supportingSpan, chunk.text, claim.claimText);
+        semanticSupport = spanResult.classification;
+        semanticConflicts = spanResult.conflicts;
+        if (spanResult.conflicts.length > 0) {
+          for (const c of spanResult.conflicts) {
+            failures.push(
+              `Semantic support conflict [${c.signalType}]: ${c.description}`,
+            );
+          }
+        }
       } else {
         // Do NOT replace with passageSnapshot. Record the failure.
         // supportingSpan stays null (rejected quotation must not be persisted).
@@ -253,6 +286,8 @@ function validateSingleClaim(
       spanVerified,
       spanRejected,
       spanRejectionReason,
+      semanticSupport,
+      semanticConflicts,
     });
   }
 
@@ -284,23 +319,18 @@ function validateSingleClaim(
 
     case "absence_finding": {
       /**
-       * HONEST ABSENCE FINDING CLASSIFICATION (Part G):
+       * HONEST ABSENCE FINDING CLASSIFICATION:
        *
-       * The current KRS architecture uses a single bulk retrieval. There is no
-       * per-claim targeted absence search. The specialist LLM cannot provide a
-       * genuine AbsenceEvidenceRecord because the platform does not execute one.
+       * Absence findings start as "unverified_absence" after basic validation.
+       * The absenceVerificationService (Sprint 29K.4) then performs targeted
+       * per-claim searches and upgrades the status to:
+       *   - "verified_absence"    when targeted search finds nothing in fully-ingested sources
+       *   - "contradicted_absence" when targeted search finds the supposedly absent requirement
+       *   - "unverified_absence"  (unchanged) when coverage or retrieval is insufficient
        *
-       * Therefore: absence_finding claims MUST be classified as "unverified_absence"
-       * regardless of what the model emits.
-       *
-       * Sprint 29K.4 will add targeted per-claim absence retrieval to KRS, at
-       * which point this rule can be updated to "grounded" when the structured
-       * retrieval evidence is genuinely available.
+       * This default status is correct and must not be changed here.
+       * "No result from bulk retrieval" does NOT prove absence.
        */
-      failures.push(
-        "absence_finding: KRS single-retrieval architecture cannot provide claim-specific absence proof. " +
-        "Classified as unverified_absence. Sprint 29K.4 will add targeted retrieval support.",
-      );
       provenanceStatus = "unverified_absence";
       break;
     }
@@ -337,18 +367,20 @@ function validateSingleClaim(
       );
       if (!externalBinding) {
         failures.push(
-          "external_requirement requires relationship=external_authority from an approved external source — no such binding found",
+          "external_requirement requires relationship=external_authority from an approved external source — " +
+          "no such binding found. Model training knowledge cannot satisfy this requirement.",
         );
-        provenanceStatus = "unsupported";
+        provenanceStatus = "unsupported_external";
         break;
       }
       const extChunk = chunkIndex.get(externalBinding.chunkId);
       if (!extChunk || !isApprovedExternalSource(extChunk)) {
         failures.push(
-          `external_requirement: source type "${extChunk?.sourceType ?? "unknown"}" is not an approved external authority. ` +
-          "Training knowledge does not satisfy this requirement. Claim is unsupported.",
+          `external_requirement: source type "${extChunk?.sourceType ?? "unknown"}" is not an approved external authority ` +
+          "(requires: legislation, regulation, standards, legislation_reference, regulator_guidance, or external_authority). " +
+          "Model training knowledge does not qualify. Status: unsupported_external.",
         );
-        provenanceStatus = "unsupported";
+        provenanceStatus = "unsupported_external";
         break;
       }
       const hasRejectedSpans = validBindings.some((b) => b.spanRejected);
@@ -376,6 +408,42 @@ function validateSingleClaim(
     }
     // 0 contradictions: falls through to normal observation rule (may be grounded via direct_support)
     // ≥2 contradictions: grounded (subject to span checks above)
+  }
+
+  // ── Sprint 29K.4: Semantic support downgrade ─────────────────────────────
+  // If any verified span has a material conflict detected by the deterministic
+  // checker, downgrade grounded → support_uncertain.
+  // This fires AFTER type-specific rules so invalid_binding still takes priority.
+  if (provenanceStatus === "grounded") {
+    const hasSemanticConflict = validBindings.some(
+      (b) => b.semanticSupport === "uncertain" || b.semanticSupport === "contradictory",
+    );
+    if (hasSemanticConflict) {
+      const allConflicts = validBindings.flatMap((b) => b.semanticConflicts);
+      failures.push(
+        `Semantic support check: ${allConflicts.length} material conflict(s) detected — ` +
+        allConflicts.map((c) => c.description).join("; ") +
+        ". Span exists but may not support the claim. Status: support_uncertain.",
+      );
+      provenanceStatus = "support_uncertain";
+    }
+  }
+
+  // ── Sprint 29K.4: Claim-type integrity gate ───────────────────────────────
+  // If the specialist labelled a claim as "observation" but the claim text
+  // contains inference or absence language, downgrade grounded → support_uncertain.
+  // We do NOT alter claimType (the stored model output); only the provenanceStatus
+  // is downgraded to prevent inference from appearing as documentary fact.
+  if (provenanceStatus === "grounded" && claim.claimType === "observation") {
+    const typeRisk = detectClaimTypeRisk(claim.claimText, claim.claimType);
+    if (typeRisk.risk !== "none") {
+      failures.push(
+        `Claim-type integrity check [${typeRisk.risk}]: ` +
+        typeRisk.signals.join("; ") +
+        " — provenanceStatus downgraded from grounded to support_uncertain.",
+      );
+      provenanceStatus = "support_uncertain";
+    }
   }
 
   return {

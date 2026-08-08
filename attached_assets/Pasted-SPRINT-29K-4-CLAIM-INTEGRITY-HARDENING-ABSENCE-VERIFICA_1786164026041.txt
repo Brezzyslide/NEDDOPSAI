@@ -1,0 +1,701 @@
+SPRINT 29K.4 — CLAIM INTEGRITY HARDENING & ABSENCE VERIFICATION
+
+This sprint follows Sprint 29K.3.
+
+Sprint 29K.3 established:
+- claims are emitted during the original specialist generation
+- no second LLM reconstruction pass
+- no second KRS retrieval for ordinary positive claim binding
+- claims are version-scoped
+- observations require evidence bindings
+- supporting spans must exist verbatim in the referenced EvidencePack chunk
+- contradictions require both sides
+- recommendations require related parent claims
+- external requirements cannot be grounded from model training knowledge
+- absence findings are currently honestly stored as unverified_absence
+- provenance failures are durably recorded
+- evidence/claim metadata does not leak into the human-readable Completed Work
+- tenant isolation is enforced
+
+DO NOT redesign or replace these mechanisms.
+
+The purpose of Sprint 29K.4 is to close THREE remaining integrity risks:
+
+1. SEMANTIC SUPPORT RISK
+A real passage may exist and contain the quoted words, while not actually supporting the claim made from it.
+
+2. CLAIM-TYPE RISK
+The specialist may incorrectly label an inference as an observation, allowing professional interpretation to appear as documentary fact.
+
+3. ABSENCE-PROOF RISK
+“Nothing was retrieved” does not prove “the requirement is absent.”
+
+This is an integrity sprint, not an Evidence UI sprint.
+
+Do not build the Evidence UI yet.
+
+========================================================
+PART A — FIRST INVESTIGATE THE CURRENT IMPLEMENTATION
+========================================================
+
+Before changing code, inspect and report:
+
+1. Current ClaimEvidenceRecord / completed_work_claims schema.
+2. Current provenance status values.
+3. claimValidationService.ts validation rules.
+4. claimPersistenceService.ts.
+5. EvidencePack and EvidenceChunk fields.
+6. KRS retrieval functions and query interfaces.
+7. Current retrieval_audit_events fields.
+8. How sourceVersionId, sourceType, authorityLevel, sectionTitle, pageNumber and chunk text flow into EvidencePack.
+9. Current specialist claim-emission prompt.
+10. Current handling of:
+   - observation
+   - absence_finding
+   - inference
+   - recommendation
+   - external_requirement
+   - contradiction
+11. Whether the system has any existing semantic claim/evidence validation beyond exact supporting-span verification.
+12. Whether task/work-package metadata already indicates that a task requires evidence.
+
+Do not assume the Sprint 29K.3 report is perfectly accurate. Verify current code and DB schema.
+
+Clearly label findings by evidence level.
+
+========================================================
+PART B — DEFINE THE CLAIM INTEGRITY CONTRACT
+========================================================
+
+Implement a server-enforced integrity contract.
+
+The specialist does NOT get to decide by itself that a claim is grounded.
+
+Claim type determines the validation rule.
+
+Required conceptual rules:
+
+OBSERVATION
+- must reference EvidencePack evidence
+- referenced chunk must belong to the execution EvidencePack
+- source/version must match
+- supporting span must exist in the referenced full chunk
+- evidence must substantively support the claim
+- material factual elements must not contradict the evidence
+
+ABSENCE_FINDING
+- must go through the targeted absence-verification process defined below
+- cannot become verified_absence merely because ordinary retrieval returned no result
+
+INFERENCE
+- must be explicitly stored as claimType=inference
+- must have one or more valid grounded/verified parent claims
+- cannot masquerade as direct documentary observation
+- should use appropriately qualified language where appropriate
+- evidence chain must remain visible through relatedClaimIds
+
+RECOMMENDATION
+- must have valid parent finding(s)
+- cannot be independently represented as a documentary fact
+- parent claims must exist in the same Completed Work version / tenant
+
+EXTERNAL_REQUIREMENT
+- must bind to an approved external-authority source
+- model training knowledge is never sufficient
+- if no trusted external source exists, status remains unsupported_external or equivalent
+
+CONTRADICTION
+- requires at least two competing evidence passages
+- both passages must be valid
+- the contradiction must concern the same material proposition
+- one passage alone can never establish a contradiction
+
+========================================================
+PART C — SEMANTIC SUPPORT VALIDATION
+========================================================
+
+Current exact-span verification answers:
+
+“Do these words exist in this chunk?”
+
+It does NOT answer:
+
+“Does this passage actually support this claim?”
+
+Close that gap.
+
+Example adversarial case:
+
+Evidence:
+“The Complaints Officer must acknowledge complaints within five business days.”
+
+Claim:
+“All complaints must be resolved within five business days.”
+
+A span containing “complaints” and “five business days” is real, but the claim is not supported.
+
+Design a layered validation mechanism.
+
+At minimum distinguish:
+
+1. passage_verified
+   The claimed supporting span genuinely exists in the referenced full chunk.
+
+2. semantic_support
+   Whether the evidence actually supports the material proposition.
+
+3. material_fact_consistency
+   Actors, actions, quantities, dates, timeframes, obligations, negation and other material facts must not conflict.
+
+Do not silently treat semantic similarity as proof.
+
+Do not use a second unrestricted LLM to rewrite or reconstruct the approved claim.
+
+If a semantic model/judge is used, its judgement must be treated as a validation signal, not infallible truth.
+
+Investigate whether deterministic checks can first detect:
+- numbers
+- timeframes
+- named actors/roles
+- modal obligation terms such as must/should/may
+- negation
+- action verbs
+- materially different subjects/objects
+
+Then determine whether a bounded semantic entailment check is needed.
+
+Required outcome:
+
+A passage can be:
+- verified and supporting
+- verified but support_uncertain
+- verified but contradictory
+- invalid/not present
+
+A claim must never become grounded merely because its quotation exists.
+
+========================================================
+PART D — CLAIM-TYPE INTEGRITY
+========================================================
+
+The server must not blindly trust claimType emitted by the specialist.
+
+Investigate practical validation rules that distinguish documentary observations from interpretation.
+
+Test at least:
+
+Evidence:
+“The policy does not identify an escalation decision-maker.”
+
+Claim A:
+“The policy does not identify an escalation decision-maker.”
+Expected: absence_finding, NOT ordinary observation unless directly expressed by an authoritative passage.
+
+Claim B:
+“Lack of escalation ownership may lead to inconsistent complaint handling.”
+Expected: inference.
+
+Claim C:
+“Lack of escalation ownership causes inconsistent complaint handling.”
+Expected: inference and potentially support_uncertain because causation is stronger than the evidence.
+
+Claim D:
+“The organisation handles high-severity complaints inconsistently.”
+Expected: unsupported observation unless evidence directly demonstrates this.
+
+The validator should detect obvious type-rule violations.
+
+Do NOT claim perfect semantic classification.
+
+Where type cannot safely be established, downgrade the claim rather than accepting the model's preferred type.
+
+Report what remains model-dependent.
+
+========================================================
+PART E — TARGETED ABSENCE VERIFICATION
+========================================================
+
+This is the central requirement of Sprint 29K.4.
+
+Current unverified_absence behaviour is correct and must remain the default until verification succeeds.
+
+For each absence claim, perform a TARGETED evidence search specifically for that claim.
+
+This is an intentional additional KRS retrieval ONLY for evidence-required absence claims.
+
+It must NOT cause ordinary positive claims to re-retrieve evidence.
+
+Example claim:
+
+“The Complaints Management Policy does not define an escalation timeframe.”
+
+A single literal search for “escalation timeframe” is NOT sufficient.
+
+Generate/use a bounded concept search family such as:
+
+- escalation timeframe
+- escalation time limit
+- escalation deadline
+- escalation period
+- referral timeframe
+- management escalation
+- escalation procedure
+- high severity escalation
+
+Do not permit uncontrolled query explosion.
+
+Persist exactly what queries were executed.
+
+========================================================
+PART F — ABSENCE SEARCH UNIVERSE
+========================================================
+
+Before absence can be verified, establish the universe being searched.
+
+Persist:
+
+- organisationId
+- sourceId(s)
+- sourceVersionId(s)
+- source title/version display reference
+- search scope mode
+- specialistCode where applicable
+- whether each source/version is fully ingested/searchable
+- retrieval method
+- active threshold/configuration
+- search terms executed
+- number of candidates examined
+- relevant sections examined
+- top relevance scores
+- any matching/contradictory passages found
+
+A claim MUST NOT be broader than its search universe.
+
+Example:
+
+VALID:
+“No escalation timeframe was found in Complaints Management Policy v1.0.”
+
+INVALID unless separately proven:
+“The organisation has no escalation timeframe.”
+
+The first is document-scoped.
+The second is organisation-scoped.
+
+Implement scope validation.
+
+Persist a human-readable scope label, not merely UUIDs.
+
+========================================================
+PART G — ABSENCE OUTCOME MODEL
+========================================================
+
+Do not use binary found/not-found logic.
+
+Implement at least these outcomes:
+
+verified_absence
+- source/version scope is known
+- required sources are available
+- ingestion/search coverage is sufficient
+- bounded targeted searches completed
+- no matching requirement found
+- no contradictory evidence found
+- scope of final claim does not exceed search scope
+
+unverified_absence
+- no requirement found BUT coverage/search quality is insufficient
+- source unavailable/incomplete
+- retrieval failure
+- weak search coverage
+- ambiguous result
+- any other condition preventing strong absence proof
+
+contradicted_absence
+- targeted search finds evidence showing that the supposedly absent requirement actually exists
+
+If contradicted_absence occurs:
+- the absence claim must NOT be represented as grounded
+- retain the evidence that contradicted it
+- make the failure auditable
+
+Never turn retrieval failure into verified absence.
+
+========================================================
+PART H — ABSENCE EVIDENCE RECORD
+========================================================
+
+Use/extend the existing absenceRecord architecture rather than creating an unrelated system.
+
+It should durably capture at least:
+
+{
+  searchTerms: string[],
+  sourceScope: string[],
+  sourceVersionScope: string[],
+  scopeLabel: string,
+  retrievalFilters: {
+    specialistCode: string | null,
+    scopeMode: string,
+    retrievalMethod: string,
+    minConfidenceThreshold: number
+  },
+  sourceCoverage: [
+    {
+      sourceId: string,
+      sourceVersionId: string,
+      fullyIngested: boolean,
+      searchable: boolean
+    }
+  ],
+  sectionsExamined: string[],
+  totalCandidatesRetrieved: number,
+  passedThresholdCount: number,
+  topRelevanceScores: number[],
+  matchingRequirementFound: boolean,
+  contradictoryEvidenceLinkIds: string[],
+  confidenceOfAbsence: number | null,
+  verificationStatus:
+    | "verified_absence"
+    | "unverified_absence"
+    | "contradicted_absence"
+}
+
+Adapt names to the existing schema conventions if necessary.
+
+Do NOT store chain-of-thought.
+
+Do NOT persist hidden model reasoning.
+
+========================================================
+PART I — CONFIDENCE RULE
+========================================================
+
+Confidence must never manufacture certainty.
+
+A high model confidence score must not override:
+- missing evidence
+- incomplete ingestion
+- insufficient search coverage
+- contradictory evidence
+- source/version integrity failure
+- tenant mismatch
+
+Define the confidence calculation transparently.
+
+If confidenceOfAbsence cannot be defensibly derived from measurable retrieval/coverage signals, store null rather than inventing a number.
+
+========================================================
+PART J — EVIDENCE-REQUIRED TASK GATE
+========================================================
+
+Investigate and design the gate now.
+
+We do NOT want every task using this machinery.
+
+Examples normally requiring evidence integrity:
+- policy review
+- compliance review
+- audit
+- investigation
+- due diligence
+- regulatory comparison
+- evidence-based analysis
+- formal risk assessment
+- document gap analysis
+- work explicitly requiring citations or source-grounded findings
+
+Examples normally NOT requiring claim provenance:
+- ordinary email
+- rewrite
+- tone improvement
+- meeting note
+- simple internal message
+- brainstorming
+- generic drafting with no source-grounding requirement
+- routine administrative communication
+
+Do not rely only on keyword detection.
+
+First inspect whether task manifests, capability definitions, work packages, specialist configuration, resource plans or existing execution metadata already provide a suitable deterministic signal.
+
+Preferred architecture:
+
+evidenceMode:
+  "required"
+  | "optional"
+  | "none"
+
+or equivalent existing architecture.
+
+Rules:
+- required → evidence retrieval + claim provenance + absence verification where applicable
+- optional → evidence may be used when supplied/relevant but do not force unnecessary provenance
+- none → ordinary generation path; no claim integrity overhead
+
+Do not implement a parallel task-classification architecture if an existing task/capability contract can carry this flag.
+
+For this sprint, implement the gate only if it can be added safely without destabilising execution. Otherwise produce the exact implementation design and make it the immediate follow-on gate.
+
+========================================================
+PART K — CONTROLLED TRUTH TEST
+========================================================
+
+Use the Complaints Management Policy controlled fixture from Sprint 29K/29K.3.
+
+Known ground truth includes:
+
+C3:
+“Complaints must be acknowledged in writing within 3 business days.”
+Expected:
+grounded observation bound to Section 2.1.
+
+C4:
+“The policy requires complaints to be resolved within 10 days.”
+Expected:
+must NOT become grounded.
+
+C5:
+“The policy contains conflicting acknowledgement timeframes.”
+Expected:
+grounded contradiction using BOTH:
+- Section 2.1 — three business days
+- Appendix A.1 — five business days
+
+C6:
+“The policy does not define an escalation timeframe.”
+Expected:
+targeted absence verification.
+If full-document search coverage is sufficient and no requirement is found:
+verified_absence.
+
+C7:
+“The policy does not define who is responsible for escalation decisions.”
+Expected:
+same.
+
+C8:
+“No appeal or review mechanism is specified.”
+Expected:
+same.
+
+C9:
+“Unclear escalation responsibilities may result in inconsistent handling of high-severity complaints.”
+Expected:
+inference linked to relevant verified absence findings.
+Must NOT be stored as observation.
+
+C11:
+“ISO 10002 requires organisations to acknowledge complaints within a defined timeframe.”
+Expected:
+unsupported_external unless an approved external authority source is actually present.
+
+R1–R3:
+Recommendations must remain linked to valid parent findings.
+
+========================================================
+PART L — ADVERSARIAL TESTS
+========================================================
+
+Add tests specifically designed to fool shallow evidence checking.
+
+At minimum:
+
+L1 — Same words, different meaning
+Passage contains same nouns/numbers but does not support proposition.
+
+L2 — Wrong timeframe
+Passage says 5 days; claim says 3.
+
+L3 — Wrong actor
+Passage assigns Service Manager; claim assigns Complaints Officer.
+
+L4 — Must vs may
+Passage says “may”; claim says “must”.
+
+L5 — Negation reversal
+Passage says requirement does NOT apply; claim says it applies.
+
+L6 — Inference masquerading as observation.
+
+L7 — Causal inference stronger than evidence.
+
+L8 — Absence search with incomplete source ingestion.
+Must remain unverified_absence.
+
+L9 — Absence search finds synonym wording.
+Must become contradicted_absence, not verified_absence.
+
+L10 — Absence search finds requirement in appendix.
+Must become contradicted_absence.
+
+L11 — Organisation-wide absence claim based on one document.
+Reject/downgrade due to scope mismatch.
+
+L12 — Retrieval service failure.
+Must remain unverified_absence.
+
+L13 — Cross-tenant source supplied during absence verification.
+Reject before persistence.
+
+L14 — External requirement based only on model knowledge.
+unsupported_external.
+
+L15 — Recommendation whose parent claim is invalid.
+Recommendation cannot become grounded.
+
+========================================================
+PART M — STATUS MODEL
+========================================================
+
+Reconcile with existing statuses rather than adding unnecessary duplicates.
+
+The architecture should be capable of distinguishing conceptually:
+
+grounded
+support_uncertain
+invalid_binding
+verified_absence
+unverified_absence
+contradicted_absence
+unsupported
+unsupported_external
+provenance_unavailable
+
+If existing fields separate provenanceStatus from claim validation status, preserve that distinction.
+
+Do not overload version-level provenanceStatus with claim-level meaning.
+
+========================================================
+PART N — IMMUTABILITY / VERSION REGRESSION
+========================================================
+
+Re-prove Sprint 29J and 29K invariants:
+
+- claims belong to exact Completed Work version
+- evidence belongs to exact version
+- approvedVersionId still controls approved output
+- newer revision cannot change approved claims/evidence
+- restore cannot change approved claims/evidence
+- broken approved pin still fails closed
+- PDF/DOCX still export approved version
+- normalisation still produces human-readable output
+- evidence/claim metadata never leaks into PDF/DOCX/Viewer prose
+- evidence snapshots remain immutable
+- re-ingestion cannot silently replace historical evidence
+- tenant isolation remains enforced
+
+========================================================
+PART O — LIVE PROOF REQUIREMENTS
+========================================================
+
+Do not call something PROVEN merely because unit tests pass.
+
+Evidence levels:
+
+L1 — unit
+L2 — mocked integration
+L3 — real DB / real schema / real retrieval data
+L4 — live authenticated runtime
+L5 — authenticated user-visible UI
+
+For this sprint, achieve at least L3 for backend integrity behaviour.
+
+If L4 is blocked by Clerk authentication, label it BLOCKED rather than pretending L3 proves live runtime.
+
+Run at least one real evidence-required execution if authentication/runtime access permits.
+
+Also run or inspect a non-evidence task to prove it does not unnecessarily enter the claim-provenance path if the evidenceMode gate is implemented.
+
+========================================================
+PART P — REQUIRED FINAL REPORT
+========================================================
+
+Return:
+
+1. Root causes addressed.
+2. Files changed.
+3. DB/schema changes.
+4. Exact claim validation architecture.
+5. Exact semantic-support validation architecture.
+6. Deterministic checks used.
+7. Any bounded model-based semantic checks used and their limitations.
+8. Claim-type enforcement rules.
+9. Absence retrieval architecture.
+10. Search-universe/scope architecture.
+11. AbsenceEvidenceRecord final shape.
+12. Status transitions.
+13. Controlled truth results C1–C11 and R1–R3.
+14. Adversarial L1–L15 results.
+15. EvidenceMode/task-gate result.
+16. Number of retrievals for:
+    - normal supported claim
+    - contradiction
+    - absence finding
+    - ordinary non-evidence email
+17. Cross-tenant result.
+18. Approved-version regression result.
+19. Full test baseline before/after.
+20. Evidence-level table.
+21. Remaining model-dependent risks.
+
+Answer explicitly:
+
+A. Can a real quotation still be attached to a claim it does not actually support?
+B. Can an inference still be represented as an observation?
+C. What prevents that?
+D. Can “no search result” become verified absence?
+E. What minimum conditions are required for verified_absence?
+F. What happens if the supposedly absent requirement is found under different wording?
+G. What happens if it is found in an appendix?
+H. Can a one-document search support an organisation-wide absence statement?
+I. Can retrieval failure produce verified_absence?
+J. Can incomplete ingestion produce verified_absence?
+K. Can model confidence override contradictory evidence?
+L. Can training knowledge ground an external requirement?
+M. Does an ordinary email enter this evidence pipeline?
+N. How many additional retrievals does an absence claim cause?
+O. Are approved claims/evidence still pinned to the approved version?
+P. What remains genuinely model-dependent?
+
+========================================================
+NON-NEGOTIABLE PRINCIPLE
+========================================================
+
+NeedsOps must distinguish:
+
+“What the model generated”
+
+from
+
+“What the system has sufficient evidence to represent as true.”
+
+Uncertainty must DOWNGRADE a claim.
+
+Uncertainty must never be converted into certainty merely because the model sounds confident.
+
+Do not build the Evidence UI in this sprint.
+
+Do not weaken Sprint 29J approved-version integrity.
+
+Do not weaken Sprint 29K.2 durable evidence persistence.
+
+Do not weaken Sprint 29K.3 claim binding.
+
+Do not introduce a second LLM reconstruction of approved content.
+
+Do not use model training knowledge as organisational or external documentary authority.
+
+FINAL GATE:
+
+Do not declare CLAIM INTEGRITY CLOSED unless all three risks have credible controls:
+
+1. semantic support risk
+2. claim-type risk
+3. absence-proof risk
+
+If any one remains materially open, return:
+
+PARTIALLY PROVEN — CLAIM INTEGRITY GAP REMAINS
+
+and identify exactly what remains.

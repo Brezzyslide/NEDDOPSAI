@@ -65,6 +65,8 @@ import {
   resolveConversationEvidence,
   type EvidencePack,
 } from "./knowledgeResolutionService.js";
+import { performAbsenceVerificationBatch } from "./absenceVerificationService.js";
+import { classifyEvidenceMode, shouldRunClaimProvenance } from "./evidenceModeService.js";
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
 // Sprint 29H Part H: architectural specialist status guard
@@ -1127,16 +1129,24 @@ export class UnifiedExecutionEngine {
     });
 
     // ── Sprint 29K.3: Full provenance chain (evidence + claims) ──────────────
+    // Sprint 29K.4: Evidence mode gate — skip claim provenance for non-evidence tasks
+    // (e.g. emails, meeting notes) to avoid unnecessary overhead.
+    const evidenceMode = classifyEvidenceMode(blueprint);
+    const runProvenance = shouldRunClaimProvenance(evidenceMode, evidencePack);
+
     // Order: persistExecutionEvidence → persistClaims → bind claims → evidence
     //        links → setVersionProvenanceStatus.
     //
     // Claim validation runs synchronously (no LLM, no KRS) before fire-and-forget.
+    // Absence verification (Sprint 29K.4) runs targeted per-claim KRS queries
+    // asynchronously before the provenance chain persists the final statuses.
     // The version starts as "pending"; the chain updates it to complete/partial/failed.
     // Completed Work itself is never blocked by provenance failure.
-    if (evidencePack && evidencePack.totalChunks > 0 && completedWork.currentVersionId) {
+    if (runProvenance && evidencePack && completedWork.currentVersionId) {
       const vId = completedWork.currentVersionId;
 
-      // Validate claims synchronously — no second retrieval, no second LLM call.
+      // Validate claims synchronously — no second LLM call.
+      // Semantic support and claim-type integrity checks run here (Sprint 29K.4).
       // Cross-tenant chunk IDs are rejected before any DB write.
       let validatedClaims: ValidatedClaim[] = [];
       if (rawClaims.length > 0) {
@@ -1161,31 +1171,51 @@ export class UnifiedExecutionEngine {
       // even if the async chain takes time or fails.
       setVersionProvenanceStatus(vId, organizationId, "pending").catch(() => {});
 
-      // Fire-and-forget provenance chain
-      const execId = evidencePack.executionId;
-      const cwId   = completedWork.id;
-      persistProvenanceChain({
-        executionId:     execId,
-        completedWorkId: cwId,
-        versionId:       vId,
-        organisationId:  organizationId,
-        evidencePack,
-        validatedClaims,
-        persistEvidence: () =>
-          persistExecutionEvidence({
-            executionId:     execId,
-            completedWorkId: cwId,
-            versionId:       vId,
-            organisationId:  organizationId,
+      // Fire-and-forget provenance chain (includes Sprint 29K.4 absence verification)
+      const execId      = evidencePack.executionId;
+      const cwId        = completedWork.id;
+      const specCode    = manifest.primarySpecialist ?? null;
+
+      const runProvenanceChain = async () => {
+        // Sprint 29K.4: Run targeted absence verification BEFORE persisting claims.
+        // Only absence_finding claims are affected — positive claims are untouched.
+        // This is an intentional second KRS retrieval (bounded) for absence proof.
+        const absenceClaims = validatedClaims.filter((c) => c.claimType === "absence_finding");
+        if (absenceClaims.length > 0) {
+          await performAbsenceVerificationBatch({
+            claims: validatedClaims,  // mutates absence claim statuses in-place
+            organisationId: organizationId,
+            specialistCode: specCode,
             evidencePack,
-          }),
-      }).catch(err => {
+          });
+        }
+
+        await persistProvenanceChain({
+          executionId:     execId,
+          completedWorkId: cwId,
+          versionId:       vId,
+          organisationId:  organizationId,
+          evidencePack,
+          validatedClaims,
+          persistEvidence: () =>
+            persistExecutionEvidence({
+              executionId:     execId,
+              completedWorkId: cwId,
+              versionId:       vId,
+              organisationId:  organizationId,
+              evidencePack,
+            }),
+        });
+      };
+
+      runProvenanceChain().catch(err => {
         console.warn(
           "[UnifiedExecutionEngine] Provenance chain failed — durably recorded in audit log:",
           err instanceof Error ? err.message : err,
           "| completedWorkId:", cwId,
           "| versionId:", vId,
           "| claimCount:", validatedClaims.length,
+          "| evidenceMode:", evidenceMode,
         );
       });
     }
