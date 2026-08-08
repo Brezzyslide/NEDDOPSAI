@@ -1,0 +1,581 @@
+Use this. I’d make it a design and duplication audit first, not an implementation sprint, because this is exactly the kind of decision where we could simplify the architecture dramatically or accidentally rip out valuable control-plane logic.
+
+SPRINT 29N — NEEDSOPS VS OPENCLAW RESPONSIBILITY & DUPLICATION AUDIT
+
+INVESTIGATION / ARCHITECTURE DESIGN ONLY.
+
+DO NOT IMPLEMENT, DELETE, REFACTOR OR MIGRATE ANYTHING.
+
+The purpose of this sprint is to answer one strategic architecture question:
+
+Which capabilities should NeedsOps own itself, and which capabilities should be delegated to OpenClaw skills/plugins/runtime instead of being reimplemented inside NeedsOps?
+
+The desired conceptual split to test is:
+
+NeedsOps = control plane
+
+* understand the user request
+* classify work
+* select/authorise worker
+* govern permissions and approvals
+* enforce evidence and authority rules
+* manage Tasks / Active Work / Completed Work
+* preserve versions, provenance and audit
+* maintain organisational context/memory
+* present the product UX
+
+OpenClaw = execution plane
+
+* locate/read/write files
+* use local/remote tools
+* browser interaction
+* Word/Excel/document operations
+* connector actions
+* desktop/local execution
+* operational task execution
+* specialist skills/plugins
+
+DNA = worker behaviour/configuration
+
+* role
+* operating style
+* responsibilities
+* allowed tools
+* decision boundaries
+* escalation behaviour
+
+Core hypothesis:
+
+OpenClaw does. NeedsOps decides, governs, remembers and records.
+
+Do not assume this is correct. Prove or challenge it against the actual codebase and current OpenClaw integration.
+
+==================================================
+PART A — INVENTORY ALL EXECUTION CAPABILITIES
+
+Find every capability in NeedsOps that actually performs or prepares operational work.
+
+At minimum inspect:
+
+* unifiedExecutionEngine
+* workExecutionPipelineService
+* executionCoordinatorService
+* specialistIntelligenceService
+* OpenClawExecutionEngine
+* executionService.ts
+* connectorBridgeService
+* connectorSessionManagerService
+* deviceRelayService
+* ResourceRegistry
+* FutureProviders
+* document/file services
+* Word/PDF/DOCX/Excel services
+* email draft/send capabilities
+* browser/terminal/device capabilities
+* file locate/search/read/write
+* specialist tool abstractions
+* knowledge providers
+* connector/provider abstractions
+* any desktop execution adapters
+
+Produce:
+
+CAPABILITY
+CURRENT NEEDSOPS IMPLEMENTATION
+OPENCLAW EQUIVALENT IF PRESENT
+CURRENT CALLERS
+PRODUCTION STATUS
+DUPLICATION LEVEL
+
+==================================================
+PART B — INVENTORY OPENCLAW SKILLS / PLUGINS / RUNTIME
+
+Inspect the actual OpenClaw integration and available skills/plugins configured or referenced by this repository.
+
+Do not rely on assumptions about what OpenClaw generally can do.
+
+Determine what this specific integration supports or is expected to support:
+
+* file discovery
+* directory search
+* file reading
+* file writing
+* Office documents
+* Word
+* Excel
+* PDF
+* browser
+* email
+* local applications
+* shell/terminal
+* external APIs
+* plugins
+* reusable skills
+* specialist/DNA configuration
+* tool permission constraints
+* runtime isolation
+
+Clearly separate:
+
+1. AVAILABLE AND PROVEN
+2. AVAILABLE BUT NOT CURRENTLY WIRED
+3. PLANNED/STUBBED
+4. NOT PROVIDED
+
+Use evidence levels.
+
+==================================================
+PART C — DUPLICATION MATRIX
+
+For every overlapping capability classify:
+
+KEEP IN NEEDSOPS
+
+DELEGATE TO OPENCLAW
+
+SHARED RESPONSIBILITY
+
+LEGACY / REMOVE EVENTUALLY
+
+Examples to investigate:
+
+NeedsOps file locator vs OpenClaw file skills
+NeedsOps desktop connector operations vs OpenClaw runtime
+NeedsOps document editing vs OpenClaw Word skills
+NeedsOps spreadsheet operations vs OpenClaw Excel skills
+NeedsOps browser actions vs OpenClaw browser tools
+NeedsOps connector abstractions vs OpenClaw plugins
+NeedsOps specialist runtime vs OpenClaw specialist/DNA execution
+
+For each overlap explain:
+
+* why duplication exists
+* which implementation is more mature
+* which implementation is easier to govern
+* which is easier to maintain
+* latency/cost implications
+* security implications
+* migration complexity
+
+==================================================
+PART D — WHAT NEEDSOPS MUST KEEP
+
+Identify capabilities that should NOT be delegated away even if OpenClaw can technically perform part of them.
+
+At minimum assess:
+
+* organisation tenancy
+* RBAC
+* subscription/entitlement
+* task lifecycle
+* execution classification
+* specialist selection/authorisation
+* governance policy
+* approval workflow
+* Completed Work
+* version pinning
+* evidence provenance
+* claim integrity
+* authority/currentness of organisational knowledge
+* audit log
+* notifications/inbox
+* organisational memory
+* usage accounting
+
+Answer:
+
+Is this a product/control-plane responsibility or an execution responsibility?
+
+==================================================
+PART E — SPECIALIST MODEL
+
+Investigate whether NeedsOps needs multiple internal specialist execution implementations at all.
+
+Test this target architecture:
+
+Chief of Staff
+interprets intent and delegates.
+
+Guardrails/Governance
+checks permissions, evidence requirements, allowed actions and approvals.
+
+Operations Manager
+acts as the default production-ready general executor.
+
+OpenClaw runtime
+supplies actual operational tools/skills.
+
+Specialist DNA
+configures role-specific behaviour/tool permissions.
+
+Determine whether future specialist expansion should primarily be:
+
+DNA + allowed skills/plugins
+
+rather than:
+
+new NeedsOps service + new execution path + new tool implementation
+
+Identify what would be lost if this simplification is adopted.
+
+==================================================
+PART F — UEE ROLE IN THE SIMPLIFIED ARCHITECTURE
+
+Determine whether UnifiedExecutionEngine should remain:
+
+A. the actual execution engine
+
+B. an orchestrator/control wrapper around OpenClaw
+
+C. partly replaced
+
+Preferred hypothesis to evaluate:
+
+UEE becomes the governed execution envelope:
+
+Request
+→ classification
+→ task/work package
+→ permission/readiness checks
+→ evidence/context assembly
+→ OpenClaw execution
+→ result validation
+→ self-review/provenance
+→ Completed Work
+→ approval/audit
+
+OpenClaw performs the actual tool work inside that envelope.
+
+Do not implement.
+
+==================================================
+PART G — KNOWLEDGE / FILE ACCESS BOUNDARY
+
+This is important.
+
+OpenClaw may be able to find/read files.
+
+NeedsOps already has:
+
+* Organisation Library
+* KRS
+* authority/currentness
+* approved sources
+* evidence snapshots
+* claim provenance
+
+Determine the correct boundary.
+
+Possible model:
+
+OpenClaw locates/reads raw resources.
+
+NeedsOps decides:
+
+* whether source may be used
+* whether it is authoritative
+* whether it belongs to this tenant
+* whether it is current
+* whether evidence can support a claim
+
+Assess whether OpenClaw file discovery should feed the NeedsOps evidence model rather than bypass it.
+
+==================================================
+PART H — DESKTOP CONNECTOR
+
+Reassess whether the current Desktop Connector architecture is necessary if OpenClaw already supplies local execution capabilities.
+
+Investigate:
+
+* deviceRelayService
+* connectorBridgeService
+* OpenClaw local runtime
+* LiveGatewayAdapter
+* SimulatedGatewayAdapter
+* current token/session model
+
+Determine whether the connector should become:
+
+A. a thin secure transport to OpenClaw
+
+B. remain a feature-rich NeedsOps execution layer
+
+C. be replaced by OpenClaw connectivity
+
+Do not implement.
+
+==================================================
+PART I — PLUGIN STRATEGY
+
+Evaluate whether future integrations should primarily be implemented as:
+
+* NeedsOps-native connectors
+* OpenClaw plugins
+* both
+
+Use examples:
+
+Gmail
+Outlook
+Google Drive
+SharePoint
+OneDrive
+Dropbox
+Slack
+Teams
+CRM
+accounting systems
+
+Recommended principle to test:
+
+If an integration is primarily an ACTION capability, prefer OpenClaw/plugin.
+
+If it is an ORGANISATIONAL SOURCE OF TRUTH requiring indexing, authority, provenance or long-term retrieval, integrate it into NeedsOps knowledge/KRS.
+
+Determine whether this distinction is technically sound.
+
+==================================================
+PART J — GUARDRAILS AROUND OPENCLAW
+
+If execution moves into OpenClaw, prove where NeedsOps can still enforce:
+
+* allowed tool list
+* forbidden tool list
+* file scope
+* tenant scope
+* read/write permissions
+* network access
+* connector access
+* approval before external side effects
+* action audit
+* output capture
+* evidence capture
+* retries/timeouts
+* cancellation
+
+Identify any control NeedsOps currently has that would be lost by delegating to OpenClaw.
+
+This is a critical decision criterion.
+
+==================================================
+PART K — DATA FLOW DESIGN
+
+Produce a proposed simplified data flow.
+
+Example:
+
+User
+↓
+Chat / Task
+↓
+CoS
+↓
+Execution Classifier
+↓
+Governance / RBAC / Entitlement
+↓
+Work Package
+↓
+Context + authorised evidence
+↓
+OpenClaw worker with DNA + allowed plugins
+↓
+Action/result
+↓
+NeedsOps validation
+↓
+Completed Work / direct Chat response
+↓
+Approval / Audit / Provenance
+
+Show:
+
+* transient path
+* professional path
+* evidence-bearing path
+* external-action path
+
+==================================================
+PART L — WHAT CAN BE REMOVED OR FROZEN
+
+Identify NeedsOps components that could eventually be:
+
+* deleted
+* deprecated
+* frozen/no further investment
+* converted to adapters
+
+Do not delete anything.
+
+For each candidate provide:
+
+COMPONENT
+CURRENT PURPOSE
+OPENCLAW REPLACEMENT
+RISK OF REMOVAL
+MIGRATION ORDER
+
+==================================================
+PART M — PERFORMANCE / COST COMPARISON
+
+Estimate the architecture cost today versus simplified delegation.
+
+Compare:
+
+Current:
+NeedsOps selects + retrieves + executes + tool abstraction + validation
+
+Proposed:
+NeedsOps selects + governs + supplies context; OpenClaw executes
+
+Estimate:
+
+* number of services crossed
+* LLM calls
+* tool calls
+* DB writes
+* network hops
+* likely latency
+* maintenance surface
+
+Do not invent precision where measurements do not exist.
+
+==================================================
+PART N — FAILURE MODES
+
+Challenge the simplified proposal.
+
+Identify strong reasons NOT to delegate execution to OpenClaw.
+
+At minimum:
+
+* runtime reliability
+* security
+* plugin quality
+* tool determinism
+* vendor/runtime dependency
+* observability
+* offline operation
+* upgrade compatibility
+* specialist behaviour consistency
+* audit completeness
+
+Give both sides fairly.
+
+==================================================
+PART O — MIGRATION STRATEGY
+
+If simplification is recommended, produce a staged migration.
+
+Example only:
+
+Phase 1:
+OpenClaw becomes file/document execution provider.
+
+Phase 2:
+desktop connector reduced to transport.
+
+Phase 3:
+specialist tool execution moves to DNA/plugins.
+
+Phase 4:
+retire duplicated NeedsOps tool abstractions.
+
+Do not implement.
+
+Migration must:
+
+* preserve current production behaviour
+* allow rollback
+* avoid big-bang replacement
+* preserve Completed Work
+* preserve provenance
+* preserve RBAC/governance
+
+==================================================
+PART P — FINAL QUESTIONS
+
+Answer explicitly:
+
+1. Are we rebuilding capabilities OpenClaw already provides?
+2. Which ones?
+3. Which NeedsOps components are genuinely unique product value?
+4. Should UEE remain an executor or become a governed orchestrator?
+5. Should file operations move to OpenClaw?
+6. Should Word/Excel/browser operations move to OpenClaw?
+7. Should connector actions primarily become OpenClaw plugins?
+8. Should organisational knowledge/KRS remain NeedsOps-native?
+9. Should evidence provenance remain NeedsOps-native?
+10. Should specialist expansion primarily be DNA + plugins?
+11. Is Operations Manager enough as the default general executor?
+12. What specialist logic must remain outside OpenClaw?
+13. Can OpenClaw execution be sufficiently constrained by NeedsOps guardrails?
+14. What controls would be lost?
+15. Can the Desktop Connector be simplified?
+16. What code/services could eventually be retired?
+17. What should definitely NOT be removed?
+18. Would simplification reduce latency materially?
+19. Would it reduce maintenance burden materially?
+20. What is the safest target architecture?
+
+==================================================
+REQUIRED FINAL OUTPUT
+
+Return:
+
+A. Capability inventory
+
+B. OpenClaw capability inventory
+
+C. Duplication matrix
+
+D. NeedsOps control-plane responsibility map
+
+E. OpenClaw execution-plane responsibility map
+
+F. Specialist/DNA target model
+
+G. UEE target role
+
+H. Knowledge/evidence boundary
+
+I. Desktop Connector recommendation
+
+J. Plugin strategy
+
+K. Proposed end-to-end architecture
+
+L. Components to retain / adapt / freeze / retire
+
+M. Performance and maintenance comparison
+
+N. Risks / opposing case
+
+O. Staged migration plan
+
+P. Explicit answers to Questions 1–20
+
+Final verdict must be one:
+
+KEEP CURRENT ARCHITECTURE — OPENCLAW NOT A SUFFICIENT EXECUTION FOUNDATION
+
+SIMPLIFY SELECTIVELY — OPENCLAW SHOULD REPLACE DUPLICATED EXECUTION CAPABILITIES
+
+MAJOR SIMPLIFICATION RECOMMENDED — NEEDSOPS SHOULD BECOME PRIMARILY A CONTROL PLANE
+
+INSUFFICIENT EVIDENCE — OPENCLAW CAPABILITY NOT PROVEN
+
+EVIDENCE STANDARD:
+
+L1 — code/source inspection
+L2 — unit/mock integration
+L3 — real runtime/service integration
+L4 — live OpenClaw execution
+
+Do not claim OpenClaw can replace something because a class or stub exists.
+
+If a skill/plugin/runtime capability is not actually available or proven, mark it UNPROVEN.
+
+NO IMPLEMENTATION. STOP AFTER REPORT.
+
+The answer I’d be looking for is not “replace everything with OpenClaw.” The useful result is a clean boundary. If the audit proves OpenClaw can reliably own the doing, then we can stop growing NeedsOps sideways and concentrate our engineering on the parts that actually make NeedsOps different: control, governance, organisational intelligence, trust and finished work.
