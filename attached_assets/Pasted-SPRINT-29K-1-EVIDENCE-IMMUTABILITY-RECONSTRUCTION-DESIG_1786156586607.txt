@@ -1,0 +1,263 @@
+SPRINT 29K.1 — EVIDENCE IMMUTABILITY & RECONSTRUCTION DESIGN GATE
+
+DESIGN / TEST ONLY. NO IMPLEMENTATION.
+
+Sprint 29K established that claim-level provenance requires preserving the evidence available to the specialist at execution time.
+
+Before implementing EvidencePack persistence, determine the minimum reliable evidence record required for long-term reconstruction.
+
+Also reconcile the Sprint 29K report with Sprint 29I, where EvidencePack was already wired into self-review.
+
+==================================================
+A — RECONCILE CURRENT SELF-REVIEW STATE
+==================================================
+
+Verify the current post-Sprint-29I runtime.
+
+Determine:
+
+- Does executeTask now pass evidencePack into reviewDraft?
+- Does ReviewContext receive it?
+- Does reviewEvidenceCitationGrounding receive it?
+- Do new post-29I executions produce a real grounding result?
+
+Do not use pre-29I completed work as evidence of the current state.
+
+Classify:
+
+CURRENT
+HISTORICAL/PRE-FIX
+UNPROVEN
+
+Correct the Sprint 29K architecture report accordingly.
+
+==================================================
+B — KNOWLEDGE CHUNK IMMUTABILITY
+==================================================
+
+Inspect the lifecycle of:
+
+knowledge_sources
+knowledge_source_versions
+knowledge_chunks
+
+Answer:
+
+1. Are knowledge_source_versions immutable once approved?
+2. Can an existing knowledge_chunk row be edited?
+3. Can chunks be deleted and regenerated?
+4. Does re-ingestion create new chunk IDs or overwrite existing ones?
+5. Can a source version be deleted after Completed Work has used it?
+6. Are chunk IDs globally unique and stable?
+7. Is there a FK or archival mechanism protecting evidence used by approved work?
+
+Use real schema + service behaviour.
+
+==================================================
+C — CAN EVIDENCE BE RECONSTRUCTED FROM IDS?
+==================================================
+
+Given:
+
+executionId
+sourceId
+sourceVersionId/versionLabel
+chunkId
+
+prove whether the system can later reconstruct:
+
+- exact passage text
+- section title
+- page number
+- source title
+- source version
+- authority level
+- confidence/ranking metadata
+
+If YES, identify which fields must be persisted to make reconstruction deterministic.
+
+If NO, identify exactly what can change.
+
+==================================================
+D — SNAPSHOT VS REFERENCE MODEL
+==================================================
+
+Compare three designs:
+
+OPTION 1 — Full EvidencePack snapshot
+Store all EvidencePack chunks as JSONB.
+
+OPTION 2 — Reference-only
+Store chunk IDs + source version IDs + retrieval metadata.
+
+OPTION 3 — Hybrid
+Store references plus a short immutable passage snapshot/hash.
+
+Evaluate:
+
+storage cost
+audit durability
+source deletion
+re-chunking
+version integrity
+tenant isolation
+queryability
+UI rendering
+claim-level linking
+
+Recommend one.
+
+Do not default to full JSONB merely because it is easiest.
+
+==================================================
+E — PASSAGE INTEGRITY
+==================================================
+
+If reference-based or hybrid model is selected, design a passage integrity check.
+
+Possible fields:
+
+chunkId
+sourceVersionId
+passageHash
+passageSnapshot
+sectionTitle
+pageNumber
+
+Goal:
+
+The platform must be able to prove that the passage displayed later is the same passage the specialist used at execution time.
+
+==================================================
+F — SOURCE DELETION / ARCHIVAL
+==================================================
+
+Test what happens if an organisation later:
+
+archives a source
+uploads a new version
+deletes a source
+re-ingests/re-chunks a source
+
+Completed Work already approved must retain reconstructable evidence.
+
+Determine whether current FK behaviour supports this.
+
+If source deletion can destroy historical evidence, classify as an integrity gap.
+
+==================================================
+G — CLAIM-LEVEL STORAGE MINIMUM
+==================================================
+
+Given the ClaimEvidenceRecord design, determine which values should be copied versus referenced.
+
+For each field classify:
+
+REFERENCE
+SNAPSHOT
+DERIVED
+DO NOT STORE
+
+Fields:
+
+claimId
+executionId
+completedWorkId
+versionId
+organisationId
+claimText
+claimType
+chunkId
+sourceId
+sourceVersionId
+sectionTitle
+pageNumber
+passageText
+passageHash
+relevanceScore
+absence searchTerms
+absence sourceScope
+absence sectionsReviewed
+confidence
+reasoningSummary
+relatedClaimIds
+
+==================================================
+H — ABSENCE EVIDENCE DURABILITY
+==================================================
+
+Absence findings cannot be reconstructed from chunk IDs alone.
+
+Design the minimum durable record for:
+
+- search terms used
+- source scope searched
+- retrieval filters
+- sections/chunks examined
+- result count
+- top relevance scores
+- whether a matching requirement was found
+
+Do not store hidden chain-of-thought.
+
+==================================================
+I — STORAGE SIZE ESTIMATE
+==================================================
+
+Using real executions, calculate approximate storage for:
+
+Full EvidencePack snapshot
+Reference-only
+Hybrid snapshot
+
+Estimate per:
+
+1 execution
+1,000 executions
+100,000 executions
+
+Use current average chunk count and passage length.
+
+==================================================
+J — RECOMMENDED FOUNDATION
+==================================================
+
+Return the final recommended persistence model.
+
+The design must support:
+
+- direct claim → passage navigation
+- contradictions
+- absence findings
+- source version integrity
+- approved work immutability
+- source archival/deletion
+- cross-tenant isolation
+- future external authority evidence
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Current self-review evidence state
+2. Chunk/source immutability findings
+3. Reconstruction capability
+4. Full snapshot vs reference vs hybrid comparison
+5. Source deletion risk
+6. Passage-integrity strategy
+7. Absence-evidence persistence strategy
+8. Storage estimates
+9. Revised ClaimEvidenceRecord
+10. Recommended Phase 1 architecture
+
+Final verdict:
+
+SAFE TO IMPLEMENT REFERENCE MODEL
+SAFE TO IMPLEMENT HYBRID MODEL
+FULL SNAPSHOT REQUIRED
+NOT SAFE TO IMPLEMENT YET
+
+DO NOT IMPLEMENT.
+Stop after the report.
