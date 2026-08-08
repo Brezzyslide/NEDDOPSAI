@@ -1072,18 +1072,49 @@ export default function CompletedWorkViewer() {
   const versions = (versionsData?.versions ?? []) as CompletedWorkVersion[];
   const comments = (commentsData?.comments ?? []) as CommentRow[];
 
-  // ── Approved-version integrity ─────────────────────────────────────────────
-  // For approved items, resolve to the exact version pinned at signing time.
-  // Post-approval restores/revisions update currentVersionId but never touch
-  // approvedVersionId — this component always shows the signed-off artefact.
-  const approvedVersion = (work?.status === "approved" && work?.approvedVersionId)
-    ? (versions.find(v => v.id === work.approvedVersionId) ?? versions[0])
-    : versions[0];
-  // True when a newer revision was added after approval (warn the user)
-  const hasNewerRevision = work?.status === "approved"
+  // ── Approved-version integrity (three-case resolver — mirrors server-side logic) ──
+  //
+  // CASE 1: Modern approved (approvedVersionId != null)
+  //   Resolve the exact pinned version. If it cannot be found in the version list,
+  //   hasBrokenPin = true → show integrity error state instead of any content.
+  //   Never substitute versions[0] / latest / current for a broken modern pin.
+  //
+  // CASE 2: Legacy approved (approvedVersionId === null)
+  //   LEGACY_APPROVAL_FALLBACK: created before this column existed.
+  //   Fall back to versions[0]. Explicitly distinguishable from Case 1.
+  //
+  // CASE 3: Non-approved work
+  //   Show versions[0] (current/latest). No pin applies.
+
+  const hasBrokenPin: boolean = !!(
+    work?.status === "approved"
+    && work.approvedVersionId != null
+    && versions.length > 0
+    && !versions.find(v => v.id === work.approvedVersionId)
+  );
+
+  const approvedVersion: CompletedWorkVersion | undefined = (() => {
+    if (!work || versions.length === 0) return undefined;
+    if (work.status === "approved" && work.approvedVersionId != null) {
+      // CASE 1: Modern approved record — resolve exactly or undefined (hasBrokenPin)
+      return versions.find(v => v.id === work.approvedVersionId);
+    }
+    if (work.status === "approved" && work.approvedVersionId == null) {
+      // CASE 2: LEGACY_APPROVAL_FALLBACK
+      return versions[0];
+    }
+    // CASE 3: Non-approved work
+    return versions[0];
+  })();
+
+  // True when a newer revision was added after approval (warn the user).
+  // Only shown when the pin is valid (hasBrokenPin=false).
+  const hasNewerRevision = !hasBrokenPin
+    && work?.status === "approved"
     && !!approvedVersion
     && !!versions[0]
     && versions[0].id !== approvedVersion.id;
+
   const currentContent = approvedVersion?.contentMarkdown ?? "";
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -1331,8 +1362,19 @@ export default function CompletedWorkViewer() {
             <div className="flex-1 min-w-0 max-w-4xl">
               {tab === "work" && (
                 <div>
+                  {/* Integrity error — broken modern pin: refuse to show unapproved content */}
+                  {hasBrokenPin && (
+                    <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/20 border border-red-700/40 text-sm flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5">🔒</span>
+                      <span className="text-red-300">
+                        <strong>Approved version cannot be resolved.</strong>{" "}
+                        The version that was signed off is no longer accessible. Contact your platform administrator.
+                        No content will be displayed to prevent misrepresentation of an unapproved document as approved.
+                      </span>
+                    </div>
+                  )}
                   {/* Integrity banner — shown when a newer revision exists post-approval */}
-                  {hasNewerRevision && (
+                  {!hasBrokenPin && hasNewerRevision && (
                     <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-700/40 text-sm flex items-start gap-2">
                       <span className="shrink-0 mt-0.5">⚠️</span>
                       <span className="text-amber-300">
@@ -1349,29 +1391,37 @@ export default function CompletedWorkViewer() {
                       </span>
                     </div>
                   )}
-                  {currentContent
-                    ? <MarkdownRenderer content={currentContent} />
-                    : <div className="flex flex-col items-center justify-center py-20 text-center">
-                        <div className="text-4xl mb-4">📄</div>
-                        <p className="text-[#E2E8F0] font-medium mb-1">No content yet</p>
-                        <p className="text-[#64748B] text-sm">This document is still being produced by your AI Workforce</p>
-                      </div>
+                  {hasBrokenPin
+                    ? null
+                    : currentContent
+                      ? <MarkdownRenderer content={currentContent} />
+                      : <div className="flex flex-col items-center justify-center py-20 text-center">
+                          <div className="text-4xl mb-4">📄</div>
+                          <p className="text-[#E2E8F0] font-medium mb-1">No content yet</p>
+                          <p className="text-[#64748B] text-sm">This document is still being produced by your AI Workforce</p>
+                        </div>
                   }
                 </div>
               )}
               {tab === "evidence" && <EvidenceTab assets={assets} />}
               {tab === "quality"  && (
-                approvedVersion && (approvedVersion.reviewDimensions as any[]).length > 0
-                  ? <QualityReviewSection
-                      dimensions={approvedVersion.reviewDimensions as any[]}
-                      qualityScore={approvedVersion.qualityScore ?? null}
-                      isAutoRevision={approvedVersion.isAutoRevision === "true"}
-                    />
-                  : <div className="flex flex-col items-center justify-center py-20 text-center">
-                      <div className="text-4xl mb-4">📊</div>
-                      <p className="text-[#E2E8F0] font-medium mb-1">No quality review data</p>
-                      <p className="text-[#64748B] text-sm">Quality scores are recorded automatically when your AI Workforce produces work</p>
+                hasBrokenPin
+                  ? <div className="flex flex-col items-center justify-center py-20 text-center">
+                      <div className="text-4xl mb-4">🔒</div>
+                      <p className="text-[#E2E8F0] font-medium mb-1">Approved version cannot be resolved</p>
+                      <p className="text-[#64748B] text-sm">Quality data cannot be displayed — the pinned approved version is no longer accessible</p>
                     </div>
+                  : approvedVersion && (approvedVersion.reviewDimensions as any[]).length > 0
+                    ? <QualityReviewSection
+                        dimensions={approvedVersion.reviewDimensions as any[]}
+                        qualityScore={approvedVersion.qualityScore ?? null}
+                        isAutoRevision={approvedVersion.isAutoRevision === "true"}
+                      />
+                    : <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <div className="text-4xl mb-4">📊</div>
+                        <p className="text-[#E2E8F0] font-medium mb-1">No quality review data</p>
+                        <p className="text-[#64748B] text-sm">Quality scores are recorded automatically when your AI Workforce produces work</p>
+                      </div>
               )}
               {tab === "details"  && <ExecutionTab work={work} versions={versions} />}
               {tab === "inspector" && (

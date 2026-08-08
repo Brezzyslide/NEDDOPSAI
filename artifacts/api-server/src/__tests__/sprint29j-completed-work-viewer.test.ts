@@ -39,10 +39,15 @@ vi.mock("@workspace/db", () => ({
   },
 }));
 
-vi.mock("../services/completedWorkService.js", () => ({
-  getCompletedWork: vi.fn(),
-  getVersions:      vi.fn(),
-}));
+vi.mock("../services/completedWorkService.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../services/completedWorkService.js")>();
+  return {
+    ...original,
+    getCompletedWork: vi.fn(),
+    getVersions:      vi.fn(),
+    // resolveApprovedVersion: real implementation kept (pure, no DB)
+  };
+});
 
 vi.mock("../services/auditService.js", () => ({
   logOrgEvent: vi.fn().mockResolvedValue(undefined),

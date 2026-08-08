@@ -43,13 +43,18 @@ import { CompletedWorkExportService } from "../services/completedWorkExportServi
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
 vi.mock("@workspace/db", () => ({ db: { select: vi.fn(), insert: vi.fn(), update: vi.fn(), transaction: vi.fn(), selectDistinctOn: vi.fn() } }));
-vi.mock("../services/completedWorkService.js", () => ({
-  approve:           vi.fn(),
-  getCompletedWork:  vi.fn(),
-  getVersions:       vi.fn(),
-  getApprovedVersion: vi.fn(),
-  addVersion:        vi.fn(),
-}));
+vi.mock("../services/completedWorkService.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../services/completedWorkService.js")>();
+  return {
+    ...original,
+    approve:            vi.fn(),
+    getCompletedWork:   vi.fn(),
+    getVersions:        vi.fn(),
+    getApprovedVersion: vi.fn(),
+    addVersion:         vi.fn(),
+    // resolveApprovedVersion: real implementation kept (pure, no DB)
+  };
+});
 vi.mock("../services/auditService.js", () => ({ logOrgEvent: vi.fn().mockResolvedValue(undefined) }));
 
 import { logOrgEvent } from "../services/auditService.js";
@@ -288,18 +293,18 @@ describe("Approved version integrity — export resolution", () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("18. When approvedVersionId points to a version not in the list, falls back to versions[0]", async () => {
-    // approvedVersionId references a version that was removed (edge case)
+  it("18. When approvedVersionId is non-null but unresolvable, export FAILS CLOSED with APPROVED_VERSION_INTEGRITY_ERROR (no fallback)", async () => {
+    // Sprint 29J.2: broken modern pin must fail closed — never fall back to versions[0].
+    // This test was updated from the original sprint 29J behaviour (which expected a fallback)
+    // to match the corrected fail-closed contract.
     const work = makeWork({ approvedVersionId: "ver-deleted", currentVersionId: "ver-002" });
     vi.mocked(getCompletedWork).mockResolvedValue(work as any);
     vi.mocked(getVersions).mockResolvedValue([VER_2, VER_1] as any);  // ver-deleted not present
 
     const svc = new CompletedWorkExportService();
-    const result = await svc.export({ workId: WORK_ID, organisationId: ORG_A, organisationName: "Test Org", format: "pdf", actorUserId: ACTOR });
-
-    // Graceful fallback — uses V2 (versions[0])
-    expect(result.mimeType).toBe("application/pdf");
-    expect(result.filename).toMatch(/-v2\./);
+    await expect(
+      svc.export({ workId: WORK_ID, organisationId: ORG_A, organisationName: "Test Org", format: "pdf", actorUserId: ACTOR }),
+    ).rejects.toMatchObject({ code: "APPROVED_VERSION_INTEGRITY_ERROR" });
   });
 
   it("22. Export filename version number matches approvedVersionId version, not currentVersionId version", async () => {
@@ -370,28 +375,52 @@ describe("Approved version integrity — audit trail", () => {
 
   beforeEach(() => { vi.clearAllMocks(); });
 
-  it("21. approve() emits an audit event — approval is traceable", async () => {
+  it("21. approve() emits an audit event with complete metadata — who/when/which-work/which-version all present", async () => {
+    // Sprint 29J.2: audit metadata must include approvedVersionId so the audit log
+    // allows reconstruction without reading the mutable current state of completed_work.
     const pinned = makeWork({ approvedVersionId: "ver-002" });
+    const approvedAtIso = "2026-08-02T12:00:00.000Z";
+
     vi.mocked(approve).mockImplementation(async (_id, _org, _actor) => {
-      // Simulate what approve() does: call logOrgEvent before returning
+      // Simulate what approve() does: emit audit event with complete metadata
       await logOrgEvent({
         organizationId: ORG_A,
         actorUserId: ACTOR,
         eventType: "completed_work_approved",
         resourceType: "completed_work",
         resourceId: WORK_ID,
-        metadata: { previousStatus: "awaiting_approval", newStatus: "approved" },
+        metadata: {
+          previousStatus: "awaiting_approval",
+          newStatus: "approved",
+          completedWorkId: WORK_ID,
+          approvedVersionId: "ver-002",
+          approvedByUserId: ACTOR,
+          approvedAt: approvedAtIso,
+        },
       });
       return pinned as any;
     });
 
     await approve(WORK_ID, ORG_A, ACTOR);
 
+    // Basic traceability — event reaches the audit system
     expect(logOrgEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "completed_work_approved",
         resourceId: WORK_ID,
         actorUserId: ACTOR,
+      }),
+    );
+
+    // Sprint 29J.2 requirement: audit metadata must carry all four reconstruction fields
+    expect(logOrgEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          approvedVersionId: "ver-002",   // which exact version
+          completedWorkId: WORK_ID,       // which work
+          approvedByUserId: ACTOR,        // who approved
+          approvedAt: approvedAtIso,      // when
+        }),
       }),
     );
   });

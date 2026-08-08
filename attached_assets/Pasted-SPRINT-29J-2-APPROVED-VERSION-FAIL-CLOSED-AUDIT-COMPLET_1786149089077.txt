@@ -1,0 +1,274 @@
+SPRINT 29J.2 — APPROVED VERSION FAIL-CLOSED & AUDIT COMPLETENESS
+
+Proceed with implementation.
+
+Scope is limited to two proven gaps from Sprint 29J.1:
+
+#135 — modern non-null approvedVersionId can silently fall back to latest version
+#136 — completed_work_approved audit event does not record approvedVersionId
+
+Do not redesign Completed Work or approval flow.
+
+==================================================
+A — DISTINGUISH LEGACY NULL FROM BROKEN MODERN PIN
+==================================================
+
+Preserve backward compatibility:
+
+CASE 1 — legacy approved record
+
+status = approved
+approvedVersionId = null
+
+This may use the documented legacy fallback behaviour.
+
+Mark this explicitly in code as:
+
+LEGACY_APPROVAL_FALLBACK
+
+Do not treat it as the normal modern path.
+
+CASE 2 — modern approved record
+
+status = approved
+approvedVersionId != null
+
+The referenced approved version MUST resolve successfully and belong to the same:
+
+organization
+completedWork record
+
+If the pin cannot resolve:
+
+FAIL CLOSED.
+
+Do NOT fall back to:
+
+versions[0]
+latest version
+current version
+another tenant's version
+
+Return a structured integrity error.
+
+Suggested error code:
+
+APPROVED_VERSION_INTEGRITY_ERROR
+
+Message should state that the approved artefact cannot be resolved and must not be represented as approved.
+
+==================================================
+B — CENTRALISE APPROVED VERSION RESOLUTION
+==================================================
+
+Do not maintain separate fallback logic in:
+
+viewer
+export service
+quality resolution
+other callers
+
+Use one canonical approved-version resolver.
+
+Expected semantics:
+
+if work.status !== approved:
+    resolve normal current/latest version according to existing rules
+
+if work.status === approved && approvedVersionId === null:
+    apply explicit legacy fallback
+
+if work.status === approved && approvedVersionId !== null:
+    resolve that exact version
+    validate ownership
+    if missing/invalid:
+        throw APPROVED_VERSION_INTEGRITY_ERROR
+
+Viewer and PDF/DOCX must use the same resolver.
+
+==================================================
+C — EXPORT FAIL-CLOSED
+==================================================
+
+For modern approved work with an invalid pin:
+
+PDF export must fail.
+DOCX export must fail.
+
+No file should be generated.
+
+Do not return a successful document containing latest/unapproved content.
+
+Verify HTTP/API error behaviour remains understandable to the UI.
+
+==================================================
+D — VIEWER FAIL-CLOSED
+==================================================
+
+For a modern approved work item with a broken pin:
+
+Do not silently display latest content as approved.
+
+Show an integrity-safe error state such as:
+
+"Approved version cannot be resolved."
+
+Do not display unapproved content underneath an Approved badge.
+
+==================================================
+E — QUALITY FAIL-CLOSED
+==================================================
+
+The Quality tab must resolve the same approved version.
+
+If the approved pin is broken:
+
+do not show another version's quality score as though it belongs to the approved artefact.
+
+Use the same integrity error behaviour.
+
+==================================================
+F — AUDIT EVENT COMPLETENESS
+==================================================
+
+When approval succeeds, completed_work_approved audit metadata must contain:
+
+completedWorkId
+approvedVersionId
+approvedByUserId where appropriate/allowed
+approvedAt
+previousStatus
+newStatus
+
+The audit log must allow reconstruction of:
+
+who approved
+when
+which work
+which exact version
+
+without depending on the mutable current state of completed_work.
+
+Do not record unnecessary report content in audit metadata.
+
+==================================================
+G — APPROVAL ATOMICITY
+==================================================
+
+Verify that:
+
+status transition
+approvedVersionId write
+approvedByUserId
+approvedAt
+
+are committed consistently.
+
+The audit event should reflect the same approvedVersionId.
+
+If the approval DB transaction succeeds but audit logging fails, preserve existing non-blocking audit behaviour if that is the current architecture, but surface the failure in structured logs.
+
+Do not risk rolling back a valid approval merely because audit telemetry failed unless current architecture explicitly requires transactional audit.
+
+==================================================
+H — REGRESSION TESTS
+==================================================
+
+Add tests for:
+
+1. Legacy approved row with null pin still follows documented fallback.
+2. Modern approved row with valid pin resolves exact version.
+3. Modern approved row with missing pin target fails closed.
+4. Modern approved row with cross-tenant version ID fails closed.
+5. Modern approved row with version belonging to another Completed Work fails closed.
+6. PDF refuses broken modern pin.
+7. DOCX refuses broken modern pin.
+8. Viewer resolver refuses broken modern pin.
+9. Quality resolver refuses broken modern pin.
+10. Latest/newer revision is never substituted.
+11. Approval event contains approvedVersionId.
+12. Audit approvedVersionId equals completed_work.approvedVersionId.
+13. Restore after approval does not alter audit version.
+14. Revision after approval does not alter audit version.
+15. Existing cross-tenant access tests remain green.
+
+==================================================
+MANDATORY EVIDENCE STANDARD
+==================================================
+
+Before completion classify results as:
+
+1 Unit
+2 Mocked integration
+3 Real DB integration
+4 Live API/runtime
+5 Live authenticated UI
+
+Label:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+==================================================
+LIVE/REAL DB VERIFICATION
+==================================================
+
+Using disposable test records:
+
+Scenario A:
+Approve V2
+Create V3
+Verify approvedVersionId = V2
+Verify audit event approvedVersionId = V2
+Export PDF/DOCX → V2
+
+Scenario B:
+Approve V2
+Corrupt the non-null pin safely in test data
+Attempt viewer resolution
+Attempt PDF
+Attempt DOCX
+
+Expected:
+
+all fail with APPROVED_VERSION_INTEGRITY_ERROR
+
+No fallback to V3/latest.
+
+Scenario C:
+Legacy approved record with approvedVersionId = null
+
+Expected:
+
+legacy fallback operates exactly as documented and is clearly distinguishable from broken modern pin behaviour.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Files changed
+2. Canonical approved-version resolver behaviour
+3. Legacy null-pin behaviour
+4. Broken modern-pin behaviour
+5. PDF/DOCX result
+6. Viewer/Quality result
+7. Approval audit event before/after
+8. Atomicity result
+9. Cross-tenant result
+10. Test results
+11. Evidence-level table
+
+Final verdict:
+
+PROVEN — APPROVED VERSION INTEGRITY CLOSED
+
+PARTIALLY PROVEN — SPECIFY REMAINING GAP
+
+BLOCKED — APPROVED CONTENT CAN STILL BE MISREPRESENTED
+
+Do not move to #133.
+Stop after verification.

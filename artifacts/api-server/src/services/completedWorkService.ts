@@ -312,21 +312,85 @@ export async function approve(
   // touch approvedVersionId — the approval is permanently attached to this version.
   const versions = await getVersions(id, organizationId);
   const versionToPinId = versions[0]?.id ?? null;
+  const approvedAt = new Date();
 
   return transitionStatus(id, organizationId, "awaiting_approval", "approved", actorUserId, {
     eventType: "completed_work_approved",
     extraUpdates: {
       approvedByUserId: actorUserId,
-      approvedAt: new Date(),
+      approvedAt,
       approvedVersionId: versionToPinId,
+    },
+    // Audit metadata: must allow reconstruction of who/when/which-work/which-exact-version
+    // without depending on the mutable current state of the completed_work row.
+    metadata: {
+      completedWorkId: id,
+      approvedVersionId: versionToPinId,
+      approvedByUserId: actorUserId,
+      approvedAt: approvedAt.toISOString(),
     },
   });
 }
 
 /**
+ * Canonical approved-version resolver — single source of truth for all callers.
+ *
+ * Three cases (must be kept in sync with the viewer and export service):
+ *
+ *   CASE 1 — Modern approved record (status === "approved", approvedVersionId !== null)
+ *     Resolve the exact pinned version. Validate it belongs to this work item's version list.
+ *     If it cannot be resolved → FAIL CLOSED with APPROVED_VERSION_INTEGRITY_ERROR.
+ *     Never substitute versions[0] / latest / current.
+ *
+ *   CASE 2 — Legacy approved record (status === "approved", approvedVersionId === null)
+ *     LEGACY_APPROVAL_FALLBACK: created before this column existed.
+ *     Use versions[0] (latest). Explicitly distinguishable from Case 1.
+ *
+ *   CASE 3 — Non-approved work (any other status)
+ *     Use versions[0] (current/latest). No pin applies.
+ */
+export function resolveApprovedVersion(
+  work: Pick<CompletedWorkItem, "id" | "status" | "approvedVersionId">,
+  versions: CompletedWorkVersion[],
+): CompletedWorkVersion {
+  if (versions.length === 0) {
+    throw Object.assign(
+      new Error("No versions available for this completed work item"),
+      { statusCode: 400 },
+    );
+  }
+
+  if (work.status === "approved" && work.approvedVersionId != null) {
+    // CASE 1: Modern approved record — approvedVersionId is a non-null, non-undefined string.
+    // Must resolve exactly (fail closed). Never substitute versions[0] / latest / current.
+    const pinned = versions.find(v => v.id === work.approvedVersionId);
+    if (!pinned) {
+      throw Object.assign(
+        new Error(
+          `APPROVED_VERSION_INTEGRITY_ERROR: The approved version for completed work "${work.id}" ` +
+          `cannot be resolved. This artefact must not be represented as approved content.`,
+        ),
+        { code: "APPROVED_VERSION_INTEGRITY_ERROR", statusCode: 409 },
+      );
+    }
+    return pinned;
+  }
+
+  if (work.status === "approved" && work.approvedVersionId == null) {
+    // CASE 2: LEGACY_APPROVAL_FALLBACK — null/undefined pin pre-dates this column.
+    // Intentional backward compatibility. Do NOT treat as a broken modern pin.
+    return versions[0]!;
+  }
+
+  // CASE 3: Non-approved work — use current/latest version
+  return versions[0]!;
+}
+
+/**
  * Returns the exact version that was pinned at approval time.
- * Falls back to versions[0] (latest) for legacy rows that pre-date this field.
- * Returns null if the work item has no versions at all.
+ * For legacy rows (approvedVersionId is null), falls back to versions[0].
+ * Returns null only when the work item or its versions cannot be found.
+ * Throws APPROVED_VERSION_INTEGRITY_ERROR for modern rows with an unresolvable pin.
  */
 export async function getApprovedVersion(
   id: string,
@@ -337,10 +401,7 @@ export async function getApprovedVersion(
     getVersions(id, organizationId),
   ]);
   if (!work || versions.length === 0) return null;
-  if (work.approvedVersionId) {
-    return versions.find(v => v.id === work.approvedVersionId) ?? versions[0];
-  }
-  return versions[0];
+  return resolveApprovedVersion(work, versions);
 }
 
 export async function reject(

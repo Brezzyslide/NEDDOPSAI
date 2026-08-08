@@ -24,7 +24,7 @@ import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow,
   TableCell, WidthType, BorderStyle, AlignmentType, UnderlineType,
 } from "docx";
-import { getCompletedWork, getVersions } from "./completedWorkService.js";
+import { getCompletedWork, getVersions, resolveApprovedVersion } from "./completedWorkService.js";
 import { logOrgEvent }                   from "./auditService.js";
 
 // ─── Intermediate document model ─────────────────────────────────────────────
@@ -599,16 +599,17 @@ export class CompletedWorkExportService {
 
     const versions = await getVersions(workId, organisationId);
 
-    // ── Approved-version integrity: always export the pinned approved version ──
-    // For approved work, resolve to the exact version signed off at approval time
-    // (work.approvedVersionId). This prevents post-approval restores or revisions
-    // from silently changing the exported content. Legacy rows (approvedVersionId
-    // is null) fall back to versions[0] for backward compatibility.
-    const resolvedVersion = (work.status === "approved" && work.approvedVersionId)
-      ? (versions.find(v => v.id === work.approvedVersionId) ?? versions[0])
-      : versions[0];
+    // ── Approved-version integrity: canonical resolver (fail-closed for modern pins) ──
+    // Uses the single-source-of-truth resolveApprovedVersion():
+    //   • Modern approved (approvedVersionId != null) → exact pin; throws APPROVED_VERSION_INTEGRITY_ERROR if missing
+    //   • Legacy approved (approvedVersionId = null)  → LEGACY_APPROVAL_FALLBACK to versions[0]
+    //   • Non-approved                                → versions[0] (current/latest)
+    if (versions.length === 0) {
+      throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
+    }
+    const resolvedVersion = resolveApprovedVersion(work, versions);
 
-    if (!resolvedVersion?.contentMarkdown) {
+    if (!resolvedVersion.contentMarkdown) {
       throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
     }
 
