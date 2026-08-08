@@ -1,13 +1,17 @@
 /**
- * Executive Inbox — Task #36
+ * Executive Inbox — Task #36 / Sprint 29M Part E
  *
- * Unified inbox aggregating:
- *   - Completed work delivered (awaiting_approval items)
- *   - Pending system approvals
- *   - Knowledge proposals awaiting review
- *   - Conversation messages (unread count)
+ * ACTIONABLE items only — things that require a decision or response:
+ *   - Completed work awaiting your approval
+ *   - Pending system approvals (execution intents, governance)
+ *   - Knowledge proposals awaiting review / acceptance
  *
- * Archive state is now server-backed via notification_reads.
+ * INFORMATIONAL items (completed work, status updates, messages) live in
+ * Notifications (NotificationCentrePage) only — they are not duplicated here.
+ *
+ * Amendment 6: Inbox = actionable / Notifications = informational.  Do not merge.
+ *
+ * Archive state is server-backed via notification_reads.
  * Optimistic updates give instant feedback.
  */
 
@@ -180,15 +184,8 @@ export default function ExecutiveInbox() {
     });
   }
 
-  for (const w of (completedWorkData?.completedWork ?? []).filter((w: any) => w.status === "approved").slice(0, 5)) {
-    allItems.push({
-      id: `done-${w.id}`, type: "work_delivered",
-      title:       `${w.title ?? "Work item"} completed`,
-      description: `${w.primarySpecialist?.replace(/_/g, " ") ?? "AI Workforce"} completed this work.`,
-      timestamp:   w.updatedAt ?? w.createdAt,
-      actionPath:  `/app/${slug}/active-work`,
-    });
-  }
+  // Sprint 29M Part E: Approved/completed work is INFORMATIONAL → shown in Notifications only.
+  // Removing the duplicate "done-${w.id}" block from Inbox enforces the actionable boundary.
 
   for (const a of (approvalsData?.approvals ?? []).slice(0, 10)) {
     allItems.push({
@@ -244,18 +241,9 @@ export default function ExecutiveInbox() {
             <div>
               <h1 className="text-2xl font-bold text-[#E2E8F0]">Inbox</h1>
               <p className="text-[#64748B] text-sm mt-1">
-                {visibleItems.length} item{visibleItems.length !== 1 ? "s" : ""}
-                {unreadCount > 0 && ` · ${unreadCount} unread conversation message${unreadCount !== 1 ? "s" : ""}`}
+                Items that need your decision — status updates and messages are in Notifications
               </p>
             </div>
-            {unreadCount > 0 && (
-              <button
-                onClick={() => setLocation(`/app/${slug}/chat`)}
-                className="px-4 py-2 bg-[#00D4FF]/10 border border-[#00D4FF]/30 text-[#00D4FF] text-sm rounded-lg hover:bg-[#00D4FF]/20 transition-colors"
-              >
-                {unreadCount} unread in Chat →
-              </button>
-            )}
           </div>
 
           {/* Filter tabs */}

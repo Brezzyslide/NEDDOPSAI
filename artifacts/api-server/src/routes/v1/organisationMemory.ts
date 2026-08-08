@@ -174,8 +174,12 @@ router.post(
       const { memoryId } = req.params as { memoryId: string };
       const { newMemoryId } = req.body as { newMemoryId?: string };
       if (!newMemoryId) { res.status(400).json({ error: "newMemoryId is required" }); return; }
-      const ok = await supersedeOrganisationMemory(ctx.tenantId, memoryId, newMemoryId, user.id);
-      if (!ok) { res.status(404).json({ error: "Memory not found" }); return; }
+      const result = await supersedeOrganisationMemory(ctx.tenantId, memoryId, newMemoryId, user.id);
+      if (!result.ok) {
+        const status = result.error === "A memory entry cannot supersede itself" ? 400 : 404;
+        res.status(status).json({ error: result.error });
+        return;
+      }
       res.json({ ok: true });
     } catch (err) { next(err); }
   }

@@ -249,7 +249,7 @@ describe("Sprint 24 — Governance Centre", () => {
       mockListOrgMemory.mockResolvedValue({ items: [makeMemoryItem()], total: 1 });
       mockApproveOrgMemory.mockResolvedValue(true);
       mockRejectOrgMemory.mockResolvedValue(true);
-      mockSupersedeOrgMemory.mockResolvedValue(true);
+      mockSupersedeOrgMemory.mockResolvedValue({ ok: true });
       mockUpdateOrgMemory.mockResolvedValue(true);
     });
 
@@ -276,7 +276,7 @@ describe("Sprint 24 — Governance Centre", () => {
     it("supersedeOrganisationMemory marks old entry as superseded", async () => {
       const { supersedeOrganisationMemory } = await import("../services/organisationMemoryService.js");
       const result = await supersedeOrganisationMemory("org-001", "mem-old-1", "mem-new-1", "user-1");
-      expect(result).toBe(true);
+      expect(result.ok).toBe(true);
       expect(mockSupersedeOrgMemory).toHaveBeenCalledWith("org-001", "mem-old-1", "mem-new-1", "user-1");
     });
 

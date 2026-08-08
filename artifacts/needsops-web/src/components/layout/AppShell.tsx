@@ -34,7 +34,6 @@ const KNOWLEDGE_NAV = [
 const GOVERNANCE_NAV = [
   { label: "Governance",       icon: "🏛",  path: "/governance" },
   { label: "Approvals",        icon: "✅", path: "/approvals" },
-  { label: "Memory",           icon: "💡", path: "/memory" },
   { label: "Knowledge Health", icon: "❤️", path: "/governance/knowledge-health" },
   { label: "Timeline",         icon: "🕐", path: "/governance/timeline" },
   { label: "Audit Log",        icon: "📋", path: "/audit" },

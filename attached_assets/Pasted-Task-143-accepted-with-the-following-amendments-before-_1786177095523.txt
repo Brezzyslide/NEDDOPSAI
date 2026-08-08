@@ -1,0 +1,29 @@
+Task #143 accepted, with the following amendments before implementation.
+
+Proceed with the 20-step Sprint 29M plan.
+
+1. Do not create a wholly independent AI architecture for the TRANSIENT lane. Reuse common model/persona/context infrastructure where appropriate, while bypassing UEE work-product lifecycle overhead that transient requests do not need.
+2. Task-triggered execution is PROFESSIONAL_WORK minimum, not PROFESSIONAL_WORK only. Tasks must escalate to EVIDENCE_BEARING when blueprint/evidence/capability/document signals require it.
+3. canAutoApprove() for uploaded knowledge must distinguish permission to ingest/use from authority/currentness. Safe ordinary uploads should become usable automatically, but conflicting, superseded, ambiguous or high-risk material must not silently become authoritative organisational truth.
+4. Treat Blueprint Sandbox as verification-only unless testing disproves the investigation. If testBlueprintSandbox() is genuinely isolated and creates no production Completed Work, approvals, provenance or other operational pollution, preserve the existing design. Do not introduce a new sandbox architecture unnecessarily.
+5. For Active Work, add /active-executions only if no existing canonical query can satisfy the requirement. It should aggregate existing execution truth rather than become a new execution-state store.
+6. Preserve the semantic boundary:
+    * Inbox = I need to do something
+    * Notifications = Something happened
+        Do not merge them merely because their present implementation overlaps.
+7. Add performance evidence to the final gate. Measure representative end-to-end/server execution latency for TRANSIENT, PROFESSIONAL_WORK and EVIDENCE_BEARING requests. Also report LLM call count, retrieval count and major pipeline stages entered for each. The objective is not merely fewer DB writes; lightweight requests must actually become materially lighter.
+8. Add misrouting/adversarial tests. In particular prove:
+    * a simple email remains TRANSIENT;
+    * an email asking the system to cite or analyse organisational policy escalates appropriately;
+    * a professionally worded but simple request does not become PROFESSIONAL_WORK merely because it sounds formal;
+    * a serious evidence-dependent request without obvious words such as “policy”, “compliance” or “evidence” still reaches EVIDENCE_BEARING;
+    * attaching/referencing organisational documents can escalate routing;
+    * Tasks never downgrade to TRANSIENT.
+9. Do not change proven architecture merely to satisfy the original Sprint 29M assumptions. Where investigation shows the audit was wrong, document the correction and preserve the working implementation.
+10. Final success requires proof of the user-facing architectural outcome:
+
+Simple work is fast and stays in Chat. Professional work becomes durable Completed Work. Evidence-dependent work receives the full integrity machinery. The user should not need to understand which machinery was invoked.
+
+Proceed with Task #143.
+
+This sprint is an important one for the concern you raised about over-engineering. 29J and 29K built a very serious evidence engine. 29M is where we stop driving that engine to the corner shop. If this gate works properly, the complexity we’ve built becomes an asset rather than a tax on every interaction.

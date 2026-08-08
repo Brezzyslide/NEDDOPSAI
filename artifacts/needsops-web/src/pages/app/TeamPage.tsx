@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Show } from "@clerk/react";
+import { Show, useUser } from "@clerk/react";
 import { Redirect } from "wouter";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
@@ -45,6 +45,7 @@ export default function TeamPage() {
   const { slug } = useParams<{ slug: string }>();
   const apiFetch = useAuthFetch();
   const qc = useQueryClient();
+  const { user: clerkUser } = useUser();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
@@ -109,6 +110,19 @@ export default function TeamPage() {
     },
   });
 
+  const removeMember = useMutation({
+    mutationFn: (membershipId: string) =>
+      apiFetch(`/v1/organisations/${slug}/members/${membershipId}`, {
+        method: "DELETE",
+      }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org-members", slug] });
+    },
+    onError: (err: Error) => {
+      alert(err.message ?? "Could not remove member. You may not have permission, or this member cannot be removed.");
+    },
+  });
+
   const members = membersData?.members ?? [];
   const invitations: Invitation[] = invData?.invitations ?? [];
   const pending = invitations.filter(i => i.status === "pending");
@@ -135,22 +149,41 @@ export default function TeamPage() {
               <div className="px-6 py-8 text-[#64748B] text-sm">Loading...</div>
             ) : members.length === 0 ? (
               <div className="px-6 py-8 text-[#64748B] text-sm">No members yet.</div>
-            ) : members.map((m: { id: string; role: string; status: string; user: { email: string; firstName: string | null; lastName: string | null; displayName: string | null } }) => (
-              <div key={m.id} className="flex items-center justify-between px-6 py-3.5 border-b border-[#1E3A5F] last:border-0">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-[#1E3A5F] flex items-center justify-center text-xs text-[#E2E8F0]">
-                    {(m.user.firstName?.[0] ?? m.user.email[0] ?? "U").toUpperCase()}
+            ) : members.map((m: { id: string; role: string; status: string; user: { email: string; firstName: string | null; lastName: string | null; displayName: string | null } }) => {
+              const isSelf = m.user.email === clerkUser?.primaryEmailAddress?.emailAddress;
+              return (
+                <div key={m.id} className="flex items-center justify-between px-6 py-3.5 border-b border-[#1E3A5F] last:border-0">
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-[#1E3A5F] flex items-center justify-center text-xs text-[#E2E8F0]">
+                      {(m.user.firstName?.[0] ?? m.user.email[0] ?? "U").toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-[#E2E8F0] text-sm font-medium">
+                        {m.user.displayName ?? ([m.user.firstName, m.user.lastName].filter(Boolean).join(" ") || m.user.email)}
+                        {isSelf && <span className="ml-1.5 text-[10px] text-[#64748B]">(you)</span>}
+                      </p>
+                      <p className="text-[#64748B] text-xs">{m.user.email}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[#E2E8F0] text-sm font-medium">
-                      {m.user.displayName ?? ([m.user.firstName, m.user.lastName].filter(Boolean).join(" ") || m.user.email)}
-                    </p>
-                    <p className="text-[#64748B] text-xs">{m.user.email}</p>
+                  <div className="flex items-center gap-3">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[m.role] ?? "bg-[#1E3A5F] text-[#64748B]"}`}>{m.role}</span>
+                    {!isSelf && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Remove ${m.user.displayName ?? m.user.email} from the organisation?`)) {
+                            removeMember.mutate(m.id);
+                          }
+                        }}
+                        disabled={removeMember.isPending}
+                        className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 font-medium"
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
                 </div>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[m.role] ?? "bg-[#1E3A5F] text-[#64748B]"}`}>{m.role}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Invitations */}

@@ -43,6 +43,12 @@ import { resolveActionDecision, type ConversationActionDecision } from "./conver
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { detectAndProposeConversationKnowledge } from "./conversationLearningService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
+// Sprint 29M — Three-lane execution classifier
+import {
+  classifyExecutionRequest,
+  type ExecutionClassification,
+} from "./executionClassifierService.js";
+import { extractDocumentSearchTerms } from "./conversationContextBuilder.js";
 // Sprint 9.4 — Capability gate
 import { identifyCapabilities } from "./capabilityIdentificationService.js";
 import { decideMixedCapabilityAccess } from "./capabilityAccessDecisionService.js";
@@ -375,6 +381,12 @@ export interface ProcessMessageResult {
   structuredContent: StructuredContent | null;
   /** Sprint 29H.2 — deterministic platform action decision after CoS classification */
   actionDecision?: ConversationActionDecision;
+  /**
+   * Sprint 29M — Three-lane execution classification.
+   * "transient" means: do NOT trigger autoCreateAndDispatch or work-product lifecycle.
+   * The CoS customerResponse is sufficient and should stay in Chat.
+   */
+  executionClassification?: ExecutionClassification;
 }
 
 export async function buildMessageContext(
@@ -487,7 +499,21 @@ export async function processUserMessage(
     permissions: [],
   });
 
-  // 3b. Capability gate — Sprint 9.4
+  // 3b. Sprint 29M — Three-lane execution classifier.
+  // Runs immediately after CoS classification, using only already-computed signals.
+  // "transient" classification means the caller must NOT trigger autoCreateAndDispatch
+  // or any work-product lifecycle step — the chat response is sufficient.
+  const executionClassification = classifyExecutionRequest({
+    userRequest: text,
+    conversationMode: understanding.conversationMode,
+    proposedTask: understanding.proposedTask as Record<string, unknown> | null,
+    confidence: understanding.confidence,
+    shouldDispatchSpecialists: understanding.shouldDispatchSpecialists ?? false,
+    extractedSearchTerms: extractDocumentSearchTerms(text),
+    trigger: "conversation",
+  });
+
+  // 3c. Capability gate — Sprint 9.4
   // When the intent is task_intent or task_clarification, identify required capabilities
   // and check organisation entitlements BEFORE routing to a specialist or creating a task.
   // Deterministic check: LLM may propose intent; NeedsOps decides access.
@@ -630,7 +656,7 @@ export async function processUserMessage(
     ).catch(() => {});
   }
 
-  return { userMessage, agentMessage, understanding, structuredContent, actionDecision };
+  return { userMessage, agentMessage, understanding, structuredContent, actionDecision, executionClassification };
 }
 
 /** Post a plan card to the conversation thread after task creation. */

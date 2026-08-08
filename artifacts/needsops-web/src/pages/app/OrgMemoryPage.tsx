@@ -449,7 +449,7 @@ export default function OrgMemoryPage() {
   const retire = useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/v1/organisations/${slug}/memory/${id}/supersede`, {
-        method: "POST", body: JSON.stringify({ supersededById: id }),
+        method: "POST", body: JSON.stringify({ newMemoryId: id }),
       }),
     onSuccess: invalidate,
   });

@@ -112,14 +112,18 @@ export async function rejectOrganisationMemory(
 
 export async function supersedeOrganisationMemory(
   organizationId: string, oldId: string, newId: string, userId: string,
-): Promise<boolean> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  // Sprint 29M: guard against self-referential supersession
+  if (oldId === newId) {
+    return { ok: false, error: "A memory entry cannot supersede itself" };
+  }
   try {
     await db.update(organisationMemoryTable)
       .set({ status: "superseded", supersededBy: newId, updatedAt: new Date() })
       .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, oldId)));
     await writeMemoryAudit(organizationId, userId, "memory.superseded", oldId, { supersededBy: newId });
-    return true;
-  } catch { return false; }
+    return { ok: true };
+  } catch { return { ok: false, error: "Failed to supersede memory entry" }; }
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────

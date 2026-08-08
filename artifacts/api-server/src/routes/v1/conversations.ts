@@ -237,7 +237,11 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     // this conversation has no linked task yet, create + dispatch without user clicking.
     // Sprint 29H.2: also fires when the action decision resolves create_new_work
     // (bypasses the hardcoded shouldCreateTask=false in parseAndValidateLLMResponse).
+    // Sprint 29M: three-lane classifier gates this path — TRANSIENT requests stay in
+    // Chat and must NOT enter the work-product lifecycle regardless of CoS signals.
+    const isTransientRequest = result.executionClassification?.executionClass === "transient";
     if (
+      !isTransientRequest &&
       (result.understanding.shouldCreateTask || result.actionDecision?.action === "create_new_work") &&
       result.understanding.confidence >= AUTO_EXECUTE_CONFIDENCE_THRESHOLD &&
       result.understanding.proposedTask &&

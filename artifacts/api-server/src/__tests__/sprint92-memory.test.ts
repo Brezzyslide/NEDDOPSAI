@@ -293,10 +293,18 @@ describe("rejectOrganisationMemory", () => {
 });
 
 describe("supersedeOrganisationMemory", () => {
-  it("returns true when record exists", async () => {
+  it("returns ok:true when record exists", async () => {
     mockDb._setOrgMemoryById({ id: "mem-3", status: "approved" });
-    const ok = await supersedeOrganisationMemory("org-1", "mem-3", "mem-4", "user-1");
-    expect(ok).toBe(true);
+    const result = await supersedeOrganisationMemory("org-1", "mem-3", "mem-4", "user-1");
+    expect(result.ok).toBe(true);
+  });
+
+  it("returns ok:false with self-reference error when oldId === newId", async () => {
+    const result = await supersedeOrganisationMemory("org-1", "mem-3", "mem-3", "user-1");
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toMatch(/cannot supersede itself/i);
+    }
   });
 });
 

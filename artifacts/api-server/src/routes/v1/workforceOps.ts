@@ -30,6 +30,7 @@ import {
   getOrgWorkforceHealth,
   WorkforceOpsError,
 } from "../../services/workforceOpsService.js";
+import { getActiveExecutions } from "../../services/activeExecutionsService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -205,6 +206,24 @@ router.post(
       const result = await performSpecialistAction(orgId, code, action, userId, slug);
       res.json(result);
     } catch (err) { handleOpsError(err, res, next); }
+  },
+);
+
+// ─── GET /active-executions ───────────────────────────────────────────────────
+// Sprint 29M Part D: aggregated in-flight execution activity.
+// Combines tasks (active states), specialist_runs (active states), and
+// execution_intents (dispatched) that no existing canonical query can serve.
+
+router.get(
+  "/organisations/:slug/active-executions",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const orgId = req.tenantContext!.tenantId;
+      const result = await getActiveExecutions(orgId);
+      res.json(result);
+    } catch (err) { next(err); }
   },
 );
 

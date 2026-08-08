@@ -135,56 +135,43 @@ export default function ActiveWorkPage() {
   const apiFetch        = useAuthFetch();
   const [filter, setFilter] = useState<WorkFilter>("all");
 
-  const { data: completedWorkData, isLoading: workLoading } = useQuery({
-    queryKey: ["completed-work-active", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=100`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000, refetchInterval: 60_000,
+  // Sprint 29M Part D: use /active-executions for accurate in-flight data.
+  // This endpoint aggregates tasks (active states) + specialist_runs (active states)
+  // + execution_intents (dispatched) in a single query.
+  const { data: activeData, isLoading } = useQuery({
+    queryKey: ["active-executions", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/active-executions`).then(r => r.json()),
+    enabled: !!slug, staleTime: 15_000, refetchInterval: 30_000,
   });
 
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
-    queryKey: ["tasks-active", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/tasks`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000, refetchInterval: 60_000,
-  });
+  const allActive: any[] = activeData?.activeExecutions ?? [];
+  const totals = activeData?.totals ?? { tasks: 0, specialistRuns: 0, executionIntents: 0 };
 
-  const allWork: any[]  = completedWorkData?.completedWork ?? [];
-  const allTasks: any[] = tasksData?.tasks ?? [];
-  const isLoading       = workLoading || tasksLoading;
+  // Stats derived from the unified active-executions response
+  const inProgressCount  = allActive.filter(e =>
+    ["executing", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"].includes(e.status)
+  ).length;
+  const awaitingCount    = allActive.filter(e => e.status === "awaiting_approval").length;
+  const dispatchedCount  = allActive.filter(e => e.status === "dispatched").length;
+  const totalCount       = allActive.length;
 
-  // Stats
-  const inProgressCount  = allWork.filter(w => w.status === "draft").length +
-    allTasks.filter(t => ["executing", "planning", "queued"].includes(t.currentState ?? t.state ?? "")).length;
-  const awaitingCount    = allWork.filter(w => w.status === "awaiting_approval").length +
-    allTasks.filter(t => t.currentState === "awaiting_approval").length;
-  const completedCount   = allWork.filter(w => w.status === "approved").length +
-    allTasks.filter(t => (t.currentState ?? t.state) === "completed").length;
-  const failedCount      = allTasks.filter(t => (t.currentState ?? t.state) === "failed").length;
-
-  // Filter logic — build combined list then filter
-  function matchesFilter(status: string, type: "work" | "task"): boolean {
+  // Filter logic
+  function matchesFilter(status: string): boolean {
     if (filter === "all") return true;
-    if (filter === "in_progress") {
-      return type === "work"
-        ? status === "draft"
-        : ["executing", "planning", "queued"].includes(status);
-    }
+    if (filter === "in_progress")
+      return ["executing", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"].includes(status);
     if (filter === "awaiting_approval") return status === "awaiting_approval";
-    if (filter === "completed") {
-      return type === "work" ? status === "approved" : status === "completed";
-    }
-    if (filter === "failed") return status === "failed";
+    if (filter === "completed") return status === "dispatched";
+    if (filter === "failed") return false; // failed tasks not returned by active-executions
     return true;
   }
 
-  const visibleWork  = allWork.filter(w => matchesFilter(w.status, "work"));
-  const visibleTasks = allTasks.filter(t => matchesFilter(t.currentState ?? t.state ?? "", "task"));
+  const visible = allActive.filter(e => matchesFilter(e.status));
 
-  // Sort combined by timestamp
-  type CombinedItem = { _ts: number; _type: "work" | "task"; item: any };
-  const combined: CombinedItem[] = [
-    ...visibleWork.map(w  => ({ _ts: new Date(w.updatedAt ?? w.createdAt).getTime(), _type: "work" as const,  item: w })),
-    ...visibleTasks.map(t => ({ _ts: new Date(t.updatedAt ?? t.createdAt).getTime(), _type: "task" as const, item: t })),
-  ].sort((a, b) => b._ts - a._ts);
+  // Sort newest-first (server already sorts, but apply locally after filter)
+  const combined = visible.sort((a: any, b: any) =>
+    new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime(),
+  );
 
   return (
     <>
@@ -199,11 +186,19 @@ export default function ActiveWorkPage() {
 
           {/* Stats row */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <StatChip label="In Progress"       count={inProgressCount} accent="#60A5FA" />
-            <StatChip label="Awaiting Approval" count={awaitingCount}   accent={awaitingCount > 0 ? "#FB923C" : undefined} />
-            <StatChip label="Completed"         count={completedCount}  accent="#34D399" />
-            <StatChip label="Failed"            count={failedCount}     accent={failedCount > 0 ? "#F87171" : undefined} />
+            <StatChip label="In Progress"       count={inProgressCount}  accent="#60A5FA" />
+            <StatChip label="Awaiting Approval" count={awaitingCount}    accent={awaitingCount > 0 ? "#FB923C" : undefined} />
+            <StatChip label="Dispatched"        count={dispatchedCount}  accent={dispatchedCount > 0 ? "#A78BFA" : undefined} />
+            <StatChip label="Total Active"      count={totalCount}       accent="#E2E8F0" />
           </div>
+          {/* Data source note */}
+          {totals.specialistRuns > 0 || totals.executionIntents > 0 ? (
+            <p className="text-xs text-[#64748B] mb-4">
+              {totals.tasks} task{totals.tasks !== 1 ? "s" : ""}
+              {totals.specialistRuns > 0 ? ` · ${totals.specialistRuns} specialist run${totals.specialistRuns !== 1 ? "s" : ""}` : ""}
+              {totals.executionIntents > 0 ? ` · ${totals.executionIntents} dispatched action${totals.executionIntents !== 1 ? "s" : ""}` : ""}
+            </p>
+          ) : null}
 
           {/* Filter tabs */}
           <div className="flex items-center gap-1 mb-6 p-1 bg-[#112033] border border-[#1E3A5F] rounded-xl w-fit overflow-x-auto">
@@ -240,11 +235,11 @@ export default function ActiveWorkPage() {
           ) : combined.length === 0 ? (
             <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-16 text-center">
               <p className="text-4xl mb-3 opacity-30">⚡</p>
-              <p className="text-[#E2E8F0] font-medium text-lg mb-1">No work items</p>
+              <p className="text-[#E2E8F0] font-medium text-lg mb-1">No active work</p>
               <p className="text-[#64748B] text-sm mb-5">
                 {filter === "all"
-                  ? "Your AI Workforce hasn't started any work yet."
-                  : `No items with status "${FILTERS.find(f => f.key === filter)?.label}".`}
+                  ? "Your AI Workforce has no tasks in progress right now."
+                  : `No items matching "${FILTERS.find(f => f.key === filter)?.label}".`}
               </p>
               {filter === "all" && (
                 <button
@@ -257,18 +252,23 @@ export default function ActiveWorkPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {combined.map(({ _type, item }) => (
-                <WorkCard
-                  key={`${_type}-${item.id}`}
-                  title={item.title ?? (_type === "task" ? "Untitled task" : "Untitled work")}
-                  specialist={item.primarySpecialist ?? item.assignedSpecialist}
-                  status={_type === "work" ? item.status : (item.currentState ?? item.state)}
-                  blueprint={item.blueprintCode ?? item.outputType}
-                  timestamp={item.updatedAt ?? item.createdAt}
-                  type={_type}
-                  onClick={_type === "task" ? () => setLocation(`/app/${slug}/tasks/${item.id}`) : undefined}
-                />
-              ))}
+              {combined.map((item: any) => {
+                const type: "work" | "task" = item.kind === "specialist_run" || item.kind === "execution_intent"
+                  ? "task"
+                  : "task";
+                return (
+                  <WorkCard
+                    key={item.id}
+                    title={item.title ?? "Untitled"}
+                    specialist={item.specialistCode}
+                    status={item.status}
+                    blueprint={item.kind === "execution_intent" ? "Dispatched Action" : undefined}
+                    timestamp={item.startedAt ?? item.queuedAt ?? item.createdAt}
+                    type={type}
+                    onClick={item.taskId ? () => setLocation(`/app/${slug}/tasks/${item.taskId}`) : undefined}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

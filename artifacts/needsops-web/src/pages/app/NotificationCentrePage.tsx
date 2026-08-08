@@ -1,11 +1,16 @@
 /**
- * Notification Centre — Task #36
+ * Notification Centre — Task #36 / Sprint 29M Part E
  *
- * Aggregates all platform notifications:
- *   - Unread conversation messages
- *   - Work items awaiting approval
- *   - Knowledge proposals
- *   - Pending system approvals
+ * INFORMATIONAL items only — status updates that don't require a decision:
+ *   - Completed work delivered (approved/finalised)
+ *   - Conversation messages (unread count)
+ *   - System status events
+ *
+ * ACTIONABLE items (awaiting_approval work, pending approvals, knowledge
+ * proposals) live in the Inbox (ExecutiveInbox) only — they are not
+ * duplicated here.
+ *
+ * Amendment 6: Inbox = actionable / Notifications = informational.  Do not merge.
  *
  * Read / archive / restore / mark-unread state is server-backed via
  * notification_reads (not localStorage). Optimistic local state gives

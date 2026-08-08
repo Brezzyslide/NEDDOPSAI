@@ -43,7 +43,7 @@ import {
   knowledgeSourcesTable,
   ingestionJobsTable,
 } from "@workspace/db";
-import { eq, and, sql, isNull } from "drizzle-orm";
+import { eq, and, sql, isNull, ne } from "drizzle-orm";
 import { getExtractor }            from "../lib/extractors/extractorRegistry.js";
 import { normaliseDocument }       from "./normalisationService.js";
 import { chunkDocument, DEFAULT_CHUNK_OPTIONS } from "./chunkingService.js";
@@ -386,9 +386,62 @@ async function runPipeline(
     });
 
     // ── Stage 11: update source status ─────────────────────────────────────
+    // Sprint 29M: auto-approve low-risk uploads so ordinary documents become
+    // usable immediately without a manual approve-ingestion step.
+    //
+    // Auto-approval criteria (all must be true):
+    //   (a) No injection risk and not a scanned document (requiresHumanReview=false)
+    //   (b) No existing *approved* source with the same canonical title in this org
+    //       (conflicting "current" authoritative document requires human review)
+    //
+    // Amendment 3 guard: auto-approval grants *permission to use* — it does NOT
+    // declare the document as authoritative organisational truth.  Conflicting,
+    // superseded, ambiguous, or high-risk material continues to require human review.
+    const requiresHumanReview = injectionResult.requiresHumanReview || extraction.isScanned;
+    let finalSourceStatus: "review_required" | "approved" = "review_required";
+
+    if (!requiresHumanReview) {
+      try {
+        // Check for an existing approved source with the same canonical title.
+        // If one exists, a human must decide which is the current authority.
+        const sourceRow = await db
+          .select({ canonicalTitle: knowledgeSourcesTable.canonicalTitle })
+          .from(knowledgeSourcesTable)
+          .where(and(
+            eq(knowledgeSourcesTable.id,             knowledgeSourceId),
+            eq(knowledgeSourcesTable.organizationId, organizationId),
+          ))
+          .limit(1);
+
+        const canonicalTitle = sourceRow[0]?.canonicalTitle;
+        let hasConflict = false;
+
+        if (canonicalTitle) {
+          const conflicts = await db
+            .select({ id: knowledgeSourcesTable.id })
+            .from(knowledgeSourcesTable)
+            .where(and(
+              eq(knowledgeSourcesTable.organizationId,  organizationId),
+              eq(knowledgeSourcesTable.canonicalTitle,  canonicalTitle),
+              eq(knowledgeSourcesTable.status,          "approved"),
+              ne(knowledgeSourcesTable.id,              knowledgeSourceId),
+            ))
+            .limit(1);
+          hasConflict = conflicts.length > 0;
+        }
+
+        if (!hasConflict) {
+          finalSourceStatus = "approved";
+        }
+      } catch {
+        // Auto-approve check failure must never block the pipeline — fall back to review_required
+        finalSourceStatus = "review_required";
+      }
+    }
+
     await db
       .update(knowledgeSourcesTable)
-      .set({ status: "review_required", updatedAt: new Date() })
+      .set({ status: finalSourceStatus, updatedAt: new Date() })
       .where(
         and(
           eq(knowledgeSourcesTable.id,             knowledgeSourceId),
