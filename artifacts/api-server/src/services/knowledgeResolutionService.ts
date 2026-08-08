@@ -40,6 +40,12 @@ export interface EvidenceChunk {
   chunkId: string;
   /** Parent knowledge source ID */
   sourceId: string;
+  /**
+   * knowledge_source_versions.id at retrieval time.
+   * Required for durable evidence provenance (Sprint 29K.2).
+   * May be null for task-upload chunks whose version is not separately tracked.
+   */
+  sourceVersionId: string | null;
   /** Human-readable source title */
   sourceTitle: string;
   /** Version label at time of retrieval (e.g. "v3") */
@@ -150,6 +156,7 @@ function mapRawChunk(
   return {
     chunkId:         chunk.id,
     sourceId:        chunk.knowledgeSourceId,
+    sourceVersionId: chunk.sourceVersionId ?? null,
     sourceTitle:     chunk.sourceTitle,
     versionLabel,
     sourceType:      chunk.sourceScope === "task" ? "task_upload" : "library",
@@ -425,6 +432,7 @@ export async function resolveEvidence(
       allEvidenceChunks.push({
         chunkId:         row.id,
         sourceId:        row.knowledgeSourceId,
+        sourceVersionId: row.sourceVersionId ?? null,
         sourceTitle:     titleMap.get(row.knowledgeSourceId) ?? "Task Upload",
         versionLabel:    vLabel,
         sourceType:      "task_upload",

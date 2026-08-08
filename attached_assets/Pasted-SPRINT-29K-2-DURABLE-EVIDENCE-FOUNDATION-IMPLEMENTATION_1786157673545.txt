@@ -1,0 +1,525 @@
+SPRINT 29K.2 — DURABLE EVIDENCE FOUNDATION
+
+IMPLEMENTATION SPRINT
+
+Implement Phase 1 of the claim-level evidence architecture only.
+
+Do NOT implement:
+
+- claim emission
+- claim taxonomy UI
+- recommendation linkage
+- absence findings
+- external trusted sources
+- passage-level Evidence tab UI
+
+This sprint establishes durable execution-time evidence provenance.
+
+==================================================
+CORE OBJECTIVE
+==================================================
+
+The EvidencePack used to generate a Completed Work version must no longer disappear after execution.
+
+Persist enough execution-time evidence to answer later:
+
+- Which sources were available?
+- Which exact chunks were used?
+- Which source version did they come from?
+- What section/page did the specialist see?
+- What was the relevance score?
+- Has the underlying chunk changed or been re-ingested since?
+- What excerpt can safely be shown even if the live chunk is no longer available?
+
+Do not persist the entire EvidencePack JSON blob.
+
+Use the verified HYBRID model.
+
+==================================================
+A — DATA MODEL
+==================================================
+
+Create:
+
+1. completed_work_evidence_snapshots
+2. completed_work_evidence_links
+
+Use the existing tenancy/RLS patterns.
+
+----------------------------------------------
+completed_work_evidence_snapshots
+----------------------------------------------
+
+Fields:
+
+id
+executionId
+completedWorkId
+versionId
+organisationId
+
+totalChunksAvailable
+avgRelevanceScore
+retrievalMethod
+retrievalMs
+
+createdAt
+
+Constraints:
+
+- FK completedWorkId → completed_work
+- FK versionId → completed_work_versions
+- organisation scoping
+- unique logical execution/version record
+
+Recommended unique key:
+
+(executionId, versionId)
+
+Do not assume one execution can only ever have one Completed Work version unless already guaranteed.
+
+----------------------------------------------
+completed_work_evidence_links
+----------------------------------------------
+
+Fields:
+
+id
+executionId
+completedWorkId
+versionId
+organisationId
+
+chunkId
+sourceId
+sourceVersionId
+
+passageHash
+passageSnapshot
+
+sectionTitle
+pageNumber
+
+relevanceScore
+selectionReason
+
+createdAt
+
+Indexes:
+
+(completedWorkId, organisationId)
+(versionId)
+(chunkId)
+(sourceId)
+(sourceVersionId)
+
+Do not enforce FK from chunkId if current re-ingestion/deletion semantics would make that unsafe.
+
+Keep the chunkId as a soft reference.
+
+==================================================
+B — PASSAGE SNAPSHOT RULE
+==================================================
+
+Do not hard-code the architecture around:
+
+"first 500 characters of chunk"
+
+Preferred rule:
+
+If retrieval exposes a matched span / highlighted region:
+    snapshot the supporting passage around that span
+
+Else:
+    snapshot a deterministic excerpt of the chunk
+
+Maximum snapshot size should be bounded.
+
+Recommended:
+500–1000 characters.
+
+The passageHash MUST be computed from the FULL chunk text at execution time.
+
+Use SHA-256.
+
+This means:
+
+snapshot = display/audit excerpt
+hash = integrity of full passage/chunk
+
+==================================================
+C — VERSION OWNERSHIP
+==================================================
+
+Evidence provenance belongs to the exact Completed Work VERSION generated from that evidence.
+
+Do not wait until approval to assign evidence to a version.
+
+Flow:
+
+EvidencePack
+→ specialist generation
+→ Completed Work version created
+→ evidence snapshot persisted against that versionId
+
+If later:
+
+V1 → V2
+
+each version must retain its own provenance.
+
+Approval later pins one version using approvedVersionId.
+
+Evidence for V1 and V2 must remain distinct.
+
+==================================================
+D — PERSISTENCE TIMING
+==================================================
+
+Persist evidence only after:
+
+- generation succeeds
+- Completed Work version exists
+
+Do not persist speculative evidence for a generation that never produces a Completed Work version unless current audit architecture explicitly requires it.
+
+Recommended flow:
+
+resolve EvidencePack
+→ generate
+→ self-review
+→ create Completed Work/version
+→ persist evidence snapshot + links
+→ continue lifecycle
+
+If evidence persistence fails:
+
+DO NOT silently swallow the error.
+
+Classify the failure.
+
+Because this is audit/provenance data, decide whether execution should:
+
+A. fail the Completed Work creation
+or
+B. preserve Completed Work but mark provenance persistence failure
+
+Use existing architecture consistency.
+
+Do not invent behaviour without inspection.
+
+At minimum:
+structured logging + inspector diagnostic.
+
+==================================================
+E — IDEMPOTENCY
+==================================================
+
+Evidence persistence must be idempotent.
+
+Re-running callback/recovery logic for the same:
+
+executionId + versionId
+
+must not duplicate:
+
+snapshot rows
+evidence link rows
+
+Use unique constraints/upsert-safe logic.
+
+==================================================
+F — BUILD FROM ACTUAL EVIDENCEPACK
+==================================================
+
+Persist from the SAME EvidencePack instance used for:
+
+specialist generation
+self-review
+
+Do not perform a second retrieval.
+
+For each EvidenceChunk capture:
+
+chunkId
+sourceId
+sourceVersionId where available
+sectionTitle
+pageNumber
+confidence → relevanceScore
+selectionReason
+full-text SHA-256
+bounded passage snapshot
+
+If sourceVersionId is not currently available on EvidenceChunk:
+
+inspect how it can be resolved deterministically.
+
+Do not substitute versionLabel for sourceVersionId if both concepts are distinct.
+
+If a DB lookup is required, batch it.
+
+Avoid N+1 queries.
+
+==================================================
+G — RETRIEVAL METADATA
+==================================================
+
+Snapshot-level metadata should reflect the actual execution:
+
+totalChunksAvailable
+average relevance score
+retrieval method
+retrieval duration
+
+Do not derive values from later re-runs.
+
+If retrieval method currently says lexical but hybrid retrieval is actually used, preserve the true current value.
+
+Report any mismatch in existing naming.
+
+==================================================
+H — SOURCE RE-INGESTION INTEGRITY
+==================================================
+
+Add a deterministic verification helper:
+
+verifyEvidencePassageIntegrity(evidenceLink)
+
+Behaviour:
+
+1. Try to load live chunk by chunkId including soft-deleted rows where permitted.
+2. If found:
+   compute SHA-256(live chunk text)
+   compare to passageHash
+
+Results:
+
+MATCH
+→ integrityStatus = "verified"
+
+NOT FOUND
+→ integrityStatus = "snapshot_only"
+
+HASH MISMATCH
+→ integrityStatus = "changed"
+
+Do not mutate historical evidence.
+
+Do not replace the snapshot with current chunk text.
+
+==================================================
+I — SOURCE ARCHIVAL / SOFT DELETE
+==================================================
+
+Verify that:
+
+archived source
+soft-deleted source
+soft-deleted chunk
+
+does not destroy Completed Work evidence provenance.
+
+The persisted passageSnapshot must still be available.
+
+No UI implementation required yet.
+
+==================================================
+J — TENANT ISOLATION
+==================================================
+
+Both new tables must enforce tenant isolation.
+
+Test:
+
+Tenant A cannot query Tenant B evidence snapshot.
+Tenant A cannot query Tenant B evidence link.
+Cross-tenant completedWorkId/versionId combinations rejected.
+Cross-tenant source/chunk soft references never surfaced.
+
+Use existing RLS conventions.
+
+==================================================
+K — APPROVED VERSION INTEGRITY REGRESSION
+==================================================
+
+Sprint 29J.2 remains authoritative.
+
+Test:
+
+V1 generated with EvidencePack A
+V2 generated with EvidencePack B
+V2 approved
+
+Expected:
+
+approvedVersionId → V2
+viewer/export → V2
+evidence provenance for V2 → EvidencePack B
+
+V1 evidence remains available historically but must not appear as evidence for approved V2.
+
+==================================================
+L — CLAIM-LEVEL FUTURE COMPATIBILITY
+==================================================
+
+Do not implement claims yet.
+
+But ensure completed_work_evidence_links can later be referenced by:
+
+completed_work_claim_evidence
+
+without schema redesign.
+
+Each evidence link must have a stable unique ID.
+
+==================================================
+M — STORAGE TEST
+==================================================
+
+Using real current execution shapes:
+
+measure actual persisted size for:
+
+5-chunk execution
+20-chunk execution
+
+Compare against the design estimate.
+
+Report:
+
+average snapshot bytes
+average evidence link row size
+estimated 1,000 executions
+estimated 100,000 executions
+
+Do not optimise prematurely unless actual storage is materially worse than design.
+
+==================================================
+N — REGRESSION TESTS
+==================================================
+
+Add tests proving at minimum:
+
+1. Evidence snapshot created for successful Completed Work version.
+2. One evidence link created per EvidenceChunk.
+3. Same execution/version does not duplicate snapshot.
+4. Same execution/version does not duplicate links.
+5. chunkId persisted.
+6. sourceId persisted.
+7. sourceVersionId persisted.
+8. passageHash = SHA-256(full chunk text).
+9. passageSnapshot bounded.
+10. sectionTitle persisted.
+11. pageNumber persisted.
+12. relevanceScore persisted.
+13. selectionReason persisted.
+14. evidence belongs to exact versionId.
+15. V1 and V2 evidence remain separate.
+16. approved V2 resolves only V2 evidence.
+17. soft-deleted chunk → snapshot_only.
+18. live unchanged chunk → verified.
+19. hash mismatch → changed.
+20. no second retrieval occurs during evidence persistence.
+21. cross-tenant snapshot denied.
+22. cross-tenant evidence link denied.
+23. recovery/retry does not duplicate records.
+24. existing retrieval audit still works.
+25. existing evidence grounding self-review remains working.
+26. Completed Work export/version integrity remains green.
+
+==================================================
+O — REAL DB VERIFICATION
+==================================================
+
+Run at least one new disposable real execution.
+
+Capture:
+
+executionId
+completedWorkId
+versionId
+EvidencePack chunk count
+snapshot row ID
+evidence link count
+
+Expected:
+
+EvidencePack chunk count
+=
+evidence link count
+
+Verify at least 3 links against the original chunks:
+
+chunkId
+sourceVersionId
+sectionTitle
+pageNumber
+hash
+snapshot
+relevanceScore
+
+Then safely re-ingest/re-chunk a disposable source if feasible.
+
+Verify old evidence links remain reconstructable through passageSnapshot.
+
+==================================================
+MANDATORY EVIDENCE STANDARD
+==================================================
+
+Classify:
+
+Level 1 Unit
+Level 2 Mocked integration
+Level 3 Real DB
+Level 4 Live runtime
+Level 5 Authenticated UI
+
+Status:
+
+PROVEN
+PARTIALLY PROVEN
+NOT YET PROVEN
+BLOCKED
+
+Do not claim live proof from source inspection.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Return:
+
+1. Schema added
+2. Files changed
+3. Evidence persistence lifecycle
+4. Passage snapshot rule
+5. Hash/integrity behaviour
+6. Version ownership behaviour
+7. Idempotency result
+8. Re-ingestion result
+9. Tenant isolation
+10. Approved-version regression
+11. Storage measurements
+12. Tests
+13. Real DB execution result
+14. Remaining gaps
+
+Answer explicitly:
+
+A. Is the EvidencePack now reconstructable after execution?
+B. Can re-ingestion destroy the historical evidence display?
+C. Can a changed chunk silently masquerade as the original?
+D. Does each Completed Work version retain its own evidence?
+E. Is the same EvidencePack used for generation, self-review and persistence?
+F. Is any second retrieval performed?
+G. Is cross-tenant evidence access blocked?
+H. Is this foundation ready for claim-level binding?
+
+Final verdict:
+
+PROVEN — DURABLE EVIDENCE FOUNDATION READY
+
+PARTIALLY PROVEN — SPECIFY GAP
+
+BLOCKED — HISTORICAL EVIDENCE CAN STILL BE LOST OR MISREPRESENTED

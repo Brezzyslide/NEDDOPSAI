@@ -112,6 +112,9 @@ export const REQUIRED_RLS_TABLES = [
   "execution_checkpoints",
   // Sprint 29F.1 — Persisted Connector Write Action Lifecycle
   "execution_actions",
+  // Sprint 29K.2 — Durable Evidence Foundation (Hybrid EvidencePack persistence)
+  "completed_work_evidence_snapshots",
+  "completed_work_evidence_links",
 ] as const;
 
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];

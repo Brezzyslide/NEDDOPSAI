@@ -47,6 +47,7 @@ import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
 import { createDraft, submitForApproval } from "./completedWorkService.js";
+import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
   buildEvidenceSection,
   resolveConversationEvidence,
@@ -1109,6 +1110,28 @@ export class UnifiedExecutionEngine {
       createdByUserId: requesterId,
       assetIds,
     });
+
+    // ── Sprint 29K.2: Persist EvidencePack provenance (Hybrid model) ─────────
+    // Binds the exact chunks used for generation + self-review to this version.
+    // Uses the SAME evidencePack instance — no second retrieval.
+    // Fails soft: a provenance gap is logged but does NOT fail the work item.
+    if (evidencePack && evidencePack.totalChunks > 0 && completedWork.currentVersionId) {
+      persistExecutionEvidence({
+        executionId:     evidencePack.executionId,
+        completedWorkId: completedWork.id,
+        versionId:       completedWork.currentVersionId,
+        organisationId:  organizationId,
+        evidencePack,
+      }).catch(err => {
+        console.warn(
+          "[UnifiedExecutionEngine] Evidence persistence failed — provenance gap:",
+          err instanceof Error ? err.message : err,
+          "| completedWorkId:", completedWork.id,
+          "| versionId:", completedWork.currentVersionId,
+          "| chunkCount:", evidencePack.totalChunks,
+        );
+      });
+    }
 
     // ── Lifecycle: draft → awaiting_approval ─────────────────────────────────
     // All cloud OPS work requires human approval unless the caller explicitly

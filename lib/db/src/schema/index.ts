@@ -141,3 +141,6 @@ export * from "./specialistCatalogue";
 // Sprint 27.2 — Durable Execution Checkpoints
 export * from "./executionCheckpoints";
 export * from "./executionActions";
+// Sprint 29K.2 — Durable Evidence Foundation (Hybrid EvidencePack persistence)
+export * from "./completedWorkEvidenceSnapshots";
+export * from "./completedWorkEvidenceLinks";
