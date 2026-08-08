@@ -42,8 +42,8 @@ const router = Router({ mergeParams: true });
 
 function requireOwnerOrAdmin(req: any, res: any): boolean {
   const role = req.tenantContext?.role;
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or admin role required." } });
+  if (role !== "owner" && role !== "administrator") {
+    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or administrator role required." } });
     return false;
   }
   return true;
@@ -368,6 +368,16 @@ router.post(
   "/organisations/:slug/work-executions",
   requireAuth,
   resolveTenantFromSlug,
+  // Sprint 29M.3: direct pipeline trigger requires manager+ — members submit via
+  // task/chat UI which routes through the approval flow, not this endpoint.
+  (req, res, next) => {
+    const role = req.tenantContext?.role;
+    if (!role || !["owner", "administrator", "manager"].includes(role)) {
+      res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Triggering work execution requires manager, administrator, or owner role." } });
+      return;
+    }
+    next();
+  },
   async (req, res, next) => {
     try {
       const ctx  = req.tenantContext!;

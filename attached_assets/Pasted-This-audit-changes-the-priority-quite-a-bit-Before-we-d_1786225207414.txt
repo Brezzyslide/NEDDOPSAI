@@ -1,0 +1,515 @@
+This audit changes the priority quite a bit.
+
+Before we do any more navigation cleanup, we need to fix access enforcement first. Hiding a menu item while the API still lets a member approve memory, resolve governance approvals, or open Blueprint Studio directly is cosmetic security. The backend has to become authoritative, then the UI should mirror it.
+
+The good news is that the role model itself is not the problem. I would keep the six organisation roles. The problem is inconsistent enforcement and the old admin versus administrator naming drift.
+
+I would also activate manager rather than remove it. It fills a useful gap between administrator and member. But I would narrowly define what it can approve.
+
+My recommended boundary is:
+
+Owner has full organisational authority. Administrator has full day-to-day operational and governance authority, but not the few owner-only matters such as organisation deletion or ultimate billing ownership. Manager can commission work and make normal operational work approvals, but should not govern the organisational knowledge base, Memory authority, blueprints, security, or high-risk governance settings. Member can ask, create and submit work, upload documents and consume outputs, but cannot approve governance decisions. Viewer is read-only operational visibility. Auditor is read-only governance/audit visibility.
+
+That gives us an important approval distinction:
+
+Manager can approve work. Administrator/Owner can approve authority.
+
+So a manager could approve an ordinary onboarding plan or operational deliverable if your workflow allows it. But changing which policy is authoritative, approving organisational Memory, publishing a Blueprint, or resolving a high-risk governance exception should stay administrator/owner.
+
+And nobody should be able to approve their own governed request where segregation of duties applies. Owner should not magically escape that simply because they are owner. If an organisation has only one owner/admin, then the product needs a clearly defined exceptional rule rather than silently pretending independent approval occurred.
+
+I would now make 29M.3 a proper RBAC hardening + navigation alignment sprint, with Chat reset/context dealt with immediately after. Send Replit this:
+
+SPRINT 29M.3 — ORGANISATION RBAC HARDENING & MODULE ACCESS ALIGNMENT
+
+IMPLEMENTATION + VERIFICATION.
+
+Sprint 29M.2A established the canonical organisation roles:
+
+owner
+administrator
+manager
+member
+viewer
+auditor
+
+The DB memberships.role field is authoritative.
+
+Do NOT add new organisation roles.
+
+Do NOT use legacy "admin" as a canonical role. "administrator" is the DB value.
+
+The goal is to make backend permissions authoritative and then make navigation/UI accurately reflect those permissions.
+
+⸻
+
+PART A — ELIMINATE admin / administrator ROLE DRIFT
+
+Search the entire repository, not just the five known route files, for:
+
+* role === "admin"
+* role !== "admin"
+* arrays containing "admin"
+* frontend role checks
+* legacy USER_ROLES usages
+* helper implementations such as requireOwnerOrAdmin
+
+Canonical organisation admin role is:
+
+"administrator"
+
+Replace incorrect runtime checks safely.
+
+Do NOT blindly replace platform role strings containing admin, such as platform_admin.
+
+Prefer one reusable canonical helper rather than continuing inline owner/admin comparisons in multiple routes.
+
+Required result:
+
+owner and administrator receive the intended operational admin permissions consistently.
+
+Add regression tests proving "admin" is not accidentally treated as a valid canonical organisation membership role unless an explicit legacy-normalisation boundary intentionally supports it.
+
+⸻
+
+PART B — CANONICAL ROLE/PERMISSION BOUNDARIES
+
+Implement this product contract using the existing permissions architecture wherever possible.
+
+OWNER
+
+* full organisational authority
+* team/admin management
+* knowledge authority
+* Memory governance
+* Blueprint governance
+* Completed Work approval
+* governance decisions
+* audit
+* billing/organisation ownership controls according to existing permission map
+
+ADMINISTRATOR
+
+* full normal operational/governance authority
+* knowledge authority decisions
+* Memory governance
+* Blueprint configuration/publish
+* Completed Work approval
+* governance decisions
+* team management
+* audit
+
+Owner-only existing actions such as organisation deletion/billing ownership remain owner-only.
+
+MANAGER
+
+* normal operational use
+* create/run Tasks
+* assign work
+* approve appropriate operational work where the existing governance model supports this
+* view Library
+* upload Library documents
+* view operational approval queues relevant to their authority
+
+Manager MUST NOT automatically gain:
+
+* authoritative knowledge decisions
+* Memory approval/merge/supersede authority
+* Blueprint publish/configuration authority
+* security administration
+* unrestricted governance override
+
+MEMBER
+
+* Chat
+* create/submit ordinary Tasks
+* view appropriate Completed Work
+* upload and view Library documents
+* consume Workforce capabilities allowed by entitlements
+
+Member cannot make governance decisions.
+
+VIEWER
+
+* read-only operational access
+* no Task execution
+* no upload
+* no approvals
+* no mutations
+
+AUDITOR
+
+* read-only governance/audit access
+* Audit Log
+* appropriate governance visibility
+* no execution or governance mutation
+
+Do not hardcode role lists everywhere if existing PermissionAction controls can express the requirement cleanly.
+
+⸻
+
+PART C — MEMORY SECURITY
+
+Current defect: organisationMemory write/governance endpoints are largely requireAuth only.
+
+Fix backend authorization.
+
+Ordinary users must NOT be able to approve, reject, merge, supersede, retire or otherwise govern organisational Memory.
+
+Recommended:
+
+* view Memory: owner + administrator through normal admin UI; auditor read-only if product decision supports it
+* manual Memory creation: owner/administrator only through admin UI unless a specific controlled workflow requires otherwise
+* approve/reject: owner/administrator
+* edit/correct: owner/administrator
+* merge/supersede/retire: owner/administrator
+* inspect history: owner/administrator; auditor read-only may be permitted
+
+System-generated auto-memory must continue to function through the trusted service path.
+
+Do NOT make CoS/system memory creation depend on a human-facing UI role.
+
+Preserve Sprint 29M Memory auto-adoption rules:
+
+* safe types only
+* permitted system/import source types only
+* confidence threshold
+* zero conflicts
+* protected/high-risk memory types never auto-adopt
+
+⸻
+
+PART D — GOVERNANCE APPROVAL SECURITY
+
+Current defect: approvalRoutes resolve/bulk-resolve is requireAuth only.
+
+Fix this.
+
+Separate:
+
+VIEW GOVERNANCE
+from
+RESOLVE GOVERNANCE DECISION
+
+Viewing may be available more broadly.
+
+Resolving must use an explicit permission.
+
+Prefer existing permission architecture. If a suitable existing permission such as worker:approve accurately represents only operational approvals, use it only where semantically correct.
+
+Do NOT let one generic approval permission accidentally grant authority over:
+
+* knowledge authority
+* Memory governance
+* Blueprint publication
+* security-sensitive decisions
+
+If approval types carry different authority requirements, enforce by approval type.
+
+Suggested minimum:
+
+* ordinary operational/work approvals: manager + administrator + owner where appropriate
+* knowledge authority approvals: administrator + owner
+* Memory governance approvals: administrator + owner
+* Blueprint governance/publish approvals: administrator + owner
+* security/high-risk administrative approvals: according to existing owner/admin control model
+
+Report the exact mapping implemented.
+
+⸻
+
+PART E — SEGREGATION OF DUTIES
+
+Add self-approval protection for governance-controlled actions.
+
+At minimum test:
+
+* user proposes Memory → same user attempts to approve
+* user requests governance approval → same user resolves it
+* user requests knowledge authority change → same user approves
+
+Default behaviour:
+
+same actor cannot approve their own governed request.
+
+Do NOT merely hide the Approve button. Enforce server-side.
+
+Determine how the system should behave for a one-person organisation.
+
+Do not invent a weak silent bypass.
+
+If an explicit owner override is necessary, it must:
+
+* be clearly identified as an override
+* be audit logged
+* not be represented as independent approval
+
+Investigate existing organisation governance behaviour before implementing such an exception.
+
+⸻
+
+PART F — COMPLETED WORK APPROVAL
+
+Fix the existing "admin" / "administrator" bug.
+
+Determine whether Completed Work approval should remain:
+
+owner + administrator
+
+or whether ordinary operational Completed Work may also be approved by manager.
+
+Use existing approval/governance metadata if the system already distinguishes work risk/approval type.
+
+Do NOT give manager blanket authority over all Completed Work if some outputs have governance/knowledge consequences.
+
+Produce and implement a deterministic approval authority rule.
+
+⸻
+
+PART G — LIBRARY ACCESS
+
+Product contract:
+
+Library remains available.
+
+It is not being removed.
+
+Upload itself is consent for NeedsOps to ingest/use the material subject to security review.
+
+Access:
+
+* owner: view/upload/govern
+* administrator: view/upload/govern
+* manager: view/upload
+* member: view/upload
+* viewer: read-only if permitted by current document visibility model
+* auditor: read-only only if appropriate for audit scope
+
+Governance actions such as:
+
+* approve authority
+* revoke
+* supersede
+* re-scope
+* resolve conflicting canonical source
+* delete where governance-sensitive
+
+require administrator/owner.
+
+Preserve auto-ingestion:
+
+safe unique uploads → immediately usable
+
+suspicious/conflicting/ambiguous uploads → review_required
+
+Do not confuse “usable” with “current authoritative”.
+
+⸻
+
+PART H — BLUEPRINT STUDIO
+
+Blueprint Studio is organisation configuration, not normal employee functionality.
+
+Backend + UI:
+
+* owner: full access
+* administrator: full operational configuration access
+* manager/member/viewer/auditor: no normal Blueprint Studio access
+
+Preserve API/routes for authorised roles.
+
+Sandbox remains isolated.
+
+Direct execution endpoints must not allow ordinary members to bypass Task/Workforce governance simply because they know the URL.
+
+Apply appropriate execution permission/role enforcement.
+
+⸻
+
+PART I — TASK EXECUTION PERMISSIONS
+
+Audit and reconcile task:execute.
+
+Current report says:
+
+* manager has task:execute
+* member does not
+* routes currently allow any authenticated member to create Tasks
+
+First distinguish:
+
+create/request a Task
+
+from
+
+directly execute specialist work
+
+A member may reasonably be allowed to request/create a Task even if they cannot independently bypass governance and execute arbitrary specialist work.
+
+Do not mechanically add task:execute to POST /tasks if doing so would prevent members from requesting work.
+
+Introduce/enforce the correct permission at the correct point:
+
+request/create vs dispatch/execute.
+
+Reuse existing task proposal/approval architecture where possible.
+
+⸻
+
+PART J — ROUTE-LEVEL ACCESS
+
+Nav hiding is not authorization.
+
+Add proper route/page access handling for restricted modules.
+
+At minimum:
+
+Memory
+Blueprint Studio
+Audit Log
+governance decision surfaces
+organisation administration
+
+A user entering the URL directly must see an appropriate Access Denied/redirect state rather than rendering a page whose API then 403s unpredictably.
+
+Backend remains authoritative.
+
+Frontend guard is UX only.
+
+⸻
+
+PART K — NAVIGATION MATRIX
+
+Implement navigation based on actual canonical membership role.
+
+Recommended matrix:
+
+Module	Owner	Administrator	Manager	Member	Viewer	Auditor
+Dashboard	✓	✓	✓	✓	✓	✓
+Inbox	✓	✓	✓	✓	read	read
+Active Work	✓	✓	✓	✓	read	read
+Notifications	✓	✓	✓	✓	✓	✓
+Chat	✓	✓	✓	✓	read/no execute according to actual contract	read/no execute
+Workforce	✓	✓	✓	✓	read	read
+Operations Centre	✓	✓	✓	✓	read	read
+Tasks	✓	✓	✓	✓	read	read
+Completed Work	✓	✓	✓	✓	read	read
+Library	✓	✓	✓ upload	✓ upload	read	read where appropriate
+Memory Admin	✓	✓	—	—	—	optional read-only audit
+Blueprint Studio	✓	✓	—	—	—	—
+Governance Centre	✓	✓	relevant operational view	view relevant items	read	read/audit
+Approvals Resolve	✓	✓	operational approvals only	—	—	—
+Audit Log	✓	✓	— unless permission granted	—	—	✓
+Team	✓	✓	read	read if current contract permits	read	read
+Plan	✓	✓	—	—	—	—
+Usage	✓	✓	✓ if desired	✓ if desired	read if desired	read if desired
+Org Settings	✓	✓	read if existing settings permission	—	—	—
+
+Adjust only where existing permission design gives a stronger reason.
+
+Do not turn this table into duplicated hardcoded authorization logic. Backend permissions remain canonical.
+
+⸻
+
+PART L — PLATFORM ROLE NON-REGRESSION
+
+Do not modify the 13 platform role values.
+
+Do not confuse organisation administrator with platform_admin.
+
+Prove organisation role changes do not grant platform access.
+
+Preserve RLS tenant isolation.
+
+Document but do not change the Clerk publicMetadata.platformAdmin emergency bootstrap unless a real defect is proven.
+
+⸻
+
+PART M — SECURITY TEST MATRIX
+
+Add role-based route tests using all six organisation roles.
+
+Test at minimum:
+
+1. administrator can perform actions previously broken by RED-1
+2. member cannot approve Memory
+3. viewer cannot mutate Memory
+4. auditor cannot mutate Memory
+5. member cannot resolve governance approval
+6. manager can resolve only permitted operational approval types
+7. manager cannot approve knowledge authority
+8. member cannot publish Blueprint
+9. member cannot directly execute restricted Blueprint path
+10. administrator can publish Blueprint
+11. member can upload Library material
+12. member cannot mark Library material authoritative
+13. viewer cannot upload
+14. auditor cannot perform governance mutation
+15. same requester cannot self-approve controlled governance item
+16. cross-tenant role never grants access to another organisation
+17. organisation administrator does not gain Platform Console access
+
+Use L1/L2 tests plus real DB/RLS checks where appropriate.
+
+⸻
+
+PART N — FINAL REPORT
+
+Return:
+
+1. before/after role model
+2. every admin → administrator defect found
+3. files changed
+4. permission helpers changed/created
+5. Memory access rules
+6. Library access rules
+7. Blueprint Studio access rules
+8. Governance approval authority matrix
+9. Completed Work approval authority
+10. Task request vs Task execution rule
+11. self-approval behaviour
+12. one-person organisation behaviour
+13. nav matrix
+14. backend/frontend alignment matrix
+15. security tests
+16. full regression baseline
+17. remaining access defects
+
+Explicitly answer:
+
+A. Can a member approve organisational Memory?
+
+B. Can a member approve a governance decision?
+
+C. Can a member directly publish/run a Blueprint?
+
+D. Can an administrator now perform the actions they were intended to perform?
+
+E. Can a manager approve ordinary work without becoming an organisational administrator?
+
+F. Can a manager change authoritative knowledge or Memory?
+
+G. Can someone approve their own governed request?
+
+H. Can hiding a nav item ever be the only protection?
+
+I. Can an organisation role grant Platform Console access?
+
+J. Are all six canonical roles consistently interpreted across backend and frontend?
+
+Final verdict:
+
+PROVEN — ORGANISATION ACCESS MODEL ENFORCED
+
+or
+
+PARTIALLY PROVEN — ACCESS GAPS REMAIN
+
+Do not redesign the role model.
+Fix enforcement of the role model that already exists.
+
+Then, once this is stable, we go back to the other issue you found in the live test: Chat holding stale task context eight hours later.
+
+I would keep that separate. Access control and conversation-context lifecycle are both important, but coupling them into one implementation sprint would make testing much harder.
+
+One last point: this audit finding around approvals is more serious than the navigation cleanup. A member being able to approve governance decisions is a genuine authorization defect, not merely confusing UX. I would fix RED-1 through RED-4 before we spend time polishing which sidebar links look prettier.

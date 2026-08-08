@@ -12,6 +12,7 @@
 
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
+import { requireOwnerOrAdmin } from "../../middlewares/requireOrgRole.js";
 import {
   proposeOrganisationMemory,
   approveOrganisationMemory,
@@ -36,6 +37,7 @@ router.get(
   "/organisations/:slug/memory",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -60,6 +62,7 @@ router.post(
   "/organisations/:slug/memory",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -96,6 +99,7 @@ router.get(
   "/organisations/:slug/memory/:memoryId",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -116,6 +120,7 @@ router.patch(
   "/organisations/:slug/memory/:memoryId",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -133,11 +138,39 @@ router.post(
   "/organisations/:slug/memory/:memoryId/approve",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
+
+      // Sprint 29M.3 — Segregation of duties: block self-approval (RED-4 fix).
+      // Fetch the memory record first to compare createdBy against the approver.
+      const [memRow] = await db
+        .select()
+        .from(organisationMemoryTable)
+        .where(and(eq(organisationMemoryTable.organizationId, ctx.tenantId), eq(organisationMemoryTable.id, memoryId)))
+        .limit(1);
+
+      if (memRow && memRow.createdBy === user.id) {
+        const isOwner = ctx.role === "owner";
+        const { forceSelfApproval, forceSelfApprovalReason } = req.body as { forceSelfApproval?: boolean; forceSelfApprovalReason?: string };
+        if (!forceSelfApproval || !isOwner) {
+          res.status(409).json({
+            error: {
+              code: "SELF_APPROVAL_BLOCKED",
+              message:
+                "Self-approval is not permitted. A different administrator or owner must approve memory you proposed." +
+                (isOwner ? " As owner you may force-approve with { forceSelfApproval: true, forceSelfApprovalReason: '<reason>' }." : ""),
+              canForce: isOwner,
+            },
+          });
+          return;
+        }
+        // Owner override — will be captured in the approveOrganisationMemory audit trail
+      }
+
       const ok = await approveOrganisationMemory(ctx.tenantId, memoryId, user.id);
       if (!ok) { res.status(404).json({ error: "Memory not found or not in proposed state" }); return; }
       res.json({ ok: true });
@@ -150,6 +183,7 @@ router.post(
   "/organisations/:slug/memory/:memoryId/reject",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -167,6 +201,7 @@ router.post(
   "/organisations/:slug/memory/:memoryId/supersede",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
@@ -193,6 +228,7 @@ router.post(
   "/organisations/:slug/memory/:memoryId/merge",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx  = req.tenantContext!;
@@ -236,6 +272,7 @@ router.get(
   "/organisations/:slug/memory/:memoryId/audit",
   requireAuth,
   resolveTenantFromSlug,
+  requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;

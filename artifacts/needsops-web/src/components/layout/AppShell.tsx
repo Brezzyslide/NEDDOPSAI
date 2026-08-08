@@ -6,7 +6,7 @@ import { useAuthFetch } from "@/lib/api";
 
 interface AppShellProps { orgSlug: string; children: React.ReactNode; }
 
-// ── Primary workspace (top of nav) ───────────────────────────────────────────
+// ── Primary workspace (all roles) ────────────────────────────────────────────
 const WORKSPACE_NAV = [
   { label: "Dashboard",     icon: "⬡",  path: "" },
   { label: "Inbox",         icon: "📥", path: "/inbox" },
@@ -14,7 +14,7 @@ const WORKSPACE_NAV = [
   { label: "Notifications", icon: "🔔", path: "/notifications", badge: true },
 ];
 
-// ── Operations ────────────────────────────────────────────────────────────────
+// ── Operations (all roles) ────────────────────────────────────────────────────
 const OPERATIONS_NAV = [
   { label: "Chat",                icon: "💬", path: "/chat" },
   { label: "Workforce",           icon: "🤖", path: "/workforce" },
@@ -23,23 +23,31 @@ const OPERATIONS_NAV = [
   { label: "Completed Work",      icon: "📄", path: "/work" },
 ];
 
-// ── Knowledge ─────────────────────────────────────────────────────────────────
-const KNOWLEDGE_NAV = [
-  { label: "Library",          icon: "📚", path: "/library" },
+// ── Library (member, manager, administrator, owner — not viewer/auditor) ──────
+const LIBRARY_NAV = [
+  { label: "Library", icon: "📚", path: "/library" },
+];
+
+// ── Knowledge authority (owner + administrator only) ──────────────────────────
+const AUTHORITY_KNOWLEDGE_NAV = [
   { label: "Memory",           icon: "🧠", path: "/memory" },
   { label: "Blueprint Studio", icon: "📐", path: "/blueprints" },
 ];
 
-// ── Governance ────────────────────────────────────────────────────────────────
-const GOVERNANCE_NAV = [
+// ── Governance main (manager, administrator, owner, auditor) ──────────────────
+const GOVERNANCE_MAIN_NAV = [
   { label: "Governance",       icon: "🏛",  path: "/governance" },
   { label: "Approvals",        icon: "✅", path: "/approvals" },
   { label: "Knowledge Health", icon: "❤️", path: "/governance/knowledge-health" },
   { label: "Timeline",         icon: "🕐", path: "/governance/timeline" },
-  { label: "Audit Log",        icon: "📋", path: "/audit" },
 ];
 
-// ── Organisation ──────────────────────────────────────────────────────────────
+// ── Audit Log (owner, administrator, auditor only) ────────────────────────────
+const AUDIT_NAV = [
+  { label: "Audit Log", icon: "📋", path: "/audit" },
+];
+
+// ── Organisation admin (owner + administrator only) ───────────────────────────
 const ORG_NAV = [
   { label: "Team",     icon: "👥", path: "/team" },
   { label: "Plan",     icon: "💎", path: "/plan" },
@@ -99,8 +107,9 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const base   = `/app/${orgSlug}`;
   const active = (path: string) => location === base + path;
 
-  // Role-gated nav: fetch the current user's membership role in this org.
-  // Knowledge system (Library / Memory / Blueprint Studio) is admin/owner-only.
+  // Sprint 29M.3: Fetch org role for role-gated nav.
+  // The canonical role strings are: owner, administrator, manager, member, viewer, auditor.
+  // "admin" (short form) does not exist — always use "administrator".
   const { data: meOrgsData } = useQuery({
     queryKey:  ["me-orgs"],
     queryFn:   () => apiFetch("/v1/me/organisations").then(r => r.ok ? r.json() : { organisations: [] }),
@@ -109,10 +118,21 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   const orgRole: string =
     (meOrgsData?.organisations as Array<{ slug: string; role: string }> | undefined)
       ?.find(o => o.slug === orgSlug)?.role ?? "member";
-  const isKnowledgeAdmin = orgRole === "owner" || orgRole === "admin";
 
-  // Navigation badge — server-derived unread count, refreshed every 60s
-  // and invalidated by notification mutations via queryClient.invalidateQueries
+  // ── Nav visibility matrix ────────────────────────────────────────────────────
+  // Library (upload + view sources): member, manager, administrator, owner
+  const canUseLibrary      = ["owner", "administrator", "manager", "member"].includes(orgRole);
+  // Memory + Blueprint Studio (authority / governance): administrator, owner only
+  const isKnowledgeAdmin   = orgRole === "owner" || orgRole === "administrator";
+  // Governance pages (Governance Centre, Approvals, Timeline, Health):
+  //   manager, administrator, owner, auditor (not plain member or viewer)
+  const canViewGovernance  = ["owner", "administrator", "manager", "auditor"].includes(orgRole);
+  // Audit Log: owner, administrator, auditor
+  const canViewAuditLog    = ["owner", "administrator", "auditor"].includes(orgRole);
+  // Org admin pages (Team, Plan, Usage, Settings): owner, administrator
+  const isOrgAdmin         = orgRole === "owner" || orgRole === "administrator";
+
+  // Navigation badge — server-derived unread count, refreshed every 60 s
   const { data: unreadData } = useQuery({
     queryKey:       ["nav-notif-badge", orgSlug],
     queryFn:        () =>
@@ -146,6 +166,7 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+          {/* Workspace — all roles */}
           <NavSection
             items={WORKSPACE_NAV}
             base={base}
@@ -153,20 +174,50 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
             setLocation={setLocation}
             unreadCount={navUnreadCount}
           />
+
+          {/* Operations — all roles */}
           <div className="border-t border-[#1E3A5F]/60 pt-3">
             <NavSection items={OPERATIONS_NAV} base={base} active={active} setLocation={setLocation} label="Operations" />
           </div>
-          {isKnowledgeAdmin && (
+
+          {/* Knowledge — Library visible to member+; Memory+Blueprints admin+ only */}
+          {(canUseLibrary || isKnowledgeAdmin) && (
             <div className="border-t border-[#1E3A5F]/60 pt-3">
-              <NavSection items={KNOWLEDGE_NAV} base={base} active={active} setLocation={setLocation} label="Knowledge" />
+              <NavSection
+                items={[
+                  ...(canUseLibrary ? LIBRARY_NAV : []),
+                  ...(isKnowledgeAdmin ? AUTHORITY_KNOWLEDGE_NAV : []),
+                ]}
+                base={base}
+                active={active}
+                setLocation={setLocation}
+                label="Knowledge"
+              />
             </div>
           )}
-          <div className="border-t border-[#1E3A5F]/60 pt-3">
-            <NavSection items={GOVERNANCE_NAV}  base={base} active={active} setLocation={setLocation} label="Governance" />
-          </div>
-          <div className="border-t border-[#1E3A5F]/60 pt-3">
-            <NavSection items={ORG_NAV}          base={base} active={active} setLocation={setLocation} label="Organisation" />
-          </div>
+
+          {/* Governance — manager, administrator, owner, auditor */}
+          {canViewGovernance && (
+            <div className="border-t border-[#1E3A5F]/60 pt-3">
+              <NavSection
+                items={[
+                  ...GOVERNANCE_MAIN_NAV,
+                  ...(canViewAuditLog ? AUDIT_NAV : []),
+                ]}
+                base={base}
+                active={active}
+                setLocation={setLocation}
+                label="Governance"
+              />
+            </div>
+          )}
+
+          {/* Organisation admin — owner + administrator only */}
+          {isOrgAdmin && (
+            <div className="border-t border-[#1E3A5F]/60 pt-3">
+              <NavSection items={ORG_NAV} base={base} active={active} setLocation={setLocation} label="Organisation" />
+            </div>
+          )}
         </nav>
 
         {/* Bottom */}

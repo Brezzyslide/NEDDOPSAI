@@ -26,11 +26,11 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import { ApiError }           from "../../lib/errors.js";
 
-/** Inline role gate — replaces the missing requireRole middleware. */
+/** Role gate — owner or administrator required for ingestion write operations. */
 function requireOwnerOrAdmin(req: Request, res: Response, next: NextFunction): void {
   const role = req.tenantContext?.role;
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({ error: { code: "FORBIDDEN", message: "Owner or admin role required." } });
+  if (role !== "owner" && role !== "administrator") {
+    res.status(403).json({ error: { code: "FORBIDDEN", message: "Owner or administrator role required." } });
     return;
   }
   next();

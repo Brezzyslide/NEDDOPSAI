@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@workspace/agent-runtime": resolve(__dirname, "../../lib/agent-runtime/src/index.ts"),
       "@workspace/openclaw":      resolve(__dirname, "../../lib/openclaw/src/index.ts"),
+      "@workspace/permissions":   resolve(__dirname, "../../lib/permissions/src/index.ts"),
     },
   },
   test: {

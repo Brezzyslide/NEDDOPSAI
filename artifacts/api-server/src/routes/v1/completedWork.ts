@@ -40,10 +40,21 @@ import type { CompletedWorkStatus } from "@workspace/db";
 
 const router = Router({ mergeParams: true });
 
+function requireOwnerOrAdminOrManager(req: any, res: any): boolean {
+  const role = req.tenantContext?.role;
+  // Sprint 29M.3: manager can approve operational completed work;
+  // administrator and owner retain full approval authority.
+  if (role !== "owner" && role !== "administrator" && role !== "manager") {
+    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Manager, administrator, or owner role required." } });
+    return false;
+  }
+  return true;
+}
+
 function requireOwnerOrAdmin(req: any, res: any): boolean {
   const role = req.tenantContext?.role;
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or admin role required." } });
+  if (role !== "owner" && role !== "administrator") {
+    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or administrator role required." } });
     return false;
   }
   return true;
@@ -160,7 +171,7 @@ router.post(
   resolveTenantFromSlug,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminOrManager(req, res)) return;
       const ctx    = req.tenantContext!;
       const user   = req.appUser!;
       const { id } = req.params as { id: string };
@@ -178,7 +189,7 @@ router.post(
   resolveTenantFromSlug,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminOrManager(req, res)) return;
       const ctx    = req.tenantContext!;
       const user   = req.appUser!;
       const { id } = req.params as { id: string };

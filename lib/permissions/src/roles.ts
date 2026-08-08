@@ -74,7 +74,16 @@ export type PermissionAction =
   | "settings:read"
   | "settings:update"
   // AI Task Execution (Sprint 8)
-  | "task:execute";
+  | "task:execute"
+  // Governance — Sprint 29M.3
+  // Separate "resolve work approvals" from "resolve authority/governance approvals"
+  // so manager can approve ordinary operational deliverables without gaining
+  // access to knowledge authority, Memory governance, or Blueprint publishing.
+  | "governance:resolve_work"      // operational work approvals (manager+)
+  | "governance:resolve_authority" // knowledge authority / Memory / Blueprint / compliance (administrator+)
+  | "memory:govern"                // approve / reject / merge / supersede org memory
+  | "knowledge:govern"             // mark authoritative / revoke / supersede knowledge sources
+  | "blueprint:govern";            // publish / archive / rollback blueprints
 
 // ─── Role permission map ──────────────────────────────────────────────────────
 
@@ -107,6 +116,11 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "settings:read",
     "settings:update",
     "task:execute",
+    "governance:resolve_work",
+    "governance:resolve_authority",
+    "memory:govern",
+    "knowledge:govern",
+    "blueprint:govern",
   ],
   administrator: [
     "organization:read",
@@ -133,6 +147,11 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "settings:read",
     "settings:update",
     "task:execute",
+    "governance:resolve_work",
+    "governance:resolve_authority",
+    "memory:govern",
+    "knowledge:govern",
+    "blueprint:govern",
   ],
   manager: [
     "organization:read",
@@ -145,6 +164,7 @@ export const ROLE_PERMISSIONS: Record<MembershipRole, PermissionAction[]> = {
     "worker:approve",
     "settings:read",
     "task:execute",
+    "governance:resolve_work",
   ],
   member: [
     "organization:read",

@@ -118,7 +118,7 @@ describe("ROLE_PERMISSIONS", () => {
       expect(perms.length).toBeGreaterThan(0);
       // No duplicates
       const unique = new Set(perms);
-      expect(unique.size).toBe(perms.length, `Role ${role} has duplicate permissions`);
+      expect(unique.size, `Role ${role} has duplicate permissions`).toBe(perms.length);
     }
   });
 });

@@ -41,6 +41,7 @@
 
 import express, { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
+import { requireOwnerOrAdmin, requireAtLeastManager } from "../../middlewares/requireOrgRole.js";
 import {
   requestUploadUrl,
   uploadFileToStorage,
@@ -75,10 +76,10 @@ const router = Router({ mergeParams: true });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function requireOwnerOrAdmin(req: any, res: any): boolean {
+function requireOwnerOrAdminInline(req: any, res: any): boolean {
   const role = req.tenantContext?.role;
-  if (role !== "owner" && role !== "admin") {
-    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or admin role required." } });
+  if (role !== "owner" && role !== "administrator") {
+    res.status(403).json({ error: { code: "INSUFFICIENT_ROLE", message: "Owner or administrator role required." } });
     return false;
   }
   return true;
@@ -407,7 +408,7 @@ router.post(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       const source = await approveKnowledgeSource(req.params.sourceId, ctx.tenantId, user.id);
       res.json({ source });
@@ -432,7 +433,7 @@ router.post(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       const { reason } = req.body as { reason?: string };
       const source = await revokeKnowledgeSource(
@@ -463,7 +464,7 @@ router.delete(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       await deleteKnowledgeSource(req.params.sourceId, ctx.tenantId, user.id);
       res.status(204).send();
@@ -488,7 +489,7 @@ router.post(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       const { newSourceId } = req.body as { newSourceId?: string };
       if (!newSourceId?.trim()) {
@@ -519,7 +520,7 @@ router.post(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       await markVersionForReprocess(req.params.sourceId, ctx.tenantId, user.id);
       res.json({
@@ -621,7 +622,7 @@ router.post(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       const { scopeType, scopeId } = req.body as { scopeType?: string; scopeId?: string };
       if (!scopeType?.trim() || !scopeId?.trim()) {
@@ -659,7 +660,7 @@ router.delete(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      if (!requireOwnerOrAdmin(req, res)) return;
+      if (!requireOwnerOrAdminInline(req, res)) return;
 
       const { scopeType, scopeId } = req.body as { scopeType?: string; scopeId?: string };
       if (!scopeType?.trim() || !scopeId?.trim()) {

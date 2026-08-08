@@ -122,7 +122,7 @@ describe("Membership status enforcement", () => {
     for (const status of BLOCKED_STATUSES) {
       expect(VALID_STATUSES).toContain(status);
       // These should be blocked in the middleware
-      expect(status !== "active").toBe(true);
+      expect(["suspended", "revoked", "invited"]).toContain(status);
     }
   });
 
