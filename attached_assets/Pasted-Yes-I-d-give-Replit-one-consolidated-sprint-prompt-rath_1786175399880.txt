@@ -1,0 +1,559 @@
+Yes. I’d give Replit one consolidated sprint prompt rather than lots of little fixes. The important thing is to tell it not to redesign the architecture, but to simplify the product surface and execution routing while preserving everything we proved in 29J/K.
+
+Use this:
+
+SPRINT 29M — PRODUCT SIMPLIFICATION, EXECUTION ROUTING & MODULE BOUNDARY HARDENING
+
+This is an implementation + verification sprint.
+
+Sprint 29L and its supplementary audit established that NeedsOps has a convergent backend architecture:
+
+* one Unified Execution Engine
+* one canonical Completed Work store
+* Chat and Tasks are intentional alternative entry points
+* evidence/claim provenance is correctly version-bound
+* Operations Centre and Workforce have distinct purposes
+* Governance has a legitimate control/assurance purpose
+
+Do not redesign or replace those foundations.
+
+The problem to solve is different:
+
+The product currently exposes too much internal machinery, lightweight work can enter unnecessarily heavy execution paths, several modules overlap at the UI level, and sandbox/test activity can contaminate operational records.
+
+The goal is:
+
+simple experience on top, sophisticated machinery underneath.
+
+⸻
+
+PART A — THREE-LANE EXECUTION ROUTING
+
+Implement a deterministic execution classification gate before expensive execution/work-product creation.
+
+Every user request must be classified into one of three lanes.
+
+Lane 1 — TRANSIENT
+
+Examples:
+
+* write/rewrite an ordinary email
+* improve wording
+* answer a general question
+* brainstorm ideas
+* summarise conversational text
+* simple drafting where no durable organisational artefact is requested
+
+Expected behaviour:
+
+* lightweight conversational execution
+* do NOT create Completed Work
+* do NOT create approval items
+* do NOT persist claim provenance
+* do NOT perform absence verification
+* do NOT persist EvidencePack
+* do NOT run KRS unless the request actually requires organisational/document context
+* response remains in Chat
+
+A user must still be able to explicitly convert/save a transient response into a Task or professional work product.
+
+Lane 2 — PROFESSIONAL_WORK
+
+Examples:
+
+* operational plan
+* onboarding checklist
+* procedure draft
+* meeting brief
+* proposal
+* structured organisational deliverable
+
+Expected behaviour:
+
+* use UEE
+* create Completed Work
+* version normally
+* quality review where appropriate
+* approval only where the applicable blueprint/governance rule requires it
+* evidence/claim pipeline is NOT automatically required
+
+Lane 3 — EVIDENCE_BEARING_WORK
+
+Examples:
+
+* policy review
+* compliance review
+* governance analysis
+* compare documents
+* identify gaps in supplied organisational documents
+* investigations
+* any professional output making substantive claims about organisational evidence
+
+Expected behaviour:
+
+* full UEE
+* KRS/EvidencePack
+* self-review
+* Sprint 29K claim emission
+* semantic entailment validation
+* absence verification
+* evidence persistence
+* claim-to-passage binding
+* Completed Work
+* version pinning
+* approval according to governance rules
+
+Do not classify solely using naive keyword matching.
+
+First inspect the existing capability, blueprint, manifest, task, evidenceMode and routing architecture and reuse existing signals wherever possible.
+
+Produce a clear routing decision object such as:
+
+executionClass
+reason
+requiresCompletedWork
+requiresEvidence
+requiresClaimIntegrity
+requiresApproval
+
+Do not introduce a second execution engine.
+
+⸻
+
+PART B — PROVE LIGHTWEIGHT WORK IS ACTUALLY LIGHTWEIGHT
+
+Add controlled acceptance tests.
+
+At minimum:
+
+1. “Write a polite email asking John to attend Tuesday’s meeting.”
+2. “Rewrite this paragraph professionally.”
+3. “Give me five ideas for improving staff morale.”
+
+These must NOT create:
+
+* completed_work
+* completed_work_versions
+* completed_work_evidence_snapshots
+* completed_work_evidence_links
+* completed_work_claims
+* approval queue entries
+
+Then test:
+
+“Review our Complaints Management Policy and identify gaps, contradictions and recommendations.”
+
+This MUST enter evidence-bearing execution when organisational evidence is available.
+
+Also test ambiguous professional work so the gate does not accidentally downgrade substantive work merely because words such as “policy” or “compliance” are absent.
+
+Report DB before/after counts.
+
+⸻
+
+PART C — COMPLETED WORK CONTRACT
+
+Preserve Completed Work as the single canonical store for durable professional outputs.
+
+Do not create an alternative work-product store for transient responses.
+
+Verify:
+
+* Chat professional work → Completed Work
+* Tasks → Completed Work
+* Workforce/direct specialist work → Completed Work
+* revisions → new version of the same Completed Work
+* transient Chat response → no Completed Work unless explicitly saved/promoted
+
+Preserve all Sprint 29J approved-version integrity guarantees.
+
+⸻
+
+PART D — ACTIVE WORK
+
+Correct the conceptual boundary of Active Work.
+
+Active Work should answer:
+
+“What work is actually underway now?”
+
+It should primarily derive from genuine execution/task/run state, not use Completed Work records as a proxy for running execution.
+
+Investigate existing:
+
+* specialist_runs
+* execution intents/sessions
+* tasks
+* UEE state
+* queued/running/blocked/retrying states
+
+Reuse the canonical runtime state already available.
+
+Active Work should distinguish at minimum:
+
+* queued
+* running
+* waiting/blocked where supported
+* awaiting user input where supported
+* failed/retrying where supported
+
+Finished artefacts belong in Completed Work.
+
+Do not create duplicate execution-state infrastructure simply to populate this page.
+
+⸻
+
+PART E — INBOX VS NOTIFICATIONS
+
+Do NOT blindly merge these modules.
+
+First enforce this semantic contract:
+
+Inbox = something requires the user’s attention, decision or action.
+
+Examples:
+
+* approval required
+* clarification required
+* blocked work requiring input
+* governance decision
+* knowledge-authority conflict requiring human resolution
+
+Notifications = something happened that the user may need to know.
+
+Examples:
+
+* work completed
+* approval completed
+* specialist finished
+* upload processed
+* task failed/recovered
+
+Audit every item type currently shown in both surfaces and classify it.
+
+Eliminate duplicate rendering of the same event as two equivalent actionable items.
+
+If the architecture cannot support a meaningful distinction without artificial duplication, report that and recommend consolidation rather than forcing two modules to exist.
+
+⸻
+
+PART F — GOVERNANCE BOUNDARY
+
+Preserve Governance as a distinct product capability.
+
+Governance should answer:
+
+“Is what the organisation and AI workforce are doing permitted, controlled, approved, accountable and auditable?”
+
+Governance may aggregate:
+
+* approval/control state
+* policy/governance exceptions
+* evidence integrity issues
+* knowledge authority conflicts
+* workforce governance
+* audit signals
+* recommendations requiring governance attention
+
+Do not turn Governance into another Completed Work list or another notification centre.
+
+Keep Approvals as the canonical bulk-action surface.
+
+Review Governance Timeline vs Audit Log.
+
+If Timeline is merely an alternative rendering of exactly the same audit dataset with insufficient unique value, prefer making Timeline a tab/view inside Audit Log rather than maintaining a separate top-level module.
+
+Do not make this change unless the audit proves the duplication.
+
+⸻
+
+PART G — KNOWLEDGE / LIBRARY PRODUCT SIMPLIFICATION
+
+The desired product direction is that ordinary users should not have to administer an AI knowledge database.
+
+Do not remove the underlying Knowledge architecture.
+
+Instead simplify the user experience.
+
+Desired principle:
+
+Uploading a document is permission for NeedsOps to ingest and use that document as organisational context.
+
+Therefore remove unnecessary manual ingestion approval friction for ordinary uploads where technically safe.
+
+However:
+
+permission to use ≠ authority to believe.
+
+Automatically ingest uploaded content, but preserve/infer:
+
+* source
+* document type
+* version
+* effective date where detectable
+* authority level
+* current/superseded state
+* scope
+* confidence
+
+High-confidence ordinary cases should be adopted automatically.
+
+Human governance intervention should be reserved for meaningful ambiguity, such as:
+
+* conflicting current policies
+* uncertain supersession
+* uncertain authority
+* high-risk source classification
+* materially contradictory organisational documents
+
+Do NOT allow automatic adoption to rewrite historical evidence used by existing Completed Work.
+
+Sprint 29K evidence snapshots and version-bound provenance must remain immutable.
+
+⸻
+
+PART H — KNOWLEDGE AND MEMORY NAVIGATION
+
+Investigate hiding Library/Knowledge and Memory from the normal everyday sidebar.
+
+They should become background organisational intelligence infrastructure rather than daily operational destinations.
+
+Do NOT delete the modules or APIs.
+
+Determine an appropriate admin/governance/settings access path for inspection and correction.
+
+Remove the confirmed duplicate Memory navigation entry.
+
+⸻
+
+PART I — MEMORY AUTO-ADOPTION
+
+Move toward:
+
+NeedsOps learns memory; users do not maintain a memory database.
+
+Ordinary users should not need to manually create Memory records.
+
+Memory should primarily arise from appropriate sources such as:
+
+* explicit organisational decisions
+* completed professional work
+* repeated operating preferences
+* confirmed corrections
+* approved organisational facts
+* appropriate conversation outcomes
+
+Preserve administrative ability to:
+
+* inspect
+* correct
+* pin where still useful
+* retire
+* supersede
+* delete where permitted
+* inspect history
+
+Fix the identified self-referential supersede defect. A memory record must never be able to supersede itself.
+
+Do not automatically turn every conversational statement into durable organisational memory.
+
+⸻
+
+PART J — BLUEPRINT SANDBOX ISOLATION
+
+HIGH PRIORITY.
+
+Blueprint Studio sandbox/test execution must NOT contaminate production operational records.
+
+Currently a sandbox test can create real Completed Work and approval items.
+
+Introduce an explicit execution context such as:
+
+executionEnvironment = production | sandbox
+
+or reuse an equivalent existing mechanism if one exists.
+
+Sandbox execution must not create normal:
+
+* Completed Work portal entries
+* production approvals
+* Inbox actions
+* Notifications
+* production provenance records unless deliberately stored in isolated test provenance
+* production usage/accounting where inappropriate
+
+The sandbox still needs enough execution fidelity to prove that the blueprint actually works.
+
+Do not create a second UEE. Pass sandbox context through the existing engine.
+
+Prove production and sandbox records cannot be confused.
+
+⸻
+
+PART K — SMALL CONFIRMED DEFECTS
+
+Fix:
+
+1. Team page: implement safe member removal using existing membership architecture, with appropriate role/permission protection. Prevent removal of the last required organisation owner/admin if applicable.
+2. Account Settings: invalidate/refetch the /me cache after successful PATCH so updated identity information appears immediately.
+3. Memory: prevent self-referential supersession at UI, service and preferably DB/business-rule level.
+4. Library: investigate/remove the dead approveSource mutation if genuinely unreachable and obsolete. Do not remove a backend endpoint merely because one UI currently does not call it without checking other callers.
+5. Remove duplicate Memory sidebar entry.
+
+⸻
+
+PART L — DO NOT OVERBUILD SETTINGS OR BILLING
+
+Do not expand Org Settings merely because the current page has few fields.
+
+Only add settings required by actual product behaviour introduced in this sprint.
+
+Do not build a major self-service billing system in this sprint.
+
+For Plan, ensure the existing “Contact us to upgrade” state has a functional commercial action/path if one is currently missing.
+
+Keep this small.
+
+⸻
+
+PART M — DESKTOP CONNECTOR
+
+Do not redesign or substantially implement Desktop Connector in this sprint.
+
+Record separately:
+
+* legacy long-lived token / refresh gap
+* simulated default mode
+* LiveGatewayAdapter dependency
+* packaging status
+* future knowledge-provider integration
+
+These belong to a dedicated connector-production-hardening sprint.
+
+Ensure nothing in this sprint breaks existing connector contracts.
+
+⸻
+
+PART N — REGRESSION PROTECTION
+
+Explicitly prove this sprint does NOT break:
+
+* Sprint 29J approved-version pinning
+* PDF/DOCX approved-version integrity
+* export normalisation
+* Sprint 29K durable evidence
+* claim-to-evidence binding
+* semantic entailment hardening
+* absence verification
+* tenant isolation/RLS
+* Tasks → UEE
+* Chat substantive work → UEE
+* Workforce/direct specialist → UEE
+* Completed Work canonical storage
+* mobile core flows
+
+The three-lane gate must sit before unnecessary work, not bypass controls after sensitive work has already occurred.
+
+⸻
+
+PART O — REQUIRED LIVE JOURNEY PROOF
+
+Test at minimum these journeys:
+
+J1 — ordinary email
+
+Chat request → transient response → no Completed Work → no approval → no evidence pipeline.
+
+J2 — ordinary rewrite
+
+Same lightweight behaviour.
+
+J3 — professional operational plan
+
+Durable professional work → UEE → Completed Work → appropriate quality/governance handling → no evidence machinery unless required.
+
+J4 — policy gap review
+
+Full evidence-bearing route → evidence retrieval → claims → provenance → Completed Work.
+
+J5 — direct specialist work
+
+Workforce/Task route converges correctly into UEE and Completed Work.
+
+J6 — blueprint sandbox
+
+Executes realistically but produces no production Completed Work/approval pollution.
+
+J7 — blueprint production execution
+
+Produces normal production records.
+
+J8 — document upload
+
+Automatically ingested and usable without redundant ingestion approval, while authority classification remains distinct.
+
+J9 — new document superseding old policy
+
+New knowledge may become current, but previously approved Completed Work continues resolving its historical evidence/version correctly.
+
+J10 — Inbox/Notification distinction
+
+One actionable event appears in Inbox according to contract; an informational event appears in Notifications; no meaningless duplicate.
+
+⸻
+
+PART P — EVIDENCE STANDARD
+
+Do not report source inspection as proof of live behaviour.
+
+Label evidence:
+
+* L1 — source/code inspection
+* L2 — automated/mocked integration
+* L3 — real database integration
+* L4 — live runtime
+* L5 — authenticated user-facing UI
+
+For every major change report:
+
+expected → actual → evidence level → pass/fail.
+
+If Clerk/authentication prevents L5 proof, say BLOCKED rather than PROVEN.
+
+Do not manufacture evidence.
+
+⸻
+
+PART Q — FINAL REPORT
+
+Return:
+
+1. Architecture before/after.
+2. Exact three-lane classification rules.
+3. Files changed.
+4. DB/schema changes.
+5. Module responsibility map after cleanup.
+6. Inbox vs Notifications final contract.
+7. Governance final contract.
+8. Knowledge/Memory final product behaviour.
+9. Blueprint sandbox isolation result.
+10. Active Work data-source/result.
+11. Test counts.
+12. Live journey evidence table.
+13. Performance impact, particularly transient vs evidence-bearing work.
+14. Any remaining duplication.
+15. Any remaining dead/legacy code.
+16. Regression results for Sprint 29J/K.
+17. Remaining launch blockers.
+
+Finish with one of:
+
+PROVEN — PRODUCT SIMPLIFICATION & ROUTING READY
+
+PARTIALLY PROVEN — [specific gaps]
+
+NOT READY — [specific failures]
+
+Do not call the sprint successful merely because tests pass. The key proof is that light work remains light, serious work remains rigorous, sandbox work stays sandboxed, and the customer no longer has to understand the internal knowledge machinery to use NeedsOps effectively.
+
+One thing I particularly like about doing this now is that we’re not undoing 29J/K. We’re finally putting the traffic controller in front of all that machinery so it only wakes up when the work deserves it.
