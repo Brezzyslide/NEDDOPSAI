@@ -1,0 +1,344 @@
+Yes, definitely. Before we tell Replit who should see Library, Memory, Blueprint Studio, Governance, Approvals, etc., we should first establish the actual role and access model that already exists.
+
+Otherwise we risk designing navigation rules around assumptions, then discovering the backend permission system works differently.
+
+I’d do a short access model audit first, then use that result to write the cleanup task accurately.
+
+The audit should answer three things: what roles exist, what each role can actually do, and whether UI visibility matches backend permission.
+
+Use this prompt:
+
+SPRINT 29M.2A — ROLE, ACCESS & MODULE VISIBILITY AUDIT
+
+INVESTIGATION ONLY. NO CODE CHANGES.
+
+Before changing navigation or hiding Library, Memory, Blueprint Studio, Governance or any other module, establish the actual role and permission architecture currently used by NeedsOps.
+
+Do not infer roles from UI labels.
+Trace the real backend authorisation rules.
+
+A — Inventory all organisation roles
+
+Find every organisation-level role used in:
+
+* membership tables
+* Clerk/org metadata
+* API middleware
+* route guards
+* frontend guards
+* permission helpers
+* entitlement services
+* workforce/governance services
+
+Produce the canonical list.
+
+Examples may include:
+
+owner
+administrator/admin
+manager
+member
+user
+approver
+viewer
+
+Do not assume these exist. Report only what is actually implemented.
+
+For each role identify:
+
+* source of truth
+* how assigned
+* how changed
+* whether multiple roles can coexist
+* whether role is organisation-scoped or platform-scoped
+
+B — Inventory platform roles separately
+
+Identify all platform-level roles, for example:
+
+platform owner
+platform admin
+staff
+support
+commercial
+security
+
+Again, report actual code/schema values only.
+
+Make clear that platform roles are not the same as organisation membership roles.
+
+C — Inventory permissions/capabilities
+
+Determine whether NeedsOps uses:
+
+* pure RBAC
+* capability/permission flags
+* subscription entitlements
+* Workforce Pack entitlements
+* feature flags
+* organisation policy
+* combinations of the above
+
+Map the exact checks.
+
+For example:
+
+requireOrgRole(...)
+hasPermission(...)
+checkCapabilityAccess(...)
+featureFlag(...)
+
+or whatever actually exists.
+
+D — Build module access matrix
+
+For every major user-facing module, report:
+
+* visible in sidebar?
+* route accessible?
+* API accessible?
+* read permission?
+* write permission?
+* approve/govern permission?
+
+Include at minimum:
+
+Dashboard
+Inbox
+Active Work
+Notifications
+Chat
+Workforce
+Operations Centre
+Tasks
+Completed Work
+Library
+Memory
+Blueprint Studio
+Governance Centre
+Approvals
+Knowledge Health
+Governance Timeline
+Audit Log
+Team
+Plan
+Usage
+Organisation Settings
+Account Settings
+Devices
+
+Use a matrix:
+
+Module | Owner | Admin | Manager/other roles | Member | Platform role | Backend guard | UI guard | Gap
+
+Adjust role columns to whatever the real role set is.
+
+E — Detect UI/backend mismatches
+
+Find cases where:
+
+* UI hides a module but API permits it
+* UI shows a module but API rejects it
+* button visibility differs from route permission
+* role naming differs frontend vs backend
+* owner/admin checks are duplicated inconsistently
+* a normal member can access administrative functionality
+* an admin cannot access something they should
+
+Classify each:
+
+GREEN — UI/backend aligned
+AMBER — incomplete/inconsistent
+RED — permission defect
+
+F — Library access specifically
+
+Determine:
+
+Who can currently:
+
+* view Library
+* upload documents
+* edit metadata
+* approve ingestion
+* revoke sources
+* mark authoritative/current
+* resolve conflicts
+
+Then recommend the clean product boundary:
+
+Ordinary authorised users may upload/use documents.
+
+Governance-level authority decisions should require the appropriate elevated role.
+
+Do NOT implement this yet.
+
+G — Memory access specifically
+
+Determine:
+
+Who can currently:
+
+* view Memory
+* create memory manually
+* approve/reject
+* edit
+* merge
+* pin
+* retire
+* supersede
+* inspect history
+
+Then determine whether Memory can safely be hidden from ordinary users while allowing:
+
+* system auto-memory
+* admin/owner inspection
+* correction/deletion
+
+Do NOT implement.
+
+H — Blueprint Studio specifically
+
+Determine:
+
+Who can currently:
+
+* view blueprints
+* create
+* edit
+* clone
+* archive
+* publish
+* sandbox-test
+
+Determine whether Blueprint Studio is:
+
+* normal user functionality
+* organisation admin functionality
+* platform/configuration functionality
+
+Recommend visibility based on actual privilege level.
+
+Do NOT implement.
+
+I — Governance specifically
+
+Determine which roles can:
+
+* view Governance Centre
+* approve work
+* approve knowledge
+* approve memory
+* access Audit Log
+* perform bulk approval
+* view governance timeline
+* change governance controls
+
+Distinguish:
+
+viewing governance information
+
+from
+
+making governance decisions
+
+They may require different roles.
+
+J — Chat/Task/Completed Work permissions
+
+Determine whether ordinary members can:
+
+* create Chat requests
+* create Tasks
+* run specialists
+* view all Completed Work or only their own
+* approve their own work
+* approve another user’s work
+
+Look specifically for segregation-of-duties issues.
+
+Example:
+
+Can the same user request, generate and approve high-risk work?
+
+Report current behaviour, do not redesign yet.
+
+K — Role inheritance and tenant safety
+
+Prove:
+
+* organisation roles cannot grant platform access
+* platform staff cannot automatically access tenant content unless explicitly permitted
+* tenant isolation remains enforced independently of UI role
+
+Identify any super-admin bypass and document exactly how it works.
+
+L — Final recommended role model
+
+After analysing the actual implementation, produce the minimal recommended access model.
+
+Do NOT create new roles unless there is a real functional need.
+
+We want the smallest understandable model.
+
+For example, only if supported by current architecture:
+
+Member
+Manager/Approver
+Admin
+Owner
+Platform Staff
+
+But do not force this shape.
+
+M — Answer these questions explicitly
+
+1. What organisation roles actually exist today?
+2. What platform roles exist?
+3. What is the authoritative source of role membership?
+4. Does NeedsOps use RBAC, entitlements, or both?
+5. Can ordinary users currently access Library?
+6. Who can upload?
+7. Who can approve/mark organisational knowledge authoritative?
+8. Can ordinary users see Memory?
+9. Who can modify Memory?
+10. Who can see Blueprint Studio?
+11. Who can publish/change blueprints?
+12. Who can access Governance?
+13. Who can approve Completed Work?
+14. Can users approve their own work?
+15. Are UI visibility and API permissions aligned?
+16. Are there any privilege-escalation or tenant-isolation concerns?
+17. Which modules should be hidden from ordinary users?
+18. Which modules should remain visible but read-only for some roles?
+19. Do we need any new role at all?
+20. What exact role matrix should Sprint 29M.3 use for navigation cleanup?
+
+Evidence standard
+
+L1 source inspection
+L2 unit/mock
+L3 real DB/access integration
+L4 authenticated role testing
+
+Do not claim L4 unless you actually test with different authenticated role accounts.
+
+Final output
+
+Return:
+
+* canonical role list
+* permission model
+* full module matrix
+* UI/backend mismatch list
+* Library matrix
+* Memory matrix
+* Blueprint Studio matrix
+* Governance matrix
+* segregation-of-duties findings
+* recommended minimal role model
+* exact navigation/access rules we should use in 29M.3
+
+NO CODE CHANGES. STOP AFTER REPORT.
+
+Once that comes back, we can write the Chat reset/navigation cleanup prompt properly and avoid guessing who should see what.
