@@ -1,0 +1,450 @@
+Use this prompt. I’d keep it very focused on Cloud only, because that’s the question we need answered before we design anything around OpenClaw.
+
+SPRINT 29N.1 — CLOUD SOURCE-OF-TRUTH, REASONING & TOOLING RESPONSIBILITY AUDIT
+
+INVESTIGATION ONLY. NO CODE CHANGES.
+
+Scope is strictly the NeedsOps Cloud model.
+
+Do NOT analyse the Desktop Connector, OpenClaw local runtime, relay bridge, hybrid execution, or device tooling in this audit.
+
+I want to understand, in the current Cloud architecture:
+
+1. What reads the source of truth?
+
+2. What actually reasons over that source of truth?
+
+3. What actually executes work in Cloud?
+
+4. What tools exist in Cloud today, and what are they responsible for?
+
+The core architectural question is:
+
+In Cloud mode, when a user says “Review our Complaints Policy”, what exact component reads the organisational evidence, what component performs the professional reasoning, and what component produces the result?
+
+Do not answer from intended design. Trace the actual code path.
+
+==================================================
+PART A — CLOUD SOURCE-OF-TRUTH PATH
+
+Trace the full Cloud path for a document-dependent request such as:
+
+“Review our Complaints Management Policy and identify gaps, contradictions and recommendations.”
+
+Starting from:
+
+User message
+→ conversation/task
+→ CoS
+→ execution classifier
+→ UEE
+→ KRS / ResourceRegistry / evidence resolution
+→ specialist generation
+→ self-review
+→ Completed Work
+
+Identify exactly:
+
+* which service locates the relevant organisational source
+* which service decides whether that source is approved/current/usable
+* which service loads the actual passage/chunk text
+* which data structure contains the evidence passed to the model
+* whether the model sees full documents or retrieved chunks
+* whether source authority/currentness is determined before the model sees it
+* whether any model chooses the source itself
+
+Answer:
+
+Who owns source-of-truth selection in Cloud?
+
+==================================================
+PART B — WHO READS THE DOCUMENT?
+
+Be precise about what “reads” means.
+
+Separate:
+
+1. FILE INGESTION
+    * extracting text from uploaded files
+    * chunking
+    * storing source/version/chunk data
+2. RETRIEVAL
+    * selecting relevant chunks for a request
+3. MODEL READING
+    * supplying chunk text to OpenAI/LLM for analysis
+
+Identify the exact services/classes/functions for all three.
+
+Determine whether:
+
+* KRS itself performs semantic reasoning over policy meaning
+* or KRS only retrieves evidence
+* and OpenAI performs the actual professional reading/reasoning
+
+==================================================
+PART C — CLOUD REASONING RESPONSIBILITY
+
+Trace the AI call used for substantive Cloud work.
+
+Identify:
+
+* model/provider actually called
+* service responsible for constructing the prompt
+* specialist DNA/system instruction used
+* EvidencePack section injected
+* user/task context injected
+* blueprint/output contract injected
+* whether OpenAI generates:
+    * findings
+    * gaps
+    * risks
+    * recommendations
+    * improvement plans
+    * draft policies
+
+Determine whether there is any competing reasoning engine in Cloud.
+
+Answer plainly:
+
+Is OpenAI currently the professional reasoning engine for Cloud work?
+
+If not, what is?
+
+==================================================
+PART D — CLOUD EXECUTION DEFINITION
+
+Define what “execution” currently means in NeedsOps Cloud.
+
+Separate:
+
+INTELLECTUAL EXECUTION
+
+* policy review
+* analysis
+* drafting
+* recommendations
+* report generation
+
+from:
+
+EXTERNAL ACTION EXECUTION
+
+* send email
+* update external file
+* browser action
+* calendar action
+* modify external system
+
+For each category identify what Cloud currently does.
+
+Does UEE:
+
+* directly perform professional knowledge work through OpenAI?
+* directly perform external actions?
+* only propose actions for later execution?
+
+Build a table:
+
+Capability | Cloud implementation | Actually executed? | Proposed only? | Responsible service
+
+==================================================
+PART E — CLOUD TOOLING INVENTORY
+
+Inventory every tool/capability available to the Cloud execution path today.
+
+At minimum inspect:
+
+* Organisation Library/KRS
+* organisational memory
+* task uploads
+* specialist knowledge
+* entity knowledge
+* PDF/DOCX export
+* document normalisation
+* action proposal types
+* email capabilities
+* calendar capabilities
+* browser capabilities
+* external connectors
+* web/search if any
+* API/tool registry
+* any function/tool calling exposed to OpenAI
+
+For each classify:
+
+READ TOOL
+REASONING CONTEXT
+OUTPUT TOOL
+EXTERNAL ACTION TOOL
+PROPOSAL ONLY
+NOT IMPLEMENTED
+
+Do not include Hybrid/Desktop/OpenClaw local tools.
+
+==================================================
+PART F — OPENAI TOOL ACCESS IN CLOUD
+
+Determine whether the Cloud OpenAI call currently has direct tool/function access.
+
+Specifically:
+
+* can OpenAI call Library/KRS itself?
+* can it search files itself?
+* can it invoke APIs?
+* can it call connectors?
+* can it use function calling/tool calling?
+* or does NeedsOps resolve evidence first and pass it into the prompt?
+
+If there is a tool registry, identify exactly what is exposed.
+
+If there is no direct tool access, say so.
+
+==================================================
+PART G — SOURCE AUTHORITY BOUNDARY
+
+Determine exactly where these decisions happen:
+
+* approved vs unapproved source
+* current vs superseded version
+* authority level
+* tenant scope
+* source type
+* evidence relevance
+
+Is OpenAI allowed to override these decisions?
+
+Expected principle to test:
+
+NeedsOps decides what evidence is authorised and authoritative. OpenAI reasons over that evidence.
+
+Prove whether this is true today.
+
+==================================================
+PART H — CLAIM/EVIDENCE ROLE IN CLOUD
+
+Trace what happens after OpenAI produces the draft.
+
+Identify responsibility for:
+
+* claim emission
+* claim validation
+* semantic support check
+* absence verification
+* evidence persistence
+* passage hashes/snapshots
+* self-review
+* quality score
+* Completed Work creation
+
+Determine which parts are:
+
+OpenAI/model responsibility
+
+versus:
+
+NeedsOps deterministic/control-plane responsibility
+
+==================================================
+PART I — CLOUD OUTPUT CREATION
+
+Trace:
+
+OpenAI output
+→ draft content
+→ Completed Work version
+→ approval
+→ export
+
+Determine:
+
+* what creates the actual document/report content
+* what creates PDF/DOCX
+* whether PDF/DOCX generation uses OpenAI
+* whether exports are deterministic renderers
+
+Answer:
+
+Who actually “makes the report” in Cloud?
+
+==================================================
+PART J — CLOUD ACTION PROPOSALS
+
+Inspect current action proposal architecture.
+
+For each typed action:
+
+* write_file
+* send_email
+* browser_interaction
+* calendar action
+* external system action
+* any others
+
+Determine whether Cloud:
+
+* executes them
+* queues them
+* stores them as proposals only
+* hands them to another runtime
+
+This is important because “execution” must not be confused with professional analysis.
+
+==================================================
+PART K — CLOUD MODEL BOUNDARY
+
+Based on actual implementation, draw the current Cloud responsibility boundary.
+
+Use this format:
+
+NeedsOps Cloud owns
+
+OpenAI owns
+
+Shared
+
+Not currently implemented
+
+Include:
+
+source selection
+source authority
+retrieval
+reasoning
+drafting
+self-review
+evidence validation
+approval
+export
+external actions
+
+==================================================
+PART L — DOES CLOUD NEED OPENCLAW FOR KNOWLEDGE WORK?
+
+Answer this specific question:
+
+For a document already uploaded into the Organisation Library, does NeedsOps Cloud need OpenClaw in order to:
+
+* read it
+* analyse it
+* compare it
+* identify gaps
+* produce recommendations
+* generate a report
+
+If no, prove the current Cloud path that does this without OpenClaw.
+
+If yes, explain exactly why.
+
+==================================================
+PART M — CLOUD GAPS
+
+Identify what Cloud cannot currently do without Hybrid/OpenClaw.
+
+Examples:
+
+* access a local file not uploaded to Library
+* modify a local Word document
+* send an email
+* control browser
+* access private desktop application
+
+Separate:
+
+reasoning limitation
+
+from:
+
+resource reach/action limitation
+
+==================================================
+PART N — PERFORMANCE / COMPLEXITY
+
+Count major stages for an evidence-bearing Cloud request:
+
+* classifier
+* CoS
+* KRS retrievals
+* LLM calls
+* self-review
+* claim validation
+* absence verification
+* DB persistence
+
+Determine which stage is responsible for:
+
+* latency
+* source reading
+* professional reasoning
+* governance
+
+Do not assume KRS is an AI reasoning layer if it is only retrieval.
+
+==================================================
+PART O — FINAL QUESTIONS
+
+Answer explicitly:
+
+1. What is the source of truth in Cloud?
+2. What service chooses the source?
+3. What service reads/chunks the uploaded document?
+4. What service retrieves the relevant passages?
+5. Does OpenAI receive those passages?
+6. Does OpenAI perform the professional reasoning?
+7. Does OpenAI directly search the Library itself?
+8. Does OpenAI have direct Cloud tools/function calling today?
+9. What does UEE actually execute in Cloud?
+10. Does Cloud execute external actions or only propose them?
+11. Who generates findings/recommendations?
+12. Who validates those findings against evidence?
+13. Who creates Completed Work?
+14. Who creates PDF/DOCX?
+15. Does PDF/DOCX generation call OpenAI?
+16. Can Cloud review an uploaded policy without OpenClaw?
+17. What does OpenClaw add that Cloud cannot currently do?
+18. Are any Cloud capabilities unnecessarily dependent on OpenClaw?
+19. What responsibilities should permanently remain NeedsOps-native?
+20. What is the clean Cloud responsibility model?
+
+==================================================
+REQUIRED OUTPUT
+
+Return:
+
+A. Current Cloud architecture diagram
+
+B. Source-of-truth path
+
+C. Document read/ingestion path
+
+D. KRS/retrieval path
+
+E. OpenAI reasoning path
+
+F. Cloud tooling inventory
+
+G. Cloud action/execution inventory
+
+H. Claim/evidence validation path
+
+I. Completed Work/export path
+
+J. NeedsOps vs OpenAI responsibility matrix
+
+K. Cloud limitations
+
+L. Exact answers to Questions 1–20
+
+Final verdict:
+
+CLOUD MODEL CLEAR — OPENAI IS PRIMARY REASONING ENGINE
+
+CLOUD MODEL MIXED — RESPONSIBILITIES OVERLAP
+
+CLOUD MODEL DEPENDS ON EXTERNAL EXECUTION RUNTIME
+
+INSUFFICIENT EVIDENCE
+
+NO CODE CHANGES.
+STOP AFTER REPORT.
+
+This should tell us whether the Cloud architecture is already doing what you intend: NeedsOps selects and governs the source, OpenAI actually reads and reasons over the evidence, and OpenClaw is only needed when the system needs reach or action outside the Cloud boundary.
