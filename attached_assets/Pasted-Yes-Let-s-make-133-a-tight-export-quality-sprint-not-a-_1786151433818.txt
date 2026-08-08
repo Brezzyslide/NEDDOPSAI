@@ -1,0 +1,426 @@
+Yes. Let’s make #133 a tight export-quality sprint, not a general Completed Work redesign.
+
+Give Replit this:
+
+SPRINT 29J.3 — COMPLETED WORK HUMAN-READABLE EXPORT QUALITY
+Proceed with investigation, implementation and verification.
+Scope is #133 only.
+Do NOT redesign Completed Work.
+Do NOT change approval/version integrity from Sprint 29J.2.
+Do NOT begin passage-level evidence/citation work (#134).
+==================================================
+OBJECTIVE
+==================================================
+When a user downloads approved Completed Work as PDF or Word, the exported document must be a professional human-readable representation of the approved work.
+Internal storage format must never leak into the final document.
+This applies whether Completed Work content is stored as:
+1. Markdown/prose
+2. Structured JSON
+3. JSON wrapped in markdown code fences
+4. Mixed structured content
+5. Legacy plain text
+The same approved work must be represented consistently in:
+Completed Work Viewer
+PDF export
+DOCX export
+The pinned approved version remains authoritative.
+==================================================
+A — FIRST INSPECT CURRENT CONTENT SHAPES
+==================================================
+TEST / INSPECT BEFORE IMPLEMENTING.
+Query real completed_work_versions records and classify the content formats currently stored in production.
+Report counts/examples for:
+plain text
+markdown
+JSON object
+JSON array
+JSON inside ```json fences
+mixed prose + JSON
+other/unrecognised
+Do not expose confidential customer content in the report.
+Use structural examples/redacted samples.
+Identify which specialist/output paths produce each format.
+Specifically inspect:
+chief_of_staff
+operations_manager
+incident or other historical specialists
+task execution outputs
+conversation outputs
+Determine whether #133 is caused by:
+export rendering only
+OR
+inconsistent storage formats plus export rendering.
+Do not change storage format in this sprint unless absolutely necessary.
+==================================================
+B — DEFINE A CANONICAL DOCUMENT REPRESENTATION
+==================================================
+Do not build separate interpretation logic independently in PDF and DOCX.
+Create or identify one shared normalisation/rendering layer.
+Conceptually:
+Approved Completed Work
+        ↓
+resolveApprovedVersion()
+        ↓
+normaliseCompletedWorkContent()
+        ↓
+Canonical Document Model
+        ↓
+   ┌────┼─────┐
+ Viewer PDF   DOCX
+The canonical representation should support at minimum:
+title
+headings
+paragraphs
+ordered lists
+unordered lists
+tables
+key/value sections
+recommendations
+findings
+citations/references
+simple emphasis
+Do not create an unnecessarily complex publishing framework.
+==================================================
+C — STRUCTURED JSON RENDERING
+==================================================
+If valid structured JSON is detected, render its semantic structure.
+Example stored content:
+{
+  "executiveSummary": "...",
+  "findings": [
+    {
+      "finding": "...",
+      "risk": "High",
+      "evidence": "..."
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "...",
+      "priority": "High",
+      "responsibleRole": "Operations Manager"
+    }
+  ]
+}
+Expected export:
+Executive Summary
+[text]
+Findings
+1. [finding]
+   Risk: High
+   Evidence: [...]
+Recommendations
+1. [action]
+   Priority: High
+   Responsible Role: Operations Manager
+NOT:
+{"executiveSummary":"...", "findings":[...]}
+Do not expose:
+JSON braces
+quoted JSON property names
+escaped newline sequences
+internal IDs unless intentionally part of the work
+serialization artefacts
+Use sensible human-readable labels:
+executiveSummary → Executive Summary
+responsibleRole → Responsible Role
+implementationTimeframe → Implementation Timeframe
+Preserve actual content.
+Do not have the exporter invent or rewrite findings.
+==================================================
+D — MARKDOWN RENDERING
+==================================================
+Verify markdown correctly renders:
+# H1
+## H2
+### H3
+paragraphs
+- bullets
+1. numbered lists
+**bold**
+*italics*
+tables
+block quotes if supported
+inline citations/references
+long paragraphs
+Do not export markdown control characters as visible formatting where a proper document representation is expected.
+==================================================
+E — JSON CODE FENCE HANDLING
+==================================================
+Handle outputs such as:
+```json
+{
+  ...
+}
+
+The fences must not appear in PDF/DOCX.
+
+Detect the enclosed valid JSON and render it through the structured-content path.
+
+If fenced content is not valid JSON, fail gracefully into readable text rather than crashing.
+
+==================================================
+F — UNKNOWN / MALFORMED CONTENT
+
+The exporter must never destroy content merely because it cannot recognise the structure.
+
+Fallback rule:
+
+Unknown structure → safe readable text.
+
+Do NOT:
+
+silently omit content
+return blank export
+throw merely because content is malformed JSON-like text
+rewrite content using an LLM
+
+Rendering must remain deterministic.
+
+==================================================
+G — APPROVED VERSION INTEGRITY REGRESSION
+
+Sprint 29J.2 invariants are mandatory.
+
+For approved work:
+
+PDF and DOCX MUST use resolveApprovedVersion().
+
+Test:
+
+V2 approved
+V3 latest
+
+Expected:
+
+Viewer approved artefact = V2
+PDF = V2
+DOCX = V2
+
+If approvedVersionId is broken:
+
+APPROVED_VERSION_INTEGRITY_ERROR
+
+No fallback to V3.
+
+Do not weaken this behaviour while changing rendering.
+
+==================================================
+H — PDF QUALITY
+
+Verify generated PDF has:
+
+correct title
+clear heading hierarchy
+readable paragraphs
+proper bullet/numbered lists
+tables that remain readable
+reasonable page breaks
+no text clipping
+no raw JSON
+no raw markdown syntax
+no blank pages caused by renderer errors
+versioned filename
+correct MIME type
+
+Long reports must flow across multiple pages correctly.
+
+==================================================
+I — WORD QUALITY
+
+Verify DOCX has:
+
+document title
+heading styles
+normal paragraph styles
+proper lists
+tables where appropriate
+readable spacing
+no raw JSON
+no raw markdown syntax
+versioned filename
+correct MIME type
+
+The DOCX should remain editable as a normal Word document.
+
+Do not create the entire report as an image.
+
+==================================================
+J — CONTENT FIDELITY
+
+Rendering may change presentation but NOT substance.
+
+Create deterministic fixture content containing unique markers in:
+
+executive summary
+finding
+risk
+recommendation
+responsible role
+timeframe
+citation
+
+Verify every marker exists in:
+
+canonical representation
+PDF
+DOCX
+
+No finding or recommendation may disappear during normalisation.
+
+Do not let the renderer summarise, paraphrase or improve AI output.
+
+==================================================
+K — PDF / DOCX PARITY
+
+Given one approved version:
+
+PDF and DOCX must contain the same substantive sections.
+
+Presentation can differ because of file format.
+
+But both must contain the same:
+
+title
+executive summary
+findings
+risks
+recommendations
+roles
+timeframes
+citations/references
+
+Report any intentional format-specific differences.
+
+==================================================
+L — VIEWER PARITY
+
+Determine whether CompletedWorkViewer currently uses the same content interpretation as export.
+
+If not, report the divergence.
+
+Preferred architecture:
+
+one normalised document model consumed by viewer/PDF/DOCX where practical.
+
+However, do NOT destabilise the Viewer merely to achieve theoretical architectural purity.
+
+At minimum prove that Viewer, PDF and DOCX represent the same approved content.
+
+==================================================
+M — SECURITY / DATA INTEGRITY
+
+Preserve:
+
+organization scoping
+cross-tenant denial
+approved-version pinning
+HTML/script escaping where applicable
+no arbitrary code execution from JSON/markdown
+no remote resource fetching caused by document content
+
+Treat Completed Work content as untrusted rendering input.
+
+==================================================
+N — REAL-WORLD ACCEPTANCE FIXTURES
+
+Test at least these content types:
+
+1. Operations Manager markdown policy review
+2. Chief of Staff structured JSON output
+3. Plain-text legacy work
+4. Fenced JSON
+5. Long markdown report
+6. Table-heavy report
+7. Malformed JSON-like content
+8. Approved V2 with newer V3 present
+
+Where safe, use structural examples from real existing Completed Work records.
+
+==================================================
+O — REGRESSION TESTS
+
+Add tests proving at minimum:
+
+1. Structured JSON renders without raw braces/property serialization.
+2. camelCase keys become human-readable labels.
+3. Nested findings render.
+4. Nested recommendations render.
+5. Arrays render deterministically.
+6. Markdown headings render.
+7. Markdown bullets render.
+8. Numbered lists render.
+9. Markdown table renders/readably degrades.
+10. Fenced JSON is detected.
+11. Invalid fenced JSON does not crash.
+12. Plain text remains intact.
+13. Long content exports.
+14. Unique content markers survive normalisation.
+15. PDF contains expected substantive text.
+16. DOCX contains expected substantive text.
+17. PDF/DOCX substantive parity.
+18. Approved version pin respected.
+19. Broken modern approved pin still fails closed.
+20. Legacy null-pin behaviour unchanged.
+21. Cross-tenant export denied.
+22. Correct MIME types.
+23. Correct versioned filenames.
+24. No LLM call occurs during export.
+
+==================================================
+EVIDENCE STANDARD
+
+Classify proof as:
+
+Level 1 — Unit
+Level 2 — Mocked integration
+Level 3 — Real database integration
+Level 4 — Live API/runtime
+Level 5 — Live authenticated UI
+
+Do not claim Level 5 from source inspection.
+
+==================================================
+FINAL REPORT
+
+Return:
+
+1. Root cause
+2. Production content formats discovered
+3. Architecture before
+4. Architecture after
+5. Files changed
+6. JSON rendering behaviour
+7. Markdown rendering behaviour
+8. malformed/unknown fallback behaviour
+9. PDF result
+10. DOCX result
+11. PDF/DOCX parity
+12. Viewer parity
+13. approved-version regression result
+14. security/cross-tenant result
+15. tests added and full-suite result
+16. evidence-level table
+17. remaining gaps
+
+Answer explicitly:
+
+A. Can raw JSON appear in a normal successful PDF?
+B. Can raw JSON appear in a normal successful DOCX?
+C. Does export ever call an LLM to rewrite content?
+D. Can normalisation remove a finding or recommendation?
+E. Do PDF and DOCX contain the same substantive work?
+F. Do both export the pinned approved version?
+G. What happens with malformed content?
+H. Are existing approved-version integrity guarantees unchanged?
+
+Final verdict must be one of:
+
+PROVEN — HUMAN-READABLE EXPORT QUALITY CLOSED
+
+PARTIALLY PROVEN — EXPORT IMPROVED BUT SPECIFY REMAINING GAP
+
+BLOCKED — EXPORT CAN STILL MISREPRESENT COMPLETED WORK
+
+One thing I deliberately added is **“no LLM call during export.”** That's important. The work has already been generated and approved. Downloading it should be deterministic formatting, not another AI generation event that could subtly change what the user approved.
+If 29J.3 passes, then we move into #134, which is the more interesting one: proving **why** NeedsOps made each material finding. 

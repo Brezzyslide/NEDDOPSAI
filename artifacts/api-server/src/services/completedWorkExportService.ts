@@ -26,6 +26,7 @@ import {
 } from "docx";
 import { getCompletedWork, getVersions, resolveApprovedVersion } from "./completedWorkService.js";
 import { logOrgEvent }                   from "./auditService.js";
+import { normaliseCompletedWorkContent } from "./completedWorkNormaliser.js";
 
 // ─── Intermediate document model ─────────────────────────────────────────────
 
@@ -613,8 +614,11 @@ export class CompletedWorkExportService {
       throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
     }
 
-    const markdown = resolvedVersion.contentMarkdown;
-    const nodes    = parseMarkdown(markdown);
+    const markdown   = resolvedVersion.contentMarkdown;
+    // Normalise content format before parsing — converts JSON/fenced-JSON to
+    // human-readable markdown so exporters never see raw braces or property names.
+    const normalised = normaliseCompletedWorkContent(markdown);
+    const nodes      = parseMarkdown(normalised);
 
     const intermediateDoc: IntermediateDocument = {
       title:          work.title,

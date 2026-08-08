@@ -27,6 +27,7 @@ import { Redirect }                              from "wouter";
 import AppShell                                  from "@/components/layout/AppShell";
 import { useAuthFetch }                          from "@/lib/api";
 import { MarkdownRenderer, extractOutline }      from "@/components/MarkdownRenderer";
+import { normaliseCompletedWorkContent }         from "@/lib/completedWorkNormaliser";
 import ExecutionInspectorPanel                   from "@/components/inspector/ExecutionInspectorPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1115,7 +1116,11 @@ export default function CompletedWorkViewer() {
     && !!versions[0]
     && versions[0].id !== approvedVersion.id;
 
-  const currentContent = approvedVersion?.contentMarkdown ?? "";
+  // Normalise content format (JSON → human-readable markdown) before rendering.
+  // The approved version's raw contentMarkdown may be structured JSON or fenced JSON —
+  // normaliseCompletedWorkContent converts it to clean markdown for the viewer and exports.
+  // This mirrors the server-side normalisation in completedWorkExportService.ts.
+  const currentContent = normaliseCompletedWorkContent(approvedVersion?.contentMarkdown ?? "");
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
