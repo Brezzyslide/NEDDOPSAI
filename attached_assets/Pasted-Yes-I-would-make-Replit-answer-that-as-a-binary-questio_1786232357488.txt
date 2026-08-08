@@ -1,0 +1,241 @@
+Yes. I would make Replit answer that as a binary question backed by code evidence, not an architectural description. And at the same time make it prove #149 before changing retrieval.
+
+Give Replit this:
+
+SPRINT 29N.2 — CLOUD OPENAI RESPONSIBILITY + HYBRID RETRIEVAL PROOF GATE
+
+This is an audit and proof gate first. Do not implement Task #149 yet.
+
+I need two things established categorically from the current production codebase.
+
+PART A — CATEGORICAL QUESTION: DOES OPENAI CURRENTLY DO ANYTHING IN NEEDSOPS CLOUD?
+
+Answer this first with YES or NO:
+
+Does OpenAI currently execute any part of the live NeedsOps Cloud workflow?
+
+Do not answer from architecture documents, comments, intended design, mocks or assumptions. Trace the actual production call path.
+
+If YES, prove exactly what OpenAI does today.
+
+Trace at minimum:
+
+User request → CoS → classifier → task/execution → KRS → UEE → specialist generation → self-review → claim/provenance processing → Completed Work.
+
+For every OpenAI invocation in that chain report:
+
+1. Exact file and function making the call.
+2. Which OpenAI model is called.
+3. Whether the call is live production code or test/mock/dead code.
+4. What information is sent to OpenAI.
+5. What OpenAI is responsible for producing.
+6. Whether OpenAI receives full organisational documents or only KRS-selected passages/chunks.
+7. Whether OpenAI has tools/function calling enabled.
+8. Whether OpenAI itself can query the database, Library, KRS or filesystem.
+9. Whether OpenAI decides which organisational sources are authoritative/current.
+10. What NeedsOps validates after OpenAI responds.
+
+Produce an OPENAI RESPONSIBILITY TABLE:
+
+| Stage | OpenAI involved? | Model | Input | Output | Tools? | NeedsOps control before/after |
+
+I specifically want categorical answers to:
+
+A1. Does OpenAI currently read organisational policy content in Cloud? YES/NO.
+
+A2. Does OpenAI currently analyse that policy content and identify gaps/contradictions? YES/NO.
+
+A3. Does OpenAI currently generate recommendations and professional outputs? YES/NO.
+
+A4. Does OpenAI currently participate in self-review? YES/NO.
+
+A5. Does OpenAI currently participate in claim/evidence integrity checks? YES/NO. Explain precisely which checks are deterministic NeedsOps code versus model-assisted semantic checks.
+
+A6. Does OpenAI retrieve documents itself? YES/NO.
+
+A7. Does OpenAI determine organisational authority/currentness itself? YES/NO.
+
+A8. Does OpenAI execute operational tools in Cloud today? YES/NO.
+
+A9. Is OpenClaw required anywhere in the normal Cloud policy-review path? YES/NO.
+
+A10. If OpenClaw and the Desktop Connector were completely unavailable, could Cloud still ingest an uploaded policy, retrieve it, analyse it with OpenAI and produce evidence-grounded Completed Work? YES/NO. Prove the complete path.
+
+Do not blur reading retrieved text with retrieving the text. I want that distinction explicit.
+
+My expected conceptual boundary is:
+
+NeedsOps selects and governs the evidence → OpenAI reads/reasons over the selected evidence → NeedsOps validates, persists and governs the result.
+
+Confirm or disprove that from code.
+
+⸻
+
+PART B — PROVE THE CURRENT RETRIEVAL REALITY
+
+The previous audit found that pgVector embeddings are stored but production KRS calls pass queryEmbedding: null.
+
+Prove whether this remains true.
+
+Trace:
+
+uploaded document → extraction → chunking → embedding generation/storage → user query → query representation → KRS retrieval → ranking → EvidencePack.
+
+Answer:
+
+1. Are chunk embeddings actually generated?
+2. Where are they stored?
+3. Which embedding model/provider generates them?
+4. Is a query embedding generated during normal Cloud retrieval?
+5. Does production retrieval currently perform vector similarity?
+6. Does it perform lexical retrieval?
+7. Is there already hybrid ranking code that is simply inactive?
+8. Where exactly is queryEmbedding: null introduced?
+9. Why is it null?
+10. Are there any production paths where it is non-null?
+
+Give the current retrieval system an unambiguous label:
+
+LEXICAL ONLY / VECTOR ONLY / HYBRID / PATH DEPENDENT.
+
+⸻
+
+PART C — PROVE HYBRID RETRIEVAL BEFORE ACTIVATING IT
+
+Build a controlled retrieval fixture using realistic organisational documents.
+
+It must contain cases where:
+
+H1 Exact terminology: Query language closely matches the authoritative policy.
+
+H2 Semantic terminology: Query means the same thing but uses materially different language.
+
+Example: query says “staff complaints escalation” while the source discusses “employee grievance referral”.
+
+H3 Distractor: Another document has stronger keyword overlap but is semantically the wrong source.
+
+H4 Authority conflict: An old/superseded document is semantically closer than the current approved authoritative document.
+
+H5 Cross-tenant distractor: Another organisation contains an extremely similar document.
+
+H6 Sensitivity restriction: A highly relevant source exists but the requester is not entitled to retrieve it.
+
+H7 Effective-date conflict: An expired policy is semantically closer than the effective policy.
+
+Run the same queries through:
+
+Lexical retrieval
+
+Vector retrieval
+
+Proposed hybrid retrieval
+
+Measure at minimum:
+
+* Recall@5
+* Recall@10
+* Precision@5
+* MRR / authoritative-source rank
+* retrieval latency
+* wrong-authority retrieval rate
+* stale-source escape rate
+* cross-tenant escape rate
+* sensitivity escape rate
+
+I care more about retrieving the correct authoritative evidence than raw semantic similarity.
+
+⸻
+
+PART D — HARD ARCHITECTURAL REQUIREMENT
+
+Semantic retrieval must never weaken the governance boundary.
+
+Determine whether the correct sequence is:
+
+Tenant/security/approval/currentness/effective-date eligibility filtering FIRST → lexical/vector candidate retrieval SECOND → hybrid ranking THIRD → EvidencePack.
+
+If the existing implementation would instead allow vector similarity to search prohibited, cross-tenant, superseded or unapproved chunks and filter them afterwards, flag that as unacceptable.
+
+The embedding/vector layer should improve discovery. It must not become an alternative authority system.
+
+Prove that these remain hard constraints regardless of semantic score:
+
+organization_id
+
+approved source/version
+
+currentness
+
+effective dates
+
+sensitivity/access permissions
+
+authority rules
+
+A semantically perfect but ineligible source must never beat an eligible source.
+
+⸻
+
+PART E — PERFORMANCE
+
+Measure the real cost of enabling query embeddings and hybrid search.
+
+Report separately:
+
+query embedding generation latency
+
+DB vector-search latency
+
+lexical-search latency
+
+hybrid ranking latency
+
+total KRS retrieval latency
+
+Compare this against current lexical-only retrieval.
+
+We have spent considerable effort making TRANSIENT requests lightweight. Do not accidentally introduce embedding/KRS work into TRANSIENT requests.
+
+Prove:
+
+TRANSIENT → no query embedding and no KRS
+
+PROFESSIONAL_WORK without evidence requirement → no unnecessary query embedding/KRS
+
+EVIDENCE_BEARING → hybrid retrieval where appropriate
+
+⸻
+
+PART F — DECISION GATE
+
+At the end give one verdict:
+
+READY TO ACTIVATE HYBRID RETRIEVAL
+
+READY WITH CONDITIONS
+
+NOT READY
+
+Do not modify production retrieval as part of this audit unless specifically instructed after I review the evidence.
+
+Also give me this final architecture in one table:
+
+Responsibility	NeedsOps	OpenAI	OpenClaw
+Source ingestion			
+Authority/currentness			
+Retrieval			
+Reading evidence			
+Professional reasoning			
+Claim validation			
+Organisational memory			
+Completed Work/versioning			
+Approval/governance			
+File operations			
+Email/browser/calendar actions			
+Audit/provenance			
+
+Most importantly: do not tell me what the architecture is supposed to do. Tell me what the code demonstrably does today.
+
+That will settle both questions cleanly.
+
+Based on the audit you’ve already received, the expected answer to your categorical question is YES: OpenAI is already doing substantial work in the Cloud model. The important nuance is that OpenAI appears to be the reasoning engine, not the retrieval or governance engine. Replit should now prove that against the actual call sites rather than us treating the previous audit as sufficient evidence.

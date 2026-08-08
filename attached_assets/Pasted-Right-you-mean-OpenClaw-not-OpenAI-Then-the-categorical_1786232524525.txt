@@ -1,0 +1,221 @@
+Right, you mean OpenClaw, not OpenAI.
+
+Then the categorical question we want Replit to answer is:
+
+Does OpenClaw currently do anything at all in the NeedsOps Cloud model, yes or no?
+
+And if yes, what exactly. If no, then we want proof that Cloud is entirely NeedsOps + OpenAI, with OpenClaw only belonging to Hybrid/Desktop reach and action.
+
+Use this corrected prompt:
+
+SPRINT 29N.2 — CLOUD OPENCLAW RESPONSIBILITY PROOF GATE
+
+INVESTIGATION ONLY. NO CODE CHANGES.
+
+Scope is strictly the NeedsOps Cloud model.
+
+Do NOT analyse Hybrid/Desktop execution except where necessary to prove that a component is not part of Cloud.
+
+I need a categorical answer:
+
+DOES OPENCLAW CURRENTLY DO ANYTHING IN THE NEEDSOPS CLOUD MODEL? YES OR NO.
+
+Do not answer from intended architecture, comments, roadmap, class names or assumptions. Trace actual production call paths.
+
+⸻
+
+PART A — CATEGORICAL OPENCLAW CLOUD ANSWER
+
+Answer first:
+
+A1. Is OpenClaw invoked anywhere during a normal Cloud Chat request? YES/NO
+
+A2. Is OpenClaw invoked anywhere during a Cloud Task execution? YES/NO
+
+A3. Is OpenClaw involved when Cloud reads an uploaded Organisation Library document? YES/NO
+
+A4. Is OpenClaw involved in KRS retrieval? YES/NO
+
+A5. Is OpenClaw involved in policy review / gap analysis / recommendations? YES/NO
+
+A6. Is OpenClaw involved in self-review or claim/evidence validation? YES/NO
+
+A7. Is OpenClaw involved in Completed Work creation? YES/NO
+
+A8. Is OpenClaw involved in PDF/DOCX export? YES/NO
+
+A9. Is OpenClaw involved in any Cloud action execution today? YES/NO
+
+A10. If OpenClaw were completely unavailable, would the Cloud model still be able to ingest an uploaded policy, retrieve it, analyse it and produce Completed Work? YES/NO
+
+For every YES, give:
+
+* exact file
+* exact function
+* exact caller
+* runtime path
+* data sent to OpenClaw
+* data returned
+* whether this is production-active or dead/stubbed code
+
+For every NO, prove the actual component that performs that responsibility instead.
+
+⸻
+
+PART B — TRACE A NORMAL CLOUD POLICY REVIEW
+
+Trace this exact scenario:
+
+“Review our Complaints Management Policy and identify gaps, contradictions and recommendations.”
+
+Show:
+
+User
+→ Chat/Task
+→ CoS
+→ classifier
+→ UEE
+→ KRS
+→ AI/model call
+→ review/claim validation
+→ Completed Work
+→ approval
+→ export
+
+At every stage include a column:
+
+OpenClaw involved? YES/NO
+
+If no, identify the real responsible service.
+
+⸻
+
+PART C — SEARCH THE ENTIRE CLOUD CODEBASE FOR OPENCLAW REFERENCES
+
+Search for:
+
+* OpenClaw
+* OpenClawExecutionEngine
+* gateway adapters
+* relay calls
+* connector bridge calls
+* execution package dispatch
+* local runtime references
+* OpenClaw skill/plugin references
+
+For every reference classify:
+
+CLOUD PRODUCTION PATH
+
+HYBRID/DESKTOP PATH
+
+LEGACY
+
+TEST ONLY
+
+STUB/FUTURE
+
+DEAD/UNREFERENCED
+
+This is important. The existence of an OpenClaw class does not prove OpenClaw participates in Cloud.
+
+⸻
+
+PART D — CLOUD EXECUTION ENGINE RESPONSIBILITY
+
+Determine what UnifiedExecutionEngine actually does in Cloud.
+
+Does it:
+
+* call OpenAI directly?
+* call OpenClaw?
+* call both?
+* choose between them?
+* only use OpenClaw for specific execution modes?
+
+Trace all branches.
+
+Identify whether trigger: "conversation" and trigger: "task" ever cross into OpenClaw.
+
+⸻
+
+PART E — CLOUD VS HYBRID BOUNDARY
+
+Produce a strict responsibility table:
+
+Capability	Cloud responsible component	OpenClaw involved in Cloud?	Hybrid/Desktop component
+Upload/read policy			
+Retrieve evidence			
+Analyse policy			
+Generate report			
+Self-review			
+Claim validation			
+Completed Work			
+PDF/DOCX			
+File write/move			
+Email send			
+Browser action			
+Calendar action			
+
+⸻
+
+PART F — DOES CLOUD DEPEND ON OPENCLAW INDIRECTLY?
+
+Check whether Cloud still depends on OpenClaw indirectly through:
+
+* connector availability
+* shared types
+* execution package creation
+* OpenClaw-specific manifest format
+* specialist DNA compilation
+* resource registry
+* action proposals
+
+Distinguish:
+
+runtime dependency
+
+from
+
+shared type/schema/reference only
+
+I want to know whether Cloud would actually break if OpenClaw runtime disappeared.
+
+⸻
+
+PART G — FINAL YES/NO
+
+Finish with one sentence, no ambiguity:
+
+“YES — OpenClaw currently participates in the NeedsOps Cloud runtime.”
+
+or
+
+“NO — OpenClaw does not currently participate in the NeedsOps Cloud runtime.”
+
+Then explain the exact boundary in plain English.
+
+Also answer:
+
+1. Can Cloud fully review an uploaded policy without OpenClaw?
+
+2. Can Cloud generate Completed Work without OpenClaw?
+
+3. Can Cloud perform external actions without OpenClaw?
+
+4. Is OpenClaw currently only relevant to Hybrid/Desktop reach and execution?
+
+5. Is any Cloud path unnecessarily coupled to OpenClaw types or abstractions even though runtime execution does not use it?
+
+Final verdict:
+
+OPENCLAW NOT USED IN CLOUD
+
+OPENCLAW PARTIALLY USED IN CLOUD
+
+OPENCLAW CORE CLOUD DEPENDENCY
+
+NO CODE CHANGES.
+STOP AFTER REPORT.
+
+This is the question we actually need answered now. Based on everything Replit has shown so far, I suspect the answer will be NO, OpenClaw is not currently doing anything in the Cloud runtime, but now we should get that proved cleanly rather than infer it.
