@@ -593,17 +593,26 @@ export class CompletedWorkExportService {
       throw Object.assign(new Error(`Unsupported export format: ${format}`), { statusCode: 400 });
     }
 
-    // Fetch work + current version
+    // Fetch work + versions
     const work = await getCompletedWork(workId, organisationId);
     if (!work) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
 
     const versions = await getVersions(workId, organisationId);
-    const currentVersion = versions[0];
-    if (!currentVersion?.contentMarkdown) {
+
+    // ── Approved-version integrity: always export the pinned approved version ──
+    // For approved work, resolve to the exact version signed off at approval time
+    // (work.approvedVersionId). This prevents post-approval restores or revisions
+    // from silently changing the exported content. Legacy rows (approvedVersionId
+    // is null) fall back to versions[0] for backward compatibility.
+    const resolvedVersion = (work.status === "approved" && work.approvedVersionId)
+      ? (versions.find(v => v.id === work.approvedVersionId) ?? versions[0])
+      : versions[0];
+
+    if (!resolvedVersion?.contentMarkdown) {
       throw Object.assign(new Error("No content available for export"), { statusCode: 400 });
     }
 
-    const markdown = currentVersion.contentMarkdown;
+    const markdown = resolvedVersion.contentMarkdown;
     const nodes    = parseMarkdown(markdown);
 
     const intermediateDoc: IntermediateDocument = {
@@ -614,7 +623,7 @@ export class CompletedWorkExportService {
       }),
       specialist:     formatSpecialist(work.primarySpecialist),
       approvalStatus: formatApprovalStatus(work.status),
-      version:        currentVersion.versionNumber,
+      version:        resolvedVersion.versionNumber,
       nodes,
     };
 

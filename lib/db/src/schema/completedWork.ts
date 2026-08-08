@@ -80,6 +80,14 @@ export const completedWorkTable = pgTable("completed_work", {
   /** ID of the current active version in completed_work_versions */
   currentVersionId: text("current_version_id"),
 
+  /**
+   * ID of the exact version that was signed off when status moved to "approved".
+   * Pinned at the moment of approval and never updated by subsequent revisions or
+   * restores. This is the canonical approved artefact — export and viewer resolve
+   * to this version when status is "approved".
+   */
+  approvedVersionId: text("approved_version_id"),
+
   /** Approval workflow configuration (approver roles, required count, etc.) */
   approvalWorkflow: jsonb("approval_workflow")
     .$type<Record<string, unknown>>()

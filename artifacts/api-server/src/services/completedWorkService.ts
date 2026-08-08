@@ -61,6 +61,13 @@ export interface CompletedWorkItem {
   outputType: string;
   status: CompletedWorkStatus;
   currentVersionId: string | null;
+  /**
+   * The version that was pinned at the moment of approval.
+   * Set by approve() and never mutated by addVersion(), reopen(), or restore.
+   * Export and viewer resolve to this version when status is "approved".
+   * Null for legacy rows created before this field existed.
+   */
+  approvedVersionId: string | null;
   createdByUserId: string;
   approvedByUserId: string | null;
   approvedAt: Date | null;
@@ -300,10 +307,40 @@ export async function approve(
   organizationId: string,
   actorUserId: string,
 ): Promise<CompletedWorkItem> {
+  // Pin the exact version that exists at the moment of signing.
+  // Subsequent addVersion() / restore calls update currentVersionId but NEVER
+  // touch approvedVersionId — the approval is permanently attached to this version.
+  const versions = await getVersions(id, organizationId);
+  const versionToPinId = versions[0]?.id ?? null;
+
   return transitionStatus(id, organizationId, "awaiting_approval", "approved", actorUserId, {
     eventType: "completed_work_approved",
-    extraUpdates: { approvedByUserId: actorUserId, approvedAt: new Date() },
+    extraUpdates: {
+      approvedByUserId: actorUserId,
+      approvedAt: new Date(),
+      approvedVersionId: versionToPinId,
+    },
   });
+}
+
+/**
+ * Returns the exact version that was pinned at approval time.
+ * Falls back to versions[0] (latest) for legacy rows that pre-date this field.
+ * Returns null if the work item has no versions at all.
+ */
+export async function getApprovedVersion(
+  id: string,
+  organizationId: string,
+): Promise<CompletedWorkVersion | null> {
+  const [work, versions] = await Promise.all([
+    getCompletedWork(id, organizationId),
+    getVersions(id, organizationId),
+  ]);
+  if (!work || versions.length === 0) return null;
+  if (work.approvedVersionId) {
+    return versions.find(v => v.id === work.approvedVersionId) ?? versions[0];
+  }
+  return versions[0];
 }
 
 export async function reject(
@@ -721,6 +758,7 @@ function mapRow(row: typeof completedWorkTable.$inferSelect): CompletedWorkItem 
     outputType: row.outputType,
     status: row.status as CompletedWorkStatus,
     currentVersionId: row.currentVersionId ?? null,
+    approvedVersionId: (row as any).approvedVersionId ?? null,
     createdByUserId: row.createdByUserId,
     approvedByUserId: row.approvedByUserId ?? null,
     approvedAt: row.approvedAt ?? null,

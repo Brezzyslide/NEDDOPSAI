@@ -34,6 +34,7 @@ import ExecutionInspectorPanel                   from "@/components/inspector/Ex
 type WorkStatus = "draft"|"awaiting_approval"|"approved"|"rejected"|"archived"|"superseded"|"reopened";
 
 interface CompletedWorkItem {
+  approvedVersionId?: string | null;
   id:               string;
   title:            string;
   outputType:       string;
@@ -1071,7 +1072,19 @@ export default function CompletedWorkViewer() {
   const versions = (versionsData?.versions ?? []) as CompletedWorkVersion[];
   const comments = (commentsData?.comments ?? []) as CommentRow[];
 
-  const currentContent = versions[0]?.contentMarkdown ?? "";
+  // ── Approved-version integrity ─────────────────────────────────────────────
+  // For approved items, resolve to the exact version pinned at signing time.
+  // Post-approval restores/revisions update currentVersionId but never touch
+  // approvedVersionId — this component always shows the signed-off artefact.
+  const approvedVersion = (work?.status === "approved" && work?.approvedVersionId)
+    ? (versions.find(v => v.id === work.approvedVersionId) ?? versions[0])
+    : versions[0];
+  // True when a newer revision was added after approval (warn the user)
+  const hasNewerRevision = work?.status === "approved"
+    && !!approvedVersion
+    && !!versions[0]
+    && versions[0].id !== approvedVersion.id;
+  const currentContent = approvedVersion?.contentMarkdown ?? "";
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -1317,21 +1330,42 @@ export default function CompletedWorkViewer() {
             {/* Main panel */}
             <div className="flex-1 min-w-0 max-w-4xl">
               {tab === "work" && (
-                currentContent
-                  ? <MarkdownRenderer content={currentContent} />
-                  : <div className="flex flex-col items-center justify-center py-20 text-center">
-                      <div className="text-4xl mb-4">📄</div>
-                      <p className="text-[#E2E8F0] font-medium mb-1">No content yet</p>
-                      <p className="text-[#64748B] text-sm">This document is still being produced by your AI Workforce</p>
+                <div>
+                  {/* Integrity banner — shown when a newer revision exists post-approval */}
+                  {hasNewerRevision && (
+                    <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-700/40 text-sm flex items-start gap-2">
+                      <span className="shrink-0 mt-0.5">⚠️</span>
+                      <span className="text-amber-300">
+                        You are viewing the{" "}
+                        <strong>approved version (v{approvedVersion?.versionNumber})</strong>.
+                        A newer revision exists —{" "}
+                        <button
+                          onClick={() => setTab("versions")}
+                          className="underline hover:text-amber-200 transition-colors"
+                        >
+                          see Versions tab
+                        </button>
+                        . The approved version is the one exported to PDF and DOCX.
+                      </span>
                     </div>
+                  )}
+                  {currentContent
+                    ? <MarkdownRenderer content={currentContent} />
+                    : <div className="flex flex-col items-center justify-center py-20 text-center">
+                        <div className="text-4xl mb-4">📄</div>
+                        <p className="text-[#E2E8F0] font-medium mb-1">No content yet</p>
+                        <p className="text-[#64748B] text-sm">This document is still being produced by your AI Workforce</p>
+                      </div>
+                  }
+                </div>
               )}
               {tab === "evidence" && <EvidenceTab assets={assets} />}
               {tab === "quality"  && (
-                versions[0] && (versions[0].reviewDimensions as any[]).length > 0
+                approvedVersion && (approvedVersion.reviewDimensions as any[]).length > 0
                   ? <QualityReviewSection
-                      dimensions={versions[0].reviewDimensions as any[]}
-                      qualityScore={versions[0].qualityScore ?? null}
-                      isAutoRevision={versions[0].isAutoRevision === "true"}
+                      dimensions={approvedVersion.reviewDimensions as any[]}
+                      qualityScore={approvedVersion.qualityScore ?? null}
+                      isAutoRevision={approvedVersion.isAutoRevision === "true"}
                     />
                   : <div className="flex flex-col items-center justify-center py-20 text-center">
                       <div className="text-4xl mb-4">📊</div>

@@ -54,10 +54,13 @@ const { mockDb, mockLogOrgEvent, mockCreateAIGateway } = vi.hoisted(() => {
   });
 
   const mockDb = {
-    select:  vi.fn(() => ({ from: () => ({ where: () => ({ limit: () => [makeBpRow()], orderBy: () => [], offset: () => [] }) }) })),
-    insert:  vi.fn(() => ({ values: () => ({ returning: () => [makeBpRow()] }) })),
-    update:  vi.fn(() => ({ set: () => ({ where: () => ({ returning: () => [makeBpRow()] }) }) })),
-    delete:  vi.fn(() => ({ where: () => ({ returning: () => [] }) })),
+    select:            vi.fn(() => ({ from: () => ({ where: () => ({ limit: () => [makeBpRow()], orderBy: () => [], offset: () => [] }) }) })),
+    // selectDistinctOn is used by listCompletedWork to batch-fetch quality scores (Sprint 29J).
+    // Default returns an empty array — tests that need specific results can use mockReturnValueOnce.
+    selectDistinctOn:  vi.fn(() => ({ from: () => ({ where: () => ({ orderBy: () => [] }) }) })),
+    insert:            vi.fn(() => ({ values: () => ({ returning: () => [makeBpRow()] }) })),
+    update:            vi.fn(() => ({ set: () => ({ where: () => ({ returning: () => [makeBpRow()] }) }) })),
+    delete:            vi.fn(() => ({ where: () => ({ returning: () => [] }) })),
     query:   {},
     transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(mockDb)),
     _makeBpRow: makeBpRow,
@@ -772,11 +775,18 @@ describe("completedWorkService — submitForApproval", () => {
 // ─── completedWorkService — approve (awaiting_approval → approved) ────────────
 
 describe("completedWorkService — approve", () => {
+  // approve() now calls getVersions() first to pin the approvedVersionId at signing time.
+  // getVersions uses: db.select().from().where().orderBy() — needs a slot before the
+  // getCompletedWork() calls in transitionStatus().
+  const versionsSlot = { from: () => ({ where: () => ({ orderBy: () => [] }) }) };
+
   it("transitions awaiting_approval → approved", async () => {
     const awaiting = makeCwRow({ id: "cw-010", status: "awaiting_approval" });
     const approved = makeCwRow({ id: "cw-010", status: "approved", approvedByUserId: USER_ID, approvedAt: new Date() });
-    mockDb.select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [awaiting] }) }) })
-               .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [approved] }) }) });
+    mockDb.select
+      .mockReturnValueOnce(versionsSlot)  // getVersions() — pin at signing time
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [awaiting] }) }) })  // getCompletedWork — check existing status
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [approved] }) }) }); // getCompletedWork — return after update
     mockDb.update.mockReturnValueOnce({ set: () => ({ where: () => ({ returning: () => [approved] }) }) });
 
     const { approve } = await import("../services/completedWorkService.js");
@@ -787,7 +797,9 @@ describe("completedWorkService — approve", () => {
 
   it("throws: cannot approve a draft (must be awaiting_approval)", async () => {
     const draft = makeCwRow({ status: "draft" });
-    mockDb.select.mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [draft] }) }) });
+    mockDb.select
+      .mockReturnValueOnce(versionsSlot)  // getVersions() — pin lookup (returns empty)
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [draft] }) }) }); // getCompletedWork → status "draft" → throws
     const { approve } = await import("../services/completedWorkService.js");
     await expect(approve("cw-011", ORG_ID, USER_ID)).rejects.toThrow();
   });
