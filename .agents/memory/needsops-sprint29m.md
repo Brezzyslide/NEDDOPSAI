@@ -61,6 +61,22 @@ Route: added to `workforceOps.ts`
 
 `ActiveWorkPage.tsx` now queries this endpoint (not the old completed-work + tasks pair).
 
+## G Defect Fixed During 29M.1 Verification
+
+NotificationCentrePage docstring was updated in Sprint 29M but the rendering
+code still emitted awaiting_approval work, pending approvals, and knowledge
+proposals (all three actionable types). Fixed in 29M.1 verification gate:
+- Removed `approvalsData` and `proposalsData` queries entirely
+- Removed all three actionable item loops
+- Narrowed NotifType to `"work" | "conversation"` only
+- Updated TYPE_META and TYPE_FILTERS to match
+
+Also found defect D1 (NOT fixed — recorded for separate prioritisation):
+"What should a good performance review include?" → classifies as PROFESSIONAL_WORK
+because `professionalScore` fires on the topic word "performance review". Rule 5c
+handles `what is/are/does` but not `what should`. Fix: extend Rule 5c interrogative
+pattern to include `what\s+should` and `how\s+(?:should|might|would)` forms.
+
 ## Inbox/Notifications Semantic Split (Part E, Amendment 6)
 
 **Inbox (ExecutiveInbox.tsx)** = ACTIONABLE only:

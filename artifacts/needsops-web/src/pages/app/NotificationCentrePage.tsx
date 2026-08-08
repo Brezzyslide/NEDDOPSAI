@@ -27,7 +27,9 @@ import { useAuthFetch }                      from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type NotifType = "work" | "approval" | "knowledge" | "conversation";
+// Sprint 29M Part E: Notifications surface only INFORMATIONAL types.
+// "approval" and "knowledge" types live exclusively in Inbox.
+type NotifType = "work" | "conversation";
 
 interface Notification {
   id:           string;
@@ -52,8 +54,6 @@ interface ServerNotifState {
 
 const TYPE_META: Record<NotifType, { icon: string; label: string; colour: string }> = {
   work:         { icon: "📋", label: "Work",         colour: "text-blue-400" },
-  approval:     { icon: "✅", label: "Approval",     colour: "text-amber-400" },
-  knowledge:    { icon: "🧠", label: "Knowledge",    colour: "text-cyan-400" },
   conversation: { icon: "💬", label: "Conversation", colour: "text-purple-400" },
 };
 
@@ -99,19 +99,8 @@ export default function NotificationCentrePage() {
     enabled: !!slug, staleTime: 30_000,
   });
 
-  const { data: approvalsData } = useQuery({
-    queryKey: ["approvals-notif", slug],
-    queryFn:  () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
-  });
-
-  const { data: proposalsData } = useQuery({
-    queryKey: ["proposals-notif", slug],
-    queryFn:  () =>
-      apiFetch(`/v1/organisations/${slug}/knowledge/curation/proposals?status=proposed&limit=20`)
-        .then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
-  });
+  // Sprint 29M Part E: approvals and proposals queries removed from Notifications.
+  // Those items are ACTIONABLE — they live exclusively in Inbox (ExecutiveInbox).
 
   const { data: unreadData } = useQuery({
     queryKey:        ["notif-unread", slug],
@@ -262,22 +251,10 @@ export default function NotificationCentrePage() {
   const notifications = useMemo<Notification[]>(() => {
     const items: Notification[] = [];
 
-    // Work awaiting approval
-    for (const w of (completedWorkData?.completedWork ?? []).filter((w: any) => w.status === "awaiting_approval")) {
-      const id = `work-${w.id}`;
-      items.push({
-        id, type: "work", icon: "📋",
-        title:     "Work ready for your approval",
-        body:      `"${w.title ?? "A work item"}" has been submitted by ${w.primarySpecialist?.replace(/_/g, " ") ?? "your AI Workforce"}.`,
-        timestamp: w.updatedAt ?? w.createdAt,
-        read:      isRead(id),
-        archived:  isArchived(id),
-        actionPath: `/app/${slug}/active-work`, actionLabel: "Review",
-        priority: "high",
-      });
-    }
+    // Sprint 29M Part E: awaiting_approval items are ACTIONABLE → Inbox only.
+    // This surface shows only INFORMATIONAL completed/delivered work.
 
-    // Recently approved
+    // Recently delivered (approved) — informational only
     for (const w of (completedWorkData?.completedWork ?? []).filter((w: any) => w.status === "approved").slice(0, 5)) {
       const id = `approved-${w.id}`;
       items.push({
@@ -292,37 +269,10 @@ export default function NotificationCentrePage() {
       });
     }
 
-    // Pending approvals
-    for (const a of (approvalsData?.approvals ?? [])) {
-      const id = `approval-${a.id}`;
-      items.push({
-        id, type: "approval", icon: "✅",
-        title:     "Approval required",
-        body:      a.description ?? `${a.approvalType?.replace(/_/g, " ") ?? "An item"} requires your decision.`,
-        timestamp: a.createdAt ?? new Date().toISOString(),
-        read:      isRead(id),
-        archived:  isArchived(id),
-        actionPath: `/app/${slug}/approvals`, actionLabel: "Review",
-        priority: "high",
-      });
-    }
+    // Sprint 29M Part E: pending approvals and knowledge proposals are ACTIONABLE.
+    // They are surfaced exclusively in Inbox — not duplicated here.
 
-    // Knowledge proposals
-    for (const p of (proposalsData?.proposals ?? [])) {
-      const id = `proposal-${p.id}`;
-      items.push({
-        id, type: "knowledge", icon: "🧠",
-        title:     "Knowledge update proposed",
-        body:      p.title ?? "Your AI Workforce has suggested a knowledge update for your review.",
-        timestamp: p.createdAt ?? new Date().toISOString(),
-        read:      isRead(id),
-        archived:  isArchived(id),
-        actionPath: `/app/${slug}/memory`, actionLabel: "Review",
-        priority: "normal",
-      });
-    }
-
-    // Conversation unread count (synthetic item)
+    // Conversation unread count (synthetic item — informational)
     const unreadCount: number = unreadData?.unreadCount ?? 0;
     if (unreadCount > 0) {
       const id = "conv-unread";
@@ -342,7 +292,7 @@ export default function NotificationCentrePage() {
       if (a.priority !== b.priority) return a.priority === "high" ? -1 : 1;
       return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
     });
-  }, [completedWorkData, approvalsData, proposalsData, unreadData, isRead, isArchived, slug]);
+  }, [completedWorkData, unreadData, isRead, isArchived, slug]);
 
   // ── Apply filters ─────────────────────────────────────────────────────────
 
@@ -363,11 +313,10 @@ export default function NotificationCentrePage() {
   const unreadInView    = filtered.filter(n => !n.read).length;
   const totalUnread     = notifications.filter(n => !n.read && !n.archived).length;
 
+  // Sprint 29M: only "work" and "conversation" types remain on Notifications
   const TYPE_FILTERS: { key: NotifType | "all"; label: string }[] = [
     { key: "all",          label: "All types" },
-    { key: "work",         label: "Work" },
-    { key: "approval",     label: "Approvals" },
-    { key: "knowledge",    label: "Knowledge" },
+    { key: "work",         label: "Delivered Work" },
     { key: "conversation", label: "Conversations" },
   ];
 

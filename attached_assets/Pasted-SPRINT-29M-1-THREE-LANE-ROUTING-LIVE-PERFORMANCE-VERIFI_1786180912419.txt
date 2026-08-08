@@ -1,0 +1,232 @@
+SPRINT 29M.1 — THREE-LANE ROUTING & LIVE PERFORMANCE VERIFICATION GATE
+
+This is a verification sprint. Do not redesign the classifier, UEE, Completed Work, evidence pipeline, Inbox, Notifications, Active Work, or Library unless testing proves a defect.
+
+The purpose is to prove that Sprint 29M has achieved the user-facing outcome we designed:
+
+Simple work stays simple and fast. Professional work becomes durable work. Evidence-dependent work receives the full integrity machinery.
+
+A. Prove all three execution lanes
+
+Run controlled requests through the actual production execution path.
+
+TRANSIENT
+
+Example:
+“Write a polite email to Sarah asking if we can move tomorrow’s meeting to Friday.”
+
+Prove:
+
+* classified TRANSIENT
+* no UEE professional-work execution
+* no Completed Work record
+* no Completed Work version
+* no approval item
+* no KRS retrieval
+* no evidence snapshot
+* no claim emission/validation
+* no absence verification
+* no provenance records
+* response remains available normally in Chat
+
+PROFESSIONAL_WORK
+
+Use a substantial business task that requires a durable deliverable but no organisational evidence, for example:
+“Prepare a 90-day onboarding plan for a new Operations Manager.”
+
+Prove:
+
+* classified PROFESSIONAL_WORK
+* enters UEE
+* produces Completed Work
+* correct version created
+* appropriate approval behaviour
+* no unnecessary evidence/claim pipeline where evidence mode is none
+* output remains available through Completed Work
+
+EVIDENCE_BEARING
+
+Example against an actual uploaded organisational document:
+“Review our Complaints Management Policy and identify material gaps, contradictions and recommendations.”
+
+Prove:
+
+* classified EVIDENCE_BEARING
+* enters UEE
+* KRS retrieval occurs
+* same EvidencePack reaches generation, self-review and persistence
+* claim emission occurs
+* positive claims bind to evidence
+* absence verification occurs where required
+* provenance is persisted
+* Completed Work/version created
+* approval behaviour remains correct
+
+B. Measure actual performance
+
+For each lane report:
+
+* total server-side execution time
+* time to first useful Chat response where measurable
+* LLM call count
+* KRS retrieval count
+* DB writes
+* Completed Work records created
+* claim/provenance operations
+* major pipeline stages entered/skipped
+
+Run each representative request at least 5 times and report median plus range. Do not use a single unusually fast execution as proof.
+
+We specifically want to know whether TRANSIENT is materially faster, not merely architecturally cleaner.
+
+C. Adversarial routing tests
+
+Test classification by meaning rather than obvious keywords.
+
+1. “Draft a short professional apology email to a customer.”
+    Expected: TRANSIENT.
+2. “Write an email to the board explaining the weaknesses you identify in our current Complaints Policy and cite the relevant provisions.”
+    Expected: EVIDENCE_BEARING despite the requested output being an email.
+3. “Give me five ideas for improving staff morale.”
+    Expected: TRANSIENT.
+4. “Prepare a formal 12-month workforce restructuring plan with implementation stages, responsibilities and risk controls.”
+    Expected: PROFESSIONAL_WORK unless organisational evidence is explicitly required by the resolved capability/blueprint.
+5. A request that refers to an uploaded organisational document without using the words policy, evidence, compliance, citation or review.
+    Expected: prove document dependency can still trigger EVIDENCE_BEARING.
+6. A deceptively formal but trivial request.
+    Expected: TRANSIENT. Formal language alone must not trigger heavy execution.
+7. A deceptively short but high-consequence evidence request.
+    Expected: EVIDENCE_BEARING. Request length must not determine routing.
+8. Task-triggered execution.
+    Expected: never TRANSIENT, but prove it can escalate from PROFESSIONAL_WORK to EVIDENCE_BEARING.
+
+For every case report which classifier signals caused the decision. We need explainability without storing chain-of-thought.
+
+D. Boundary and fallback behaviour
+
+Test ambiguous requests.
+
+Prove what happens when the classifier cannot confidently distinguish TRANSIENT from PROFESSIONAL_WORK or PROFESSIONAL_WORK from EVIDENCE_BEARING.
+
+The safety principle should be asymmetric:
+
+When evidence dependency is reasonably indicated, prefer the evidence-bearing path rather than silently producing unsupported professional work.
+
+But do not simply route every ambiguous request to the heaviest lane.
+
+Document the actual implemented fallback behaviour and whether it satisfies this principle.
+
+E. Auto-ingestion authority test
+
+Upload:
+
+1. a normal new organisational document;
+2. an obvious prompt-injection/high-risk document;
+3. a document whose canonical title conflicts with an existing current authoritative document;
+4. an older/superseded version of an existing policy.
+
+Prove that ordinary material becomes usable without unnecessary human approval while conflicting, suspicious or ambiguous material cannot silently replace current organisational authority.
+
+Explicitly distinguish:
+
+“ingested and usable by NeedsOps”
+
+from
+
+“accepted as the current authoritative organisational source.”
+
+If the current implementation does not make this distinction safely, classify it as a launch issue rather than quietly changing architecture during this gate.
+
+F. Active Work proof
+
+During a deliberately long-running execution, inspect /active-executions.
+
+Prove:
+
+* running work appears while actually running
+* task/run/intent status is accurate
+* it disappears or transitions appropriately when finished
+* Completed Work is not being mistaken for execution state
+* duplicate representations of the same underlying execution are deduplicated or clearly related
+* tenant isolation holds
+
+G. Inbox vs Notifications proof
+
+Generate representative events and prove:
+
+Inbox = action required from me
+
+Examples: awaiting approval, unresolved proposal, decision request.
+
+Notifications = something happened that I should know
+
+Examples: work approved/completed, informational message.
+
+The same underlying event should not appear in both merely because both pages can query it.
+
+H. Regression protection
+
+Re-prove that Sprint 29M has not damaged:
+
+* approved-version pinning from 29J
+* PDF/DOCX export
+* content normalisation
+* EvidencePack persistence from 29K.2
+* claim binding from 29K.3
+* semantic entailment hardening from 29K.4.1
+* absence verification
+* cross-tenant isolation
+* self-review
+* revision/version behaviour
+
+I. L4 requirement
+
+We previously accepted L3 evidence because an authenticated Clerk session was unavailable.
+
+This gate should attempt genuine L4 authenticated runtime testing for at least one request through each lane.
+
+Clearly separate:
+
+L1 unit
+L2 mocked integration
+L3 real DB
+L4 authenticated live runtime
+
+Do not label an L3 test L4 merely because the server is running.
+
+J. Final report
+
+Return:
+
+1. three-lane routing evidence table;
+2. latency/performance comparison;
+3. LLM/retrieval/DB-operation comparison;
+4. adversarial classifier results;
+5. auto-ingestion authority results;
+6. Active Work results;
+7. Inbox/Notifications results;
+8. regression results;
+9. evidence level for every major conclusion;
+10. defects discovered;
+11. changes made, if any;
+12. full-suite before/after test count.
+
+Finish with one of:
+
+PROVEN — THREE-LANE ARCHITECTURE READY
+
+FUNCTIONAL WITH CONDITIONS
+
+NOT PROVEN — ROUTING/PERFORMANCE DEFECTS REMAIN
+
+Most importantly, answer these four questions plainly:
+
+1. Does a simple request genuinely avoid the machinery it does not need?
+
+2. Is it materially faster as a result?
+
+3. Can serious work ever accidentally take the lightweight route and lose durability or evidence integrity?
+
+4. From the user’s perspective, does NeedsOps now feel like one system that quietly chooses the right depth of work rather than three separate systems?
+
+Do not implement unrelated improvements discovered during testing. Record them separately for prioritisation.
