@@ -96,3 +96,4 @@
 - [NeedsOps Sprint 29N.8 Baseline Cleanup](needsops-sprint29n8.md) — 0 failures (4959 passing), endToEndWorkflowService+executionCheckpointStore deleted, integration tests isolated, ConversationContext field contract, OpenClaw proof prerequisites (5 steps)
 - [NeedsOps Sprint 29N.10 Product Surface Defect Closure](needsops-sprint29n10.md) — execution.professional_work Cloud gate, PlatformOrgDetail contract fix, dashboard 7-source decisions, withKnowledgeAdminGuard HOC, useOrgRole hook, 4985 tests
 - [NeedsOps Sprint 29N.11 Parallel Evidence Discovery](needsops-sprint29n11.md) — KRS+OpenClaw concurrent, external web search, convergence/dedup/contradiction, NullAdapter fallback, PARALLEL_MODE escalationStatus, 5009 tests
+- [NeedsOps pdf-parse v2 API](needsops-pdf-parse-v2.md) — v2.4.5 is class-based ESM (PDFParse class, not function); must be external in build.mjs; job reset must use status='queued' not 'pending'

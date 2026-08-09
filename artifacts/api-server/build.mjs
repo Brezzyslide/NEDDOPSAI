@@ -91,6 +91,10 @@ async function buildAll() {
       "@sentry/profiling-node",
       "@tree-sitter/*",
       "aws-sdk",
+      // pdf-parse uses pdfjs-dist which does path-traversal for worker files
+      // and cannot be bundled by esbuild — load from node_modules at runtime
+      "pdf-parse",
+      "pdfjs-dist",
       "classic-level",
       "dd-trace",
       "ffi-napi",
