@@ -16,5 +16,11 @@ export default defineConfig({
     environment: "node",
     globals: true,
     globalSetup: "./src/__tests__/globalSetup.ts",
+    // Integration and live-DB tests are excluded from the deterministic baseline.
+    // Run them separately with: pnpm vitest run src/__tests__/integration
+    exclude: [
+      "src/__tests__/integration/**",
+      "**/node_modules/**",
+    ],
   },
 });

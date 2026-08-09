@@ -1,0 +1,152 @@
+SPRINT 29N.8 — TEST BASELINE & PRODUCTION ARCHITECTURE CLEANUP
+
+Before any further OpenClaw integration, clean the existing NeedsOps production baseline.
+
+Do not redesign UEE, KRS, the three-lane architecture, claim provenance, Completed Work, DNA, memory, authority gates, or the OpenClaw interfaces created in 29N.6. Do not implement Cloud OpenClaw in this sprint.
+
+Part A — Clear the existing test failures
+
+Start from the currently reported 56/57 pre-existing failures. First rerun the complete suite and establish the exact current number rather than assuming either figure is correct.
+
+For every failure, classify it as:
+
+1. genuine production defect
+2. stale/interface-drift test
+3. mock-shape drift
+4. classifier expectation drift
+5. live DB/integration test incorrectly included in unit baseline
+6. Desktop Connector/environment-dependent test
+7. obsolete test for architecture no longer in production
+
+Fix genuine defects. Update stale tests only where the current production contract is demonstrably correct.
+
+Do not make tests green by weakening assertions, swallowing errors, adding arbitrary skips, or changing production behaviour merely to satisfy obsolete tests.
+
+Live DB, connector, binary-dependent or other genuine integration tests should be moved or explicitly separated into an integration/acceptance suite where appropriate. The normal deterministic test baseline should not remain permanently red because an external environment is unavailable.
+
+Produce before/after numbers and explain the disposition of every currently failing test.
+
+Target: deterministic production test suite = zero unexplained failures.
+
+Part B — Production redundancy and dead-code audit
+
+Now inspect the actual runtime architecture and identify code that is still part of the repository or production build but is no longer necessary for the functionality NeedsOps currently provides.
+
+Trace from live routes and UI entry points inward, rather than simply searching for files that look old.
+
+For every candidate identify:
+
+* what it was originally intended to do
+* whether anything currently imports or calls it
+* whether it participates in Cloud, Hybrid/Desktop, or both
+* whether another production component now performs the same responsibility
+* whether removing it affects tests, migrations, stored historical records or API compatibility
+* whether it is dead, deprecated, redundant, transitional, or genuinely still required
+
+Pay particular attention to architecture accumulated during the previous execution-engine iterations, including:
+
+* legacy execution paths
+* endToEndWorkflowService
+* /v1/execution Path 2
+* old orchestration/coordinator services
+* duplicated OpenClaw abstractions
+* unused action/tool proposal infrastructure
+* old KRS/retrieval paths
+* deprecated knowledge providers
+* legacy Workforce components
+* obsolete approval paths
+* superseded conversation dispatch logic
+* unused feature/entitlement checks
+* duplicate adapters
+* abandoned schema/service abstractions
+* frontend pages/components no longer reachable
+* old APIs with no callers
+
+Do not assume /v1/execution or OpenClaw-related infrastructure is redundant merely because the current Cloud UEE does not use it. Tomorrow we intend to connect a real NeedsOps OpenClaw instance running on a MacBook and test it as a remote execution/discovery runtime. Preserve anything that could reasonably form part of that Cloud/Hybrid boundary until its role is understood.
+
+Part C — Classify before deleting
+
+Put every candidate into one of four buckets:
+
+KEEP — required by current production architecture.
+
+KEEP FOR OPENCLAW — not currently exercised by primary Cloud UEE but likely required for tomorrow’s OpenClaw Cloud/Hybrid integration.
+
+DEPRECATE — still has compatibility/history value but should no longer receive development.
+
+DELETE — proven unreachable/redundant and safe to remove.
+
+Nothing is deleted merely because it has no current frontend caller. Check backend callers, scheduled/background execution, connector usage, tests and cross-package imports.
+
+Part D — Remove only proven dead code
+
+Once classified, remove DELETE items only.
+
+Clean imports, exports, routes, tests and dependencies associated solely with deleted architecture.
+
+Do not drop historical database tables or migrations during this sprint unless there is overwhelming proof that doing so is necessary. Prefer leaving historical schema alone while removing unused application code.
+
+After cleanup rerun the complete deterministic suite.
+
+Part E — Architecture after cleanup
+
+Give me a concise map of what remains:
+
+Conversation → CoS → three-lane classifier
+
+then show separately:
+
+TRANSIENT
+
+PROFESSIONAL_WORK
+
+EVIDENCE_BEARING
+
+and for evidence-bearing work:
+
+KRS → Evidence Sufficiency Gate → optional Evidence Discovery Adapter → Authority Gate → OpenAI reasoning → claim integrity → Completed Work
+
+Also show the existing Hybrid/Desktop/OpenClaw path separately.
+
+Identify any remaining duplicate execution paths and explain why each still exists.
+
+Part F — Protect tomorrow’s OpenClaw work
+
+Do not build the OpenClaw integration tonight.
+
+However, finish by identifying exactly what tomorrow’s proof will need to connect the existing MacBook-hosted NeedsOps OpenClaw to the architecture built in 29N.6.
+
+Specifically determine whether the existing Desktop Connector/relay, RuntimeBrokerClient, /v1/execution infrastructure and IEvidenceDiscoveryAdapter can be reused.
+
+Tomorrow’s intended proof is:
+
+NeedsOps Cloud → governed request → remote MacBook OpenClaw → evidence/resource discovery → CandidateEvidence[] → NeedsOps Authority Gate → EvidencePack → OpenAI reasoning → Completed Work.
+
+Do not implement it yet. Tell me exactly what needs connecting.
+
+Final report
+
+Return:
+
+* exact failing tests before cleanup
+* disposition of every failure
+* deterministic tests after cleanup
+* code/files removed
+* dependencies removed
+* KEEP / KEEP FOR OPENCLAW / DEPRECATE / DELETE table
+* production architecture after cleanup
+* remaining architectural duplication
+* anything you deliberately did not delete and why
+* exact prerequisites for tomorrow’s MacBook OpenClaw L4 proof
+
+Finish with one verdict:
+
+CLEAN BASELINE — READY FOR OPENCLAW PROOF
+
+or
+
+NOT READY — [specific blockers]
+
+That gives us a very useful stopping point tonight.
+
+And tomorrow, yes: we plug your MacBook OpenClaw into the discovery boundary we’ve already built and prove one real chain end to end. If that works, then we can decide how much more responsibility OpenClaw deserves in Cloud and Hybrid based on evidence rather than architecture theory.

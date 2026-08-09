@@ -482,30 +482,32 @@ describe("Objective D — Requester identity threaded through execution context"
   });
 });
 
-// ─── Objective E: endToEndWorkflowService deprecated ────────────────────────
+// ─── Objective E: endToEndWorkflowService deleted (dead code audit) ──────────
 
-describe("Objective E — endToEndWorkflowService marked @deprecated", () => {
-  it("carries a @deprecated banner with LEGACY marker", () => {
-    const src = fs.readFileSync(
+describe("Objective E — endToEndWorkflowService proved dead and deleted", () => {
+  it("file no longer exists (deleted in Sprint 29N.8 dead-code audit)", () => {
+    const exists = fs.existsSync(
       path.join(process.cwd(), "src/services/endToEndWorkflowService.ts"),
-      "utf-8",
     );
-    expect(src).toContain("@deprecated");
-    expect(src).toContain("LEGACY");
-    expect(src).toContain("UnifiedExecutionEngine");
+    expect(exists).toBe(false);
   });
 
-  it("has no live callers in routes or application services (test files excluded)", () => {
+  it("has no live callers in routes or application services", () => {
     const { execSync } = require("child_process");
-    const result: string = execSync(
-      'grep -rl "endToEndWorkflowService" src/ --include="*.ts"',
-      { encoding: "utf-8", cwd: process.cwd() },
-    ).trim();
-
+    let result = "";
+    try {
+      result = execSync(
+        'grep -rl "endToEndWorkflowService" src/ --include="*.ts"',
+        { encoding: "utf-8", cwd: process.cwd() },
+      ).trim();
+    } catch {
+      // grep exits non-zero when no matches found — that is the correct result
+      result = "";
+    }
     const files = result.split("\n").filter(Boolean);
-    // Allow the service file itself and test files — no live production callers
+    // Only test files may still reference the deleted service (for audit history)
     const liveCallers = files.filter(
-      f => !f.endsWith("endToEndWorkflowService.ts") && !f.includes("__tests__"),
+      f => !f.includes("__tests__") && !f.includes("/tests/"),
     );
     expect(liveCallers).toHaveLength(0);
   });

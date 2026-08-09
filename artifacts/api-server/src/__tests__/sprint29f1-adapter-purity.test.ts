@@ -106,60 +106,49 @@ describe("Deliverable A — workExecutionPipelineService adapter purity", () => 
   });
 });
 
-// ─── Suite B — endToEndWorkflowService is isolated ───────────────────────────
+// ─── Suite B — endToEndWorkflowService deleted (Sprint 29N.8 dead-code audit) ─
 
-describe("Deliverable B — endToEndWorkflowService legacy isolation", () => {
-  const source = readSource(END_TO_END_PATH);
-
-  it("has @deprecated annotation in file header", () => {
-    expect(source.includes("@deprecated") || source.includes("LEGACY")).toBe(true);
+describe("Deliverable B — endToEndWorkflowService deleted (proved dead)", () => {
+  it("file no longer exists on disk", () => {
+    const { existsSync } = require("fs");
+    expect(existsSync(END_TO_END_PATH)).toBe(false);
   });
 
-  it("has a production import guard (assertLegacyPermitted or similar)", () => {
-    expect(
-      source.includes("assertLegacyPermitted") ||
-      source.includes("ALLOW_LEGACY_WORKFLOW") ||
-      source.includes("production import is not permitted"),
-    ).toBe(true);
-  });
-
-  it("is NOT imported by any production route file", () => {
-    // Check key route files for import of endToEndWorkflowService
-    const routeFiles = [
-      resolve(import.meta.dirname ?? __dirname, "../../src/index.ts"),
-      resolve(import.meta.dirname ?? __dirname, "../routes/v1/tasks.ts"),
-      resolve(import.meta.dirname ?? __dirname, "../routes/v1/workExecution.ts"),
-    ];
-    for (const routeFile of routeFiles) {
-      try {
-        const routeSource = readFileSync(routeFile, "utf-8");
-        expect(routeSource).not.toContain("endToEndWorkflowService");
-      } catch {
-        // File doesn't exist — that's fine, can't import what doesn't exist
-      }
-    }
+  it("is NOT imported by any production route or service file", () => {
+    const { execSync } = require("child_process");
+    let result = "";
+    try {
+      result = execSync(
+        'grep -rl "endToEndWorkflowService" src/ --include="*.ts"',
+        { encoding: "utf-8", cwd: process.cwd() },
+      ).trim();
+    } catch { result = ""; }
+    const liveCallers = result.split("\n").filter(Boolean).filter(
+      f => !f.includes("__tests__") && !f.includes("/tests/"),
+    );
+    expect(liveCallers).toHaveLength(0);
   });
 });
 
-// ─── Suite C — executionCheckpointStore is annotated ─────────────────────────
+// ─── Suite C — executionCheckpointStore deleted (Sprint 29N.8 dead-code audit) ─
 
-describe("Deliverable C — executionCheckpointStore legacy annotation", () => {
-  const storePath = resolve(
-    import.meta.dirname ?? __dirname,
-    "../services/executionCheckpointStore.ts",
-  );
-  const source = readSource(storePath);
-
-  it("has @legacy ISOLATED annotation", () => {
-    expect(source.includes("@legacy") || source.includes("SUPERSEDED") || source.includes("RETAIN")).toBe(true);
+describe("Deliverable C — executionCheckpointStore deleted (proved dead)", () => {
+  it("file no longer exists on disk", () => {
+    const { existsSync } = require("fs");
+    const storePath = resolve(
+      import.meta.dirname ?? __dirname,
+      "../services/executionCheckpointStore.ts",
+    );
+    expect(existsSync(storePath)).toBe(false);
   });
 
-  it("has a warning not to add new callers", () => {
-    expect(
-      source.includes("DO NOT add new callers") ||
-      source.includes("DO NOT reconnect") ||
-      source.includes("not available in production"),
-    ).toBe(true);
+  it("is superseded by executionCheckpointService (DB-backed)", () => {
+    const servicePath = resolve(
+      import.meta.dirname ?? __dirname,
+      "../services/executionCheckpointService.ts",
+    );
+    const { existsSync } = require("fs");
+    expect(existsSync(servicePath)).toBe(true);
   });
 });
 

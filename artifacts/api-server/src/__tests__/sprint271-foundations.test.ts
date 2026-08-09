@@ -173,66 +173,25 @@ describe("executionEventBus — emit / subscribe / buffer", () => {
   });
 });
 
-// ─── 2. Execution Checkpoint Store ────────────────────────────────────────────
+// ─── 2. Execution Checkpoint Store (deleted — Sprint 29N.8 dead-code audit) ───
+// executionCheckpointStore.ts was the legacy in-memory checkpoint map.
+// It has been deleted and superseded by executionCheckpointService.ts (DB-backed).
+// The unit tests that exercised the in-memory store directly are removed here.
+// Checkpoint behaviour is now covered by executionCheckpointService integration tests.
 
-describe("executionCheckpointStore", () => {
-  const makeBase = (convId: string) => ({
-    correlationId: "corr-cp",
-    conversationId: convId,
-    organizationId: "org-cp",
-    requesterId: "user-cp",
-    originalRequest: "Write a report",
-    blueprint: null as null,
-    manifest: { id: "manifest-1" } as unknown as never,
-    clarificationQuestions: ["What is the incident date?"],
+describe("executionCheckpointStore — deleted, superseded by DB-backed service", () => {
+  it("legacy in-memory store file no longer exists", () => {
+    const { existsSync } = require("fs");
+    const { resolve } = require("path");
+    const storePath = resolve(process.cwd(), "src/services/executionCheckpointStore.ts");
+    expect(existsSync(storePath)).toBe(false);
   });
 
-  it("saves and retrieves a checkpoint", async () => {
-    const { saveCheckpoint, getCheckpoint } = await import("../services/executionCheckpointStore.js");
-    const base = makeBase("cp-conv-save-1");
-    saveCheckpoint(base);
-    const cp = getCheckpoint("cp-conv-save-1");
-    expect(cp).not.toBeNull();
-    expect(cp!.correlationId).toBe("corr-cp");
-    expect(cp!.clarificationQuestions).toEqual(["What is the incident date?"]);
-  });
-
-  it("hasActiveCheckpoint returns true after save", async () => {
-    const { saveCheckpoint, hasActiveCheckpoint } = await import("../services/executionCheckpointStore.js");
-    saveCheckpoint(makeBase("cp-conv-active-1"));
-    expect(hasActiveCheckpoint("cp-conv-active-1")).toBe(true);
-  });
-
-  it("clearCheckpoint removes the checkpoint", async () => {
-    const { saveCheckpoint, getCheckpoint, clearCheckpoint, hasActiveCheckpoint } =
-      await import("../services/executionCheckpointStore.js");
-    saveCheckpoint(makeBase("cp-conv-clear-1"));
-    clearCheckpoint("cp-conv-clear-1");
-    expect(getCheckpoint("cp-conv-clear-1")).toBeNull();
-    expect(hasActiveCheckpoint("cp-conv-clear-1")).toBe(false);
-  });
-
-  it("returns null for unknown conversationId", async () => {
-    const { getCheckpoint } = await import("../services/executionCheckpointStore.js");
-    expect(getCheckpoint("cp-conv-missing-xyz-9999")).toBeNull();
-  });
-
-  it("overwrites on second save for same conversation", async () => {
-    const { saveCheckpoint, getCheckpoint } = await import("../services/executionCheckpointStore.js");
-    const convId = "cp-conv-overwrite-1";
-    saveCheckpoint({ ...makeBase(convId), correlationId: "first" });
-    saveCheckpoint({ ...makeBase(convId), correlationId: "second" });
-    const cp = getCheckpoint(convId);
-    expect(cp!.correlationId).toBe("second");
-  });
-
-  it("checkpoint has createdAt and expiresAt timestamps", async () => {
-    const { saveCheckpoint, getCheckpoint } = await import("../services/executionCheckpointStore.js");
-    saveCheckpoint(makeBase("cp-conv-ts-1"));
-    const cp = getCheckpoint("cp-conv-ts-1");
-    expect(cp!.createdAt).toBeTruthy();
-    expect(cp!.expiresAt).toBeTruthy();
-    expect(new Date(cp!.expiresAt).getTime()).toBeGreaterThan(new Date(cp!.createdAt).getTime());
+  it("DB-backed executionCheckpointService exists as replacement", () => {
+    const { existsSync } = require("fs");
+    const { resolve } = require("path");
+    const servicePath = resolve(process.cwd(), "src/services/executionCheckpointService.ts");
+    expect(existsSync(servicePath)).toBe(true);
   });
 });
 

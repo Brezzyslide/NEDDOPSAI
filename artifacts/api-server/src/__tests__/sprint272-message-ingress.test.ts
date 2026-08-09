@@ -69,12 +69,7 @@ vi.mock("../services/executionCoordinatorService.js", () => ({
   dispatchWorkExecution:    (...a: unknown[]) => mockDispatch(...a),
 }));
 
-vi.mock("../services/executionCheckpointStore.js", () => ({
-  saveCheckpoint:      vi.fn(),
-  getCheckpoint:       vi.fn().mockReturnValue(null),
-  clearCheckpoint:     vi.fn(),
-  hasActiveCheckpoint: vi.fn().mockReturnValue(false),
-}));
+// executionCheckpointStore was the legacy in-memory store (deleted — superseded by executionCheckpointService)
 
 vi.mock("../services/workExecutionPipelineService.js", () => ({
   executeWork:             (...a: unknown[]) => mockExecuteWork(...a),

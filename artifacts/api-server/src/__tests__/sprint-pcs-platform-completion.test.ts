@@ -346,7 +346,7 @@ vi.mock("../services/organisationResourceRegistryService.js", () => ({
   getResourcesForEmployee: vi.fn().mockResolvedValue([]),
 }));
 
-// ─── Mock runtimeContextService (used by endToEndWorkflowService) ─────────────
+// ─── Mock runtimeContextService ───────────────────────────────────────────────
 
 vi.mock("../services/runtimeContextService.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/runtimeContextService.js")>();
@@ -431,9 +431,8 @@ import {
 import type {
   OrganisationRuntimeContext,
 } from "../services/runtimeContextService.js";
-import {
-  runMockedWorkflow,
-} from "../services/endToEndWorkflowService.js";
+// endToEndWorkflowService (runMockedWorkflow) was deleted — legacy disconnected pipeline.
+// Group 8 tests that exercised it are removed below.
 
 // ─── Regression imports ───────────────────────────────────────────────────────
 
@@ -1061,83 +1060,9 @@ describe("Group 7: Runtime Context Service — prompt blocks", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GROUP 8: End-to-End Mocked Workflow
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe("Group 8: End-to-End Mocked Workflow", () => {
-  // We mock assembleRuntimeContext so it doesn't try to hit the DB
-  // The mock is set up at the top level for the workforceRegistry already.
-  // We need to mock the runtimeContextService import used by endToEndWorkflowService.
-  let result: Awaited<ReturnType<typeof runMockedWorkflow>>;
-
-  beforeEach(async () => {
-    // Run once and reuse the result across tests
-    if (!result) {
-      result = await runMockedWorkflow("org-001", "Review staffing rosters for next week");
-    }
-  });
-
-  it("69. runMockedWorkflow resolves without throwing", async () => {
-    await expect(
-      runMockedWorkflow("org-001", "Analyse invoice data")
-    ).resolves.not.toThrow();
-  });
-
-  it("70. runMockedWorkflow returns EndToEndWorkflowResult with success boolean", () => {
-    expect(typeof result.success).toBe("boolean");
-  });
-
-  it("71. runMockedWorkflow result has stages array", () => {
-    expect(Array.isArray(result.stages)).toBe(true);
-  });
-
-  it("72. stages has at least 8 entries", () => {
-    expect(result.stages.length).toBeGreaterThanOrEqual(8);
-  });
-
-  it("73. stages includes a 'context_assembly' stage", () => {
-    const stageNames = result.stages.map((s) => s.stage);
-    expect(stageNames).toContain("context_assembly");
-  });
-
-  it("74. stages includes a 'specialist_execution' stage", () => {
-    const stageNames = result.stages.map((s) => s.stage);
-    expect(stageNames).toContain("specialist_execution");
-  });
-
-  it("75. stages includes an 'audit_recording' stage", () => {
-    const stageNames = result.stages.map((s) => s.stage);
-    expect(stageNames).toContain("audit_recording");
-  });
-
-  it("76. stages includes a 'cos_consolidation' or 'graph_completion' stage", () => {
-    const stageNames = result.stages.map((s) => s.stage);
-    expect(
-      stageNames.includes("cos_consolidation") || stageNames.includes("graph_completion")
-    ).toBe(true);
-  });
-
-  it("77. all stages have durationMs >= 0", () => {
-    for (const stage of result.stages) {
-      expect(stage.durationMs).toBeGreaterThanOrEqual(0);
-    }
-  });
-
-  it("78. result.finalResponse is a non-empty string", () => {
-    expect(typeof result.finalResponse).toBe("string");
-    expect(result.finalResponse.length).toBeGreaterThan(0);
-  });
-
-  it("79. result.totalDurationMs is >= 0", () => {
-    expect(result.totalDurationMs).toBeGreaterThanOrEqual(0);
-  });
-
-  it("80. result.workflowId is a non-empty string", () => {
-    expect(typeof result.workflowId).toBe("string");
-    expect(result.workflowId.length).toBeGreaterThan(0);
-  });
-});
+// GROUP 8 (tests 69-80) exercised endToEndWorkflowService.runMockedWorkflow —
+// that service was the legacy disconnected pipeline and has been deleted.
+// Tests removed; the Group 9 regression suite below still covers CoS / EA / DNA integrity.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GROUP 9: Regression — existing tests unaffected

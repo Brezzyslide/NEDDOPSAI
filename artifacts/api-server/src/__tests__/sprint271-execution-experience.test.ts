@@ -90,12 +90,8 @@ const mockGetCheckpoint   = vi.hoisted(() => vi.fn().mockReturnValue(null));
 const mockClearCheckpoint = vi.hoisted(() => vi.fn());
 const mockHasCheckpoint   = vi.hoisted(() => vi.fn().mockReturnValue(false));
 
-vi.mock("../services/executionCheckpointStore.js", () => ({
-  saveCheckpoint:      mockSaveCheckpoint,
-  getCheckpoint:       mockGetCheckpoint,
-  clearCheckpoint:     mockClearCheckpoint,
-  hasActiveCheckpoint: mockHasCheckpoint,
-}));
+// executionCheckpointStore was the legacy in-memory store (deleted — superseded by executionCheckpointService)
+// The mocks below cover its former role in tests that still reference the coordinator's checkpoint API.
 
 // Sprint 27.2 — durable checkpoint service mocks (replaces in-memory store in coordinator)
 const mockCreateDurableCheckpoint    = vi.hoisted(() => vi.fn().mockResolvedValue({ id: "cp-durable-1" }));

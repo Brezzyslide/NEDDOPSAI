@@ -332,7 +332,7 @@ export async function buildConversationContext(
       failedComponents,
       componentTimings,
       extractedSearchTerms,
-      libraryPresenceLoadFailed: libraryPresenceLoadFailed || undefined,
+      libraryPresenceLoadFailed,
     },
     metadata: {
       organisationId,
