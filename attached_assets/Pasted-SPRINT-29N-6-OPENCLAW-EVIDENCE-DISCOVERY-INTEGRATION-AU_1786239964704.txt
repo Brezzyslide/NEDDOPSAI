@@ -1,0 +1,724 @@
+SPRINT 29N.6 — OPENCLAW EVIDENCE DISCOVERY INTEGRATION & AUTHORITY GATE
+
+Objective
+
+Sprint 29N.5 established the retrieval architecture:
+
+NeedsOps governs.
+KRS performs primary governed organisational retrieval.
+Evidence Sufficiency determines whether the available evidence is enough.
+OpenClaw investigates only when KRS cannot structurally reach the evidence required.
+NeedsOps validates everything OpenClaw discovers.
+OpenAI performs the professional reasoning.
+Completed Work remains the canonical durable output.
+
+KRS hybrid lexical + semantic retrieval is now live.
+
+evidenceSufficiencyService.ts is built and tested but is not yet wired into the production execution pipeline.
+
+This sprint should now wire the Evidence Sufficiency Gate and integrate OpenClaw as a controlled evidence-discovery escalation layer.
+
+Do NOT replace KRS.
+
+Do NOT allow OpenClaw to determine organisational truth, source authority, claim validity, approval, or provenance status.
+
+⸻
+
+PART A — PROVE THE OPENCLAW RUNTIME BEFORE MODIFYING UEE
+
+Before implementation, inspect the actual current OpenClaw integration and report:
+
+1. Which OpenClaw runtime is available to the Cloud deployment today?
+2. Is it actually callable from the API server in production code?
+3. Which OpenClaw package/runtime/API is being used?
+4. What skills/tools/plugins are actually available to that runtime?
+5. Can it:
+    * search/read governed NeedsOps documents?
+    * follow references between documents?
+    * search the public web?
+    * retrieve webpages?
+    * identify source URLs and titles?
+    * return exact passages?
+    * return structured JSON?
+6. Which of those capabilities are proven by actual code/tests versus assumed from OpenClaw generally?
+7. Does the existing /v1/execution OpenClaw path provide anything reusable?
+8. Is there already an OpenClaw Cloud instance/runtime that would make another implementation redundant?
+9. Does this integration have any coupling to the Hybrid/Desktop Connector path?
+10. Can Cloud OpenClaw and Hybrid OpenClaw eventually implement the same discovery interface while using different reach mechanisms?
+
+Do not build around capabilities that are not actually present.
+
+If a required capability is missing, stop that part of the implementation and report it rather than creating a fake adapter that makes tests pass.
+
+⸻
+
+PART B — WIRE TASK #152: EVIDENCE SUFFICIENCY INTO UEE
+
+After KRS produces the initial EvidencePack, run evidenceSufficiencyService.
+
+The flow becomes:
+
+Evidence-bearing request
+→ KRS hybrid retrieval
+→ EvidencePack V1
+→ Evidence Sufficiency Gate
+
+For SUFFICIENT:
+
+Continue immediately to OpenAI.
+
+OpenClaw MUST NOT run.
+
+Record:
+
+* sufficiency status;
+* reason;
+* evidence count;
+* source count;
+* retrieval method;
+* whether escalation occurred = false.
+
+This is the normal fast path.
+
+⸻
+
+PART C — DEFINE ESCALATION POLICY
+
+Create a typed escalation decision.
+
+Something like:
+
+EvidenceEscalationDecision
+
+with:
+
+* shouldEscalate
+* reason
+* allowedDiscoveryScope
+* requiredEvidence
+* unresolvedReferences
+* externalAuthorityRequired
+* originalEvidencePackId/executionId
+* tenantId/organisationId
+
+Initial rules:
+
+SUFFICIENT
+
+No escalation.
+
+UNRESOLVED_REFERENCE
+
+OpenClaw escalation allowed.
+
+EXTERNAL_AUTHORITY_REQUIRED
+
+OpenClaw escalation allowed, subject to Authority Registry.
+
+INSUFFICIENT_COVERAGE
+
+Escalation may be allowed only when deeper investigation could reasonably improve coverage.
+
+Do not automatically escalate merely because chunk count is low.
+
+LOW_CONFIDENCE
+
+Escalation may be allowed when the weakness is discovery/reach rather than authority.
+
+SOURCE_NOT_AVAILABLE
+
+Escalate only if the missing source can legitimately be discovered through an allowed OpenClaw source.
+
+AUTHORITY_GAP
+
+Do not automatically solve this with OpenClaw.
+
+OpenClaw can discover candidates.
+
+It cannot decide that an unapproved or unknown source is authoritative.
+
+Return a governance-required result where appropriate.
+
+⸻
+
+PART D — CANDIDATE EVIDENCE CONTRACT
+
+OpenClaw must never write directly into an EvidencePack.
+
+Create a typed CandidateEvidence contract.
+
+At minimum each candidate should carry, where applicable:
+
+* organisationId / tenantId
+* executionId
+* discoveryId
+* source type
+* source identifier
+* source title
+* source URL for external evidence
+* originating document identifier for internal evidence
+* sourceVersionId where applicable
+* chunk/document reference
+* exact supporting passage
+* passage hash
+* retrieval timestamp
+* retrieval method
+* OpenClaw discovery reason
+* unresolved reference that caused discovery
+* claimed publisher/authority
+* publication/effective date where available
+* access location
+* confidence/relevance score
+* content type
+* external/internal classification
+
+OpenClaw confidence is advisory only.
+
+It MUST NOT become NeedsOps authority score.
+
+⸻
+
+PART E — NEEDSOPS EVIDENCE ACCEPTANCE / AUTHORITY GATE
+
+Implement the trust boundary between OpenClaw and EvidencePack.
+
+Something equivalent to:
+
+validateCandidateEvidence()
+
+or
+
+evidenceAcceptanceService.
+
+Every OpenClaw candidate must pass through this gate.
+
+For internal organisational evidence validate at minimum:
+
+1. tenant/organisation ownership;
+2. source exists;
+3. source is accessible to this execution;
+4. approved status;
+5. current version/current authority;
+6. effective date/currentness;
+7. integrity/hash where available;
+8. sensitivity/access rules;
+9. sourceVersionId;
+10. document/chunk existence.
+
+For external evidence validate:
+
+1. source identity;
+2. URL;
+3. publisher/domain;
+4. source type;
+5. Authority Registry status;
+6. jurisdiction where relevant;
+7. currency/effective date;
+8. integrity/hash;
+9. whether the source is primary or secondary;
+10. whether this task permits external evidence.
+
+Return:
+
+AcceptedEvidence
+
+or a typed rejection reason.
+
+Examples:
+
+* WRONG_TENANT
+* SOURCE_NOT_APPROVED
+* SOURCE_SUPERSEDED
+* AUTHORITY_UNKNOWN
+* AUTHORITY_REJECTED
+* OUTDATED
+* ACCESS_DENIED
+* INTEGRITY_FAILURE
+* SOURCE_NOT_FOUND
+* JURISDICTION_MISMATCH
+
+Rejected candidates must NEVER reach OpenAI as trusted evidence.
+
+⸻
+
+PART F — AUTHORITY REGISTRY
+
+Sprint 29N.4 identified an Authority Registry as necessary for safe external evidence discovery.
+
+Before allowing unrestricted external evidence into the EvidencePack, implement or prove the existence of a bounded Authority Registry.
+
+It should support categories such as:
+
+* legislation
+* regulator
+* government guidance
+* recognised standard
+* official industry authority
+
+Store enough information to determine:
+
+* authority name;
+* approved domains;
+* jurisdiction;
+* authority type;
+* status;
+* applicable subject areas if appropriate;
+* primary/secondary authority classification.
+
+Do NOT create a giant manually maintained internet directory.
+
+Start narrow and extensible.
+
+Unknown external sources may be returned as candidates but must not automatically become AcceptedEvidence.
+
+⸻
+
+PART G — OPENCLAW DISCOVERY: MULTI-HOP INTERNAL REFERENCES
+
+Use the controlled test established in Sprint 29N.5:
+
+Complaints Policy
+→ Escalation Procedure
+→ Incident Management Policy
+
+KRS retrieves normally first.
+
+If the Sufficiency Gate detects the unresolved Escalation Procedure reference, OpenClaw should investigate it.
+
+If the Escalation Procedure itself references Incident Management Policy, OpenClaw may follow that reference within bounded limits.
+
+Put hard controls around traversal:
+
+* maximum hops;
+* maximum sources;
+* maximum passages;
+* execution timeout;
+* tenant boundary;
+* allowed source types.
+
+Start conservatively.
+
+OpenClaw returns CandidateEvidence.
+
+NeedsOps validates each candidate.
+
+Accepted candidates are added to an expanded EvidencePack.
+
+Then rerun Evidence Sufficiency.
+
+The desired flow is:
+
+KRS EvidencePack V1
+→ INSUFFICIENT / UNRESOLVED_REFERENCE
+→ OpenClaw investigation
+→ CandidateEvidence
+→ NeedsOps Authority Gate
+→ AcceptedEvidence
+→ EvidencePack V2
+→ Sufficiency Gate again
+
+Only after this does OpenAI receive the evidence for professional reasoning.
+
+⸻
+
+PART H — OPENCLAW EXTERNAL AUTHORITY DISCOVERY
+
+Controlled example:
+
+“Review our Complaints Policy against the current applicable regulatory requirements.”
+
+KRS should retrieve the organisational policy.
+
+The Sufficiency Gate should recognise that the required external authority is absent.
+
+Return:
+
+EXTERNAL_AUTHORITY_REQUIRED
+
+OpenClaw may then discover the external authority.
+
+Test with a controlled known regulator/government source.
+
+OpenClaw must return the actual source identity and relevant passage rather than merely summarising what it believes the regulation says.
+
+NeedsOps validates the candidate against the Authority Registry.
+
+Only accepted evidence enters EvidencePack V2.
+
+OpenAI then receives:
+
+* governed organisational evidence; and
+* validated external authority evidence.
+
+It performs the comparison.
+
+⸻
+
+PART I — DO NOT LET OPENCLAW BECOME ANOTHER REASONING ENGINE
+
+This boundary is critical.
+
+OpenClaw’s evidence-discovery instruction should essentially be:
+
+Find the requested evidence and return it with provenance. Do not conduct the final professional analysis.
+
+OpenClaw may:
+
+* locate;
+* search;
+* read;
+* traverse references;
+* retrieve;
+* extract passages;
+* identify resources;
+* return structured candidates.
+
+OpenClaw should NOT be responsible for:
+
+* final gap analysis;
+* compliance conclusions;
+* recommendations;
+* professional judgement;
+* claim classification;
+* deciding organisational authority;
+* deciding approval;
+* creating the final Completed Work.
+
+Those remain NeedsOps + OpenAI responsibilities.
+
+Do not accidentally create two competing professional reasoning systems.
+
+⸻
+
+PART J — OPENAI HANDOFF
+
+Once EvidencePack V2 is accepted and sufficient, preserve the existing pipeline.
+
+OpenAI receives:
+
+**Specialist DNA
+
+* blueprint/task requirements
+* Accepted EvidencePack
+* appropriate organisational context**
+
+OpenAI performs professional reasoning and generation.
+
+Existing Sprint 29J/K protections remain:
+
+* claim emission;
+* supporting-span validation;
+* semantic entailment;
+* absence handling;
+* claim-to-evidence binding;
+* evidence snapshots;
+* sourceVersionId;
+* immutable passage hashes;
+* version pinning;
+* provenance status;
+* self-review.
+
+OpenClaw-discovered evidence must become compatible with this existing provenance chain.
+
+Do NOT create a second provenance architecture for OpenClaw evidence.
+
+⸻
+
+PART K — FAILURE BEHAVIOUR
+
+OpenClaw must not become a new single point of failure.
+
+Test:
+
+OpenClaw unavailable
+
+If KRS evidence is SUFFICIENT:
+
+No impact whatsoever.
+
+If escalation is required:
+
+Return a clear evidence-insufficient state rather than generating unsupported Completed Work.
+
+OpenClaw timeout
+
+Same principle.
+
+Do not silently downgrade an evidence-bearing task into evidence-free generation.
+
+OpenClaw returns zero candidates
+
+Rerun sufficiency with original evidence and fail honestly if still insufficient.
+
+OpenClaw returns fabricated source
+
+Authority Gate rejects it.
+
+OpenClaw returns wrong-tenant document
+
+Reject before it reaches EvidencePack.
+
+OpenClaw returns stale/superseded organisational document
+
+Reject.
+
+OpenClaw returns high-confidence unknown website
+
+Do not equate confidence with authority.
+
+Reject or require governance.
+
+OpenClaw returns altered passage
+
+Integrity verification must detect it.
+
+⸻
+
+PART L — CLOUD VS HYBRID BOUNDARY
+
+Do not accidentally tie this Cloud integration to the Desktop Connector.
+
+Define the discovery abstraction so eventually we can have something conceptually like:
+
+CloudOpenClawEvidenceDiscovery
+
+and
+
+HybridOpenClawEvidenceDiscovery
+
+behind the same CandidateEvidence contract.
+
+Cloud can reach:
+
+* governed cloud-accessible organisational sources;
+* approved external web sources;
+* cloud integrations when later authorised.
+
+Hybrid can additionally reach:
+
+* customer-local files;
+* local applications;
+* private network resources;
+* Desktop Connector resources.
+
+Both must return CandidateEvidence.
+
+Both must go through the same NeedsOps Authority Gate.
+
+Neither gets authority merely because of where it runs.
+
+Do not modify Hybrid behaviour unnecessarily in this sprint.
+
+Report any shared code that this Cloud integration affects.
+
+⸻
+
+PART M — DUPLICATE OPENCLAW PATH CLEANUP DECISION
+
+We previously found two Cloud execution paths:
+
+Path 1: UEE, where OpenClaw was absent.
+
+Path 2: /v1/execution, which constructs an OpenClaw ExecutionPackage and sends it to the runtime broker.
+
+Do not create a third competing OpenClaw architecture.
+
+Determine whether the existing Path 2 broker/runtime infrastructure should be reused as the transport for evidence discovery.
+
+Categorically report:
+
+* what can be reused;
+* what cannot;
+* whether /v1/execution remains necessary;
+* whether it should eventually become an internal adapter rather than a parallel execution engine;
+* whether any code becomes redundant after 29N.6.
+
+Do not delete legacy paths until their callers and responsibilities are proven.
+
+⸻
+
+PART N — ENTITLEMENT BOUNDARY
+
+Do not let ordinary Cloud professional work depend on an OpenClaw entitlement when OpenClaw isn’t required.
+
+Prove the desired behaviour:
+
+KRS sufficient → OpenAI execution succeeds without OpenClaw entitlement/runtime.
+
+For tasks requiring OpenClaw escalation, use an appropriate OpenClaw capability/entitlement boundary.
+
+Do not allow the existing execution.openclaw_runtime coupling to block ordinary Cloud knowledge work merely because OpenClaw is unavailable.
+
+Document any entitlement changes required before modifying commercial plans.
+
+⸻
+
+PART O — OBSERVABILITY
+
+Every evidence-bearing execution should tell us internally:
+
+* initial KRS retrieval method;
+* initial evidence count;
+* initial sufficiency result;
+* whether OpenClaw escalation occurred;
+* why;
+* OpenClaw duration;
+* hops followed;
+* candidates returned;
+* candidates accepted;
+* candidates rejected;
+* rejection reasons;
+* final EvidencePack size;
+* final sufficiency result;
+* whether execution continued or failed.
+
+This should be durable enough to audit later.
+
+Do not expose noisy internal machinery to ordinary users.
+
+The user can simply see sensible states such as:
+
+Reviewing organisational evidence
+
+Checking referenced sources
+
+Checking external authority
+
+Preparing findings
+
+⸻
+
+PART P — CONTROLLED ACCEPTANCE TESTS
+
+At minimum prove these journeys:
+
+P1 — Ordinary semantic retrieval
+KRS finds sufficient evidence.
+OpenClaw calls = 0.
+
+P2 — Exact policy lookup
+KRS sufficient.
+OpenClaw calls = 0.
+
+P3 — Multi-hop internal reference
+KRS insufficient/unresolved.
+OpenClaw follows reference.
+Candidate passes Authority Gate.
+EvidencePack V2 becomes sufficient.
+
+P4 — External regulatory comparison
+KRS finds internal policy.
+Sufficiency = external authority required.
+OpenClaw finds approved external authority.
+Authority Gate accepts.
+OpenAI performs comparison.
+
+P5 — Fabricated external authority
+OpenClaw candidate rejected.
+No unsupported claim reaches Completed Work.
+
+P6 — Cross-tenant candidate
+Rejected.
+
+P7 — Superseded document
+Rejected.
+
+P8 — Unknown website with high OpenClaw confidence
+Rejected / governance required.
+
+P9 — OpenClaw unavailable but KRS sufficient
+Execution succeeds normally.
+
+P10 — OpenClaw unavailable and escalation required
+Execution fails honestly before unsupported Completed Work creation.
+
+P11 — Transient Chat request
+KRS calls = 0.
+OpenClaw calls = 0.
+Completed Work = 0.
+
+P12 — Professional work not requiring evidence
+OpenClaw calls = 0.
+
+⸻
+
+PART Q — PERFORMANCE PROOF
+
+Measure real timings separately:
+
+KRS hybrid retrieval
+Evidence Sufficiency V1
+OpenClaw startup/dispatch
+OpenClaw discovery
+Authority Gate
+EvidencePack V2 assembly
+Evidence Sufficiency V2
+OpenAI reasoning
+Total execution
+
+I specifically want to know:
+
+How much slower does escalation make an execution?
+
+and:
+
+What percentage of representative evidence-bearing tasks can remain entirely on the KRS fast path?
+
+Do not call OpenClaw speculatively just to shave a small amount of retrieval uncertainty.
+
+⸻
+
+PART R — FINAL QUESTIONS
+
+Answer categorically:
+
+1. Is OpenClaw now actually invoked from the Cloud UEE evidence path?
+2. Under exactly what conditions?
+3. Is KRS always attempted first?
+4. Can a sufficient KRS result invoke OpenClaw anyway?
+5. Can OpenClaw put evidence directly into EvidencePack?
+6. Who determines whether an OpenClaw source is authoritative?
+7. Can OpenClaw confidence override NeedsOps authority?
+8. Can OpenClaw cross tenant boundaries?
+9. Can OpenClaw follow internal document references?
+10. Can it discover external regulatory sources?
+11. Are those external sources validated before OpenAI sees them as evidence?
+12. Does OpenAI remain the professional reasoning engine?
+13. Does OpenClaw perform final compliance/gap conclusions anywhere?
+14. Does existing claim-level provenance work with OpenClaw-discovered evidence?
+15. What happens when OpenClaw is unavailable?
+16. Does ordinary Cloud professional work still function without OpenClaw?
+17. Has the existing /v1/execution OpenClaw path been reused, superseded, or left parallel?
+18. Has anything in Hybrid/Desktop Connector changed?
+19. What duplicate OpenClaw code/path now remains?
+20. What remains before this architecture is production-ready?
+
+Then give one verdict:
+
+PROVEN — KRS-FIRST / OPENCLAW-ESCALATION ARCHITECTURE READY
+
+or
+
+PARTIALLY PROVEN — OPENCLAW INTEGRATION REQUIRES FURTHER WORK
+
+or
+
+NOT PROVEN — DO NOT DEPLOY OPENCLAW EVIDENCE DISCOVERY
+
+NON-NEGOTIABLE ARCHITECTURAL CONTRACT
+
+The final system must preserve this:
+
+CoS understands the request.
+Specialist DNA defines how the work should be done.
+KRS searches governed knowledge first.
+Evidence Sufficiency determines whether more investigation is necessary.
+OpenClaw investigates what KRS cannot reach.
+NeedsOps decides what evidence may be trusted.
+OpenAI provides the professional reasoning.
+Claim Integrity proves the relationship between findings and evidence.
+Completed Work records the durable result.
+
+OpenClaw discovers. It does not declare truth.
+
+And importantly, do not build around what OpenClaw is theoretically capable of. Prove the actual Cloud runtime capabilities available to NeedsOps first, then integrate only what is real.

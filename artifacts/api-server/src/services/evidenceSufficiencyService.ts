@@ -446,6 +446,9 @@ export function evaluateEvidenceSufficiency(
 /**
  * Convenience function: returns true when the pack is sufficient without needing
  * OpenClaw escalation. Callers that only need a boolean gate use this.
+ *
+ * @param input — full evaluation input (re-runs the evaluation)
+ * @see isResultSufficient for callers that already have an EvidenceSufficiencyResult
  */
 export function isPackSufficient(
   input: SufficiencyEvaluationInput,
@@ -454,6 +457,17 @@ export function isPackSufficient(
   return result.status === "SUFFICIENT" || result.status === "AUTHORITY_GAP";
   // AUTHORITY_GAP does not trigger OpenClaw — it is a Library governance issue.
   // Callers should log the gap but proceed with available evidence.
+}
+
+/**
+ * Check whether an already-evaluated EvidenceSufficiencyResult is sufficient.
+ * Use this when you already have a result (avoids re-running the evaluation).
+ *
+ * AUTHORITY_GAP is treated as sufficient because it is a Library governance
+ * issue, not a missing-evidence issue. Execution proceeds with available evidence.
+ */
+export function isResultSufficient(result: EvidenceSufficiencyResult): boolean {
+  return result.status === "SUFFICIENT" || result.status === "AUTHORITY_GAP";
 }
 
 /**

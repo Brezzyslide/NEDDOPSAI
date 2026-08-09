@@ -382,7 +382,9 @@ describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
     expect(result.trigger).toBe("task");
     if (result.trigger === "task") {
       expect(result.workResult.outcome).toBe("execution_failed");
-      expect(result.workResult.message).toContain("knowledge library evidence");
+      // Message comes from buildInsufficientEvidenceMessage (Sprint 29N.6 upgrade)
+      expect(result.workResult.message).toContain("evidence");
+      expect(result.workResult.message).toContain("Knowledge Library");
     }
     expect(mockCreateDraft).not.toHaveBeenCalled();
   });
@@ -399,7 +401,8 @@ describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
     expect(result.trigger).toBe("task");
     if (result.trigger === "task") {
       expect(result.workResult.outcome).toBe("execution_failed");
-      expect(result.workResult.message).toContain("knowledge library evidence");
+      expect(result.workResult.message).toContain("evidence");
+      expect(result.workResult.message).toContain("Knowledge Library");
     }
     expect(mockCreateDraft).not.toHaveBeenCalled();
   });

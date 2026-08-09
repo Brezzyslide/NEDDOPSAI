@@ -65,6 +65,22 @@ import {
   resolveConversationEvidence,
   type EvidencePack,
 } from "./knowledgeResolutionService.js";
+// Sprint 29N.6: Evidence Sufficiency Gate + Discovery Escalation
+import {
+  evaluateEvidenceSufficiency,
+  isResultSufficient,
+} from "./evidenceSufficiencyService.js";
+import {
+  buildEscalationDecision,
+  shouldRunDiscovery,
+} from "./evidenceEscalationService.js";
+import {
+  runEvidenceDiscovery,
+  mergeAcceptedIntoEvidencePack,
+  buildEmptyEvidencePack,
+  buildInsufficientEvidenceMessage,
+} from "../lib/evidenceDiscovery/discoveryOrchestrator.js";
+import type { EvidenceDiscoveryObservability } from "../types/candidateEvidence.js";
 import { performAbsenceVerificationBatch } from "./absenceVerificationService.js";
 import { classifyEvidenceMode, shouldRunClaimProvenance } from "./evidenceModeService.js";
 import { logOrgEvent } from "./auditService.js";
@@ -944,7 +960,7 @@ export class UnifiedExecutionEngine {
     // Evidence resolution via ResourceRegistry — routes to KnowledgeResolutionService (P1–P5)
     await progress("retrieving_evidence");
     const t3evidence = Date.now();
-    const evidencePack = await this.resourceRegistry
+    let evidencePack = await this.resourceRegistry
       .resolveEvidenceForTask({
         organisationId: organizationId,
         specialistCode: manifest.primarySpecialist,
@@ -955,32 +971,156 @@ export class UnifiedExecutionEngine {
       .catch(() => null);
     tRetrievalMs = Date.now() - t3evidence;
 
-    // ── Sprint 29M: Pre-generation evidence gate ──────────────────────────────
-    // When the three-lane classifier flagged laneContext.requiresEvidence=true,
-    // evidence retrieval is a hard pre-condition — not best-effort. If the
-    // knowledge library returned no chunks (empty or failed retrieval), block
-    // execution rather than producing evidence-free Completed Work.
+    // ── Sprint 29N.6: Evidence Sufficiency Gate + Discovery Escalation ─────────
     //
-    // This prevents EVIDENCE_BEARING tasks from silently creating work items
-    // with no sourced evidence or provenance, which is a governance violation.
-    // PROFESSIONAL_WORK and TRANSIENT tasks are unaffected (requiresEvidence=false).
-    if (request.laneContext?.requiresEvidence && (!evidencePack || evidencePack.totalChunks === 0)) {
-      console.warn(
-        "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresEvidence=true but " +
-        `evidence retrieval returned ${evidencePack ? `0 chunks` : "null (failure)"} — ` +
-        `blocking execution to prevent evidence-free EVIDENCE_BEARING work ` +
-        `(correlationId=${request.correlationId ?? "unknown"})`,
-      );
-      return {
-        outcome: "execution_failed",
-        manifestId: manifest.id,
-        blueprintCode: blueprint?.code,
-        message:
-          "This task requires knowledge library evidence to proceed, but no relevant " +
-          "documents were found in your organisation's library. Please upload the " +
-          "relevant policy or procedure documents and then re-run this task.",
-      };
+    // Replaces the Sprint 29M zero-chunk gate with a richer sufficiency check.
+    //
+    // Flow for EVIDENCE_BEARING tasks (laneContext.requiresEvidence=true):
+    //   1. Evaluate V1 EvidencePack from KRS → EvidenceSufficiencyResult
+    //   2. If SUFFICIENT or AUTHORITY_GAP → fast path, OpenClaw never invoked
+    //   3. If insufficient → build EvidenceEscalationDecision
+    //   4. If shouldEscalate → run discovery adapter → Authority Gate → V2 pack
+    //   5. If V2 still insufficient → fail honestly, no evidence-free work created
+    //   6. If not escalatable → fail honestly
+    //
+    // PROFESSIONAL_WORK and TRANSIENT lanes are unaffected (requiresEvidence=false).
+
+    const discoveryObservability: EvidenceDiscoveryObservability = {
+      initialKrsChunks:            evidencePack?.totalChunks ?? 0,
+      initialSufficiencyStatus:    "not_evaluated",
+      initialEscalationRecommended: false,
+      escalationOccurred:          false,
+      discoveryAdapterName:        null,
+      discoveryDurationMs:         null,
+      hopsFollowed:                0,
+      candidatesReturned:          0,
+      candidatesAccepted:          0,
+      candidatesRejected:          0,
+      rejectionReasons:            [],
+      finalEvidenceChunks:         evidencePack?.totalChunks ?? 0,
+      finalSufficiencyStatus:      "not_evaluated",
+      executionContinued:          false,
+    };
+
+    if (request.laneContext?.requiresEvidence) {
+      const v1Pack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
+
+      const sufficiencyV1 = evaluateEvidenceSufficiency({
+        evidencePack: v1Pack,
+        userRequest,
+        requiredExternalAuthorityTypes: [],
+        minimumAuthorityLevel:          undefined,
+      });
+
+      discoveryObservability.initialSufficiencyStatus     = sufficiencyV1.status;
+      discoveryObservability.initialEscalationRecommended = sufficiencyV1.isEscalationRecommended;
+      discoveryObservability.finalSufficiencyStatus        = sufficiencyV1.status;
+
+      if (!isResultSufficient(sufficiencyV1)) {
+        const escalation = buildEscalationDecision(sufficiencyV1, {
+          executionId:      manifest.executionId,
+          organisationId:   organizationId,
+          evidencePackId:   v1Pack.executionId,
+        });
+
+        if (shouldRunDiscovery(escalation)) {
+          // Sub-stage user-visible progress (Part O)
+          await progress("retrieving_evidence",
+            escalation.unresolvedReferences.length > 0
+              ? "checking_references"
+              : "checking_external_authority");
+
+          const discoveryResult = await runEvidenceDiscovery(
+            escalation,
+            v1Pack,
+            organizationId,
+            /* allowExternal= */ false,  // externals require explicit blueprint opt-in
+          );
+
+          discoveryObservability.escalationOccurred    = true;
+          discoveryObservability.discoveryAdapterName  = discoveryResult.adapterName;
+          discoveryObservability.discoveryDurationMs   = discoveryResult.durationMs;
+          discoveryObservability.hopsFollowed          = discoveryResult.hopsFollowed;
+          discoveryObservability.candidatesReturned    = discoveryResult.candidates.length;
+          discoveryObservability.candidatesAccepted    = discoveryResult.accepted.length;
+          discoveryObservability.candidatesRejected    = discoveryResult.rejected.length;
+          discoveryObservability.rejectionReasons      = discoveryResult.rejected.map(r => r.rejectionReason);
+
+          // Assemble V2 pack from accepted candidates (if any)
+          if (discoveryResult.accepted.length > 0) {
+            evidencePack = mergeAcceptedIntoEvidencePack(v1Pack, discoveryResult.accepted, manifest.executionId);
+          }
+
+          // Re-evaluate sufficiency with V2 pack
+          const v2Pack       = evidencePack ?? v1Pack;
+          const sufficiencyV2 = evaluateEvidenceSufficiency({
+            evidencePack:                   v2Pack,
+            userRequest,
+            requiredExternalAuthorityTypes: [],
+          });
+
+          discoveryObservability.finalEvidenceChunks   = v2Pack.totalChunks;
+          discoveryObservability.finalSufficiencyStatus = sufficiencyV2.status;
+
+          if (!isResultSufficient(sufficiencyV2)) {
+            console.warn(
+              "[UnifiedExecutionEngine] 29N.6: V2 pack still insufficient after discovery — " +
+              `status=${sufficiencyV2.status} executionId=${manifest.executionId}`,
+            );
+            discoveryObservability.executionContinued = false;
+            discoveryObservability.blockReason        = `Evidence still insufficient after discovery: ${sufficiencyV2.status}`;
+            void logOrgEvent({
+              eventType:      "execution_coordinator.error",
+              organizationId,
+              actorType:      "system",
+              resourceType:   "evidence_discovery",
+              accessPurpose:  "evidence_gate",
+              metadata:       discoveryObservability as Record<string, unknown>,
+            })?.catch(() => {});
+            return {
+              outcome:       "execution_failed",
+              manifestId:    manifest.id,
+              blueprintCode: blueprint?.code,
+              message:       buildInsufficientEvidenceMessage(sufficiencyV2, discoveryResult),
+            };
+          }
+        } else {
+          // Escalation policy says no discovery — fail honestly
+          console.warn(
+            "[UnifiedExecutionEngine] 29N.6: Evidence insufficient, escalation not warranted — " +
+            `status=${sufficiencyV1.status} reason="${escalation.reason}" executionId=${manifest.executionId}`,
+          );
+          discoveryObservability.executionContinued = false;
+          discoveryObservability.blockReason        = escalation.reason;
+          void logOrgEvent({
+            eventType:      "execution_coordinator.error",
+            organizationId,
+            actorType:      "system",
+            resourceType:   "evidence_gate",
+            accessPurpose:  "evidence_gate",
+            metadata:       discoveryObservability as Record<string, unknown>,
+          })?.catch(() => {});
+          return {
+            outcome:       "execution_failed",
+            manifestId:    manifest.id,
+            blueprintCode: blueprint?.code,
+            message:       buildInsufficientEvidenceMessage(sufficiencyV1, null),
+          };
+        }
+      }
+      // SUFFICIENT or AUTHORITY_GAP → fast path, discovery never runs
     }
+
+    discoveryObservability.finalEvidenceChunks   = evidencePack?.totalChunks ?? 0;
+    discoveryObservability.executionContinued     = true;
+    void logOrgEvent({
+      eventType:      "execution_coordinator.pipeline_outcome",
+      organizationId,
+      actorType:      "system",
+      resourceType:   "evidence_gate",
+      accessPurpose:  "evidence_gate",
+      metadata:       discoveryObservability as Record<string, unknown>,
+    })?.catch(() => {});
 
     // ── Sprint 29D: Open task execution session ───────────────────────────────
     // Task executions carry a session from evidence retrieval through completion.
