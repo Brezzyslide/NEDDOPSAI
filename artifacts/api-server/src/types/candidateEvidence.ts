@@ -243,6 +243,9 @@ export interface DiscoveryAdapterResult {
  * Durable observability record for one evidence-bearing execution.
  * Logged to audit after every evidence resolution cycle, regardless of
  * outcome. Covers Parts B + O requirements.
+ *
+ * Sprint 29N.11: extended with parallel-discovery fields (all optional for
+ * backwards compatibility with Sprint 29N.6 tests).
  */
 export interface EvidenceDiscoveryObservability {
   /** Number of chunks in V1 EvidencePack from KRS */
@@ -275,4 +278,35 @@ export interface EvidenceDiscoveryObservability {
   executionContinued: boolean;
   /** Why execution was blocked, if executionContinued=false */
   blockReason?: string;
+
+  // ── Sprint 29N.11: Parallel discovery observability ───────────────────────
+  /** True when Sprint 29N.11 parallel discovery mode ran (KRS + OpenClaw concurrent) */
+  parallelDiscoveryMode?: boolean;
+  /**
+   * True when no OpenClaw adapter was available in this deployment (NullDiscoveryAdapter).
+   * KRS continued normally; record kept for observability.
+   * Distinct from openClawAvailable=false which means adapter existed but was unavailable
+   * at runtime for a deployment-specific reason.
+   */
+  openClawDiscoveryUnavailable?: boolean;
+  /** True when an OpenClaw adapter was available and ran */
+  openClawAvailable?: boolean;
+  /** Wall-clock time for OpenClaw parallel discovery run (ms) */
+  openClawDurationMs?: number | null;
+  /** Adapter name for the OpenClaw run */
+  openClawAdapterName?: string | null;
+  /** Raw KRS chunks in the initial pack */
+  krsChunkCount?: number;
+  /** Raw candidates returned by OpenClaw adapter before the Authority Gate */
+  openClawCandidatesReturned?: number;
+  /** OpenClaw candidates accepted by NeedsOps Authority Gate */
+  openClawCandidatesAccepted?: number;
+  /** OpenClaw candidates rejected by NeedsOps Authority Gate */
+  openClawCandidatesRejected?: number;
+  /** Items discovered by BOTH KRS and OpenClaw (deduplicated in merged pack) */
+  deduplicatedItems?: number;
+  /** Number of contradictions detected between KRS and OpenClaw results */
+  contradictionsDetected?: number;
+  /** Whether external web search was permitted for this execution */
+  allowExternalWebSearch?: boolean;
 }

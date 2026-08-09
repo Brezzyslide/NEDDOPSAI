@@ -1,0 +1,383 @@
+SPRINT 29N.11 — PARALLEL EVIDENCE DISCOVERY & EXTERNAL WEB AUTHORITY
+
+We are changing one architectural decision from Sprint 29N.6.
+
+The final production model is NOT KRS-first → OpenClaw only on insufficiency.
+
+For genuine EVIDENCE_BEARING work, the intended architecture is:
+
+KRS + OpenClaw evidence discovery in parallel.
+
+OpenClaw is a mature discovery/investigation engine and should not sit idle waiting for KRS to fail.
+
+NeedsOps remains the authority and governance layer.
+
+Do not weaken any evidence, provenance, tenant, authority, or Completed Work controls.
+
+⸻
+
+A — Change the evidence orchestration policy
+
+Current Sprint 29N.6 design:
+
+KRS → sufficiency evaluation → if insufficient → OpenClaw
+
+Replace the production policy for EVIDENCE_BEARING work with:
+
+CoS request interpretation
+
+→ tenant + permissions + Specialist DNA
+
+→ evidence requirements
+
+→ KRS discovery ───────────┐
+
+                         ├→ Evidence Acceptance / Authority Gate
+
+→ OpenClaw discovery ─────┘
+
+→ deduplicate + reconcile
+
+→ Accepted EvidencePack
+
+→ OpenAI specialist reasoning
+
+→ claim integrity/provenance
+
+→ Completed Work
+
+KRS and OpenClaw should begin discovery concurrently where OpenClaw is available.
+
+Do not remove evidenceSufficiencyService. Its purpose changes: it should evaluate the combined accepted evidence and determine whether enough trustworthy evidence exists to proceed.
+
+⸻
+
+B — Preserve the three execution lanes
+
+This change applies to evidence-bearing work, not every request.
+
+TRANSIENT
+
+No KRS.
+
+No OpenClaw evidence discovery.
+
+No Completed Work.
+
+Normal conversational response.
+
+PROFESSIONAL_WORK
+
+OpenAI + Specialist DNA through the existing professional execution path.
+
+No evidence discovery unless the work genuinely becomes evidence-dependent.
+
+EVIDENCE_BEARING
+
+KRS + OpenClaw discovery concurrently.
+
+Both feed the same NeedsOps evidence trust boundary.
+
+⸻
+
+C — External web search
+
+Determine from the user’s request and evidence requirements whether external information is required.
+
+Examples:
+
+* “Review our internal leave policy” may require internal evidence only.
+* “Compare our privacy policy against current ICO guidance” requires internal + external authoritative evidence.
+* “What are the current regulatory requirements?” requires external authority discovery.
+* “Check whether this requirement has changed” requires current external discovery.
+
+When external evidence is required, OpenClaw may search the web.
+
+OpenClaw may:
+
+* search the web
+* follow links
+* inspect authoritative webpages/documents
+* follow cross-references
+* retrieve relevant passages
+* identify publication/effective dates
+* identify issuing organisations
+* return candidate evidence
+
+But OpenClaw must not declare a source authoritative merely because it found it.
+
+⸻
+
+D — Source of Truth rule
+
+Separate:
+
+DISCOVERY
+
+from
+
+AUTHORITY.
+
+OpenClaw discovers.
+
+NeedsOps decides whether discovered material is acceptable evidence.
+
+Every OpenClaw result must return through CandidateEvidence.
+
+For external web material require, where available:
+
+* organisation/tenant ID
+* requested evidence scope
+* source URL
+* source domain
+* source title
+* issuing organisation
+* source type
+* publication/effective date
+* retrieval timestamp
+* exact supporting passage
+* passage/document hash where technically possible
+* OpenClaw discovery confidence
+* cross-reference chain if followed
+
+openClawConfidence remains advisory only.
+
+It must never determine authority.
+
+⸻
+
+E — External Authority Registry
+
+Use the existing AuthorityRegistry.
+
+For external evidence, determine whether the source is:
+
+AUTHORITATIVE
+
+Official legislation, regulator, government authority, recognised standards body or another explicitly approved authority.
+
+SECONDARY
+
+Professional commentary, legal/accounting commentary, reputable industry guidance, etc.
+
+UNVERIFIED
+
+General webpages, blogs, forums, unattributed material, search snippets, AI-generated pages or unknown publishers.
+
+Secondary evidence may assist discovery and reasoning where appropriate but must not silently become the Source of Truth for an external requirement.
+
+Where the task asks what a regulation, law or formal standard requires, the actual authoritative source should be retrieved whenever reasonably available.
+
+⸻
+
+F — Internal Source of Truth
+
+Do not allow OpenClaw to bypass Library governance.
+
+If OpenClaw discovers an internal organisational document:
+
+* verify tenant
+* verify access permission
+* determine whether it already exists in Library
+* verify approved/current authority status
+* verify document identity/version
+* verify sensitivity
+
+If it is already an approved current Library source, it may enter the EvidencePack.
+
+If OpenClaw discovers a newer/unregistered internal document, treat it as candidate evidence / candidate ingestion, not automatically as organisational Source of Truth.
+
+Never allow “newer-looking file” to silently replace an approved organisational authority.
+
+⸻
+
+G — Parallel search must remain tenant-safe
+
+OpenClaw must receive an explicit discovery scope.
+
+It must never be asked simply to “search everything available”.
+
+Pass:
+
+* tenant/org ID
+* user identity/permissions where required
+* allowed source scopes
+* internal/external discovery permission
+* evidence question
+* document/source references already known
+* max hops
+* max sources
+* timeout
+
+Cross-tenant candidates must be rejected before their content enters model reasoning.
+
+⸻
+
+H — Evidence convergence
+
+KRS results and accepted OpenClaw candidates must converge into one EvidencePack.
+
+Do not create separate “KRS answer” and “OpenClaw answer”.
+
+Deduplicate:
+
+* same document/version
+* same URL
+* same passage
+* substantially identical evidence
+
+Preserve provenance showing:
+
+* discovered_by = KRS / OpenClaw / both
+* source identity
+* source type
+* authority classification
+* retrieval timestamp
+* supporting passage
+* acceptance/rejection result
+
+⸻
+
+I — Contradictions
+
+If KRS and OpenClaw return conflicting evidence, do not choose whichever has higher retrieval confidence.
+
+Compare:
+
+authority → currency → applicability → version → scope.
+
+If the conflict cannot be resolved deterministically, expose the contradiction to the specialist and ultimately to the user where material.
+
+⸻
+
+J — OpenAI’s role
+
+Keep this boundary explicit:
+
+CoS understands what the user wants.
+
+Specialist DNA defines how professional work should be performed.
+
+KRS retrieves governed organisational knowledge.
+
+OpenClaw performs deeper discovery, traversal and authorised external web investigation.
+
+NeedsOps Authority Gate decides what evidence may be trusted.
+
+OpenAI performs professional reasoning over accepted evidence.
+
+Claim Integrity proves material claims against accepted evidence.
+
+Completed Work stores the durable governed output.
+
+Do not move authority decisions into OpenClaw.
+
+Do not move professional reasoning out of OpenAI merely because OpenClaw can reason internally while searching.
+
+⸻
+
+K — Graceful degradation
+
+Parallel discovery must not make Cloud brittle.
+
+If OpenClaw is unavailable:
+
+* KRS continues
+* record openclaw_discovery_unavailable
+* evaluate KRS evidence normally
+
+If KRS fails:
+
+* OpenClaw candidates may still be evaluated
+* internal organisational candidates must still pass Library/authority checks
+
+If both fail or combined evidence is insufficient:
+
+* fail evidence-bearing execution honestly
+* do not generate evidence-free Completed Work
+
+⸻
+
+L — Performance
+
+Run KRS and OpenClaw concurrently using bounded execution.
+
+Do not make:
+
+KRS latency + OpenClaw latency
+
+the normal critical path.
+
+Target:
+
+max(KRS latency, OpenClaw latency) + authority/convergence overhead
+
+Set bounded timeout and source/hop limits.
+
+One slow discovery provider must not hang execution indefinitely.
+
+⸻
+
+M — Prove it
+
+Add acceptance scenarios:
+
+1. Internal policy, KRS and OpenClaw find same source.
+2. KRS finds strong internal evidence; OpenClaw finds nothing useful.
+3. OpenClaw follows an internal cross-reference KRS misses.
+4. User explicitly requests current external regulatory evidence.
+5. OpenClaw finds official regulator source.
+6. OpenClaw finds regulator source plus contradictory blog.
+7. OpenClaw returns high-confidence unapproved internal document.
+8. OpenClaw returns cross-tenant document.
+9. KRS and OpenClaw return conflicting versions.
+10. OpenClaw unavailable but KRS sufficient.
+11. KRS unavailable but OpenClaw finds valid external authority.
+12. Both discovery paths insufficient.
+13. TRANSIENT request invokes neither.
+14. PROFESSIONAL_WORK request invokes neither unnecessarily.
+15. Evidence-bearing request proves both searches start concurrently.
+
+⸻
+
+N — IMPORTANT IMPLEMENTATION CONSTRAINT
+
+We currently do not yet have a proven hosted Cloud OpenClaw discovery endpoint.
+
+Do not fake this.
+
+Implement the orchestration policy/interface so that when the real OpenClaw adapter is connected, it runs concurrently with KRS.
+
+NullDiscoveryAdapter may remain the fallback until the MacBook-hosted OpenClaw proof is connected.
+
+Do not report parallel OpenClaw discovery as live until a real OpenClaw runtime has actually returned CandidateEvidence[].
+
+⸻
+
+FINAL REPORT
+
+Tell me:
+
+1. Is the old KRS-first/escalation-only production policy completely removed?
+2. Do KRS and OpenClaw start concurrently for evidence-bearing work when OpenClaw is available?
+3. Can OpenClaw perform external web search when the evidence requirement permits it?
+4. Can OpenClaw itself designate something Source of Truth? Expected: NO.
+5. Who makes the final authority decision?
+6. Can an official external source become accepted authoritative evidence? Under exactly what conditions?
+7. Can a blog or secondary source silently satisfy a regulatory requirement?
+8. Can an unapproved internal document discovered by OpenClaw enter the EvidencePack?
+9. What happens when KRS and OpenClaw disagree?
+10. Does OpenAI receive one merged accepted EvidencePack?
+11. What happens if OpenClaw is unavailable?
+12. What happens if both evidence systems are insufficient?
+13. Are TRANSIENT and PROFESSIONAL_WORK still protected from unnecessary evidence searches?
+14. Is parallelism proven by tests rather than inferred from code structure?
+15. What remains before the real MacBook OpenClaw can be connected?
+
+Do not integrate the MacBook runtime yet. Change and prove the architecture first.
+
+And yes, to your specific question: if the user’s work requires current web research, OpenClaw should be able to do the web search. But I would make the distinction almost constitutional in NeedsOps:
+
+OpenClaw can find the Source of Truth. It cannot appoint the Source of Truth.
+
+That authority stays with NeedsOps.

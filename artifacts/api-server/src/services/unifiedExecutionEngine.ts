@@ -65,21 +65,22 @@ import {
   resolveConversationEvidence,
   type EvidencePack,
 } from "./knowledgeResolutionService.js";
-// Sprint 29N.6: Evidence Sufficiency Gate + Discovery Escalation
+// Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
 import {
   evaluateEvidenceSufficiency,
   isResultSufficient,
 } from "./evidenceSufficiencyService.js";
+// Sprint 29N.11: buildEmptyEvidencePack + buildInsufficientEvidenceMessage still needed
 import {
-  buildEscalationDecision,
-  shouldRunDiscovery,
-} from "./evidenceEscalationService.js";
-import {
-  runEvidenceDiscovery,
-  mergeAcceptedIntoEvidencePack,
   buildEmptyEvidencePack,
   buildInsufficientEvidenceMessage,
 } from "../lib/evidenceDiscovery/discoveryOrchestrator.js";
+import type { OrchestratorResult } from "../lib/evidenceDiscovery/discoveryOrchestrator.js";
+// Sprint 29N.11: Parallel evidence discovery (KRS + OpenClaw concurrently)
+import {
+  runParallelEvidenceDiscovery,
+  convergeEvidenceResults,
+} from "../lib/evidenceDiscovery/parallelDiscoveryOrchestrator.js";
 import type { EvidenceDiscoveryObservability } from "../types/candidateEvidence.js";
 import { performAbsenceVerificationBatch } from "./absenceVerificationService.js";
 import { classifyEvidenceMode, shouldRunClaimProvenance } from "./evidenceModeService.js";
@@ -162,6 +163,21 @@ export interface ExecutionLaneContext {
   requiresEvidence:        boolean;
   requiresClaimIntegrity:  boolean;
   requiresApproval:        boolean;
+  /**
+   * Sprint 29N.11 (Part C): Whether the task requires external web evidence.
+   * When true, the OpenClaw parallel discovery adapter may search the web,
+   * follow links, inspect authoritative external pages, and retrieve relevant
+   * passages from approved external authorities.
+   *
+   * All external results still pass through the NeedsOps Authority Gate.
+   * OpenClaw discovers — NeedsOps appoints what is authoritative.
+   *
+   * Defaults to false. Set to true when:
+   *   - Blueprint declares externalEvidenceRequired=true
+   *   - User request explicitly requires current regulatory/legislative evidence
+   *   - Task intent includes "current", "latest", "regulatory", "legal requirement"
+   */
+  allowExternalWebSearch?: boolean;
 }
 export interface ExecuteWorkInput {
   organizationId: string;
@@ -858,7 +874,7 @@ export class UnifiedExecutionEngine {
       selectedSpecialist = planSpecialist;
     }
 
-    let blueprint: WorkBlueprint | null;
+    let blueprint: WorkBlueprint | null = null;
     let manifest: WorkPackageManifest;
     let selectionMeta: BlueprintSelectionMetadata | undefined;
 
@@ -957,10 +973,33 @@ export class UnifiedExecutionEngine {
       }))
       .digest("hex");
 
-    // Evidence resolution via ResourceRegistry — routes to KnowledgeResolutionService (P1–P5)
+    // ── Sprint 29N.11: Parallel Evidence Discovery ─────────────────────────────
+    //
+    // Replaces Sprint 29N.6's KRS-first + escalation model with true parallelism.
+    //
+    //   BEFORE (29N.6): KRS → sufficiency gate → if insufficient → OpenClaw
+    //   AFTER  (29N.11): KRS + OpenClaw START CONCURRENTLY for EVIDENCE_BEARING work
+    //                    → both feed the same NeedsOps Authority Gate
+    //                    → deduplicate + detect contradictions (Part H / Part I)
+    //                    → single merged EvidencePack → OpenAI professional reasoning
+    //
+    // Constitutional rule (Part D):
+    //   OpenClaw discovers. NeedsOps appoints what is authoritative evidence.
+    //   openClawConfidence is ADVISORY ONLY — never a NeedsOps authority score.
+    //
+    // Graceful degradation (Part K):
+    //   OpenClaw unavailable → KRS continues; openclaw_discovery_unavailable recorded.
+    //   KRS fails → OpenClaw candidates still evaluated (internal must pass Library checks).
+    //   Both fail / insufficient → fail honestly; no evidence-free Completed Work.
+    //
+    // PROFESSIONAL_WORK and TRANSIENT lanes are unaffected (requiresEvidence=false).
+    // Neither KRS nor OpenClaw run for TRANSIENT requests.
+
     await progress("retrieving_evidence");
     const t3evidence = Date.now();
-    let evidencePack = await this.resourceRegistry
+
+    // ── 1. Start KRS evidence resolution ───────────────────────────────────────
+    const krsPromise = this.resourceRegistry
       .resolveEvidenceForTask({
         organisationId: organizationId,
         specialistCode: manifest.primarySpecialist,
@@ -969,147 +1008,133 @@ export class UnifiedExecutionEngine {
         userRequest,
       })
       .catch(() => null);
+
+    // ── 2. Start OpenClaw parallel discovery (EVIDENCE_BEARING only) ───────────
+    // Runs at the same time as KRS — NOT after KRS has been evaluated.
+    // NullDiscoveryAdapter (Cloud default) returns adapterAvailable=false immediately,
+    // adding zero latency when no Cloud OpenClaw runtime is connected (Part N).
+    // When allowExternalWebSearch=true, the adapter may search the web and retrieve
+    // external authoritative sources (Part C). All results pass through Authority Gate.
+    const openClawPromise: Promise<OrchestratorResult | null> =
+      request.laneContext?.requiresEvidence
+        ? runParallelEvidenceDiscovery({
+            executionId:            manifest.executionId,
+            organisationId:         organizationId,
+            evidenceQuestion:       userRequest,
+            allowExternalWebSearch: request.laneContext?.allowExternalWebSearch ?? false,
+          }).catch(err => {
+            console.warn(
+              "[UnifiedExecutionEngine] 29N.11: OpenClaw parallel discovery threw: " +
+              (err instanceof Error ? err.message : String(err)),
+            );
+            return null;
+          })
+        : Promise.resolve(null);
+
+    // ── 3. Await both — critical path = max(KRS latency, OpenClaw latency) ─────
+    // Part L: one slow provider must NOT hang execution indefinitely.
+    // NullDiscoveryAdapter resolves in ~0ms, so this is safe with no live adapter.
+    const [krsResult, openClawResult] = await Promise.all([krsPromise, openClawPromise]);
     tRetrievalMs = Date.now() - t3evidence;
 
-    // ── Sprint 29N.6: Evidence Sufficiency Gate + Discovery Escalation ─────────
-    //
-    // Replaces the Sprint 29M zero-chunk gate with a richer sufficiency check.
-    //
-    // Flow for EVIDENCE_BEARING tasks (laneContext.requiresEvidence=true):
-    //   1. Evaluate V1 EvidencePack from KRS → EvidenceSufficiencyResult
-    //   2. If SUFFICIENT or AUTHORITY_GAP → fast path, OpenClaw never invoked
-    //   3. If insufficient → build EvidenceEscalationDecision
-    //   4. If shouldEscalate → run discovery adapter → Authority Gate → V2 pack
-    //   5. If V2 still insufficient → fail honestly, no evidence-free work created
-    //   6. If not escalatable → fail honestly
-    //
-    // PROFESSIONAL_WORK and TRANSIENT lanes are unaffected (requiresEvidence=false).
+    // ── 4. Converge KRS + OpenClaw into one merged EvidencePack (Part H) ───────
+    // Deduplication: same sourceVersionId / sourceUrl / passageHash → "both" provenance.
+    // Contradiction: same source, different version/content → authority priority resolution.
+    // When OpenClaw is unavailable, convergence is a no-op returning krsResult as-is.
+    const convergence = convergeEvidenceResults(
+      krsResult,
+      openClawResult,
+      manifest.executionId,
+      organizationId,
+    );
+    let evidencePack: EvidencePack | null = convergence.mergedPack;
 
+    // ── 5. Build observability record ──────────────────────────────────────────
     const discoveryObservability: EvidenceDiscoveryObservability = {
-      initialKrsChunks:            evidencePack?.totalChunks ?? 0,
-      initialSufficiencyStatus:    "not_evaluated",
+      // Legacy fields (maintained for dashboard/audit backwards compatibility)
+      initialKrsChunks:             convergence.krsChunks,
+      initialSufficiencyStatus:     "not_evaluated",
       initialEscalationRecommended: false,
-      escalationOccurred:          false,
-      discoveryAdapterName:        null,
-      discoveryDurationMs:         null,
-      hopsFollowed:                0,
-      candidatesReturned:          0,
-      candidatesAccepted:          0,
-      candidatesRejected:          0,
-      rejectionReasons:            [],
-      finalEvidenceChunks:         evidencePack?.totalChunks ?? 0,
-      finalSufficiencyStatus:      "not_evaluated",
-      executionContinued:          false,
+      escalationOccurred:           false,
+      discoveryAdapterName:         convergence.openClawAdapterName,
+      discoveryDurationMs:          convergence.openClawDurationMs,
+      hopsFollowed:                 openClawResult?.hopsFollowed ?? 0,
+      candidatesReturned:           convergence.openClawCandidatesReturned,
+      candidatesAccepted:           convergence.openClawCandidatesAccepted,
+      candidatesRejected:           convergence.openClawCandidatesRejected,
+      rejectionReasons:             openClawResult?.rejected.map(r => r.rejectionReason) ?? [],
+      finalEvidenceChunks:          convergence.mergedPack?.totalChunks ?? 0,
+      finalSufficiencyStatus:       "not_evaluated",
+      executionContinued:           false,
+      // Sprint 29N.11 parallel-mode observability
+      parallelDiscoveryMode:        true,
+      openClawDiscoveryUnavailable: convergence.openClawUnavailable,
+      openClawAvailable:            convergence.openClawAvailable,
+      openClawDurationMs:           convergence.openClawDurationMs,
+      openClawAdapterName:          convergence.openClawAdapterName,
+      krsChunkCount:                convergence.krsChunks,
+      openClawCandidatesReturned:   convergence.openClawCandidatesReturned,
+      openClawCandidatesAccepted:   convergence.openClawCandidatesAccepted,
+      openClawCandidatesRejected:   convergence.openClawCandidatesRejected,
+      deduplicatedItems:            convergence.deduplicatedItems,
+      contradictionsDetected:       convergence.contradictions.length,
+      allowExternalWebSearch:       request.laneContext?.allowExternalWebSearch ?? false,
     };
 
+    // ── 6. Sufficiency gate on the merged pack (EVIDENCE_BEARING only) ─────────
     if (request.laneContext?.requiresEvidence) {
-      const v1Pack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
+      const mergedPack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
 
-      const sufficiencyV1 = evaluateEvidenceSufficiency({
-        evidencePack: v1Pack,
+      const sufficiency = evaluateEvidenceSufficiency({
+        evidencePack:                   mergedPack,
         userRequest,
+        specialistCode:                 manifest.primarySpecialist,
+        blueprint,
         requiredExternalAuthorityTypes: [],
-        minimumAuthorityLevel:          undefined,
+        minimumRequiredAuthorityLevel:  undefined,
       });
 
-      discoveryObservability.initialSufficiencyStatus     = sufficiencyV1.status;
-      discoveryObservability.initialEscalationRecommended = sufficiencyV1.isEscalationRecommended;
-      discoveryObservability.finalSufficiencyStatus        = sufficiencyV1.status;
+      discoveryObservability.initialSufficiencyStatus = sufficiency.status;
+      discoveryObservability.finalSufficiencyStatus    = sufficiency.status;
+      discoveryObservability.finalEvidenceChunks       = mergedPack.totalChunks;
 
-      if (!isResultSufficient(sufficiencyV1)) {
-        const escalation = buildEscalationDecision(sufficiencyV1, {
-          executionId:      manifest.executionId,
-          organisationId:   organizationId,
-          evidencePackId:   v1Pack.executionId,
-        });
+      if (!isResultSufficient(sufficiency)) {
+        const discoveryResultForMessage = {
+          adapterName:           convergence.openClawAdapterName ?? "null_no_runtime",
+          candidates:            openClawResult?.candidates ?? [],
+          accepted:              openClawResult?.accepted ?? [],
+          rejected:              openClawResult?.rejected ?? [],
+          durationMs:            convergence.openClawDurationMs ?? 0,
+          hopsFollowed:          openClawResult?.hopsFollowed ?? 0,
+          adapterAvailable:      convergence.openClawAvailable,
+          allCandidatesRejected:
+            (openClawResult?.candidates.length ?? 0) > 0 &&
+            convergence.openClawCandidatesAccepted === 0,
+          producedUsableEvidence: convergence.openClawCandidatesAccepted > 0,
+        };
 
-        if (shouldRunDiscovery(escalation)) {
-          // Sub-stage user-visible progress (Part O)
-          await progress("retrieving_evidence",
-            escalation.unresolvedReferences.length > 0
-              ? "checking_references"
-              : "checking_external_authority");
+        discoveryObservability.executionContinued = false;
+        discoveryObservability.blockReason =
+          `Evidence insufficient after parallel discovery (KRS + OpenClaw): ${sufficiency.status}`;
 
-          const discoveryResult = await runEvidenceDiscovery(
-            escalation,
-            v1Pack,
-            organizationId,
-            /* allowExternal= */ false,  // externals require explicit blueprint opt-in
-          );
+        void logOrgEvent({
+          eventType:      "execution_coordinator.error",
+          organizationId,
+          actorType:      "system",
+          resourceType:   "evidence_discovery",
+          accessPurpose:  "evidence_gate",
+          metadata:       discoveryObservability as unknown as Record<string, unknown>,
+        })?.catch(() => {});
 
-          discoveryObservability.escalationOccurred    = true;
-          discoveryObservability.discoveryAdapterName  = discoveryResult.adapterName;
-          discoveryObservability.discoveryDurationMs   = discoveryResult.durationMs;
-          discoveryObservability.hopsFollowed          = discoveryResult.hopsFollowed;
-          discoveryObservability.candidatesReturned    = discoveryResult.candidates.length;
-          discoveryObservability.candidatesAccepted    = discoveryResult.accepted.length;
-          discoveryObservability.candidatesRejected    = discoveryResult.rejected.length;
-          discoveryObservability.rejectionReasons      = discoveryResult.rejected.map(r => r.rejectionReason);
-
-          // Assemble V2 pack from accepted candidates (if any)
-          if (discoveryResult.accepted.length > 0) {
-            evidencePack = mergeAcceptedIntoEvidencePack(v1Pack, discoveryResult.accepted, manifest.executionId);
-          }
-
-          // Re-evaluate sufficiency with V2 pack
-          const v2Pack       = evidencePack ?? v1Pack;
-          const sufficiencyV2 = evaluateEvidenceSufficiency({
-            evidencePack:                   v2Pack,
-            userRequest,
-            requiredExternalAuthorityTypes: [],
-          });
-
-          discoveryObservability.finalEvidenceChunks   = v2Pack.totalChunks;
-          discoveryObservability.finalSufficiencyStatus = sufficiencyV2.status;
-
-          if (!isResultSufficient(sufficiencyV2)) {
-            console.warn(
-              "[UnifiedExecutionEngine] 29N.6: V2 pack still insufficient after discovery — " +
-              `status=${sufficiencyV2.status} executionId=${manifest.executionId}`,
-            );
-            discoveryObservability.executionContinued = false;
-            discoveryObservability.blockReason        = `Evidence still insufficient after discovery: ${sufficiencyV2.status}`;
-            void logOrgEvent({
-              eventType:      "execution_coordinator.error",
-              organizationId,
-              actorType:      "system",
-              resourceType:   "evidence_discovery",
-              accessPurpose:  "evidence_gate",
-              metadata:       discoveryObservability as Record<string, unknown>,
-            })?.catch(() => {});
-            return {
-              outcome:       "execution_failed",
-              manifestId:    manifest.id,
-              blueprintCode: blueprint?.code,
-              message:       buildInsufficientEvidenceMessage(sufficiencyV2, discoveryResult),
-            };
-          }
-        } else {
-          // Escalation policy says no discovery — fail honestly
-          console.warn(
-            "[UnifiedExecutionEngine] 29N.6: Evidence insufficient, escalation not warranted — " +
-            `status=${sufficiencyV1.status} reason="${escalation.reason}" executionId=${manifest.executionId}`,
-          );
-          discoveryObservability.executionContinued = false;
-          discoveryObservability.blockReason        = escalation.reason;
-          void logOrgEvent({
-            eventType:      "execution_coordinator.error",
-            organizationId,
-            actorType:      "system",
-            resourceType:   "evidence_gate",
-            accessPurpose:  "evidence_gate",
-            metadata:       discoveryObservability as Record<string, unknown>,
-          })?.catch(() => {});
-          return {
-            outcome:       "execution_failed",
-            manifestId:    manifest.id,
-            blueprintCode: blueprint?.code,
-            message:       buildInsufficientEvidenceMessage(sufficiencyV1, null),
-          };
-        }
+        return {
+          outcome:       "execution_failed",
+          manifestId:    manifest.id,
+          blueprintCode: blueprint?.code,
+          message:       buildInsufficientEvidenceMessage(sufficiency, discoveryResultForMessage),
+        };
       }
-      // SUFFICIENT or AUTHORITY_GAP → fast path, discovery never runs
     }
+    // PROFESSIONAL_WORK and TRANSIENT → no sufficiency gate; evidencePack may be null
 
     discoveryObservability.finalEvidenceChunks   = evidencePack?.totalChunks ?? 0;
     discoveryObservability.executionContinued     = true;
@@ -1119,7 +1144,7 @@ export class UnifiedExecutionEngine {
       actorType:      "system",
       resourceType:   "evidence_gate",
       accessPurpose:  "evidence_gate",
-      metadata:       discoveryObservability as Record<string, unknown>,
+      metadata:       discoveryObservability as unknown as Record<string, unknown>,
     })?.catch(() => {});
 
     // ── Sprint 29D: Open task execution session ───────────────────────────────
