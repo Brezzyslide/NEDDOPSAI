@@ -1,0 +1,435 @@
+SPRINT 29N.4 — OPENCLAW + KRS EVIDENCE DISCOVERY & AUTHORITY PROOF GATE
+
+INVESTIGATION / CONTROLLED PROOF ONLY. DO NOT REPLACE KRS, UEE OR THE CURRENT CLOUD EXECUTION PATH.
+
+Objective
+
+Determine whether OpenClaw should become an intelligent evidence-discovery layer alongside KRS for both Cloud and Hybrid execution.
+
+The architecture under consideration is:
+
+User → CoS → execution classification → specialist DNA + tenant/governance context → KRS + OpenClaw evidence discovery → NeedsOps authority validation → canonical EvidencePack → OpenAI reasoning → claim/provenance validation → permitted OpenClaw actions/artifact operations → Completed Work → approval/audit/notification
+
+The proposed responsibility boundary is:
+
+NeedsOps decides and governs.
+
+KRS determines what evidence may be trusted and relied upon.
+
+OpenClaw discovers, locates and reads resources.
+
+OpenAI performs professional reasoning.
+
+OpenClaw may subsequently perform authorised actions.
+
+Do not assume this architecture is better. Prove or reject it.
+
+A — Establish the evidence contract
+
+Design a canonical CandidateEvidence contract for evidence discovered by OpenClaw.
+
+At minimum it should carry:
+
+organizationId
+
+executionId
+
+taskId where applicable
+
+specialistCode
+
+runtimeLocation: cloud | hybrid
+
+sourceId where known
+
+sourceVersionId where known
+
+sourceUri/resourceId
+
+sourceType
+
+sourceTitle
+
+sourceOwner/provider
+
+retrievedAt
+
+sourceModifiedAt/version where available
+
+passage
+
+passageLocation — page/section/paragraph/range where available
+
+contentHash
+
+discoveryReason
+
+retrievalMethod
+
+OpenClawConfidence if available
+
+OpenClaw confidence must never equal authority.
+
+OpenClaw returns candidate evidence, not trusted evidence.
+
+B — KRS acceptance gate
+
+Design the transformation:
+
+CandidateEvidence → NeedsOps/KRS validation → AcceptedEvidence → EvidencePack
+
+KRS/NeedsOps must determine:
+
+tenantVerified
+
+accessPermitted
+
+sourceIdentityVerified
+
+canonicalSourceId
+
+canonicalVersionId
+
+authorityClass
+
+authorityVerified
+
+currentVersionVerified
+
+effectiveDateVerified
+
+integrityVerified
+
+sensitivityPermitted
+
+evidenceStatus
+
+Only accepted evidence may enter the canonical EvidencePack for evidence-bearing professional claims.
+
+Reuse the existing KRS, source/version, evidence snapshot and claim provenance architecture. Do not build a second authority system.
+
+C — Internal organisational source rules
+
+Test what happens when OpenClaw discovers:
+
+1. approved/current Library document
+2. superseded document
+3. unapproved document
+4. duplicate document
+5. newer local document unknown to Library
+6. document belonging to another tenant
+7. restricted/sensitive document
+8. document whose title differs materially from the user’s terminology
+
+A file being found by OpenClaw must not make it organisational source of truth.
+
+Determine exactly how KRS resolves each case.
+
+D — External source-of-truth model
+
+OpenClaw may discover evidence through the web or external providers.
+
+Design how NeedsOps distinguishes:
+
+* official legislation
+* regulator
+* government authority
+* recognised standard/standards body
+* contractual/external authority
+* professional guidance
+* reputable secondary source
+* general web source
+* unknown/untrusted source
+
+Investigate whether NeedsOps needs an AuthorityRegistry or equivalent existing structure mapping:
+
+source/domain/provider → authorityType → jurisdiction/domain → permitted claim types → trust/authority status
+
+Do not automatically trust a website because OpenClaw says it is authoritative.
+
+Determine how official-source identity should be verified.
+
+This must integrate with Sprint 29K’s existing external_requirement rule requiring external_authority.
+
+E — Three-way retrieval bake-off
+
+Build a controlled truth fixture using real or representative organisational documents.
+
+Include at least 20 difficult retrieval questions covering:
+
+* direct policy lookup
+* differently named document
+* synonym/semantic query
+* cross-document question
+* one document referencing another
+* contradiction across two documents
+* superseded/current versions
+* similar titles
+* missing requirement
+* absence finding
+* external regulatory requirement
+* irrelevant but lexically similar document
+* sensitive/restricted source
+
+Run:
+
+MODE 1 — KRS alone
+
+MODE 2 — OpenClaw discovery alone
+
+MODE 3 — KRS + OpenClaw discovery → NeedsOps authority gate → merged canonical EvidencePack
+
+For each measure:
+
+* authoritative evidence recall
+* precision
+* missed relevant sources
+* incorrect sources admitted
+* stale/superseded sources admitted
+* cross-tenant leakage
+* correct version selection
+* cross-document discovery
+* contradiction discovery
+* absence integrity
+* external authority accuracy
+* latency
+* number of retrieval/tool calls
+* LLM calls
+* cost where measurable
+
+F — Test agentic retrieval specifically
+
+This is important.
+
+Determine whether OpenClaw adds value because it can perform multi-step investigation, rather than simply another search.
+
+Example:
+
+User asks to review Complaints Management.
+
+OpenClaw finds the Complaints Policy.
+
+That document references an Escalation Procedure.
+
+OpenClaw follows the reference and locates it.
+
+The Escalation Procedure refers to Incident Management.
+
+OpenClaw discovers that source.
+
+NeedsOps then independently determines which discovered resources are authorised/current and may enter the EvidencePack.
+
+Compare this against one-shot KRS retrieval.
+
+Establish whether this materially improves evidence completeness.
+
+G — KRS must continue independent retrieval
+
+Do not assume OpenClaw replaces KRS retrieval.
+
+Test the proposed parallel model:
+
+KRS candidates
+
++
+
+OpenClaw-discovered candidates
+
+↓
+
+deduplicate / canonicalise
+
+↓
+
+NeedsOps authority/currentness/access validation
+
+↓
+
+ranking
+
+↓
+
+canonical EvidencePack
+
+Determine how conflicting rankings are resolved.
+
+OpenClaw must not be able to override KRS authority rules.
+
+H — Unknown documents discovered by OpenClaw
+
+Determine what happens when OpenClaw finds a legitimate organisational document that NeedsOps has never ingested.
+
+Example:
+
+Complaints Policy FINAL v7.docx
+
+exists on a permitted local/private drive but is absent from the NeedsOps Library.
+
+Do not silently treat it as authoritative.
+
+Determine whether the correct lifecycle is:
+
+discovered → tenant verified → fingerprint/hash → identity resolution → ingestion → authority/currentness evaluation → accepted/review_required → EvidencePack
+
+Determine when auto-acceptance is safe under the Library auto-ingestion rules already implemented and when human governance is required.
+
+I — Cloud and Hybrid parity
+
+Prove whether the same CandidateEvidence contract can be used for:
+
+Cloud OpenClaw
+
+cloud resources/web/connectors
+
+and
+
+Hybrid OpenClaw
+
+local/private/customer resources
+
+The evidence authority rules should remain in NeedsOps regardless of where discovery occurred.
+
+OpenClaw runtime location must not change the evidentiary standard.
+
+J — Task #149
+
+Do not use OpenClaw as a workaround for the known inactive pgVector query path.
+
+Activate nothing during this gate.
+
+Determine how the proposed OpenClaw discovery model compares with properly functioning:
+
+lexical + vector KRS hybrid retrieval.
+
+Answer categorically whether Task #149 is still required.
+
+K — Claim integrity compatibility
+
+Prove that accepted OpenClaw-discovered evidence can flow into the existing:
+
+EvidencePack
+
+→ evidence snapshots
+
+→ evidence links
+
+→ claim emission
+
+→ claim-to-evidence binding
+
+→ passage hash
+
+→ semantic entailment
+
+→ absence verification
+
+without weakening any Sprint 29K guarantees.
+
+OpenClaw-discovered evidence must eventually have the same provenance standard as KRS-native evidence.
+
+L — Failure and adversarial tests
+
+Explicitly test:
+
+* OpenClaw fabricates a source
+* incorrect tenant ID
+* valid source from wrong tenant
+* stale document
+* altered document after retrieval
+* invented supporting passage
+* valid URL but wrong authority
+* malicious webpage claiming to be regulator
+* conflicting internal documents
+* OpenClaw confidence 0.99 on an unapproved source
+* OpenClaw fails midway through investigation
+* OpenClaw returns no evidence
+* KRS and OpenClaw disagree
+
+Expected principle:
+
+Discovery failure may reduce recall. It must never lower the authority standard.
+
+M — Decide whether OpenClaw actually belongs in evidence retrieval
+
+Answer explicitly:
+
+1. Does OpenClaw retrieve materially more relevant evidence than current KRS?
+2. Does that remain true after KRS semantic/vector retrieval is properly enabled?
+3. Is OpenClaw particularly better at multi-document/agentic discovery?
+4. Does OpenClaw improve external web authority discovery?
+5. Can NeedsOps reliably validate what OpenClaw discovers?
+6. Does combined retrieval outperform either system alone?
+7. What is the latency/cost penalty?
+8. Should OpenClaw run for every evidence-bearing task or only when KRS confidence/coverage is insufficient?
+9. Should OpenClaw ever directly place evidence into EvidencePack?
+10. Should OpenClaw ever determine organisational source of truth?
+
+Questions 9 and 10 should normally be NO unless the existing NeedsOps authority guarantees can be mathematically/technically preserved.
+
+N — Architecture decision
+
+Compare:
+
+N1 — KRS only
+
+KRS discovers and governs.
+
+N2 — OpenClaw replaces KRS retrieval
+
+OpenClaw discovers; NeedsOps only validates.
+
+N3 — Parallel retrieval
+
+KRS + OpenClaw independently discover → NeedsOps validates/merges → EvidencePack.
+
+N4 — Escalation retrieval
+
+KRS first → OpenClaw invoked when evidence coverage/confidence is inadequate or deeper investigation is required → NeedsOps validates → EvidencePack.
+
+Recommend the best architecture based on evidence, not preference.
+
+O — Do not lose the previous 29N.3 findings
+
+Carry these forward but DO NOT implement them yet:
+
+* /v1/execution may become the common OpenClaw adapter.
+* UEE’s execution.openclaw_runtime entitlement coupling is architecturally wrong.
+* proposed future entitlements:
+    * execution.professional_work
+    * execution.openclaw_cloud
+    * execution.openclaw_hybrid
+* OpenAI remains the default professional reasoning engine.
+* OpenClaw provides reach/action unless this gate proves a stronger evidence-discovery role.
+* TypedExecutionResult is still required before production OpenClaw integration.
+
+REQUIRED FINAL VERDICT
+
+Choose exactly one:
+
+KRS ONLY — OPENCLAW DOES NOT IMPROVE EVIDENCE RETRIEVAL
+
+OPENCLAW DISCOVERY + KRS AUTHORITY GATE
+
+PARALLEL KRS + OPENCLAW RETRIEVAL
+
+KRS-FIRST WITH OPENCLAW ESCALATION
+
+INSUFFICIENT EVIDENCE — REAL OPENCLAW RETRIEVAL NOT PROVEN
+
+Give L1/L2/L3/L4 evidence levels separately.
+
+Most importantly:
+
+Do not confuse “OpenClaw found it” with “NeedsOps trusts it.”
+
+NO PRODUCTION IMPLEMENTATION. STOP AFTER THE REPORT.
+
+And there is one architectural possibility I particularly want this test to settle.
+
+We may discover that running OpenClaw every time is unnecessary. If properly activated hybrid KRS gets the obvious evidence in 200–500 ms, use it. Then OpenClaw becomes the deeper investigator when KRS coverage is weak, documents reference other documents, an absence needs proving, or external evidence needs finding.
+
+That could give you the best combination: fast when the answer is straightforward, investigative when the work genuinely requires it.
+
+If the bake-off instead shows parallel OpenClaw + KRS consistently produces substantially better evidence without unacceptable latency, then we make parallel discovery the evidence-bearing default.
+
+Either result is good. We stop guessing and let the system prove which architecture deserves to survive. 😀
