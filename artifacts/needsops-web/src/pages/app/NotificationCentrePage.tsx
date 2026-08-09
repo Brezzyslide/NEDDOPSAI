@@ -124,6 +124,14 @@ export default function NotificationCentrePage() {
         body:   JSON.stringify({ notificationIds: ids }),
       }).then(r => r.json()),
     onSuccess: invalidateState,
+    // Sprint 29N.10: roll back optimistic state on failure
+    onError: (_err: unknown, ids: string[]) => {
+      setOptimisticRead(prev => {
+        const n = new Set(prev);
+        ids.forEach(id => n.delete(id));
+        return n;
+      });
+    },
   });
 
   const markUnreadMutation = useMutation({
@@ -133,6 +141,13 @@ export default function NotificationCentrePage() {
         body:   JSON.stringify({ notificationIds: ids }),
       }).then(r => r.json()),
     onSuccess: invalidateState,
+    onError: (_err: unknown, ids: string[]) => {
+      setOptimisticUnread(prev => {
+        const n = new Set(prev);
+        ids.forEach(id => n.delete(id));
+        return n;
+      });
+    },
   });
 
   const archiveMutation = useMutation({
@@ -142,6 +157,14 @@ export default function NotificationCentrePage() {
         body:   JSON.stringify({ notificationIds: ids }),
       }).then(r => r.json()),
     onSuccess: invalidateState,
+    onError: (_err: unknown, ids: string[]) => {
+      // Roll back: remove the optimistic archive entry so server state is re-shown
+      setOptimisticArchive(prev => {
+        const n = new Map(prev);
+        ids.forEach(id => n.delete(id));
+        return n;
+      });
+    },
   });
 
   const restoreMutation = useMutation({
@@ -151,6 +174,14 @@ export default function NotificationCentrePage() {
         body:   JSON.stringify({ notificationIds: ids }),
       }).then(r => r.json()),
     onSuccess: invalidateState,
+    onError: (_err: unknown, ids: string[]) => {
+      // Roll back: remove the optimistic restore entry so server state is re-shown
+      setOptimisticArchive(prev => {
+        const n = new Map(prev);
+        ids.forEach(id => n.delete(id));
+        return n;
+      });
+    },
   });
 
   const handleMarkRead = (id: string) => {

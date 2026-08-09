@@ -48,8 +48,8 @@ interface OrgData {
   entitlements: any[];
   workforcePacks: any[];
   internalNotes: any[];
-  tasks: any[];
-  approvals: any[];
+  tasks: { total: number; note: string };
+  approvals: { total: number; pending: number; note: string };
   usageSummary: any[];
   seatInfo: any;
   placeholders: Record<string, any>;
@@ -973,31 +973,39 @@ export default function PlatformOrgDetail() {
 
               {/* TASKS */}
               {activeTab === "tasks" && (
-                <div>
-                  {data.tasks.length === 0 && <p className="text-sm text-[#4A5568]">No tasks yet.</p>}
-                  <div className="space-y-2">
-                    {data.tasks.map((t, i) => (
-                      <div key={i} className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-4 py-3 text-sm">
-                        <div className="font-medium text-[#E2E8F0]">{t.title}</div>
-                        <div className="text-xs text-[#4A5568]">{t.status} · {t.createdAt ? new Date(t.createdAt).toLocaleDateString() : "—"}</div>
-                      </div>
-                    ))}
+                <div className="space-y-4">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-4xl font-bold text-[#E2E8F0]">{data.tasks?.total ?? 0}</span>
+                    <span className="text-[#64748B] text-sm">{(data.tasks?.total ?? 0) === 1 ? "task" : "tasks"}</span>
                   </div>
+                  {data.tasks?.note && (
+                    <p className="text-sm text-[#64748B] bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-4 py-3 leading-relaxed">
+                      {data.tasks.note}
+                    </p>
+                  )}
                 </div>
               )}
 
               {/* APPROVALS */}
               {activeTab === "approvals" && (
-                <div>
-                  {data.approvals.length === 0 && <p className="text-sm text-[#4A5568]">No approvals yet.</p>}
-                  <div className="space-y-2">
-                    {data.approvals.map((a, i) => (
-                      <div key={i} className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-4 py-3 text-sm">
-                        <div className="font-medium text-[#E2E8F0]">{a.workflowType}</div>
-                        <div className="text-xs text-[#4A5568]">{a.state} · {a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—"}</div>
+                <div className="space-y-4">
+                  <div className="flex items-baseline gap-8">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold text-[#E2E8F0]">{data.approvals?.total ?? 0}</span>
+                      <span className="text-[#64748B] text-sm">total</span>
+                    </div>
+                    {(data.approvals?.pending ?? 0) > 0 && (
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-3xl font-bold text-amber-400">{data.approvals.pending}</span>
+                        <span className="text-amber-400/70 text-sm">pending</span>
                       </div>
-                    ))}
+                    )}
                   </div>
+                  {data.approvals?.note && (
+                    <p className="text-sm text-[#64748B] bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-4 py-3 leading-relaxed">
+                      {data.approvals.note}
+                    </p>
+                  )}
                 </div>
               )}
 

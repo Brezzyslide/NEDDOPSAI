@@ -1,0 +1,374 @@
+SPRINT 29N.10 — PRODUCT SURFACE DEFECT CLOSURE
+
+IMPLEMENTATION + VERIFICATION.
+
+Sprint 29N.9 concluded:
+
+Verdict: FUNCTIONAL WITH FIXES REQUIRED
+
+The architecture is sound. Tenant isolation is sound. The Platform Console and organisation app are broadly wired. This sprint is not an architecture redesign. It closes the concrete product-surface defects found in the audit.
+
+Preserve the current clean deterministic baseline:
+
+4,959 passing / 0 failures
+
+Do not mix tomorrow’s OpenClaw runtime integration into this sprint.
+
+⸻
+
+PART A — PDF/DOCX EXPORT 404
+
+Fix the Completed Work card/viewer download path.
+
+Current defect:
+
+CompletedWorkPortal / DownloadMenu calls an export URL that returns 404.
+
+Trace the actual canonical export route and align the frontend with it.
+
+Prove:
+
+* PDF download works from Completed Work card
+* DOCX download works from Completed Work card
+* PDF works from viewer
+* DOCX works from viewer
+* correct MIME types
+* approved-version pinning remains respected
+* versioned filename remains correct
+* cross-tenant export remains denied
+* broken modern approved-version pin still fails closed
+
+Do not create a second export route if a canonical one already exists.
+
+⸻
+
+PART B — PLATFORM ORG DETAIL CONTRACT MISMATCH
+
+Current defect:
+
+Platform Org Detail renders task/approval fields as arrays while the API returns objects such as:
+
+{ total, note }
+
+Fix the frontend/API contract cleanly.
+
+Do not merely coerce the response in the UI without deciding the canonical contract.
+
+Verify:
+
+* task count renders
+* approval count renders
+* empty state renders
+* note/message renders where intended
+* no blank panels
+* multiple organisations display correctly
+
+⸻
+
+PART C — CLOUD EXECUTION ENTITLEMENT COUPLING
+
+Do not auto-provision execution.openclaw_runtime.
+
+Sprint 29N.2/29N.3 proved that normal UEE Cloud professional/evidence work does not use OpenClaw at runtime.
+
+Audit all current uses of:
+
+execution.openclaw_runtime
+
+The target entitlement model is:
+
+* execution.professional_work — Cloud-native UEE professional/evidence execution
+* execution.openclaw_cloud — future hosted OpenClaw capabilities
+* execution.openclaw_hybrid — Hybrid/Desktop OpenClaw execution
+
+Implement only the minimum required to ensure normal Cloud UEE work is not incorrectly blocked by an OpenClaw entitlement.
+
+Preserve compatibility where existing plans/fixtures reference the old entitlement.
+
+Return an exact before/after entitlement map.
+
+⸻
+
+PART D — DASHBOARD ROUTING
+
+Fix:
+
+Recently Completed → View All
+
+Current behaviour routes to /active-work.
+
+Correct destination should be the canonical Completed Work page.
+
+Add a regression test for the link.
+
+⸻
+
+PART E — DASHBOARD PENDING DECISIONS
+
+Current defect:
+
+The Pending Decisions count is incomplete and does not represent the full actionable governance queue.
+
+First define the canonical meaning of Pending Decisions.
+
+It should count actionable decisions only, including relevant categories such as:
+
+* awaiting-approval Completed Work
+* pending task/governance approvals
+* knowledge proposals requiring action
+* memory proposals requiring action
+* blueprint/governance review items where applicable
+* blocked work requiring human decision
+
+Do not count informational notifications.
+
+Prefer one backend aggregate/query if possible rather than duplicating logic across Dashboard and Inbox.
+
+Prove Dashboard Pending Decisions agrees with the actionable Inbox/Approvals state.
+
+⸻
+
+PART F — ROLE-AWARE UI CONTROLS
+
+Current defects:
+
+Some restricted actions render to users who cannot perform them.
+
+Fix frontend visibility/disabled-state alignment for at least:
+
+* Approvals
+* Memory
+* Blueprint Studio
+* Completed Work approval controls
+* governance mutations
+
+Use canonical roles:
+
+owner
+administrator
+manager
+member
+viewer
+auditor
+
+Backend remains authoritative.
+
+Frontend should not show an active Approve/Reject/Publish control if the user lacks the corresponding authority.
+
+Direct URL navigation must also use proper page access handling where applicable.
+
+⸻
+
+PART G — REMOVE REMAINING admin ROLE DRIFT
+
+Search the complete repository for organisation-role checks using legacy "admin".
+
+Do not touch platform role strings such as platform_admin.
+
+Canonical organisation role is:
+
+"administrator"
+
+Fix remaining runtime checks and add regression coverage.
+
+⸻
+
+PART H — SETTINGS ERROR HANDLING
+
+Current defect:
+
+Org Settings save can fail silently.
+
+Add:
+
+* visible error state/toast
+* success acknowledgement where appropriate
+* correct query invalidation/refetch
+
+Do not swallow server errors.
+
+⸻
+
+PART I — NOTIFICATION MUTATION ERROR HANDLING
+
+Current defect:
+
+mark-read/archive mutations have no proper user-visible error handling.
+
+Add failure handling without destabilising optimistic UI.
+
+Verify:
+
+* mark read
+* mark unread if supported
+* archive
+* restore if supported
+* failed mutation restores/maintains truthful state
+
+⸻
+
+PART J — ACTIVE WORK VS INBOX SEMANTICS
+
+Audit awaiting_approval.
+
+It currently appears in Active Work and Inbox.
+
+Decide and implement a coherent product meaning:
+
+Active Work = work still moving through execution lifecycle.
+
+Inbox = items requiring user action.
+
+It may be legitimate for an awaiting-approval item to appear in both if the UI clearly presents different semantics, but duplication must be intentional.
+
+If retained in both:
+
+* Active Work label should indicate execution complete / awaiting decision
+* Inbox should clearly present the action
+
+If removed from Active Work, prove no lifecycle visibility is lost.
+
+Document the decision.
+
+⸻
+
+PART K — WORKFORCE PAGE ACCURACY
+
+Audit the finding:
+
+Workforce page shows the global catalogue rather than organisation-specific configured/activated Workforce state.
+
+Determine intended product behaviour.
+
+If Workforce is meant to be the catalogue/browser, keep that clear.
+
+If it claims to show “your Workforce”, use org activation/configuration state.
+
+Do not change Operations Centre, which remains runtime oversight.
+
+Fix labels/data only where current UI is misleading.
+
+⸻
+
+PART L — USAGE LIMITATION
+
+Audit finding:
+
+LLM token usage is not persisted; Usage currently tracks request/execution dimensions rather than true token consumption.
+
+Do not build a full metering system unless it is already almost present.
+
+Instead:
+
+* identify every metric currently shown
+* prove its source
+* rename any misleading labels
+* mark token/cost metrics unavailable if they are not actually measured
+
+No fake estimates.
+
+If a small reliable token accounting hook already exists at the AI gateway boundary, document the implementation option but do not expand scope without necessity.
+
+⸻
+
+PART M — PLATFORM CONSOLE REGRESSION
+
+Re-run key Platform Console checks after fixes:
+
+* platform owner sees all organisations
+* ordinary org owner cannot
+* org detail loads
+* plan/trial correct
+* usage correct
+* staff/security/trials/connector fleet unaffected
+* no customer content exposed unintentionally
+
+⸻
+
+PART N — FULL BUTTON REGRESSION
+
+Re-test the high-value actions:
+
+* Create Task
+* approve/reject Completed Work
+* View Work
+* PDF download
+* DOCX download
+* upload Library source
+* invite/remove member
+* role change
+* blueprint create/test/publish/archive
+* memory governance actions
+* bulk approvals
+* settings save
+* notification archive/read
+
+Report actual result for every action.
+
+⸻
+
+PART O — TEST BASELINE
+
+Add focused regression tests for every defect fixed.
+
+Run the deterministic suite.
+
+Required:
+
+0 new failures
+
+Target:
+
+all deterministic tests green
+
+Do not move failing tests out of the baseline merely to preserve green.
+
+⸻
+
+FINAL REPORT
+
+Return:
+
+1. exact files changed
+2. export route before/after
+3. Platform Org Detail contract before/after
+4. entitlement before/after
+5. Dashboard fixes
+6. role/UI access fixes
+7. every remaining legacy "admin" occurrence and classification
+8. Settings/Notifications error handling
+9. Active Work/Inbox decision
+10. Workforce page decision
+11. Usage truthfulness decision
+12. Platform Console regression results
+13. button/action verification table
+14. full test count
+15. remaining AMBER/RED product defects
+
+Explicitly answer:
+
+A. Do PDF and DOCX downloads now work?
+
+B. Can Platform Owner correctly inspect every organisation?
+
+C. Is normal Cloud professional work independent of OpenClaw entitlement?
+
+D. Does Dashboard now point to and count the right things?
+
+E. Do restricted users still see controls they cannot perform?
+
+F. Are any organisation role checks still using legacy "admin"?
+
+G. Are user-facing mutations free of silent failures?
+
+H. Are there any visible product surfaces still materially misleading?
+
+Final verdict:
+
+PROVEN — PRODUCT SURFACE DEFECTS CLOSED
+
+or
+
+PARTIALLY PROVEN — REMAINING DEFECTS
+
+Do not touch tomorrow’s OpenClaw runtime proof in this 

@@ -302,10 +302,15 @@ describe("Capability Access Decisions", () => {
     expect(decision.upgradeOptions.length).toBeGreaterThan(0);
   });
 
-  it("execution is blocked when pack is owned but runtime not entitled", async () => {
+  it("execution is blocked when pack is owned but neither professional_work nor openclaw_runtime is entitled (Sprint 29N.10)", async () => {
+    // Sprint 29N.10: capabilityAccessDecisionService checks professional_work first, then
+    // falls back to openclaw_runtime. Both must be denied to block execution access.
     vi.spyOn(entitlementService, "tenantCanUseFeature")
       .mockImplementation((_orgId, featureCode) => {
-        if (featureCode === "execution.openclaw_runtime") return Promise.resolve(mockDenied);
+        if (
+          featureCode === "execution.professional_work" ||
+          featureCode === "execution.openclaw_runtime"
+        ) return Promise.resolve(mockDenied);
         return Promise.resolve(mockGranted);
       });
     vi.spyOn(entitlementService, "tenantHasWorkforcePack").mockResolvedValue(mockGranted);

@@ -64,7 +64,8 @@ export default function UsagePage() {
     refetchInterval: 30_000,
   });
 
-  const allowances: any[] = usageData?.allowances ?? [];
+  // Sprint 29N.10: API returns { dimensions: [...] }; "allowances" was a stale field name
+  const allowances: any[] = usageData?.dimensions ?? usageData?.allowances ?? [];
 
   // Global warnings
   const warnings = allowances.filter((a: any) => {

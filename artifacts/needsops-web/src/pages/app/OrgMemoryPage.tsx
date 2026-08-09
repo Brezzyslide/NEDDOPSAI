@@ -25,6 +25,7 @@ import { Show }                   from "@clerk/react";
 import { Redirect }               from "wouter";
 import AppShell                   from "@/components/layout/AppShell";
 import { useAuthFetch }           from "@/lib/api";
+import { useOrgRole }             from "@/hooks/useOrgRole";
 import { MemoryAuditPanel }       from "@/components/governance/MemoryAuditPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -220,12 +221,13 @@ function ProposeModal({ onClose, onSubmit, isPending, error }: {
 
 // ─── Memory card ──────────────────────────────────────────────────────────────
 
-function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, onMerge, onAudit, approving, rejecting }: {
+function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, onMerge, onAudit, approving, rejecting, canApprove }: {
   item: OrgMemoryItem;
   onApprove?: () => void; onReject?: () => void;
   onPin?: () => void; onEdit?: () => void; onRetire?: () => void;
   onMerge?: () => void; onAudit?: () => void;
   approving?: boolean; rejecting?: boolean;
+  canApprove?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta    = STATUS_META[item.status];
@@ -292,16 +294,20 @@ function MemoryCard({ item, onApprove, onReject, onPin, onEdit, onRetire, onMerg
         {/* Actions */}
         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[#1E3A5F] flex-wrap">
           {item.status === "proposed" && (
-            <>
-              <button onClick={onApprove} disabled={approving}
-                className="px-3 py-1.5 bg-emerald-900/30 border border-emerald-700/40 text-emerald-400 text-xs rounded-lg hover:bg-emerald-900/50 disabled:opacity-50 transition-colors font-medium">
-                {approving ? "…" : "✓ Approve"}
-              </button>
-              <button onClick={onReject} disabled={rejecting}
-                className="px-3 py-1.5 bg-red-900/20 border border-red-800/40 text-red-400 text-xs rounded-lg hover:bg-red-900/40 disabled:opacity-50 transition-colors font-medium">
-                {rejecting ? "…" : "✗ Archive"}
-              </button>
-            </>
+            canApprove ? (
+              <>
+                <button onClick={onApprove} disabled={approving}
+                  className="px-3 py-1.5 bg-emerald-900/30 border border-emerald-700/40 text-emerald-400 text-xs rounded-lg hover:bg-emerald-900/50 disabled:opacity-50 transition-colors font-medium">
+                  {approving ? "…" : "✓ Approve"}
+                </button>
+                <button onClick={onReject} disabled={rejecting}
+                  className="px-3 py-1.5 bg-red-900/20 border border-red-800/40 text-red-400 text-xs rounded-lg hover:bg-red-900/40 disabled:opacity-50 transition-colors font-medium">
+                  {rejecting ? "…" : "✗ Archive"}
+                </button>
+              </>
+            ) : (
+              <span className="text-[#64748B] text-xs italic">Pending admin review</span>
+            )
           )}
           {item.status === "approved" && (
             <>
@@ -491,6 +497,9 @@ export default function OrgMemoryPage() {
     onError: (e: Error) => setProposeError(e.message),
   });
 
+  // Sprint 29N.10: action controls gated to org owners/administrators
+  const { canApprove } = useOrgRole(slug);
+
   const items: OrgMemoryItem[] = data?.items ?? [];
 
   const filtered = useMemo(() => items.filter(item => {
@@ -520,10 +529,12 @@ export default function OrgMemoryPage() {
                 {pendingCount > 0 && <span className="ml-2 text-amber-400">· {pendingCount} pending review</span>}
               </p>
             </div>
-            <button onClick={() => { setProposeError(null); setShowPropose(true); }}
-              className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00B8D9] transition-colors shrink-0">
-              + Add Memory
-            </button>
+            {canApprove && (
+              <button onClick={() => { setProposeError(null); setShowPropose(true); }}
+                className="px-4 py-2 bg-[#00D4FF] text-[#0B1829] text-sm font-semibold rounded-lg hover:bg-[#00B8D9] transition-colors shrink-0">
+                + Add Memory
+              </button>
+            )}
           </div>
 
           {/* Tabs + filters */}
@@ -575,6 +586,7 @@ export default function OrgMemoryPage() {
                   item={item}
                   approving={approvingId === item.id}
                   rejecting={rejectingId === item.id}
+                  canApprove={canApprove}
                   onApprove={() => { setApprovingId(item.id); approve.mutate(item.id, { onSettled: () => setApprovingId(null) }); }}
                   onReject={() => { setRejectingId(item.id); reject.mutate(item.id, { onSettled: () => setRejectingId(null) }); }}
                   onPin={() => pin.mutate({ id: item.id, importance: item.importance >= 10 ? 8 : 10 })}

@@ -189,6 +189,34 @@ export default function ExecutiveDashboard() {
     staleTime: 30_000,
   });
 
+  // Sprint 29N.10: additional sources to compute the full unified pending-decisions count
+  // (matches ApprovalsPage's 7-source unified queue)
+  const { data: proposalsDashData } = useQuery({
+    queryKey: ["proposals-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/curation/proposals?status=proposed&limit=50`).then(r => r.json()),
+    enabled: !!slug, staleTime: 60_000,
+  });
+  const { data: memoryDashData } = useQuery({
+    queryKey: ["memory-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/memory?status=proposed&limit=50`).then(r => r.json()),
+    enabled: !!slug, staleTime: 60_000,
+  });
+  const { data: sourcesDashData } = useQuery({
+    queryKey: ["sources-review-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/sources?status=review_required&limit=50`).then(r => r.json()),
+    enabled: !!slug, staleTime: 60_000,
+  });
+  const { data: intentsDashData } = useQuery({
+    queryKey: ["intents-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/execution-intents?status=pending_approval&limit=50`).then(r => r.json()),
+    enabled: !!slug, staleTime: 60_000,
+  });
+  const { data: packReqDashData } = useQuery({
+    queryKey: ["pack-requests-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/pack-access-requests?status=pending&limit=50`).then(r => r.json()),
+    enabled: !!slug, staleTime: 60_000,
+  });
+
   const { data: healthData } = useQuery({
     queryKey: ["knowledge-health-dashboard", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/health`).then(r => r.json()),
@@ -225,6 +253,16 @@ export default function ExecutiveDashboard() {
   ).slice(0, 4);
 
   const pendingApprovals: any[] = approvalsData?.approvals ?? [];
+
+  // Sprint 29N.10: aggregate all 7 pending-decision sources to match ApprovalsPage unified count
+  const totalPendingDecisions =
+    pendingApprovals.length +
+    awaitingApproval.length +
+    (proposalsDashData?.proposals ?? []).length +
+    (memoryDashData?.memories ?? memoryDashData?.items ?? []).length +
+    (sourcesDashData?.sources ?? []).length +
+    (intentsDashData?.intents ?? []).length +
+    (packReqDashData?.requests ?? []).length;
 
   const healthScore: number | null =
     healthData?.overallScore ?? healthData?.score ?? null;
@@ -287,9 +325,9 @@ export default function ExecutiveDashboard() {
             />
             <MetricCard
               label="Pending Decisions"
-              value={pendingApprovals.length + awaitingApproval.length}
+              value={totalPendingDecisions}
               sub="Approvals required"
-              accent={pendingApprovals.length + awaitingApproval.length > 0 ? "#FB923C" : undefined}
+              accent={totalPendingDecisions > 0 ? "#FB923C" : undefined}
               onClick={() => setLocation(`/app/${slug}/approvals`)}
             />
             <MetricCard
@@ -356,7 +394,7 @@ export default function ExecutiveDashboard() {
                 <SectionHeader
                   title="Recently Completed"
                   action="View all"
-                  onAction={() => setLocation(`/app/${slug}/active-work`)}
+                  onAction={() => setLocation(`/app/${slug}/work`)}
                 />
                 {recentCompleted.length === 0 ? (
                   <EmptyState icon="✅" text="No completed work yet" />

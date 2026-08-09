@@ -23,6 +23,7 @@ export default function OrgSettings() {
   const [abn, setAbn] = useState("");
   const [ndisReg, setNdisReg] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (org) {
@@ -39,8 +40,19 @@ export default function OrgSettings() {
     mutationFn: () => apiFetch(`/v1/organisations/${slug}`, {
       method: "PATCH",
       body: JSON.stringify({ name, displayName, primaryContactName, primaryContactEmail, abn, ndisRegistrationNumber: ndisReg }),
-    }).then(r => r.json()),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["org", slug] }); setSaved(true); setTimeout(() => setSaved(false), 2000); },
+    }).then(r => {
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      return r.json();
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["org", slug] });
+      setSaved(true);
+      setSaveError(null);
+      setTimeout(() => setSaved(false), 2500);
+    },
+    onError: (err: any) => {
+      setSaveError(err?.message ?? "Failed to save settings — please try again.");
+    },
   });
 
   const inputClass = "w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2.5 text-[#E2E8F0] text-sm focus:outline-none focus:border-[#00D4FF]";
@@ -65,8 +77,11 @@ export default function OrgSettings() {
               <div><label className={labelClass}>ABN</label><input className={inputClass} value={abn} onChange={e=>setAbn(e.target.value)} placeholder="12 345 678 901"/></div>
               <div><label className={labelClass}>NDIS registration number</label><input className={inputClass} value={ndisReg} onChange={e=>setNdisReg(e.target.value)}/></div>
             </div>
+            {saveError && (
+              <p className="text-sm text-red-400 bg-red-950/20 border border-red-800/40 rounded-lg px-3 py-2">{saveError}</p>
+            )}
             <div className="flex justify-end pt-2">
-              <button onClick={() => update.mutate()} disabled={update.isPending} className="px-5 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg text-sm hover:bg-[#00B8D9] disabled:opacity-50">
+              <button onClick={() => { setSaveError(null); update.mutate(); }} disabled={update.isPending} className="px-5 py-2.5 bg-[#00D4FF] text-[#0B1829] font-semibold rounded-lg text-sm hover:bg-[#00B8D9] disabled:opacity-50">
                 {saved ? "✓ Saved" : update.isPending ? "Saving..." : "Save changes"}
               </button>
             </div>

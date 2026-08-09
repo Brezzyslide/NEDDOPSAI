@@ -198,10 +198,24 @@ export async function decideCapabilityAccess(
 
     // c) Pack is owned — check execution-specific requirements
     if (requestedLevel === "execution" && cap.executionAllowed) {
-      const execResult = await tenantCanUseFeature(
+      // Check execution.professional_work first (Cloud UEE gate).
+      // Fall back to legacy execution.openclaw_runtime for backwards compatibility.
+      let execResult = await tenantCanUseFeature(
         organizationId,
-        "execution.openclaw_runtime" as Parameters<typeof tenantCanUseFeature>[1],
+        "execution.professional_work" as Parameters<typeof tenantCanUseFeature>[1],
       );
+      if (
+        !execResult.allowed &&
+        execResult.source !== "no_subscription" &&
+        execResult.source !== "subscription_inactive" &&
+        execResult.source !== "explicit_denial"
+      ) {
+        const legacyExecCheck = await tenantCanUseFeature(
+          organizationId,
+          "execution.openclaw_runtime" as Parameters<typeof tenantCanUseFeature>[1],
+        );
+        if (legacyExecCheck.allowed) execResult = legacyExecCheck;
+      }
 
       if (!execResult.allowed) {
         // Offer partial at professional_analysis if supported

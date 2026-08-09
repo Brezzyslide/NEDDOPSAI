@@ -26,6 +26,7 @@ import { Show }                                  from "@clerk/react";
 import { Redirect }                              from "wouter";
 import AppShell                                  from "@/components/layout/AppShell";
 import { useAuthFetch }                          from "@/lib/api";
+import { useOrgRole }                            from "@/hooks/useOrgRole";
 import { MarkdownRenderer, extractOutline }      from "@/components/MarkdownRenderer";
 import { normaliseCompletedWorkContent }         from "@/lib/completedWorkNormaliser";
 import ExecutionInspectorPanel                   from "@/components/inspector/ExecutionInspectorPanel";
@@ -1036,6 +1037,7 @@ export default function CompletedWorkViewer() {
   const [, setLocation] = useLocation();
   const apiFetch  = useAuthFetch();
   const qc        = useQueryClient();
+  const { canApprove } = useOrgRole(slug);
 
   const [tab,          setTab]          = useState<Tab>("work");
   const [approvalModal,setApprovalModal]= useState<null | "approve"|"reject"|"request_changes">(null);
@@ -1214,11 +1216,15 @@ export default function CompletedWorkViewer() {
             Submit for Approval
           </button>
         )}
-        {status === "awaiting_approval" && <>
+        {/* Sprint 29N.10: approval controls gated to org admin/owner only */}
+        {status === "awaiting_approval" && canApprove && <>
           <button onClick={() => setApprovalModal("approve")}         className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium">Approve</button>
           <button onClick={() => setApprovalModal("request_changes")} className="px-3 py-1.5 text-sm rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-medium">Request Changes</button>
           <button onClick={() => setApprovalModal("reject")}          className="px-3 py-1.5 text-sm rounded-lg bg-red-800 hover:bg-red-700 text-white font-medium">Reject</button>
         </>}
+        {status === "awaiting_approval" && !canApprove && (
+          <span className="text-xs text-amber-400/70 italic">Awaiting admin approval</span>
+        )}
         {status === "approved" && (
           <button onClick={() => setPromoteModal(true)} className="px-3 py-1.5 text-sm rounded-lg border border-[#00D4FF]/40 text-[#00D4FF] hover:bg-[#00D4FF]/10">
             📚 Promote to Library

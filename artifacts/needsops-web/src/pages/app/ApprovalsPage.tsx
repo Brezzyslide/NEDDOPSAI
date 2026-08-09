@@ -21,6 +21,7 @@ import { Show }                    from "@clerk/react";
 import { Redirect }                from "wouter";
 import AppShell                    from "@/components/layout/AppShell";
 import { useAuthFetch }            from "@/lib/api";
+import { useOrgRole }              from "@/hooks/useOrgRole";
 import { ApprovalHistoryPanel }    from "@/components/governance/ApprovalHistoryPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -132,7 +133,7 @@ function ActionModal({
 // ─── Item card ────────────────────────────────────────────────────────────────
 
 function ItemCard({
-  item, selected, onSelect, onAction, onHistory, bulkMode,
+  item, selected, onSelect, onAction, onHistory, bulkMode, canApprove,
 }: {
   item: UnifiedItem;
   selected: boolean;
@@ -140,6 +141,7 @@ function ItemCard({
   onAction: (action: "approve" | "reject" | "request_changes") => void;
   onHistory: () => void;
   bulkMode: boolean;
+  canApprove: boolean;
 }) {
   const meta = CATEGORY_META[item.category];
   const [showDetail, setShowDetail] = useState(false);
@@ -196,18 +198,25 @@ function ItemCard({
 
       {/* Actions */}
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[#1E3A5F]/50 flex-wrap">
-        <button onClick={() => onAction("approve")}
-          className="px-3 py-1.5 bg-emerald-800/40 text-emerald-400 text-xs font-medium rounded-lg hover:bg-emerald-700/50 transition-colors">
-          ✓ Approve
-        </button>
-        <button onClick={() => onAction("reject")}
-          className="px-3 py-1.5 bg-red-900/30 text-red-400 text-xs font-medium rounded-lg hover:bg-red-800/40 transition-colors">
-          ✗ Reject
-        </button>
-        <button onClick={() => onAction("request_changes")}
-          className="px-3 py-1.5 border border-[#1E3A5F] text-[#94A3B8] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
-          💬 Request changes
-        </button>
+        {/* Sprint 29N.10: action buttons only shown to owners/administrators */}
+        {canApprove ? (
+          <>
+            <button onClick={() => onAction("approve")}
+              className="px-3 py-1.5 bg-emerald-800/40 text-emerald-400 text-xs font-medium rounded-lg hover:bg-emerald-700/50 transition-colors">
+              ✓ Approve
+            </button>
+            <button onClick={() => onAction("reject")}
+              className="px-3 py-1.5 bg-red-900/30 text-red-400 text-xs font-medium rounded-lg hover:bg-red-800/40 transition-colors">
+              ✗ Reject
+            </button>
+            <button onClick={() => onAction("request_changes")}
+              className="px-3 py-1.5 border border-[#1E3A5F] text-[#94A3B8] text-xs rounded-lg hover:text-[#E2E8F0] transition-colors">
+              💬 Request changes
+            </button>
+          </>
+        ) : (
+          <span className="text-[#64748B] text-xs italic">View only — admin approval required</span>
+        )}
         {/* History drilldown — only for system approvals with a raw ID */}
         {item.category === "system" && (
           <button onClick={onHistory}
@@ -231,6 +240,8 @@ export default function ApprovalsPage() {
   const [, setLocation] = useLocation();
   const apiFetch        = useAuthFetch();
   const qc              = useQueryClient();
+  // Sprint 29N.10: action controls gated to org owners/administrators
+  const { canApprove }  = useOrgRole(slug);
 
   const [categoryFilter, setCategoryFilter] = useState<ApprovalCategory | "all">("all");
   const [search,         setSearch]         = useState("");
@@ -711,6 +722,7 @@ export default function ApprovalsPage() {
                   onAction={action => setModal({ item, action })}
                   onHistory={() => setHistoryId(item.raw.id)}
                   bulkMode={bulkMode}
+                  canApprove={canApprove}
                 />
               ))}
             </div>

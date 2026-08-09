@@ -22,7 +22,7 @@
  *
  * Gate order (mirrors spec §1–11, steps 1–3 and 10–11 handled by middleware):
  *   Step 4  — operational tenant subscription state
- *   Step 5  — required feature entitlement (execution.openclaw_runtime)
+ *   Step 5  — required feature entitlement (execution.professional_work; legacy: execution.openclaw_runtime)
  *   Step 6  — required Workforce Pack entitlement
  *   Step 7  — required execution-channel entitlement
  *   Step 8  — available usage allowance (ai_tasks dimension)
@@ -151,10 +151,32 @@ export async function checkExecutionAccess(
   // is inactive, the first feature check will deny with subscription_inactive.
   //
   // We also run a direct feature check so the denial source is unmistakable.
-  const runtimeCheck = await tenantCanUseFeature(
+  //
+  // ── Step 5: Cloud professional-work entitlement ──────────────────────────────
+  // Check execution.professional_work first (Cloud UEE gate introduced in Sprint 29N.10).
+  // Fall back to execution.openclaw_runtime for backwards compatibility with orgs
+  // that already have that entitlement granted manually. Subscription failures are
+  // authoritative and are NOT overridden by the fallback. Explicit denials are also
+  // not overridden — they mean the platform has actively blocked access.
+  let runtimeCheck = await tenantCanUseFeature(
     organizationId,
-    "execution.openclaw_runtime",
+    "execution.professional_work",
   );
+
+  if (
+    !runtimeCheck.allowed &&
+    runtimeCheck.source !== "no_subscription" &&
+    runtimeCheck.source !== "subscription_inactive" &&
+    runtimeCheck.source !== "explicit_denial"
+  ) {
+    const legacyCheck = await tenantCanUseFeature(
+      organizationId,
+      "execution.openclaw_runtime",
+    );
+    if (legacyCheck.allowed) {
+      runtimeCheck = legacyCheck;
+    }
+  }
 
   if (!runtimeCheck.allowed) {
     const isSubIssue =

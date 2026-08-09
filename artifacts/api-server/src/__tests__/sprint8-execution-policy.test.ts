@@ -214,9 +214,10 @@ describe("Execution Policy — Step 5: Feature Entitlement", () => {
     expect(result.deniedAt).toBe("runtime_entitlement");
   });
 
-  it("MOCKED: policy checks execution.openclaw_runtime (not a billing feature)", async () => {
-    // Verify the policy asks for the correct feature code — the runtime feature,
-    // not a generic billing or Stripe feature.
+  it("MOCKED: policy checks execution.professional_work as the primary Cloud UEE feature (Sprint 29N.10)", async () => {
+    // Sprint 29N.10: the Cloud UEE gate is now execution.professional_work.
+    // execution.openclaw_runtime is the legacy backwards-compat fallback only.
+    // The first feature call must be for professional_work, not openclaw_runtime.
     vi.mocked(entitlementService.tenantCanUseFeature).mockResolvedValue(GRANTED());
     vi.mocked(entitlementService.tenantHasWorkforcePack).mockResolvedValue(GRANTED());
     vi.mocked(entitlementService.tenantCanUseExecutionChannel).mockResolvedValue(GRANTED());
@@ -225,7 +226,7 @@ describe("Execution Policy — Step 5: Feature Entitlement", () => {
     await checkExecutionAccess(ORG_ID, ROLE, CHANNELS);
 
     const featureArg = vi.mocked(entitlementService.tenantCanUseFeature).mock.calls[0]?.[1];
-    expect(featureArg).toBe("execution.openclaw_runtime");
+    expect(featureArg).toBe("execution.professional_work");
     expect(featureArg).not.toContain("stripe");
     expect(featureArg).not.toContain("billing");
   });
@@ -428,8 +429,11 @@ describe("Execution Policy — Provider Independence", () => {
     expect(src).not.toMatch(/stripe\.(customers|subscriptions|invoices|payment)/);
   });
 
-  it("STATIC: execution.openclaw_runtime is the feature code checked (not a billing feature)", () => {
+  it("STATIC: execution.professional_work is the primary feature code; openclaw_runtime retained as backwards-compat fallback", () => {
     const src = readSource("artifacts/api-server/src/services/executionPolicy.ts");
+    // Sprint 29N.10: professional_work is checked first (Cloud UEE gate)
+    expect(src).toContain("execution.professional_work");
+    // Backwards-compat: openclaw_runtime fallback must still be present
     expect(src).toContain("execution.openclaw_runtime");
   });
 

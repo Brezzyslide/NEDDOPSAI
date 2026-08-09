@@ -124,6 +124,7 @@ async function seedPlans() {
 
 const FEATURE_NAMES: Record<string, string> = {
   // Execution capabilities
+  "execution.professional_work": "Cloud Professional Work Execution",
   "execution.openclaw_runtime": "OpenClaw Dedicated Runtime",
   "execution.browser_session": "Browser Session Execution",
   "execution.browser_extension": "Browser Extension Execution",

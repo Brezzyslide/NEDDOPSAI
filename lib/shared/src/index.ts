@@ -490,6 +490,7 @@ export type FeatureCategory = (typeof FEATURE_CATEGORIES)[number];
 // ─── Execution capability feature codes (Sprint 3) ───────────────────────────
 
 export const EXECUTION_CAPABILITY_CODES = [
+  "execution.professional_work",
   "execution.openclaw_runtime",
   "execution.browser_session",
   "execution.browser_extension",

@@ -12,6 +12,7 @@ import {
   Switch,
   Route,
   useLocation,
+  useParams,
   Router as WouterRouter,
   Redirect,
 } from "wouter";
@@ -86,6 +87,7 @@ import PlatformPacksPage from "@/pages/platform/PlatformPacksPage";
 import PlatformStaff from "@/pages/platform/PlatformStaff";
 import PlatformConnectorFleet from "@/pages/platform/PlatformConnectorFleet";
 import PlatformCataloguePage from "@/pages/platform/PlatformCataloguePage";
+import { useOrgRole }       from "@/hooks/useOrgRole";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -106,6 +108,45 @@ function stripBase(path: string): string {
 }
 
 if (!clerkPubKey) throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+
+// ── Sprint 29N.10: Route-level knowledge-admin guard ─────────────────────────
+// Wraps a page component so that only owners/administrators can navigate to it.
+// Non-admin users are silently redirected to the org dashboard; the nav already
+// hides the link, so this acts as the URL-level safety net (direct-URL access).
+//
+// Defined at module scope so React never recreates the component class between
+// renders — creating a HOC inside a render loop causes React to unmount/remount
+// the subtree on every render.
+function withKnowledgeAdminGuard<P extends object>(
+  Component: React.ComponentType<P>,
+) {
+  function GuardedComponent(props: P) {
+    const { slug }                          = useParams<{ slug: string }>();
+    const { isKnowledgeAdmin, isLoading }   = useOrgRole(slug);
+    const [, nav]                           = useLocation();
+
+    useEffect(() => {
+      if (!isLoading && !isKnowledgeAdmin) {
+        nav(`/app/${slug}`);
+      }
+    }, [isKnowledgeAdmin, isLoading, slug, nav]);
+
+    if (isLoading)          return null;
+    if (!isKnowledgeAdmin)  return null;
+    return <Component {...props} />;
+  }
+  GuardedComponent.displayName =
+    `KnowledgeAdminGuarded(${Component.displayName ?? Component.name ?? "Component"})`;
+  return GuardedComponent;
+}
+
+const GuardedBlueprintStudioPage         = withKnowledgeAdminGuard(BlueprintStudioPage);
+const GuardedBlueprintDetailPage         = withKnowledgeAdminGuard(BlueprintDetailPage);
+const GuardedBlueprintEditorPage         = withKnowledgeAdminGuard(BlueprintEditorPage);
+const GuardedBlueprintVersionHistoryPage = withKnowledgeAdminGuard(BlueprintVersionHistoryPage);
+const GuardedBlueprintTestPage           = withKnowledgeAdminGuard(BlueprintTestPage);
+const GuardedBlueprintPublishPage        = withKnowledgeAdminGuard(BlueprintPublishPage);
+const GuardedOrgMemoryPage               = withKnowledgeAdminGuard(OrgMemoryPage);
 
 // ── Error Boundary ────────────────────────────────────────────────────────────
 // Guards against Clerk internal errors (e.g. checkOrgAuthorization crashing
@@ -284,19 +325,20 @@ function AppRouter() {
             <Route path="/app/:slug/library/:sourceId" component={SourceDetailPage} />
             <Route path="/app/:slug/library" component={OrgLibraryPage} />
             <Route path="/app/:slug/workforce/:specialistId/training" component={SpecialistTrainingPage} />
-            <Route path="/app/:slug/memory" component={OrgMemoryPage} />
+            {/* Sprint 29N.10: memory gated to knowledge admins (owner/administrator) */}
+            <Route path="/app/:slug/memory" component={GuardedOrgMemoryPage} />
             {/* Sprint 14 — Installer, Devices, Discovery */}
             <Route path="/app/:slug/install" component={InstallPage} />
             <Route path="/app/:slug/devices" component={DevicesPage} />
             <Route path="/app/:slug/discover" component={DiscoveryPage} />
-            {/* Sprint 28 — Blueprint Studio (more-specific paths before :id catch-all) */}
-            <Route path="/app/:slug/blueprints/new" component={BlueprintEditorPage} />
-            <Route path="/app/:slug/blueprints/:id/edit" component={BlueprintEditorPage} />
-            <Route path="/app/:slug/blueprints/:id/versions" component={BlueprintVersionHistoryPage} />
-            <Route path="/app/:slug/blueprints/:id/test" component={BlueprintTestPage} />
-            <Route path="/app/:slug/blueprints/:id/publish" component={BlueprintPublishPage} />
-            <Route path="/app/:slug/blueprints/:id" component={BlueprintDetailPage} />
-            <Route path="/app/:slug/blueprints" component={BlueprintStudioPage} />
+            {/* Sprint 28 — Blueprint Studio gated to knowledge admins (Sprint 29N.10) */}
+            <Route path="/app/:slug/blueprints/new" component={GuardedBlueprintEditorPage} />
+            <Route path="/app/:slug/blueprints/:id/edit" component={GuardedBlueprintEditorPage} />
+            <Route path="/app/:slug/blueprints/:id/versions" component={GuardedBlueprintVersionHistoryPage} />
+            <Route path="/app/:slug/blueprints/:id/test" component={GuardedBlueprintTestPage} />
+            <Route path="/app/:slug/blueprints/:id/publish" component={GuardedBlueprintPublishPage} />
+            <Route path="/app/:slug/blueprints/:id" component={GuardedBlueprintDetailPage} />
+            <Route path="/app/:slug/blueprints" component={GuardedBlueprintStudioPage} />
             {/* Sprint 25 — Completed Work Portal (more-specific before :slug catch-all) */}
             <Route path="/app/:slug/work/:id" component={CompletedWorkViewer} />
             <Route path="/app/:slug/work" component={CompletedWorkPortal} />
