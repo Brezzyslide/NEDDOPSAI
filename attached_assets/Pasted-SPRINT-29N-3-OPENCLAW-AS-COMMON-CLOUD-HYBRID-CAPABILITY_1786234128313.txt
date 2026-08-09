@@ -1,0 +1,703 @@
+SPRINT 29N.3 — OPENCLAW AS COMMON CLOUD + HYBRID CAPABILITY RUNTIME — ARCHITECTURE PROOF GATE
+
+INVESTIGATION AND DESIGN ONLY. NO IMPLEMENTATION.
+
+Do not remove, refactor, migrate, or plug OpenClaw into the Cloud runtime yet.
+
+We now have three established facts:
+
+1. NeedsOps Cloud can currently perform professional knowledge work end-to-end without OpenClaw:
+    * Organisation Library ingestion
+    * KRS retrieval
+    * OpenAI reasoning
+    * specialist DNA
+    * self-review
+    * claim/evidence validation
+    * Completed Work
+    * approval
+    * PDF/DOCX
+2. OpenClaw is partially present in the API server through a separate /v1/execution path, but the primary UEE Cloud professional-work path does not call it.
+3. We want to determine whether OpenClaw should become a common capability/runtime layer that can operate in both:
+    Cloud — hosted tool/resource execution
+    Hybrid — customer/local/private-environment execution
+
+while preserving a single NeedsOps intelligence/governance architecture.
+
+The target hypothesis to investigate is:
+
+NeedsOps decides, governs, supplies DNA/context/evidence, remembers and records.
+
+OpenAI performs professional reasoning where appropriate.
+
+OpenClaw provides controlled reach, resource access and operational capabilities.
+
+But do NOT assume this split is automatically correct. Prove the best boundary.
+
+⸻
+
+PART A — CATEGORICAL CURRENT-STATE ANSWERS
+
+Reconfirm these from production code:
+
+1. Can NeedsOps Cloud review an uploaded policy without OpenClaw? YES/NO.
+2. Does the primary UEE Cloud route currently invoke OpenClaw? YES/NO.
+3. Does /v1/execution currently invoke OpenClaw? YES/NO.
+4. Does the UEE path currently depend on the execution.openclaw_runtime entitlement even though it does not invoke OpenClaw? YES/NO.
+5. Would normal Cloud policy analysis continue working if the OpenClaw runtime disappeared? YES/NO.
+
+For every answer give exact call sites.
+
+⸻
+
+PART B — DEFINE WHAT “OPENCLAW IN CLOUD” WOULD MEAN
+
+Do not use the phrase “OpenClaw Cloud” loosely.
+
+Define the possible hosted architecture.
+
+Investigate whether OpenClaw can run as:
+
+Option A — resource/tool runtime only
+
+NeedsOps/KRS selects authorised evidence and context.
+
+OpenClaw performs tool/resource operations such as:
+
+* locate resource
+* read file
+* convert/parse document
+* manipulate file
+* invoke cloud connector
+* browser action
+* email/calendar action
+
+OpenAI remains the professional reasoning engine.
+
+Option B — specialist execution runtime
+
+NeedsOps supplies:
+
+* specialist DNA
+* task brief
+* authorised KRS evidence
+* blueprint/output contract
+* tool permissions
+* governance restrictions
+
+OpenClaw runs the specialist reasoning/tool loop and returns the result to NeedsOps.
+
+Option C — hybrid model
+
+NeedsOps/OpenAI performs professional reasoning, but OpenClaw can be invoked during that reasoning when a capability/resource action is needed.
+
+Compare A/B/C.
+
+For each assess:
+
+* latency
+* security
+* auditability
+* evidence integrity
+* deterministic control
+* tool flexibility
+* maintenance burden
+* specialist consistency
+* Cloud/Hybrid reuse
+
+Recommend one.
+
+⸻
+
+PART C — NEEDSOPS CONTEXT PACKAGE FOR OPENCLAW
+
+Assume for this investigation that OpenClaw must not independently decide organisational truth.
+
+Determine exactly what NeedsOps should provide before OpenClaw can act.
+
+Proposed GovernedExecutionContext to validate:
+
+* organizationId
+* tenant scope
+* requester identity
+* requester role/permissions
+* taskId
+* executionId
+* execution lane
+* specialistCode
+* compiled specialist DNA
+* blueprint/output contract
+* user request
+* KRS EvidencePack or authorised resource references
+* source authority metadata
+* current/effective version metadata
+* memory/context allowed for this worker
+* approved tool/skill/plugin allowlist
+* denied tools
+* network/resource restrictions
+* required approval checkpoints
+* permitted external side effects
+* expected typed result contract
+
+Identify what already exists in:
+
+* WorkPackageManifest
+* CanonicalExecutionContext
+* ExecutionPackage
+* specialist DNA/Employee File
+* EvidencePack
+* laneContext
+
+Reuse existing structures wherever possible.
+
+Do not invent another parallel manifest if existing structures can be extended.
+
+⸻
+
+PART D — KRS AND OPENCLAW BOUNDARY
+
+This is one of the most important questions.
+
+We do NOT want OpenClaw to simply search every file it can see and decide which one is organisational truth.
+
+Investigate these models.
+
+Model 1 — KRS-first
+
+NeedsOps:
+
+* determines eligible sources
+* filters tenant
+* filters approved/current/effective
+* applies sensitivity and authority rules
+* retrieves/ranks evidence
+
+Then passes authorised passages/resources to OpenClaw.
+
+Model 2 — OpenClaw discovery, KRS governance
+
+OpenClaw may discover candidate files/resources.
+
+Candidates are returned to NeedsOps.
+
+NeedsOps ingests/resolves them through the Library/KRS authority model before professional claims can rely on them.
+
+Model 3 — OpenClaw direct retrieval
+
+OpenClaw searches and reads directly during specialist execution.
+
+Determine whether this model can preserve:
+
+* tenant isolation
+* approved/current source rules
+* authority scoring
+* version integrity
+* evidence snapshots
+* claim provenance
+* absence verification
+
+If it cannot, reject it.
+
+Recommend the clean boundary.
+
+⸻
+
+PART E — CAN OPENCLAW IMPROVE CLOUD FILE/RESOURCE READING?
+
+Compare current Cloud capabilities against what a hosted OpenClaw runtime could add.
+
+Current NeedsOps:
+
+* uploaded file ingestion
+* extraction
+* chunking
+* embeddings
+* KRS lexical retrieval
+* planned hybrid/vector retrieval
+
+OpenClaw candidate capability:
+
+* generic file discovery
+* reading different formats
+* cloud filesystem/provider access
+* connector/plugin resource access
+* possibly document conversion
+
+Determine:
+
+1. Where OpenClaw would genuinely improve Cloud.
+2. Where it would merely duplicate KRS.
+3. Whether OpenClaw should discover/read full resources while KRS still determines authority and claim evidence.
+4. Whether OpenClaw could become a resource-provider adapter feeding KRS.
+
+Do not recommend replacing KRS merely because OpenClaw can read files.
+
+⸻
+
+PART F — CLOUD VS HYBRID: ONE ARCHITECTURE, TWO EXECUTION LOCATIONS
+
+Design a target where Cloud and Hybrid are not separate intelligence systems.
+
+Test this model:
+
+COMMON NEEDSOPS CONTROL PLANE
+
+CoS
+→ execution classifier
+→ RBAC/entitlement
+→ specialist selection
+→ DNA
+→ memory
+→ KRS/evidence authority
+→ governance
+→ Completed Work
+→ provenance/audit
+
+Then:
+
+CLOUD CAPABILITY RUNTIME
+
+hosted OpenClaw instance/worker
+
+and:
+
+HYBRID CAPABILITY RUNTIME
+
+customer-side OpenClaw runtime via secure Connector/relay
+
+Both consume the SAME governed execution contract.
+
+Determine:
+
+* which fields differ by execution location
+* whether the same specialist DNA can run in both
+* whether the same skill names/tool contracts can run in both
+* how capability availability is advertised
+* how NeedsOps chooses Cloud vs Hybrid
+
+⸻
+
+PART G — EXECUTION-LOCATION ROUTING
+
+Design, do not implement, a routing concept such as:
+
+executionLocation = cloud | hybrid | either
+
+This must be separate from:
+
+executionClass = transient | professional_work | evidence_bearing_work
+
+Examples:
+
+Policy already in Library
+
+executionClass = evidence_bearing_work
+
+executionLocation = cloud
+
+Policy exists only on local company drive
+
+executionClass = evidence_bearing_work
+
+executionLocation = hybrid
+
+Create a Word report in Cloud storage
+
+executionLocation may = cloud
+
+Modify a local Word file
+
+executionLocation = hybrid
+
+Send an email through cloud connector
+
+cloud if a permitted cloud plugin exists
+
+hybrid if only the local client can reach the system
+
+Determine the clean selection rules.
+
+⸻
+
+PART H — SPECIALIST DNA + OPENCLAW
+
+Determine whether future specialist execution should be primarily:
+
+specialist DNA + governed context + allowed OpenClaw skills/plugins
+
+rather than bespoke NeedsOps specialist execution services.
+
+Test this against:
+
+* Operations Manager
+* Chief of Staff
+* future policy specialist
+* safeguarding specialist
+* executive assistant
+* knowledge/document specialist
+
+Determine what DNA already contains.
+
+Identify what would have to be added:
+
+* allowed skills
+* forbidden skills
+* execution boundaries
+* resource scopes
+* escalation requirements
+
+Do not move governance into DNA if it belongs in NeedsOps control policy.
+
+⸻
+
+PART I — OPENCLAW SKILL/PLUGIN CONTRACT
+
+Determine whether NeedsOps can expose a stable capability contract independent of runtime location.
+
+Example capabilities:
+
+resource.locate
+resource.read
+document.create
+document.edit
+spreadsheet.read
+spreadsheet.write
+email.draft
+email.send
+calendar.read
+calendar.create_event
+browser.navigate
+browser.extract
+filesystem.write
+
+Then map:
+
+Capability → Cloud OpenClaw skill/plugin → Hybrid OpenClaw skill/plugin.
+
+The NeedsOps specialist should request a capability, not know which runtime implementation provides it.
+
+Assess whether OpenClaw currently supports enough typed capability/result structure for this model.
+
+Mark UNPROVEN where appropriate.
+
+⸻
+
+PART J — RESULT CONTRACT BACK INTO NEEDSOPS
+
+Determine what OpenClaw must return.
+
+Proposed typed result:
+
+* executionId
+* actionId
+* specialistCode
+* skill/tool invoked
+* status
+* startedAt/completedAt
+* resources read
+* resources written
+* output artifacts
+* evidence discovered
+* external side effects
+* warnings
+* errors
+* retryability
+
+NeedsOps must remain responsible for:
+
+* accepting/rejecting result
+* provenance
+* quality review
+* Completed Work
+* approval state
+* audit
+
+Determine what the current ExecutionPackage / OpenClaw result protocol already supports.
+
+⸻
+
+PART K — EXTERNAL SIDE-EFFECT GOVERNANCE
+
+Cloud OpenClaw must not turn evidence-bearing analysis into uncontrolled action.
+
+Determine where NeedsOps would enforce:
+
+* read-only vs write
+* email send approval
+* file modification approval
+* browser submission approval
+* calendar creation
+* external API mutation
+* financial/HR/high-risk actions
+
+A model may propose an action.
+
+An OpenClaw runtime may have the ability to execute it.
+
+That does NOT mean it may execute without NeedsOps permission.
+
+Propose the pre-action approval contract.
+
+⸻
+
+PART L — CURRENT PATH 2 /v1/execution
+
+Return to the earlier 29N.2 finding.
+
+Fully audit the current second execution path:
+
+/v1/execution
+→ executionService
+→ ExecutionPackage
+→ OpenClawExecutionEngine
+→ RuntimeBrokerClient
+
+Determine:
+
+1. All production callers.
+2. Whether UI calls it.
+3. Whether Desktop/Hybrid calls it.
+4. Whether any active customer workflow depends on it.
+5. Whether it is an early version of the target runtime boundary.
+6. Whether it should eventually become the common OpenClaw dispatch adapter used by UEE.
+
+Do NOT delete it.
+
+⸻
+
+PART M — OPENCLAW ENTITLEMENT COUPLING
+
+Investigate the earlier finding:
+
+UEE Cloud execution is currently gated by:
+
+execution.openclaw_runtime
+
+despite not invoking OpenClaw.
+
+Do NOT remove the entitlement yet.
+
+Instead determine whether the future target should use separate entitlements such as:
+
+* Cloud professional execution
+* Cloud OpenClaw capabilities
+* Hybrid/OpenClaw execution
+* specific premium connector/tool capability
+
+Recommend the entitlement boundary that remains correct if OpenClaw becomes available in both Cloud and Hybrid.
+
+⸻
+
+PART N — CURRENT SEMANTIC RETRIEVAL GAP
+
+Carry forward Task #149 into this architecture decision.
+
+pgVector embeddings exist but queryEmbedding is currently null in production KRS.
+
+Determine whether introducing OpenClaw changes this at all.
+
+Expected principle:
+
+OpenClaw must NOT become a workaround for weak KRS retrieval.
+
+NeedsOps should still activate/validate lexical + vector hybrid retrieval for authoritative organisational evidence.
+
+State clearly whether Task #149 remains required under the OpenClaw target architecture.
+
+⸻
+
+PART O — PERFORMANCE COMPARISON
+
+Compare:
+
+Current Cloud
+
+KRS → OpenAI → validation → Completed Work
+
+Possible Cloud with OpenClaw resource/tool runtime
+
+KRS/governance → OpenClaw resource/tool operations where needed → OpenAI or OpenClaw specialist reasoning → validation → Completed Work
+
+Hybrid
+
+NeedsOps Cloud control plane → relay → customer OpenClaw → result → NeedsOps
+
+Estimate:
+
+* network hops
+* LLM calls
+* tool calls
+* latency
+* DB writes
+* failure points
+
+Do not introduce OpenClaw into Cloud if it simply adds latency without capability benefit.
+
+⸻
+
+PART P — FAILURE MODES
+
+Challenge this architecture.
+
+Specifically investigate:
+
+* OpenClaw runtime unavailable
+* skill missing
+* skill version drift
+* plugin compromise
+* agent ignores resource restrictions
+* tool succeeds but result callback fails
+* duplicate action execution
+* cloud/hybrid capability mismatch
+* local runtime offline
+* stale DNA
+* evidence discovered by OpenClaw but not governed by KRS
+* action performed before approval
+
+For each define which layer should fail closed.
+
+⸻
+
+PART Q — TARGET ARCHITECTURE OPTIONS
+
+Compare at least:
+
+Q1 — Current architecture
+
+NeedsOps/OpenAI Cloud + separate Hybrid OpenClaw.
+
+Q2 — OpenClaw as common capability runtime
+
+NeedsOps/OpenAI reasoning + OpenClaw capabilities in Cloud/Hybrid.
+
+Q3 — OpenClaw as common specialist runtime
+
+NeedsOps governance/context + OpenClaw performs specialist reasoning and tools in Cloud/Hybrid.
+
+Q4 — Hybrid approach
+
+OpenAI remains default professional reasoning engine; OpenClaw is invoked for reach/tools and may run selected specialists/tool loops where this provides clear benefit.
+
+Recommend one.
+
+⸻
+
+PART R — WHAT MUST NEVER MOVE OUT OF NEEDSOPS
+
+Re-prove whether these remain permanently NeedsOps-owned:
+
+* tenancy/RLS
+* RBAC
+* entitlements
+* execution lane
+* execution-location decision
+* source authority/currentness
+* KRS governance filters
+* memory authority
+* approval workflow
+* evidence snapshots
+* claim provenance
+* Completed Work
+* version pinning
+* audit
+* usage/commercial accounting
+
+If you recommend moving any of these to OpenClaw, justify it strongly.
+
+⸻
+
+PART S — FINAL QUESTIONS
+
+Answer explicitly:
+
+1. Would OpenClaw make NeedsOps Cloud materially more capable?
+2. In what exact areas?
+3. Would it make Cloud policy analysis itself better?
+4. Or primarily improve resource reach/tool execution?
+5. Should OpenClaw replace KRS?
+6. Should OpenClaw feed resources into KRS?
+7. Should OpenAI remain the default Cloud professional reasoning engine?
+8. Should OpenClaw ever be allowed to perform specialist reasoning?
+9. Should Cloud and Hybrid use the same OpenClaw capability contract?
+10. Can the same DNA run against both Cloud and Hybrid runtimes?
+11. Should /v1/execution become the common OpenClaw adapter?
+12. Is the current UEE/OpenClaw entitlement coupling wrong?
+13. What should replace it?
+14. Does Task #149 remain required?
+15. What happens if OpenClaw Cloud is unavailable?
+16. Can Cloud automatically fall back to NeedsOps/OpenAI-only reasoning?
+17. What actions must always require explicit approval?
+18. What responsibilities permanently remain NeedsOps-native?
+19. Does this architecture simplify the platform overall?
+20. What is the safest target?
+
+⸻
+
+REQUIRED FINAL OUTPUT
+
+Return:
+
+A. Current architecture
+
+B. Proposed common Cloud/Hybrid architecture
+
+C. Q1/Q2/Q3/Q4 comparison
+
+D. KRS/OpenClaw boundary
+
+E. OpenAI/OpenClaw reasoning boundary
+
+F. DNA/context contract
+
+G. skill/plugin capability contract
+
+H. execution-location routing model
+
+I. /v1/execution future role
+
+J. entitlement model
+
+K. Task #149 impact
+
+L. security/governance controls
+
+M. failure/fallback behaviour
+
+N. performance implications
+
+O. migration stages, if recommended
+
+P. answers 1–20
+
+Final verdict must be one:
+
+KEEP CLOUD AS-IS — OPENCLAW ADDS INSUFFICIENT VALUE
+
+ADD OPENCLAW AS CLOUD/HYBRID CAPABILITY RUNTIME
+
+USE OPENCLAW AS COMMON SPECIALIST + CAPABILITY RUNTIME
+
+HYBRID MODEL — OPENAI REASONS, OPENCLAW PROVIDES REACH/ACTION
+
+INSUFFICIENT EVIDENCE
+
+Evidence:
+
+L1 source
+
+L2 tests/mock
+
+L3 real service/runtime
+
+L4 real OpenClaw
+
+Do not claim OpenClaw supports a capability merely because NeedsOps has a type for it.
+
+NO IMPLEMENTATION. STOP AFTER REPORT.
+
+And yes, if this comes back the way I suspect it will, the eventual implementation question becomes something like:
+
+NeedsOps constructs the governed work package first. KRS selects what the worker is allowed to rely on. DNA tells the worker who it is and how it should behave. Memory adds approved organisational context. Then a Cloud OpenClaw runtime gets that bounded package and uses whatever skills it has been authorised to use.
+
+The one part I would leave deliberately open until this report comes back is whether OpenClaw merely reads/reaches/acts, with OpenAI still doing the substantive analysis, or whether some specialists eventually run their full reasoning loop inside OpenClaw. That choice affects latency, consistency and how much of your current UEE remains useful.
+
+And after this report, I’ll bring us back to the earlier unresolved question as well: the existing /v1/execution second path and the inappropriate execution.openclaw_runtime entitlement coupling on UEE Cloud.
