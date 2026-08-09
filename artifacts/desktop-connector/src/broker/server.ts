@@ -14,6 +14,7 @@ import type { WebhookDeliveryWorker } from "./webhookDelivery.js";
 import { createAuthMiddleware } from "./auth.js";
 import { createHealthRouter } from "./routes/health.js";
 import { createExecutionRouter } from "./routes/executions.js";
+import { createEvidenceRouter } from "./routes/evidence.js";
 import type pino from "pino";
 
 export function createBrokerApp(
@@ -45,6 +46,8 @@ export function createBrokerApp(
   // ─── Authenticated routes ────────────────────────────────────────────────────
   const auth = createAuthMiddleware(config.authToken);
   app.use("/v1", auth, createExecutionRouter(config, store, gateway, webhookWorker, logger));
+  // Sprint 29O.1: evidence discovery endpoint (authenticated)
+  app.use("/v1", auth, createEvidenceRouter(config, gateway, logger));
 
   // ─── 404 fallthrough ─────────────────────────────────────────────────────────
   app.use((_req: Request, res: Response) => {

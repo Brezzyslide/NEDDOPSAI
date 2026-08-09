@@ -18,6 +18,8 @@ import type {
   OpenClawWebhookEvent,
   BrokerConnectionStatus,
   BrokerConnectionState,
+  BrokerEvidenceDiscoveryRequest,
+  BrokerEvidenceDiscoveryResponse,
 } from "./types.js";
 import type { OpenClawConfig } from "./config.js";
 import { isOpenClawConfigured } from "./config.js";
@@ -271,6 +273,52 @@ export class RuntimeBrokerClient {
         timeoutMs: this.config.timeoutMs,
       }),
     );
+  }
+
+  // ─── Evidence discovery (Sprint 29O.1) ─────────────────────────────────────
+
+  /**
+   * Call POST /v1/evidence/discover on the Mac broker.
+   *
+   * Returns raw BrokerCandidateEvidence[] — NOT yet validated by the Authority
+   * Gate. The caller (CloudOpenClawDiscoveryAdapter) maps these to
+   * CandidateEvidence[] and the orchestrator runs them through the gate.
+   *
+   * Returns an empty response when the broker is unreachable rather than
+   * throwing, so the orchestrator can degrade gracefully.
+   */
+  async discoverEvidence(
+    request: BrokerEvidenceDiscoveryRequest,
+  ): Promise<BrokerEvidenceDiscoveryResponse> {
+    if (!this.isConfigured) {
+      return { candidates: [], discoveryDurationMs: 0, openClawStatus: "unavailable", hopsFollowed: 0 };
+    }
+
+    const authToken = await this.resolveAuthToken();
+
+    try {
+      return await brokerRequest<BrokerEvidenceDiscoveryResponse>(this.config.runtimeUrl!, {
+        method:    "POST",
+        path:      "/v1/evidence/discover",
+        body:      request,
+        authToken,
+        timeoutMs: Math.min(request.timeoutMs + 5_000, this.config.timeoutMs), // allow broker-side timeout
+      });
+    } catch (err) {
+      // Non-fatal — return empty so the orchestrator can degrade to KRS-only
+      const failures = this._connectionStatus.consecutiveFailures + 1;
+      this._connectionStatus = {
+        ...this._connectionStatus,
+        state: failures >= 3 ? "error" : "reconnecting",
+        consecutiveFailures: failures,
+      };
+      return {
+        candidates:          [],
+        discoveryDurationMs: 0,
+        openClawStatus:      "unavailable",
+        hopsFollowed:        0,
+      };
+    }
   }
 
   // ─── Webhook verification ───────────────────────────────────────────────────

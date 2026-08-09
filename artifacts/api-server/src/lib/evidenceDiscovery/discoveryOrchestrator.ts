@@ -37,18 +37,26 @@ import type {
 } from "../../types/candidateEvidence.js";
 import type { IEvidenceDiscoveryAdapter } from "./IEvidenceDiscoveryAdapter.js";
 import { nullDiscoveryAdapter } from "./NullDiscoveryAdapter.js";
+import { cloudOpenClawDiscoveryAdapter } from "./CloudOpenClawDiscoveryAdapter.js";
 import { validateCandidateBatch } from "../../services/evidenceAcceptanceService.js";
 import type { EvidencePack, EvidenceChunk } from "../../services/knowledgeResolutionService.js";
 
 // ─── Adapter registry ─────────────────────────────────────────────────────────
-// Part L: Register additional adapters here as they become available.
-// The orchestrator uses the first available adapter that matches the scope.
+// Sprint 29O.1: CloudOpenClawDiscoveryAdapter is registered before the null
+// adapter. The orchestrator picks the first whose isAvailable() returns true.
+//   - CloudOpenClawDiscoveryAdapter.isAvailable() → true when OPENCLAW_RUNTIME_URL
+//     is set AND the last health check to the Mac broker succeeded.
+//   - NullDiscoveryAdapter.isAvailable() → always false (safe fallback).
+//
+// When no adapter is available the orchestrator returns an empty result and
+// execution continues with KRS evidence only (graceful degradation).
 
-const REGISTERED_ADAPTERS: IEvidenceDiscoveryAdapter[] = [
-  nullDiscoveryAdapter,
-  // Future: cloudOpenClawAdapter (when Cloud runtime is deployed)
-  // Future: hybridOpenClawAdapter (for Desktop Connector relay path)
-];
+function getRegisteredAdapters(): IEvidenceDiscoveryAdapter[] {
+  return [
+    cloudOpenClawDiscoveryAdapter, // Sprint 29O.1: real Mac broker
+    nullDiscoveryAdapter,          // safe fallback when broker unreachable
+  ];
+}
 
 // ─── Orchestrator result ──────────────────────────────────────────────────────
 
@@ -84,7 +92,7 @@ export async function runEvidenceDiscovery(
   const start = Date.now();
 
   // ── Select the discovery adapter ─────────────────────────────────────────────
-  const adapter = selectAdapter(escalation.allowedDiscoveryScope);
+  const adapter = selectAdapter(escalation.allowedDiscoveryScope, getRegisteredAdapters());
 
   if (!adapter || !adapter.isAvailable()) {
     console.info(
@@ -341,10 +349,14 @@ export function buildInsufficientEvidenceMessage(
 
 function selectAdapter(
   scope: EvidenceEscalationDecision["allowedDiscoveryScope"],
+  adapters: IEvidenceDiscoveryAdapter[],
 ): IEvidenceDiscoveryAdapter | null {
   if (scope === "none") return null;
-  // Select the first available adapter
-  return REGISTERED_ADAPTERS.find(a => a.isAvailable()) ?? REGISTERED_ADAPTERS[0] ?? null;
+  // Select the first available adapter (CloudOpenClawDiscoveryAdapter when broker is reachable).
+  // When nothing is available fall back to nullDiscoveryAdapter — it returns
+  // isAvailable()=false, and the orchestrator returns an empty result so execution
+  // continues with KRS evidence only.
+  return adapters.find(a => a.isAvailable()) ?? nullDiscoveryAdapter;
 }
 
 function enforceLimits(

@@ -1,0 +1,164 @@
+SPRINT 29O.1 — PREPARE REAL MACBOOK OPENCLAW CONNECTIVITY
+
+IMPLEMENTATION + OPERATOR RUNBOOK.
+
+Do not assume my MacBook is reachable yet.
+
+Goal:
+
+Prepare NeedsOps dev in Replit to connect securely to the existing NeedsTech OpenClaw running on my MacBook and use it as the first real evidence-discovery runtime.
+
+Replit must do all repository/code changes required, then give me the exact terminal commands I need to run on the Mac.
+
+Architecture for this proof
+
+NeedsOps Replit dev
+→ HTTPS authenticated request
+→ Cloudflare Tunnel
+→ MacBook local broker/evidence endpoint
+→ NeedsTech OpenClaw
+→ CandidateEvidence[]
+→ NeedsOps Authority Gate
+→ merged EvidencePack
+→ OpenAI reasoning
+
+The MacBook is NOT hosting NeedsOps. It is only temporarily hosting the OpenClaw runtime for this proof.
+
+Part A — inspect the existing Mac runtime
+
+Prove from the repository:
+
+exact OpenClaw startup mode currently supported
+spawn vs bridge mode
+executable/binary command
+local ports
+Desktop Connector startup command
+broker/server code location
+current auth/token mechanism
+current environment variables
+
+Do not invent commands.
+
+Part B — implement the discovery endpoint
+
+Add or extend the Mac-side broker with:
+
+POST /v1/evidence/discover
+
+Request must use the existing governed discovery contract:
+
+organizationId
+executionId
+specialistCode
+required evidence/search objective
+unresolved references
+allowed discovery scope
+allowExternalWebSearch
+maxHops
+maxSources
+maxPassages
+timeout
+
+Response:
+
+CandidateEvidence[]
+
+Use the existing Sprint 29N.6 CandidateEvidence type.
+
+Do not return trusted/accepted evidence.
+
+Part C — security
+
+The endpoint must not be an unauthenticated public endpoint.
+
+Use a service secret/HMAC or equivalent existing authenticated broker mechanism.
+
+Prove:
+
+missing auth rejected
+invalid auth rejected
+request/execution correlation checked
+tenant ID carried through
+size/time limits enforced
+
+Do not expose the raw OpenClaw localhost port directly.
+
+Part D — Replit client
+
+Add:
+
+RuntimeBrokerClient.discoverEvidence()
+
+and implement:
+
+CloudOpenClawDiscoveryAdapter implements IEvidenceDiscoveryAdapter
+
+Adapter should be available only when:
+
+OPENCLAW_RUNTIME_URL is configured and health check succeeds.
+
+Otherwise keep NullDiscoveryAdapter.
+
+Part E — no production side effects
+
+Do not alter production deployment.
+
+Do not modify Hybrid/Desktop behaviour beyond the shared discovery endpoint required for the proof.
+
+Do not touch KRS, Authority Gate, OpenAI reasoning or Completed Work architecture.
+
+Part F — operator runbook
+
+At the end, give me copy/paste Mac commands in the exact order for:
+
+verify OpenClaw installed
+verify/version OpenClaw
+start the local NeedsTech OpenClaw runtime
+start the evidence broker/service
+verify localhost health
+install/verify Cloudflare cloudflared if required
+start temporary Cloudflare tunnel
+identify the HTTPS URL
+
+Then tell me exactly which Replit secrets I must set, for example:
+
+OPENCLAW_RUNTIME_URL
+OPENCLAW_RUNTIME_SECRET
+
+Use the real names from the code, not guessed names.
+
+Part G — first connectivity proof
+
+Provide one harmless curl command from Replit/server side that should:
+
+reach my Mac
+authenticate
+return health/status
+
+Then one discovery test:
+
+“Find one known test document and return one passage.”
+
+Do not wire a full policy review until this raw round trip works.
+
+Final output
+
+Return:
+
+files changed
+endpoint implemented
+auth design
+Replit secrets required
+exact Mac terminal commands
+exact localhost health test
+exact tunnel test
+exact Replit-to-Mac test
+blockers
+
+Final verdict:
+
+READY FOR OPERATOR CONNECTION
+
+or
+
+NOT READY — [specific missing runtime capability]

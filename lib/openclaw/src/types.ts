@@ -181,6 +181,68 @@ export interface OpenClawWebhookEvent {
   runtimeVersion: string;
 }
 
+// ─── Evidence discovery wire types (Sprint 29O.1) ────────────────────────────
+
+/**
+ * Governed discovery request sent by the NeedsOps API to the Mac broker.
+ * Maps directly onto the discovery contract defined in the sprint brief.
+ */
+export interface BrokerEvidenceDiscoveryRequest {
+  organizationId:          string;
+  executionId:             string;
+  specialistCode:          string;
+  searchObjective:         string;
+  unresolvedReferences:    string[];
+  allowedDiscoveryScope:   string;
+  allowExternalWebSearch:  boolean;
+  maxHops:                 number;
+  maxSources:              number;
+  maxPassages:             number;
+  timeoutMs:               number;
+}
+
+/**
+ * One raw discovered evidence item returned by the Mac broker.
+ * Mirrors CandidateEvidence in api-server/src/types/candidateEvidence.ts.
+ * Kept separate so lib/openclaw does not import from the api-server artifact.
+ */
+export interface BrokerCandidateEvidence {
+  organisationId:            string;
+  executionId:               string;
+  discoveryId:               string;
+  sourceType:                string;
+  isExternal:                boolean;
+  internalSourceId?:         string;
+  internalSourceVersionId?:  string;
+  internalChunkId?:          string;
+  sourceUrl?:                string;
+  publisherDomain?:          string;
+  claimedPublisher?:         string;
+  jurisdiction?:             string;
+  sourceTitle:               string;
+  supportingPassage:         string;
+  passageHash:               string;
+  retrievalTimestamp:        string;
+  retrievalMethod:           string;
+  discoveryReason:           string;
+  unresolvedReferenceContext?: string;
+  authorityType?:            string;
+  publicationDate?:          string;
+  effectiveDate?:            string;
+  openClawConfidence:        number;
+  relevanceScore:            number;
+  contentType:               string;
+  accessLocation:            string;
+}
+
+/** Response shape from POST /v1/evidence/discover on the Mac broker. */
+export interface BrokerEvidenceDiscoveryResponse {
+  candidates:          BrokerCandidateEvidence[];
+  discoveryDurationMs: number;
+  openClawStatus:      "available" | "simulated" | "unavailable";
+  hopsFollowed:        number;
+}
+
 // ─── Connection state ─────────────────────────────────────────────────────────
 
 export type BrokerConnectionState =

@@ -38,4 +38,7 @@ export type {
   OpenClawEventType,
   BrokerConnectionStatus,
   BrokerConnectionState,
+  BrokerEvidenceDiscoveryRequest,
+  BrokerCandidateEvidence,
+  BrokerEvidenceDiscoveryResponse,
 } from "./types.js";
