@@ -104,7 +104,10 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
     (user?.publicMetadata as any)?.platformAdmin === true ||
     (user?.publicMetadata as any)?.platformRole != null;
 
-  const base   = `/app/${orgSlug}`;
+  // Guard: "undefined" slug means a navigation bug constructed a bad URL.
+  // Treat it exactly like a missing slug so nav links don't propagate the problem.
+  const safeSlug = (orgSlug && orgSlug !== "undefined") ? orgSlug : null;
+  const base   = `/app/${safeSlug ?? orgSlug}`;
   const active = (path: string) => location === base + path;
 
   // Sprint 29M.3: Fetch org role for role-gated nav.
@@ -138,7 +141,7 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
     queryFn:        () =>
       apiFetch(`/v1/organisations/${orgSlug}/notifications/unread-count`)
         .then(r => r.ok ? r.json() : { unreadCount: 0 }),
-    enabled:        !!orgSlug,
+    enabled:        !!orgSlug && orgSlug !== "undefined",
     refetchInterval: 60_000,
     staleTime:      30_000,
   });

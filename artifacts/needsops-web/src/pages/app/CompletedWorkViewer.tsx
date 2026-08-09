@@ -1055,19 +1055,19 @@ export default function CompletedWorkViewer() {
   const { data: workData, isLoading } = useQuery({
     queryKey: ["completed-work", id],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work/${id}`).then(r => r.json()),
-    enabled: !!slug && !!id,
+    enabled: !!slug && !!id && slug !== "undefined",
   });
 
   const { data: versionsData, refetch: refetchVersions } = useQuery({
     queryKey: ["work-versions", id],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work/${id}/versions`).then(r => r.json()),
-    enabled: !!slug && !!id,
+    enabled: !!slug && !!id && slug !== "undefined",
   });
 
   const { data: commentsData, refetch: refetchComments } = useQuery({
     queryKey: ["work-comments", id],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work/${id}/comments`).then(r => r.json()),
-    enabled: !!slug && !!id,
+    enabled: !!slug && !!id && slug !== "undefined",
   });
 
   const work     = workData?.completedWork as CompletedWorkItem | undefined;

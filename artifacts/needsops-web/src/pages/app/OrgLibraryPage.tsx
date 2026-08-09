@@ -205,6 +205,7 @@ export default function OrgLibraryPage() {
       if (!res.ok) throw new Error("Failed to load library");
       return res.json() as Promise<{ sources: KnowledgeSource[]; total: number }>;
     },
+    enabled: !!slug && slug !== "undefined",
     staleTime: 30_000,
     refetchInterval: (qdata) => {
       const hasProcessing = qdata?.state?.data?.sources?.some(

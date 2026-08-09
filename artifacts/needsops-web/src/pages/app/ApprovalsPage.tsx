@@ -255,45 +255,45 @@ export default function ApprovalsPage() {
   const { data: proposalsData } = useQuery({
     queryKey: ["proposals-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/curation/proposals?status=proposed&limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   const { data: memoryData } = useQuery({
     queryKey: ["memory-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/memory?status=proposed&limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   const { data: sourcesData } = useQuery({
     queryKey: ["sources-review", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/sources?status=review_required&limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   const { data: completedWorkData } = useQuery({
     queryKey: ["work-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   const { data: systemApprovalsData } = useQuery({
     queryKey: ["system-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   // Sprint 29: execution intents awaiting approval
   const { data: intentsData } = useQuery({
     queryKey: ["execution-intents-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/execution-intents?status=pending_approval`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   // Sprint 29: pack access requests
   const { data: packRequestsData } = useQuery({
     queryKey: ["pack-requests-approvals", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/pack-access-requests?status=pending`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   const invalidateAll = () => {

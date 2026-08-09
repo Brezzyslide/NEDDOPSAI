@@ -156,7 +156,14 @@ export class KnowledgeIngestionWorker {
         deadLettered = isDeadLettered;
         workerJobFailed(isDeadLettered);
         logger.error(
-          { workerId: this.workerId, jobId: job.id, orgId: job.organizationId, code: err?.code, durationMs: Date.now() - start },
+          {
+            workerId:  this.workerId,
+            jobId:     job.id,
+            orgId:     job.organizationId,
+            code:      err?.code ?? "UNKNOWN",
+            message:   err?.message ?? String(err),
+            durationMs: Date.now() - start,
+          },
           "[knowledge-worker] Job failed",
         );
       } finally {

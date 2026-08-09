@@ -311,7 +311,7 @@ export default function SourceDetailPage() {
 
   if (isLoading) {
     return (
-      <AppShell orgSlug={slug!}>
+      <AppShell orgSlug={slug ?? ""}>
         <div className="flex justify-center items-center h-64 text-slate-400 text-sm">Loading…</div>
       </AppShell>
     );
@@ -319,7 +319,7 @@ export default function SourceDetailPage() {
 
   if (!source) {
     return (
-      <AppShell orgSlug={slug!}>
+      <AppShell orgSlug={slug ?? ""}>
         <div className="max-w-3xl mx-auto px-4 py-12 text-center text-slate-500">
           <p className="text-4xl mb-3">📄</p>
           <p className="font-medium">Source not found</p>
@@ -332,7 +332,7 @@ export default function SourceDetailPage() {
   }
 
   return (
-    <AppShell orgSlug={slug!}>
+    <AppShell orgSlug={slug ?? ""}>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 space-y-6">
 
         {/* Back */}

@@ -139,44 +139,44 @@ export default function GovernanceCentre() {
   const { data: healthData } = useQuery({
     queryKey: ["knowledge-health", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/health`).then(r => r.json()),
-    enabled: !!slug, staleTime: 120_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 120_000,
   });
 
   const { data: proposalsData } = useQuery({
     queryKey: ["proposals-gov", slug, "proposed"],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/knowledge/curation/proposals?status=proposed&limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   const { data: memoryData } = useQuery({
     queryKey: ["memory-gov", slug, "proposed"],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/memory?status=proposed&limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   const { data: approvalsData } = useQuery({
     queryKey: ["approvals-gov", slug, "pending"],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
-    enabled: !!slug, staleTime: 30_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 30_000,
   });
 
   const { data: completedWorkData } = useQuery({
     queryKey: ["completed-work-gov", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=50`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   const { data: auditData } = useQuery({
     queryKey: ["audit-gov", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/audit?limit=8`).then(r => r.json()),
-    enabled: !!slug, staleTime: 60_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 60_000,
   });
 
   // Sprint 29: Governance metrics
   const { data: metricsData } = useQuery({
     queryKey: ["governance-metrics", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals/metrics`).then(r => r.json()),
-    enabled: !!slug, staleTime: 120_000,
+    enabled: !!slug && slug !== "undefined", staleTime: 120_000,
   });
   const metrics = metricsData?.metrics as GovernanceMetrics | undefined;
 

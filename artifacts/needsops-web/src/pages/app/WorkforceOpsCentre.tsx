@@ -288,7 +288,7 @@ export default function WorkforceOpsCentre() {
     score >= 80 ? "text-emerald-400" : score >= 50 ? "text-amber-400" : "text-red-400";
 
   return (
-    <AppShell orgSlug={slug!}>
+    <AppShell orgSlug={slug ?? ""}>
       {/* ── Header ── */}
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4">

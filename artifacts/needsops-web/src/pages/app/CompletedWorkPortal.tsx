@@ -268,7 +268,7 @@ export default function CompletedWorkPortal() {
     queryKey: ["completed-work-portal", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/completed-work?limit=200`).then(r => r.json()),
     select: (d: any) => (d?.completedWork ?? []) as CompletedWorkItem[],
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
   });
 
   const items = data ?? [];
