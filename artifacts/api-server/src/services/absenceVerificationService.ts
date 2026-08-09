@@ -462,6 +462,11 @@ export async function performTargetedAbsenceSearch(
 
     let results: Awaited<ReturnType<typeof retrieveChunks>> = [];
     try {
+      // Note: absence verification does NOT generate a fresh embedding per term —
+      // embedding generation is performed once upstream in KRS and the resulting
+      // EvidencePack is passed here.  For the targeted absence re-retrieval pass,
+      // we use lexical search (queryEmbedding: null) to keep latency bounded and
+      // avoid additional embedding API calls on the hot absence-check path.
       results = await retrieveChunks({
         organisationId,
         query: term,

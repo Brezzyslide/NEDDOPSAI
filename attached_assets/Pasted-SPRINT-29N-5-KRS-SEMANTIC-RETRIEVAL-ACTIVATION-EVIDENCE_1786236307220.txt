@@ -1,0 +1,288 @@
+SPRINT 29N.5 — KRS SEMANTIC RETRIEVAL ACTIVATION & EVIDENCE SUFFICIENCY GATE
+
+We have completed Sprint 29N.4 and established the target architecture:
+
+NeedsOps decides, governs, supplies DNA/context, validates evidence, remembers and records.
+KRS performs fast governed retrieval from approved organisational knowledge.
+OpenClaw is the deeper investigator when KRS cannot establish sufficient evidence coverage or when evidence lies outside KRS’s structural reach.
+OpenAI performs the professional reasoning.
+
+Do NOT integrate OpenClaw into UEE in this sprint.
+
+The purpose of this sprint is to establish exactly how capable KRS is once its existing semantic retrieval capability is properly activated, and to create a reliable Evidence Sufficiency Gate that can later determine whether OpenClaw escalation is actually necessary.
+
+PART A — PROVE THE CURRENT KRS PATH BEFORE CHANGING IT
+
+Trace the complete production retrieval path for an EVIDENCE_BEARING request from:
+
+User request → CoS → execution classifier → DNA/blueprint → UEE → KRS → EvidencePack → OpenAI.
+
+Identify:
+
+* where the retrieval query is constructed;
+* where queryEmbedding should be created;
+* why production currently passes queryEmbedding: null;
+* what embedding model and dimensions were used to create existing knowledge_chunks embeddings;
+* whether all existing approved chunks actually have embeddings;
+* whether the embedding model used for queries will be compatible with stored vectors;
+* lexical ranking implementation;
+* vector ranking implementation;
+* hybrid ranking/fusion implementation, if one already exists;
+* authority/currentness/sensitivity/tenant filters;
+* maximum chunks;
+* document/source diversity rules;
+* whether retrieval occurs once or multiple times per execution.
+
+Do not assume Sprint 29N.4’s description is correct. Prove it from current code and database state.
+
+PART B — ACTIVATE HYBRID LEXICAL + SEMANTIC RETRIEVAL
+
+Implement Task #149 properly.
+
+KRS should support both:
+
+Lexical retrieval for exact terminology, policy names, clauses, identifiers and precise organisational language.
+
+Semantic/vector retrieval for meaning, synonyms and differently worded queries.
+
+Do not replace lexical search with vector search.
+
+Create a deterministic hybrid ranking strategy. Document precisely how lexical score, semantic similarity, authority, currentness and any other ranking signals combine.
+
+Existing governance filtering MUST occur before evidence is allowed into the final EvidencePack.
+
+A semantically similar chunk must never outrank an authoritative approved source merely because its vector similarity is high if it fails governance requirements.
+
+OpenAI must not decide which documents are authoritative.
+
+PART C — CONTROLLED RETRIEVAL TEST
+
+Build a controlled corpus containing documents where lexical-only retrieval should struggle.
+
+Examples:
+
+Document title/content:
+“Complaints Management Policy”
+
+Queries:
+
+“customer grievances”
+“handling unhappy clients”
+“how do we deal with service complaints?”
+
+Also test the reverse:
+
+Queries containing exact policy names, clause numbers or distinctive organisational terminology where lexical retrieval should remain strong.
+
+Compare:
+
+LEXICAL ONLY
+VECTOR ONLY
+HYBRID
+
+For each test report:
+
+* documents retrieved;
+* chunks retrieved;
+* ranking;
+* lexical score;
+* vector similarity;
+* final hybrid score;
+* authority level;
+* source/version;
+* whether the expected source appeared;
+* rank of the expected source;
+* retrieval latency.
+
+I want actual results, not only unit tests proving functions execute.
+
+PART D — EVIDENCE SUFFICIENCY GATE
+
+Create an evidenceSufficiencyService or equivalent.
+
+Do NOT define sufficiency merely as:
+
+chunkCount >= 3 && averageConfidence >= 0.35
+
+Those may be useful signals, but they are not sufficient.
+
+The service should determine:
+
+Did we retrieve enough trustworthy evidence to perform THIS PARTICULAR piece of work?
+
+Its input should include, where available:
+
+* ExecutionLaneContext;
+* request/task intent;
+* specialist DNA;
+* blueprint;
+* evidence requirements;
+* EvidencePack;
+* source diversity;
+* authority levels;
+* retrieval confidence;
+* unresolved document references;
+* external-authority requirements;
+* required evidence categories.
+
+Return a typed result along the lines of:
+
+SUFFICIENT
+
+INSUFFICIENT_COVERAGE
+
+UNRESOLVED_REFERENCE
+
+EXTERNAL_AUTHORITY_REQUIRED
+
+SOURCE_NOT_AVAILABLE
+
+LOW_CONFIDENCE
+
+AUTHORITY_GAP
+
+and include machine-readable reasons.
+
+Do not invoke OpenClaw yet.
+
+This service is establishing the future escalation boundary.
+
+PART E — CROSS-REFERENCE DETECTION
+
+Prove the structural limitation identified in Sprint 29N.4.
+
+Construct a controlled chain such as:
+
+Complaints Policy
+→ “Refer to the Escalation Procedure”
+→ Escalation Procedure
+→ “See Incident Management Policy”
+
+Run the original user query against KRS.
+
+Determine whether hybrid retrieval independently finds all required documents.
+
+More importantly, detect when retrieved evidence contains a reference to another organisational source that has not been resolved into the EvidencePack.
+
+The Evidence Sufficiency Gate should be capable of returning:
+
+UNRESOLVED_REFERENCE
+
+This is one of the future triggers for OpenClaw investigation.
+
+Do NOT turn KRS into an uncontrolled recursive agent during this sprint.
+
+PART F — EXTERNAL SOURCE REQUIREMENT
+
+Test a request such as:
+
+“Review our policy against the applicable external regulatory requirements.”
+
+If the organisational Library does not contain the required external authority, KRS must not pretend that internal evidence is sufficient.
+
+The sufficiency result should identify:
+
+EXTERNAL_AUTHORITY_REQUIRED
+
+This becomes another future OpenClaw escalation trigger.
+
+Again, do not actually invoke OpenClaw in this sprint.
+
+PART G — GOVERNANCE REGRESSION
+
+Prove that semantic retrieval cannot weaken the existing evidence trust boundary.
+
+Test adversarially:
+
+* semantically excellent but unapproved source;
+* superseded source;
+* expired source;
+* wrong tenant;
+* sensitivity-restricted source;
+* old source version;
+* conflicting authority;
+* deleted source/chunk;
+* extremely high vector similarity from an unauthoritative document.
+
+None may enter Accepted Evidence merely because semantic similarity is high.
+
+Tenant isolation remains non-negotiable.
+
+PART H — PERFORMANCE
+
+Measure real retrieval latency.
+
+Report separately:
+
+lexical search
+vector search
+hybrid retrieval
+governance filtering
+EvidencePack assembly
+sufficiency evaluation
+
+Do not optimise prematurely.
+
+We need to understand whether KRS-first genuinely remains the appropriate fast path.
+
+PART I — DO NOT CHANGE THESE BOUNDARIES
+
+Do not:
+
+* replace KRS with OpenClaw;
+* integrate OpenClaw into UEE;
+* allow OpenClaw to determine authority;
+* remove EvidencePack;
+* change claim provenance architecture;
+* change evidence snapshots;
+* change Completed Work;
+* weaken tenant isolation;
+* bypass approved/current source filtering;
+* redesign specialist DNA;
+* create another execution engine.
+
+This sprint improves retrieval and establishes the escalation decision point.
+
+PART J — FINAL REPORT
+
+Answer categorically:
+
+1. Is semantic/vector retrieval now actually active in production KRS?
+2. Does KRS now use lexical + semantic retrieval together?
+3. How much did retrieval recall improve?
+4. Did precision materially deteriorate?
+5. Did retrieval latency materially increase?
+6. Can KRS reliably retrieve differently worded but semantically relevant organisational documents?
+7. Can KRS follow multi-document cross-reference chains?
+8. Can KRS detect that a cross-reference remains unresolved?
+9. Can KRS determine when external authoritative evidence is required but unavailable?
+10. Can semantic similarity ever bypass source approval/currentness/tenant/authority controls?
+11. What exactly constitutes SUFFICIENT evidence?
+12. Which conditions now produce an insufficient result?
+13. Which of those conditions should eventually trigger OpenClaw?
+14. After this work, what retrieval problems remain that OpenClaw genuinely solves better than KRS?
+15. Are there any retrieval capabilities we were planning to give OpenClaw that are now redundant because hybrid KRS handles them adequately?
+
+Then give one architectural verdict:
+
+KRS SUFFICIENT AS PRIMARY RETRIEVER — OPENCLAW ESCALATION STILL REQUIRED
+
+or
+
+KRS SUFFICIENT — OPENCLAW EVIDENCE DISCOVERY NOT JUSTIFIED
+
+or
+
+KRS INSUFFICIENT — ARCHITECTURE REQUIRES REASSESSMENT
+
+Do not choose the verdict before running the tests.
+
+One additional thing I want proved
+
+Before closing 29N.5, give us a side-by-side responsibility table for:
+
+CoS / Specialist DNA / KRS / Evidence Sufficiency Gate / OpenClaw (future) / NeedsOps Authority Gate / OpenAI / Completed Work
+
+For each, state exactly what it is allowed to decide and, equally importantly, what it is forbidden from deciding.
+
+That table becomes the architectural contract for 29N.6.

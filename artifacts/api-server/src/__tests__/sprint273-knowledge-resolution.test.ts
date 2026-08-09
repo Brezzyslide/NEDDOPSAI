@@ -45,6 +45,12 @@ vi.mock("../lib/ingestionQueue/index.js", () => ({
 
 vi.mock("@workspace/ai-gateway", () => ({
   createAIGateway: () => ({ process: mocks.gatewayProcess }),
+  // Sprint 29N.5: generateQueryEmbedding calls isOpenAIConfigured before attempting
+  // any embedding API call. Returning false causes a null embedding (lexical-only
+  // fallback) — tests remain deterministic and no OpenAI call is made.
+  isOpenAIConfigured:    vi.fn().mockReturnValue(false),
+  callOpenAIEmbeddings:  vi.fn(),
+  getEmbeddingDimensions: vi.fn().mockReturnValue(1536),
 }));
 
 vi.mock("../services/knowledgeCurationService.js", () => ({

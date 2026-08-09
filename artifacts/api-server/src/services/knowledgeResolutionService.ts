@@ -32,6 +32,37 @@ import { eq, and, inArray, desc } from "drizzle-orm";
 import { retrieveChunks, type RawChunk } from "./hybridRetrievalService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
+import { OpenAIEmbeddingProvider } from "../lib/embeddings/openaiEmbeddingProvider.js";
+import { EmbeddingError } from "../lib/embeddings/embeddingInterface.js";
+
+// ─── Query embedding generator ────────────────────────────────────────────────
+
+/**
+ * Generate a query embedding for hybrid retrieval.
+ *
+ * Fails soft: returns null when OpenAI is unavailable or embedding fails.
+ * KRS then falls back to lexical-only retrieval (hybridRetrievalService.ts:199-201).
+ * Retrieval is never aborted due to an embedding failure.
+ */
+const _embeddingProvider = new OpenAIEmbeddingProvider();
+
+async function generateQueryEmbedding(query: string): Promise<number[] | null> {
+  if (!_embeddingProvider.isActive()) return null;
+  try {
+    const result = await _embeddingProvider.generateEmbedding(query.slice(0, 8000));
+    return result.embedding;
+  } catch (err) {
+    if (err instanceof EmbeddingError && err.code === "PROVIDER_NOT_CONFIGURED") {
+      return null; // graceful — OPENAI_API_KEY not set
+    }
+    // Log but never abort retrieval
+    console.warn("[KRS] Query embedding failed — falling back to lexical-only retrieval:", {
+      code:    err instanceof EmbeddingError ? err.code : "UNKNOWN",
+      message: err instanceof Error ? err.message.slice(0, 200) : String(err),
+    });
+    return null;
+  }
+}
 
 // ─── Public Types ─────────────────────────────────────────────────────────────
 
@@ -79,6 +110,10 @@ export interface EvidencePackMetrics {
   cacheHit: boolean;
   /** Wall-clock milliseconds for the full resolution */
   retrievalMs: number;
+  /** Whether a query embedding was generated and used for semantic retrieval */
+  embeddingUsed: boolean;
+  /** Wall-clock milliseconds spent generating the query embedding (0 if not used) */
+  embeddingMs: number;
 }
 
 export interface EvidencePack {
@@ -326,6 +361,13 @@ export async function resolveEvidence(
   const seenChunkIds = new Set<string>();
   const allEvidenceChunks: EvidenceChunk[] = [];
 
+  // ── Generate query embedding for hybrid retrieval ──────────────────────────
+  // Generated once and reused for all retrieval calls in this execution.
+  // Fails soft: null = lexical-only fallback; retrieval is never aborted.
+  const embeddingStartMs = Date.now();
+  const queryEmbedding = await generateQueryEmbedding(userRequest);
+  const embeddingMs = Date.now() - embeddingStartMs;
+
   // ── Step 1: Organisation Library evidence via hybrid retrieval ─────────────
   // hybridRetrievalService filters: status=approved, isCurrent=true, scope=org_library
   //
@@ -342,7 +384,7 @@ export async function resolveEvidence(
     const libraryRaw = await retrieveChunks({
       organisationId,
       query:          userRequest,
-      queryEmbedding: null, // lexical-only; embedding generation wired separately
+      queryEmbedding,
       scopeMode:      "org_library",
       limit:          MAX_LIBRARY_CHUNKS,
     });
@@ -384,7 +426,7 @@ export async function resolveEvidence(
     const specialistRaw = await retrieveChunks({
       organisationId,
       query:          userRequest,
-      queryEmbedding: null,
+      queryEmbedding,
       scopeMode:      "specialist_scoped",
       specialistId:   input.specialistCode,
       limit:          10,
@@ -471,6 +513,8 @@ export async function resolveEvidence(
     selectedChunks: allEvidenceChunks.length,
     cacheHit: false,
     retrievalMs: Date.now() - startMs,
+    embeddingUsed: queryEmbedding !== null,
+    embeddingMs,
   };
 
   const pack = buildPack(executionId, organisationId, allEvidenceChunks, metrics);
@@ -530,7 +574,7 @@ async function writeKrsRetrievalAudit(
     chunkIds:            chunkIds                  as unknown as any,
     memoryIds:           []                        as unknown as any,
     taskUploadIds:       []                        as unknown as any,
-    retrievalMethod:     "lexical",
+    retrievalMethod:     pack.retrievalMetrics.embeddingUsed ? "hybrid" : "lexical",
     scoreMetadata:       { topScore, meanScore }   as unknown as any,
     rankingDetails:      []                        as unknown as any,
     reasonSelected:      {}                        as unknown as any,
@@ -643,6 +687,11 @@ export async function resolveConversationEvidence(input: {
   const seenChunkIds = new Set<string>();
   const allEvidenceChunks: EvidenceChunk[] = [];
 
+  // ── Generate query embedding (shared across all retrieval calls) ───────────
+  const convEmbeddingStartMs = Date.now();
+  const convQueryEmbedding = await generateQueryEmbedding(query);
+  const convEmbeddingMs = Date.now() - convEmbeddingStartMs;
+
   // ── Step 1: Organisation Library — full library search using the conversation query ─
   // Unlike task execution, conversation evidence always attempts library retrieval
   // (no gate condition needed — the query drives relevance scoring).
@@ -650,7 +699,7 @@ export async function resolveConversationEvidence(input: {
   const libraryRaw = await retrieveChunks({
     organisationId,
     query,
-    queryEmbedding: null,
+    queryEmbedding: convQueryEmbedding,
     scopeMode: "org_library",
     limit: MAX_LIBRARY_CHUNKS,
   });
@@ -682,7 +731,7 @@ export async function resolveConversationEvidence(input: {
     const specialistRaw = await retrieveChunks({
       organisationId,
       query,
-      queryEmbedding: null,
+      queryEmbedding: convQueryEmbedding,
       scopeMode: "specialist_scoped",
       specialistId: specialistCode,
       limit: 10,
@@ -710,6 +759,8 @@ export async function resolveConversationEvidence(input: {
     selectedChunks: sorted.length,
     cacheHit: false,
     retrievalMs,
+    embeddingUsed: convQueryEmbedding !== null,
+    embeddingMs: convEmbeddingMs,
   });
 
   _packCache.set(cacheKey, pack);

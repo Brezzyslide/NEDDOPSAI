@@ -91,3 +91,4 @@
 - [NeedsOps Sprint 29M Hardening](needsops-sprint29m-hardening.md) — retire→reject fix, auto-adopt memory, /members/me route, Knowledge Admin gated nav, AuditPage Timeline tab, 82 new tests
 - [NeedsOps Sprint 29M.2 Clarification Resume & Knowledge Nav](needsops-sprint29m2.md) — manifest null guard in UEE (pre-manifest checkpoint crash fix), Knowledge nav gated to admin/owner via /v1/me/organisations, memoryAdoptionPolicy module (5 governance-sensitive types, confidence gates)
 - [NeedsOps Sprint 29M.3 RBAC Hardening](needsops-sprint29m3.md) — "administrator" not "admin" (systemic fix), requireOrgRole canonical middleware, memory/approval role gates, SoD self-approval block, 6-role nav matrix, 28 new security tests, 4491 passing
+- [NeedsOps Sprint 29N.5 KRS Semantic Retrieval](needsops-sprint29n5.md) — hybrid KRS active (embedding wired), evidenceSufficiencyService escalation boundary, @workspace/ai-gateway mock must include isOpenAIConfigured, 69 new tests
