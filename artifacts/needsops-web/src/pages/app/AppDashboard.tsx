@@ -39,53 +39,63 @@ export default function AppDashboard() {
   const { data: orgData } = useQuery({
     queryKey: ["org", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 5 * 60_000,
   });
   const { data: membersData } = useQuery({
     queryKey: ["org-members", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/members`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 2 * 60_000,
   });
   const { data: packsData } = useQuery({
     queryKey: ["workforce-packs"],
     queryFn: () => apiFetch("/v1/workforce/packs").then(r => r.json()),
+    staleTime: 5 * 60_000,
   });
   const { data: specialistsData } = useQuery({
     queryKey: ["workforce-specialists-all"],
     queryFn: () => apiFetch("/v1/workforce/specialists").then(r => r.json()),
+    staleTime: 5 * 60_000,
   });
   const { data: tasksData } = useQuery({
     queryKey: ["tasks-recent", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/tasks`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 60_000,
   });
   const { data: approvalsData } = useQuery({
     queryKey: ["approvals-pending", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/approvals?state=pending`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 30_000,
   });
   // Sprint 3: plan + usage data
   const { data: subData } = useQuery({
     queryKey: ["subscription", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/subscription`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 5 * 60_000,
   });
   const { data: usageData } = useQuery({
     queryKey: ["usage", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/usage`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 5 * 60_000,
   });
   const { data: seatsData } = useQuery({
     queryKey: ["seats", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/seats`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 5 * 60_000,
   });
 
   // Sprint 14 — device connectivity
   const { data: devicesData } = useQuery({
     queryKey: ["devices", slug],
     queryFn: () => apiFetch(`/v1/organisations/${slug}/devices`).then(r => r.json()),
-    enabled: !!slug,
+    enabled: !!slug && slug !== "undefined",
+    staleTime: 25_000,
     refetchInterval: 30_000,
   });
   const deviceList: any[] = devicesData?.devices ?? [];
