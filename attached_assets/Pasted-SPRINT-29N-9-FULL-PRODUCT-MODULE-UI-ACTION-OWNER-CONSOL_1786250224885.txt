@@ -1,0 +1,617 @@
+SPRINT 29N.9 — FULL PRODUCT MODULE, UI ACTION & OWNER CONSOLE PRODUCTION AUDIT
+
+AUDIT / VERIFICATION ONLY. NO IMPLEMENTATION UNTIL THE REPORT IS COMPLETE.
+
+We now have a clean deterministic baseline: 4,959 passing / 0 failures.
+
+Before further OpenClaw work, perform a complete production audit of the NeedsOps product.
+
+I want to know whether every current module, submenu, tab, dashboard card, button, dropdown, action, console and administrative surface points to the correct production service/data and actually represents the state it claims to represent.
+
+This includes:
+
+* organisation-facing web application
+* owner/administrator experience
+* Platform/Owner Console
+* mobile where applicable
+* any admin-only surfaces
+
+This is not merely a dead-code audit.
+
+The question is:
+
+“If a real customer or platform owner clicks through NeedsOps today, is every visible surface correctly wired, correctly authorised, showing the right data, and capable of doing what its label promises?”
+
+⸻
+
+PART A — BUILD THE COMPLETE PRODUCT SURFACE INVENTORY
+
+Inspect the actual router, AppShell/navigation definitions and Platform Console navigation.
+
+Produce the complete current inventory of:
+
+* modules
+* routes
+* submenus
+* tabs
+* cards
+* tables
+* filters
+* buttons
+* dropdown actions
+* contextual menus
+* links
+* empty states
+* CTAs
+
+Do not rely on old Sprint 29L documentation. Rebuild the inventory from the current code after all subsequent changes.
+
+For every surface identify:
+
+UI component → API endpoint/query → service → DB/source → mutation if applicable
+
+⸻
+
+PART B — ORGANISATION APP
+
+Audit every current organisation module, including at minimum:
+
+Dashboard
+Inbox
+Active Work
+Notifications
+Workforce Chat
+Workforce
+Operations Centre
+Tasks
+Completed Work
+Library
+Memory/Admin Memory
+Blueprint Studio
+Governance
+Approvals
+Knowledge Health
+Audit Log / Timeline tab
+Team
+Plan
+Usage
+Organisation Settings
+Account Settings
+
+For each answer:
+
+1. What is it intended to do?
+2. What data does it actually load?
+3. Is that the correct canonical source?
+4. Are loading/error/empty states truthful?
+5. Do all visible buttons have working mutations?
+6. Do mutations refresh the correct queries afterwards?
+7. Are any buttons decorative/dead?
+8. Are any APIs wired but unreachable from UI?
+9. Does navigation point to the intended route?
+10. Do deep links work?
+
+⸻
+
+PART C — DASHBOARD AUDIT
+
+Treat Dashboard as a separate product audit.
+
+Inventory every:
+
+* metric
+* count
+* status card
+* recent work item
+* activity item
+* shortcut
+* chart
+* warning
+* CTA
+
+For each trace the exact data source.
+
+Prove that:
+
+* Active Work count means genuinely active work
+* Completed Work count means Completed Work
+* pending approvals means actual unresolved approvals
+* Workforce metrics come from the canonical workforce/runtime source
+* Usage numbers agree with Usage module
+* notification/inbox counts agree with their modules
+
+Identify stale metrics, placeholder values, hard-coded data or duplicated calculations.
+
+Click/route-test every Dashboard shortcut.
+
+⸻
+
+PART D — TASK / CHAT / ACTIVE WORK / COMPLETED WORK CONTINUITY
+
+Trace the customer workflow:
+
+Chat
+→ Task where applicable
+→ Active Work
+→ Completed Work
+→ Approval
+→ approved Completed Work
+→ download/export
+
+Prove IDs and relationships survive throughout.
+
+Verify:
+
+* a Chat-created Task appears in Tasks
+* active execution appears in Active Work
+* completed execution disappears from Active Work
+* corresponding Completed Work appears in Completed Work
+* awaiting approval appears in Inbox/Approvals according to current contract
+* approval changes status correctly
+* Notifications receives the informational event
+* View Work opens the correct item
+* PDF/DOCX download returns the pinned approved version
+
+Flag any duplicated or missing presentation.
+
+⸻
+
+PART E — EVERY BUTTON / MUTATION
+
+Build a button/action matrix across the product.
+
+Examples include but are not limited to:
+
+Create Task
+approve
+reject
+revise
+archive
+reopen
+restore version
+View Work
+download PDF
+download DOCX
+upload document
+remove document
+approve/reject knowledge where allowed
+member invite
+member remove
+role change
+specialist activate/deactivate
+blueprint create/edit/test/publish/archive
+memory correction/retire actions
+bulk approvals
+settings save
+profile save
+
+For each classify:
+
+WORKING
+
+BROKEN
+
+PARTIALLY WIRED
+
+DEAD UI
+
+API EXISTS BUT NO UI
+
+INTENTIONALLY READ-ONLY
+
+Do not infer success because a mutation function exists. Trace response handling, cache invalidation and final DB state.
+
+⸻
+
+PART F — ROLE-AWARE UX
+
+Use the six canonical organisation roles:
+
+owner
+administrator
+manager
+member
+viewer
+auditor
+
+Compare:
+
+UI visibility
+page access
+API permission
+mutation authority
+
+A hidden nav item must not be the only security boundary.
+
+Identify any remaining admin vs administrator drift.
+
+Check that read-only roles do not receive actionable controls which will simply 403.
+
+⸻
+
+PART G — PLATFORM / OWNER CONSOLE
+
+This part is critical.
+
+Audit the complete Platform Console / platform-owner experience.
+
+Determine exactly which role(s) can access it:
+
+platform_super_admin
+platform_admin
+and any other platform roles.
+
+Then verify every Platform Console module.
+
+At minimum:
+
+Organisations
+Trials
+Commercial
+Usage
+Staff
+Support
+Security
+Platform Settings
+Connector Fleet
+
+and every other currently registered Platform route/tab.
+
+⸻
+
+PART H — CAN PLATFORM OWNER SEE ALL ORGANISATIONS?
+
+Answer categorically:
+
+YES or NO.
+
+For authorised platform owner/super-admin:
+
+* does Organisations list every organisation?
+* pagination?
+* search?
+* status?
+* plan?
+* trial?
+* created date?
+* member count?
+* usage?
+* enabled capabilities?
+* subscription/entitlement state?
+
+Test with multiple organisations in the DB.
+
+Verify that organisation filtering is intentional and not accidentally using the current user’s membership list.
+
+Also verify ordinary organisation owners cannot see other organisations.
+
+⸻
+
+PART I — PLATFORM ORGANISATION DETAIL
+
+Select an organisation from Platform Console.
+
+Determine what the platform owner can inspect.
+
+Audit whether they can see:
+
+* organisation identity/profile
+* subscription/plan
+* trial
+* members
+* active users
+* Workforce status
+* activated specialists
+* Tasks
+* execution health
+* Completed Work metadata
+* usage
+* storage/knowledge usage
+* connector/device status
+* error/health information
+* entitlement state
+* audit/security signals
+
+Distinguish between:
+
+operational metadata
+
+and
+
+customer content
+
+Do not assume platform staff should see customer document/work content merely because they are platform admins.
+
+Report the actual privacy boundary.
+
+⸻
+
+PART J — USAGE & COMMERCIAL ACCURACY
+
+Audit organisation Usage and Platform Usage together.
+
+Trace every usage metric to its real accounting source.
+
+At minimum verify:
+
+* messages
+* LLM/model usage
+* specialist executions
+* Tasks
+* Completed Work
+* evidence/KRS usage if tracked
+* storage
+* knowledge sources
+* exports
+* connectors/devices
+* action/tool execution if tracked
+* subscription limits
+
+Determine whether Platform Usage can:
+
+* aggregate across all organisations
+* drill down by organisation
+* filter date range
+* distinguish plan/tier
+* export CSV where advertised
+
+Compare Platform totals with the sum of organisation-level usage for a controlled period.
+
+Any discrepancy must be explained.
+
+⸻
+
+PART K — PLAN / TRIAL / ENTITLEMENT CONTINUITY
+
+Trace:
+
+Platform plan configuration
+→ organisation subscription/trial
+→ entitlements
+→ UI feature availability
+→ execution gates
+→ usage limits
+
+Verify there is one coherent source of truth.
+
+Check for old entitlement coupling, particularly:
+
+execution.openclaw_runtime
+
+Do not modify it in this audit, but identify every place where it still affects Cloud execution.
+
+⸻
+
+PART L — PLATFORM COMMERCIAL CONSOLE
+
+Audit what Commercial can actually manage today:
+
+* plans
+* plan versions
+* trial duration
+* feature entitlements
+* usage dimensions
+* organisation overrides
+* pricing if present
+
+Separate:
+
+FULLY MANAGEABLE
+
+READ ONLY
+
+PLACEHOLDER
+
+NOT IMPLEMENTED
+
+Do not let the UI imply editable functionality where only read endpoints exist.
+
+⸻
+
+PART M — PLATFORM STAFF & SECURITY
+
+Verify:
+
+* staff listing
+* platform role grant/revoke
+* role enforcement
+* security events
+* flagged devices
+* support access
+* audit trail for platform actions
+
+Test that organisation roles cannot grant themselves platform roles.
+
+Confirm the emergency Clerk platformAdmin bootstrap separately.
+
+⸻
+
+PART N — CONNECTOR FLEET
+
+Audit Platform Connector Fleet versus organisation Devices.
+
+Verify:
+
+* org Devices shows only that organisation
+* Platform Fleet shows the cross-org fleet to authorised platform roles
+* status is live/real
+* rename/revoke/enable/disable/rotate actions hit correct devices
+* cross-tenant mutation is impossible from org routes
+
+OpenClaw evidence-discovery work planned for tomorrow must not change these results.
+
+⸻
+
+PART O — MOBILE PARITY
+
+Do a lighter audit of current mobile surfaces.
+
+Verify its current five-tab or updated navigation against APIs:
+
+Home
+Work
+Approvals
+Chat
+Profile
+
+Identify:
+
+* broken actions
+* desktop/web-only features intentionally unavailable
+* any endpoints mobile still calls that were removed during cleanup
+
+Do not expand mobile functionality in this audit.
+
+⸻
+
+PART P — API / UI ORPHAN ANALYSIS
+
+Report:
+
+VISIBLE UI WITH NO FUNCTIONAL API
+
+LIVE API WITH NO UI CALLER
+
+ROUTE WITH NO CALLERS
+
+PAGE WITH NO NAV/DEEP-LINK PURPOSE
+
+DUPLICATE DATA SURFACE
+
+Do not automatically delete anything.
+
+This feeds the next cleanup decision.
+
+⸻
+
+PART Q — TENANT & PRIVACY TEST
+
+Test with at least:
+
+* Org A owner
+* Org A member
+* Org B owner
+* platform administrator/super-admin
+
+Verify:
+
+* Org A never sees Org B through normal organisation APIs
+* Platform Console can see authorised cross-org operational information
+* Platform access does not accidentally bypass intended customer-content privacy
+* RLS remains active
+
+⸻
+
+PART R — LIVE DATA CONSISTENCY
+
+Pick at least two real test organisations.
+
+Compare UI/API/DB for:
+
+* member counts
+* task counts
+* active execution counts
+* completed work counts
+* pending approvals
+* knowledge source counts
+* usage
+* subscription/trial status
+
+Report any mismatch between what the user sees and what the canonical database says.
+
+⸻
+
+PART S — CLICK-THROUGH JOURNEYS
+
+Trace at least these journeys end-to-end:
+
+S1 Owner creates organisation → invites user → user joins.
+
+S2 Member asks Chat question → transient answer.
+
+S3 Member requests professional work → Task → Completed Work.
+
+S4 Evidence-bearing review → KRS → Completed Work → approval → export.
+
+S5 Owner uploads Library source → processing → usable.
+
+S6 Admin manages specialist/Workforce.
+
+S7 Admin reviews governance queue.
+
+S8 Platform owner opens Organisations → selects tenant → inspects plan/usage/health.
+
+S9 Platform staff adjusts trial where permitted.
+
+S10 Organisation owner checks Usage and compares against Platform’s view.
+
+For every journey state exactly where it breaks, if it breaks.
+
+⸻
+
+PART T — FINAL MODULE SCORECARD
+
+Give every module:
+
+GREEN — fully wired and correctly sourced
+
+AMBER — works but has a defect/gap
+
+RED — visible functionality does not work or is materially misleading
+
+GREY — intentionally inactive/future
+
+Include severity and recommended fix priority.
+
+⸻
+
+PART U — DO NOT IMPLEMENT DURING AUDIT
+
+Do not fix defects while exploring them.
+
+We just established a clean 4,959 / 0 deterministic baseline.
+
+Preserve that baseline while auditing.
+
+After the report, we will decide which findings merit correction.
+
+The only exception is if a test instrument itself requires a non-production helper. Do not modify product behaviour.
+
+⸻
+
+REQUIRED FINAL ANSWERS
+
+Answer these categorically:
+
+1. Are all current organisation modules correctly wired?
+2. Are all visible buttons/actions functional?
+3. Is Dashboard showing canonical data?
+4. Does Active Work show genuine active execution?
+5. Do Inbox and Notifications have clean non-duplicated semantics?
+6. Does Completed Work correctly view/approve/export the pinned version?
+7. Is Library working according to the new ingestion model?
+8. Are Memory and Blueprint visibility/access aligned with roles?
+9. Is Governance correctly permissioned?
+10. Are Team actions complete and functional?
+11. Does Usage reflect actual accounting data?
+12. Can a platform owner see all organisations?
+13. Can they inspect organisation plan/trial/usage/health?
+14. Are Platform Console totals accurate?
+15. Are Platform Console buttons/actions functional?
+16. Is cross-tenant isolation still correct?
+17. Are any visible surfaces placeholders pretending to work?
+18. Are any production APIs orphaned?
+19. Are any duplicate modules still confusing responsibility?
+20. If we launched today, what are the five highest-risk product-surface failures?
+
+Final verdict must be one:
+
+PRODUCTION UI & CONSOLES COHERENT — READY
+
+FUNCTIONAL WITH FIXES REQUIRED
+
+NOT READY — MATERIAL PRODUCT WIRING DEFECTS
+
+INSUFFICIENT LIVE EVIDENCE
+
+Stop after the report. Do not im
