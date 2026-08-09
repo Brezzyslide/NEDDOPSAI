@@ -148,9 +148,9 @@ export default function ActiveWorkPage() {
   const totals = activeData?.totals ?? { tasks: 0, specialistRuns: 0, executionIntents: 0 };
 
   // Stats derived from the unified active-executions response
-  const inProgressCount  = allActive.filter(e =>
-    ["executing", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"].includes(e.status)
-  ).length;
+  const IN_PROGRESS_STATUSES = ["executing", "approved", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"];
+
+  const inProgressCount  = allActive.filter(e => IN_PROGRESS_STATUSES.includes(e.status)).length;
   const awaitingCount    = allActive.filter(e => e.status === "awaiting_approval").length;
   const dispatchedCount  = allActive.filter(e => e.status === "dispatched").length;
   const totalCount       = allActive.length;
@@ -159,7 +159,7 @@ export default function ActiveWorkPage() {
   function matchesFilter(status: string): boolean {
     if (filter === "all") return true;
     if (filter === "in_progress")
-      return ["executing", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"].includes(status);
+      return IN_PROGRESS_STATUSES.includes(status);
     if (filter === "awaiting_approval") return status === "awaiting_approval";
     if (filter === "completed") return status === "dispatched";
     if (filter === "failed") return false; // failed tasks not returned by active-executions

@@ -45,6 +45,7 @@ const ACTIVE_TASK_STATES = [
   "queued",
   "planning",
   "awaiting_approval",
+  "approved",
   "executing",
 ] as const;
 
