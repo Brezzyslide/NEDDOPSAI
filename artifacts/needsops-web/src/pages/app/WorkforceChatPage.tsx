@@ -64,16 +64,23 @@ function TaskProposalCard({
   onCreateTask,
   onContinue,
   creating,
+  existingTaskId,
 }: {
   data: TaskProposalData;
   onCreateTask: (title: string, summary: string) => void;
   onContinue: () => void;
   creating: boolean;
+  existingTaskId?: string | null;
 }) {
   return (
     <div className="mt-3 bg-[#0B1829] border border-[#00D4FF]/30 rounded-xl p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <span className="text-[#00D4FF] text-xs font-bold uppercase tracking-wider">Proposed Task</span>
+        <span className="text-[#00D4FF] text-xs font-bold uppercase tracking-wider">
+          {existingTaskId ? "Task Created" : "Proposed Task"}
+        </span>
+        {existingTaskId && (
+          <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400">✓ Linked</span>
+        )}
       </div>
       <p className="text-[#E2E8F0] font-semibold text-sm">{data.title}</p>
       {data.suggestedRoles?.filter(r => r !== "chief_of_staff").length > 0 && (
@@ -94,14 +101,16 @@ function TaskProposalCard({
           disabled={creating}
           className="px-3 py-1.5 bg-[#00D4FF] text-[#0B1829] text-xs font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
         >
-          {creating ? "Creating…" : "Create task"}
+          {creating ? "Opening…" : existingTaskId ? "View task →" : "Create task"}
         </button>
-        <button
-          onClick={onContinue}
-          className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#E2E8F0] border border-[#1E3A5F] rounded-lg transition-colors"
-        >
-          Continue discussing
-        </button>
+        {!existingTaskId && (
+          <button
+            onClick={onContinue}
+            className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#E2E8F0] border border-[#1E3A5F] rounded-lg transition-colors"
+          >
+            Continue discussing
+          </button>
+        )}
       </div>
     </div>
   );
@@ -112,11 +121,13 @@ function MessageBubble({
   onCreateTask,
   onContinueDiscussing,
   creatingTask,
+  existingTaskId,
 }: {
   msg: Message;
   onCreateTask: (title: string, summary: string) => void;
   onContinueDiscussing: () => void;
   creatingTask: boolean;
+  existingTaskId?: string | null;
 }) {
   const isUser = msg.senderType === "user";
   const isSystem = msg.senderType === "system";
@@ -157,6 +168,7 @@ function MessageBubble({
               onCreateTask={onCreateTask}
               onContinue={onContinueDiscussing}
               creating={creatingTask}
+              existingTaskId={existingTaskId}
             />
           )}
         </div>
@@ -189,6 +201,8 @@ export default function WorkforceChatPage() {
   const qc = useQueryClient();
 
   const [conversationId, setConversationId] = useState<string | null>(null);
+  /** primaryTaskId of the current conversation — set when loaded or when auto-dispatch fires */
+  const [linkedTaskId, setLinkedTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -216,6 +230,10 @@ export default function WorkforceChatPage() {
       .then(d => {
         if (d.conversation) {
           setConversationId(d.conversation.id);
+          // Capture any already-linked task (e.g. from a previous auto-dispatch in this conversation)
+          if (d.conversation.primaryTaskId) {
+            setLinkedTaskId(d.conversation.primaryTaskId);
+          }
           // Load existing messages
           apiFetch(`/v1/organisations/${slug}/conversations/${d.conversation.id}/messages`)
             .then(r => r.json())
@@ -319,6 +337,8 @@ export default function WorkforceChatPage() {
               dispatched: boolean; requiresApproval: boolean;
             };
             setAutoCreatedTask(auto);
+            // Track the linked task so proposal cards know a task already exists
+            setLinkedTaskId(auto.taskId);
           } else if (evt.type === "done") {
             setIsStreaming(false);
           } else if (evt.type === "error") {
@@ -354,6 +374,13 @@ export default function WorkforceChatPage() {
 
   const handleCreateTask = async (title: string, summary: string) => {
     if (!conversationId || !slug) return;
+
+    // If a task is already linked to this conversation, navigate there directly
+    if (linkedTaskId) {
+      setLocation(`/app/${slug}/tasks/${linkedTaskId}`);
+      return;
+    }
+
     setCreatingTask(true);
     try {
       const r = await apiFetch(
@@ -361,7 +388,33 @@ export default function WorkforceChatPage() {
         { method: "POST", body: JSON.stringify({ title, description: summary }) }
       );
       const d = await r.json();
+      if (r.status === 409 && d?.error?.code === "DUPLICATE_TASK") {
+        // A task was already created for this conversation (e.g. by auto-dispatch).
+        // Navigate to it if we have the ID, otherwise reload the conversation to fetch it.
+        if (linkedTaskId) {
+          setLocation(`/app/${slug}/tasks/${linkedTaskId}`);
+        } else {
+          // Re-fetch the conversation to get the primaryTaskId, then navigate
+          const conv = await apiFetch(`/v1/organisations/${slug}/conversations`, {
+            method: "POST",
+            body: JSON.stringify({ conversationType: "general_workforce", title: "Workforce Chat" }),
+          }).then(res => res.json()).catch(() => null);
+          const taskId = conv?.conversation?.primaryTaskId;
+          if (taskId) {
+            setLinkedTaskId(taskId);
+            setLocation(`/app/${slug}/tasks/${taskId}`);
+          } else {
+            setError("A task already exists for this conversation. Check Active Work to find it.");
+          }
+        }
+        return;
+      }
+      if (!r.ok) {
+        setError(d?.error?.message ?? `Failed to create task (${r.status}).`);
+        return;
+      }
       if (d.task) {
+        setLinkedTaskId(d.task.id);
         setLocation(`/app/${slug}/tasks/${d.task.id}`);
       }
     } catch {
@@ -422,6 +475,7 @@ export default function WorkforceChatPage() {
               onCreateTask={handleCreateTask}
               onContinueDiscussing={() => setInput("Tell me more about the options")}
               creatingTask={creatingTask}
+              existingTaskId={linkedTaskId}
             />
           ))}
 
