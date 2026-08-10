@@ -1,74 +1,105 @@
 ---
-name: NeedsOps Sprint 29O.1 — Mac OpenClaw Connectivity
-description: Evidence discovery endpoint on the Mac broker, Replit client method, CloudOpenClawDiscoveryAdapter, orchestrator wiring.
+name: NeedsOps Sprint 29O.1 Mac OpenClaw Connectivity
+description: Discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; real CLI contract; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]
 ---
 
-## What was built
+## Summary
 
-**Mac broker** (`artifacts/desktop-connector/src/broker/routes/evidence.ts`):
-- `POST /v1/evidence/discover` — authenticated via existing Bearer middleware
-- Validates governed contract fields; caps timeoutMs/hops/sources/passages
-- In live mode: calls `POST /agent/discover` on the local OpenClaw bridge URL
-- When OpenClaw returns nothing: returns a synthetic test candidate (labelled as fixture)
-- Mounted under `auth` middleware in `server.ts`
+Sprint to wire real Mac-local OpenClaw evidence discovery into the NeedsOps broker, replacing simulated/stub behaviour.
 
-**Replit client** (`lib/openclaw/src/runtimeBrokerClient.ts`):
-- `discoverEvidence(request: BrokerEvidenceDiscoveryRequest): Promise<BrokerEvidenceDiscoveryResponse>`
-- Posts to `/v1/evidence/discover` on the broker
-- Non-fatal failure — returns empty response (never throws)
-- Types added to `lib/openclaw/src/types.ts` and exported from `index.ts`
+## Proven OpenClaw CLI contract (OpenClaw 2026.7.2 — f2af4e9)
 
-**Cloud adapter** (`artifacts/api-server/src/lib/evidenceDiscovery/CloudOpenClawDiscoveryAdapter.ts`):
-- Implements `IEvidenceDiscoveryAdapter`
-- `isAvailable()` returns `true` only when `state === "connected"` (health check confirmed, not just "connecting")
-- Maps `BrokerCandidateEvidence` → `CandidateEvidence` (narrows sourceType/authorityType)
-- Singleton `cloudOpenClawDiscoveryAdapter` exported
+```
+WORKING:   openclaw agent --agent main --message-file <tmpfile> --json
+INVALID:   openclaw agent --mode rpc --json   ← --mode flag does not exist on this version
+```
 
-**Orchestrator** (`artifacts/api-server/src/lib/evidenceDiscovery/discoveryOrchestrator.ts`):
-- `REGISTERED_ADAPTERS` constant removed; replaced with `getRegisteredAdapters()` function
-- `selectAdapter` falls back to `nullDiscoveryAdapter` (not `adapters[0]`) when nothing available
-- `cloudOpenClawDiscoveryAdapter` registered before `nullDiscoveryAdapter`
+Output is a **single JSON object** to stdout (NOT streaming newline-delimited events):
+```json
+{
+  "runId":  "<string>",
+  "status": "ok",
+  "result": {
+    "payloads": [
+      { "text": "{\"candidates\":[...]}" }
+    ]
+  }
+}
+```
 
-## Critical rules
+The assistant response lives in `result.payloads[].text`. That text is JSON-parsed to obtain `{ "candidates": [...] }`.
 
-- `isAvailable()` MUST require `state === "connected"`, not "connecting" — otherwise tests fail because the adapter name leaks into results even when broker is unreachable.
-- `selectAdapter` fallback MUST be `nullDiscoveryAdapter` explicitly — NOT `adapters[0]` — because `adapters[0]` is now `cloudOpenClawDiscoveryAdapter` and tests check for `"null_no_runtime"` adapter name on unavailable path.
-- `IGatewayAdapter` lives in `broker/types.ts`, NOT `broker/gatewayAdapter.ts` (pre-existing TS error in existing routes is left as-is).
-- `config.gatewayUrl` is `string | null` in `BrokerConfig` — must guard before calling `callOpenClawDiscover`.
+**Why:** Live Mac proof showed spawn mode has no persistent HTTP server on 19001 and no `--mode` flag. The `--agent main --message-file` command is the only confirmed working interface.
 
-## Replit secrets required (exact names)
+## Spawn-mode implementation (evidence.ts)
 
-| Secret | Value |
-|--------|-------|
-| `OPENCLAW_RUNTIME_URL` | Cloudflare tunnel HTTPS URL (e.g. `https://xyz.trycloudflare.com`) |
-| `OPENCLAW_AUTH_TOKEN_REF` | `OPENCLAW_BROKER_TOKEN` (name of the var holding the actual token) |
-| `OPENCLAW_BROKER_TOKEN` | Same value as `BROKER_AUTH_TOKEN` on the Mac |
+- Write governed instruction to `os.tmpdir()/needsops-discovery-<uuid>.txt`
+- Spawn `openclaw agent --agent main --message-file <tmpfile> --json` with `stdio: ["ignore", "pipe", "pipe"]`
+- Collect all stdout into a buffer (no streaming events)
+- On exit: JSON-parse top-level, extract `result.payloads[].text`, JSON-parse payload to get `{ candidates: [] }`
+- Validate/filter candidates with `validateAndFilterCandidates()`
+- Always `unlinkSync(tmpFile)` in settle callback
 
-## Mac env vars required
+## Failure behaviour (all explicit, no synthetic fallback)
 
-| Var | Value |
-|-----|-------|
-| `BROKER_AUTH_TOKEN` | 64-char random hex — same as `OPENCLAW_BROKER_TOKEN` on Replit |
-| `OPENCLAW_WEBHOOK_SECRET` | 64-char random hex (for outbound webhook signing) |
-| `OPENCLAW_GATEWAY_MODE` | `live` (not `simulated`) |
-| `OPENCLAW_LIVE_MODE` | `spawn` (default) or `bridge-http` |
-| `OPENCLAW_BIN_PATH` | path to openclaw binary (default: `openclaw` on PATH) |
+| Condition | openClawStatus | candidates |
+|-----------|----------------|------------|
+| Binary not found / spawn error | unavailable | [] |
+| Temp file write failure | unavailable | [] |
+| Killed by signal / timeout | unavailable | [] |
+| Non-zero exit code | unavailable | [] |
+| stdout not valid JSON | unavailable | [] |
+| result.payloads missing/empty | unavailable | [] |
+| payload.text not valid JSON | **available** | [] |
+| payload has no candidates array | **available** | [] |
+| candidate fails validation | candidate dropped | remaining |
+| connectivity_test retrievalMethod | candidate rejected | remaining |
 
-## Spawn-mode correction (post-proof)
+`available` for the last two: OpenClaw executed successfully but the assistant text was not machine-readable — distinguishes "binary unreachable" from "binary ran but returned nothing usable".
 
-After live Mac proof confirmed spawn mode has no persistent HTTP server on 19001, replaced bridge-http-only implementation with real spawn-mode discovery:
+## Discovery instruction output format
 
-- `callSpawnDiscover()` — spawns `openclaw agent --mode rpc --json`, writes `{ action: "evidence_discovery", ... }` to stdin, collects newline-delimited JSON events from stdout, finds `discovery_result` or `completed` event, validates candidates, enforces timeout with SIGTERM+SIGKILL.
-- `callBridgeDiscover()` — bridge-http path, returns unavailable on 404 or non-JSON — NO synthetic fallback.
-- `validateAndFilterCandidates()` — drops missing fields, rejects `retrievalMethod:"connectivity_test"`, corrects wrong passageHash, stamps organisationId/executionId from request.
-- `buildDiscoveryInstruction()` — governed prompt with all parameters, explicit "discovery only" rules, required JSON output schema.
-- Synthetic test candidate REMOVED from live mode entirely.
-- Simulated mode: `{ candidates: [], openClawStatus: "simulated" }` — no fake data.
-- `openClawStatus:"available"` when OpenClaw ran (even 0 valid candidates); `"unavailable"` only on crash/timeout/spawn failure.
+The instruction asks OpenClaw to return `{"candidates":[...]}` as plain JSON. No `discovery_result` event language. No `--mode rpc` references. Verified with test 36: instruction must contain `"candidates"` and must NOT contain `discovery_result`.
 
-32 new tests in `artifacts/desktop-connector/src/__tests__/evidence-discovery.test.ts` — all pass.
+## Candidate validation rules
+
+- Required string fields: sourceTitle, supportingPassage, passageHash, retrievalMethod, retrievalTimestamp, contentType, accessLocation
+- `retrievalMethod:"connectivity_test"` always rejected in live mode
+- passageHash recomputed from supportingPassage if wrong (SHA-256)
+- openClawConfidence and relevanceScore clamped to [0, 1]
+- organisationId and executionId stamped from request, never trusted from OpenClaw output
+- discoveryId generated fresh if absent
+
+## isAvailable() / selectAdapter rules
+
+- `isAvailable()` returns true only when `connectionStatus.state === "connected"` (not "connecting")
+- `selectAdapter` in discoveryOrchestrator falls back to `nullDiscoveryAdapter` explicitly — never `adapters[0]`
 
 ## Test count
 
-Desktop-connector: 183 passing / 18 failing (all 18 pre-existing in e2e.test.ts, routes.test.ts, validation.test.ts — my evidence-discovery.test.ts: 32/32).
-Api-server: 4757 passing / 4 failing (pre-existing pdf-parse failures).
+Desktop-connector: 36 new tests in evidence-discovery.test.ts — all pass.
+Pre-existing failures: 18 (in e2e.test.ts, routes.test.ts, validation.test.ts — unrelated).
+Api-server: ~5000 passing (pre-existing pdf-parse failures separate).
+
+## Next step before Cloudflare tunnel
+
+Run the curl command below against local broker to confirm spawn-mode discovery returns real candidates or an honest empty result:
+
+```bash
+curl -s -X POST http://127.0.0.1:19002/v1/evidence/discover \
+  -H "Authorization: Bearer <BROKER_AUTH_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "organizationId":  "test-org-001",
+    "executionId":     "test-exec-003",
+    "specialistCode":  "chief_of_staff",
+    "searchObjective": "Find one known document and return one verbatim passage.",
+    "maxHops": 1, "maxSources": 1, "maxPassages": 1,
+    "timeoutMs": 45000,
+    "allowExternalWebSearch": false
+  }' | jq '{openClawStatus, failureReason, candidates: [.candidates[] | {sourceTitle, retrievalMethod}]}'
+```
+
+Success: `"openClawStatus": "available"` and no `retrievalMethod: "connectivity_test"`.
+If status is `"available"` but candidates empty + failureReason contains "not valid JSON": OpenClaw ran but didn't return `{"candidates":[...]}` — adjust the output format prompt.
+If status is `"unavailable"` + failureReason contains exit code: OpenClaw exited non-zero — check OpenClaw logs.

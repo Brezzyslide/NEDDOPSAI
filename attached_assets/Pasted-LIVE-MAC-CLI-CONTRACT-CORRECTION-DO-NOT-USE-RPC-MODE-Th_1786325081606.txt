@@ -1,0 +1,75 @@
+LIVE MAC CLI CONTRACT CORRECTION — DO NOT USE RPC MODE
+
+The implementation description still assumes an OpenClaw CLI contract that does not exist on the actual NeedsOps Mac runtime.
+
+We have L4 operator proof from the installed version:
+
+OpenClaw 2026.7.2 (f2af4e9)
+
+The following command is INVALID on this machine:
+
+openclaw agent --mode rpc --json
+
+Actual runtime returns:
+
+OpenClaw does not recognize option "--mode"
+
+The proven working command is:
+
+openclaw agent --agent main --message "<prompt>" --json
+
+It successfully called OpenAI and returned NEEDSOPS_OPENAI_OK.
+
+Its output is a single JSON result object, with the assistant output available under the normal result payload structure, e.g.:
+
+result.payloads[].text
+
+It does NOT currently emit newline-delimited events with:
+
+type: "discovery_result"
+
+Required fix
+
+Update spawn-mode evidence discovery to use the actual installed CLI contract:
+
+openclaw agent --agent main --message-file <temporary-governed-prompt-file> --json
+
+Prefer --message-file because the governed evidence-discovery instruction is multiline and may contain references/quotes.
+
+If --message-file is unsuitable, use --message, but do not use unsupported --mode rpc.
+
+Parse the normal OpenClaw JSON response.
+
+Extract the assistant-visible payload from the actual result structure, then JSON-parse that assistant payload into the existing BrokerCandidateEvidence[].
+
+The discovery prompt must instruct the agent to return only valid machine-readable JSON, for example:
+
+{ "candidates": [...] }
+
+Do not expect a discovery_result streaming event unless you first prove that the installed CLI supports such an event.
+
+Failure behaviour
+CLI non-zero exit → unavailable
+timeout → unavailable
+output JSON malformed → candidates [], typed parsing failure
+assistant payload malformed → candidates []
+candidate malformed → reject candidate
+no synthetic fallback in live mode
+Test against the real CLI shape
+
+Add a fixture matching the actual successful OpenClaw output structure observed on the Mac:
+
+top-level runId
+status: "ok"
+result.payloads[]
+payload text
+
+Then prove that a payload containing:
+
+{"candidates":[...]}
+
+becomes real broker candidates.
+
+After fixing this, give us the same localhost /v1/evidence/discover curl test again.
+
+Do not proceed to Cloudflare until this real Mac CLI call returns a non-synthetic candidate or an honest zero-candidate result.

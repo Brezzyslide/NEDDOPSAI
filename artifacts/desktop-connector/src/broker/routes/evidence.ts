@@ -1,21 +1,46 @@
 /**
- * POST /v1/evidence/discover — Sprint 29O.1 (corrected spawn-mode implementation)
+ * POST /v1/evidence/discover — Sprint 29O.1 (real CLI contract implementation)
  *
  * Mac-side evidence discovery endpoint.  The NeedsOps API (Replit) sends a
- * governed discovery request; this route spawns the local OpenClaw binary in
- * RPC mode, collects structured candidate evidence, validates each record, and
- * returns raw CandidateEvidence[].
+ * governed discovery request; this route spawns the local OpenClaw binary,
+ * collects structured candidate evidence, validates each record, and returns
+ * raw CandidateEvidence[].
+ *
+ * ── Proven OpenClaw CLI contract (OpenClaw 2026.7.2) ─────────────────────────
+ *
+ *   WORKING COMMAND:
+ *     openclaw agent --agent main --message-file <tmpfile> --json
+ *
+ *   INVALID (do not use):
+ *     openclaw agent --mode rpc --json   ← OpenClaw does not recognise --mode
+ *
+ *   Output: a single JSON object written to stdout (not streaming events):
+ *     {
+ *       "runId":  "<string>",
+ *       "status": "ok",
+ *       "result": {
+ *         "payloads": [
+ *           { "text": "{\"candidates\":[...]}" }
+ *         ]
+ *       }
+ *     }
+ *
+ *   The assistant's response lives in result.payloads[].text.
+ *   We JSON-parse that text to obtain { "candidates": [...] }.
  *
  * ── Mode behaviour ────────────────────────────────────────────────────────────
  *
  *   simulated       Config.gatewayMode !== "live".  Returns candidates:[] with
  *                   openClawStatus:"simulated".  Clearly labelled, no fake data.
  *
- *   live / spawn    Spawns `openclaw agent --mode rpc --json`, writes a
- *                   governed evidence_discovery request to stdin, reads
- *                   newline-delimited JSON events from stdout, finds the
- *                   discovery_result event, validates and returns candidates.
- *                   On timeout or parse failure: candidates:[], status:"unavailable".
+ *   live / spawn    Writes the governed instruction to a temp file.
+ *                   Spawns `openclaw agent --agent main --message-file <f> --json`.
+ *                   Collects all stdout into a buffer.
+ *                   On exit: JSON-parses the top-level result, extracts
+ *                   result.payloads[].text, JSON-parses that to { candidates }.
+ *                   On timeout: SIGTERM then SIGKILL, returns unavailable.
+ *                   On any parsing failure: candidates:[], unavailable/available
+ *                   (see failure table in callSpawnDiscover).
  *
  *   live / bridge   Calls POST /agent/discover on the bridge URL.
  *                   If OpenClaw does not expose that endpoint (404, network
@@ -38,6 +63,9 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID, createHash } from "crypto";
 import { spawn } from "node:child_process";
+import { writeFileSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BrokerConfig, IGatewayAdapter } from "../types.js";
 import type pino from "pino";
 
@@ -193,7 +221,7 @@ export function createEvidenceRouter(
       result = await callBridgeDiscover(params, config.gatewayUrl, logger);
       result.discoveryDurationMs = Date.now() - startMs;
     } else {
-      // ── Spawn: invoke OpenClaw CLI via RPC stdin/stdout ────────────────────
+      // ── Spawn: invoke OpenClaw CLI with --message-file ────────────────────
       result = await callSpawnDiscover(params, config.openclawBin, logger);
       result.discoveryDurationMs = Date.now() - startMs;
     }
@@ -216,63 +244,77 @@ export function createEvidenceRouter(
 // ─── Spawn-mode discovery ─────────────────────────────────────────────────────
 
 /**
- * Spawn `openclaw agent --mode rpc --json`, write a governed evidence_discovery
- * request to stdin, collect newline-delimited JSON events from stdout, find the
- * discovery_result event, and return validated candidates.
+ * Invoke `openclaw agent --agent main --message-file <tmpfile> --json`.
  *
- * On timeout the process is sent SIGTERM then SIGKILL.
- * On any failure: candidates:[], openClawStatus:"unavailable".
- * Synthetic / connectivity-test candidates are NEVER injected.
+ * This matches the proven CLI contract for OpenClaw 2026.7.2:
+ *   - The binary does NOT support --mode rpc
+ *   - The governed instruction is written to a temp file (safe for multiline/quotes)
+ *   - OpenClaw writes a single JSON object to stdout (not streaming events)
+ *   - The assistant payload is in result.payloads[].text
+ *   - That text is JSON-parsed to get { "candidates": [...] }
+ *
+ * Failure behaviour:
+ *   - Binary not found / spawn error     → unavailable
+ *   - Non-zero exit code                 → unavailable
+ *   - Killed by signal / timeout         → unavailable
+ *   - stdout not valid JSON              → unavailable
+ *   - result.payloads missing/empty      → unavailable
+ *   - payload.text not valid JSON        → available, candidates:[] (OpenClaw ran)
+ *   - payload has no candidates array    → available, candidates:[]
+ *   - candidate fails validation         → candidate dropped
+ *
+ * Synthetic / connectivity-test candidates are NEVER returned in live mode.
+ * The temp file is always deleted after the process exits.
  */
 export async function callSpawnDiscover(
   params: DiscoveryParams,
   openclawBin: string,
   logger: pino.Logger,
 ): Promise<DiscoveryBrokerResponse> {
-  const sessionId = randomUUID();
+  // ── Write governed instruction to a temp file ─────────────────────────────
+  const instruction = buildDiscoveryInstruction(params);
+  const tmpFile     = join(tmpdir(), `needsops-discovery-${randomUUID()}.txt`);
 
-  // Build the RPC request
-  const rpcRequest = {
-    action:          "evidence_discovery",
-    sessionId,
-    executionId:     params.executionId,
-    tenantId:        params.organizationId,
-    discoveryParams: {
-      specialistCode:         params.specialistCode,
-      searchObjective:        params.searchObjective,
-      unresolvedReferences:   params.unresolvedRefs,
-      allowedDiscoveryScope:  params.allowedDiscoveryScope,
-      allowExternalWebSearch: params.allowExternal,
-      maxHops:                params.maxHops,
-      maxSources:             params.maxSources,
-      maxPassages:            params.maxPassages,
-    },
-    instruction: buildDiscoveryInstruction(params),
-  };
+  try {
+    writeFileSync(tmpFile, instruction, "utf8");
+  } catch (writeErr) {
+    logger.error({ err: (writeErr as Error).message, tmpFile },
+      "[evidence-discovery] Failed to write instruction temp file");
+    return {
+      candidates:          [],
+      discoveryDurationMs: 0,
+      openClawStatus:      "unavailable",
+      hopsFollowed:        0,
+      failureReason:       `Failed to write temp instruction file: ${(writeErr as Error).message}`,
+    };
+  }
 
   return new Promise<DiscoveryBrokerResponse>(resolve => {
-    let settled = false;
+    let settled    = false;
     let killTimer: ReturnType<typeof setTimeout> | null = null;
-    let stdoutBuf = "";
-    let discoveryResult: BrokerCandidateEvidence[] | null = null;
-    let hopsFollowed = 0;
+    let stdoutBuf  = "";
 
     const settle = (response: DiscoveryBrokerResponse) => {
       if (settled) return;
       settled = true;
       if (killTimer) clearTimeout(killTimer);
+      // Always clean up the temp file
+      try { unlinkSync(tmpFile); } catch { /* already gone */ }
       resolve(response);
     };
 
     let proc: ReturnType<typeof spawn>;
     try {
-      proc = spawn(openclawBin, ["agent", "--mode", "rpc", "--json"], {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      proc = spawn(
+        openclawBin,
+        ["agent", "--agent", "main", "--message-file", tmpFile, "--json"],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      );
     } catch (spawnErr) {
+      try { unlinkSync(tmpFile); } catch { /* ignore */ }
       logger.error({ err: (spawnErr as Error).message, openclawBin },
         "[evidence-discovery] Failed to spawn OpenClaw binary");
-      settle({
+      resolve({
         candidates:          [],
         discoveryDurationMs: 0,
         openClawStatus:      "unavailable",
@@ -282,118 +324,145 @@ export async function callSpawnDiscover(
       return;
     }
 
-    // ── Write governed discovery request to stdin ─────────────────────────────
-    try {
-      proc.stdin!.write(JSON.stringify(rpcRequest) + "\n");
-      // Close stdin so OpenClaw knows no more input is coming for this request
-      proc.stdin!.end();
-    } catch (writeErr) {
-      logger.error({ err: (writeErr as Error).message },
-        "[evidence-discovery] Failed to write to OpenClaw stdin");
-    }
-
-    // ── Collect newline-delimited JSON events from stdout ─────────────────────
+    // ── Collect all stdout into buffer ───────────────────────────────────────
     proc.stdout!.setEncoding("utf8");
     proc.stdout!.on("data", (chunk: string) => {
       stdoutBuf += chunk;
-      const lines = stdoutBuf.split("\n");
-      stdoutBuf = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-
-        let event: Record<string, unknown>;
-        try {
-          event = JSON.parse(trimmed) as Record<string, unknown>;
-        } catch {
-          // Non-JSON line (progress text, log output) — skip
-          continue;
-        }
-
-        const eventType = String(event["type"] ?? event["event"] ?? "").toLowerCase();
-
-        if (eventType === "discovery_result" || eventType === "candidates") {
-          // Primary success event
-          const raw = event["candidates"];
-          if (Array.isArray(raw)) {
-            discoveryResult = validateAndFilterCandidates(
-              raw as Record<string, unknown>[],
-              params.organizationId,
-              params.executionId,
-              logger,
-            );
-            hopsFollowed = typeof event["hopsFollowed"] === "number" ? event["hopsFollowed"] : 1;
-          }
-        } else if (eventType === "completed" || eventType === "done" || eventType === "finish") {
-          // Some versions embed candidates in the terminal event
-          const raw = event["candidates"];
-          if (Array.isArray(raw) && discoveryResult === null) {
-            discoveryResult = validateAndFilterCandidates(
-              raw as Record<string, unknown>[],
-              params.organizationId,
-              params.executionId,
-              logger,
-            );
-            hopsFollowed = typeof event["hopsFollowed"] === "number" ? event["hopsFollowed"] : 1;
-          }
-        } else if (eventType === "error" || eventType === "failed" || eventType === "failure") {
-          const reason = String(event["error"] ?? event["message"] ?? "OpenClaw reported failure");
-          logger.warn({ reason }, "[evidence-discovery] OpenClaw reported error event");
-          // Don't settle yet — let process exit handle it cleanly
-        }
-      }
     });
 
     proc.stderr!.setEncoding("utf8");
     proc.stderr!.on("data", (chunk: string) => {
-      // Log stderr at debug level — OpenClaw writes informational messages here
       logger.debug({ stderr: chunk.trim() }, "[evidence-discovery] OpenClaw stderr");
     });
 
-    // ── Process exit ──────────────────────────────────────────────────────────
+    // ── Process exit — parse complete JSON output ────────────────────────────
     proc.once("exit", (code, signal) => {
-      // Flush remaining stdout buffer
-      if (stdoutBuf.trim()) {
-        try {
-          const event = JSON.parse(stdoutBuf.trim()) as Record<string, unknown>;
-          const eventType = String(event["type"] ?? event["event"] ?? "").toLowerCase();
-          const raw = event["candidates"];
-          if (Array.isArray(raw) && discoveryResult === null &&
-              (eventType === "discovery_result" || eventType === "candidates" || eventType === "completed")) {
-            discoveryResult = validateAndFilterCandidates(
-              raw as Record<string, unknown>[],
-              params.organizationId,
-              params.executionId,
-              logger,
-            );
-            hopsFollowed = typeof event["hopsFollowed"] === "number" ? event["hopsFollowed"] : 1;
-          }
-        } catch { /* ignore */ }
-      }
-
-      if (discoveryResult !== null) {
-        logger.info({ candidates: discoveryResult.length, hopsFollowed, code, signal },
-          "[evidence-discovery] OpenClaw spawn completed with candidates");
-        settle({
-          candidates:          discoveryResult,
-          discoveryDurationMs: 0,
-          openClawStatus:      "available",
-          hopsFollowed,
-        });
-      } else {
-        const reason = signal
-          ? `OpenClaw process killed by signal ${signal}`
-          : `OpenClaw exited with code ${String(code)} without returning candidates`;
-        logger.warn({ code, signal, reason }, "[evidence-discovery] OpenClaw spawn unavailable");
+      if (signal) {
+        logger.warn({ signal }, "[evidence-discovery] OpenClaw killed by signal");
         settle({
           candidates:          [],
           discoveryDurationMs: 0,
           openClawStatus:      "unavailable",
           hopsFollowed:        0,
-          failureReason:       reason,
+          failureReason:       `OpenClaw process killed by signal ${signal}`,
         });
+        return;
       }
+
+      if (code !== 0) {
+        logger.warn({ code, stderr: stdoutBuf.slice(0, 200) },
+          "[evidence-discovery] OpenClaw exited with non-zero code");
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "unavailable",
+          hopsFollowed:        0,
+          failureReason:       `OpenClaw exited with code ${String(code)}`,
+        });
+        return;
+      }
+
+      // ── Parse top-level JSON ───────────────────────────────────────────────
+      let topLevel: Record<string, unknown>;
+      try {
+        topLevel = JSON.parse(stdoutBuf.trim()) as Record<string, unknown>;
+      } catch {
+        logger.warn({ raw: stdoutBuf.slice(0, 300) },
+          "[evidence-discovery] OpenClaw stdout is not valid JSON");
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "unavailable",
+          hopsFollowed:        0,
+          failureReason:       "OpenClaw output JSON malformed",
+        });
+        return;
+      }
+
+      // ── Extract result.payloads ───────────────────────────────────────────
+      const result   = topLevel["result"] as Record<string, unknown> | undefined;
+      const payloads = result?.["payloads"];
+
+      if (!Array.isArray(payloads) || payloads.length === 0) {
+        logger.warn({ topLevel },
+          "[evidence-discovery] OpenClaw response missing result.payloads");
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "unavailable",
+          hopsFollowed:        0,
+          failureReason:       "OpenClaw response missing result.payloads",
+        });
+        return;
+      }
+
+      // ── Find first payload with non-empty text ────────────────────────────
+      const textPayload = (payloads as Record<string, unknown>[]).find(
+        p => typeof p["text"] === "string" && (p["text"] as string).trim(),
+      );
+
+      if (!textPayload) {
+        logger.warn("[evidence-discovery] No text payload in OpenClaw result.payloads");
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "unavailable",
+          hopsFollowed:        0,
+          failureReason:       "No text payload in OpenClaw response",
+        });
+        return;
+      }
+
+      // ── JSON-parse the assistant text → { candidates: [...] } ────────────
+      let parsed: Record<string, unknown>;
+      try {
+        parsed = JSON.parse((textPayload["text"] as string).trim()) as Record<string, unknown>;
+      } catch {
+        logger.warn({ text: (textPayload["text"] as string).slice(0, 300) },
+          "[evidence-discovery] OpenClaw assistant payload is not valid JSON");
+        // OpenClaw ran but the assistant didn't return machine-readable JSON.
+        // Status is "available" (the binary executed) but candidates are empty.
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "available",
+          hopsFollowed:        0,
+          failureReason:       "OpenClaw assistant payload is not valid JSON",
+        });
+        return;
+      }
+
+      // ── Extract candidates array ──────────────────────────────────────────
+      const rawCandidates = parsed["candidates"];
+      if (!Array.isArray(rawCandidates)) {
+        logger.warn({ parsed },
+          "[evidence-discovery] OpenClaw assistant payload missing candidates array");
+        settle({
+          candidates:          [],
+          discoveryDurationMs: 0,
+          openClawStatus:      "available",
+          hopsFollowed:        0,
+          failureReason:       "OpenClaw payload missing candidates array",
+        });
+        return;
+      }
+
+      const candidates = validateAndFilterCandidates(
+        rawCandidates as Record<string, unknown>[],
+        params.organizationId,
+        params.executionId,
+        logger,
+      );
+
+      logger.info({ candidates: candidates.length },
+        "[evidence-discovery] OpenClaw spawn completed with candidates");
+
+      settle({
+        candidates,
+        discoveryDurationMs: 0,
+        openClawStatus:      "available",
+        hopsFollowed:        1,
+      });
     });
 
     proc.once("error", (err) => {
@@ -622,11 +691,12 @@ export function validateAndFilterCandidates(
 // ─── Discovery instruction builder ───────────────────────────────────────────
 
 /**
- * Build the governed discovery instruction sent to OpenClaw via the RPC request.
+ * Build the governed discovery instruction written to the temp file and sent
+ * to OpenClaw via --message-file.
  *
- * This is the primary instruction field.  OpenClaw must follow it precisely.
- * The instruction is tightly bounded: discovery and evidence retrieval only.
- * No professional analysis, compliance conclusions, or gap analysis.
+ * OpenClaw must return a single JSON object matching { "candidates": [...] }
+ * in its assistant text payload (result.payloads[].text).
+ * No prose, no markdown fences, no streaming events.
  */
 export function buildDiscoveryInstruction(params: DiscoveryParams): string {
   const lines: string[] = [
@@ -659,23 +729,21 @@ export function buildDiscoveryInstruction(params: DiscoveryParams): string {
   lines.push(
     "",
     "═══ REQUIRED OUTPUT FORMAT ═══",
-    "Return ONE JSON object with this exact structure (no markdown, no prose, pure JSON):",
+    "Your response MUST be a single JSON object with this exact structure.",
+    "No markdown, no prose, no code fences — pure JSON only.",
     "",
     JSON.stringify({
-      type: "discovery_result",
-      hopsFollowed: "<number>",
       candidates: [{
         sourceTitle:        "<exact title of the source document>",
         supportingPassage:  "<verbatim passage from the source — no paraphrase>",
         passageHash:        "<SHA-256 hex of supportingPassage>",
-        retrievalMethod:    "<how found: e.g. 'semantic_search', 'url_fetch', 'cross_reference'>",
+        retrievalMethod:    "<how found: e.g. semantic_search, url_fetch, cross_reference>",
         retrievalTimestamp: "<ISO-8601 timestamp>",
-        retrievalReason:    "<why this candidate was found>",
         discoveryReason:    "<why this candidate is relevant to the search objective>",
         sourceType:         "<organisational|external_legislation|external_regulation|external_guidance|external_standard|external_case_law|unknown_external>",
         isExternal:         "<true if source is outside the organisational library>",
         contentType:        "<policy|legislation|procedure|guidance|standard|case_law|other>",
-        accessLocation:     "<URL or path where source was found>",
+        accessLocation:     "<URL or internal path where source was found>",
         openClawConfidence: "<number 0-1: your confidence this is relevant — ADVISORY ONLY>",
         relevanceScore:     "<number 0-1: relevance to the search objective>",
         sourceUrl:          "<optional: URL for external sources>",
@@ -691,8 +759,9 @@ export function buildDiscoveryInstruction(params: DiscoveryParams): string {
     "  2. supportingPassage must be verbatim text from the actual source — never invented.",
     "  3. passageHash must be SHA-256 of the exact supportingPassage text.",
     `  4. Return at most ${params.maxSources} sources and ${params.maxPassages} passages per source.`,
-    "  5. If no relevant sources are found, return candidates: []",
+    "  5. If no relevant sources are found, return: {\"candidates\": []}",
     "  6. Never cross organisational tenant boundaries.",
+    "  7. Do not include the schema example in your output — replace every field with real values.",
   );
 
   return lines.join("\n");
