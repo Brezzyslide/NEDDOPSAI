@@ -195,6 +195,17 @@ export interface BrokerEvidenceDiscoveryRequest {
   unresolvedReferences:    string[];
   allowedDiscoveryScope:   string;
   allowExternalWebSearch:  boolean;
+  /**
+   * Absolute Mac paths the OpenClaw agent may search within.
+   * When provided, the discovery prompt bounds the search to these directories.
+   * Empty array = no explicit boundary (may slow discovery for internal_references_only scope).
+   */
+  allowedRoots?:           string[];
+  /**
+   * Specific absolute Mac file paths that are known to contain relevant content.
+   * OpenClaw will check these first before broader directory scanning.
+   */
+  knownSourcePaths?:       string[];
   maxHops:                 number;
   maxSources:              number;
   maxPassages:             number;

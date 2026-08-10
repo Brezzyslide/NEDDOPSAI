@@ -47,6 +47,19 @@
  *                   error, or non-JSON response): candidates:[], status:"unavailable".
  *                   Does NOT fall back to synthetic data.
  *
+ * ── Scope bounding ────────────────────────────────────────────────────────────
+ *
+ *   allowedRoots:      Directories OpenClaw may search (absolute Mac paths).
+ *   knownSourcePaths:  Specific files that should be checked (absolute Mac paths).
+ *
+ *   When either field is non-empty, buildDiscoveryInstruction emits a SCOPED
+ *   SEARCH BOUNDARIES section that explicitly tells OpenClaw where to look,
+ *   preventing an unbounded filesystem crawl that would exhaust the 45-second
+ *   timeout.
+ *
+ *   For internal_references_only scope, at least one of these fields SHOULD be
+ *   provided by the caller (e.g. org workspace root paths from org settings).
+ *
  * ── Security ──────────────────────────────────────────────────────────────────
  *
  *   Auth is enforced by createAuthMiddleware() before this router is reached.
@@ -58,6 +71,31 @@
  *   Synthetic / connectivity-test candidates are NEVER returned in live mode.
  *   The Authority Gate on the Replit side is downstream and unchanged.
  *   Every returned candidate is raw (not pre-accepted).
+ *
+ * ── Localhost curl test (spawn mode) ─────────────────────────────────────────
+ *
+ *   Prerequisite: broker running locally (node dist/index.js or ts-node), and
+ *   OPENCLAW_GATEWAY_MODE=live, OPENCLAW_LIVE_MODE=spawn-cli.
+ *
+ *   curl -s -X POST http://127.0.0.1:19001/v1/evidence/discover \
+ *     -H "Content-Type: application/json" \
+ *     -H "Authorization: Bearer $(cat ~/.needsops/broker.token 2>/dev/null || echo dev)" \
+ *     -d '{
+ *       "organizationId": "test-org-001",
+ *       "executionId":    "test-exec-001",
+ *       "specialistCode": "chief_of_staff",
+ *       "searchObjective": "Find fatigue management policy requirements for roster scheduling",
+ *       "allowedRoots": ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+ *       "knownSourcePaths": [],
+ *       "allowedDiscoveryScope": "internal_references_only",
+ *       "allowExternalWebSearch": false,
+ *       "maxHops": 2,
+ *       "maxSources": 5,
+ *       "maxPassages": 3,
+ *       "timeoutMs": 45000
+ *     }' | jq '{status: .openClawStatus, count: (.candidates | length)}'
+ *
+ *   Success = {"status":"available","count":<n≥1>} within 45 seconds.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -88,6 +126,10 @@ export interface DiscoveryBrokerRequest {
   unresolvedReferences?:   string[];
   allowedDiscoveryScope?:  string;
   allowExternalWebSearch?: boolean;
+  /** Absolute Mac paths OpenClaw may search within. When provided, search is bounded to these directories. */
+  allowedRoots?:           string[];
+  /** Specific absolute Mac file paths the specialist knows should contain relevant content. */
+  knownSourcePaths?:       string[];
   maxHops?:                number;
   maxSources?:             number;
   maxPassages?:            number;
@@ -141,6 +183,10 @@ interface DiscoveryParams {
   unresolvedRefs:         string[];
   allowedDiscoveryScope:  string;
   allowExternal:          boolean;
+  /** Absolute Mac paths OpenClaw may search within. Empty = no restriction. */
+  allowedRoots:           string[];
+  /** Specific file paths the specialist has identified as relevant. Empty = no restriction. */
+  knownSourcePaths:       string[];
   maxHops:                number;
   maxSources:             number;
   maxPassages:            number;
@@ -187,10 +233,12 @@ export function createEvidenceRouter(
       unresolvedRefs:        Array.isArray(body.unresolvedReferences) ? body.unresolvedReferences : [],
       allowedDiscoveryScope: body.allowedDiscoveryScope ?? "internal_and_external",
       allowExternal:         body.allowExternalWebSearch ?? false,
+      allowedRoots:          Array.isArray(body.allowedRoots)      ? body.allowedRoots.filter(r => typeof r === "string" && r.trim())      : [],
+      knownSourcePaths:      Array.isArray(body.knownSourcePaths)  ? body.knownSourcePaths.filter(p => typeof p === "string" && p.trim())  : [],
       maxHops:               Math.min(body.maxHops    ?? 2, MAX_HOPS),
       maxSources:            Math.min(body.maxSources ?? 5, MAX_SOURCES),
       maxPassages:           Math.min(body.maxPassages ?? 3, MAX_PASSAGES),
-      timeoutMs:             Math.min(body.timeoutMs  ?? 20_000, MAX_DISCOVERY_TIMEOUT_MS),
+      timeoutMs:             Math.min(body.timeoutMs  ?? 45_000, MAX_DISCOVERY_TIMEOUT_MS),
     };
 
     logger.info({
@@ -534,6 +582,8 @@ export async function callBridgeDiscover(
         unresolvedReferences:   params.unresolvedRefs,
         allowedDiscoveryScope:  params.allowedDiscoveryScope,
         allowExternalWebSearch: params.allowExternal,
+        allowedRoots:           params.allowedRoots,
+        knownSourcePaths:       params.knownSourcePaths,
         maxHops:                params.maxHops,
         maxSources:             params.maxSources,
         maxPassages:            params.maxPassages,
@@ -699,6 +749,10 @@ export function validateAndFilterCandidates(
  * No prose, no markdown fences, no streaming events.
  */
 export function buildDiscoveryInstruction(params: DiscoveryParams): string {
+  const hasRoots = params.allowedRoots.length > 0;
+  const hasPaths = params.knownSourcePaths.length > 0;
+  const isScoped = hasRoots || hasPaths;
+
   const lines: string[] = [
     "EVIDENCE DISCOVERY TASK — NeedsOps Governed Evidence Discovery",
     "",
@@ -719,6 +773,35 @@ export function buildDiscoveryInstruction(params: DiscoveryParams): string {
     `MAX PASSAGES/SOURCE:   ${params.maxPassages}`,
   ];
 
+  // ── Scoped search boundaries ──────────────────────────────────────────────
+  // When allowedRoots or knownSourcePaths are provided, bound the search space
+  // explicitly.  This prevents an open-ended crawl that would exhaust the
+  // timeout.  For internal_references_only scope, at least one boundary MUST
+  // be provided by the caller or results may be empty.
+  if (isScoped) {
+    lines.push("", "═══ SCOPED SEARCH BOUNDARIES ═══");
+    lines.push("Search ONLY within the locations listed below.");
+    lines.push("Do NOT access any file, directory, or URL that is not covered by these paths.");
+
+    if (hasRoots) {
+      lines.push("", "ALLOWED ROOTS (search any file within these directories):");
+      for (const root of params.allowedRoots) {
+        lines.push(`  ${root}`);
+      }
+    }
+
+    if (hasPaths) {
+      lines.push("", "KNOWN SOURCE PATHS (check these files first — they are expected to contain relevant content):");
+      for (const p of params.knownSourcePaths) {
+        lines.push(`  ${p}`);
+      }
+    }
+  } else if (params.allowedDiscoveryScope === "internal_references_only") {
+    lines.push("", "═══ SCOPE ═══");
+    lines.push("Search scope is INTERNAL ONLY.");
+    lines.push("Do NOT access external URLs, websites, or any resource outside the local workspace.");
+  }
+
   if (params.unresolvedRefs.length > 0) {
     lines.push("", "UNRESOLVED REFERENCES (must be located):");
     for (const ref of params.unresolvedRefs) {
@@ -737,13 +820,13 @@ export function buildDiscoveryInstruction(params: DiscoveryParams): string {
         sourceTitle:        "<exact title of the source document>",
         supportingPassage:  "<verbatim passage from the source — no paraphrase>",
         passageHash:        "<SHA-256 hex of supportingPassage>",
-        retrievalMethod:    "<how found: e.g. semantic_search, url_fetch, cross_reference>",
+        retrievalMethod:    "<how found: e.g. local_file, semantic_search, url_fetch, cross_reference>",
         retrievalTimestamp: "<ISO-8601 timestamp>",
         discoveryReason:    "<why this candidate is relevant to the search objective>",
         sourceType:         "<organisational|external_legislation|external_regulation|external_guidance|external_standard|external_case_law|unknown_external>",
         isExternal:         "<true if source is outside the organisational library>",
         contentType:        "<policy|legislation|procedure|guidance|standard|case_law|other>",
-        accessLocation:     "<URL or internal path where source was found>",
+        accessLocation:     "<absolute file path or URL where source was found>",
         openClawConfidence: "<number 0-1: your confidence this is relevant — ADVISORY ONLY>",
         relevanceScore:     "<number 0-1: relevance to the search objective>",
         sourceUrl:          "<optional: URL for external sources>",
@@ -762,6 +845,7 @@ export function buildDiscoveryInstruction(params: DiscoveryParams): string {
     "  5. If no relevant sources are found, return: {\"candidates\": []}",
     "  6. Never cross organisational tenant boundaries.",
     "  7. Do not include the schema example in your output — replace every field with real values.",
+    ...(isScoped ? ["  8. Only access files within the SCOPED SEARCH BOUNDARIES above — never outside them."] : []),
   );
 
   return lines.join("\n");

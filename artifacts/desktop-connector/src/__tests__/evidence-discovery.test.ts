@@ -52,6 +52,13 @@
  *    34.  Omits unresolved references section when none
  *    35.  Contains prohibition language (DO NOT fabricate / DO NOT perform analysis)
  *    36.  Instructs OpenClaw to return a { candidates: [...] } JSON object (not events)
+ *    38.  Emits SCOPED SEARCH BOUNDARIES block and rule 8 when allowedRoots is non-empty
+ *    39.  Lists knownSourcePaths in the boundary block when provided
+ *    40.  Emits lightweight SCOPE section (no boundary block) for internal_references_only with no roots/paths
+ *    41.  Does NOT emit rule 8 when no scope constraints are provided
+ *
+ *   Regression fixture (real Mac proof — 2026-08-10)
+ *    37.  FATIGUE_MANAGEMENT.md candidate passes validation with retrievalMethod=local_file
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -136,6 +143,8 @@ function baseParams() {
     unresolvedRefs:        [] as string[],
     allowedDiscoveryScope: "internal_and_external",
     allowExternal:         false,
+    allowedRoots:          [] as string[],
+    knownSourcePaths:      [] as string[],
     maxHops:               2,
     maxSources:            5,
     maxPassages:           3,
@@ -639,6 +648,115 @@ describe("validateAndFilterCandidates", () => {
   });
 });
 
+// ─── Regression fixture: real Mac proof (2026-08-10) ─────────────────────────
+//
+// OpenClaw 2026.7.2 proof run on Taye's Mac:
+//   Command:  openclaw agent --agent main --message-file <tmpfile> --json
+//   Workspace: /Users/tayephilipajao/.openclaw/workspace/rostering/
+//   Duration:  19.5 seconds
+//   Result:   status "ok", one verbatim passage from FATIGUE_MANAGEMENT.md,
+//             zero tool failures.
+//
+// This test verifies that a candidate matching the proven real output shape
+// passes validateAndFilterCandidates without being dropped, and that
+// retrievalMethod "local_file" is not treated as synthetic.
+
+describe("Regression fixture — real Mac proof FATIGUE_MANAGEMENT.md", () => {
+  const logger = makeLogger();
+
+  // ── 37 ────────────────────────────────────────────────────────────────────
+  it("accepts a local_file candidate matching the real Mac OpenClaw result", () => {
+    // Passage text modelled on the proven real run output from
+    // FATIGUE_MANAGEMENT.md in the rostering workspace.
+    const passageText =
+      "Rostering staff must ensure minimum rest periods between shifts comply " +
+      "with fatigue management thresholds. No employee may work more than " +
+      "12 consecutive hours without a minimum 10-hour break.";
+
+    const candidate = validCandidate({
+      sourceTitle:        "Fatigue Management Policy",
+      supportingPassage:  passageText,
+      passageHash:        sha256(passageText),
+      retrievalMethod:    "local_file",
+      accessLocation:     "/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md",
+      sourceType:         "organisational",
+      isExternal:         false,
+      contentType:        "policy",
+      discoveryReason:    "Document directly addresses fatigue management scheduling constraints",
+      openClawConfidence: 0.96,
+      relevanceScore:     0.91,
+    });
+
+    const result = validateAndFilterCandidates([candidate], "org-real", "exec-real", logger);
+
+    // Must not be dropped
+    expect(result).toHaveLength(1);
+
+    // retrievalMethod "local_file" must survive — it is NOT synthetic
+    expect(result[0]!.retrievalMethod).toBe("local_file");
+    expect(result[0]!.accessLocation).toBe(
+      "/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md",
+    );
+    expect(result[0]!.sourceTitle).toBe("Fatigue Management Policy");
+    expect(result[0]!.relevanceScore).toBeCloseTo(0.91);
+    expect(result[0]!.openClawConfidence).toBeCloseTo(0.96);
+
+    // Tenant fields must be stamped from params
+    expect(result[0]!.organisationId).toBe("org-real");
+    expect(result[0]!.executionId).toBe("exec-real");
+  });
+
+  it("returns openClawStatus available when the real-Mac-shaped payload is emitted via spawn", async () => {
+    const { mockSpawn: _mockSpawn } = await import("../broker/routes/evidence.js")
+      .then(() => ({ mockSpawn: undefined }))
+      .catch(() => ({ mockSpawn: undefined }));
+    void _mockSpawn; // unused — we use the already-hoisted mockSpawn at the top of this file
+
+    const proc = makeFakeProcess();
+    mockSpawn.mockReturnValue(proc);
+
+    const passageText =
+      "Rostering staff must ensure minimum rest periods between shifts comply " +
+      "with fatigue management thresholds. No employee may work more than " +
+      "12 consecutive hours without a minimum 10-hour break.";
+
+    const realMacCandidate: Record<string, unknown> = {
+      sourceTitle:        "Fatigue Management Policy",
+      supportingPassage:  passageText,
+      passageHash:        sha256(passageText),
+      retrievalMethod:    "local_file",
+      retrievalTimestamp: "2026-08-10T14:33:22.000Z",
+      accessLocation:     "/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md",
+      sourceType:         "organisational",
+      isExternal:         false,
+      contentType:        "policy",
+      discoveryReason:    "Document directly addresses fatigue management scheduling constraints",
+      openClawConfidence: 0.96,
+      relevanceScore:     0.91,
+    };
+
+    // Matches real OpenClaw output shape: { runId, status:"ok", result:{ payloads:[{ text }] } }
+    const params = {
+      ...baseParams(),
+      allowedRoots:     ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+      knownSourcePaths: [] as string[],
+      allowedDiscoveryScope: "internal_references_only",
+    };
+
+    const promise = callSpawnDiscover(params, "openclaw", makeLogger());
+    proc.stdout.emit("data", makeOpenClawOutput([realMacCandidate], { runId: "run-mac-proof-001" }));
+    proc.emit("exit", 0, null);
+
+    const result = await promise;
+
+    expect(result.openClawStatus).toBe("available");
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0]!.retrievalMethod).toBe("local_file");
+    expect(result.candidates[0]!.sourceTitle).toBe("Fatigue Management Policy");
+    expect(result.candidates[0]!.accessLocation).toContain("FATIGUE_MANAGEMENT.md");
+  });
+});
+
 // ─── buildDiscoveryInstruction ────────────────────────────────────────────────
 
 describe("buildDiscoveryInstruction", () => {
@@ -688,5 +806,61 @@ describe("buildDiscoveryInstruction", () => {
     // Must NOT instruct it to emit streaming event types that don't exist on this binary
     expect(instruction).not.toContain("discovery_result");
     expect(instruction).not.toContain("--mode rpc");
+  });
+
+  // ── 38 ────────────────────────────────────────────────────────────────────
+  it("emits SCOPED SEARCH BOUNDARIES block and rule 8 when allowedRoots is non-empty", () => {
+    const params = {
+      ...baseParams(),
+      allowedRoots: ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+    };
+    const instruction = buildDiscoveryInstruction(params);
+
+    expect(instruction).toContain("SCOPED SEARCH BOUNDARIES");
+    expect(instruction).toContain("ALLOWED ROOTS");
+    expect(instruction).toContain("/Users/tayephilipajao/.openclaw/workspace/rostering");
+    // Rule 8 must appear only when scoped
+    expect(instruction).toContain("Only access files within the SCOPED SEARCH BOUNDARIES");
+  });
+
+  // ── 39 ────────────────────────────────────────────────────────────────────
+  it("lists knownSourcePaths in the boundary block when provided", () => {
+    const params = {
+      ...baseParams(),
+      allowedRoots:     ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+      knownSourcePaths: [
+        "/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md",
+        "/Users/tayephilipajao/.openclaw/workspace/rostering/ROSTERING_POLICY.md",
+      ],
+    };
+    const instruction = buildDiscoveryInstruction(params);
+
+    expect(instruction).toContain("KNOWN SOURCE PATHS");
+    expect(instruction).toContain("FATIGUE_MANAGEMENT.md");
+    expect(instruction).toContain("ROSTERING_POLICY.md");
+  });
+
+  // ── 40 ────────────────────────────────────────────────────────────────────
+  it("emits lightweight SCOPE section (no boundary block) for internal_references_only with no roots/paths", () => {
+    const params = {
+      ...baseParams(),
+      allowedDiscoveryScope: "internal_references_only",
+      allowedRoots:          [] as string[],
+      knownSourcePaths:      [] as string[],
+    };
+    const instruction = buildDiscoveryInstruction(params);
+
+    expect(instruction).toContain("INTERNAL ONLY");
+    // No scoped boundary block when no roots/paths provided
+    expect(instruction).not.toContain("SCOPED SEARCH BOUNDARIES");
+    expect(instruction).not.toContain("ALLOWED ROOTS");
+  });
+
+  // ── 41 ────────────────────────────────────────────────────────────────────
+  it("does NOT emit rule 8 or boundary block when no scope constraints are provided", () => {
+    const instruction = buildDiscoveryInstruction(baseParams()); // no roots, no paths
+    expect(instruction).not.toContain("SCOPED SEARCH BOUNDARIES");
+    expect(instruction).not.toContain("Only access files within the SCOPED SEARCH BOUNDARIES");
+    expect(instruction).not.toContain("ALLOWED ROOTS");
   });
 });
