@@ -1,0 +1,422 @@
+I have now run two real tests through the actual NeedsOps Workforce Chat UI.
+
+TEST 1 — Fatigue / rostering request:
+“Review our rostering approach and identify any fatigue-management requirement we should consider when scheduling staff. Use available organisational evidence where relevant and provide a short recommendation.”
+
+TEST 2 — Care plan request:
+“Create a comprehensive care plan for Michael Rocca. Review the organisational records available to you for Michael, identify his support needs, risks, preferences and current support arrangements, and use our approved care plan template to prepare the completed care plan. Do not make up missing information. Flag anything that requires clarification.”
+
+Do not create replacement test tasks.
+
+Do not manually trigger downstream services.
+
+Do not call OpenClaw separately as a substitute for tracing these tasks.
+
+Do not fix anything yet.
+
+I want a forensic report of what happened in the background for BOTH actual UI-created requests, with concrete proof of whether real OpenClaw participated.
+
+For each test, trace the exact chain separately.
+
+## 1. Identify each UI request
+
+For each test show:
+
+* organization ID
+* general workforce conversation ID
+* user message ID
+* timestamp
+* message content
+* task_id on user message
+* conversation_type
+* primary_task_id on the general chat
+
+Confirm that the general workforce conversation remains:
+
+```text
+conversation_type = general_workforce
+primary_task_id = NULL
+```
+
+If not, report the actual state.
+
+## 2. Chief of Staff decision
+
+For each test show:
+
+* correlation ID
+* conversation mode
+* classification
+* confidence
+* requested task action
+* proposed task
+* suggested/selected workforce roles
+* execution class/lane
+* requiresEvidence
+* requiresCompletedWork
+* requiresClaimIntegrity
+* requiresApproval
+* any clarification/confirmation decision
+
+Do not infer values where they are not persisted. Mark them UNPROVEN if necessary.
+
+## 3. Clarification / confirmation
+
+For each test show whether the CoS:
+
+* auto-dispatched
+* generated a task proposal
+* requested confirmation
+* requested free-text clarification
+
+If confirmation or clarification occurred, show:
+
+* message ID
+* message_type
+* content
+* structured_content
+* user response/confirmation message ID
+* whether the real UI action resulted in continuation
+
+## 4. Task creation
+
+For each test identify the actual task.
+
+Show:
+
+* task ID
+* title
+* organization ID
+* current_state
+* approval_state
+* originating_module
+* created_at
+* updated_at
+
+Confirm each is a genuinely new task and that the two tests did not reuse one another's task IDs or any historical Chase/Care Plan task.
+
+## 5. Dedicated workroom
+
+For each test show:
+
+* workroom conversation ID
+* conversation_type
+* primary_task_id
+
+Prove:
+
+```text
+Test 1 → Workroom 1 → Task 1
+Test 2 → Workroom 2 → Task 2
+```
+
+and:
+
+```text
+Workroom 1 != Workroom 2
+```
+
+Also prove the general workforce conversation remained unlinked.
+
+## 6. Message isolation
+
+Query `conversation_messages`.
+
+For each test prove:
+
+* task-created/link card is associated with the correct new task
+* plan/progress/execution messages went to that task's workroom
+* Test 1 messages did not leak into Test 2's workroom
+* Test 2 messages did not leak into Test 1's workroom
+* no stale historical task ID was inherited
+
+## 7. Specialist routing
+
+For each test show the actual routing result.
+
+Report:
+
+* specialist(s) selected
+* task_specialists rows
+* specialist_runs rows
+* execution plan
+* capability decisions
+* routing rationale
+
+Do not assume Operations Manager or another role. Report the actual result.
+
+## 8. Unified Execution Engine / execution coordinator
+
+For each test show:
+
+* execution/correlation ID
+* execution start timestamp
+* state transitions
+* UEE acceptance
+* execution plan/blueprint selected
+* checkpoints created
+* any pause/failure state
+
+If execution never started, identify the first blocking boundary.
+
+## 9. Evidence-discovery decision
+
+For BOTH tests report explicitly whether external/local evidence discovery was requested.
+
+Show:
+
+* evidence request ID if available
+* task ID
+* execution ID/correlation ID
+* query/objective
+* allowedRoots
+* knownSourcePaths
+* retrieval requirements
+* timestamp
+
+If evidence discovery was NOT requested, explain why based on the actual execution path.
+
+Do not assume OpenClaw should have been called merely because the task mentioned organisational evidence.
+
+## 10. PROVE Runtime Broker involvement
+
+This is critical.
+
+For each test determine whether NeedsOps made a real request to the Mac Runtime Broker through:
+
+```text
+Replit / NeedsOps
+→ Cloudflare
+→ Mac Runtime Broker
+```
+
+Do not count:
+
+* OPENCLAW_RUNTIME_URL existing
+* broker health being green
+* a previous standalone curl test
+* old runtime tests
+
+as proof for these tasks.
+
+Provide task-specific evidence such as:
+
+* runtime request timestamp
+* execution/correlation ID
+* broker request log
+* request payload metadata
+* matching task ID if available
+
+Report one of:
+
+```text
+CALLED
+NOT CALLED
+UNPROVEN
+```
+
+for each test.
+
+## 11. PROVE real OpenClaw involvement
+
+For each test, prove whether the broker actually invoked real OpenClaw.
+
+The runtime must be:
+
+```text
+adapter = live
+mode = spawn
+bin = openclaw
+```
+
+not simulated.
+
+Provide where available:
+
+* OpenClaw invocation timestamp
+* broker execution ID
+* spawned command/process evidence
+* OpenClaw result metadata
+* duration
+* tool calls
+* tool failures
+* output payload
+
+Do not use broker health as proof that OpenClaw executed the task.
+
+We need proof that OpenClaw participated in TEST 1 and/or TEST 2 specifically.
+
+## 12. Test 1 — fatigue evidence
+
+Specifically determine whether OpenClaw accessed:
+
+```text
+/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md
+```
+
+If yes, show the canonical returned evidence:
+
+* sourceTitle
+* accessLocation
+* retrievalMethod
+* supportingPassage
+* relevanceScore
+* passageHash if available
+
+We previously know this file contains:
+
+```text
+Never recommend an unsafe roster.
+```
+
+But do not use the old standalone test as proof. Show evidence tied to this UI-created task.
+
+## 13. Test 2 — Michael Rocca care plan evidence
+
+For the Michael Rocca care-plan task, identify exactly what evidence NeedsOps/OpenClaw attempted to locate.
+
+Report whether it found:
+
+* Michael Rocca participant records
+* support needs information
+* risk information
+* preferences
+* current support arrangements
+* relevant behaviour/support documentation if applicable
+* an approved care-plan template
+
+Do not fabricate missing sources.
+
+For every source OpenClaw accessed, report:
+
+* sourceTitle
+* accessLocation/sourceUri
+* retrievalMethod
+* supportingPassage or relevant extracted evidence
+* relevance score where available
+* whether source was actually permitted by the governed scope
+
+If OpenClaw could not locate Michael's records or the template, show exactly what it searched and where the discovery stopped.
+
+## 14. Prove evidence was returned to NeedsOps
+
+For each test, distinguish:
+
+```text
+OpenClaw found evidence
+```
+
+from:
+
+```text
+NeedsOps received and accepted the evidence
+```
+
+Show:
+
+* canonical evidence candidate
+* evidence record
+* task/execution association
+* passage hash
+* validation result
+* rejection reason if rejected
+
+## 15. Prove evidence was USED
+
+This is equally important.
+
+For each test determine whether the retrieved evidence actually influenced:
+
+* specialist reasoning
+* claim/evidence records
+* completed work
+* recommendation
+* care plan content
+
+Show the association between source evidence and final claims/output where the architecture supports it.
+
+If evidence was retrieved but ignored, mark:
+
+```text
+EVIDENCE RETRIEVED = PASS
+EVIDENCE CONSUMED = FAIL
+```
+
+## 16. Final output
+
+For each test show:
+
+* final task state
+* specialist run state
+* approval state
+* completed work record
+* final workroom message
+* user-facing output
+* any failure/clarification state
+
+For the care plan specifically, determine whether NeedsOps:
+
+* produced a completed care plan
+* correctly stopped for missing information
+* hallucinated unsupported participant information
+
+If unsupported facts were generated, flag them explicitly.
+
+## 17. UI linkage
+
+For each test prove from structured data/API that:
+
+* task card points to the correct task
+* workroomConversationId points to the correct workroom
+* View Task does not point to an old Chase task
+* Test 1 and Test 2 remain separate
+
+## 18. OpenClaw proof summary
+
+Create a dedicated table:
+
+| Test              | Broker called      | Real OpenClaw spawned | Local source accessed | Evidence returned     | Evidence used         |
+| ----------------- | ------------------ | --------------------- | --------------------- | --------------------- | --------------------- |
+| Fatigue/Rostering | PASS/FAIL/UNPROVEN | PASS/FAIL/UNPROVEN    | PASS/FAIL/NOT REACHED | PASS/FAIL/NOT REACHED | PASS/FAIL/NOT REACHED |
+| Michael Care Plan | PASS/FAIL/UNPROVEN | PASS/FAIL/UNPROVEN    | PASS/FAIL/NOT REACHED | PASS/FAIL/NOT REACHED | PASS/FAIL/NOT REACHED |
+
+Do not mark OpenClaw PASS merely because the runtime was healthy.
+
+## 19. Full chain table
+
+For each test return:
+
+| Stage                         | Test 1                 | Test 2                 | Evidence |
+| ----------------------------- | ---------------------- | ---------------------- | -------- |
+| UI request persisted          | PASS/FAIL              | PASS/FAIL              |          |
+| CoS decision                  | PASS/FAIL              | PASS/FAIL              |          |
+| Clarification/confirmation    | PASS/FAIL/NOT REQUIRED | PASS/FAIL/NOT REQUIRED |          |
+| Task created                  | PASS/FAIL              | PASS/FAIL              |          |
+| Dedicated workroom            | PASS/FAIL              | PASS/FAIL              |          |
+| Specialist routed             | PASS/FAIL              | PASS/FAIL              |          |
+| Execution started             | PASS/FAIL              | PASS/FAIL              |          |
+| Evidence discovery requested  | PASS/FAIL/NOT REACHED  | PASS/FAIL/NOT REACHED  |          |
+| Runtime Broker called         | PASS/FAIL/UNPROVEN     | PASS/FAIL/UNPROVEN     |          |
+| Real OpenClaw invoked         | PASS/FAIL/UNPROVEN     | PASS/FAIL/UNPROVEN     |          |
+| Correct source accessed       | PASS/FAIL/NOT REACHED  | PASS/FAIL/NOT REACHED  |          |
+| Canonical evidence returned   | PASS/FAIL/NOT REACHED  | PASS/FAIL/NOT REACHED  |          |
+| Evidence consumed             | PASS/FAIL/NOT REACHED  | PASS/FAIL/NOT REACHED  |          |
+| Work product produced         | PASS/FAIL/NOT REACHED  | PASS/FAIL/NOT REACHED  |          |
+| Correct task/workroom visible | PASS/FAIL/UNPROVEN     | PASS/FAIL/UNPROVEN     |          |
+
+Anything not directly demonstrated must be labelled UNPROVEN.
+
+Clearly distinguish:
+
+* LIVE UI evidence
+* live dev DB evidence
+* live runtime evidence
+* broker/OpenClaw evidence
+* integration-test evidence
+* unit-test evidence
+* code inspection
+* simulation/mock evidence
+
+Do not fix anything as part of this investigation.
+
+I want the report first so we can identify the exact first failing boundary for each test.
