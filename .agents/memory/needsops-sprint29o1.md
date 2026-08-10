@@ -1,6 +1,6 @@
 ---
 name: NeedsOps Sprint 29O.1 Mac OpenClaw Connectivity
-description: Discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; real CLI contract; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]
+description: Discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; real CLI contract; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]; scope-bounded discovery prompt with allowedRoots/knownSourcePaths
 ---
 
 ## Summary
@@ -29,7 +29,89 @@ Output is a **single JSON object** to stdout (NOT streaming newline-delimited ev
 
 The assistant response lives in `result.payloads[].text`. That text is JSON-parsed to obtain `{ "candidates": [...] }`.
 
-**Why:** Live Mac proof showed spawn mode has no persistent HTTP server on 19001 and no `--mode` flag. The `--agent main --message-file` command is the only confirmed working interface.
+**Why:** Live Mac proof (2026-08-10, 19.5 s) on `/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md` showed spawn mode has no persistent HTTP server and no `--mode` flag. The `--agent main --message-file` command is the only confirmed working interface.
+
+## MAC PROOF RESULT (2026-08-10)
+
+- Command: `openclaw agent --agent main --message-file <tmpfile> --json`
+- Workspace: `/Users/tayephilipajao/.openclaw/workspace/rostering/`
+- Duration: ~19.5 seconds
+- Result: status "ok", 1 verbatim passage from FATIGUE_MANAGEMENT.md, zero tool failures
+- retrievalMethod in real output: `local_file`
+
+**Key insight:** The timeout problem was NOT OpenClaw failing — it was an unbounded discovery prompt with no `allowedRoots`. OpenClaw was exploring the whole filesystem, not the specific workspace directory.
+
+## Scope-bounded discovery prompt (added post-proof)
+
+`buildDiscoveryInstruction` now emits a **SCOPED SEARCH BOUNDARIES** block when `allowedRoots` or `knownSourcePaths` are non-empty:
+
+```
+═══ SCOPED SEARCH BOUNDARIES ═══
+Search ONLY within the locations listed below.
+Do NOT access any file, directory, or URL that is not covered by these paths.
+
+ALLOWED ROOTS (search any file within these directories):
+  /Users/tayephilipajao/.openclaw/workspace/rostering
+
+KNOWN SOURCE PATHS (check these files first):
+  /path/to/FATIGUE_MANAGEMENT.md
+```
+
+Rule 8 (`Only access files within the SCOPED SEARCH BOUNDARIES`) is appended to CRITICAL RULES only when scoped.
+
+For `internal_references_only` scope with no roots/paths provided: lightweight `SCOPE — INTERNAL ONLY` section emitted instead.
+
+**Why:** Unbounded prompt sent OpenClaw on a full filesystem crawl that exhausted the timeout. Explicit roots bound the search to the relevant directory and complete in ~20 s.
+
+## New wire fields on DiscoveryBrokerRequest
+
+```typescript
+allowedRoots?:      string[]  // Absolute Mac dirs OpenClaw may search within
+knownSourcePaths?:  string[]  // Specific files expected to contain relevant content
+```
+
+These flow through:
+- `DiscoveryBrokerRequest` (broker wire type)
+- `DiscoveryParams` (internal params)
+- `buildDiscoveryInstruction` (prompt)
+- `callBridgeDiscover` (bridge passthrough)
+- `BrokerEvidenceDiscoveryRequest` in `lib/openclaw/src/types.ts`
+
+## Default timeout
+
+Changed from 20 s → **45 s** (proven real-Mac duration is ~20 s; 45 s gives comfortable headroom without hitting `MAX_DISCOVERY_TIMEOUT_MS = 60 s`).
+
+## Localhost curl test (for Mac broker validation)
+
+```bash
+curl -s -X POST http://127.0.0.1:19001/v1/evidence/discover \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $(cat ~/.needsops/broker.token 2>/dev/null || echo dev)" \
+  -d '{
+    "organizationId": "test-org-001",
+    "executionId":    "test-exec-001",
+    "specialistCode": "chief_of_staff",
+    "searchObjective": "Find fatigue management policy requirements for roster scheduling",
+    "allowedRoots": ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+    "knownSourcePaths": [],
+    "allowedDiscoveryScope": "internal_references_only",
+    "allowExternalWebSearch": false,
+    "maxHops": 2,
+    "maxSources": 5,
+    "maxPassages": 3,
+    "timeoutMs": 45000
+  }' | jq '{status: .openClawStatus, count: (.candidates | length)}'
+```
+
+Success = `{"status":"available","count":<n≥1>}` within 45 seconds.
+
+## Regression fixture (test #37)
+
+Models the proven 2026-08-10 Mac run:
+- `sourceTitle`: "Fatigue Management Policy"
+- `accessLocation`: `/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md`
+- `retrievalMethod`: `local_file` ← must NOT be treated as synthetic (not filtered)
+- `relevanceScore`: 0.91, `openClawConfidence`: 0.96
 
 ## Spawn-mode implementation (evidence.ts)
 
@@ -55,21 +137,6 @@ The assistant response lives in `result.payloads[].text`. That text is JSON-pars
 | candidate fails validation | candidate dropped | remaining |
 | connectivity_test retrievalMethod | candidate rejected | remaining |
 
-`available` for the last two: OpenClaw executed successfully but the assistant text was not machine-readable — distinguishes "binary unreachable" from "binary ran but returned nothing usable".
-
-## Discovery instruction output format
-
-The instruction asks OpenClaw to return `{"candidates":[...]}` as plain JSON. No `discovery_result` event language. No `--mode rpc` references. Verified with test 36: instruction must contain `"candidates"` and must NOT contain `discovery_result`.
-
-## Candidate validation rules
-
-- Required string fields: sourceTitle, supportingPassage, passageHash, retrievalMethod, retrievalTimestamp, contentType, accessLocation
-- `retrievalMethod:"connectivity_test"` always rejected in live mode
-- passageHash recomputed from supportingPassage if wrong (SHA-256)
-- openClawConfidence and relevanceScore clamped to [0, 1]
-- organisationId and executionId stamped from request, never trusted from OpenClaw output
-- discoveryId generated fresh if absent
-
 ## isAvailable() / selectAdapter rules
 
 - `isAvailable()` returns true only when `connectionStatus.state === "connected"` (not "connecting")
@@ -77,29 +144,11 @@ The instruction asks OpenClaw to return `{"candidates":[...]}` as plain JSON. No
 
 ## Test count
 
-Desktop-connector: 36 new tests in evidence-discovery.test.ts — all pass.
-Pre-existing failures: 18 (in e2e.test.ts, routes.test.ts, validation.test.ts — unrelated).
-Api-server: ~5000 passing (pre-existing pdf-parse failures separate).
+Desktop-connector: 42 tests in evidence-discovery.test.ts — all pass.
+New tests: #37 (regression fixture), #38–41 (scope bounding).
 
-## Next step before Cloudflare tunnel
+## Remaining before Cloudflare tunnel
 
-Run the curl command below against local broker to confirm spawn-mode discovery returns real candidates or an honest empty result:
-
-```bash
-curl -s -X POST http://127.0.0.1:19002/v1/evidence/discover \
-  -H "Authorization: Bearer <BROKER_AUTH_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "organizationId":  "test-org-001",
-    "executionId":     "test-exec-003",
-    "specialistCode":  "chief_of_staff",
-    "searchObjective": "Find one known document and return one verbatim passage.",
-    "maxHops": 1, "maxSources": 1, "maxPassages": 1,
-    "timeoutMs": 45000,
-    "allowExternalWebSearch": false
-  }' | jq '{openClawStatus, failureReason, candidates: [.candidates[] | {sourceTitle, retrievalMethod}]}'
-```
-
-Success: `"openClawStatus": "available"` and no `retrievalMethod: "connectivity_test"`.
-If status is `"available"` but candidates empty + failureReason contains "not valid JSON": OpenClaw ran but didn't return `{"candidates":[...]}` — adjust the output format prompt.
-If status is `"unavailable"` + failureReason contains exit code: OpenClaw exited non-zero — check OpenClaw logs.
+1. Mac broker rebuild: `node build.mjs` → restart → run curl test above
+2. Confirm result is `"available"` with ≥1 non-synthetic candidate from FATIGUE_MANAGEMENT.md
+3. Cloudflare tunnel: `cloudflared tunnel run needsops-broker` → configure OPENCLAW_RUNTIME_URL on Replit side
