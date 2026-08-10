@@ -1,0 +1,192 @@
+I have just submitted this task myself through the actual NeedsOps UI:
+
+“Review our rostering approach and identify any fatigue-management requirement we should consider when scheduling staff. Use available organisational evidence where relevant and provide a short recommendation.”
+
+Do not create another test task.
+
+Do not manually invoke OpenClaw.
+
+Do not manually call the Runtime Broker.
+
+Do not repair anything yet.
+
+Your job is to trace THIS exact UI-created task after the fact and report what actually happened.
+
+Find the task created from my most recent request and report the full execution chain.
+
+I need concrete evidence for each stage.
+
+1. Identify the exact general workforce conversation and user message.
+
+Show:
+
+* conversation ID
+* message ID
+* timestamp
+* organization ID
+* conversation_type
+* primary_task_id
+
+Confirm whether the general workforce conversation remained unlinked.
+
+2. Identify the Chief of Staff decision.
+
+Show:
+
+* classification
+* confidence
+* proposed task
+* requested action
+* selected/suggested specialist
+* execution lane/class
+* requiresEvidence
+* requiresCompletedWork
+* requiresApproval
+
+3. Identify the actual task.
+
+Show:
+
+* task ID
+* title
+* current_state
+* approval_state
+* originating_module
+* created_at
+* updated_at
+
+Confirm it is a new task and did not reuse an old task ID.
+
+4. Identify the dedicated task workroom.
+
+Show:
+
+* workroom conversation ID
+* conversation_type
+* primary_task_id
+
+Confirm:
+
+* the general workforce chat has `primary_task_id = NULL`
+* the workroom has `primary_task_id = <this new task ID>`
+
+5. Show specialist routing.
+
+Report:
+
+* specialist assigned
+* specialist run ID if available
+* execution plan / routing decision
+* why that specialist was selected
+
+6. Show where execution messages were written.
+
+Prove:
+
+* task-created/link card stayed in the general chat
+* plan/progress/execution messages went to the task workroom
+* no stale Chase/Care Plan task ID was inherited
+
+7. Trace the execution engine.
+
+Show:
+
+* execution/correlation ID
+* execution state changes
+* where UEE/execution coordinator accepted the task
+* whether evidence discovery was requested
+
+8. If evidence discovery occurred, prove whether NeedsOps called the remote runtime.
+
+Show:
+
+* runtime request timestamp
+* configured runtime destination used
+* broker request evidence
+* any request/correlation ID tying it to THIS task
+
+Do not count the existence of `OPENCLAW_RUNTIME_URL` as proof.
+
+9. Prove whether real OpenClaw was involved.
+
+Report whether the broker was:
+
+* live/spawn
+* simulated
+* not called
+
+If OpenClaw was called, show:
+
+* actual OpenClaw invocation evidence
+* execution ID if available
+* tool call count
+* failures
+* duration
+* source accessed
+
+10. Specifically check whether this approved local source was accessed:
+
+`/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md`
+
+If yes, show the actual returned candidate, including:
+
+* sourceTitle
+* accessLocation
+* retrievalMethod
+* supportingPassage
+* relevanceScore
+* passageHash if available
+
+If not, report why it was not requested or not found.
+
+11. Prove whether OpenClaw evidence was actually consumed by NeedsOps.
+
+Do not stop at “OpenClaw returned evidence.”
+
+Show whether that evidence became part of:
+
+* specialist reasoning
+* claim/evidence records
+* work product
+* final recommendation
+
+12. Show the final task outcome.
+
+Report:
+
+* task final state
+* specialist run final state
+* completed work record
+* final user-facing output
+* approval status if relevant
+
+13. Check the actual UI linkage.
+
+Verify from backend/structured data that “View task” for this request points to THIS task/workroom and not any previous Chase/Care Plan task.
+
+14. If the chain failed, identify the exact stopping point.
+
+Use a table like:
+
+| Stage                              | Evidence        | Result    |
+| ---------------------------------- | --------------- | --------- |
+| UI request persisted               | DB/API          | PASS/FAIL |
+| CoS classified request             | DB/runtime      | PASS/FAIL |
+| New task created                   | DB              | PASS/FAIL |
+| Workroom created                   | DB              | PASS/FAIL |
+| Specialist routed                  | DB/runtime      | PASS/FAIL |
+| Execution started                  | DB/runtime      | PASS/FAIL |
+| Evidence discovery requested       | runtime         | PASS/FAIL |
+| Runtime Broker called              | logs/runtime    | PASS/FAIL |
+| Real OpenClaw invoked              | broker/OpenClaw | PASS/FAIL |
+| Local source accessed              | OpenClaw        | PASS/FAIL |
+| Evidence returned to NeedsOps      | runtime/DB      | PASS/FAIL |
+| Evidence used in output            | DB/runtime      | PASS/FAIL |
+| Task completed                     | DB/runtime      | PASS/FAIL |
+| Correct task/workroom linked in UI | DB/API          | PASS/FAIL |
+
+Anything not directly demonstrated must be marked UNPROVEN.
+
+Do not use previous standalone OpenClaw tests as proof for this task.
+
+Do not fix anything until you have reported exactly where this real UI-created task succeeded or failed.
