@@ -1,0 +1,207 @@
+We have confirmed a specific conversation/task-linking architecture bug in NeedsOps AI+. Please fix it carefully without changing unrelated execution logic.
+
+Current proven problem:
+
+A `general_workforce` conversation can create a task, but `linkConversationToTask()` writes that task ID into `conversations.primary_task_id`.
+
+Later, new unrelated messages in the same general workforce conversation inherit the old task because the message route currently does:
+
+```ts
+const resolvedTaskId = taskId ?? conv.primaryTaskId ?? undefined;
+```
+
+Auto-dispatch also refuses to create a new task when:
+
+```ts
+!conv.primaryTaskId
+```
+
+As a result, a reusable Chief of Staff chat becomes permanently tied to the first task it created.
+
+We confirmed this in the database.
+
+Conversation:
+
+```text
+84c239a1-17b4-4607-96ab-ba75cd92686d
+conversation_type = general_workforce
+primary_task_id = 365dc0d1-c3b9-47af-b30e-1faa763e6477
+```
+
+That task ID belongs to:
+
+```text
+Create Care Plan for Chase Summerfield
+```
+
+A later unrelated fatigue-management request in the same conversation inherited that old task ID, failed to create a new task, and “View task” navigated back to the Chase task.
+
+The intended architecture should be:
+
+```text
+GENERAL WORKFORCE CHAT
+conversation_type = general_workforce
+primary_task_id = NULL
+        |
+        | creates task
+        v
+TASK
+        |
+        v
+DEDICATED TASK WORKROOM
+conversation_type = task_workroom
+primary_task_id = task.id
+```
+
+The general workforce chat is the reusable front desk.
+
+Each task must have its own dedicated task workroom.
+
+Important existing code:
+
+`conversationService.getOrCreateWorkroom(organizationId, taskId, createdByUserId)` already exists and correctly creates/fetches a `task_workroom` with `primaryTaskId = taskId`.
+
+Current problematic call sites include:
+
+```text
+artifacts/api-server/src/services/autoDispatchService.ts
+artifacts/api-server/src/routes/v1/conversations.ts
+```
+
+Do not convert the general workforce conversation itself into `task_workroom`.
+
+Do not delete conversation history.
+
+Do not rebuild the execution engine.
+
+Do not change OpenClaw, Runtime Broker, Cloudflare or evidence-discovery integration.
+
+Required correction:
+
+1. A `general_workforce` conversation must remain reusable and must not be permanently assigned a task through `primary_task_id`.
+
+2. When auto-dispatch creates a new task:
+
+   * create the formal task as today;
+   * create/get its dedicated workroom using `getOrCreateWorkroom()`;
+   * keep a concise `task_created` card/message in the original general workforce conversation so the user sees that work was created;
+   * the task-created structured content must contain the actual new `taskId`;
+   * post the task plan into the task workroom;
+   * post approval requests into the task workroom;
+   * pass the task workroom conversation ID to `dispatchWorkExecution()`;
+   * execution updates, checkpoints, specialist messages and completion output should therefore go into the task workroom.
+
+3. Apply the same architecture to the manual:
+
+```text
+POST /:conversationId/create-task
+```
+
+route.
+
+For a general workforce conversation:
+
+* do not reject task creation simply because an old `primaryTaskId` exists;
+* ideally, general workforce conversations should no longer acquire `primaryTaskId` at all;
+* create/get a dedicated workroom for the newly created task;
+* keep only the task-created/link card in the general chat;
+* route plan, approval and execution messages to the workroom.
+
+4. Preserve correct behaviour for actual `task_workroom` conversations.
+
+A task workroom may legitimately have:
+
+```text
+primary_task_id = task.id
+```
+
+and clarification/resume/rerun/revise behaviour must continue to work.
+
+5. Review this line carefully:
+
+```ts
+const resolvedTaskId = taskId ?? conv.primaryTaskId ?? undefined;
+```
+
+It is valid for a genuine `task_workroom`, but it must not cause a `general_workforce` message to inherit a stale task.
+
+Make the resolution conversation-type-aware.
+
+Conceptually:
+
+```ts
+const resolvedTaskId =
+  taskId ??
+  (conv.conversationType === "task_workroom"
+    ? conv.primaryTaskId ?? undefined
+    : undefined);
+```
+
+Use the actual enum/string values from the existing schema.
+
+6. Review the auto-dispatch guard:
+
+```ts
+!conv.primaryTaskId
+```
+
+This must not prevent a reusable `general_workforce` conversation from creating multiple independent tasks over its lifetime.
+
+Idempotency must remain, but it should apply to the current proposed dispatch/request, not permanently to the entire general workforce conversation.
+
+Do not solve this by simply removing all duplicate protection.
+
+7. Review rerun/revise handling.
+
+`rerun_existing` and `revise_existing` already contain a real existing `taskId`.
+
+If they originate from a genuine task workroom, continue using that workroom.
+
+If they originate from general workforce chat, resolve/create the correct workroom for the referenced task before dispatching execution rather than writing execution output into the general chat.
+
+8. Preserve audit events.
+
+Audit metadata should still retain the originating general conversation ID where useful, but execution/workroom conversation ID should also be recorded if appropriate.
+
+9. Add or update tests to prove:
+
+* one general workforce conversation can create Task A;
+* its `primary_task_id` remains NULL;
+* Task A gets its own `task_workroom`;
+* later, the same general workforce conversation can create unrelated Task B;
+* Task B gets a different workroom;
+* Task A and Task B execution messages do not cross;
+* general-chat messages after Task A do not inherit Task A's `task_id`;
+* `View task` data points to the correct newly created task;
+* task workroom clarification/checkpoint resume still works;
+* rerun/revise still works;
+* existing approval dispatch still creates/uses the correct task workroom.
+
+10. Do not alter existing OpenClaw integration.
+
+The remote execution path has already been independently proven:
+
+```text
+Replit
+→ Cloudflare
+→ Mac Runtime Broker
+→ OpenClaw
+→ local evidence
+→ canonical NeedsOps evidence
+```
+
+The current issue is in the NeedsOps conversation/task orchestration layer.
+
+Before making changes, inspect the relevant files and existing tests.
+
+After implementation:
+
+* run the relevant conversation, task, auto-dispatch, execution-loop and workroom tests;
+* report exactly which files changed;
+* explain the final conversation/task/workroom lifecycle;
+* identify any migration or cleanup needed for existing `general_workforce` conversations that already contain stale `primary_task_id` values;
+* do not automatically modify production-like data unless necessary for tests.
+
+Also note a separate unresolved issue:
+
+Dashboard, Task Centre, Memory and other data-driven pages have intermittently appeared and disappeared. Do not assume this task/workroom fix resolves that. Do not broaden this change into a frontend/dashboard rewrite. After this fix is verified, that instability will be diagnosed separately if it persists.
