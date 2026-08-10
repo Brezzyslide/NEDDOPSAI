@@ -1,0 +1,194 @@
+FORENSIC DIAGNOSIS ONLY — DO NOT FIX YET.
+
+I have discovered another live UI failure.
+
+In the real NeedsOps UI, I clicked the button intended to DOWNLOAD/CONNECT the NeedsOps Desktop Connector to my Mac.
+
+The result was:
+
+404
+
+I want you to trace this exact customer-facing Desktop Connector download flow and determine the first failing boundary.
+
+Do not make a superficial link correction yet.
+
+Do not create a mock installer.
+
+Do not claim the Desktop Connector works because our manually configured Mac Runtime Broker is currently healthy.
+
+The manual Terminal setup and the customer-facing Desktop Connector installation flow are TWO DIFFERENT things.
+
+Investigate:
+
+1. Locate the exact Desktop Connector download/connect button I clicked in the NeedsOps frontend.
+
+Show:
+
+* component/file
+* button label
+* click handler
+* URL or API route it calls
+* whether it uses a hardcoded URL, environment variable, API-generated URL, or static asset
+* expected HTTP method
+
+2. Trace the destination.
+
+Show whether the expected destination actually exists:
+
+Frontend
+→ download action
+→ API route/static route
+→ installer/package
+
+Identify exactly where the 404 occurs.
+
+3. Determine what the button is supposed to download.
+
+I want to know whether there is currently a REAL:
+
+* macOS installer
+* .dmg
+* .pkg
+* signed application
+* executable
+* installation script
+* connector bundle
+
+or whether the UI was built before a production downloadable connector actually existed.
+
+Give the exact file/path/build pipeline if one exists.
+
+If no genuine downloadable Desktop Connector artifact currently exists, state:
+
+DESKTOP CONNECTOR INSTALLER: NOT IMPLEMENTED
+
+Do not disguise this as a routing bug.
+
+4. Determine whether the existing `artifacts/desktop-connector` code is actually packaged for customer installation or is currently only developer/runtime code.
+
+Show:
+
+* package/build scripts
+* generated build output
+* entry point
+* installation mechanism
+* configuration mechanism
+* update mechanism, if any
+* macOS startup/persistence mechanism, if any
+
+5. Compare the UI download flow with the Mac runtime we manually configured.
+
+We have independently proven our current development Mac can do:
+
+Mac restart
+→ startup script
+→ Runtime Broker on 127.0.0.1:19002
+→ live OpenClaw spawn mode
+→ Cloudflare Quick Tunnel
+→ Replit/NeedsOps health request
+
+Do NOT use that as proof that the Download Connector UI works.
+
+Explain whether the Download Connector UI would install/configure equivalent functionality for a new customer Mac.
+
+6. Tenant pairing.
+
+Determine how a newly installed Desktop Connector is supposed to know:
+
+* which NeedsOps organisation it belongs to
+* which user initiated pairing
+* authentication credentials/token
+* broker authentication
+* NeedsOps endpoint
+* permissions granted by the customer
+* local capabilities allowed
+* OpenClaw configuration
+* whether pairing can be revoked
+
+If this does not currently exist, identify the gap.
+
+7. Persistence.
+
+Determine whether a connector installed through the UI would automatically survive:
+
+* app close
+* Terminal close
+* user logout
+* Mac restart
+* full shutdown/startup
+
+Do not use our manually created LaunchAgent as proof unless that LaunchAgent is actually part of the customer installer.
+
+8. Cloudflare/public connectivity.
+
+Determine what networking model the production Desktop Connector is currently designed to use.
+
+Specifically establish whether it expects:
+
+* Quick Tunnel
+* named Cloudflare Tunnel
+* customer-generated tunnel
+* NeedsOps-managed tunnel
+* direct outbound persistent connection
+* WebSocket
+* polling
+* another relay architecture
+
+We currently use a changing `trycloudflare.com` URL manually during development.
+
+Determine whether that is actually intended for production customer connectors.
+
+9. Security.
+
+Identify how the proposed Desktop Connector installation protects:
+
+* broker auth token
+* webhook secret
+* organisation identity
+* local filesystem permissions
+* browser permissions
+* application permissions
+* OpenClaw invocation
+* command execution
+* tenant isolation
+
+10. Return a proof table:
+
+| Stage                                           | Result             | Evidence |
+| ----------------------------------------------- | ------------------ | -------- |
+| Download button exists                          | PASS/FAIL          |          |
+| Click handler correct                           | PASS/FAIL          |          |
+| Download URL resolves                           | PASS/FAIL          |          |
+| API/static download route exists                | PASS/FAIL          |          |
+| Real Mac installer exists                       | PASS/FAIL          |          |
+| Connector packaged                              | PASS/FAIL          |          |
+| Tenant pairing implemented                      | PASS/FAIL          |          |
+| Authentication implemented                      | PASS/FAIL          |          |
+| Permission model implemented                    | PASS/FAIL          |          |
+| Auto-start/persistence implemented in installer | PASS/FAIL          |          |
+| Production connectivity model implemented       | PASS/FAIL          |          |
+| Revocation implemented                          | PASS/FAIL          |          |
+| Customer can install without Terminal           | PASS/FAIL/UNPROVEN |          |
+| Customer can reboot and reconnect automatically | PASS/FAIL/UNPROVEN |          |
+
+Anything based only on code inspection must say CODE INSPECTION.
+
+Anything requiring a real installer/browser/customer machine test must say UNPROVEN until demonstrated.
+
+11. Finally give me:
+
+FIRST FAILING BOUNDARY
+
+ROOT CAUSE
+
+WHAT CURRENTLY EXISTS
+
+WHAT IS MISSING
+
+Do not implement the fix.
+
+Do not modify the UI.
+
+Do not build the installer yet.
+
+I want the diagnosis first.
