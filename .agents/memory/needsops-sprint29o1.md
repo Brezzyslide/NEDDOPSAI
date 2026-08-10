@@ -54,6 +54,21 @@ description: Evidence discovery endpoint on the Mac broker, Replit client method
 | `OPENCLAW_LIVE_MODE` | `spawn` (default) or `bridge-http` |
 | `OPENCLAW_BIN_PATH` | path to openclaw binary (default: `openclaw` on PATH) |
 
+## Spawn-mode correction (post-proof)
+
+After live Mac proof confirmed spawn mode has no persistent HTTP server on 19001, replaced bridge-http-only implementation with real spawn-mode discovery:
+
+- `callSpawnDiscover()` — spawns `openclaw agent --mode rpc --json`, writes `{ action: "evidence_discovery", ... }` to stdin, collects newline-delimited JSON events from stdout, finds `discovery_result` or `completed` event, validates candidates, enforces timeout with SIGTERM+SIGKILL.
+- `callBridgeDiscover()` — bridge-http path, returns unavailable on 404 or non-JSON — NO synthetic fallback.
+- `validateAndFilterCandidates()` — drops missing fields, rejects `retrievalMethod:"connectivity_test"`, corrects wrong passageHash, stamps organisationId/executionId from request.
+- `buildDiscoveryInstruction()` — governed prompt with all parameters, explicit "discovery only" rules, required JSON output schema.
+- Synthetic test candidate REMOVED from live mode entirely.
+- Simulated mode: `{ candidates: [], openClawStatus: "simulated" }` — no fake data.
+- `openClawStatus:"available"` when OpenClaw ran (even 0 valid candidates); `"unavailable"` only on crash/timeout/spawn failure.
+
+32 new tests in `artifacts/desktop-connector/src/__tests__/evidence-discovery.test.ts` — all pass.
+
 ## Test count
 
-4757 passing / 4 failing (pre-existing pdf-parse failures in sprint-knowledge-ingestion.test.ts — unrelated to this sprint).
+Desktop-connector: 183 passing / 18 failing (all 18 pre-existing in e2e.test.ts, routes.test.ts, validation.test.ts — my evidence-discovery.test.ts: 32/32).
+Api-server: 4757 passing / 4 failing (pre-existing pdf-parse failures).
