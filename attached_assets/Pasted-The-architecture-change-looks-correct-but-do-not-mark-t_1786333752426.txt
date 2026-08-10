@@ -1,0 +1,185 @@
+The architecture change looks correct, but do not mark this fix complete yet. I need runtime/database proof of the implementation, not only code inspection and automated tests.
+
+Do NOT modify or clear existing stale `general_workforce.primary_task_id` records yet.
+
+Please perform the highest practical verification available in the current Replit development environment.
+
+### 1. Prove the existing stale record
+
+First query the current database and show the existing affected conversation, including:
+
+* id
+* conversation_type
+* primary_task_id
+* created_at
+* updated_at
+
+Do not modify it yet.
+
+### 2. Prove a clean general workforce conversation
+
+Using a clean test/dev `general_workforce` conversation, show from the database that before task creation:
+
+```text
+conversation_type = general_workforce
+primary_task_id = NULL
+```
+
+### 3. Create Task A through the real conversation/API path
+
+Do not prove this only by directly inserting database rows.
+
+Use the actual NeedsOps conversation/task creation path as close as practical to the real UI behaviour.
+
+Then prove with database/API evidence:
+
+* Task A exists in `tasks`.
+* The original general workforce conversation still has `primary_task_id = NULL`.
+* A separate `task_workroom` exists.
+* That workroom has `primary_task_id = Task A ID`.
+* The `task_created` message exists in the general chat and contains Task A's correct ID.
+* Plan/execution messages are associated with Task A's workroom, not the general chat.
+
+### 4. Create unrelated Task B from the SAME general chat
+
+This is the most important regression test.
+
+From the same `general_workforce` conversation, submit an unrelated second piece of work.
+
+Prove:
+
+```text
+General chat
+primary_task_id = NULL
+
+Task A
+→ Workroom A
+
+Task B
+→ Workroom B
+```
+
+Workroom A and Workroom B must have different conversation IDs.
+
+Prove Task B was not blocked by a duplicate-task guard.
+
+Prove Task B did not inherit Task A's ID.
+
+### 5. Show message isolation
+
+Query `conversation_messages`.
+
+Demonstrate that:
+
+* the general workforce conversation contains the user requests and task-created/link cards;
+* Task A execution/progress messages belong to Workroom A;
+* Task B execution/progress messages belong to Workroom B;
+* Task A messages do not appear in Workroom B;
+* Task B messages do not appear in Workroom A.
+
+### 6. Prove task ID inheritance rules
+
+Demonstrate the corrected behaviour of `resolvedTaskId`.
+
+For a new message in:
+
+```text
+general_workforce
+```
+
+prove that no old `primary_task_id` is automatically inherited.
+
+For a message inside:
+
+```text
+task_workroom
+```
+
+prove that its legitimate `primary_task_id` continues to resolve correctly.
+
+### 7. Prove View Task/workroom routing
+
+Using the API response/structured message data, prove that the task-created card for Task A contains Task A's actual ID and resolves to Task A/Workroom A.
+
+Then prove Task B's card independently resolves to Task B/Workroom B.
+
+The previous failure was that the fatigue-management card resolved to the unrelated Chase Summerfield task. We need evidence that this can no longer happen.
+
+### 8. Prove execution coordinator destination
+
+Show evidence that `dispatchWorkExecution()` receives the dedicated workroom conversation ID for newly created work rather than the `general_workforce` conversation ID.
+
+Do this for at least one real task creation path.
+
+### 9. Prove rerun/revise
+
+Demonstrate that rerun/revise of an existing task resolves that task's workroom and does not send execution output into the general workforce conversation.
+
+### 10. Prove clarification/checkpoint behaviour
+
+Run or demonstrate the relevant integration path showing that a clarification checkpoint inside a task workroom can still be resumed and remains associated with the correct task/workroom.
+
+### 11. Investigate historical cleanup BEFORE running UPDATE
+
+Do not yet run:
+
+```sql
+UPDATE conversations
+SET primary_task_id = NULL
+WHERE conversation_type = 'general_workforce'
+AND primary_task_id IS NOT NULL;
+```
+
+First report:
+
+* how many `general_workforce` conversations currently contain stale `primary_task_id`;
+* which tasks they reference;
+* whether each referenced task already has a separate `task_workroom`;
+* whether historical task execution/progress/checkpoint messages currently exist only inside the general conversation;
+* whether clearing the stale link would affect navigation or historical task access;
+* whether a migration should create missing workrooms before clearing stale links.
+
+Provide a proposed safe migration plan after inspecting the data.
+
+### 12. Explain the 9 failing tests
+
+You reported:
+
+```text
+5017 / 5026 passing
+9 pre-existing unrelated failures
+```
+
+List all 9 failures by test name/file and briefly explain why each is unrelated to this change.
+
+Do not simply state that they are pre-existing.
+
+### Final proof table
+
+Finish with:
+
+| Behaviour                     | Evidence                | Result             |
+| ----------------------------- | ----------------------- | ------------------ |
+| General chat remains unlinked | DB/API evidence         | PASS/FAIL/UNPROVEN |
+| Task A created                | DB/API evidence         | PASS/FAIL/UNPROVEN |
+| Workroom A created            | DB evidence             | PASS/FAIL/UNPROVEN |
+| Task B from same chat created | DB/API evidence         | PASS/FAIL/UNPROVEN |
+| Workroom B isolated           | DB evidence             | PASS/FAIL/UNPROVEN |
+| No stale task inheritance     | Message/API evidence    | PASS/FAIL/UNPROVEN |
+| Correct View Task target      | Structured/API evidence | PASS/FAIL/UNPROVEN |
+| Execution routed to workroom  | Runtime/log/DB evidence | PASS/FAIL/UNPROVEN |
+| Rerun/revise isolated         | Integration evidence    | PASS/FAIL/UNPROVEN |
+| Checkpoint resume preserved   | Integration evidence    | PASS/FAIL/UNPROVEN |
+| Historical migration safe     | DB analysis             | PASS/FAIL/UNPROVEN |
+
+Anything not actually demonstrated must be marked **UNPROVEN**.
+
+Do not use mocked or unit-test evidence and label it as live integration proof. Clearly distinguish:
+
+* code inspection
+* unit test
+* integration test
+* live development DB/API evidence
+* simulated evidence
+
+Do not change OpenClaw, Runtime Broker, Cloudflare, Dashboard, Memory or unrelated architecture as part of this verification.

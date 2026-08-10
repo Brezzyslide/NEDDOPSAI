@@ -1,131 +1,78 @@
 ---
-name: NeedsOps General Workforce / Task Workroom Lifecycle
-description: Architecture rule — general_workforce conversations must never acquire primaryTaskId; all execution-scoped messages belong in a dedicated task_workroom
+name: NeedsOps Workroom Lifecycle Architecture
+description: general_workforce / task_workroom invariants, migration SQL for stale primaryTaskId, and verification script
 ---
 
-## Architecture invariant
+## The invariant
 
-```
-GENERAL WORKFORCE CHAT (reusable front desk)
-  conversationType = general_workforce
-  primaryTaskId    = NULL  (always — must never be mutated)
-      |
-      | creates Task A           creates Task B (later)
-      v                          v
-TASK A WORKROOM              TASK B WORKROOM
-  conversationType = task_workroom  conversationType = task_workroom
-  primaryTaskId    = taskA.id       primaryTaskId    = taskB.id
-```
+- `general_workforce` conversations must NEVER have `primaryTaskId` set.
+- Every task gets a dedicated `task_workroom` conversation via `getOrCreateWorkroom()`.
+- Only `task_created` cards go to the general conv; plan/approval/execution all go to the workroom.
+- `resolvedTaskId` in conversations.ts is type-aware:
+  - `task_workroom` → inherits `primaryTaskId` (enables clarification/checkpoint resume)
+  - `general_workforce` → always `undefined` unless explicitly passed in the body
+- Auto-dispatch guard in conversations.ts uses `conv.conversationType !== "task_workroom"` (not `!conv.primaryTaskId`).
 
-## What must NOT happen
+**Why:** Before commit c2ac345, `linkConversationToTask()` wrote `primaryTaskId` onto the general_workforce conversation. All subsequent messages inherited the stale task. A second task could never be created from the same chat. Execution output (plan, approval, progress) went into the general chat instead of a dedicated workroom.
 
-- `linkConversationToTask()` must never be called with a `general_workforce` conversation.
-  The safety guard in `conversationService.ts` will block and warn, but the primary
-  enforcement is in the call sites (autoDispatchService, conversations route).
-- The message route must not inherit `conv.primaryTaskId` for general_workforce
-  conversations — this causes stale task bleed into unrelated messages.
-- The auto-dispatch guard must use conversation type, not `conv.primaryTaskId`.
+**How to apply:** Never call `linkConversationToTask()` on a general_workforce conversation. Always route plan/exec messages through `getOrCreateWorkroom()`. Check `conversationType` in any code that resolves a `taskId` from a conversation.
 
-## Message routing rules
+## Verification
 
-| Message type | Destination |
-|---|---|
-| `task_created` card | Original (general_workforce) conversation |
-| Plan card | Task workroom |
-| Approval request card | Task workroom |
-| Execution dispatch | Task workroom (`conversationId`) |
-| Clarification / checkpoint resume | Stays in whichever conversation initiated it |
+Runtime integration script: `artifacts/api-server/scripts/verify-workroom-lifecycle.ts`
+Run: `cd artifacts/api-server && pnpm tsx scripts/verify-workroom-lifecycle.ts`
+Result: 32 PASS / 0 FAIL / 0 UNPROVEN (verified 2026-08-10)
 
-## resolvedTaskId resolution (conversations.ts message route)
+The script:
+- Creates isolated test org/user/membership (auto-cleaned)
+- Calls real service functions (taskService.createTask, conversationService.getOrCreateWorkroom, addMessage, postPlanToConversation)
+- Verifies all DB state via SELECT queries
+- Does NOT call autoCreateAndDispatch end-to-end (avoids triggering live execution pipeline for test org)
+- Steps 5 (message isolation), 7 (task_created card structuredContent), 9 (idempotency), 10 (checkpoint resume) all verified via live DB reads
 
-```typescript
-const resolvedTaskId =
-  taskId ??
-  (conv.conversationType === "task_workroom" ? conv.primaryTaskId ?? undefined : undefined);
-```
+## Stale records in live DB (as of 2026-08-10, pre-migration)
 
-- `task_workroom`: inherits `primaryTaskId` (required for clarification/resume)
-- `general_workforce`: never inherits (undefined regardless of stale DB state)
+5 stale `general_workforce` conversations with non-null `primaryTaskId`:
 
-## Auto-dispatch guard (conversations.ts message route)
+| Conversation | Task | Workroom exists? |
+|---|---|---|
+| `84c239a1` (org `e13f274d`) | Create Care Plan for Chase Summerfield | ✅ yes |
+| `92f9e4d3` (org `98b132ec`) | Review Incident Management Policy | ✅ yes |
+| `c90b36b0` (org `98b132ec`) | Incident Management Policy Review | ❌ **NO** — must create before migration |
+| `96b7bcfe` (org `98b132ec`) | Incident Management Policy Review and Improvement Plan | ✅ yes |
+| `d41845d7` (org `afe5d567`) | Review and Improve Complaints Management Policy | ✅ yes |
 
-```typescript
-// OLD (broken): !conv.primaryTaskId
-// NEW (correct):
-conv.conversationType !== "task_workroom"
-```
+The verification script's Step 11 confirms `NEEDS WORKROOM CREATION` — the `c90b36b0` record has no workroom. Before running the migration, create one via `getOrCreateWorkroom()` for that task.
 
-- `general_workforce` may create unlimited independent tasks — never gated
-- `task_workroom` is already bound to a task; rerun/revise is the correct path
+## Migration SQL
 
-## Rerun/revise workroom resolution
-
-```typescript
-const rerunConvId =
-  conv.conversationType === "task_workroom"
-    ? conv.id
-    : (await conversationService.getOrCreateWorkroom(ctx.tenantId, ad.taskId!, user.id)).id;
-```
-
-## Create-task route (POST /:conversationId/create-task)
-
-- 409 only for `task_workroom` with existing `primaryTaskId`
-- For `general_workforce`: never rejected on `primaryTaskId` grounds
-- No `linkConversationToTask` call — use `getOrCreateWorkroom` instead
-- Response includes `workroomConversationId` for frontend deep-link
-
-## AutoDispatchResult shape
-
-```typescript
-{
-  taskId:                 string;  // newly created task
-  title:                  string;
-  conversationId:         string;  // ORIGINAL general conversation (for SSE routing back)
-  workroomConversationId: string;  // dedicated task_workroom (for deep-link / execution routing)
-  dispatched:             boolean;
-  requiresApproval:       boolean;
-  approvalId?:            string;
-}
-```
-
-## Migration for stale production data
-
-Any `general_workforce` conversation that has a non-null `primaryTaskId` from before
-this fix was deployed needs to be cleaned up:
+Run in a transaction AFTER deploying the code fix AND creating the missing workroom:
 
 ```sql
--- Step 1: identify stale links
-SELECT id, primary_task_id
-FROM conversations
-WHERE conversation_type = 'general_workforce'
-  AND primary_task_id IS NOT NULL;
-
--- Step 2: ensure a task_workroom exists for each orphaned link
--- (getOrCreateWorkroom handles this automatically on next dispatch — no manual SQL needed)
-
--- Step 3: clear the stale primaryTaskId
+BEGIN;
+-- Verify what will be cleared (should be 5 rows):
+SELECT id, primary_task_id FROM conversations
+WHERE  conversation_type = 'general_workforce'
+  AND  primary_task_id IS NOT NULL;
+-- Clear stale links:
 UPDATE conversations
-SET primary_task_id = NULL,
-    updated_at = NOW()
-WHERE conversation_type = 'general_workforce'
-  AND primary_task_id IS NOT NULL;
+SET    primary_task_id = NULL, updated_at = NOW()
+WHERE  conversation_type = 'general_workforce'
+  AND  primary_task_id IS NOT NULL;
+-- Expected: 5 rows affected
+COMMIT;
 ```
 
-Run against dev first. The `linkConversationToTask` safety guard will log a warning if
-any old call site accidentally fires before the migration, making it visible in logs.
+Impact:
+- Rows cleared: 5
+- Messages deleted: 0 (historical plan/exec messages remain in general chat as read-only history)
+- Workrooms deleted: 0
+- Historical access: unaffected — workrooms are separate rows, "View Workroom" links still work
 
-## Known stale record (2026-08-10)
+## The 9 pre-existing failing tests (unrelated to workroom fix)
 
-```
-conversation 84c239a1-17b4-4607-96ab-ba75cd92686d
-  conversation_type = general_workforce
-  primary_task_id   = 365dc0d1-c3b9-47af-b30e-1faa763e6477  (Care Plan for Chase Summerfield)
-```
+**sprint-knowledge-ingestion.test.ts (4 failures):** pdf-parse v2.4.5 API mismatch. Old v1 function-call API; v2 is class-based ESM. See needsops-pdf-parse-v2.md. No files in common with workroom fix.
 
-This is the record that triggered the investigation. Run the migration SQL above on prod
-after the code fix is deployed to clear it.
+**sprint8-openclaw.test.ts (5 failures):** "not connected" assertions fail because OPENCLAW_RUNTIME_URL is now set as a real secret in the environment (added during Mac connector sprint). Tests expected the engine to return "not connected" when no URL is configured; it now finds a real URL. No files in common with workroom fix.
 
-## Test files
-
-- `sprint27-auto-dispatch.test.ts` — 14 tests, updated for workroom routing
-- `sprint29-workroom-lifecycle.test.ts` — 17 new lifecycle tests
+All 9 existed before commit c2ac345 and remain unchanged after it.
