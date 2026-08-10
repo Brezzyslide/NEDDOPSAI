@@ -13,6 +13,9 @@
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import { requireOwnerOrAdmin } from "../../middlewares/requireOrgRole.js";
+// NOTE: requireOwnerOrAdmin above is the canonical Express middleware (calls next()).
+// Do NOT redefine it locally — a local shadow that returns boolean without calling
+// next() causes the request to hang forever (120 s server timeout) for valid owners.
 import {
   proposeOrganisationMemory,
   approveOrganisationMemory,
@@ -31,23 +34,6 @@ import { organisationMemoryTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Sprint 29M Part H: Knowledge-tier operations require owner or administrator.
- * Accepts "owner", "administrator", and legacy "admin" to cover all role variants.
- */
-function requireOwnerOrAdmin(req: any, res: any): boolean {
-  const role = req.tenantContext?.role;
-  if (role !== "owner" && role !== "admin" && role !== "administrator") {
-    res.status(403).json({
-      error: { code: "INSUFFICIENT_ROLE", message: "Owner or administrator role required." },
-    });
-    return false;
-  }
-  return true;
-}
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 router.get(
@@ -145,7 +131,6 @@ router.patch(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -165,7 +150,6 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -212,7 +196,6 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -232,7 +215,6 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
@@ -261,7 +243,6 @@ router.post(
   requireOwnerOrAdmin,
   async (req, res, next) => {
     try {
-      if (!requireOwnerOrAdmin(req, res)) return;
       const ctx  = req.tenantContext!;
       const user = req.appUser!;
       const { memoryId } = req.params as { memoryId: string };
