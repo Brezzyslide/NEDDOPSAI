@@ -1,0 +1,210 @@
+The diagnosis is accepted in part, but do not treat the issue as fully proven or fixed yet.
+
+Two important corrections to your report:
+
+1. You proved by code inspection that clarification_request should render as plain text, but the user reported that nothing visibly changed in the actual browser UI.
+
+Therefore:
+
+Visible clarification in actual browser = UNPROVEN / user observed FAIL
+
+Do not promote code-path reasoning to live UI proof.
+
+2. Do not solve stale task linkage only by clearing five existing database rows.
+
+The new architecture says:
+
+general_workforce
+→ reusable front-desk conversation
+→ does NOT own a task
+→ primary_task_id should not influence frontend task-link state
+task_workroom
+→ belongs to one task
+→ primary_task_id is legitimate
+
+The frontend must respect this architecture so that stale or malformed historical data cannot contaminate future sessions.
+
+Implement the following narrowly
+
+A. Clarification action UI
+
+Give clarification_request an explicit user action when the Chief of Staff is asking for confirmation to create/proceed with work.
+
+The user must not need to guess that typing “yes” is required.
+
+Provide an obvious action such as:
+
+Confirm and proceed
+
+or equivalent.
+
+The action must use the real existing conversation/message pathway, not bypass task creation or directly manipulate the database.
+
+Do not automatically approve actions that genuinely require explicit user confirmation.
+
+The UI should clearly distinguish:
+
+* informational clarification
+* questions requiring free-text answers
+* confirmation required to proceed
+
+Do not assume every clarification_request can use the same one-click action.
+
+B. Remove general-workforce stale task linkage from frontend behaviour
+
+Inspect WorkforceChatPage.tsx where:
+
+if (d.conversation.primaryTaskId) {
+  setLinkedTaskId(d.conversation.primaryTaskId);
+}
+
+A general_workforce conversation must not establish a session-wide linked task from primaryTaskId.
+
+Make this type-aware.
+
+Conceptually, only a genuine task_workroom should inherit its primaryTaskId as the conversation’s task context.
+
+Do not allow an old general_workforce.primaryTaskId to make future proposal cards show “View task” for an unrelated old task.
+
+Task proposal/task-created cards should use the task ID belonging to the specific message/card, not a stale conversation-level value.
+
+C. Historical stale-data cleanup
+
+After the code is safe, prepare the previously identified cleanup of stale:
+
+general_workforce.primary_task_id
+
+records.
+
+Do not treat the migration as the primary protection. It is cleanup only.
+
+Before running it, verify the five affected rows again and create any missing task workrooms where necessary.
+
+Then clear only invalid primary_task_id values on general_workforce conversations.
+
+Do not delete messages, tasks or workrooms.
+
+D. Do NOT change evidence retrieval/OpenClaw
+
+For the fatigue-management request:
+
+Evidence discovery       = NOT REACHED
+Runtime Broker            = NOT REACHED
+OpenClaw                  = NOT REACHED
+FATIGUE_MANAGEMENT.md     = NOT REACHED
+
+This is expected because task creation never occurred.
+
+Do not change those systems.
+
+After the UI blocker is fixed, the user will submit/continue the task through the actual UI and we will separately prove the downstream OpenClaw path.
+
+PROOF REQUIRED AFTER IMPLEMENTATION
+
+Do not report completion based only on tests or code inspection.
+
+1. Actual browser clarification proof
+
+Using the real NeedsOps UI, reproduce a request that causes confirmation/clarification.
+
+Prove visibly that the user sees:
+
+* Chief of Staff clarification/confirmation text
+* an obvious actionable control where confirmation is required
+* correct button/action label
+* no stale Chase task link
+
+Use browser/runtime evidence or screenshots if available.
+
+If actual browser rendering cannot be demonstrated, mark it UNPROVEN.
+
+2. Confirm through the UI
+
+Use the actual confirmation action.
+
+Prove that it results in:
+
+confirmation
+→ task creation
+→ dedicated task_workroom
+
+Do not manually call taskService or insert DB records for the primary proof.
+
+3. General chat remains reusable
+
+After task creation prove:
+
+general_workforce.primary_task_id = NULL
+
+and that the task has its own:
+
+task_workroom.primary_task_id = new task ID
+
+4. No stale linkedTaskId
+
+Prove in the frontend/session that the old Chase task ID:
+
+365dc0d1-c3b9-47af-b30e-1faa763e6477
+
+is not used as the linked task for new proposals or confirmation actions.
+
+5. Second unrelated request
+
+From the same general workforce chat, create another unrelated task.
+
+Prove:
+
+Task A → Workroom A
+Task B → Workroom B
+general chat → still unlinked
+
+and the UI links each task card to the correct task/workroom.
+
+6. Clarification variants
+
+Prove at least:
+
+* confirmation-style clarification
+* free-text clarification question
+
+The confirmation version should offer an explicit proceed action.
+
+The free-text version should still allow the user to answer normally without an inappropriate one-click confirmation.
+
+7. Migration proof
+
+Before and after stale-data cleanup, show:
+
+* number of affected general_workforce rows
+* their task IDs
+* whether required workrooms exist
+* exact number updated
+* zero messages deleted
+* zero tasks deleted
+* zero workrooms deleted
+
+8. Do not claim broader UI stability is fixed
+
+Dashboard, Memory, Library, Task Centre and other modules still have an unresolved appear/disappear problem.
+
+This change must not be presented as fixing that issue unless independently demonstrated.
+
+Final table
+
+Return:
+
+Behaviour	Proof type	Result
+Clarification persisted	DB	PASS/FAIL
+Clarification actually visible in browser	LIVE UI	PASS/FAIL/UNPROVEN
+Confirmation action visible	LIVE UI	PASS/FAIL/UNPROVEN
+Confirmation creates task	LIVE UI + DB/API	PASS/FAIL
+New task has dedicated workroom	DB	PASS/FAIL
+General chat remains unlinked	DB	PASS/FAIL
+Stale Chase ID absent from new UI flow	UI/API/DB	PASS/FAIL
+Second unrelated task succeeds	LIVE UI + DB	PASS/FAIL
+Free-text clarification still works	LIVE UI	PASS/FAIL/UNPROVEN
+Stale-data migration safe	DB	PASS/FAIL
+Evidence retrieval/OpenClaw	NOT TESTED YET	NOT REACHED
+Dashboard/Memory/Library stability	NOT TESTED YET	UNRESOLVED
+
+Anything not actually demonstrated in the running product must be marked UNPROVEN.

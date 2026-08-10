@@ -116,16 +116,114 @@ function TaskProposalCard({
   );
 }
 
+/**
+ * ClarificationCard — rendered inside MessageBubble for clarification_request messages.
+ *
+ * Distinguishes three variants:
+ *   1. Confirmation required (structuredContent null, or questions array empty):
+ *      CoS is asking the user to explicitly approve proceeding. Shows a
+ *      "Confirm and proceed" button that sends a confirmation message through the
+ *      normal conversation pathway — no direct DB manipulation.
+ *
+ *   2. Free-text questions (structuredContent.data.questions non-empty):
+ *      CoS needs specific answers before it can proceed. Renders the questions
+ *      visually so the user knows what to address, but does NOT offer a one-click
+ *      confirm (the user must type their answers — the questions may need individual
+ *      free-text responses).
+ *
+ *   3. Informational clarification (no questions, no confirmation needed — future):
+ *      Fallback to plain text only; ClarificationCard is not rendered.
+ */
+function ClarificationCard({
+  msg,
+  onConfirm,
+}: {
+  msg: Message;
+  onConfirm: () => void;
+}) {
+  // Structured content shape: { type: "clarification_request", data: { questions, blocking, requestedBy } }
+  // When the CoS fires task_clarification mode with no specific sub-questions,
+  // the server stores structuredContent = null.  Both null and an empty questions array
+  // indicate a confirmation-style clarification.
+  const structured = msg.structuredContent as {
+    type: string;
+    data: { questions: string[]; blocking: boolean; requestedBy: string };
+  } | null | undefined;
+
+  const questions: string[] = structured?.data?.questions ?? [];
+  const hasQuestions = questions.length > 0;
+
+  if (!hasQuestions) {
+    // ── Confirmation variant ───────────────────────────────────────────────────
+    // The Chief of Staff has made a proposal and is asking for explicit approval
+    // to proceed. Show a distinct confirmation affordance so the user doesn't
+    // need to guess that typing "yes" is required.
+    return (
+      <div className="mt-3 bg-[#0B1829] border border-amber-500/30 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-amber-400 text-sm">⚡</span>
+          <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">
+            Confirmation Required
+          </span>
+        </div>
+        <p className="text-[#94A3B8] text-xs">
+          Confirm to proceed and create the task, or continue discussing to refine the proposal.
+        </p>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onConfirm}
+            className="px-3 py-1.5 bg-[#00D4FF] text-[#0B1829] text-xs font-semibold rounded-lg hover:bg-[#00D4FF]/90 transition-colors"
+          >
+            Confirm and proceed
+          </button>
+          <button
+            onClick={() => {
+              // Scroll to input — the user wants to ask something first
+              document.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+            }}
+            className="px-3 py-1.5 text-xs text-[#64748B] hover:text-[#E2E8F0] border border-[#1E3A5F] rounded-lg transition-colors"
+          >
+            Continue discussing
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Questions variant ────────────────────────────────────────────────────────
+  // The CoS has specific questions that need free-text answers. Render them
+  // visually so the user knows what to address. No one-click confirm here —
+  // each question may need a different answer.
+  return (
+    <div className="mt-3 bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-4 space-y-3">
+      <p className="text-[#64748B] text-xs font-semibold uppercase tracking-wider">
+        Please answer to continue
+      </p>
+      <ul className="space-y-2">
+        {questions.map((q, i) => (
+          <li key={i} className="flex gap-2 text-sm">
+            <span className="text-[#00D4FF] text-xs mt-0.5 shrink-0 font-semibold">{i + 1}.</span>
+            <span className="text-[#CBD5E1]">{q}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-[#475569] text-xs">Type your answer in the chat below</p>
+    </div>
+  );
+}
+
 function MessageBubble({
   msg,
   onCreateTask,
   onContinueDiscussing,
+  onConfirm,
   creatingTask,
   existingTaskId,
 }: {
   msg: Message;
   onCreateTask: (title: string, summary: string) => void;
   onContinueDiscussing: () => void;
+  onConfirm: () => void;
   creatingTask: boolean;
   existingTaskId?: string | null;
 }) {
@@ -145,6 +243,11 @@ function MessageBubble({
   const proposalData = msg.messageType === "task_proposal" && msg.structuredContent
     ? (msg.structuredContent as { data: TaskProposalData }).data
     : null;
+
+  // Show the clarification card for clarification_request messages from the CoS.
+  // The card variant (confirmation vs. free-text questions) is determined inside
+  // ClarificationCard based on the message's structuredContent.questions array.
+  const isClarification = msg.messageType === "clarification_request" && !isUser;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
@@ -170,6 +273,9 @@ function MessageBubble({
               creating={creatingTask}
               existingTaskId={existingTaskId}
             />
+          )}
+          {isClarification && (
+            <ClarificationCard msg={msg} onConfirm={onConfirm} />
           )}
         </div>
         <p className="text-[#475569] text-xs mt-1 px-1 flex items-center gap-1.5">
@@ -201,7 +307,25 @@ export default function WorkforceChatPage() {
   const qc = useQueryClient();
 
   const [conversationId, setConversationId] = useState<string | null>(null);
-  /** primaryTaskId of the current conversation — set when loaded or when auto-dispatch fires */
+  /**
+   * linkedTaskId tracks a task that was created/auto-dispatched DURING THIS SESSION.
+   *
+   * Architecture rule (Sprint 29M workroom fix):
+   *   - general_workforce conversations are reusable front-desk threads. They may
+   *     create many independent tasks over their lifetime and must never inherit a
+   *     session-wide task link from their historical primaryTaskId.
+   *   - task_workroom conversations belong to exactly one task; their primaryTaskId
+   *     is the legitimate task context and may be inherited.
+   *
+   * This state is therefore only set from:
+   *   1. task_auto_created SSE events in this session
+   *   2. handleCreateTask success responses in this session
+   *   3. primaryTaskId of a task_workroom conversation (on load)
+   *
+   * It is NEVER set from the primaryTaskId of a general_workforce conversation,
+   * because that value is a historical artefact (stale task link from a previous
+   * session) and would contaminate proposal cards in the current session.
+   */
   const [linkedTaskId, setLinkedTaskId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState("");
@@ -230,8 +354,15 @@ export default function WorkforceChatPage() {
       .then(d => {
         if (d.conversation) {
           setConversationId(d.conversation.id);
-          // Capture any already-linked task (e.g. from a previous auto-dispatch in this conversation)
-          if (d.conversation.primaryTaskId) {
+          // Architecture rule: only inherit primaryTaskId for task_workroom conversations.
+          // A general_workforce conversation is a reusable front-desk thread — its
+          // primaryTaskId (if any) is a historical artefact from a previous session and
+          // must not become the session-wide linked task, which would corrupt proposal
+          // cards for new tasks submitted in this session.
+          if (
+            d.conversation.conversationType === "task_workroom" &&
+            d.conversation.primaryTaskId
+          ) {
             setLinkedTaskId(d.conversation.primaryTaskId);
           }
           // Load existing messages
@@ -250,10 +381,19 @@ export default function WorkforceChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingText]);
 
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || isStreaming || !conversationId || !slug) return;
-    const text = input.trim();
-    setInput("");
+  /**
+   * Send a message through the existing conversation/message pathway.
+   *
+   * @param overrideText — when provided, this text is sent instead of the
+   *   current input field value. Used by the ClarificationCard "Confirm and
+   *   proceed" button, which bypasses the input field so the user does not
+   *   need to type a confirmation phrase manually.
+   */
+  const sendMessage = useCallback(async (overrideText?: string) => {
+    const text = (overrideText !== undefined ? overrideText : input).trim();
+    if (!text || isStreaming || !conversationId || !slug) return;
+    // Only clear the input field if the message came from it (not from a button)
+    if (overrideText === undefined) setInput("");
     setError(null);
     setIsStreaming(true);
     setStreamingText("");
@@ -474,6 +614,7 @@ export default function WorkforceChatPage() {
               msg={msg}
               onCreateTask={handleCreateTask}
               onContinueDiscussing={() => setInput("Tell me more about the options")}
+              onConfirm={() => sendMessage("Confirm, please proceed.")}
               creatingTask={creatingTask}
               existingTaskId={linkedTaskId}
             />
@@ -561,7 +702,7 @@ export default function WorkforceChatPage() {
               </button>
             ) : (
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={!input.trim()}
                 className="px-4 py-3 text-xs bg-[#00D4FF] text-[#0B1829] font-semibold rounded-xl hover:bg-[#00D4FF]/90 disabled:opacity-40 transition-colors shrink-0"
               >
