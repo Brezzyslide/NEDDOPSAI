@@ -153,8 +153,15 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
       return;
     }
 
-    // Use the task from conversation or from body
-    const resolvedTaskId = taskId ?? conv.primaryTaskId ?? undefined;
+    // Resolve taskId from the request body first.
+    // For task_workroom conversations, fall back to their permanent primaryTaskId so that
+    // clarification replies, checkpoint resumes, and reruns stay bound to the correct task.
+    // For general_workforce conversations the primaryTaskId must NOT be inherited — the
+    // front-desk chat is reusable across many independent tasks and must never be
+    // permanently locked to whichever task was created first.
+    const resolvedTaskId =
+      taskId ??
+      (conv.conversationType === "task_workroom" ? conv.primaryTaskId ?? undefined : undefined);
 
     // Set SSE headers for streaming
     res.setHeader("Content-Type", "text/event-stream");
@@ -245,7 +252,10 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
       (result.understanding.shouldCreateTask || result.actionDecision?.action === "create_new_work") &&
       result.understanding.confidence >= AUTO_EXECUTE_CONFIDENCE_THRESHOLD &&
       result.understanding.proposedTask &&
-      !conv.primaryTaskId
+      // A general_workforce conversation is the reusable front desk — it may create many
+      // independent tasks over its lifetime, so we must never gate on primaryTaskId here.
+      // A task_workroom already has a dedicated task; rerun/revise is the correct path there.
+      conv.conversationType !== "task_workroom"
     ) {
       try {
         // Sprint 29M: forward the execution lane so auto-dispatch audit records
@@ -276,22 +286,37 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     // executionCoordinatorService is imported here (not in conversationService)
     // to avoid a circular dependency. Both actions reuse the existing taskId so
     // UEE selects the current routing (Sprint 29H fixed: OM for incident.review).
+    //
+    // Workroom routing: if this request originates from a general_workforce conversation
+    // (user typed "redo the fatigue report" in the front desk chat), we must resolve the
+    // task's dedicated workroom and route execution output there — not into the general chat.
+    // If already in a task_workroom, the current conversation IS the workroom.
     if (
       (result.actionDecision?.action === "rerun_existing" ||
         result.actionDecision?.action === "revise_existing") &&
       result.actionDecision.taskId
     ) {
       const ad = result.actionDecision;
-      dispatchWorkExecution({
-        organizationId: ctx.tenantId,
-        taskId: ad.taskId!,
-        taskTitle: ad.action === "revise_existing"
-          ? "Revision of previous work"
-          : "Rerun of previous work",
-        taskDescription: `${ad.action === "revise_existing" ? "Revision" : "Rerun"} requested: ${content.trim()}${ad.completedWorkId ? ` (source: ${ad.completedWorkId})` : ""}`,
-        requesterId: user.id,
-        conversationId: conv.id,
-      }).catch(err =>
+      const rerunConvIdPromise =
+        conv.conversationType === "task_workroom"
+          ? Promise.resolve(conv.id)
+          : conversationService
+              .getOrCreateWorkroom(ctx.tenantId, ad.taskId!, user.id)
+              .then(wr => wr.id)
+              .catch(() => conv.id); // fallback to originating conversation if workroom lookup fails
+
+      rerunConvIdPromise.then(rerunConvId =>
+        dispatchWorkExecution({
+          organizationId: ctx.tenantId,
+          taskId: ad.taskId!,
+          taskTitle: ad.action === "revise_existing"
+            ? "Revision of previous work"
+            : "Rerun of previous work",
+          taskDescription: `${ad.action === "revise_existing" ? "Revision" : "Rerun"} requested: ${content.trim()}${ad.completedWorkId ? ` (source: ${ad.completedWorkId})` : ""}`,
+          requesterId: user.id,
+          conversationId: rerunConvId,
+        })
+      ).catch(err =>
         console.warn("[conversations] Rerun/revise dispatch failed (non-fatal):", (err as Error)?.message),
       );
     }
@@ -359,8 +384,13 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       return;
     }
 
-    // Prevent duplicate task creation (idempotency check)
-    if (conv.primaryTaskId) {
+    const isGeneralWorkforce = conv.conversationType === "general_workforce";
+
+    // Idempotency guard: a task_workroom already has a permanent task binding, so reject
+    // a second create-task call on it.  A general_workforce conversation is the reusable
+    // front desk and may create many independent tasks, so we never reject based on
+    // primaryTaskId there (it will remain NULL after this request regardless).
+    if (!isGeneralWorkforce && conv.primaryTaskId) {
       res.status(409).json({ error: { code: "DUPLICATE_TASK", message: "This conversation already has a linked task." } });
       return;
     }
@@ -375,10 +405,17 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       originatingModule: "conversation",
     });
 
-    // Link conversation → task
-    await conversationService.linkConversationToTask(ctx.tenantId, conv.id, result.task.id);
+    // Create (or retrieve) the dedicated task_workroom.
+    // General_workforce conversations must NOT acquire primaryTaskId — they are the
+    // reusable front desk.  All execution-scoped messages go into the workroom instead.
+    const workroom = await conversationService.getOrCreateWorkroom(
+      ctx.tenantId,
+      result.task.id,
+      user.id,
+    );
+    const workroomConversationId = workroom.id;
 
-    // Post task_created message + plan card to thread
+    // Post task_created message to the ORIGINAL conversation (user sees it in general chat)
     await conversationService.addMessage({
       organizationId: ctx.tenantId,
       conversationId: conv.id,
@@ -386,23 +423,30 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       senderType: "system",
       messageType: "task_created",
       content: `Task created: ${result.task.title}`,
-      structuredContent: { type: "task_created", data: { taskId: result.task.id, title: result.task.title } },
+      structuredContent: {
+        type: "task_created",
+        data: { taskId: result.task.id, title: result.task.title, workroomConversationId },
+      },
     });
 
-    await conversationService.postPlanToConversation(ctx.tenantId, conv.id, result.task.id, result.plan);
+    // Plan card and all subsequent execution messages go into the WORKROOM
+    await conversationService.postPlanToConversation(ctx.tenantId, workroomConversationId, result.task.id, result.plan);
 
     // Post approval request card if required; otherwise dispatch work immediately
     if (result.plan.requiresApproval) {
-      const [approval] = await import("@workspace/db").then(db =>
-        db.db.select().from(db.approvalsTable)
-          .where(import("drizzle-orm").then(drizzle => drizzle.eq(db.approvalsTable.taskId, result.task.id)))
-          .limit(1)
-      ).catch(() => [undefined]);
+      const { db: wdb, approvalsTable: wAt } = await import("@workspace/db");
+      const { eq: weq } = await import("drizzle-orm");
+      const [approval] = await wdb
+        .select()
+        .from(wAt)
+        .where(weq(wAt.taskId, result.task.id))
+        .limit(1)
+        .catch(() => [undefined]);
 
       if (approval) {
         await conversationService.postApprovalRequestToConversation(
           ctx.tenantId,
-          conv.id,
+          workroomConversationId,   // ← workroom, not general chat
           result.task.id,
           approval.id,
           {
@@ -415,15 +459,15 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
         );
       }
     } else {
-      // Sprint 27: no approval required — dispatch work execution immediately in background.
-      // The pipeline will post progress and completion messages to this conversation.
+      // No approval required — dispatch work execution immediately in background.
+      // Progress, checkpoints, and completion output go into the workroom.
       dispatchWorkExecution({
         organizationId: ctx.tenantId,
         taskId: result.task.id,
         taskTitle: result.task.title,
         taskDescription: description,
         requesterId: user.id,
-        conversationId: conv.id,
+        conversationId: workroomConversationId,   // ← workroom, not general chat
       }).catch(err =>
         console.warn("[conversations] Background dispatch failed (non-fatal):", err?.message),
       );
@@ -436,7 +480,12 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       eventType: "task.created_from_conversation",
       resourceType: "task",
       resourceId: result.task.id,
-      metadata: { conversationId: conv.id, title: result.task.title },
+      metadata: {
+        originatingConversationId: conv.id,
+        workroomConversationId,
+        title: result.task.title,
+        isGeneralWorkforce,
+      },
       ...meta,
     }).catch(() => {});
 
@@ -445,6 +494,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       plan: result.plan,
       specialists: result.specialists,
       conversationId: conv.id,
+      workroomConversationId,
     });
   } catch (err) { next(err); }
 });

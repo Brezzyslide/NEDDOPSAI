@@ -52,9 +52,12 @@ export interface AutoDispatchInput {
 }
 
 export interface AutoDispatchResult {
-  taskId:           string;
-  title:            string;
-  conversationId:   string;
+  taskId:                 string;
+  title:                  string;
+  /** The original general_workforce (or calling) conversation ID */
+  conversationId:         string;
+  /** The dedicated task_workroom conversation created/retrieved for this task */
+  workroomConversationId: string;
   dispatched:       boolean;
   requiresApproval: boolean;
   approvalId?:      string;
@@ -103,10 +106,20 @@ export async function autoCreateAndDispatch(
       .catch(err => console.warn("[AutoDispatch] laneContext metadata persist failed (non-fatal):", err?.message));
   }
 
-  // 2. Link conversation → task (idempotent — the service handles duplicates)
-  await conversationService.linkConversationToTask(organizationId, conversationId, task.id);
+  // 2. Create (or retrieve) the dedicated task_workroom for this task.
+  //    The general_workforce conversation is the reusable front desk — it must NOT
+  //    acquire primaryTaskId.  All execution-scoped messages (plan, approval, progress,
+  //    completion) go into the workroom so they remain isolated per task.
+  const workroom = await conversationService.getOrCreateWorkroom(
+    organizationId,
+    task.id,
+    requesterId,
+  );
+  const workroomConversationId = workroom.id;
 
-  // 3. Post task_created system message + plan card to the thread
+  // 3. Post task_created system message to the ORIGINAL conversation (front desk).
+  //    This is the only message written into the general chat — the user sees that
+  //    work has been created and can navigate to the workroom from the structured card.
   await conversationService.addMessage({
     organizationId,
     conversationId,
@@ -116,13 +129,14 @@ export async function autoCreateAndDispatch(
     content:     `Task created: ${task.title}`,
     structuredContent: {
       type: "task_created",
-      data: { taskId: task.id, title: task.title, autoDispatched: true },
+      data: { taskId: task.id, title: task.title, autoDispatched: true, workroomConversationId },
     },
   });
 
-  await conversationService.postPlanToConversation(organizationId, conversationId, task.id, plan);
+  // 4. Post the plan card into the WORKROOM (not the general chat).
+  await conversationService.postPlanToConversation(organizationId, workroomConversationId, task.id, plan);
 
-  // 4. Dispatch or post approval request
+  // 5. Dispatch or post approval request — both routed to the WORKROOM.
   //
   // Task-level dispatch gate: determined by the blueprint execution plan.
   // This gate controls whether the task starts executing at all.
@@ -137,7 +151,7 @@ export async function autoCreateAndDispatch(
   let approvalId: string | undefined;
 
   if (plan.requiresApproval) {
-    // Find the approval record created by createTask and post the approval card
+    // Find the approval record created by createTask and post the approval card to workroom
     const [approval] = await db
       .select()
       .from(approvalsTable)
@@ -149,7 +163,7 @@ export async function autoCreateAndDispatch(
       approvalId = approval.id;
       await conversationService.postApprovalRequestToConversation(
         organizationId,
-        conversationId,
+        workroomConversationId,   // ← workroom, not general chat
         task.id,
         approval.id,
         {
@@ -162,16 +176,17 @@ export async function autoCreateAndDispatch(
       );
     }
   } else {
-    // No approval required — dispatch work execution immediately in the background
-    // Sprint 29M: forward laneContext so UEE can apply the evidence/claim-integrity override
+    // No approval required — dispatch work execution immediately in the background.
+    // Sprint 29M: forward laneContext so UEE can apply the evidence/claim-integrity override.
+    // Execution progress, checkpoints, and completion output go into the workroom.
     dispatchWorkExecution({
       organizationId,
       taskId:          task.id,
       taskTitle:       task.title,
       taskDescription: description,
       requesterId,
-      conversationId,
-      laneContext: laneContext ?? undefined,
+      conversationId:  workroomConversationId,   // ← workroom, not general chat
+      laneContext:     laneContext ?? undefined,
     }).catch(err =>
       console.warn("[AutoDispatch] Background dispatch failed (non-fatal):", err?.message),
     );
@@ -187,7 +202,8 @@ export async function autoCreateAndDispatch(
     resourceType: "task",
     resourceId:   task.id,
     metadata: {
-      conversationId,
+      originatingConversationId: conversationId,
+      workroomConversationId,
       title:          task.title,
       autoDispatched: dispatched,
       source:         "cos_auto_dispatch",
@@ -202,14 +218,15 @@ export async function autoCreateAndDispatch(
   }).catch(() => {});
 
   console.info(
-    `[AutoDispatch] Task ${task.id} created from CoS intent` +
+    `[AutoDispatch] Task ${task.id} created — workroom ${workroomConversationId}` +
     (dispatched ? " — execution dispatched" : " — awaiting approval"),
   );
 
   return {
-    taskId:           task.id,
-    title:            task.title,
+    taskId:                 task.id,
+    title:                  task.title,
     conversationId,
+    workroomConversationId,
     dispatched,
     requiresApproval: plan.requiresApproval,
     approvalId,

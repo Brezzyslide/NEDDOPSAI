@@ -250,6 +250,33 @@ export async function linkConversationToTask(
   conversationId: string,
   taskId: string,
 ): Promise<void> {
+  // Safety guard: general_workforce conversations must remain reusable and must
+  // not be permanently bound to a single task through primaryTaskId.  Callers
+  // that need to associate a task with a front-desk conversation should create a
+  // dedicated task_workroom via getOrCreateWorkroom() instead.
+  //
+  // This guard fires only if a call site that has not been updated still reaches
+  // this function for a general_workforce conversation — it is defensive, not the
+  // primary enforcement (which lives in autoDispatchService and the route layer).
+  const [conv] = await db
+    .select({ conversationType: conversationsTable.conversationType })
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.organizationId, organizationId),
+        eq(conversationsTable.id, conversationId),
+      ),
+    )
+    .limit(1);
+
+  if (conv?.conversationType === "general_workforce") {
+    console.warn(
+      `[conversationService] linkConversationToTask blocked for general_workforce ` +
+      `conversation ${conversationId}. Use getOrCreateWorkroom() for task association.`,
+    );
+    return;
+  }
+
   // Only record the primaryTaskId — do NOT change conversationType.
   // Mutating a general_workforce conversation to task_workroom causes
   // findOrCreateGeneralConversation to miss it on the next page load

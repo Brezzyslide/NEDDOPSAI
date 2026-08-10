@@ -3,26 +3,33 @@
  *
  * Tests the autoCreateAndDispatch service that fires when the CoS classifies
  * a message as high-confidence task intent (shouldCreateTask + confidence ≥ 0.85).
+ *
+ * Post-workroom-architecture: general_workforce conversations no longer acquire
+ * primaryTaskId.  All execution-scoped messages (plan, approval, dispatch) go into
+ * the dedicated task_workroom returned by getOrCreateWorkroom().  Only the
+ * task_created card is posted into the original conversation (front desk).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-const mockCreateTask     = vi.fn();
-const mockLinkConv       = vi.fn();
-const mockAddMessage     = vi.fn();
-const mockPostPlan       = vi.fn();
-const mockPostApproval   = vi.fn();
-const mockDispatch       = vi.fn().mockResolvedValue(undefined);
-const mockWriteAudit     = vi.fn().mockResolvedValue(undefined);
+const mockCreateTask          = vi.fn();
+const mockGetOrCreateWorkroom = vi.fn();
+const mockAddMessage          = vi.fn();
+const mockPostPlan            = vi.fn();
+const mockPostApproval        = vi.fn();
+const mockDispatch            = vi.fn().mockResolvedValue(undefined);
+const mockWriteAudit          = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../services/taskService.js", () => ({
   createTask: (...a: unknown[]) => mockCreateTask(...a),
 }));
 
 vi.mock("../services/conversationService.js", () => ({
-  linkConversationToTask:              (...a: unknown[]) => mockLinkConv(...a),
+  // linkConversationToTask is no longer called by autoDispatchService — general_workforce
+  // conversations must remain reusable and must not acquire primaryTaskId.
+  getOrCreateWorkroom:                 (...a: unknown[]) => mockGetOrCreateWorkroom(...a),
   addMessage:                          (...a: unknown[]) => mockAddMessage(...a),
   postPlanToConversation:              (...a: unknown[]) => mockPostPlan(...a),
   postApprovalRequestToConversation:   (...a: unknown[]) => mockPostApproval(...a),
@@ -91,7 +98,11 @@ describe("autoCreateAndDispatch — no approval required", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateTask.mockResolvedValue(makeTaskResult(false));
-    mockLinkConv.mockResolvedValue(undefined);
+    mockGetOrCreateWorkroom.mockResolvedValue({
+      id: "workroom-1",
+      conversationType: "task_workroom",
+      primaryTaskId: "task-1",
+    });
     mockAddMessage.mockResolvedValue({ id: "msg-1" });
     mockPostPlan.mockResolvedValue(undefined);
   });
@@ -119,36 +130,51 @@ describe("autoCreateAndDispatch — no approval required", () => {
     expect(call.description).toContain("Must use approved templates");
   });
 
-  it("links the conversation to the new task", async () => {
+  it("creates a dedicated task_workroom for the new task (does NOT call linkConversationToTask)", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     await autoCreateAndDispatch(makeInput());
 
-    expect(mockLinkConv).toHaveBeenCalledWith("org-1", "conv-1", "task-1");
+    // Workroom must be created/retrieved for the task
+    expect(mockGetOrCreateWorkroom).toHaveBeenCalledWith("org-1", "task-1", "user-1");
+    // linkConversationToTask must NOT be called — general_workforce conversations
+    // must remain reusable and must not acquire primaryTaskId
+    expect(vi.mocked).toBeDefined(); // ensure mock infra is working
+    // The conversationService mock does not expose linkConversationToTask at all —
+    // confirming that autoDispatchService no longer imports/calls it.
   });
 
-  it("posts a task_created system message with autoDispatched=true", async () => {
+  it("posts the task_created card to the ORIGINAL conversation (front desk), not the workroom", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     await autoCreateAndDispatch(makeInput());
 
     expect(mockAddMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        conversationId: "conv-1",   // ← original general conversation
         senderType:  "system",
         messageType: "task_created",
         structuredContent: expect.objectContaining({
-          data: expect.objectContaining({ autoDispatched: true }),
+          data: expect.objectContaining({
+            autoDispatched: true,
+            workroomConversationId: "workroom-1",   // ← workroom ID surfaced in the card
+          }),
         }),
       }),
     );
   });
 
-  it("posts the plan card to the conversation", async () => {
+  it("posts the plan card to the WORKROOM (not the original conversation)", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     await autoCreateAndDispatch(makeInput());
 
-    expect(mockPostPlan).toHaveBeenCalledWith("org-1", "conv-1", "task-1", expect.any(Object));
+    expect(mockPostPlan).toHaveBeenCalledWith(
+      "org-1",
+      "workroom-1",   // ← workroom, not "conv-1"
+      "task-1",
+      expect.any(Object),
+    );
   });
 
-  it("fires dispatchWorkExecution in the background when no approval required", async () => {
+  it("fires dispatchWorkExecution into the WORKROOM when no approval required", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
@@ -159,7 +185,7 @@ describe("autoCreateAndDispatch — no approval required", () => {
       expect.objectContaining({
         organizationId: "org-1",
         taskId:         "task-1",
-        conversationId: "conv-1",
+        conversationId: "workroom-1",   // ← workroom, not "conv-1"
         requesterId:    "user-1",
       }),
     );
@@ -168,13 +194,14 @@ describe("autoCreateAndDispatch — no approval required", () => {
     expect(result.approvalId).toBeUndefined();
   });
 
-  it("returns task metadata the route can forward as task_auto_created SSE event", async () => {
+  it("returns task metadata including both conversationId and workroomConversationId", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
     expect(result.taskId).toBe("task-1");
     expect(result.title).toBe("Process quarterly reports");
-    expect(result.conversationId).toBe("conv-1");
+    expect(result.conversationId).toBe("conv-1");             // ← original conversation for SSE routing
+    expect(result.workroomConversationId).toBe("workroom-1"); // ← workroom for deep-link
   });
 
   it("does NOT post an approval card when no approval is required", async () => {
@@ -189,7 +216,11 @@ describe("autoCreateAndDispatch — approval required", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCreateTask.mockResolvedValue(makeTaskResult(true));
-    mockLinkConv.mockResolvedValue(undefined);
+    mockGetOrCreateWorkroom.mockResolvedValue({
+      id: "workroom-1",
+      conversationType: "task_workroom",
+      primaryTaskId: "task-1",
+    });
     mockAddMessage.mockResolvedValue({ id: "msg-1" });
     mockPostPlan.mockResolvedValue(undefined);
     mockPostApproval.mockResolvedValue(undefined);
@@ -213,12 +244,15 @@ describe("autoCreateAndDispatch — approval required", () => {
     expect(result.requiresApproval).toBe(true);
   });
 
-  it("posts an approval request card with the plan reasoning", async () => {
+  it("posts the approval request card to the WORKROOM (not the general chat)", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
     expect(mockPostApproval).toHaveBeenCalledWith(
-      "org-1", "conv-1", "task-1", "approval-1",
+      "org-1",
+      "workroom-1",   // ← workroom, not "conv-1"
+      "task-1",
+      "approval-1",
       expect.objectContaining({
         requestedAction: "Execute: Process quarterly reports",
         requestingRole:  "Chief of Staff",
@@ -227,13 +261,14 @@ describe("autoCreateAndDispatch — approval required", () => {
     expect(result.approvalId).toBe("approval-1");
   });
 
-  it("returns requiresApproval=true with the approvalId", async () => {
+  it("returns requiresApproval=true with the approvalId and workroomConversationId", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
     expect(result.requiresApproval).toBe(true);
     expect(result.approvalId).toBe("approval-1");
     expect(result.dispatched).toBe(false);
+    expect(result.workroomConversationId).toBe("workroom-1");
   });
 });
 
@@ -249,7 +284,7 @@ describe("autoCreateAndDispatch — error handling", () => {
 
   it("uses 'normal' priority when proposedTask has no priority field", async () => {
     mockCreateTask.mockResolvedValue(makeTaskResult(false));
-    mockLinkConv.mockResolvedValue(undefined);
+    mockGetOrCreateWorkroom.mockResolvedValue({ id: "workroom-1", conversationType: "task_workroom", primaryTaskId: "task-1" });
     mockAddMessage.mockResolvedValue({ id: "msg-1" });
     mockPostPlan.mockResolvedValue(undefined);
 
