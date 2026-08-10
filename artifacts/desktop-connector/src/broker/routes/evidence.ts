@@ -635,20 +635,66 @@ export async function callBridgeDiscover(
   }
 }
 
+// ─── OpenClaw field-name alias resolution ─────────────────────────────────────
+//
+// OpenClaw 2026.7.x uses its own field naming conventions that differ from our
+// canonical BrokerCandidateEvidence contract:
+//
+//   OpenClaw native      Our canonical contract
+//   ─────────────────    ──────────────────────
+//   passageText          supportingPassage
+//   sourceUri            accessLocation
+//
+// resolveOpenClawAlias() tries the canonical name first; if that value is absent
+// or is a schema-template placeholder (angle-bracket strings like the examples
+// in our prompt), it falls back to the OpenClaw alias.
+//
+// Placeholder detection: our buildDiscoveryInstruction includes a JSON schema
+// example.  If OpenClaw fills the example literally rather than replacing it
+// with real data, the field contains text like:
+//   "<verbatim passage from the source — no paraphrase>"
+// These must be rejected — they are not real evidence.
+
+function resolveOpenClawAlias(
+  item: Record<string, unknown>,
+  canonical: string,
+  alias: string,
+): string {
+  const extract = (key: string): string => {
+    const v = item[key];
+    if (typeof v !== "string") return "";
+    const s = v.trim();
+    // Reject schema-template placeholders (angle-bracket strings ≥ 3 chars inside)
+    return /^<[^>]{3,}>$/.test(s) ? "" : s;
+  };
+  return extract(canonical) || extract(alias);
+}
+
 // ─── Candidate validation ──────────────────────────────────────────────────────
 
+// Only fields that OpenClaw reliably returns using our canonical names.
+// supportingPassage / accessLocation are resolved via resolveOpenClawAlias()
+// below to handle the passageText / sourceUri aliases.
+// passageHash is always recomputed from the normalised passage.
+// retrievalTimestamp and contentType are defaulted if absent.
 const REQUIRED_STRING_FIELDS: (keyof BrokerCandidateEvidence)[] = [
-  "sourceTitle", "supportingPassage", "passageHash",
-  "retrievalMethod", "retrievalTimestamp", "contentType", "accessLocation",
+  "sourceTitle",
+  "retrievalMethod",
 ];
 
 /**
  * Validate and filter raw candidate objects returned by OpenClaw.
  *
  * Rules:
- *   - Required string fields must be present and non-empty
+ *   - sourceTitle and retrievalMethod must be present and non-empty
+ *   - supportingPassage OR passageText must be present, non-empty, and not a
+ *     schema-template placeholder → fail-closed: title-only candidates rejected
+ *   - accessLocation OR sourceUri must be present and non-empty
  *   - retrievalMethod must NOT be "connectivity_test" (synthetic fixture guard)
- *   - passageHash is verified against supportingPassage; corrected if wrong
+ *   - passageHash is always recomputed from the normalised passage; the value
+ *     provided by OpenClaw is corrected if wrong or absent
+ *   - retrievalTimestamp defaults to current ISO timestamp when absent
+ *   - contentType defaults to "unknown" when absent or a placeholder
  *   - openClawConfidence and relevanceScore are clamped to [0, 1]
  *   - organisationId and executionId are stamped from the request (not trusted from OpenClaw)
  *   - discoveryId is generated fresh if absent or invalid
@@ -664,7 +710,7 @@ export function validateAndFilterCandidates(
   const valid: BrokerCandidateEvidence[] = [];
 
   for (const item of raw) {
-    // Required string fields
+    // ── Hard-required fields (canonical names only) ───────────────────────
     let ok = true;
     for (const field of REQUIRED_STRING_FIELDS) {
       if (typeof item[field] !== "string" || !(item[field] as string).trim()) {
@@ -681,41 +727,65 @@ export function validateAndFilterCandidates(
       continue;
     }
 
-    // Passage hash verification / correction
-    const passage  = item["supportingPassage"] as string;
-    const expected = createHash("sha256").update(passage).digest("hex");
+    // ── Alias-normalised evidence fields (fail-closed) ────────────────────
+    // OpenClaw 2026.7.x uses passageText / sourceUri; our contract uses
+    // supportingPassage / accessLocation.  Either naming is accepted.
+    // If the actual passage is absent after alias resolution → reject.
+    // Title-only candidates are never sufficient evidence.
+    const normPassage  = resolveOpenClawAlias(item, "supportingPassage", "passageText");
+    const normLocation = resolveOpenClawAlias(item, "accessLocation",    "sourceUri");
+
+    if (!normPassage) {
+      logger.debug({ item },
+        "[evidence-discovery] Candidate dropped: no real passage in supportingPassage or passageText (may be placeholder or absent)");
+      continue;
+    }
+    if (!normLocation) {
+      logger.warn({ item },
+        "[evidence-discovery] Candidate dropped: no access location in accessLocation or sourceUri");
+      continue;
+    }
+
+    // ── Passage hash: always recomputed from normalised passage ───────────
+    const expected = createHash("sha256").update(normPassage).digest("hex");
     const provided = item["passageHash"] as string;
     const passageHash = (provided && provided.length === 64 && /^[0-9a-f]+$/i.test(provided))
-      ? (provided === expected ? provided : expected)  // recompute if mismatch
+      ? (provided === expected ? provided : expected)
       : expected;
 
     if (provided && provided !== expected) {
       logger.debug({ provided, expected }, "[evidence-discovery] Candidate passageHash corrected");
     }
 
-    // Clamp scores
+    // ── Clamp scores ──────────────────────────────────────────────────────
     const clamp = (v: unknown): number => {
       const n = typeof v === "number" ? v : parseFloat(String(v));
       return isNaN(n) ? 0 : Math.max(0, Math.min(1, n));
     };
 
+    // ── contentType: default when absent or placeholder ───────────────────
+    const rawContentType = typeof item["contentType"] === "string" ? (item["contentType"] as string).trim() : "";
+    const contentType = (rawContentType && !/^<[^>]{3,}>$/.test(rawContentType))
+      ? rawContentType
+      : "unknown";
+
     const candidate: BrokerCandidateEvidence = {
       // Tenant fields stamped from request — never trusted from OpenClaw
       organisationId,
       executionId,
-      discoveryId:       typeof item["discoveryId"] === "string" && item["discoveryId"] ? item["discoveryId"] as string : randomUUID(),
-      sourceType:        typeof item["sourceType"] === "string" ? item["sourceType"] as string : "unknown_external",
-      isExternal:        item["isExternal"] === true,
-      sourceTitle:       (item["sourceTitle"] as string).trim(),
-      supportingPassage: passage.trim(),
+      discoveryId:        typeof item["discoveryId"] === "string" && item["discoveryId"] ? item["discoveryId"] as string : randomUUID(),
+      sourceType:         typeof item["sourceType"] === "string" ? item["sourceType"] as string : "unknown_external",
+      isExternal:         item["isExternal"] === true,
+      sourceTitle:        (item["sourceTitle"] as string).trim(),
+      supportingPassage:  normPassage,      // normalised from supportingPassage or passageText
       passageHash,
       retrievalTimestamp: typeof item["retrievalTimestamp"] === "string" ? item["retrievalTimestamp"] as string : new Date().toISOString(),
-      retrievalMethod:   (item["retrievalMethod"] as string).trim(),
-      discoveryReason:   typeof item["discoveryReason"] === "string" ? (item["discoveryReason"] as string).trim() : "Discovered by OpenClaw",
+      retrievalMethod:    (item["retrievalMethod"] as string).trim(),
+      discoveryReason:    typeof item["discoveryReason"] === "string" ? (item["discoveryReason"] as string).trim() : "Discovered by OpenClaw",
       openClawConfidence: clamp(item["openClawConfidence"]),
-      relevanceScore:    clamp(item["relevanceScore"]),
-      contentType:       (item["contentType"] as string).trim(),
-      accessLocation:    (item["accessLocation"] as string).trim(),
+      relevanceScore:     clamp(item["relevanceScore"]),
+      contentType,
+      accessLocation:     normLocation,    // normalised from accessLocation or sourceUri
     };
 
     // Optional fields

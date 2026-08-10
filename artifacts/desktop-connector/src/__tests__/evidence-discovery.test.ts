@@ -38,13 +38,23 @@
  *   validateAndFilterCandidates
  *    23.  Accepts a valid candidate
  *    24.  Drops candidate with empty sourceTitle
- *    25.  Drops candidate with missing supportingPassage
+ *    25.  Drops candidate with missing supportingPassage AND passageText (fail-closed)
  *    26.  Rejects connectivity_test retrievalMethod
- *    27.  Corrects wrong passageHash
+ *    27.  Corrects wrong passageHash — recomputed from normalised passage
  *    28.  Clamps openClawConfidence to [0, 1]
  *    29.  Stamps organisationId and executionId from params
  *    30.  Generates fresh discoveryId when absent
  *    31.  Handles empty array input
+ *    42.  Accepts passageText alias when supportingPassage is absent (OpenClaw native naming)
+ *    43.  Accepts sourceUri alias when accessLocation is absent (OpenClaw native naming)
+ *    44.  Accepts candidate with both OpenClaw-native names (passageText + sourceUri) simultaneously
+ *    45.  Rejects candidate where supportingPassage is a schema-template placeholder
+ *    46.  Rescues candidate when supportingPassage is placeholder but passageText has real data
+ *    47.  Rejects candidate where both supportingPassage and passageText are placeholders
+ *    48.  Rejects candidate where neither passage field is present
+ *    49.  Rejects candidate where neither accessLocation nor sourceUri is present
+ *    50.  Defaults contentType to "unknown" when absent or placeholder
+ *    51.  Regression — full spawn path: OpenClaw-native passageText/sourceUri → canonical fields
  *
  *   buildDiscoveryInstruction
  *    32.  Includes all governed parameters
@@ -646,6 +656,127 @@ describe("validateAndFilterCandidates", () => {
     const result = validateAndFilterCandidates([], "org-1", "exec-1", logger);
     expect(result).toHaveLength(0);
   });
+
+  // ── 42: OpenClaw passageText alias ────────────────────────────────────────
+  it("accepts passageText alias when supportingPassage is absent (OpenClaw native naming)", () => {
+    const passage = "Employees must not exceed 12 consecutive working hours.";
+    const c = validCandidate({
+      passageText: passage,
+      // passageHash computed from passageText — broker recomputes anyway
+      passageHash: sha256(passage),
+    });
+    delete (c as Record<string, unknown>)["supportingPassage"];
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(1);
+    // supportingPassage in canonical output must equal the passageText value
+    expect(result[0]!.supportingPassage).toBe(passage);
+  });
+
+  // ── 43: OpenClaw sourceUri alias ──────────────────────────────────────────
+  it("accepts sourceUri alias when accessLocation is absent (OpenClaw native naming)", () => {
+    const filePath = "/Users/taye/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md";
+    const c = validCandidate({ sourceUri: filePath });
+    delete (c as Record<string, unknown>)["accessLocation"];
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(1);
+    // accessLocation in canonical output must equal the sourceUri value
+    expect(result[0]!.accessLocation).toBe(filePath);
+  });
+
+  // ── 44: Both OpenClaw-native field names simultaneously ───────────────────
+  it("accepts candidate with both passageText and sourceUri — the real OpenClaw output shape", () => {
+    const passage  = "Fatigue rest period: minimum 10 hours between shifts.";
+    const filePath = "/Users/taye/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md";
+
+    // Simulate the exact OpenClaw output shape: native names only, no canonical aliases
+    const openClawCandidate: Record<string, unknown> = {
+      sourceTitle:        "Fatigue Management Policy",
+      passageText:        passage,      // OpenClaw native — NOT supportingPassage
+      sourceUri:          filePath,     // OpenClaw native — NOT accessLocation
+      retrievalMethod:    "local_file",
+      retrievalTimestamp: "2026-08-10T15:00:00.000Z",
+      contentType:        "policy",
+      sourceType:         "organisational",
+      isExternal:         false,
+      discoveryReason:    "File matches search scope",
+      openClawConfidence: 0.95,
+      relevanceScore:     1.0,
+    };
+
+    const result = validateAndFilterCandidates([openClawCandidate], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.supportingPassage).toBe(passage);
+    expect(result[0]!.accessLocation).toBe(filePath);
+    expect(result[0]!.passageHash).toBe(sha256(passage));
+    expect(result[0]!.retrievalMethod).toBe("local_file");
+  });
+
+  // ── 45: Schema-template placeholder in supportingPassage → rejected ───────
+  it("rejects candidate where supportingPassage is a schema-template placeholder", () => {
+    const c = validCandidate({
+      supportingPassage: "<verbatim passage from the source — no paraphrase>",
+    });
+    delete (c as Record<string, unknown>)["passageText"]; // no alias fallback
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(0);
+  });
+
+  // ── 46: Placeholder in supportingPassage but real data in passageText ──────
+  it("rescues candidate when supportingPassage is placeholder but passageText has real data", () => {
+    const realPassage = "Rest periods must comply with fatigue management thresholds.";
+    const c = validCandidate({
+      supportingPassage: "<verbatim passage from the source — no paraphrase>", // placeholder
+      passageText:       realPassage,  // real data in OpenClaw native field
+    });
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.supportingPassage).toBe(realPassage);
+  });
+
+  // ── 47: Both passage fields are placeholders → rejected ───────────────────
+  it("rejects candidate where both supportingPassage and passageText are placeholders (fail-closed)", () => {
+    const c = validCandidate({
+      supportingPassage: "<verbatim passage from the source — no paraphrase>",
+      passageText:       "<text content here>",
+    });
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(0);
+  });
+
+  // ── 48: No passage field at all → rejected (fail-closed) ─────────────────
+  it("rejects candidate where neither passage field is present", () => {
+    const c = validCandidate();
+    delete (c as Record<string, unknown>)["supportingPassage"];
+    // no passageText either
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(0);
+  });
+
+  // ── 49: No location field at all → rejected ───────────────────────────────
+  it("rejects candidate where neither accessLocation nor sourceUri is present", () => {
+    const c = validCandidate();
+    delete (c as Record<string, unknown>)["accessLocation"];
+    // no sourceUri either
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(0);
+  });
+
+  // ── 50: contentType defaults to "unknown" when absent ─────────────────────
+  it('defaults contentType to "unknown" when absent', () => {
+    const c = validCandidate();
+    delete (c as Record<string, unknown>)["contentType"];
+
+    const result = validateAndFilterCandidates([c], "org-1", "exec-1", logger);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.contentType).toBe("unknown");
+  });
 });
 
 // ─── Regression fixture: real Mac proof (2026-08-10) ─────────────────────────
@@ -754,6 +885,68 @@ describe("Regression fixture — real Mac proof FATIGUE_MANAGEMENT.md", () => {
     expect(result.candidates[0]!.retrievalMethod).toBe("local_file");
     expect(result.candidates[0]!.sourceTitle).toBe("Fatigue Management Policy");
     expect(result.candidates[0]!.accessLocation).toContain("FATIGUE_MANAGEMENT.md");
+  });
+
+  // ── 51: Regression — full spawn path with real OpenClaw-native field names ─
+  //
+  // This is the exact scenario that surfaced in live testing (2026-08-10):
+  // OpenClaw returned passageText and sourceUri instead of the canonical
+  // supportingPassage / accessLocation names.  The candidate appeared in the
+  // broker response with sourceUri:null and passageText:null because those
+  // fields were not mapped.  This test confirms the full path now works.
+  it("51 — full spawn path: OpenClaw passageText/sourceUri → canonical supportingPassage/accessLocation", async () => {
+    const proc = makeFakeProcess();
+    mockSpawn.mockReturnValue(proc);
+
+    const realPassage = "Employees assigned to rostering duties must not schedule shifts that " +
+      "violate the minimum 10-hour rest period mandated by the Fatigue Management Policy.";
+    const realPath    = "/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md";
+
+    // OpenClaw native output — uses passageText and sourceUri, not our canonical names
+    const openClawNativeCandidate: Record<string, unknown> = {
+      sourceTitle:        "Fatigue Management",     // OpenClaw shortened the title
+      passageText:        realPassage,              // ← OpenClaw native, not supportingPassage
+      sourceUri:          realPath,                 // ← OpenClaw native, not accessLocation
+      retrievalMethod:    "local_file",
+      retrievalTimestamp: "2026-08-10T15:22:05.000Z",
+      contentType:        "policy",
+      sourceType:         "organisational",
+      isExternal:         false,
+      discoveryReason:    "File path matched knownSourcePaths scope",
+      openClawConfidence: 0.97,
+      relevanceScore:     1.0,
+      // No supportingPassage, no accessLocation, no passageHash — just like the real run
+    };
+
+    const params = {
+      ...baseParams(),
+      allowedRoots:          ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
+      knownSourcePaths:      [realPath],
+      allowedDiscoveryScope: "internal_references_only",
+    };
+
+    const promise = callSpawnDiscover(params, "openclaw", makeLogger());
+    proc.stdout.emit("data", makeOpenClawOutput([openClawNativeCandidate], { runId: "run-mac-alias-001" }));
+    proc.emit("exit", 0, null);
+
+    const result = await promise;
+
+    // Broker must reach openClawStatus:available and return exactly one candidate
+    expect(result.openClawStatus).toBe("available");
+    expect(result.candidates).toHaveLength(1);
+
+    const candidate = result.candidates[0]!;
+
+    // passageText must be normalised into supportingPassage
+    expect(candidate.supportingPassage).toBe(realPassage);
+    // sourceUri must be normalised into accessLocation
+    expect(candidate.accessLocation).toBe(realPath);
+    // passageHash must be recomputed from the normalised passage
+    expect(candidate.passageHash).toBe(sha256(realPassage));
+    // Other fields carried through unchanged
+    expect(candidate.sourceTitle).toBe("Fatigue Management");
+    expect(candidate.retrievalMethod).toBe("local_file");
+    expect(candidate.relevanceScore).toBeCloseTo(1.0);
   });
 });
 
