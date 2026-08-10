@@ -1,0 +1,224 @@
+Your backend trace is useful, but I do NOT accept the conclusion that the system was successfully “waiting for user confirmation.”
+
+The clarification request existed in the database, but NOTHING appeared in the actual NeedsOps UI for the user to see or action.
+
+The user saw no:
+
+* clarification message
+* confirmation request
+* button
+* task proposal
+* progress update
+* visible state change
+
+Therefore the actual product state was:
+
+```text
+Backend generated clarification
+→ clarification persisted
+→ UI did not surface it
+→ user had no way to know confirmation was required
+→ workflow stalled
+```
+
+Treat this as a failure in the user-facing execution chain.
+
+Do NOT ask me to reply “yes” yet.
+
+Do NOT manually continue the task.
+
+Do NOT change OpenClaw, the broker, or the execution engine.
+
+First diagnose why this exact persisted clarification message was not visible in the UI.
+
+Use this exact message:
+
+```text
+message_id:
+5fbce5f4...
+
+conversation_id:
+84c239a1-17b4-4607-96ab-ba75cd92686d
+
+message_type:
+clarification_request
+
+created_at:
+2026-08-10 04:06:14.886 UTC
+```
+
+Trace the complete delivery/render path for this exact message.
+
+Prove each stage:
+
+1. Database persistence
+
+Show the full `conversation_messages` row including:
+
+* id
+* conversation_id
+* sender_type
+* message_type
+* content
+* structured_content
+* task_id
+* status
+* created_at
+
+2. SSE/API delivery
+
+Determine whether this exact clarification message was included in the HTTP/SSE response to:
+
+```text
+POST /v1/organisations/test-company/conversations/84c239a1.../messages
+```
+
+Show the actual server-side event sequence emitted for this request.
+
+Specifically determine whether an `agent_message`, clarification event, or equivalent carrying this message was sent to the client.
+
+Do not infer this from code. Use logs/instrumentation or reproducible integration evidence where practical.
+
+3. Frontend receipt
+
+Trace `WorkforceChatPage.tsx` and the relevant client stream/event handler.
+
+Determine whether the browser/client received the clarification message.
+
+If client-side logging is available, show the received event.
+
+If not currently instrumented, identify exactly where temporary diagnostic logging would need to be added.
+
+Do not permanently modify behaviour yet.
+
+4. Frontend state update
+
+Determine whether the received message was inserted into React/client conversation state.
+
+Check:
+
+* message deduplication
+* idempotent event handler
+* stale closure/state
+* message type filtering
+* task-linked filtering
+* conversation ID comparison
+* cache/query invalidation
+* optimistic state replacement
+
+5. Rendering rules
+
+Inspect whether `clarification_request` is actually rendered by the UI.
+
+Determine whether the frontend supports:
+
+```text
+message_type = clarification_request
+```
+
+or whether it only renders types such as:
+
+```text
+text
+task_proposal
+plan_proposal
+execution_update
+task_created
+```
+
+Show the relevant rendering switch/component.
+
+6. Conversation reload
+
+After the SSE request completed, determine whether re-fetching:
+
+```text
+GET conversation/messages
+```
+
+returns the clarification message.
+
+If yes, determine why the page still did not render it.
+
+If no, determine why the read API omitted a persisted message.
+
+7. Compare database vs API vs UI
+
+For this exact message produce:
+
+| Layer                  | Message present? | Evidence |
+| ---------------------- | ---------------: | -------- |
+| Database               |           YES/NO |          |
+| GET messages API       |           YES/NO |          |
+| POST/SSE stream        |           YES/NO |          |
+| Frontend event handler |           YES/NO |          |
+| React/client state     |           YES/NO |          |
+| Visible rendered UI    |           YES/NO |          |
+
+Identify the FIRST layer where the message disappears.
+
+8. Do not treat this as an isolated page bug yet
+
+We also have a broader unresolved symptom:
+
+* Dashboard data appears/disappears
+* Memory appears/disappears
+* Library appears/disappears
+* Task Centre/workroom data appears/disappears
+* Chat now has a persisted clarification message that did not appear
+
+Do not fix the clarification UI superficially before considering whether this failure shares a common root cause with the wider data instability.
+
+As part of this diagnosis, specifically check:
+
+* tenant/org ID in frontend query/cache keys
+* auth/session state
+* API 401/403/404/500 responses
+* RLS/tenant context
+* `app.current_tenant` versus `app.current_organization_id`
+* DB pool/context lifecycle
+* React Query/cache invalidation
+* stale selected-organisation state
+* server process restarts
+* websocket/SSE reconnection behaviour
+
+Do not broaden into a large rewrite. Determine evidence first.
+
+9. Correct the previous status table
+
+The prior result:
+
+```text
+New task created:
+FAIL — awaiting user confirmation
+```
+
+is misleading.
+
+Replace it with:
+
+```text
+Clarification generated server-side:
+PASS
+
+Clarification surfaced to user:
+FAIL
+
+User able to act on clarification:
+FAIL
+
+Task creation:
+BLOCKED BY USER-FACING CLARIFICATION DELIVERY FAILURE
+```
+
+10. Final result
+
+Report the exact first failing boundary:
+
+```text
+DB → API → SSE → client → state → render
+```
+
+and label anything not directly proven as UNPROVEN.
+
+Do not implement a fix until the root failing boundary is identified.

@@ -1,0 +1,77 @@
+Add two more areas to the current diagnosis.
+
+### A. Evidence retrieval status
+
+For this exact fatigue-management request, report the evidence-retrieval stage explicitly.
+
+Current expected state based on the trace is:
+
+```text
+Evidence discovery requested: NOT REACHED
+Runtime Broker called: NOT REACHED
+OpenClaw invoked: NOT REACHED
+Local source accessed: NOT REACHED
+```
+
+Do not label this as an OpenClaw failure.
+
+The task never reached evidence discovery because the clarification request was generated but not surfaced to the user.
+
+Once the clarification-delivery issue is resolved, this same task should be continued and traced through:
+
+```text
+Task
+→ Workroom
+→ Specialist
+→ UEE
+→ Evidence discovery
+→ Runtime Broker
+→ OpenClaw
+→ FATIGUE_MANAGEMENT.md
+→ canonical evidence
+→ final work product
+```
+
+### B. Investigate stale conversation reuse
+
+The new request was posted into:
+
+```text
+conversation_id:
+84c239a1-17b4-4607-96ab-ba75cd92686d
+```
+
+This is the same general workforce conversation previously used for the Chase Summerfield care-plan request.
+
+Although the new task-linking code correctly prevented the old Chase `primary_task_id` from being inherited, determine whether reusing this old conversation is expected product behaviour.
+
+Answer:
+
+1. Is Workforce Chat intentionally designed as one persistent `general_workforce` conversation per organisation/user?
+
+2. What function/API chooses or creates the active general workforce conversation?
+
+3. Does it always return the oldest/current existing conversation?
+
+4. Could stale frontend state, cached messages, task links, or selected conversation metadata from that old thread explain why:
+
+   * the new clarification message was not visible;
+   * clicking View Task previously returned to stale Chase content;
+   * chat appears to work and then stop?
+
+5. Compare:
+
+   * conversation row from DB
+   * conversation returned by the GET API
+   * frontend selected conversation state
+   * React Query/cache key
+   * loaded message list
+
+6. Determine whether the product should:
+
+   * intentionally maintain one persistent general workforce conversation, or
+   * create a new general conversation/session when appropriate.
+
+Do not change this behaviour yet.
+
+First report whether stale conversation reuse is intentional and whether it contributes to the current UI/data instability.
