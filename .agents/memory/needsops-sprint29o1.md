@@ -1,6 +1,6 @@
 ---
 name: NeedsOps Sprint 29O.1 Mac OpenClaw Connectivity
-description: Discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; real CLI contract; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]; scope-bounded discovery prompt with allowedRoots/knownSourcePaths
+description: Discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; real CLI contract; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]; scope-bounded discovery prompt with allowedRoots/knownSourcePaths; OpenClaw native field-name aliases passageText→supportingPassage / sourceUri→accessLocation
 ---
 
 ## Summary
@@ -27,41 +27,63 @@ Output is a **single JSON object** to stdout (NOT streaming newline-delimited ev
 }
 ```
 
-The assistant response lives in `result.payloads[].text`. That text is JSON-parsed to obtain `{ "candidates": [...] }`.
+## MAC PROOF RESULTS
 
-**Why:** Live Mac proof (2026-08-10, 19.5 s) on `/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md` showed spawn mode has no persistent HTTP server and no `--mode` flag. The `--agent main --message-file` command is the only confirmed working interface.
-
-## MAC PROOF RESULT (2026-08-10)
-
+### Proof 1 (2026-08-10, 19.5 s)
 - Command: `openclaw agent --agent main --message-file <tmpfile> --json`
 - Workspace: `/Users/tayephilipajao/.openclaw/workspace/rostering/`
-- Duration: ~19.5 seconds
-- Result: status "ok", 1 verbatim passage from FATIGUE_MANAGEMENT.md, zero tool failures
+- Result: status "ok", 1 verbatim passage from FATIGUE_MANAGEMENT.md, 0 tool failures
 - retrievalMethod in real output: `local_file`
 
-**Key insight:** The timeout problem was NOT OpenClaw failing — it was an unbounded discovery prompt with no `allowedRoots`. OpenClaw was exploring the whole filesystem, not the specific workspace directory.
+### Proof 2 (2026-08-10, live broker test)
+- Request: `allowedRoots + knownSourcePaths pointing at FATIGUE_MANAGEMENT.md`
+- Result: `openClawStatus:"available"`, 1 candidate with correct sourceTitle/retrievalMethod/relevanceScore
+- **Bug found**: `sourceUri:null` and `passageText:null` in broker response
 
-## Scope-bounded discovery prompt (added post-proof)
+## CRITICAL: OpenClaw Field-Name Aliases
 
-`buildDiscoveryInstruction` now emits a **SCOPED SEARCH BOUNDARIES** block when `allowedRoots` or `knownSourcePaths` are non-empty:
+OpenClaw 2026.7.x uses its OWN field naming conventions, not our canonical names:
+
+| OpenClaw native | Our canonical contract |
+|-----------------|------------------------|
+| `passageText`   | `supportingPassage`    |
+| `sourceUri`     | `accessLocation`       |
+
+**The fix** — `resolveOpenClawAlias()` in `validateAndFilterCandidates`:
+- Tries canonical name first
+- Falls back to OpenClaw alias if canonical is absent/empty
+- Rejects schema-template placeholders (`<verbatim passage from the source>`) that OpenClaw emits when it fills our JSON example literally
+- Fail-closed: if no real passage found in EITHER field → candidate rejected
+
+**Additional hardening:**
+- `passageHash` always recomputed from normalised passage (never trusted from OpenClaw)
+- `contentType` defaults to `"unknown"` when absent or placeholder
+- `REQUIRED_STRING_FIELDS` trimmed to `["sourceTitle", "retrievalMethod"]` — only fields OpenClaw reliably returns with canonical names
+
+## Discovery Strategy (proven by live tests)
+
+**knownSourcePaths-scoped discovery** → completes within 45 seconds ✓
+**allowedRoots-only (broad) discovery** → times out at 45 seconds ✗
+
+**Rule: Always prefer `knownSourcePaths` as the primary strategy.** Broad root scanning is too slow for the 45 s timeout.
+
+## Scope-bounded discovery prompt
+
+`buildDiscoveryInstruction` emits a **SCOPED SEARCH BOUNDARIES** block when `allowedRoots` or `knownSourcePaths` are non-empty:
 
 ```
 ═══ SCOPED SEARCH BOUNDARIES ═══
 Search ONLY within the locations listed below.
-Do NOT access any file, directory, or URL that is not covered by these paths.
+Do NOT access any file, directory, or URL not covered by these paths.
 
-ALLOWED ROOTS (search any file within these directories):
+ALLOWED ROOTS:
   /Users/tayephilipajao/.openclaw/workspace/rostering
 
-KNOWN SOURCE PATHS (check these files first):
+KNOWN SOURCE PATHS (check these first):
   /path/to/FATIGUE_MANAGEMENT.md
 ```
 
-Rule 8 (`Only access files within the SCOPED SEARCH BOUNDARIES`) is appended to CRITICAL RULES only when scoped.
-
-For `internal_references_only` scope with no roots/paths provided: lightweight `SCOPE — INTERNAL ONLY` section emitted instead.
-
-**Why:** Unbounded prompt sent OpenClaw on a full filesystem crawl that exhausted the timeout. Explicit roots bound the search to the relevant directory and complete in ~20 s.
+Rule 8 (`Only access files within the SCOPED SEARCH BOUNDARIES`) appended only when scoped.
 
 ## New wire fields on DiscoveryBrokerRequest
 
@@ -70,16 +92,7 @@ allowedRoots?:      string[]  // Absolute Mac dirs OpenClaw may search within
 knownSourcePaths?:  string[]  // Specific files expected to contain relevant content
 ```
 
-These flow through:
-- `DiscoveryBrokerRequest` (broker wire type)
-- `DiscoveryParams` (internal params)
-- `buildDiscoveryInstruction` (prompt)
-- `callBridgeDiscover` (bridge passthrough)
-- `BrokerEvidenceDiscoveryRequest` in `lib/openclaw/src/types.ts`
-
-## Default timeout
-
-Changed from 20 s → **45 s** (proven real-Mac duration is ~20 s; 45 s gives comfortable headroom without hitting `MAX_DISCOVERY_TIMEOUT_MS = 60 s`).
+Default `timeoutMs`: 45 s (proven run ~20 s; gives headroom without hitting 60 s max).
 
 ## Localhost curl test (for Mac broker validation)
 
@@ -93,36 +106,28 @@ curl -s -X POST http://127.0.0.1:19001/v1/evidence/discover \
     "specialistCode": "chief_of_staff",
     "searchObjective": "Find fatigue management policy requirements for roster scheduling",
     "allowedRoots": ["/Users/tayephilipajao/.openclaw/workspace/rostering"],
-    "knownSourcePaths": [],
+    "knownSourcePaths": ["/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md"],
     "allowedDiscoveryScope": "internal_references_only",
     "allowExternalWebSearch": false,
     "maxHops": 2,
     "maxSources": 5,
     "maxPassages": 3,
     "timeoutMs": 45000
-  }' | jq '{status: .openClawStatus, count: (.candidates | length)}'
+  }' | jq '{status: .openClawStatus, passage: .candidates[0].supportingPassage[:80], location: .candidates[0].accessLocation}'
 ```
 
-Success = `{"status":"available","count":<n≥1>}` within 45 seconds.
-
-## Regression fixture (test #37)
-
-Models the proven 2026-08-10 Mac run:
-- `sourceTitle`: "Fatigue Management Policy"
-- `accessLocation`: `/Users/tayephilipajao/.openclaw/workspace/rostering/FATIGUE_MANAGEMENT.md`
-- `retrievalMethod`: `local_file` ← must NOT be treated as synthetic (not filtered)
-- `relevanceScore`: 0.91, `openClawConfidence`: 0.96
+Success = `"status":"available"` with non-null `passage` and `location`.
 
 ## Spawn-mode implementation (evidence.ts)
 
 - Write governed instruction to `os.tmpdir()/needsops-discovery-<uuid>.txt`
 - Spawn `openclaw agent --agent main --message-file <tmpfile> --json` with `stdio: ["ignore", "pipe", "pipe"]`
 - Collect all stdout into a buffer (no streaming events)
-- On exit: JSON-parse top-level, extract `result.payloads[].text`, JSON-parse payload to get `{ candidates: [] }`
-- Validate/filter candidates with `validateAndFilterCandidates()`
+- On exit: JSON-parse top-level → `result.payloads[].text` → `{ candidates: [] }`
+- `resolveOpenClawAlias()` normalises field names in `validateAndFilterCandidates`
 - Always `unlinkSync(tmpFile)` in settle callback
 
-## Failure behaviour (all explicit, no synthetic fallback)
+## Failure behaviour
 
 | Condition | openClawStatus | candidates |
 |-----------|----------------|------------|
@@ -134,8 +139,10 @@ Models the proven 2026-08-10 Mac run:
 | result.payloads missing/empty | unavailable | [] |
 | payload.text not valid JSON | **available** | [] |
 | payload has no candidates array | **available** | [] |
-| candidate fails validation | candidate dropped | remaining |
+| No passage in either field (passageText or supportingPassage) | candidate dropped | remaining |
+| Schema-template placeholder in both passage fields | candidate dropped | remaining |
 | connectivity_test retrievalMethod | candidate rejected | remaining |
+| No location in either field (sourceUri or accessLocation) | candidate dropped | remaining |
 
 ## isAvailable() / selectAdapter rules
 
@@ -144,11 +151,12 @@ Models the proven 2026-08-10 Mac run:
 
 ## Test count
 
-Desktop-connector: 42 tests in evidence-discovery.test.ts — all pass.
-New tests: #37 (regression fixture), #38–41 (scope bounding).
+Desktop-connector: 52 tests in evidence-discovery.test.ts — all pass.
+Tests #42–51 cover alias normalization, placeholder rejection, and full spawn regression.
 
 ## Remaining before Cloudflare tunnel
 
-1. Mac broker rebuild: `node build.mjs` → restart → run curl test above
-2. Confirm result is `"available"` with ≥1 non-synthetic candidate from FATIGUE_MANAGEMENT.md
-3. Cloudflare tunnel: `cloudflared tunnel run needsops-broker` → configure OPENCLAW_RUNTIME_URL on Replit side
+1. Mac broker rebuild: `node build.mjs` → restart
+2. Run curl test above — should now return real `supportingPassage` + `accessLocation`
+3. Confirm result uses canonical field names (NOT passageText/sourceUri)
+4. Cloudflare tunnel: `cloudflared tunnel run needsops-broker` → configure OPENCLAW_RUNTIME_URL on Replit side
