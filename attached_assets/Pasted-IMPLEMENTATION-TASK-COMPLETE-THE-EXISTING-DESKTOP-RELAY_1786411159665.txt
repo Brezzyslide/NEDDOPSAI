@@ -1,0 +1,261 @@
+IMPLEMENTATION TASK — COMPLETE THE EXISTING DESKTOP RELAY AUTHENTICATION LIFECYCLE
+
+We have now proven the current architecture.
+
+Do NOT redesign the Desktop Connector.
+Do NOT build the DMG/installer yet.
+Do NOT remove Cloudflare/OpenClaw.
+Do NOT bypass device authentication.
+Do NOT weaken the Chief of Staff connector availability gate.
+
+The immediate objective is:
+
+Make the EXISTING outbound Desktop Relay capable of maintaining authenticated connectivity without requiring a new manually supplied 15-minute access token every time it expires.
+
+This is development-runtime hardening before the later Desktop Connector Productisation Sprint.
+
+## Existing architecture that must remain
+
+Local desktop evidence:
+
+Mac Connector
+→ outbound WebSocket
+→ `/v1/devices/relay`
+→ ConnectorEvidenceResolver
+→ connector_op_request
+→ local locate/search/read
+→ connector_op_result
+
+OpenClaw remains separately:
+
+NeedsOps
+→ Runtime Broker
+→ Cloudflare
+→ Mac Broker
+→ OpenClaw
+
+Do not merge these architectures in this task.
+
+## 1. Implement real relay token refresh
+
+Currently `RelayClient.scheduleTokenRefresh()` ultimately calls `getAccessToken()`, but the broker implementation simply returns the static `NEEDSOPS_DEVICE_TOKEN`.
+
+Replace this development limitation with the existing secure refresh protocol.
+
+The connector must securely retain/use:
+
+* deviceId
+* organizationId
+* accessToken
+* accessTokenExpiresAt
+* refreshToken
+* refreshTokenExpiresAt
+
+When the access token approaches expiry:
+
+→ POST `/v1/devices/auth/refresh`
+→ send current refresh token
+→ receive rotated access + refresh token pair
+→ replace old credentials
+→ use new access token for relay authentication
+→ securely discard old refresh token
+
+Respect the server's existing refresh-token rotation semantics.
+
+## 2. Do not use brokerAuthToken as relay access token
+
+Preserve the existing security boundary:
+
+`brokerAuthToken` is NOT a relay access token.
+
+Relay authentication must continue to require an exchange/refresh access token with audience:
+
+`device-relay`
+
+Do not weaken `validateAccessToken()`.
+
+## 3. Credential persistence
+
+For this DEVELOPMENT connector, implement a secure credential abstraction.
+
+Do not hardcode credentials.
+
+Prefer macOS Keychain where practical.
+
+At minimum, create an abstraction that can later be backed by:
+
+* macOS Keychain
+* Windows Credential Manager
+* Linux secret store
+
+Do not make plaintext `.env` storage the final credential design.
+
+If full Keychain implementation is outside this focused change, clearly separate:
+
+PRODUCTION SECURE STORE
+
+from
+
+TEMPORARY DEVELOPMENT FALLBACK
+
+and never log tokens.
+
+## 4. Startup authentication lifecycle
+
+After initial device activation has already occurred, connector startup should be capable of:
+
+stored device identity
+→ retrieve stored refresh credential
+→ obtain current access token
+→ start RelayClient
+→ authenticate WebSocket
+→ receive auth_ok
+→ device becomes connected
+
+It should NOT require a human to manually perform challenge/exchange after every restart.
+
+If the refresh token has expired/revoked:
+
+→ connector enters `reauthentication_required`
+→ do not loop indefinitely pretending to be connected
+→ require fresh activation/pairing.
+
+## 5. Reconnect lifecycle
+
+Prove the following:
+
+API restart:
+WebSocket closes
+→ reconnect
+→ authenticate with valid/current token
+→ connected
+
+Network interruption:
+→ reconnect with existing backoff
+→ refresh token if required
+→ connected
+
+Access-token expiry:
+→ refresh
+→ rotate credentials
+→ continue/reconnect
+→ connected
+
+Mac connector restart:
+→ load persisted credentials
+→ obtain/refresh access token
+→ relay connects
+
+Device revoked:
+→ stop reconnecting
+→ status = revoked
+
+## 6. Preserve tenant binding
+
+Organisation identity must continue to come from authenticated server-side device registration.
+
+Do not trust `NEEDSOPS_ORG_SLUG` as the security boundary.
+
+The connector must not be able to change organisations merely by changing an environment variable.
+
+## 7. Do not alter local-file permissions
+
+Do not expand filesystem access in this task.
+
+Existing connector permissions/allowed roots must remain unchanged.
+
+This task is authentication/connectivity only.
+
+## 8. Add tests
+
+Test at minimum:
+
+* valid access token connects
+* expired access token refreshes
+* refresh rotates both tokens
+* old refresh token cannot be reused
+* API restart reconnects
+* temporary network failure reconnects
+* expired refresh token → reauthentication_required
+* revoked device → no reconnect
+* invalid access token rejected
+* brokerAuthToken cannot authenticate relay
+* organisation spoof via NEEDSOPS_ORG_SLUG fails
+* credentials/tokens are never written to logs
+
+Distinguish unit tests from live integration evidence.
+
+## 9. Then perform ONE real development pairing
+
+After implementation/tests pass:
+
+Generate one fresh activation code for `test-company`.
+
+Pair the current development Mac using the REAL existing activation/challenge/exchange protocol.
+
+Do not invent device credentials.
+
+Then prove in the live DB:
+
+* device exists
+* correct organization_id
+* status connected
+* active device_ws_session exists
+* heartbeat updates
+* getConnectedDevicesForOrg() returns this device
+
+Do not expose tokens in the report.
+
+## 10. Persistence
+
+Update our existing Mac startup configuration only as necessary so the relay starts with the broker after reboot.
+
+Do not build the production installer.
+
+We are preserving the current development LaunchAgent/startup arrangement for now.
+
+## 11. Do NOT test the care plan yet
+
+This task is not related to blueprint generation.
+
+Do not touch:
+
+* Care Plan blueprint
+* Risk Assessment blueprint
+* work-product engine
+* artifact generation
+* DOCX/PDF
+* claim-integrity architecture
+
+Those come after connectivity is proven.
+
+## 12. Final proof report
+
+Return:
+
+| Requirement                  | Result | Proof type |
+| ---------------------------- | ------ | ---------- |
+| Device registered            |        |            |
+| Relay authenticates          |        |            |
+| Access-token refresh works   |        |            |
+| Refresh-token rotation works |        |            |
+| Relay survives >15 minutes   |        |            |
+| Heartbeats persist           |        |            |
+| Org reports connected device |        |            |
+| API restart reconnects       |        |            |
+| Connector restart reconnects |        |            |
+| Revocation stops reconnect   |        |            |
+| No tokens logged             |        |            |
+| Tenant binding preserved     |        |            |
+
+Anything proven only through tests must say UNIT/INTEGRATION TEST.
+
+Anything requiring the actual Mac must remain UNPROVEN until demonstrated on the real Mac.
+
+Do not claim completion merely because tests pass.
+
+The critical live proof is:
+
+`Mac Connector → outbound WebSocket → NeedsOps relay → authenticated device → heartbeat → getConnectedDevicesForOrg()`
+
+remaining connected beyond the previous 15-minute access-token expiry boundary.

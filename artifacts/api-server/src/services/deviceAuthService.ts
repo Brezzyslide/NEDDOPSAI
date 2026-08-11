@@ -231,6 +231,17 @@ export async function exchangeChallenge(params: {
     issuedAt: new Date(),
   });
 
+  // 7. Promote device from "pending" to "connected" on first successful exchange.
+  //    A device stays "pending" until it has proven ownership of its private key
+  //    via the challenge/exchange flow.  After this point, refresh tokens work
+  //    and the relay can maintain continuous connectivity.
+  if (device.status === "pending") {
+    await db
+      .update(devicesTable)
+      .set({ status: "connected" })
+      .where(eq(devicesTable.id, deviceId));
+  }
+
   return {
     accessToken,
     accessTokenExpiresAt,

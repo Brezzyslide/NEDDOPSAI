@@ -40,6 +40,7 @@ export type RelayConnectionState =
   | "connected"
   | "reconnecting"
   | "revoked"
+  | "reauthentication_required"
   | "shutdown";
 
 export interface ConnectorOpResponse {
@@ -187,7 +188,18 @@ export class RelayClient extends EventEmitter {
     try {
       accessToken = await this.config.getAccessToken();
     } catch (err: any) {
+      if (err?.code === "REAUTHENTICATION_REQUIRED") {
+        // Refresh token expired or revoked — stop reconnecting; require fresh pairing
+        this.config.logger.error(
+          { code: err.code },
+          "[relay-client] Reauthentication required — relay will not reconnect until device is re-paired",
+        );
+        this.setState("reauthentication_required");
+        return;
+      }
+      // Transient error (network failure during refresh etc.) — retry with backoff
       this.config.logger.error({ err: err.message }, "[relay-client] Failed to get access token — will retry");
+      this.setState("reconnecting");
       this.scheduleReconnect();
       return;
     }
@@ -364,7 +376,7 @@ export class RelayClient extends EventEmitter {
   }
 
   private scheduleReconnect(): void {
-    if (this.destroyed || this.state === "revoked" || this.reconnectTimer) return;
+    if (this.destroyed || this.state === "revoked" || this.state === "reauthentication_required" || this.reconnectTimer) return;
 
     const backoff = Math.min(
       BASE_BACKOFF_MS * Math.pow(2, this.reconnectAttempts),

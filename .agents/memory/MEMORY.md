@@ -98,3 +98,4 @@
 - [NeedsOps Sprint 29N.11 Parallel Evidence Discovery](needsops-sprint29n11.md) — KRS+OpenClaw concurrent, external web search, convergence/dedup/contradiction, NullAdapter fallback, PARALLEL_MODE escalationStatus, 5009 tests
 - [NeedsOps pdf-parse v2 API](needsops-pdf-parse-v2.md) — v2.4.5 is class-based ESM (PDFParse class, not function); must be external in build.mjs; job reset must use status='queued' not 'pending'
 - [NeedsOps Sprint 29O.1 Mac OpenClaw Connectivity](needsops-sprint29o1.md) — discovery endpoint on broker, discoverEvidence() on client, CloudOpenClawDiscoveryAdapter; isAvailable() must be "connected" not "connecting"; selectAdapter fallback must be nullDiscoveryAdapter not adapters[0]
+- [NeedsOps Relay Auth Lifecycle Bugs](needsops-relay-auth-lifecycle.md) — Drizzle eq(col,null) generates = NULL not IS NULL (use isNull()); exchangeChallenge must promote device pending→connected; no "active" status enum

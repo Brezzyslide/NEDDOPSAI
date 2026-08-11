@@ -19,7 +19,7 @@ import {
   deviceRuntimeStatusTable,
   organizationsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import * as auditService from "./auditService.js";
 
 type AuditEventMeta = Pick<auditService.WriteAuditEventParams, "requestId" | "ipAddress" | "userAgent">;
@@ -184,7 +184,7 @@ export async function authenticateDevice(
     .where(
       and(
         eq(deviceCredentialsTable.tokenHash, tokenHash),
-        eq(deviceCredentialsTable.revokedAt, null as any),
+        isNull(deviceCredentialsTable.revokedAt),
       ),
     )
     .limit(1);
@@ -197,7 +197,7 @@ export async function authenticateDevice(
     .where(
       and(
         eq(devicesTable.id, cred.deviceId),
-        eq(devicesTable.revokedAt, null as any),
+        isNull(devicesTable.revokedAt),
       ),
     )
     .limit(1);
@@ -333,7 +333,7 @@ export async function listOrgDevices(organizationId: string) {
     .where(
       and(
         eq(devicesTable.organizationId, organizationId),
-        eq(devicesTable.revokedAt, null as any),
+        isNull(devicesTable.revokedAt),
       ),
     )
     .orderBy(devicesTable.registeredAt);

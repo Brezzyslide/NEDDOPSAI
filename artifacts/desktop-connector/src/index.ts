@@ -14,6 +14,14 @@
  *         ↓
  *   Browser automation
  *
+ * Outbound relay (Sprint 15 / relay hardening):
+ *
+ *   Runtime Broker → outbound WebSocket → /v1/devices/relay
+ *         ↓  RelayClient (token refresh handled by RelayAuthService)
+ *   NeedsOps platform relay
+ *         ↓  connector_op_request
+ *   ConnectorEvidenceResolver (local file evidence)
+ *
  * What this service provides:
  *   - GET  /v1/health
  *   - POST /v1/executions
@@ -28,6 +36,15 @@
  *   OPENCLAW_WEBHOOK_SECRET  HMAC-SHA256 secret for signing webhook events
  *   OPENCLAW_GATEWAY_MODE    "simulated" (default) or "live" (Phase 4)
  *
+ * Relay environment variables (set after pairing via scripts/pair-device.mjs):
+ *   NEEDSOPS_API_BASE_URL    HTTPS base URL of the NeedsOps API
+ *                            (relay activates when this is set AND credentials are stored)
+ *
+ * Credential storage:
+ *   NEEDSOPS_CREDENTIAL_STORE  "file" (default) or "keychain"
+ *   Credentials are loaded from ~/.needsops/relay-credentials.json (file mode).
+ *   Run scripts/pair-device.mjs to perform initial device pairing.
+ *
  * Startup:
  *   node artifacts/desktop-connector/dist/index.mjs
  */
@@ -39,10 +56,12 @@ import { mkdirSync } from "node:fs";
 import pino from "pino";
 import { loadBrokerConfig } from "./broker/types.js";
 import { ExecutionStore } from "./broker/store.js";
-import { createGatewayAdapter, SimulatedGatewayAdapter } from "./broker/gatewayAdapter.js";
+import { createGatewayAdapter } from "./broker/gatewayAdapter.js";
 import { WebhookDeliveryWorker } from "./broker/webhookDelivery.js";
 import { createBrokerApp } from "./broker/server.js";
 import { RelayClient } from "./broker/relayClient.js";
+import { RelayAuthService } from "./broker/relayAuthService.js";
+import { createCredentialStore } from "./broker/credentialStore.js";
 
 // ─── Logger ───────────────────────────────────────────────────────────────────
 
@@ -116,9 +135,9 @@ async function main() {
   const gateway = createGatewayAdapter(
     config.gatewayMode,
     {
-      gatewayUrl:      config.gatewayUrl,
-      liveMode:        config.liveMode,
-      openclawBin:     config.openclawBin,
+      gatewayUrl:       config.gatewayUrl,
+      liveMode:         config.liveMode,
+      openclawBin:      config.openclawBin,
       gatewayTimeoutMs: config.gatewayTimeoutMs,
     },
     onStatusChange,
@@ -200,82 +219,108 @@ async function main() {
     logger.error({ reason: String(reason) }, "Unhandled rejection — broker remains running");
   });
 
-  // 11. Start outbound WebSocket relay client (Sprint 15)
-  //     Connects to the NeedsOps platform relay instead of relying on a Cloudflare tunnel.
-  //     Only started when NEEDSOPS_DEVICE_ID and NEEDSOPS_API_BASE_URL are set
-  //     (i.e. the broker has been activated).
-  let relayClient: import("./broker/relayClient.js").RelayClient | null = null;
+  // 11. Start outbound WebSocket relay client (Sprint 15 / relay hardening)
+  //
+  //     Activation signal: NEEDSOPS_API_BASE_URL must be set.
+  //     Credentials (deviceId, organizationId, access + refresh tokens) are loaded
+  //     from the credential store (~/.needsops/relay-credentials.json by default).
+  //
+  //     Run scripts/pair-device.mjs to perform initial device pairing and persist
+  //     credentials before starting the broker with relay enabled.
+  //
+  //     SECURITY: organizationId comes from the credential store (server-issued at
+  //     registration). NEEDSOPS_ORG_SLUG is NOT used as a security boundary.
+  let relayClient: RelayClient | null = null;
+  let relayAuthService: RelayAuthService | null = null;
 
-  const deviceId = process.env["NEEDSOPS_DEVICE_ID"];
   const apiBaseUrl = process.env["NEEDSOPS_API_BASE_URL"];
-  const deviceToken = process.env["NEEDSOPS_DEVICE_TOKEN"];
 
-  if (deviceId && apiBaseUrl && deviceToken) {
-    // getAccessToken: returns the legacy long-lived token from env for now.
-    // In a full Sprint 15 client implementation, this would exchange a refresh token
-    // via POST /v1/devices/auth/refresh and cache the short-lived access token.
-    const getAccessToken = async (): Promise<string> => {
-      return deviceToken;
-    };
+  if (apiBaseUrl) {
+    const credStore = createCredentialStore();
+    relayAuthService = new RelayAuthService({ apiBaseUrl, store: credStore, logger });
 
-    const { RelayClient } = await import("./broker/relayClient.js");
-    relayClient = new RelayClient({
-      apiBaseUrl,
-      deviceId,
-      organizationId: process.env["NEEDSOPS_ORG_SLUG"] ?? "",
-      appVersion: config.brokerVersion,
-      osPlatform: process.platform,
-      arch: process.arch,
-      getAccessToken,
-      onTaskDispatch: async (payload) => {
-        const executionId = String(payload["executionId"] ?? "");
-        logger.info({ executionId }, "[relay] Task dispatched — executing");
-        // Execution is handled by the gateway adapter (existing logic)
-        // For now, emit a safe test result
-        relayClient?.sendTaskResult({ executionId, result: { status: "delegated" } });
-      },
-      // Sprint 29F.2 Part A — wire desktop connector operation handler
-      // Handles write/read operations from the relay with desktop-side idempotency.
-      onConnectorOpRequest: async (payload) => {
-        const { handleConnectorOpRequest } = await import("./connectorOperationHandler.js");
-        return handleConnectorOpRequest(payload, {
-          organisationId: process.env["NEEDSOPS_ORG_SLUG"] ?? "",
-          deviceId:       deviceId,
-          logger,
-        });
-      },
-      onRevoked: () => {
-        logger.warn("[relay] Device has been revoked — shutting down broker");
-        void shutdown("DEVICE_REVOKED");
-      },
-      onStateChange: (state) => {
-        logger.info({ state }, "[relay] Connection state changed");
-        // Broadcast to Electron main process if running in embedded mode
-        if (process.send) {
-          process.send({ type: "relay:state", state });
-        }
-      },
-      logger,
-    });
+    const credentialsLoaded = await relayAuthService.initialise();
+    if (!credentialsLoaded) {
+      logger.warn(
+        "[relay] No stored credentials — relay not started. " +
+        "Run scripts/pair-device.mjs to pair this device.",
+      );
+    } else {
+      const deviceId      = relayAuthService.deviceId!;
+      const organizationId = relayAuthService.organizationId!;
 
-    relayClient.start().catch((err: Error) => {
-      logger.error({ err: err.message }, "[relay] Relay client start failed");
-    });
+      relayClient = new RelayClient({
+        apiBaseUrl,
+        deviceId,
+        // Authoritative: comes from the credential store (server-registered org).
+        // Do NOT use NEEDSOPS_ORG_SLUG here — it must not be a security boundary.
+        organizationId,
+        appVersion:  config.brokerVersion,
+        osPlatform:  process.platform,
+        arch:        process.arch,
+        // getAccessToken: RelayAuthService handles refresh automatically.
+        // Returns a valid short-lived exchange token (audience: device-relay).
+        // Throws ReauthenticationRequiredError when the refresh token is expired/revoked,
+        // which causes RelayClient to enter reauthentication_required and stop reconnecting.
+        getAccessToken: () => relayAuthService!.getValidAccessToken(),
+        onTaskDispatch: async (payload) => {
+          const executionId = String(payload["executionId"] ?? "");
+          logger.info({ executionId }, "[relay] Task dispatched — executing");
+          relayClient?.sendTaskResult({ executionId, result: { status: "delegated" } });
+        },
+        onConnectorOpRequest: async (payload) => {
+          const { handleConnectorOpRequest } = await import("./connectorOperationHandler.js");
+          return handleConnectorOpRequest(payload, {
+            // Authoritative org from credential store — not spoofable via env var
+            organisationId: organizationId,
+            deviceId,
+            logger,
+          });
+        },
+        onRevoked: () => {
+          logger.warn("[relay] Device has been revoked by the platform — shutting down broker");
+          void shutdown("DEVICE_REVOKED");
+        },
+        onStateChange: (state) => {
+          logger.info({ state }, "[relay] Connection state changed");
+          if (state === "reauthentication_required") {
+            logger.error(
+              "[relay] Refresh token expired or revoked. " +
+              "Re-pair this device by running scripts/pair-device.mjs.",
+            );
+          }
+          // Broadcast to Electron main process if running in embedded mode
+          if (process.send) {
+            process.send({ type: "relay:state", state });
+          }
+        },
+        logger,
+      });
 
-    logger.info({ apiBaseUrl, deviceId }, "[relay] Outbound WebSocket relay client started");
+      relayClient.start().catch((err: Error) => {
+        logger.error({ err: err.message }, "[relay] Relay client start failed");
+      });
+
+      logger.info({ apiBaseUrl, deviceId, organizationId }, "[relay] Outbound WebSocket relay client started");
+    }
   } else {
-    logger.info("[relay] Outbound relay not started — NEEDSOPS_DEVICE_ID or NEEDSOPS_API_BASE_URL not set");
-    logger.info("[relay] Set DESKTOP_TRANSPORT=cloudflare-dev for development tunnel mode");
+    logger.info(
+      "[relay] NEEDSOPS_API_BASE_URL not set — outbound relay not started. " +
+      "Set this variable and run scripts/pair-device.mjs to activate the relay.",
+    );
   }
 
   logger.info(`Runtime Broker ready. Host network: ${os.hostname()}`);
 
-  // Extend shutdown to also stop relay client
+  // Extend shutdown to also stop relay and auth service
   const originalShutdown = shutdown;
   const extendedShutdown = async (signal: string) => {
     if (relayClient) {
       logger.info("[relay] Stopping relay client");
       relayClient.destroy();
+    }
+    if (relayAuthService) {
+      relayAuthService.destroy();
     }
     return originalShutdown(signal);
   };
