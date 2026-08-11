@@ -36,6 +36,12 @@ import {
   getVersionById,
   testBlueprintSandbox,
 } from "../../services/workBlueprintService.js";
+import {
+  filterBlueprintForRole,
+  filterBlueprintsForRole,
+  isTenantPlatformAdmin,
+  type BlueprintAccessContext,
+} from "../../services/blueprintAccessControl.js";
 import { executeWork } from "../../services/workExecutionPipelineService.js";
 
 const router = Router({ mergeParams: true });
@@ -68,7 +74,32 @@ router.get(
         includeArchived: includeArchived === "true",
       });
 
-      res.json({ blueprints });
+      const isPlatformAdmin = isTenantPlatformAdmin(req);
+      const accessCtx: BlueprintAccessContext = {
+        role: ctx.role as any,
+        tenantId: ctx.tenantId,
+        isPlatformAdmin,
+      };
+
+      // Audit platform-admin spec access (if any platform-owned blueprints included)
+      if (isPlatformAdmin) {
+        const platformOwned = blueprints.filter(b => b.ownerType === "platform_owned");
+        if (platformOwned.length > 0) {
+          // Fire-and-forget audit — do not block response
+          import("../../services/auditLogService.js").then(({ logAuditEvent }) => {
+            logAuditEvent({
+              tenantId: ctx.tenantId,
+              actorId: req.appUser?.id ?? "unknown",
+              action: "blueprint.spec.list_access",
+              resourceType: "work_blueprint",
+              resourceId: null,
+              metadata: { platformOwnedCount: platformOwned.length, isPlatformAdmin: true },
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      }
+
+      res.json({ blueprints: filterBlueprintsForRole(blueprints, accessCtx) });
     } catch (err) {
       next(err);
     }
@@ -87,7 +118,29 @@ router.get(
       const { blueprintId } = req.params as { blueprintId: string };
       const blueprint = await getBlueprintById(blueprintId, ctx.tenantId);
       if (!blueprint) { res.status(404).json({ error: "Blueprint not found" }); return; }
-      res.json({ blueprint });
+
+      const isPlatformAdmin = isTenantPlatformAdmin(req);
+      const accessCtx: BlueprintAccessContext = {
+        role: ctx.role as any,
+        tenantId: ctx.tenantId,
+        isPlatformAdmin,
+      };
+
+      // Audit spec access for platform admins viewing platform-owned blueprints
+      if (isPlatformAdmin && blueprint.ownerType === "platform_owned") {
+        import("../../services/auditLogService.js").then(({ logAuditEvent }) => {
+          logAuditEvent({
+            tenantId: ctx.tenantId,
+            actorId: req.appUser?.id ?? "unknown",
+            action: "blueprint.spec.view_access",
+            resourceType: "work_blueprint",
+            resourceId: blueprintId,
+            metadata: { blueprintCode: blueprint.code, isPlatformAdmin: true },
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      res.json({ blueprint: filterBlueprintForRole(blueprint, accessCtx) });
     } catch (err) {
       next(err);
     }

@@ -135,6 +135,74 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
    */
   status: text("status").notNull().default("draft"),
 
+  // ── Production Blueprint Registry fields ───────────────────────────────────
+
+  /**
+   * Blueprint family code — groups related work types that share common rules.
+   * e.g. "care_plan", "risk_assessment", "policy", "incident".
+   * Safe to expose publicly (part of BlueprintDescriptor).
+   */
+  blueprintFamily: text("blueprint_family"),
+
+  /**
+   * Modes supported by this blueprint.
+   * e.g. ["create", "review", "revise"] for care plans.
+   * Safe to expose publicly.
+   */
+  supportedModes: jsonb("supported_modes")
+    .$type<string[]>()
+    .default([]),
+
+  /**
+   * Maturity/readiness state — distinct from publication status.
+   * placeholder | draft | professional_review | production_ready | superseded
+   *
+   * A published placeholder MUST NOT be represented as production-grade.
+   */
+  maturityState: text("maturity_state").notNull().default("placeholder"),
+
+  /**
+   * Ownership type.
+   * platform_owned — NeedsOps proprietary; specification is protected.
+   * organisation_owned — created by the org; fully visible to their admins.
+   */
+  ownerType: text("owner_type").notNull().default("platform_owned"),
+
+  /**
+   * Brief public description of what this blueprint produces.
+   * Safe to expose publicly (part of BlueprintDescriptor).
+   */
+  purpose: text("purpose"),
+
+  /**
+   * Primary deliverable name e.g. "Care Plan document".
+   * Safe to expose publicly.
+   */
+  primaryDeliverable: text("primary_deliverable"),
+
+  /**
+   * PRIVATE — Deliverable contract: what outputs this blueprint produces,
+   * prohibited deliverables, output formats and completion requirements.
+   */
+  deliverableContract: jsonb("deliverable_contract")
+    .$type<Record<string, unknown>>(),
+
+  /**
+   * PRIVATE — Evidence contract: required/optional evidence categories,
+   * source restrictions, freshness requirements and missing evidence behaviour.
+   */
+  evidenceContract: jsonb("evidence_contract")
+    .$type<Record<string, unknown>>(),
+
+  /**
+   * Organisation-configurable override settings.
+   * Exposed to org owner/admin — they configure from this schema, not by
+   * cloning the hidden platform specification.
+   */
+  permittedOrgOverrides: jsonb("permitted_org_overrides")
+    .$type<Record<string, unknown>>()
+    .default({}),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

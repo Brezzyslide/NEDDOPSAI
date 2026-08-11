@@ -19,6 +19,8 @@ import { useAuthFetch } from "@/lib/api";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type BlueprintStatus = "draft" | "review" | "published" | "superseded" | "archived";
+type BlueprintMaturityState = "placeholder" | "draft" | "professional_review" | "production_ready" | "superseded";
+type BlueprintOwnerType = "platform_owned" | "organisation_owned";
 
 interface WorkBlueprint {
   id: string;
@@ -27,10 +29,19 @@ interface WorkBlueprint {
   title: string;
   version: string;
   status: BlueprintStatus;
-  objective: string;
-  primarySpecialist: string;
-  supportingSpecialists: string[];
-  outputTypes: string[];
+  // Public descriptor fields
+  purpose?: string | null;
+  blueprintFamily?: string | null;
+  supportedModes?: string[];
+  maturityState?: BlueprintMaturityState;
+  ownerType?: BlueprintOwnerType;
+  primaryDeliverable?: string | null;
+  permittedOrgOverrides?: Record<string, unknown>;
+  // Private spec fields (may be absent for platform blueprints)
+  objective?: string;
+  primarySpecialist?: string;
+  supportingSpecialists?: string[];
+  outputTypes?: string[];
   isBuiltIn: boolean;
   isActive: boolean;
   createdAt: string;
@@ -38,6 +49,14 @@ interface WorkBlueprint {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
+
+const MATURITY_BADGE: Record<BlueprintMaturityState, { bg: string; text: string; label: string }> = {
+  placeholder:         { bg: "bg-gray-800/50",    text: "text-gray-400",    label: "Placeholder" },
+  draft:               { bg: "bg-blue-900/40",    text: "text-blue-300",    label: "Draft" },
+  professional_review: { bg: "bg-amber-900/40",   text: "text-amber-300",   label: "In Review" },
+  production_ready:    { bg: "bg-emerald-900/40", text: "text-emerald-300", label: "Production Ready" },
+  superseded:          { bg: "bg-purple-900/40",  text: "text-purple-300",  label: "Superseded" },
+};
 
 const STATUS_BADGE: Record<BlueprintStatus, { bg: string; text: string; label: string }> = {
   draft:      { bg: "bg-blue-900/40",    text: "text-blue-300",    label: "Draft" },
@@ -255,11 +274,14 @@ export default function BlueprintStudioPage() {
                 </section>
               )}
 
-              {/* Built-in blueprints */}
+              {/* Platform blueprints */}
               {builtIns.length > 0 && (
                 <section>
                   <h2 className="text-xs uppercase tracking-widest text-[#64748B]/60 font-semibold mb-3">
-                    Built-in Blueprints <span className="normal-case text-[#64748B] font-normal tracking-normal">(read-only)</span>
+                    Platform Blueprints{" "}
+                    <span className="normal-case text-[#64748B] font-normal tracking-normal">
+                      (configure only · professional specification protected)
+                    </span>
                   </h2>
                   <BlueprintGrid
                     blueprints={builtIns}
@@ -333,7 +355,13 @@ function BlueprintCard({
   onClone: (id: string) => void;
   readOnly?: boolean;
 }) {
-  const badge = STATUS_BADGE[bp.status] ?? STATUS_BADGE.draft;
+  const statusBadge = STATUS_BADGE[bp.status] ?? STATUS_BADGE.draft;
+  const maturity = bp.maturityState ?? "placeholder";
+  const maturityBadge = MATURITY_BADGE[maturity] ?? MATURITY_BADGE.placeholder;
+  const isPlatformOwned = bp.ownerType === "platform_owned" || bp.isBuiltIn;
+  const isConfigOnly = isPlatformOwned; // editors see config surface, not full spec
+  // Show description: prefer public purpose, fall back to objective (spec) or family
+  const description = bp.purpose || bp.objective || bp.blueprintFamily || "";
 
   return (
     <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-4 flex flex-col gap-3 hover:border-[#00D4FF]/40 transition-colors">
@@ -345,34 +373,62 @@ function BlueprintCard({
         >
           {bp.title}
         </button>
-        <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${badge.bg} ${badge.text}`}>
-          {badge.label}
-        </span>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusBadge.bg} ${statusBadge.text}`}>
+            {statusBadge.label}
+          </span>
+          {maturity !== "production_ready" && (
+            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${maturityBadge.bg} ${maturityBadge.text}`}>
+              {maturityBadge.label}
+            </span>
+          )}
+        </div>
       </div>
 
-      {/* Objective excerpt */}
-      <p className="text-[#64748B] text-xs line-clamp-2">{bp.objective}</p>
+      {/* Description */}
+      <p className="text-[#64748B] text-xs line-clamp-2">{description}</p>
 
       {/* Meta */}
       <div className="flex items-center justify-between text-[10px] text-[#64748B]">
         <span>v{bp.version}</span>
-        <span>{SPECIALIST_LABELS[bp.primarySpecialist] ?? bp.primarySpecialist}</span>
+        <div className="flex items-center gap-1.5">
+          {isPlatformOwned && (
+            <span className="px-1.5 py-0.5 rounded bg-[#0A1929] text-[#4A6FA5] font-mono">PLATFORM</span>
+          )}
+          {bp.primarySpecialist && (
+            <span>{SPECIALIST_LABELS[bp.primarySpecialist] ?? bp.primarySpecialist}</span>
+          )}
+        </div>
       </div>
+
+      {/* Modes */}
+      {bp.supportedModes && bp.supportedModes.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {bp.supportedModes.map(m => (
+            <span key={m} className="text-[9px] px-1.5 py-0.5 rounded bg-[#0F1E2E] text-[#4A8FA5] border border-[#1E3A5F]/60">
+              {m}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#1E3A5F]">
         <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}`)}>View</ActionBtn>
-        {!readOnly && bp.status !== "archived" && (
+        {isConfigOnly && !readOnly && (
+          <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}/edit`)}>Configure</ActionBtn>
+        )}
+        {!isConfigOnly && !readOnly && bp.status !== "archived" && (
           <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}/edit`)}>Edit</ActionBtn>
         )}
-        {!readOnly && bp.status !== "archived" && (
+        {!isPlatformOwned && !readOnly && bp.status !== "archived" && (
           <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}/test`)}>Test</ActionBtn>
         )}
         <ActionBtn onClick={() => onClone(bp.id)}>Clone</ActionBtn>
-        {!readOnly && bp.status !== "archived" && (
+        {!isPlatformOwned && !readOnly && bp.status !== "archived" && (
           <ActionBtn danger onClick={() => onArchive(bp.id)}>Archive</ActionBtn>
         )}
-        {!readOnly && bp.status === "archived" && (
+        {!isPlatformOwned && !readOnly && bp.status === "archived" && (
           <ActionBtn onClick={() => onRestore(bp.id)}>Restore</ActionBtn>
         )}
       </div>

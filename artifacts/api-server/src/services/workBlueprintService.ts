@@ -24,6 +24,8 @@ import type { AIGatewayContext } from "@workspace/ai-gateway";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type BlueprintStatus = "draft" | "review" | "published" | "superseded" | "archived";
+export type BlueprintMaturityState = "placeholder" | "draft" | "professional_review" | "production_ready" | "superseded";
+export type BlueprintOwnerType = "platform_owned" | "organisation_owned";
 
 export interface WorkBlueprint {
   id: string;
@@ -32,6 +34,14 @@ export interface WorkBlueprint {
   title: string;
   version: string;
   status: BlueprintStatus;
+  // ── BlueprintDescriptor (public) ──────────────────────────────────────────
+  purpose: string | null;
+  blueprintFamily: string | null;
+  supportedModes: string[];
+  maturityState: BlueprintMaturityState;
+  ownerType: BlueprintOwnerType;
+  primaryDeliverable: string | null;
+  // ── BlueprintSpecification (platform-private) ─────────────────────────────
   objective: string;
   primarySpecialist: string;
   supportingSpecialists: string[];
@@ -45,6 +55,11 @@ export interface WorkBlueprint {
   outputTypes: string[];
   escalationRules: Array<{ trigger: string; action: string }>;
   mandatoryCitations: string[];
+  deliverableContract: Record<string, unknown> | null;
+  evidenceContract: Record<string, unknown> | null;
+  // ── Org config ────────────────────────────────────────────────────────────
+  permittedOrgOverrides: Record<string, unknown>;
+  // ── Flags ─────────────────────────────────────────────────────────────────
   isBuiltIn: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -466,6 +481,14 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     title: row.title,
     version: row.version,
     status: (row.status as BlueprintStatus) ?? "draft",
+    // BlueprintDescriptor fields
+    purpose: (row as any).purpose ?? null,
+    blueprintFamily: (row as any).blueprintFamily ?? null,
+    supportedModes: ((row as any).supportedModes as string[]) ?? [],
+    maturityState: ((row as any).maturityState as BlueprintMaturityState) ?? "placeholder",
+    ownerType: ((row as any).ownerType as BlueprintOwnerType) ?? (row.organizationId ? "organisation_owned" : "platform_owned"),
+    primaryDeliverable: (row as any).primaryDeliverable ?? null,
+    // BlueprintSpecification fields
     objective: row.objective,
     primarySpecialist: row.primarySpecialist,
     supportingSpecialists: (row.supportingSpecialists as string[]) ?? [],
@@ -479,6 +502,11 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     outputTypes: (row.outputTypes as string[]) ?? [],
     escalationRules: (row.escalationRules as WorkBlueprint["escalationRules"]) ?? [],
     mandatoryCitations: (row.mandatoryCitations as string[]) ?? [],
+    deliverableContract: ((row as any).deliverableContract as Record<string, unknown>) ?? null,
+    evidenceContract: ((row as any).evidenceContract as Record<string, unknown>) ?? null,
+    // Org config
+    permittedOrgOverrides: ((row as any).permittedOrgOverrides as Record<string, unknown>) ?? {},
+    // Flags
     isBuiltIn: row.isBuiltIn,
     isActive: row.isActive,
     createdAt: row.createdAt,
@@ -1360,9 +1388,30 @@ export async function testBlueprintSandbox(
   };
 }
 
+// ─── Legacy family mapping (for seedBuiltInBlueprints backfill) ──────────────
+
+const LEGACY_FAMILY_MAP: Record<string, string> = {
+  incident_investigation: "incident",
+  risk_assessment:        "risk_assessment",
+  behaviour_support_plan: "behaviour_support",
+  care_plan:              "care_plan",
+  meeting_minutes:        "legacy",
+  operational_procedure:  "operations",
+  policy_draft:           "policy",
+  executive_brief:        "governance",
+  investigation_report:   "incident",
+  performance_review:     "workforce_ops",
+  project_plan:           "legacy",
+  action_plan:            "quality_improvement",
+  customer_response:      "correspondence",
+  business_proposal:      "strategic",
+};
+
 /**
- * Seed all built-in blueprints into the database (idempotent).
- * Called at server startup.
+ * Seed all legacy built-in blueprints into the database (idempotent).
+ * Updates existing rows with new registry columns (maturityState, ownerType, etc.)
+ * on every startup so new columns are back-filled without requiring a code deploy.
+ * Called at server startup before seedRegistryBlueprints.
  */
 export async function seedBuiltInBlueprints(): Promise<void> {
   for (const def of BUILT_IN_BLUEPRINTS) {
@@ -1377,7 +1426,22 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       )
       .limit(1);
 
-    if (existing.length > 0) continue;
+    const blueprintFamily = LEGACY_FAMILY_MAP[def.code] ?? null;
+
+    if (existing.length > 0) {
+      // Back-fill new registry columns on existing rows
+      await db
+        .update(workBlueprintsTable)
+        .set({
+          maturityState: "placeholder",
+          ownerType: "platform_owned",
+          blueprintFamily,
+          permittedOrgOverrides: {},
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(workBlueprintsTable.id, existing[0]!.id));
+      continue;
+    }
 
     const id = randomUUID();
     await db.insert(workBlueprintsTable).values({
@@ -1402,8 +1466,89 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       mandatoryCitations: def.mandatoryCitations ?? [],
       isBuiltIn: true,
       isActive: true,
+      maturityState: "placeholder",
+      ownerType: "platform_owned",
+      blueprintFamily,
+      permittedOrgOverrides: {},
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    } as any);
+  }
+}
+
+/**
+ * Seed the production Blueprint Registry (59 canonical work types).
+ * Skips registry entries whose code already exists as a built-in or registry row.
+ * Does NOT overwrite content on existing rows — insert-only for new codes.
+ * Called at server startup after seedBuiltInBlueprints.
+ */
+export async function seedRegistryBlueprints(): Promise<void> {
+  const { BLUEPRINT_REGISTRY } = await import("./blueprintRegistry.js");
+
+  for (const entry of BLUEPRINT_REGISTRY) {
+    const existing = await db
+      .select({ id: workBlueprintsTable.id })
+      .from(workBlueprintsTable)
+      .where(
+        and(
+          eq(workBlueprintsTable.code, entry.code),
+          isNull(workBlueprintsTable.organizationId),
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Back-fill registry metadata on existing rows (e.g. care_plan, incident_investigation)
+      await db
+        .update(workBlueprintsTable)
+        .set({
+          blueprintFamily:     entry.blueprintFamily,
+          supportedModes:      entry.supportedModes,
+          maturityState:       entry.maturityState,
+          ownerType:           "platform_owned",
+          purpose:             entry.purpose,
+          primaryDeliverable:  entry.primaryDeliverable,
+          permittedOrgOverrides: {},
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(workBlueprintsTable.id, existing[0]!.id));
+      continue;
+    }
+
+    // New registry entry — insert with placeholder content only.
+    // Professional section content populated separately from source documents.
+    const id = randomUUID();
+    await db.insert(workBlueprintsTable).values({
+      id,
+      organizationId: null,
+      code: entry.code,
+      title: entry.title,
+      version: "1.0.0",
+      status: "published",
+      objective: `[${entry.maturityState.toUpperCase()}] ${entry.purpose}`,
+      primarySpecialist: "chief_of_staff",
+      supportingSpecialists: [],
+      requiredLibraryKnowledge: [],
+      requiredEntityKnowledge: {},
+      requiredMemories: [],
+      requiredApprovals: {},
+      validationRules: [],
+      qualityRules: [],
+      successCriteria: [],
+      outputTypes: [],
+      escalationRules: [],
+      mandatoryCitations: [],
+      isBuiltIn: true,
+      isActive: true,
+      blueprintFamily:     entry.blueprintFamily,
+      supportedModes:      entry.supportedModes,
+      maturityState:       entry.maturityState,
+      ownerType:           "platform_owned",
+      purpose:             entry.purpose,
+      primaryDeliverable:  entry.primaryDeliverable,
+      permittedOrgOverrides: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
   }
 }

@@ -1,0 +1,493 @@
+IMPLEMENTATION TASK — PRODUCTION BLUEPRINT REGISTRY & PROTECTED BLUEPRINT ARCHITECTURE
+
+Do not populate professional blueprint content yet.
+
+The professional content, section instructions, evidence requirements, templates and completion rules will be supplied separately from real organisational source documents.
+
+Your task now is to prepare the NeedsOps architecture to support the full production Blueprint Registry and protect NeedsOps proprietary blueprint intelligence.
+
+Preserve the existing Blueprint framework, versioning, organisation override architecture and UEE integration.
+
+## 1. Establish the production Blueprint Registry
+
+Create registry entries/canonical codes for the following professional work types and families.
+
+These entries should contain identity and classification metadata only at this stage.
+
+Do NOT invent section content.
+
+Registry:
+
+1. Care Plan
+2. Individual Support / Implementation Plan
+3. SIL Support & Implementation Plan
+4. Participant Transition & Onboarding Plan
+5. Participant Goals & Outcomes Review
+6. Participant Periodic / Weekly Summary
+7. Participant Risk Assessment
+8. Community Access Risk Assessment
+9. Site & Environmental Risk Assessment
+10. Fire Risk Assessment
+11. Evacuation & Emergency Readiness Assessment
+12. Participant Disaster & Emergency Risk Assessment
+13. Disaster & Emergency Management Plan
+14. Business Continuity Plan / Assessment
+15. Individual Emergency Preparedness Plan
+16. Support Strategy Analysis
+17. Behaviour Support Plan Review
+18. Behaviour / Trigger Analysis
+19. Restrictive Practice Risk Assessment
+20. Restrictive Practice Comparison / Least Restrictive Alternatives
+21. Restrictive Practice Authorisation Preparation
+22. Unauthorised Restrictive Practice Review
+23. Incident Investigation
+24. Incident Review & Improvement Plan
+25. Reportable Incident Assessment
+26. Safeguarding Assessment
+27. Corrective Action & Continuous Improvement
+28. Medication Management Review
+29. Health Support Plan
+30. Health / Clinical Escalation Plan
+31. Mealtime Risk Assessment
+32. Mealtime Management Plan Review
+33. Dysphagia & Mealtime Safety Review
+34. Mealtime Support Strategy
+35. Clinical Governance Review
+36. Rostering & Fatigue Review
+37. Roster Planning & Workforce Allocation
+38. Workforce Performance & Competency Review
+39. Operational Readiness Assessment
+40. Standard Operating Procedure
+41. Policy
+42. Compliance & Audit Readiness Review
+43. Legislation & Regulatory Requirements Review
+44. Regulatory Change Impact Assessment
+45. Regulator Response / Submission Preparation
+46. SCHADS Award Analysis
+47. Employment Compliance Review
+48. Business & Financial Analysis
+49. Tax & Financial Obligation Review
+50. Business Process Analysis
+51. Business Growth / Expansion Analysis
+52. NDIS Marketing Strategy
+53. NDIS Market Analysis
+54. Business Proposal / Business Case
+55. Governance / Executive Review
+56. Formal Stakeholder Correspondence
+57. Complaints Review & Response
+58. Service Agreement Review
+59. Funding / Support Utilisation Review
+
+Do NOT make shift assignment its own professional blueprint.
+
+Shift assignment, sending messages, updating systems, creating calendar events, posting social media, submitting forms and similar operations are agent actions governed by relevant blueprints.
+
+## 2. Support blueprint families + modes
+
+Do not require one totally separate execution engine per registry item.
+
+Support:
+
+`blueprintFamily`
+`mode`
+
+Example:
+
+Care Plan:
+
+* create
+* review
+* revise
+
+Policy:
+
+* create
+* review
+* revise
+
+Support Strategy Analysis:
+
+* proactive
+* reactive
+* protective
+* combined
+
+Participant Risk:
+
+* general
+* community_access
+* health
+* behavioural
+* home
+
+Disaster/Emergency:
+
+* organisational
+* participant
+* evacuation
+* business_continuity
+
+Design the model so related modes can share common rules while adding mode-specific requirements.
+
+## 3. Protect NeedsOps proprietary blueprint content
+
+The full platform-owned blueprint specification is proprietary NeedsOps intellectual property.
+
+Do not expose platform blueprint internals to ordinary tenant users or tenant managers.
+
+Create explicit visibility levels:
+
+### Ordinary user
+
+May see:
+
+* blueprint/work type display name
+* work-product status
+* resulting deliverable
+* version label if appropriate
+
+Must NOT see:
+
+* internal section instructions
+* evidence logic
+* reasoning controls
+* specialist routing logic
+* quality scoring formulas
+* completion gates
+* prohibited assumptions
+* escalation rules
+* internal system prompts
+* proprietary evidence-selection logic
+
+### Organisation manager
+
+May see:
+
+* blueprint name
+* purpose summary
+* version
+* status
+* deliverable type
+* attached organisation template
+* organisation-configurable settings
+
+Must NOT see/copy the full platform blueprint specification.
+
+### Organisation owner/admin
+
+May:
+
+* configure organisation-specific business settings
+* attach/substitute organisation templates
+* create organisation-owned custom blueprints
+* create permitted overrides
+
+But a platform blueprint override must NOT reveal the underlying proprietary NeedsOps blueprint internals.
+
+They may configure an override from an exposed schema/contract, not clone hidden system content.
+
+### NeedsOps platform administrator
+
+May see and manage the complete platform blueprint specification.
+
+## 4. Separate public metadata from private specification
+
+A platform blueprint should have two conceptual layers:
+
+`BlueprintDescriptor`
+
+Safe to expose:
+
+* code
+* title
+* purpose
+* category
+* modes
+* version
+* status
+* primary deliverable
+* supported formats
+
+and:
+
+`BlueprintSpecification`
+
+Platform-private:
+
+* required sections
+* section instructions
+* evidence requirements
+* validation rules
+* claim-integrity rules
+* quality rules
+* prohibited assumptions
+* specialist routing
+* completion gates
+* escalation
+* internal execution instructions
+
+APIs must not accidentally return the private specification to tenant roles.
+
+Add tests for this.
+
+## 5. Preserve organisation custom blueprint capability
+
+Organisation-owned blueprints remain organisation property and should be fully visible/editable to authorised organisation admins.
+
+Distinguish:
+
+`platform_owned`
+vs
+`organisation_owned`
+
+Platform blueprint internals remain protected.
+
+Organisation admins can fully inspect blueprints their organisation created itself.
+
+## 6. Template architecture
+
+Templates remain separate from blueprints.
+
+Organisation administrators should be able to see/manage templates their organisation owns.
+
+The association should support:
+
+platform blueprint
++
+platform default template
+
+OR:
+
+platform blueprint
++
+organisation template substitution.
+
+The organisation should not need to see the platform blueprint internals merely to substitute a template.
+
+## 7. Structured blueprint sections
+
+Prepare support for ordered sections:
+
+* sectionCode
+* title
+* description
+* instructions
+* required
+* minimumContentExpectation
+* evidenceRequirements
+* allowedSourceTypes
+* prohibitedAssumptions
+* validationRules
+* qualityCriteria
+* order
+
+Do not populate real professional content yet.
+
+## 8. Deliverable contract
+
+Support:
+
+* primaryDeliverable
+* secondaryDeliverables
+* allowedInternalAnalysis
+* prohibitedDeliverables
+* outputFormats
+* primaryFormat
+* artifactRequired
+* completionRequirements
+
+Supporting internal analysis must not automatically become an additional formal deliverable.
+
+## 9. Evidence contract
+
+Support:
+
+* requiredEvidenceCategories
+* optionalEvidenceCategories
+* allowed/restricted source types
+* minimum evidence
+* freshness requirements
+* claimIntegrityRequired
+* missingEvidenceBehaviour
+
+Do not populate real evidence requirements yet.
+
+## 10. Deterministic intent mapping
+
+Prepare canonical intent mapping to blueprint family/mode.
+
+Examples:
+
+`care_plan.create`
+→ family `care_plan`, mode `create`
+
+`risk_assessment.community_access`
+→ participant risk, mode `community_access`
+
+`support_strategy.proactive`
+→ support strategy, mode `proactive`
+
+`roster.plan`
+→ roster planning
+
+`shift.assign`
+→ ACTION governed by roster planning, NOT a blueprint.
+
+Existing keyword selection must remain only as backwards-compatible fallback during migration.
+
+## 11. Action versus blueprint distinction
+
+Create an explicit taxonomy:
+
+PROFESSIONAL WORK PRODUCT
+→ Blueprint
+
+EXECUTION ACTION
+→ Tool/action capability
+
+Examples of actions:
+
+* assign shift
+* send email
+* upload file
+* update CRM
+* generate invoice
+* make calendar booking
+* submit approved form
+* post approved social content
+
+Actions may require a blueprint-generated plan/approval, but do not become blueprints simply because the agent can perform them.
+
+## 12. Current placeholder migration
+
+Do not destroy the current 14 built-ins immediately.
+
+Map them into the new registry where possible.
+
+Mark the old content:
+
+`legacy_placeholder`
+
+and preserve compatibility until each professional blueprint has been replaced with a production specification.
+
+Do not silently treat placeholder blueprints as production ready.
+
+## 13. Blueprint maturity state
+
+Add maturity/state such as:
+
+* placeholder
+* draft
+* professional_review
+* production_ready
+* superseded
+
+This must be distinct from publication status.
+
+A published placeholder must not be represented as production-grade simply because it is technically published.
+
+## 14. Blueprint Studio changes
+
+Organisation users should NOT receive a raw editor for proprietary platform blueprints.
+
+For platform blueprints, show a safe configuration surface:
+
+* name
+* purpose
+* version
+* status
+* modes
+* output formats
+* organisation template
+* permitted override settings
+
+For organisation-owned blueprints, retain full editor.
+
+For NeedsOps platform administrators, provide full platform Blueprint Studio.
+
+## 15. Audit and trade-secret protection
+
+Audit:
+
+* blueprint specification access
+* platform blueprint changes
+* org override changes
+* template substitutions
+* publication
+* rollback
+* version changes
+
+Do not expose private blueprint JSON through logs, error payloads, client state, browser network responses or tenant APIs.
+
+## 16. Version pinning
+
+Execution must record:
+
+* blueprint ID
+* blueprint version
+* mode
+* template ID/version
+
+An in-flight/completed task must remain tied to the exact blueprint version used when it began.
+
+Later platform updates must not rewrite historical completed work provenance.
+
+## 17. Do not populate professional content
+
+No real Care Plan sections.
+No real Risk Assessment sections.
+No real SCHADS rules.
+No real legislation rules.
+No professional content.
+
+Only create the architecture, registry, codes, modes, access model and synthetic fixtures necessary for tests.
+
+The actual professional blueprint specifications will come next from real source documents.
+
+## 18. Tests
+
+Test:
+
+* platform blueprint private fields hidden from member
+* hidden from manager
+* hidden from org admin where proprietary
+* visible to platform admin
+* organisation-owned blueprint fully visible to owning org admin
+* platform blueprint template can be substituted without exposing specification
+* deterministic intent mapping
+* blueprint mode mapping
+* action does not incorrectly create blueprint
+* version pinned to execution
+* legacy placeholders remain operational
+* maturity state works independently of publication state
+* no private specification leaked through public API
+
+## 19. Final report
+
+Return:
+
+REGISTRY CREATED
+
+FAMILY/MODE MODEL
+
+ACCESS CONTROL MODEL
+
+PLATFORM VS ORG OWNERSHIP
+
+PRIVATE SPECIFICATION PROTECTION
+
+TEMPLATE ASSOCIATION MODEL
+
+INTENT MAPPING
+
+ACTION VS BLUEPRINT MODEL
+
+LEGACY MIGRATION
+
+TEST RESULTS
+
+UNPROVEN / NOT IMPLEMENTED
+
+Do not claim any professional blueprint is production ready.
+
+The professional content phase begins only after this architecture is accepted.
