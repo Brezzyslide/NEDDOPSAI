@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "fs";
+import { resolve } from "path";
 import {
   parseCanonicalCarePlanIntent,
   toBlueprintDescriptor,
@@ -192,6 +194,18 @@ Synthetic participant context says the required synthetic fact and enough sectio
 # TEST_SECTION_B
 This synthetic section contains enough non-professional placeholder content to pass.`;
 
+function readSprint30Migration(): string {
+  const candidates = [
+    resolve(process.cwd(), "../../lib/db/migrations/sprint30-production-blueprint-foundation.sql"),
+    resolve(process.cwd(), "lib/db/migrations/sprint30-production-blueprint-foundation.sql"),
+  ];
+  const migrationPath = candidates.find((candidate) => existsSync(candidate));
+  if (!migrationPath) {
+    throw new Error("Unable to locate sprint30-production-blueprint-foundation.sql");
+  }
+  return readFileSync(migrationPath, "utf8");
+}
+
 describe("Sprint 30 production blueprint foundation", () => {
   it("maps canonical Care Plan intents deterministically", () => {
     expect(parseCanonicalCarePlanIntent("care_plan.create")).toEqual({
@@ -306,5 +320,24 @@ describe("Sprint 30 production blueprint foundation", () => {
       artifactId: "artifact-1",
     });
     expect(result.failures.some((failure) => failure.gate === "template_required")).toBe(true);
+  });
+
+  it("keeps Sprint 30 migration safe for historical Replit section ordering", () => {
+    const migration = readSprint30Migration();
+
+    expect(migration).toContain("ALTER TABLE blueprint_sections RENAME COLUMN \"order\" TO sort_order");
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0");
+    expect(migration).toContain("CREATE INDEX IF NOT EXISTS idx_blueprint_sections_blueprint_order");
+    expect(migration).toContain("ON blueprint_sections (blueprint_id, sort_order)");
+  });
+
+  it("backfills historical canonical_intent_key without overwriting canonical_intent", () => {
+    const migration = readSprint30Migration();
+
+    expect(migration).toContain("ADD COLUMN IF NOT EXISTS canonical_intent TEXT");
+    expect(migration).toContain("column_name = 'canonical_intent_key'");
+    expect(migration).toContain("SET canonical_intent = canonical_intent_key");
+    expect(migration).toContain("WHERE (canonical_intent IS NULL OR canonical_intent = '')");
+    expect(migration).not.toMatch(/DROP\s+COLUMN\s+(IF\s+EXISTS\s+)?canonical_intent_key/i);
   });
 });

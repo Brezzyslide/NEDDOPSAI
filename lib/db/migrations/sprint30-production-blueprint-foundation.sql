@@ -1,6 +1,55 @@
 -- Sprint 30 — Production Blueprint Foundation + synthetic Care Plan readiness
 -- Generic architecture only. No real professional Care Plan content.
 
+-- Reconciliation guard for the earlier Replit Blueprint schema.
+--
+-- Replit's first Blueprint Foundation pass created blueprint_sections."order".
+-- The reconciled Sprint 30 Drizzle/application schema uses sort_order. Rename
+-- the historical column when it is the only ordering column, or backfill the
+-- reconciled column from it when both exist. Existing section rows and ordering
+-- values must survive this migration.
+DO $$
+BEGIN
+  IF to_regclass('public.blueprint_sections') IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'blueprint_sections'
+        AND column_name = 'order'
+    ) THEN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'blueprint_sections'
+          AND column_name = 'sort_order'
+      ) THEN
+        ALTER TABLE blueprint_sections RENAME COLUMN "order" TO sort_order;
+      ELSE
+        UPDATE blueprint_sections
+        SET sort_order = "order"
+        WHERE sort_order IS NULL
+          AND "order" IS NOT NULL;
+
+        -- If a previous partial migration added sort_order with only default
+        -- zeroes while the historical "order" column still carries real
+        -- ordering values, recover the historical ordering. If sort_order has
+        -- any non-zero values, treat it as already meaningful and leave it.
+        IF NOT EXISTS (
+          SELECT 1 FROM blueprint_sections WHERE sort_order IS DISTINCT FROM 0
+        ) AND EXISTS (
+          SELECT 1 FROM blueprint_sections WHERE "order" IS DISTINCT FROM 0
+        ) THEN
+          UPDATE blueprint_sections
+          SET sort_order = "order"
+          WHERE "order" IS NOT NULL;
+        END IF;
+      END IF;
+    END IF;
+  END IF;
+END $$;
+
 ALTER TABLE work_blueprints
   ADD COLUMN IF NOT EXISTS blueprint_family TEXT,
   ADD COLUMN IF NOT EXISTS supported_modes JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -47,6 +96,43 @@ CREATE TABLE IF NOT EXISTS blueprint_sections (
   created_at                   TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- If blueprint_sections already existed from Replit's historical schema,
+-- CREATE TABLE IF NOT EXISTS above is a no-op. Bring that table into the
+-- reconciled Sprint 30 shape without recreating or deleting existing rows.
+ALTER TABLE blueprint_sections
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS instructions TEXT,
+  ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS minimum_content_expectation TEXT,
+  ADD COLUMN IF NOT EXISTS evidence_requirements JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS allowed_source_types JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS prohibited_assumptions JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS validation_rules JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS quality_criteria JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+UPDATE blueprint_sections
+SET
+  evidence_requirements = COALESCE(evidence_requirements, '{}'::jsonb),
+  allowed_source_types = COALESCE(allowed_source_types, '[]'::jsonb),
+  prohibited_assumptions = COALESCE(prohibited_assumptions, '[]'::jsonb),
+  validation_rules = COALESCE(validation_rules, '[]'::jsonb),
+  quality_criteria = COALESCE(quality_criteria, '[]'::jsonb);
+
+ALTER TABLE blueprint_sections
+  ALTER COLUMN evidence_requirements SET DEFAULT '{}'::jsonb,
+  ALTER COLUMN evidence_requirements SET NOT NULL,
+  ALTER COLUMN allowed_source_types SET DEFAULT '[]'::jsonb,
+  ALTER COLUMN allowed_source_types SET NOT NULL,
+  ALTER COLUMN prohibited_assumptions SET DEFAULT '[]'::jsonb,
+  ALTER COLUMN prohibited_assumptions SET NOT NULL,
+  ALTER COLUMN validation_rules SET DEFAULT '[]'::jsonb,
+  ALTER COLUMN validation_rules SET NOT NULL,
+  ALTER COLUMN quality_criteria SET DEFAULT '[]'::jsonb,
+  ALTER COLUMN quality_criteria SET NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_blueprint_sections_blueprint_code
   ON blueprint_sections (blueprint_id, section_code);
@@ -121,6 +207,25 @@ ALTER TABLE work_package_manifests
   ADD COLUMN IF NOT EXISTS template_id TEXT,
   ADD COLUMN IF NOT EXISTS template_version TEXT,
   ADD COLUMN IF NOT EXISTS contract_snapshot JSONB;
+
+-- Reconcile Replit's historical canonical_intent_key provenance column into
+-- the current canonical_intent column. Preserve any current canonical_intent
+-- values and keep the historical column for audit/backward compatibility.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'work_package_manifests'
+      AND column_name = 'canonical_intent_key'
+  ) THEN
+    UPDATE work_package_manifests
+    SET canonical_intent = canonical_intent_key
+    WHERE (canonical_intent IS NULL OR canonical_intent = '')
+      AND canonical_intent_key IS NOT NULL;
+  END IF;
+END $$;
 
 ALTER TABLE completed_work
   ADD COLUMN IF NOT EXISTS blueprint_version TEXT,
