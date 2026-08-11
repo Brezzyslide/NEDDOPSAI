@@ -1,0 +1,450 @@
+IMPLEMENTATION TASK — PRODUCTION BLUEPRINT FOUNDATION + CARE PLAN READINESS
+
+The independent OpenClaw audit found that the previously reported Production Blueprint Registry architecture is not present in the actual repository.
+
+Do not repeat the previous completion report.
+
+Do not invent professional Care Plan content yet.
+
+Do not populate the wider blueprint catalogue yet.
+
+Your task is to implement the GENERIC production blueprint foundation required before real professional source documents are loaded, using Care Plan only as the first vertical architecture test.
+
+1. Add the missing generic blueprint schema
+
+Extend work_blueprints to support:
+
+* blueprintFamily
+* supportedModes
+* maturityState
+* ownerType
+* purpose
+* primaryDeliverable
+* deliverableContract
+* evidenceContract
+* permittedOrgOverrides
+
+Use appropriate typed schema rather than opaque strings where practical.
+
+Maturity must support:
+
+* placeholder
+* draft
+* professional_review
+* production_ready
+* superseded
+
+Ownership must distinguish:
+
+* platform_owned
+* organisation_owned
+
+Existing legacy blueprints must remain compatible.
+
+2. Add structured blueprint sections
+
+Create a real blueprint_sections model/table.
+
+Support at minimum:
+
+* id
+* blueprintId
+* sectionCode
+* title
+* description
+* instructions
+* required
+* minimumContentExpectation
+* evidenceRequirements
+* allowedSourceTypes
+* prohibitedAssumptions
+* validationRules
+* qualityCriteria
+* sortOrder
+* createdAt
+* updatedAt
+
+Sections must be ordered and data-driven.
+
+Do not populate real Care Plan content yet. Use synthetic fixtures only.
+
+3. Separate platform descriptor from private specification
+
+Platform-owned blueprints contain proprietary NeedsOps execution intelligence.
+
+Create an explicit separation between:
+
+Safe Blueprint Descriptor
+
+Tenant roles may receive:
+
+* id/code
+* title
+* family
+* purpose summary
+* supported modes
+* version
+* maturity
+* status
+* primary deliverable
+* supported output formats
+* organisation-configurable settings
+
+Private Blueprint Specification
+
+Tenant roles must NOT receive:
+
+* internal section instructions
+* detailed evidence rules
+* validation rules
+* claim-integrity rules
+* quality rules
+* completion gates
+* prohibited assumptions
+* specialist routing internals
+* internal execution instructions
+* internal prompt fragments
+
+Only platform administrators may access the full private specification.
+
+Organisation-owned blueprints remain fully visible to authorised admins of the owning organisation.
+
+Apply filtering at the API/service boundary, not only in the UI.
+
+4. Add deterministic intent → blueprint mapping
+
+Implement a canonical mapping layer.
+
+For the first vertical slice support:
+
+* care_plan.create
+* care_plan.review
+* care_plan.revise
+
+All three must resolve deterministically to:
+
+blueprintFamily = care_plan
+
+with the appropriate mode.
+
+Once canonical intent exists, UEE must NOT rediscover the blueprint from user wording using keyword matching.
+
+Keep existing keyword/semantic selection only as legacy fallback for tasks that have no canonical blueprint mapping.
+
+Persist/pin:
+
+* canonical intent
+* blueprint ID
+* blueprint version
+* family
+* mode
+
+to execution/task provenance.
+
+5. Deliverable contract
+
+Implement a structured deliverableContract model supporting:
+
+* primaryDeliverable
+* secondaryDeliverables
+* allowedInternalAnalysis
+* prohibitedDeliverables
+* artifactRequired
+* primaryFormat
+* secondaryFormats
+* namingConvention
+* templateRequired
+* completionRequirements
+
+The UEE must consume this contract.
+
+Add runtime enforcement sufficient to prove:
+
+* prohibited secondary deliverable can fail validation
+* artifact-required work cannot complete as text-only
+* template-required work cannot silently free-form if the template is missing
+
+Use synthetic Care Plan test fixtures only.
+
+Do not define the real Care Plan deliverable content yet.
+
+6. Evidence contract
+
+Implement a structured evidenceContract supporting:
+
+* requiredEvidenceCategories
+* optionalEvidenceCategories
+* allowedSourceTypes
+* restrictedSourceTypes
+* requiredEntityTypes
+* minimumEvidenceCount
+* freshnessRules
+* claimIntegrityRequired
+* missingEvidenceBehaviour
+
+Support missing-evidence behaviours:
+
+* clarification_required
+* continue_with_flagged_gaps
+* block_completion
+* not_applicable_allowed
+
+The UEE must consume the contract.
+
+7. Claim integrity gate
+
+For blueprints with claimIntegrityRequired = true, completion must fail closed when required evidence-bearing claims remain unsupported.
+
+Do not rely only on claim tables existing.
+
+Prove the completion path actually checks this condition.
+
+Synthetic tests are acceptable for this implementation.
+
+8. Structured section enforcement
+
+The UEE must inject structured section requirements into the execution contract.
+
+Before completion, validate:
+
+* all required sections are present
+* required sections are materially populated
+* section-level evidence requirements are satisfied where configured
+* prohibited assumptions are not knowingly introduced
+
+Do not populate real Care Plan sections yet.
+
+Use simple synthetic section definitions to prove runtime behaviour.
+
+9. Separate template architecture
+
+Create a proper work_templates model.
+
+Support at minimum:
+
+* id
+* organizationId nullable
+* ownerType
+* code
+* title
+* version
+* status
+* maturityState
+* templateType
+* sourceFileReference
+* mimeType
+* mergeFieldSchema
+* createdAt
+* updatedAt
+
+Support blueprint association:
+
+* defaultTemplateId
+* templateRequired
+* organisation template substitution where permitted
+
+Do not build real production Care Plan templates yet.
+
+Do not treat a knowledge-library document labelled “template” as sufficient.
+
+10. Artifact requirement model
+
+Prepare the execution lifecycle for required professional artifacts.
+
+Support states such as:
+
+* content_drafting
+* validation
+* awaiting_clarification
+* awaiting_approval
+* artifact_generation
+* artifact_generation_failed
+* completed
+
+For this task, artifact generation itself may use a synthetic/stubbed test renderer if necessary.
+
+But runtime must prove:
+
+If artifactRequired = true:
+text generation alone cannot mark work completed.
+
+Do not claim production DOCX/PDF rendering is complete unless real rendering exists.
+
+11. Version management
+
+Implement platform blueprint version management properly.
+
+Requirements:
+
+* published platform blueprint versions are immutable snapshots
+* new versions can supersede older versions
+* in-flight work retains the version it began with
+* completed work retains exact blueprint provenance
+* new work uses the currently active production version
+* placeholder/draft/professional_review/production_ready are distinct from publication status
+
+Do not rely on the old insert-only seed behaviour as the production update strategy.
+
+12. Care Plan as vertical proof only
+
+Create ONE synthetic Care Plan platform blueprint for architecture verification.
+
+It must demonstrate:
+
+* family = care_plan
+* modes = create/review/revise
+* private platform specification
+* safe tenant descriptor
+* structured sections
+* deliverable contract
+* evidence contract
+* deterministic intent mapping
+* claim-integrity requirement
+* missing-info behaviour
+* template association
+* artifact-required completion gate
+* version pinning
+
+IMPORTANT:
+
+Do NOT populate real Care Plan professional content.
+
+Use clearly synthetic section names such as:
+
+* TEST_SECTION_A
+* TEST_SECTION_B
+
+or similarly obvious fixtures.
+
+Set maturity to:
+
+placeholder
+
+This blueprint exists only to prove the engine.
+
+13. Preserve legacy operation
+
+Existing 14 placeholder blueprints must continue to execute through compatibility fallback.
+
+Do not break existing tasks.
+
+Mark legacy built-ins explicitly as:
+
+maturityState = placeholder
+
+where migration is safe.
+
+14. Blueprint Studio
+
+For platform-owned blueprints:
+
+Tenant admins may see/configure only the safe descriptor and permitted organisation settings.
+
+They must not be given a raw editor for platform-private specification.
+
+For organisation-owned blueprints:
+
+Authorised organisation admins may retain full editing/versioning capability.
+
+For platform admins:
+
+Full specification editor may be available.
+
+Do not expose proprietary platform JSON to the browser for tenant roles and merely hide it visually.
+
+15. Tests
+
+Add tests that prove runtime behaviour, not just storage.
+
+At minimum:
+
+1. care_plan.create deterministically resolves to care_plan/create
+2. care_plan.review resolves to same family/review mode
+3. keyword ambiguity does not override canonical mapping
+4. required section missing → completion blocked
+5. required evidence missing → configured missing-info behaviour fires
+6. unsupported required claim → completion blocked
+7. prohibited deliverable → validation failure
+8. artifactRequired + no artifact → cannot complete
+9. templateRequired + no template → controlled failure
+10. tenant user cannot retrieve platform private specification
+11. org admin cannot retrieve platform private specification
+12. platform admin can retrieve full specification
+13. org-owned blueprint fully visible to authorised org admin
+14. cross-org access blocked
+15. execution pins blueprint version
+16. publishing new version does not alter in-flight execution
+17. legacy blueprint still executes through compatibility fallback
+
+16. Do not implement professional content
+
+Do NOT create:
+
+* actual Care Plan headings
+* actual Risk Assessment headings
+* MH&R clinical content
+* SCHADS rules
+* NDIS rules
+* regulatory requirements
+* professional evidence requirements
+
+Those will be supplied next from real source documents.
+
+17. Do not implement the full 59-type registry yet
+
+Build the generic architecture once.
+
+Use Care Plan synthetic vertical proof.
+
+Once this architecture is independently verified, the full registry and real professional blueprint content will be loaded separately.
+
+18. Required live proof
+
+Do not report completion from tests alone.
+
+Provide:
+
+* migration/schema evidence
+* live DB proof of new tables/columns
+* live API proof of tenant-safe descriptor filtering
+* live API proof platform admin sees private specification
+* live execution proof canonical Care Plan intent pins correct family/mode/version
+* live execution proof text-only completion is blocked when artifactRequired=true
+
+If anything cannot be demonstrated live, label it UNPROVEN.
+
+19. Final report
+
+Return exactly:
+
+SCHEMA IMPLEMENTED
+
+PRIVATE SPECIFICATION PROTECTION
+
+DETERMINISTIC INTENT MAPPING
+
+SECTION ENFORCEMENT
+
+EVIDENCE CONTRACT ENFORCEMENT
+
+DELIVERABLE CONTRACT ENFORCEMENT
+
+TEMPLATE ARCHITECTURE
+
+ARTIFACT COMPLETION GATE
+
+VERSION MANAGEMENT
+
+LEGACY COMPATIBILITY
+
+TEST RESULTS
+
+LIVE PROOF
+
+UNPROVEN / NOT IMPLEMENTED
+
+Finally answer:
+
+READY FOR REAL CARE PLAN SOURCE DOCUMENTS: YES / NO
+
+Do not mark YES unless the Care Plan synthetic vertical slice proves the architecture end-to-end.

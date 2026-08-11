@@ -110,8 +110,9 @@ vi.mock("../services/workPackageAssemblerService.js", () => ({
 }));
 
 vi.mock("../services/workBlueprintService.js", () => ({
-  selectBlueprint:  mockSelectBlueprint,
-  getBlueprintById: vi.fn(),
+  selectBlueprint:      mockSelectBlueprint,
+  getBlueprintById:     vi.fn(),
+  getBlueprintSections: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../services/workPackageValidationService.js", () => ({

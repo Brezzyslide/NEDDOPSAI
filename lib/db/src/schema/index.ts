@@ -128,6 +128,7 @@ export * from "./orgProvisioningJobs";
 // Sprint 22 — Work Execution Engine & Completed Work
 export * from "./workBlueprints";
 export * from "./blueprintSections";
+export * from "./workTemplates";
 // Sprint 28 — Blueprint Studio
 export * from "./blueprintVersions";
 export * from "./workPackageManifests";

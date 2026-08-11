@@ -350,8 +350,9 @@ vi.mock("../services/workPackageService.js", () => ({
 }));
 
 vi.mock("../services/workBlueprintService.js", () => ({
-  selectBlueprint:  vi.fn().mockResolvedValue({ blueprint: null, confidence: 0, fallbackUsed: false, matchedKeywords: [] }),
-  getBlueprintById: vi.fn().mockResolvedValue(null),
+  selectBlueprint:      vi.fn().mockResolvedValue({ blueprint: null, confidence: 0, fallbackUsed: false, matchedKeywords: [] }),
+  getBlueprintById:     vi.fn().mockResolvedValue(null),
+  getBlueprintSections: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../services/knowledgeResolutionService.js", () => ({

@@ -203,6 +203,20 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
     .$type<Record<string, unknown>>()
     .default({}),
 
+  // ── Template association ────────────────────────────────────────────────────
+
+  /**
+   * FK to the default work_templates row for this blueprint.
+   * NULL when no template is assigned yet (placeholder state).
+   */
+  defaultTemplateId: text("default_template_id"),
+
+  /**
+   * When true, the UEE must generate a physical artifact (via template rendering)
+   * before work may be marked complete.  Text-only content is insufficient.
+   */
+  templateRequired: boolean("template_required").notNull().default(false),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

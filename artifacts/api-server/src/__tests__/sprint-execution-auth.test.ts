@@ -107,8 +107,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
 vi.mock("../services/membershipService.js", () => ({ getMembershipForUser: mocks.getMembershipForUser }));
 vi.mock("../services/auditService.js", () => ({ logOrgEvent: mocks.logOrgEvent, getRequestMeta: vi.fn(() => ({})) }));
 vi.mock("../services/workBlueprintService.js", () => ({
-  selectBlueprint:   mocks.selectBlueprint,
-  getBlueprintById:  vi.fn().mockResolvedValue(null),
+  selectBlueprint:      mocks.selectBlueprint,
+  getBlueprintById:     vi.fn().mockResolvedValue(null),
+  getBlueprintSections: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../services/workPackageService.js", () => ({
   assembleWorkPackage:         mocks.assembleWorkPackage,

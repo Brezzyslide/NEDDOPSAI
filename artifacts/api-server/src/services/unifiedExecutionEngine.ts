@@ -34,8 +34,14 @@ import {
 import { db, specialistRunsTable, taskExecutionPlansTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
-import { selectBlueprint, getBlueprintById } from "./workBlueprintService.js";
-import type { WorkBlueprint } from "./workBlueprintService.js";
+import { selectBlueprint, getBlueprintById, getBlueprintSections } from "./workBlueprintService.js";
+import type { WorkBlueprint, CanonicalIntentInfo } from "./workBlueprintService.js";
+import {
+  enforceEvidenceContract,
+  enforceAllCompletionGates,
+  parseDeliverableContract,
+  parseEvidenceContract,
+} from "./blueprintContractService.js";
 import {
   assembleWorkPackage,
   updateManifestObservability,
@@ -891,14 +897,18 @@ export class UnifiedExecutionEngine {
       blueprint = null;
       const t1 = Date.now();
 
+      // Blueprint-foundation: track canonical intent for provenance pinning
+      let canonicalIntentCapture: CanonicalIntentInfo | undefined;
+
       if (request.blueprintId) {
         blueprint = await getBlueprintById(request.blueprintId, organizationId);
         selectionMeta = { method: "keyword", confidence: 1.0, matchedKeywords: [request.blueprintId], fallbackUsed: false };
       } else if (request.blueprintCode) {
         const selection = await selectBlueprint(request.blueprintCode, organizationId);
         blueprint = selection.blueprint;
+        canonicalIntentCapture = selection.canonicalIntent;
         selectionMeta = {
-          method: selection.fallbackUsed ? "semantic" : "keyword",
+          method: selection.canonicalIntent ? "canonical_intent" : (selection.fallbackUsed ? "semantic" : "keyword"),
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
@@ -906,8 +916,9 @@ export class UnifiedExecutionEngine {
       } else {
         const selection = await selectBlueprint(userRequest, organizationId);
         blueprint = selection.blueprint;
+        canonicalIntentCapture = selection.canonicalIntent;
         selectionMeta = {
-          method: selection.fallbackUsed ? "semantic" : (selection.matchedKeywords.length > 0 ? "keyword" : "none"),
+          method: selection.canonicalIntent ? "canonical_intent" : (selection.fallbackUsed ? "semantic" : (selection.matchedKeywords.length > 0 ? "keyword" : "none")),
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
@@ -941,6 +952,8 @@ export class UnifiedExecutionEngine {
         // undefined on direct blueprint path — workPackageService falls back
         // to blueprint.primarySpecialist as designed.
         selectedSpecialist,
+        // Blueprint foundation: pin canonical intent to manifest provenance
+        canonicalIntent: canonicalIntentCapture,
       });
       manifest = assembleResult.manifest;
     }
@@ -1243,6 +1256,35 @@ export class UnifiedExecutionEngine {
       };
     }
 
+    // ── Blueprint evidence contract enforcement ───────────────────────────────
+    // Runs AFTER the existing validation gate. Enforces structured evidence
+    // requirements declared in the blueprint's evidence_contract JSONB column.
+    // Only active when blueprint has a populated evidence_contract.
+    const blueprintEvidenceContractDef = parseEvidenceContract(
+      (blueprint as any)?.evidenceContract as Record<string, unknown> | null,
+    );
+    const evidenceContractResult = enforceEvidenceContract(blueprintEvidenceContractDef, evidencePack);
+    if (!evidenceContractResult.passed && evidenceContractResult.outcome !== "continue_with_flagged_gaps") {
+      const clarificationQuestions = evidenceContractResult.violations.map(v => v.message);
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "awaiting_clarification",
+          clarificationItems: evidenceContractResult.violations.map(v => ({ name: v.code, reason: v.message })),
+          retryAvailable: true,
+        },
+      }).catch(() => {});
+      taskSession = closeExecutionSession(taskSession);
+      ctx.session = taskSession;
+      return {
+        outcome: "awaiting_clarification",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message:
+          `Evidence contract not satisfied: ${evidenceContractResult.violations[0]?.message ?? "required evidence missing"}`,
+        clarificationQuestions,
+      };
+    }
+
     await progress("retrieving_examples");
     const outputType = blueprint?.outputTypes[0] ?? "general_output";
     const examples = await retrieveApprovedExamples(organizationId, outputType);
@@ -1314,6 +1356,49 @@ export class UnifiedExecutionEngine {
       evidencePack: evidencePack ?? null,
     });
     tReviewMs = Date.now() - t6;
+
+    // ── Blueprint completion gate enforcement ─────────────────────────────────
+    // Runs AFTER generation+review, BEFORE createDraft.
+    // Enforces: prohibited deliverables, artifact requirement, template requirement,
+    // section presence, and claim integrity (when validatedClaims are populated
+    // at this stage — currently passed as [] since full provenance runs post-creation).
+    {
+      const deliverableContractDef = parseDeliverableContract(
+        (blueprint as any)?.deliverableContract as Record<string, unknown> | null,
+      );
+      const blueprintSections = blueprint ? (await getBlueprintSections(blueprint.id)) ?? [] : [];
+      const completionGate = enforceAllCompletionGates({
+        deliverableContract: deliverableContractDef,
+        evidenceContract: blueprintEvidenceContractDef,
+        sections: blueprintSections,
+        draftContent: reviewResult.finalContent,
+        validatedClaims: [],   // full provenance chain runs post-creation (fire-and-forget)
+        hasArtifact: false,   // artifact generation not yet implemented — UNPROVEN in live
+        hasTemplate: false,   // template resolver not yet implemented — UNPROVEN in live
+      });
+
+      if (!completionGate.passed && completionGate.outcome === "block_completion") {
+        const blockMsg = completionGate.violations
+          .filter(v => v.blocking)
+          .map(v => v.message)
+          .join(" | ");
+        updateManifestObservability(manifest.id, {
+          failureInfo: {
+            state: "awaiting_clarification",
+            clarificationItems: completionGate.violations.map(v => ({ name: v.code, reason: v.message })),
+            retryAvailable: false,
+          },
+        }).catch(() => {});
+        taskSession = closeExecutionSession(taskSession);
+        ctx.session = taskSession;
+        return {
+          outcome: "execution_failed" as const,
+          manifestId: manifest.id,
+          message: `Blueprint completion gate blocked: ${blockMsg}`,
+          completionGateViolations: completionGate.violations,
+        };
+      }
+    }
 
     await progress("creating_completed_work");
     const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);

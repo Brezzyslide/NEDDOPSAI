@@ -76,12 +76,14 @@ async function start(): Promise<void> {
 
   // 4b. Seed built-in Work Blueprints (idempotent — safe to run on every startup)
   try {
-    const { seedBuiltInBlueprints, seedRegistryBlueprints } = await import("./services/workBlueprintService.js");
+    const { seedBuiltInBlueprints, seedRegistryBlueprints, seedSyntheticCarePlanArchTest } = await import("./services/workBlueprintService.js");
     await seedBuiltInBlueprints();
     logger.info("[startup] Built-in Work Blueprints seeded");
     await seedRegistryBlueprints();
     logger.info("[startup] Production Blueprint Registry seeded");
     logger.info("[startup] Built-in Work Blueprints seeded");
+    await seedSyntheticCarePlanArchTest();
+    logger.info("[startup] Synthetic Care Plan architecture test blueprint seeded");
   } catch (err) {
     logger.warn({ err }, "[startup] Built-in Work Blueprints seeding failed — continuing");
   }

@@ -92,6 +92,20 @@ export const workPackageManifestsTable = pgTable("work_package_manifests", {
   blueprintId: text("blueprint_id"),
   blueprintVersion: text("blueprint_version"),
 
+  /**
+   * Canonical intent key that deterministically selected this blueprint,
+   * e.g. "care_plan.create". NULL when selection was keyword/LLM-based.
+   * When present, this MUST be used for provenance — keyword re-discovery
+   * is suppressed for executions that have a canonical intent.
+   */
+  canonicalIntentKey: text("canonical_intent_key"),
+
+  /** Blueprint family resolved by canonical intent e.g. "care_plan" */
+  blueprintFamily: text("blueprint_family"),
+
+  /** Mode resolved by canonical intent e.g. "create" | "review" | "revise" */
+  blueprintMode: text("blueprint_mode"),
+
   primarySpecialist: text("primary_specialist").notNull(),
   supportingSpecialists: jsonb("supporting_specialists")
     .$type<string[]>()

@@ -62,8 +62,9 @@ vi.mock("@workspace/ai-gateway", () => ({
 }));
 
 vi.mock("../services/workBlueprintService.js", () => ({
-  selectBlueprint: vi.fn(),
-  getBlueprintById: vi.fn(),
+  selectBlueprint:      vi.fn(),
+  getBlueprintById:     vi.fn(),
+  getBlueprintSections: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../services/workPackageService.js", () => ({

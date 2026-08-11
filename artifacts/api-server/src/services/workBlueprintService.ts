@@ -20,6 +20,8 @@ import { eq, and, or, isNull, desc, ilike, inArray } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
+import { resolveIntent } from "./blueprintIntentMap.js";
+import type { IntentResolution } from "./blueprintIntentMap.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,11 +117,33 @@ export interface UpdateBlueprintInput {
   isActive?: boolean;
 }
 
+/**
+ * Canonical intent info returned when deterministic mapping fired.
+ * Present only when selectBlueprint resolved via the intent map,
+ * not keyword matching or LLM fallback.
+ */
+export interface CanonicalIntentInfo {
+  /** Structured intent key e.g. "care_plan.create" */
+  key: string;
+  /** Blueprint family e.g. "care_plan" */
+  family: string;
+  /** Mode e.g. "create" | "review" | "revise" */
+  mode: string;
+  /** Registry/blueprint code that was looked up */
+  code: string;
+  method: "canonical_intent";
+}
+
 export interface BlueprintSelectionResult {
   blueprint: WorkBlueprint | null;
   confidence: number;
   matchedKeywords: string[];
   fallbackUsed: boolean;
+  /**
+   * Present when the blueprint was resolved deterministically via the intent map.
+   * When present, keyword re-discovery MUST NOT override this selection.
+   */
+  canonicalIntent?: CanonicalIntentInfo;
 }
 
 export interface ListBlueprintsOptions {
@@ -572,6 +596,27 @@ export async function selectBlueprint(
   userRequest: string,
   organizationId: string,
 ): Promise<BlueprintSelectionResult> {
+  // ── Step 1: Deterministic canonical intent mapping ─────────────────────────
+  // When the input is a structured intent key (e.g. "care_plan.create"),
+  // resolve it directly through the intent map WITHOUT keyword scanning.
+  // This prevents keyword ambiguity from overriding a canonical selection.
+  const intentResult = resolveIntent(userRequest);
+  if (intentResult && !intentResult.isAction) {
+    const { code, family, mode } = intentResult as IntentResolution;
+    const canonicalBlueprint = await findBlueprintByCode(code, organizationId);
+    if (canonicalBlueprint) {
+      return {
+        blueprint: canonicalBlueprint,
+        confidence: 1.0,
+        matchedKeywords: [],
+        fallbackUsed: false,
+        canonicalIntent: { key: userRequest, family, mode, code, method: "canonical_intent" },
+      };
+    }
+    // Intent resolved but no blueprint in DB for this code — fall through to legacy path
+  }
+
+  // ── Step 2: Legacy keyword scan (fallback for tasks without canonical mapping) ─
   const lower = userRequest.toLowerCase();
   const scores: Record<string, { score: number; keywords: string[] }> = {};
 
@@ -590,8 +635,25 @@ export async function selectBlueprint(
   }
 
   const [code, { score, keywords: matched }] = top;
+  const keywordBlueprint = await findBlueprintByCode(code, organizationId);
 
-  // Sprint 28: prefer org-published blueprint over built-in for the same code
+  if (!keywordBlueprint) {
+    return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true };
+  }
+
+  const confidence = Math.min(1.0, score / 3);
+  return { blueprint: keywordBlueprint, confidence, matchedKeywords: matched, fallbackUsed: false };
+}
+
+/**
+ * Internal helper: look up a blueprint by code.
+ * Prefers org-published blueprints over platform built-ins for the same code.
+ */
+async function findBlueprintByCode(
+  code: string,
+  organizationId: string,
+): Promise<WorkBlueprint | null> {
+  // Prefer org-published blueprint over built-in for the same code (Sprint 28)
   const orgRows = await db
     .select()
     .from(workBlueprintsTable)
@@ -605,12 +667,9 @@ export async function selectBlueprint(
     )
     .limit(1);
 
-  if (orgRows[0]) {
-    const confidence = Math.min(1.0, score / 3);
-    return { blueprint: mapRow(orgRows[0]), confidence, matchedKeywords: matched, fallbackUsed: false };
-  }
+  if (orgRows[0]) return mapRow(orgRows[0]);
 
-  // Fallback: built-in
+  // Fallback: platform built-in
   const builtInRows = await db
     .select()
     .from(workBlueprintsTable)
@@ -623,13 +682,36 @@ export async function selectBlueprint(
     )
     .limit(1);
 
-  const blueprint = builtInRows[0] ?? null;
-  if (!blueprint) {
-    return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true };
-  }
+  return builtInRows[0] ? mapRow(builtInRows[0]) : null;
+}
 
-  const confidence = Math.min(1.0, score / 3);
-  return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false };
+/**
+ * Return the structured blueprint sections for a given blueprint.
+ * Used by the UEE to inject section requirements into the completion gate.
+ */
+export async function getBlueprintSections(blueprintId: string): Promise<Array<{
+  sectionCode: string;
+  title: string;
+  required: boolean;
+  minimumContentExpectation: string | null;
+  instructions: string | null;
+  sortOrder: number;
+}>> {
+  const { blueprintSectionsTable } = await import("@workspace/db");
+  const rows = await db
+    .select()
+    .from(blueprintSectionsTable)
+    .where(eq(blueprintSectionsTable.blueprintId, blueprintId))
+    .orderBy((blueprintSectionsTable as any).order);
+
+  return rows.map(r => ({
+    sectionCode: r.sectionCode,
+    title: r.title,
+    required: r.required,
+    minimumContentExpectation: r.minimumContentExpectation ?? null,
+    instructions: r.instructions ?? null,
+    sortOrder: (r as any).order ?? 0,
+  }));
 }
 
 // ─── LLM semantic blueprint classifier ───────────────────────────────────────
@@ -1474,6 +1556,221 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       updatedAt: new Date(),
     } as any);
   }
+}
+
+// ─── Synthetic Care Plan Architecture Test Fixture ───────────────────────────
+
+/**
+ * Seeds ONE synthetic Care Plan platform blueprint for architecture verification.
+ *
+ * This is NOT production content. It exists solely to prove that the generic
+ * blueprint foundation (sections, contracts, intent mapping, enforcement) works
+ * end-to-end before real professional Care Plan source documents are loaded.
+ *
+ * Characteristics:
+ *   family = care_plan
+ *   modes  = create / review / revise
+ *   maturityState = placeholder
+ *   sections = TEST_SECTION_A (required), TEST_SECTION_B (optional)
+ *   deliverableContract.artifactRequired = true
+ *   evidenceContract.claimIntegrityRequired = true
+ *   evidenceContract.missingEvidenceBehaviour = "block_completion"
+ *
+ * Called at server startup AFTER seedRegistryBlueprints.
+ * Idempotent — will not re-insert on subsequent starts.
+ */
+export async function seedSyntheticCarePlanArchTest(): Promise<void> {
+  const ARCH_TEST_CODE = "care_plan_arch_test";
+
+  const existing = await db
+    .select({ id: workBlueprintsTable.id })
+    .from(workBlueprintsTable)
+    .where(
+      and(
+        eq(workBlueprintsTable.code, ARCH_TEST_CODE),
+        isNull(workBlueprintsTable.organizationId),
+      )
+    )
+    .limit(1);
+
+  // ── Insert synthetic work_template ──────────────────────────────────────────
+  const { workTemplatesTable } = await import("@workspace/db");
+  let templateId: string;
+
+  const existingTemplate = await db
+    .select({ id: workTemplatesTable.id })
+    .from(workTemplatesTable)
+    .where(eq(workTemplatesTable.code, ARCH_TEST_CODE))
+    .limit(1);
+
+  if (existingTemplate.length === 0) {
+    templateId = randomUUID();
+    await db.insert(workTemplatesTable).values({
+      id: templateId,
+      organizationId: null,
+      ownerType: "platform_owned",
+      code: ARCH_TEST_CODE,
+      title: "Care Plan Template [SYNTHETIC ARCH TEST — NOT FOR PRODUCTION]",
+      version: "0.0.1",
+      status: "draft",
+      maturityState: "placeholder",
+      templateType: "document",
+      sourceFileReference: null,
+      mimeType: null,
+      mergeFieldSchema: { note: "SYNTHETIC — no real merge fields defined" },
+      allowOrgSubstitution: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+  } else {
+    templateId = existingTemplate[0]!.id;
+  }
+
+  // ── Insert or update synthetic blueprint ────────────────────────────────────
+  const deliverableContract = {
+    primaryDeliverable: "Care Plan document [SYNTHETIC ARCH TEST]",
+    secondaryDeliverables: ["TEST_SECONDARY_DELIVERABLE"],
+    allowedInternalAnalysis: ["risk_analysis", "goal_alignment"],
+    prohibitedDeliverables: ["PROHIBITED_SYNTHETIC_OUTPUT"],
+    artifactRequired: true,
+    primaryFormat: "docx",
+    secondaryFormats: ["pdf"],
+    namingConvention: "CarePlan_SYNTHETIC_{date}",
+    templateRequired: true,
+    completionRequirements: [
+      "All required sections must be present",
+      "Evidence must support all factual claims",
+    ],
+  };
+
+  const evidenceContract = {
+    requiredEvidenceCategories: ["participant_context"],
+    optionalEvidenceCategories: ["historical_records"],
+    allowedSourceTypes: ["library", "upload"],
+    restrictedSourceTypes: ["RESTRICTED_SYNTHETIC_SOURCE"],
+    requiredEntityTypes: [],
+    minimumEvidenceCount: 1,
+    freshnessRules: [],
+    claimIntegrityRequired: true,
+    missingEvidenceBehaviour: "block_completion" as const,
+  };
+
+  if (existing.length > 0) {
+    // Back-fill contract fields if the row was inserted without them
+    await db
+      .update(workBlueprintsTable)
+      .set({
+        deliverableContract,
+        evidenceContract,
+        defaultTemplateId: templateId,
+        templateRequired: true,
+        supportedModes: ["create", "review", "revise"],
+        maturityState: "placeholder",
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(workBlueprintsTable.id, existing[0]!.id));
+    console.log(`[seedSyntheticCarePlanArchTest] Updated existing blueprint ${existing[0]!.id}`);
+
+    // Ensure sections exist
+    await ensureSyntheticCarePlanSections(existing[0]!.id);
+    return;
+  }
+
+  const blueprintId = randomUUID();
+  await db.insert(workBlueprintsTable).values({
+    id: blueprintId,
+    organizationId: null,
+    code: ARCH_TEST_CODE,
+    title: "Care Plan [SYNTHETIC ARCHITECTURE TEST — NOT FOR PRODUCTION USE]",
+    version: "0.1.0",
+    status: "published",
+    objective: "[SYNTHETIC] Architecture test blueprint — proves section/contract/intent enforcement pipeline.",
+    primarySpecialist: "operations_manager",
+    supportingSpecialists: [],
+    requiredLibraryKnowledge: [],
+    requiredEntityKnowledge: {},
+    requiredMemories: [],
+    requiredApprovals: {},
+    validationRules: [],
+    qualityRules: [],
+    successCriteria: ["Demonstrates architecture, not professional content"],
+    outputTypes: ["care_plan"],
+    escalationRules: [],
+    mandatoryCitations: [],
+    isBuiltIn: true,
+    isActive: true,
+    blueprintFamily: "care_plan",
+    supportedModes: ["create", "review", "revise"],
+    maturityState: "placeholder",
+    ownerType: "platform_owned",
+    purpose: "[SYNTHETIC] Architecture vertical proof for Care Plan blueprint family.",
+    primaryDeliverable: "Care Plan document [SYNTHETIC]",
+    deliverableContract,
+    evidenceContract,
+    permittedOrgOverrides: {},
+    defaultTemplateId: templateId,
+    templateRequired: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  } as any);
+
+  console.log(`[seedSyntheticCarePlanArchTest] Inserted synthetic blueprint ${blueprintId}`);
+
+  await ensureSyntheticCarePlanSections(blueprintId);
+}
+
+async function ensureSyntheticCarePlanSections(blueprintId: string): Promise<void> {
+  const { blueprintSectionsTable } = await import("@workspace/db");
+
+  const existingSections = await db
+    .select({ sectionCode: blueprintSectionsTable.sectionCode })
+    .from(blueprintSectionsTable)
+    .where(eq(blueprintSectionsTable.blueprintId, blueprintId));
+
+  const existingCodes = new Set(existingSections.map(s => s.sectionCode));
+
+  const syntheticSections = [
+    {
+      sectionCode: "TEST_SECTION_A",
+      title: "Test Section A [SYNTHETIC REQUIRED]",
+      description: "Synthetic required section — proves that section enforcement blocks completion when absent.",
+      instructions: "SYNTHETIC ONLY — do not use in production.",
+      required: true,
+      minimumContentExpectation: "At least a paragraph of content.",
+      evidenceRequirements: null,
+      allowedSourceTypes: null,
+      prohibitedAssumptions: null,
+      validationRules: null,
+      qualityCriteria: null,
+      order: 1,
+    },
+    {
+      sectionCode: "TEST_SECTION_B",
+      title: "Test Section B [SYNTHETIC OPTIONAL]",
+      description: "Synthetic optional section — does not block completion when absent.",
+      instructions: "SYNTHETIC ONLY — do not use in production.",
+      required: false,
+      minimumContentExpectation: null,
+      evidenceRequirements: null,
+      allowedSourceTypes: null,
+      prohibitedAssumptions: null,
+      validationRules: null,
+      qualityCriteria: null,
+      order: 2,
+    },
+  ];
+
+  for (const section of syntheticSections) {
+    if (existingCodes.has(section.sectionCode)) continue;
+    await db.insert(blueprintSectionsTable).values({
+      id: randomUUID(),
+      blueprintId,
+      ...section,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any);
+  }
+  console.log(`[seedSyntheticCarePlanArchTest] Ensured ${syntheticSections.length} sections for blueprint ${blueprintId}`);
 }
 
 /**

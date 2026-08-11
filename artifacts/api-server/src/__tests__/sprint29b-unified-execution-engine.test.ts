@@ -35,8 +35,9 @@ const mockBuildDNASystemInstruction = vi.hoisted(() => vi.fn());
 const mockCaptureSpecialistRunVersions = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/workBlueprintService.js", () => ({
-  selectBlueprint: mockSelectBlueprint,
-  getBlueprintById: mockGetBlueprintById,
+  selectBlueprint:      mockSelectBlueprint,
+  getBlueprintById:     mockGetBlueprintById,
+  getBlueprintSections: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../services/workPackageService.js", () => ({

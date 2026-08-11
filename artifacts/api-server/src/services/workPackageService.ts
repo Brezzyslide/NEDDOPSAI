@@ -103,6 +103,19 @@ export interface AssembleManifestInput {
    * for specialist ownership.
    */
   selectedSpecialist?: string;
+
+  /**
+   * Canonical intent resolved by the blueprint intent map.
+   * When present, persisted to the manifest for full provenance.
+   * NULL for keyword-matched or LLM-matched selections.
+   */
+  canonicalIntent?: {
+    key: string;
+    family: string;
+    mode: string;
+    code: string;
+    method: "canonical_intent";
+  };
 }
 
 export interface ManifestObservabilityUpdate {
@@ -134,6 +147,12 @@ export interface WorkPackageManifest {
   executionId: string;
   blueprintId: string | null;
   blueprintVersion: string | null;
+  /** Canonical intent key that deterministically selected this blueprint. */
+  canonicalIntentKey: string | null;
+  /** Blueprint family from canonical intent e.g. "care_plan" */
+  blueprintFamily: string | null;
+  /** Mode from canonical intent e.g. "create" */
+  blueprintMode: string | null;
   primarySpecialist: string;
   supportingSpecialists: string[];
   organisationLibrarySources: ManifestLibrarySource[];
@@ -322,6 +341,9 @@ export async function assembleWorkPackage(
     executionId,
     blueprintId: blueprint?.id ?? null,
     blueprintVersion: blueprint?.version ?? null,
+    canonicalIntentKey: input.canonicalIntent?.key ?? null,
+    blueprintFamily: input.canonicalIntent?.family ?? null,
+    blueprintMode: input.canonicalIntent?.mode ?? null,
     primarySpecialist,
     supportingSpecialists,
     organisationLibrarySources: librarySources,
@@ -335,7 +357,7 @@ export async function assembleWorkPackage(
     requesterId,
     createdAt: now,
     selectionMetadata: selectionMetadataWithExclusions ?? null,
-  });
+  } as any);
 
   const manifest: WorkPackageManifest = {
     id,
@@ -344,6 +366,9 @@ export async function assembleWorkPackage(
     executionId,
     blueprintId: blueprint?.id ?? null,
     blueprintVersion: blueprint?.version ?? null,
+    canonicalIntentKey: input.canonicalIntent?.key ?? null,
+    blueprintFamily: input.canonicalIntent?.family ?? null,
+    blueprintMode: input.canonicalIntent?.mode ?? null,
     primarySpecialist,
     supportingSpecialists,
     organisationLibrarySources: librarySources,
