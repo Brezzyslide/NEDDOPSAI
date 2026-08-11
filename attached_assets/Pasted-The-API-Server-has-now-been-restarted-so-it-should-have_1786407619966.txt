@@ -1,0 +1,73 @@
+The API Server has now been restarted so it should have loaded the CURRENT `OPENCLAW_RUNTIME_URL`.
+
+I have now submitted ONE new live Desktop Runtime request through the actual NeedsOps Workforce Chat.
+
+Do not create another test.
+
+Do not manually invoke OpenClaw.
+
+Do not fix anything yet.
+
+Prove whether the restart actually resolved the stale-runtime problem.
+
+For this exact new request, show:
+
+1. The API server process's current `OPENCLAW_RUNTIME_URL` and confirm it matches the current live Cloudflare tunnel.
+
+2. The exact task/message/correlation ID for this request.
+
+3. Whether DiscoveryOrchestrator was reached.
+
+4. Which adapters were considered.
+
+5. The result of `CloudOpenClawDiscoveryAdapter.isAvailable()`.
+
+6. Whether `cloud_openclaw_broker` was selected instead of `null_no_runtime`.
+
+7. Whether a real HTTP request was made from NeedsOps to the Runtime Broker for THIS task.
+
+8. Whether the broker actually spawned real OpenClaw.
+
+Do not use `/health` alone as proof that OpenClaw executed the task.
+
+9. Show any broker/OpenClaw execution evidence available:
+
+* timestamp
+* execution/job ID
+* spawn mode
+* tool call count
+* tool failures
+* duration
+* returned result
+
+10. Determine whether OpenClaw searched the local filesystem and whether it found the fatigue-management document.
+
+If found, show the canonical evidence candidate including:
+
+* sourceTitle
+* accessLocation
+* retrievalMethod
+* supportingPassage
+* relevanceScore
+* passageHash if available
+
+11. Prove whether NeedsOps received and consumed that evidence in the response.
+
+12. Return:
+
+| Stage                         | Result    | Evidence |
+| ----------------------------- | --------- | -------- |
+| API has current runtime URL   | PASS/FAIL |          |
+| DiscoveryOrchestrator reached | PASS/FAIL |          |
+| Desktop adapter available     | PASS/FAIL |          |
+| Null adapter avoided          | PASS/FAIL |          |
+| Runtime Broker called         | PASS/FAIL |          |
+| Real OpenClaw spawned         | PASS/FAIL |          |
+| Local file discovery occurred | PASS/FAIL |          |
+| Fatigue document found        | PASS/FAIL |          |
+| Canonical evidence returned   | PASS/FAIL |          |
+| Evidence used in output       | PASS/FAIL |          |
+
+Anything not directly demonstrated must be marked UNPROVEN.
+
+Do not implement a fix as part of this verification.
