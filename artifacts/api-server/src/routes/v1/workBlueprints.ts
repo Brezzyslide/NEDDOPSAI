@@ -27,7 +27,6 @@ import {
   updateCustomBlueprint,
   getBlueprintById,
   getBlueprintForRole,
-  toBlueprintDescriptor,
   archiveBlueprint,
   restoreBlueprint,
   cloneBlueprint,
@@ -39,6 +38,13 @@ import {
   testBlueprintSandbox,
 } from "../../services/workBlueprintService.js";
 import { executeWork } from "../../services/workExecutionPipelineService.js";
+import {
+  filterBlueprintsForRole,
+  filterBlueprintVersionForRole,
+  filterBlueprintVersionsForRole,
+  isTenantPlatformAdmin,
+  type BlueprintAccessContext,
+} from "../../services/blueprintAccessControl.js";
 
 const router = Router({ mergeParams: true });
 
@@ -49,6 +55,15 @@ function requireOwnerOrAdmin(req: any, res: any): boolean {
     return false;
   }
   return true;
+}
+
+function blueprintAccessContext(req: any): BlueprintAccessContext {
+  const ctx = req.tenantContext!;
+  return {
+    tenantId: ctx.tenantId,
+    role: ctx.role ?? null,
+    isPlatformAdmin: isTenantPlatformAdmin(req),
+  };
 }
 
 // ─── List blueprints ──────────────────────────────────────────────────────────
@@ -70,7 +85,7 @@ router.get(
         includeArchived: includeArchived === "true",
       });
 
-      res.json({ blueprints: blueprints.map(toBlueprintDescriptor) });
+      res.json({ blueprints: filterBlueprintsForRole(blueprints as any, blueprintAccessContext(req)) });
     } catch (err) {
       next(err);
     }
@@ -87,7 +102,8 @@ router.get(
     try {
       const ctx = req.tenantContext!;
       const { blueprintId } = req.params as { blueprintId: string };
-      const blueprint = await getBlueprintForRole(blueprintId, ctx.tenantId, ctx.role as any);
+      const role = isTenantPlatformAdmin(req) ? "platform_admin" : ctx.role;
+      const blueprint = await getBlueprintForRole(blueprintId, ctx.tenantId, role as any);
       if (!blueprint) { res.status(404).json({ error: "Blueprint not found" }); return; }
       res.json({ blueprint });
     } catch (err) {
@@ -320,7 +336,7 @@ router.get(
       const ctx = req.tenantContext!;
       const { blueprintId } = req.params as { blueprintId: string };
       const versions = await getVersionHistory(blueprintId, ctx.tenantId);
-      res.json({ versions });
+      res.json({ versions: filterBlueprintVersionsForRole(versions as any, blueprintAccessContext(req)) });
     } catch (err) {
       next(err);
     }
@@ -341,7 +357,7 @@ router.get(
       const { versionId } = req.params as { versionId: string };
       const version = await getVersionById(versionId, ctx.tenantId);
       if (!version) { res.status(404).json({ error: "Version not found" }); return; }
-      res.json({ version });
+      res.json({ version: filterBlueprintVersionForRole(version as any, blueprintAccessContext(req)) });
     } catch (err) {
       next(err);
     }

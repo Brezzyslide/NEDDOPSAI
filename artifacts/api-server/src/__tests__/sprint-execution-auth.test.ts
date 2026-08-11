@@ -108,6 +108,8 @@ vi.mock("../services/membershipService.js", () => ({ getMembershipForUser: mocks
 vi.mock("../services/auditService.js", () => ({ logOrgEvent: mocks.logOrgEvent, getRequestMeta: vi.fn(() => ({})) }));
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint:   mocks.selectBlueprint,
+  resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
   getBlueprintById:  vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../services/workPackageService.js", () => ({

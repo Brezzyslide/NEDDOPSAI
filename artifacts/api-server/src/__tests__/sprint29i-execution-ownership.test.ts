@@ -163,9 +163,11 @@ vi.mock("@workspace/db", () => {
     db: {
       select: mockDbSelect,
       insert: mockDbInsert,
+      update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
     },
     specialistRunsTable:          { id: "id", organizationId: "organization_id", createdAt: "created_at" },
     taskExecutionPlansTable:      { taskId: "task_id", organizationId: "organization_id", createdAt: "created_at" },
+    workPackageManifestsTable:    { id: "id", taskId: "task_id", organizationId: "organization_id" },
     knowledgeChunksTable:         { id: "id", organizationId: "organization_id" },
     knowledgeSourcesTable:        { id: "id", organizationId: "organization_id" },
     knowledgeSourceVersionsTable: { id: "id" },
@@ -194,6 +196,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
 
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint:   mockSelectBlueprint,
+  resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
   getBlueprintById:  mockGetBlueprintById,
 }));
 

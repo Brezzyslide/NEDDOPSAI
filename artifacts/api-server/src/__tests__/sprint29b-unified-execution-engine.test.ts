@@ -36,6 +36,8 @@ const mockCaptureSpecialistRunVersions = vi.hoisted(() => vi.fn());
 
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint: mockSelectBlueprint,
+  resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
   getBlueprintById: mockGetBlueprintById,
 }));
 
@@ -78,6 +80,7 @@ vi.mock("@workspace/db", () => ({
     }),
   },
   specialistRunsTable: {},
+  workPackageManifestsTable: { id: "id", taskId: "task_id", organizationId: "organization_id" },
   eq: vi.fn(),
 }));
 

@@ -41,6 +41,7 @@ vi.mock("@workspace/db", () => ({
   conversationMessagesTable:  { _: "conversationMessages" },
   conversationsTable:         { _: "conversations" },
   completedWorkTable:         { _: "completedWork" },
+  workPackageManifestsTable:  { id: "id", taskId: "task_id", organizationId: "organization_id" },
   executionIntentsTable:      { _: "executionIntents" },
   tasksTable:                 { _: "tasks" },
 }));
@@ -310,6 +311,8 @@ describe("executionTimelineService", () => {
 describe("workExecutionPipelineService — checkpoint resume", () => {
   vi.mock("../services/workBlueprintService.js", () => ({
     selectBlueprint:   vi.fn().mockResolvedValue({ blueprint: null, confidence: 0, fallbackUsed: false, matchedKeywords: [] }),
+    resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+    getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
     getBlueprintById:  vi.fn().mockResolvedValue(null),
   }));
   vi.mock("../services/workPackageService.js", () => ({

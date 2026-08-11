@@ -157,8 +157,12 @@ function evidencePack(): EvidencePack {
       {
         chunkId: "chunk-1",
         sourceId: "source-1",
+        sourceVersionId: "source-version-1",
+        versionLabel: "v1",
+        authorityLevel: "approved",
         sourceTitle: "Synthetic participant context",
         sourceType: "synthetic_participant_context",
+        sectionTitle: null,
         pageNumber: null,
         text: "Synthetic participant context says the required synthetic fact.",
         confidence: 0.99,

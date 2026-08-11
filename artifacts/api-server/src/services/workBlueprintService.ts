@@ -33,6 +33,8 @@ import { eq, and, or, isNull, desc, ilike, inArray, asc } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
+import { BLUEPRINT_REGISTRY, LEGACY_CODE_MAP } from "./blueprintRegistry.js";
+import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -847,9 +849,72 @@ export async function getBlueprintForRole(
 
 export function parseCanonicalCarePlanIntent(value: string | undefined | null): { canonicalIntent: string; family: string; mode: string } | null {
   const normalised = value?.trim().toLowerCase().replace(/[:/]/g, ".") ?? "";
-  if (normalised === "care_plan.create") return { canonicalIntent: "care_plan.create", family: "care_plan", mode: "create" };
-  if (normalised === "care_plan.review") return { canonicalIntent: "care_plan.review", family: "care_plan", mode: "review" };
-  if (normalised === "care_plan.revise") return { canonicalIntent: "care_plan.revise", family: "care_plan", mode: "revise" };
+  const resolved = resolveIntent(normalised);
+  if (!resolved || resolved.isAction) return null;
+  return {
+    canonicalIntent: normalised,
+    family: resolved.family,
+    mode: resolved.mode,
+  };
+}
+
+function parseCanonicalIntent(value: string | undefined | null): (IntentResolution & { canonicalIntent: string }) | null {
+  const normalised = value?.trim().toLowerCase().replace(/[:/]/g, ".") ?? "";
+  const resolved = resolveIntent(normalised);
+  if (!resolved || resolved.isAction) return null;
+  return { ...resolved, canonicalIntent: normalised };
+}
+
+async function findBlueprintByCode(
+  code: string,
+  organizationId: string,
+): Promise<WorkBlueprint | null> {
+  const canonicalCode = LEGACY_CODE_MAP[code] ?? code;
+
+  const orgRows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(
+      and(
+        eq(workBlueprintsTable.code, canonicalCode),
+        eq(workBlueprintsTable.isActive, true),
+        eq(workBlueprintsTable.organizationId, organizationId),
+        eq(workBlueprintsTable.status, "published"),
+      ),
+    )
+    .limit(1);
+
+  if (orgRows[0]) return mapRow(orgRows[0]);
+
+  const builtInRows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(
+      and(
+        eq(workBlueprintsTable.code, canonicalCode),
+        eq(workBlueprintsTable.isActive, true),
+        isNull(workBlueprintsTable.organizationId),
+      ),
+    )
+    .limit(1);
+
+  if (builtInRows[0]) return mapRow(builtInRows[0]);
+
+  if (canonicalCode !== code) {
+    const legacyRows = await db
+      .select()
+      .from(workBlueprintsTable)
+      .where(
+        and(
+          eq(workBlueprintsTable.code, code),
+          eq(workBlueprintsTable.isActive, true),
+          isNull(workBlueprintsTable.organizationId),
+        ),
+      )
+      .limit(1);
+    if (legacyRows[0]) return mapRow(legacyRows[0]);
+  }
+
   return null;
 }
 
@@ -857,7 +922,7 @@ export async function resolveCanonicalBlueprint(
   canonicalIntent: string | undefined | null,
   organizationId: string,
 ): Promise<BlueprintSelectionResult | null> {
-  const parsed = parseCanonicalCarePlanIntent(canonicalIntent);
+  const parsed = parseCanonicalIntent(canonicalIntent);
   if (!parsed) return null;
 
   const mappingRows = await db
@@ -882,6 +947,10 @@ export async function resolveCanonicalBlueprint(
   }
 
   if (!blueprint) {
+    blueprint = await findBlueprintByCode(parsed.code, organizationId);
+  }
+
+  if (!blueprint) {
     const rows = await db
       .select()
       .from(workBlueprintsTable)
@@ -896,7 +965,7 @@ export async function resolveCanonicalBlueprint(
       .limit(20);
     const row = rows
       .map(mapRow)
-      .find((bp) => bp.supportedModes.includes(parsed.mode) && bp.code === "care_plan_synthetic_architecture")
+      .find((bp) => bp.supportedModes.includes(parsed.mode) && bp.code === parsed.code)
       ?? rows.map(mapRow).find((bp) => bp.supportedModes.includes(parsed.mode))
       ?? null;
     blueprint = row;
@@ -945,6 +1014,9 @@ export async function selectBlueprint(
   userRequest: string,
   organizationId: string,
 ): Promise<BlueprintSelectionResult> {
+  const canonical = await resolveCanonicalBlueprint(userRequest, organizationId);
+  if (canonical?.blueprint) return canonical;
+
   const lower = userRequest.toLowerCase();
   const scores: Record<string, { score: number; keywords: string[] }> = {};
 
@@ -963,46 +1035,13 @@ export async function selectBlueprint(
   }
 
   const [code, { score, keywords: matched }] = top;
-
-  // Sprint 28: prefer org-published blueprint over built-in for the same code
-  const orgRows = await db
-    .select()
-    .from(workBlueprintsTable)
-    .where(
-      and(
-        eq(workBlueprintsTable.code, code),
-        eq(workBlueprintsTable.isActive, true),
-        eq(workBlueprintsTable.organizationId, organizationId),
-        eq(workBlueprintsTable.status, "published"),
-      )
-    )
-    .limit(1);
-
-  if (orgRows[0]) {
-    const confidence = Math.min(1.0, score / 3);
-    return { blueprint: mapRow(orgRows[0]), confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
-  }
-
-  // Fallback: built-in
-  const builtInRows = await db
-    .select()
-    .from(workBlueprintsTable)
-    .where(
-      and(
-        eq(workBlueprintsTable.code, code),
-        eq(workBlueprintsTable.isActive, true),
-        isNull(workBlueprintsTable.organizationId),
-      )
-    )
-    .limit(1);
-
-  const blueprint = builtInRows[0] ?? null;
+  const blueprint = await findBlueprintByCode(code, organizationId);
   if (!blueprint) {
     return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true, method: "keyword" };
   }
 
   const confidence = Math.min(1.0, score / 3);
-  return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
+  return { blueprint, confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
 }
 
 // ─── LLM semantic blueprint classifier ───────────────────────────────────────
@@ -1830,7 +1869,22 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       )
       .limit(1);
 
-    if (existing.length > 0) continue;
+    if (existing.length > 0) {
+      await db
+        .update(workBlueprintsTable)
+        .set({
+          blueprintFamily: def.blueprintFamily ?? def.code,
+          supportedModes: def.supportedModes ?? ["create"],
+          maturityState: "placeholder",
+          ownerType: "platform_owned",
+          purpose: def.purpose ?? def.objective,
+          primaryDeliverable: def.primaryDeliverable ?? def.outputTypes?.[0] ?? null,
+          permittedOrgOverrides: def.permittedOrgOverrides ?? {},
+          updatedAt: new Date(),
+        })
+        .where(eq(workBlueprintsTable.id, existing[0]!.id));
+      continue;
+    }
 
     const id = randomUUID();
     await db.insert(workBlueprintsTable).values({
@@ -1873,7 +1927,134 @@ export async function seedBuiltInBlueprints(): Promise<void> {
     });
   }
 
+  await seedRegistryBlueprints();
+  await seedBlueprintIntentMappings();
   await seedSyntheticCarePlanVerticalSlice();
+}
+
+/**
+ * Seed the production Blueprint Registry (59 canonical work types).
+ *
+ * This is identity/classification metadata only. Existing rows are back-filled
+ * with registry metadata but professional instructions/contracts are not
+ * overwritten by startup seeding.
+ */
+export async function seedRegistryBlueprints(): Promise<void> {
+  const now = new Date();
+  for (const entry of BLUEPRINT_REGISTRY) {
+    const existing = await db
+      .select({ id: workBlueprintsTable.id })
+      .from(workBlueprintsTable)
+      .where(
+        and(
+          eq(workBlueprintsTable.code, entry.code),
+          isNull(workBlueprintsTable.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      await db
+        .update(workBlueprintsTable)
+        .set({
+          blueprintFamily: entry.blueprintFamily,
+          supportedModes: entry.supportedModes,
+          maturityState: entry.maturityState,
+          ownerType: "platform_owned",
+          purpose: entry.purpose,
+          primaryDeliverable: entry.primaryDeliverable,
+          permittedOrgOverrides: {},
+          updatedAt: now,
+        })
+        .where(eq(workBlueprintsTable.id, existing[0]!.id));
+      continue;
+    }
+
+    await db.insert(workBlueprintsTable).values({
+      id: randomUUID(),
+      organizationId: null,
+      code: entry.code,
+      title: entry.title,
+      version: "1.0.0",
+      blueprintFamily: entry.blueprintFamily,
+      supportedModes: entry.supportedModes,
+      maturityState: entry.maturityState,
+      ownerType: "platform_owned",
+      purpose: entry.purpose,
+      primaryDeliverable: entry.primaryDeliverable,
+      deliverableContract: null,
+      evidenceContract: null,
+      permittedOrgOverrides: {},
+      defaultTemplateId: null,
+      templateRequired: false,
+      allowedOrgTemplateOverride: false,
+      templateVersionPolicy: "pin_at_execution",
+      status: "published",
+      objective: `[PLACEHOLDER] ${entry.purpose}`,
+      primarySpecialist: "chief_of_staff",
+      supportingSpecialists: [],
+      requiredLibraryKnowledge: [],
+      requiredEntityKnowledge: {},
+      requiredMemories: [],
+      requiredApprovals: {},
+      validationRules: [],
+      qualityRules: [],
+      successCriteria: [],
+      outputTypes: [entry.primaryDeliverable],
+      escalationRules: [],
+      mandatoryCitations: [],
+      isBuiltIn: true,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
+
+/**
+ * Seed broad deterministic intent mappings from the registry-backed intent map
+ * into OpenClaw's DB-backed override architecture.
+ */
+export async function seedBlueprintIntentMappings(): Promise<void> {
+  const now = new Date();
+  for (const intentKey of getAllIntentKeys()) {
+    const resolved = resolveIntent(intentKey);
+    if (!resolved || resolved.isAction) continue;
+
+    const blueprint = await findBlueprintByCode(resolved.code, "__platform_registry_seed__");
+    if (!blueprint) continue;
+
+    const mappingId = `platform_mapping_${intentKey.replace(/[^a-z0-9]+/gi, "_")}`;
+    const existing = await db
+      .select({ id: blueprintIntentMappingsTable.id })
+      .from(blueprintIntentMappingsTable)
+      .where(eq(blueprintIntentMappingsTable.id, mappingId))
+      .limit(1);
+
+    const values = {
+      canonicalIntent: intentKey,
+      blueprintFamily: resolved.family,
+      blueprintMode: resolved.mode,
+      blueprintId: blueprint.id,
+      organizationId: null,
+      isActive: true,
+      updatedAt: now,
+    };
+
+    if (existing.length > 0) {
+      await db
+        .update(blueprintIntentMappingsTable)
+        .set(values)
+        .where(eq(blueprintIntentMappingsTable.id, mappingId));
+      continue;
+    }
+
+    await db.insert(blueprintIntentMappingsTable).values({
+      id: mappingId,
+      ...values,
+      createdAt: now,
+    });
+  }
 }
 
 async function seedSyntheticCarePlanVerticalSlice(): Promise<void> {

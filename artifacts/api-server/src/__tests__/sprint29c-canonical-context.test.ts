@@ -111,6 +111,8 @@ vi.mock("../services/workPackageAssemblerService.js", () => ({
 
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint:  mockSelectBlueprint,
+  resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
   getBlueprintById: vi.fn(),
 }));
 

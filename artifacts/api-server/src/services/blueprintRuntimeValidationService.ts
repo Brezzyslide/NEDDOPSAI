@@ -7,6 +7,10 @@ import {
   validateClaimBatch,
   type RawClaim,
 } from "./claimValidationService.js";
+import {
+  parseDeliverableContract,
+  parseEvidenceContract,
+} from "./blueprintContractService.js";
 
 export type BlueprintRuntimeGateState =
   | "validation"
@@ -50,8 +54,8 @@ export function validateBlueprintRuntimeCompletion(
 
   const failures: BlueprintRuntimeGateFailure[] = [];
   const { blueprint } = contract;
-  const evidenceContract = blueprint.evidenceContract;
-  const deliverableContract = blueprint.deliverableContract;
+  const evidenceContract = parseEvidenceContract(blueprint.evidenceContract as Record<string, unknown> | null);
+  const deliverableContract = parseDeliverableContract(blueprint.deliverableContract as Record<string, unknown> | null);
 
   failures.push(...validateSections(contract.sections, input.contentMarkdown, input.evidencePack));
 

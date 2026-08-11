@@ -63,6 +63,8 @@ vi.mock("@workspace/ai-gateway", () => ({
 
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint: vi.fn(),
+  resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
   getBlueprintById: vi.fn(),
 }));
 
