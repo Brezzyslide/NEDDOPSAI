@@ -1,0 +1,187 @@
+The latest investigation has identified two active connectivity models:
+
+MODEL A — HTTP broker path:
+
+NeedsOps API
+→ OPENCLAW_RUNTIME_URL
+→ Cloudflare
+→ Mac Runtime Broker
+→ OpenClaw
+
+MODEL B — outbound device relay:
+
+Mac Desktop Connector
+→ WebSocket
+→ /v1/devices/relay
+→ deviceRelayService.connections
+→ getConnectedDevicesForOrg()
+
+The Chief of Staff checks Model B before permitting local connector work, while DiscoveryOrchestrator later uses Model A.
+
+Our current development Mac only satisfies Model A.
+
+Do NOT implement a workaround.
+
+Do NOT remove the Chief of Staff availability check.
+
+Do NOT change architecture yet.
+
+I want to determine whether the EXISTING desktop-connector code can be configured right now to satisfy Model B as well, using the already implemented RelayClient.
+
+### 1. Inspect RelayClient startup
+
+Show exactly where `RelayClient` is instantiated and started in:
+
+`artifacts/desktop-connector`
+
+Identify the conditions/environment variables that cause it to connect.
+
+Show the exact required variables, including whether these are required:
+
+* NEEDSOPS_DEVICE_ID
+* NEEDSOPS_DEVICE_TOKEN
+* NEEDSOPS_API_BASE_URL
+* NEEDSOPS_ORG_SLUG
+* any relay URL/path
+* any additional token/secret
+
+Do not expose actual secret values.
+
+### 2. Determine whether our running development broker currently has relay mode enabled
+
+Inspect the environment/config used by the broker currently running on the Mac.
+
+Report whether RelayClient would currently:
+
+CONNECTED
+NOT CONFIGURED
+CONFIGURED BUT FAILED
+DISABLED
+
+and why.
+
+### 3. Existing registered devices
+
+For organisation:
+
+`e13f274d-68e6-4e58-b1dd-26361b1ac564`
+
+slug:
+
+`test-company`
+
+query the current device/activation tables and show:
+
+* registered device IDs
+* device names
+* status
+* activation/revocation state
+* last seen/heartbeat if available
+
+Do not reveal device tokens.
+
+### 4. Can we reuse an existing device?
+
+Determine whether an existing device record can safely be used for the current development Mac connector.
+
+If yes, identify which device ID.
+
+If not, explain whether we should create/redeem a fresh development activation code.
+
+Do NOT create one yet.
+
+### 5. Activation-code flow for development
+
+Show the exact existing API sequence necessary to obtain:
+
+* deviceId
+* deviceToken
+
+using the existing activation-code implementation.
+
+We want to use the real pairing protocol manually for development rather than invent credentials.
+
+Do not expose the resulting token in the report.
+
+### 6. WebSocket relay endpoint
+
+Show the exact WebSocket URL/path the connector will dial.
+
+Confirm whether the current Replit development API is reachable at that endpoint.
+
+Show:
+
+* protocol expected (`ws` / `wss`)
+* authentication mechanism
+* org/device identity mechanism
+* registration/hello handshake
+* heartbeat/reconnect behaviour
+
+### 7. Persistence/reconnect behaviour
+
+Determine whether RelayClient already:
+
+* reconnects after WebSocket disconnect
+* reconnects after API restart
+* reconnects after network interruption
+* reconnects after Mac reboot once connector starts
+
+Show retry/backoff behaviour from code.
+
+### 8. Does relay connection affect evidence execution?
+
+Clarify exactly what happens after the relay is connected.
+
+Does DiscoveryOrchestrator still call the Mac through `OPENCLAW_RUNTIME_URL`/Cloudflare?
+
+Or can evidence/execution jobs travel through the WebSocket relay?
+
+Show the current real architecture from code.
+
+This is important because we may currently require BOTH:
+
+relay for connected-device presence
+
+AND
+
+Cloudflare HTTP broker for actual execution.
+
+If so, state that explicitly.
+
+### 9. Give us the minimum DEVELOPMENT configuration
+
+Without modifying code, provide the minimum existing configuration necessary so our manually running Mac broker can:
+
+1. continue serving the Cloudflare HTTP broker;
+2. establish its outbound relay WebSocket;
+3. appear in `getConnectedDevicesForOrg()`;
+4. survive the Mac reboot using our existing startup script.
+
+Do not provide secret values.
+
+### 10. Do not implement yet
+
+Return a proof table:
+
+| Capability                          | Existing code supports it? | Currently configured? | Evidence |
+| ----------------------------------- | -------------------------: | --------------------: | -------- |
+| HTTP broker                         |                  PASS/FAIL |                YES/NO |          |
+| OpenClaw spawn                      |                  PASS/FAIL |                YES/NO |          |
+| Outbound relay client               |                  PASS/FAIL |                YES/NO |          |
+| Device registration                 |                  PASS/FAIL |                YES/NO |          |
+| Activation redemption               |                  PASS/FAIL |                YES/NO |          |
+| Relay authentication                |                  PASS/FAIL |                YES/NO |          |
+| Relay reconnect                     |                  PASS/FAIL |                YES/NO |          |
+| Org appears connected               |         PASS/FAIL/UNPROVEN |                YES/NO |          |
+| Execution over relay                |  PASS/FAIL/NOT IMPLEMENTED |                       |          |
+| Execution still requires Cloudflare |                     YES/NO |                       |          |
+
+Finally state:
+
+CURRENT CONNECTIVITY ARCHITECTURE
+
+and
+
+MINIMUM NEXT STEP TO CONNECT THIS DEVELOPMENT MAC TO THE RELAY
+
+Do not change code.
