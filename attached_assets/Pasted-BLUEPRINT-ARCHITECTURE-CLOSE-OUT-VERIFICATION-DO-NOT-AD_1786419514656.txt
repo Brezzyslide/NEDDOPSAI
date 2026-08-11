@@ -1,0 +1,168 @@
+BLUEPRINT ARCHITECTURE CLOSE-OUT VERIFICATION — DO NOT ADD PROFESSIONAL CONTENT
+
+The implementation report is promising, but before we start loading real Care Plan and Risk Assessment specifications I need a concise proof-based close-out.
+
+Do not create additional professional blueprint content.
+
+### 1. Reconcile the registry counts
+
+You reported:
+
+* 59 canonical work types
+* 56 new registry blueprints
+* 14 legacy blueprints
+* 70 total platform blueprints
+
+Explain exactly how these numbers reconcile.
+
+Provide:
+
+* canonical registry count
+* canonical items represented by existing legacy blueprints
+* genuinely new rows
+* legacy-only rows
+* duplicates, if any
+
+There must not be two competing active Care Plan or Risk Assessment definitions unless that is intentional and clearly versioned.
+
+### 2. Prove live DB state
+
+From the live dev DB show:
+
+* total platform-owned blueprints
+* count by maturity_state
+* count by blueprint_family
+* count by owner_type
+* count of blueprint_sections
+* count of organisation-owned blueprints
+
+Show Care Plan and Risk Assessment rows as examples, including code, family, supported_modes, maturity_state and owner_type.
+
+### 3. Intent mapping status
+
+Task #171 is still proposed.
+
+State clearly:
+
+`DETERMINISTIC INTENT → BLUEPRINT MAPPING: IMPLEMENTED / NOT IMPLEMENTED`
+
+If not implemented, do not claim the Blueprint Architecture is execution-ready.
+
+Confirm what selection path execution currently uses today.
+
+### 4. Template architecture status
+
+State whether a separate template model now exists.
+
+Show whether there is currently:
+
+* work_templates or equivalent
+* blueprint → template association
+* platform default template
+* organisation template substitution
+* template versioning
+* DOCX template storage/reference
+* merge-field schema
+
+Anything absent must say NOT IMPLEMENTED.
+
+### 5. Deliverable/artifact contract status
+
+Show the actual schema of `deliverable_contract`.
+
+Confirm whether it supports:
+
+* primary deliverable
+* secondary deliverables
+* allowed internal analysis
+* prohibited deliverables
+* artifact required
+* primary format
+* secondary formats
+* naming convention
+* template required
+
+Then state which of those fields are actually ENFORCED by UEE today versus merely stored.
+
+### 6. Completion gates
+
+State whether UEE currently prevents completion when:
+
+* required section missing
+* required evidence missing
+* unsupported claim exists
+* required template missing
+* required artifact not generated
+
+For each return:
+
+ENFORCED
+STORED BUT NOT ENFORCED
+NOT IMPLEMENTED
+
+### 7. Blueprint sections
+
+Show the exact `blueprint_sections` schema.
+
+Confirm sections can support:
+
+* order
+* required
+* instructions
+* minimum content expectation
+* evidence requirements
+* prohibited assumptions
+* validation rules
+* quality criteria
+
+Again distinguish stored fields from runtime enforcement.
+
+### 8. Visibility proof
+
+Provide one representative API response shape for:
+
+* ordinary tenant member viewing a platform blueprint
+* organisation admin viewing a platform blueprint
+* platform admin viewing the same blueprint
+* organisation admin viewing an organisation-owned blueprint
+
+Do not expose actual proprietary specification content in the report; show field names/redaction behaviour only.
+
+### 9. Blueprint Studio status
+
+Task #170 is still proposed.
+
+State exactly what tenant admins can configure TODAY for platform-owned blueprints.
+
+Do not describe planned functionality as implemented.
+
+### 10. Final readiness table
+
+| Capability                      | Status |
+| ------------------------------- | ------ |
+| Registry                        |        |
+| Family/mode model               |        |
+| Trade-secret protection         |        |
+| Maturity state                  |        |
+| Org ownership model             |        |
+| Deterministic intent mapping    |        |
+| Structured sections             |        |
+| Section runtime enforcement     |        |
+| Evidence contract               |        |
+| Evidence runtime enforcement    |        |
+| Deliverable contract            |        |
+| Deliverable runtime enforcement |        |
+| Separate template architecture  |        |
+| Org template substitution       |        |
+| DOCX/PDF artifact architecture  |        |
+| Completion gates                |        |
+| Blueprint Studio config surface |        |
+
+Use only:
+
+PASS
+PARTIAL
+NOT IMPLEMENTED
+UNPROVEN
+
+Do not fix anything in this close-out report.

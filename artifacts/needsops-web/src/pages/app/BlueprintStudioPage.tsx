@@ -414,11 +414,13 @@ function BlueprintCard({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#1E3A5F]">
-        <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}`)}>View</ActionBtn>
-        {isConfigOnly && !readOnly && (
-          <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}/edit`)}>Configure</ActionBtn>
+        {/* Platform blueprints: specification is protected — no detail view for tenant roles.
+            Descriptor info (purpose, family, modes) is shown on this card.
+            Clone is allowed so orgs can build from the family/mode structure. */}
+        {!isPlatformOwned && (
+          <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}`)}>View</ActionBtn>
         )}
-        {!isConfigOnly && !readOnly && bp.status !== "archived" && (
+        {!isPlatformOwned && !readOnly && bp.status !== "archived" && (
           <ActionBtn onClick={() => setLocation(`/app/${slug}/blueprints/${bp.id}/edit`)}>Edit</ActionBtn>
         )}
         {!isPlatformOwned && !readOnly && bp.status !== "archived" && (
