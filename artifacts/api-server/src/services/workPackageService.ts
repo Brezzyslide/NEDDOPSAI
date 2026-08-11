@@ -134,6 +134,12 @@ export interface WorkPackageManifest {
   executionId: string;
   blueprintId: string | null;
   blueprintVersion: string | null;
+  canonicalIntent: string | null;
+  blueprintFamily: string | null;
+  blueprintMode: string | null;
+  templateId: string | null;
+  templateVersion: string | null;
+  contractSnapshot: Record<string, unknown> | null;
   primarySpecialist: string;
   supportingSpecialists: string[];
   organisationLibrarySources: ManifestLibrarySource[];
@@ -322,6 +328,18 @@ export async function assembleWorkPackage(
     executionId,
     blueprintId: blueprint?.id ?? null,
     blueprintVersion: blueprint?.version ?? null,
+    canonicalIntent: input.selectionMetadata?.canonicalIntent ?? null,
+    blueprintFamily: blueprint?.blueprintFamily ?? input.selectionMetadata?.blueprintFamily ?? null,
+    blueprintMode: input.selectionMetadata?.blueprintMode ?? null,
+    templateId: blueprint?.defaultTemplateId ?? null,
+    templateVersion: null,
+    contractSnapshot: blueprint
+      ? {
+          deliverableContract: blueprint.deliverableContract,
+          evidenceContract: blueprint.evidenceContract,
+          sectionsExpected: true,
+        }
+      : null,
     primarySpecialist,
     supportingSpecialists,
     organisationLibrarySources: librarySources,
@@ -344,6 +362,18 @@ export async function assembleWorkPackage(
     executionId,
     blueprintId: blueprint?.id ?? null,
     blueprintVersion: blueprint?.version ?? null,
+    canonicalIntent: input.selectionMetadata?.canonicalIntent ?? null,
+    blueprintFamily: blueprint?.blueprintFamily ?? input.selectionMetadata?.blueprintFamily ?? null,
+    blueprintMode: input.selectionMetadata?.blueprintMode ?? null,
+    templateId: blueprint?.defaultTemplateId ?? null,
+    templateVersion: null,
+    contractSnapshot: blueprint
+      ? {
+          deliverableContract: blueprint.deliverableContract,
+          evidenceContract: blueprint.evidenceContract,
+          sectionsExpected: true,
+        }
+      : null,
     primarySpecialist,
     supportingSpecialists,
     organisationLibrarySources: librarySources,
@@ -498,6 +528,12 @@ export async function getManifest(
     executionId: row.executionId,
     blueprintId: row.blueprintId ?? null,
     blueprintVersion: row.blueprintVersion ?? null,
+    canonicalIntent: row.canonicalIntent ?? null,
+    blueprintFamily: row.blueprintFamily ?? null,
+    blueprintMode: row.blueprintMode ?? null,
+    templateId: row.templateId ?? null,
+    templateVersion: row.templateVersion ?? null,
+    contractSnapshot: (row.contractSnapshot as Record<string, unknown> | null) ?? null,
     primarySpecialist: row.primarySpecialist,
     supportingSpecialists: (row.supportingSpecialists as string[]) ?? [],
     organisationLibrarySources: (row.organisationLibrarySources as ManifestLibrarySource[]) ?? [],

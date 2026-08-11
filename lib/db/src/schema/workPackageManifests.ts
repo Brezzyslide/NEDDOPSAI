@@ -42,10 +42,13 @@ export interface ManifestMemoryRef {
 
 /** How the blueprint was selected for this execution. */
 export interface BlueprintSelectionMetadata {
-  method: "keyword" | "semantic" | "none";
+  method: "canonical" | "keyword" | "semantic" | "none";
   confidence: number;
   matchedKeywords: string[];
   fallbackUsed: boolean;
+  canonicalIntent?: string;
+  blueprintFamily?: string;
+  blueprintMode?: string;
 }
 
 /** Snapshot of prerequisite-validation outcome written after Step 3. */
@@ -91,6 +94,13 @@ export const workPackageManifestsTable = pgTable("work_package_manifests", {
   /** Blueprint used to govern execution (NULL for ad-hoc work) */
   blueprintId: text("blueprint_id"),
   blueprintVersion: text("blueprint_version"),
+  canonicalIntent: text("canonical_intent"),
+  blueprintFamily: text("blueprint_family"),
+  blueprintMode: text("blueprint_mode"),
+  templateId: text("template_id"),
+  templateVersion: text("template_version"),
+  contractSnapshot: jsonb("contract_snapshot")
+    .$type<Record<string, unknown> | null>(),
 
   primarySpecialist: text("primary_specialist").notNull(),
   supportingSpecialists: jsonb("supporting_specialists")

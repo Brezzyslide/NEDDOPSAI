@@ -26,6 +26,8 @@ import {
   createCustomBlueprint,
   updateCustomBlueprint,
   getBlueprintById,
+  getBlueprintForRole,
+  toBlueprintDescriptor,
   archiveBlueprint,
   restoreBlueprint,
   cloneBlueprint,
@@ -68,7 +70,7 @@ router.get(
         includeArchived: includeArchived === "true",
       });
 
-      res.json({ blueprints });
+      res.json({ blueprints: blueprints.map(toBlueprintDescriptor) });
     } catch (err) {
       next(err);
     }
@@ -85,7 +87,7 @@ router.get(
     try {
       const ctx = req.tenantContext!;
       const { blueprintId } = req.params as { blueprintId: string };
-      const blueprint = await getBlueprintById(blueprintId, ctx.tenantId);
+      const blueprint = await getBlueprintForRole(blueprintId, ctx.tenantId, ctx.role as any);
       if (!blueprint) { res.status(404).json({ error: "Blueprint not found" }); return; }
       res.json({ blueprint });
     } catch (err) {
@@ -107,6 +109,9 @@ router.post(
       const user = req.appUser!;
       const {
         code, title, version, objective, primarySpecialist,
+        blueprintFamily, supportedModes, maturityState, purpose, primaryDeliverable,
+        deliverableContract, evidenceContract, permittedOrgOverrides,
+        defaultTemplateId, templateRequired, allowedOrgTemplateOverride, templateVersionPolicy,
         supportingSpecialists, requiredLibraryKnowledge, requiredEntityKnowledge,
         requiredMemories, requiredApprovals, validationRules, qualityRules,
         successCriteria, outputTypes, escalationRules, mandatoryCitations,
@@ -122,6 +127,18 @@ router.post(
           code: String(code),
           title: String(title),
           version: version ? String(version) : undefined,
+          blueprintFamily: blueprintFamily ? String(blueprintFamily) : undefined,
+          supportedModes: Array.isArray(supportedModes) ? supportedModes as string[] : undefined,
+          maturityState: maturityState as any,
+          purpose: purpose ? String(purpose) : undefined,
+          primaryDeliverable: primaryDeliverable ? String(primaryDeliverable) : undefined,
+          deliverableContract: (deliverableContract as any) ?? undefined,
+          evidenceContract: (evidenceContract as any) ?? undefined,
+          permittedOrgOverrides: (permittedOrgOverrides as any) ?? undefined,
+          defaultTemplateId: defaultTemplateId ? String(defaultTemplateId) : undefined,
+          templateRequired: typeof templateRequired === "boolean" ? templateRequired : undefined,
+          allowedOrgTemplateOverride: typeof allowedOrgTemplateOverride === "boolean" ? allowedOrgTemplateOverride : undefined,
+          templateVersionPolicy: templateVersionPolicy as any,
           objective: String(objective),
           primarySpecialist: String(primarySpecialist),
           supportingSpecialists: Array.isArray(supportingSpecialists) ? supportingSpecialists as string[] : [],
@@ -386,6 +403,7 @@ router.post(
         userRequest,
         blueprintCode,
         blueprintId,
+        canonicalIntent,
         taskUploadSourceIds,
         entityKnowledge,
         title,
@@ -400,9 +418,11 @@ router.post(
       const result = await executeWork({
         organizationId: ctx.tenantId,
         requesterId: user.id,
+        requesterRole: ctx.role,
         userRequest,
         blueprintCode: blueprintCode ? String(blueprintCode) : undefined,
         blueprintId: blueprintId ? String(blueprintId) : undefined,
+        canonicalIntent: canonicalIntent ? String(canonicalIntent) : undefined,
         taskUploadSourceIds: Array.isArray(taskUploadSourceIds) ? taskUploadSourceIds as string[] : undefined,
         entityKnowledge: (entityKnowledge as Record<string, unknown>) ?? undefined,
         title: title ? String(title) : undefined,

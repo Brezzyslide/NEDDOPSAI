@@ -15,8 +15,21 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { workBlueprintsTable, blueprintVersionsTable } from "@workspace/db";
-import { eq, and, or, isNull, desc, ilike, inArray } from "drizzle-orm";
+import {
+  workBlueprintsTable,
+  blueprintVersionsTable,
+  blueprintSectionsTable,
+  workTemplatesTable,
+  blueprintIntentMappingsTable,
+  type BlueprintDeliverableContract,
+  type BlueprintEvidenceContract,
+  type BlueprintMaturityState,
+  type BlueprintOwnerType,
+  type BlueprintPermittedOrgOverrides,
+  type BlueprintTemplateVersionPolicy,
+  type WorkTemplateType,
+} from "@workspace/db";
+import { eq, and, or, isNull, desc, ilike, inArray, asc } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
@@ -31,6 +44,19 @@ export interface WorkBlueprint {
   code: string;
   title: string;
   version: string;
+  blueprintFamily: string | null;
+  supportedModes: string[];
+  maturityState: BlueprintMaturityState;
+  ownerType: BlueprintOwnerType;
+  purpose: string | null;
+  primaryDeliverable: string | null;
+  deliverableContract: BlueprintDeliverableContract | null;
+  evidenceContract: BlueprintEvidenceContract | null;
+  permittedOrgOverrides: BlueprintPermittedOrgOverrides;
+  defaultTemplateId: string | null;
+  templateRequired: boolean;
+  allowedOrgTemplateOverride: boolean;
+  templateVersionPolicy: BlueprintTemplateVersionPolicy;
   status: BlueprintStatus;
   objective: string;
   primarySpecialist: string;
@@ -51,6 +77,89 @@ export interface WorkBlueprint {
   updatedAt: Date;
 }
 
+export interface BlueprintSection {
+  id: string;
+  blueprintId: string;
+  sectionCode: string;
+  title: string;
+  description: string | null;
+  instructions: string | null;
+  required: boolean;
+  minimumContentExpectation: string | null;
+  evidenceRequirements: Record<string, unknown>;
+  allowedSourceTypes: string[];
+  prohibitedAssumptions: string[];
+  validationRules: Array<{ rule: string; required?: boolean; description?: string }>;
+  qualityCriteria: Array<{ criterion: string; description?: string }>;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WorkTemplate {
+  id: string;
+  organizationId: string | null;
+  ownerType: BlueprintOwnerType;
+  code: string;
+  title: string;
+  version: string;
+  status: string;
+  maturityState: BlueprintMaturityState;
+  templateType: WorkTemplateType;
+  sourceFileReference: string | null;
+  mimeType: string | null;
+  mergeFieldSchema: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BlueprintExecutionContract {
+  blueprint: WorkBlueprint;
+  sections: BlueprintSection[];
+  template: WorkTemplate | null;
+  mode: string | null;
+}
+
+export interface BlueprintDescriptor {
+  id: string;
+  code: string;
+  title: string;
+  family: string | null;
+  purpose: string | null;
+  supportedModes: string[];
+  version: string;
+  maturity: BlueprintMaturityState;
+  status: BlueprintStatus;
+  ownerType: BlueprintOwnerType;
+  primaryDeliverable: string | null;
+  supportedOutputFormats: string[];
+  organisationConfigurableSettings: BlueprintPermittedOrgOverrides;
+  templateRequired: boolean;
+  defaultTemplateId: string | null;
+  allowedOrgTemplateOverride: boolean;
+  templateVersionPolicy: BlueprintTemplateVersionPolicy;
+}
+
+export interface BlueprintSpecification extends BlueprintDescriptor {
+  objective: string;
+  primarySpecialist: string;
+  supportingSpecialists: string[];
+  requiredLibraryKnowledge: string[];
+  requiredEntityKnowledge: Record<string, unknown>;
+  requiredMemories: string[];
+  requiredApprovals: Record<string, unknown>;
+  validationRules: WorkBlueprint["validationRules"];
+  qualityRules: WorkBlueprint["qualityRules"];
+  successCriteria: string[];
+  outputTypes: string[];
+  escalationRules: WorkBlueprint["escalationRules"];
+  mandatoryCitations: string[];
+  deliverableContract: BlueprintDeliverableContract | null;
+  evidenceContract: BlueprintEvidenceContract | null;
+  sections: BlueprintSection[];
+  template: WorkTemplate | null;
+}
+
 export interface BlueprintVersion {
   id: string;
   blueprintId: string;
@@ -67,6 +176,19 @@ export interface CreateBlueprintInput {
   code: string;
   title: string;
   version?: string;
+  blueprintFamily?: string;
+  supportedModes?: string[];
+  maturityState?: BlueprintMaturityState;
+  ownerType?: BlueprintOwnerType;
+  purpose?: string;
+  primaryDeliverable?: string;
+  deliverableContract?: BlueprintDeliverableContract | null;
+  evidenceContract?: BlueprintEvidenceContract | null;
+  permittedOrgOverrides?: BlueprintPermittedOrgOverrides;
+  defaultTemplateId?: string | null;
+  templateRequired?: boolean;
+  allowedOrgTemplateOverride?: boolean;
+  templateVersionPolicy?: BlueprintTemplateVersionPolicy;
   objective: string;
   primarySpecialist: string;
   supportingSpecialists?: string[];
@@ -85,6 +207,19 @@ export interface CreateBlueprintInput {
 export interface UpdateBlueprintInput {
   title?: string;
   version?: string;
+  blueprintFamily?: string;
+  supportedModes?: string[];
+  maturityState?: BlueprintMaturityState;
+  ownerType?: BlueprintOwnerType;
+  purpose?: string | null;
+  primaryDeliverable?: string | null;
+  deliverableContract?: BlueprintDeliverableContract | null;
+  evidenceContract?: BlueprintEvidenceContract | null;
+  permittedOrgOverrides?: BlueprintPermittedOrgOverrides;
+  defaultTemplateId?: string | null;
+  templateRequired?: boolean;
+  allowedOrgTemplateOverride?: boolean;
+  templateVersionPolicy?: BlueprintTemplateVersionPolicy;
   objective?: string;
   primarySpecialist?: string;
   supportingSpecialists?: string[];
@@ -105,6 +240,10 @@ export interface BlueprintSelectionResult {
   confidence: number;
   matchedKeywords: string[];
   fallbackUsed: boolean;
+  method?: "canonical" | "keyword" | "semantic" | "none";
+  canonicalIntent?: string;
+  blueprintFamily?: string;
+  blueprintMode?: string;
 }
 
 export interface ListBlueprintsOptions {
@@ -465,6 +604,19 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     code: row.code,
     title: row.title,
     version: row.version,
+    blueprintFamily: row.blueprintFamily ?? null,
+    supportedModes: (row.supportedModes as string[]) ?? [],
+    maturityState: row.maturityState ?? "placeholder",
+    ownerType: row.ownerType ?? (row.organizationId ? "organisation_owned" : "platform_owned"),
+    purpose: row.purpose ?? null,
+    primaryDeliverable: row.primaryDeliverable ?? null,
+    deliverableContract: (row.deliverableContract as BlueprintDeliverableContract | null) ?? null,
+    evidenceContract: (row.evidenceContract as BlueprintEvidenceContract | null) ?? null,
+    permittedOrgOverrides: (row.permittedOrgOverrides as BlueprintPermittedOrgOverrides) ?? {},
+    defaultTemplateId: row.defaultTemplateId ?? null,
+    templateRequired: row.templateRequired ?? false,
+    allowedOrgTemplateOverride: row.allowedOrgTemplateOverride ?? false,
+    templateVersionPolicy: row.templateVersionPolicy ?? "pin_at_execution",
     status: (row.status as BlueprintStatus) ?? "draft",
     objective: row.objective,
     primarySpecialist: row.primarySpecialist,
@@ -481,6 +633,46 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     mandatoryCitations: (row.mandatoryCitations as string[]) ?? [],
     isBuiltIn: row.isBuiltIn,
     isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapSectionRow(row: typeof blueprintSectionsTable.$inferSelect): BlueprintSection {
+  return {
+    id: row.id,
+    blueprintId: row.blueprintId,
+    sectionCode: row.sectionCode,
+    title: row.title,
+    description: row.description ?? null,
+    instructions: row.instructions ?? null,
+    required: row.required,
+    minimumContentExpectation: row.minimumContentExpectation ?? null,
+    evidenceRequirements: (row.evidenceRequirements as Record<string, unknown>) ?? {},
+    allowedSourceTypes: (row.allowedSourceTypes as string[]) ?? [],
+    prohibitedAssumptions: (row.prohibitedAssumptions as string[]) ?? [],
+    validationRules: (row.validationRules as BlueprintSection["validationRules"]) ?? [],
+    qualityCriteria: (row.qualityCriteria as BlueprintSection["qualityCriteria"]) ?? [],
+    sortOrder: row.sortOrder,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapTemplateRow(row: typeof workTemplatesTable.$inferSelect): WorkTemplate {
+  return {
+    id: row.id,
+    organizationId: row.organizationId ?? null,
+    ownerType: row.ownerType ?? (row.organizationId ? "organisation_owned" : "platform_owned"),
+    code: row.code,
+    title: row.title,
+    version: row.version,
+    status: row.status,
+    maturityState: row.maturityState ?? "placeholder",
+    templateType: row.templateType,
+    sourceFileReference: row.sourceFileReference ?? null,
+    mimeType: row.mimeType ?? null,
+    mergeFieldSchema: (row.mergeFieldSchema as Record<string, unknown>) ?? {},
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -507,6 +699,19 @@ function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
     code: bp.code,
     title: bp.title,
     version: bp.version,
+    blueprintFamily: bp.blueprintFamily,
+    supportedModes: bp.supportedModes,
+    maturityState: bp.maturityState,
+    ownerType: bp.ownerType,
+    purpose: bp.purpose,
+    primaryDeliverable: bp.primaryDeliverable,
+    deliverableContract: bp.deliverableContract,
+    evidenceContract: bp.evidenceContract,
+    permittedOrgOverrides: bp.permittedOrgOverrides,
+    defaultTemplateId: bp.defaultTemplateId,
+    templateRequired: bp.templateRequired,
+    allowedOrgTemplateOverride: bp.allowedOrgTemplateOverride,
+    templateVersionPolicy: bp.templateVersionPolicy,
     status: bp.status,
     objective: bp.objective,
     primarySpecialist: bp.primarySpecialist,
@@ -523,6 +728,202 @@ function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
     mandatoryCitations: bp.mandatoryCitations,
     isBuiltIn: bp.isBuiltIn,
     snapshotAt: new Date().toISOString(),
+  };
+}
+
+export function toBlueprintDescriptor(bp: WorkBlueprint): BlueprintDescriptor {
+  const deliverable = bp.deliverableContract;
+  return {
+    id: bp.id,
+    code: bp.code,
+    title: bp.title,
+    family: bp.blueprintFamily,
+    purpose: bp.purpose,
+    supportedModes: bp.supportedModes,
+    version: bp.version,
+    maturity: bp.maturityState,
+    status: bp.status,
+    ownerType: bp.ownerType,
+    primaryDeliverable: bp.primaryDeliverable,
+    supportedOutputFormats: [
+      ...(deliverable?.primaryFormat ? [deliverable.primaryFormat] : []),
+      ...(deliverable?.secondaryFormats ?? []),
+    ],
+    organisationConfigurableSettings: bp.permittedOrgOverrides,
+    templateRequired: bp.templateRequired || bp.deliverableContract?.templateRequired === true,
+    defaultTemplateId: bp.defaultTemplateId,
+    allowedOrgTemplateOverride: bp.allowedOrgTemplateOverride,
+    templateVersionPolicy: bp.templateVersionPolicy,
+  };
+}
+
+export async function getBlueprintSections(blueprintId: string): Promise<BlueprintSection[]> {
+  const rows = await db
+    .select()
+    .from(blueprintSectionsTable)
+    .where(eq(blueprintSectionsTable.blueprintId, blueprintId))
+    .orderBy(asc(blueprintSectionsTable.sortOrder), asc(blueprintSectionsTable.sectionCode));
+  return rows.map(mapSectionRow);
+}
+
+export async function getTemplateById(
+  templateId: string | null | undefined,
+  organizationId: string,
+): Promise<WorkTemplate | null> {
+  if (!templateId) return null;
+  const rows = await db
+    .select()
+    .from(workTemplatesTable)
+    .where(eq(workTemplatesTable.id, templateId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  if (row.organizationId !== null && row.organizationId !== organizationId) return null;
+  return mapTemplateRow(row);
+}
+
+export async function resolveTemplateForBlueprint(
+  blueprint: WorkBlueprint,
+  organizationId: string,
+): Promise<WorkTemplate | null> {
+  return getTemplateById(blueprint.defaultTemplateId, organizationId);
+}
+
+export async function getBlueprintExecutionContract(
+  blueprint: WorkBlueprint,
+  organizationId: string,
+  mode: string | null = null,
+): Promise<BlueprintExecutionContract> {
+  const [sections, template] = await Promise.all([
+    getBlueprintSections(blueprint.id),
+    resolveTemplateForBlueprint(blueprint, organizationId),
+  ]);
+  return { blueprint, sections, template, mode };
+}
+
+export async function getBlueprintSpecification(
+  blueprintId: string,
+  organizationId: string,
+): Promise<BlueprintSpecification | null> {
+  const blueprint = await getBlueprintById(blueprintId, organizationId);
+  if (!blueprint) return null;
+  const contract = await getBlueprintExecutionContract(blueprint, organizationId);
+  return {
+    ...toBlueprintDescriptor(blueprint),
+    objective: blueprint.objective,
+    primarySpecialist: blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists,
+    requiredLibraryKnowledge: blueprint.requiredLibraryKnowledge,
+    requiredEntityKnowledge: blueprint.requiredEntityKnowledge,
+    requiredMemories: blueprint.requiredMemories,
+    requiredApprovals: blueprint.requiredApprovals,
+    validationRules: blueprint.validationRules,
+    qualityRules: blueprint.qualityRules,
+    successCriteria: blueprint.successCriteria,
+    outputTypes: blueprint.outputTypes,
+    escalationRules: blueprint.escalationRules,
+    mandatoryCitations: blueprint.mandatoryCitations,
+    deliverableContract: blueprint.deliverableContract,
+    evidenceContract: blueprint.evidenceContract,
+    sections: contract.sections,
+    template: contract.template,
+  };
+}
+
+export async function getBlueprintForRole(
+  blueprintId: string,
+  organizationId: string,
+  role: "member" | "manager" | "administrator" | "owner" | "platform_admin" | "platform_super_admin",
+): Promise<BlueprintDescriptor | BlueprintSpecification | null> {
+  const blueprint = await getBlueprintById(blueprintId, organizationId);
+  if (!blueprint) return null;
+  const isPlatformAdmin = role === "platform_admin" || role === "platform_super_admin";
+  const isOrgOwned = blueprint.ownerType === "organisation_owned" && blueprint.organizationId === organizationId;
+  if (isPlatformAdmin || isOrgOwned) {
+    return getBlueprintSpecification(blueprintId, organizationId);
+  }
+  return toBlueprintDescriptor(blueprint);
+}
+
+export function parseCanonicalCarePlanIntent(value: string | undefined | null): { canonicalIntent: string; family: string; mode: string } | null {
+  const normalised = value?.trim().toLowerCase().replace(/[:/]/g, ".") ?? "";
+  if (normalised === "care_plan.create") return { canonicalIntent: "care_plan.create", family: "care_plan", mode: "create" };
+  if (normalised === "care_plan.review") return { canonicalIntent: "care_plan.review", family: "care_plan", mode: "review" };
+  if (normalised === "care_plan.revise") return { canonicalIntent: "care_plan.revise", family: "care_plan", mode: "revise" };
+  return null;
+}
+
+export async function resolveCanonicalBlueprint(
+  canonicalIntent: string | undefined | null,
+  organizationId: string,
+): Promise<BlueprintSelectionResult | null> {
+  const parsed = parseCanonicalCarePlanIntent(canonicalIntent);
+  if (!parsed) return null;
+
+  const mappingRows = await db
+    .select()
+    .from(blueprintIntentMappingsTable)
+    .where(
+      and(
+        eq(blueprintIntentMappingsTable.canonicalIntent, parsed.canonicalIntent),
+        eq(blueprintIntentMappingsTable.isActive, true),
+        or(
+          eq(blueprintIntentMappingsTable.organizationId, organizationId),
+          isNull(blueprintIntentMappingsTable.organizationId),
+        ),
+      ),
+    )
+    .orderBy(desc(blueprintIntentMappingsTable.organizationId))
+    .limit(1);
+
+  let blueprint: WorkBlueprint | null = null;
+  if (mappingRows[0]) {
+    blueprint = await getBlueprintById(mappingRows[0].blueprintId, organizationId);
+  }
+
+  if (!blueprint) {
+    const rows = await db
+      .select()
+      .from(workBlueprintsTable)
+      .where(
+        and(
+          eq(workBlueprintsTable.blueprintFamily, parsed.family),
+          eq(workBlueprintsTable.isActive, true),
+          eq(workBlueprintsTable.status, "published"),
+          isNull(workBlueprintsTable.organizationId),
+        )
+      )
+      .limit(20);
+    const row = rows
+      .map(mapRow)
+      .find((bp) => bp.supportedModes.includes(parsed.mode) && bp.code === "care_plan_synthetic_architecture")
+      ?? rows.map(mapRow).find((bp) => bp.supportedModes.includes(parsed.mode))
+      ?? null;
+    blueprint = row;
+  }
+
+  if (!blueprint) {
+    return {
+      blueprint: null,
+      confidence: 0,
+      matchedKeywords: [],
+      fallbackUsed: true,
+      method: "canonical",
+      canonicalIntent: parsed.canonicalIntent,
+      blueprintFamily: parsed.family,
+      blueprintMode: parsed.mode,
+    };
+  }
+
+  return {
+    blueprint,
+    confidence: 1,
+    matchedKeywords: [],
+    fallbackUsed: false,
+    method: "canonical",
+    canonicalIntent: parsed.canonicalIntent,
+    blueprintFamily: parsed.family,
+    blueprintMode: parsed.mode,
   };
 }
 
@@ -579,7 +980,7 @@ export async function selectBlueprint(
 
   if (orgRows[0]) {
     const confidence = Math.min(1.0, score / 3);
-    return { blueprint: mapRow(orgRows[0]), confidence, matchedKeywords: matched, fallbackUsed: false };
+    return { blueprint: mapRow(orgRows[0]), confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
   }
 
   // Fallback: built-in
@@ -597,11 +998,11 @@ export async function selectBlueprint(
 
   const blueprint = builtInRows[0] ?? null;
   if (!blueprint) {
-    return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true };
+    return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true, method: "keyword" };
   }
 
   const confidence = Math.min(1.0, score / 3);
-  return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false };
+  return { blueprint: mapRow(blueprint), confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
 }
 
 // ─── LLM semantic blueprint classifier ───────────────────────────────────────
@@ -845,6 +1246,19 @@ export async function createCustomBlueprint(
     code: input.code,
     title: input.title,
     version: input.version ?? "1.0.0",
+    blueprintFamily: input.blueprintFamily ?? input.code,
+    supportedModes: input.supportedModes ?? ["create"],
+    maturityState: input.maturityState ?? "placeholder",
+    ownerType: "organisation_owned",
+    purpose: input.purpose ?? input.objective,
+    primaryDeliverable: input.primaryDeliverable ?? input.outputTypes?.[0] ?? null,
+    deliverableContract: input.deliverableContract ?? null,
+    evidenceContract: input.evidenceContract ?? null,
+    permittedOrgOverrides: input.permittedOrgOverrides ?? {},
+    defaultTemplateId: input.defaultTemplateId ?? null,
+    templateRequired: input.templateRequired ?? input.deliverableContract?.templateRequired ?? false,
+    allowedOrgTemplateOverride: input.allowedOrgTemplateOverride ?? false,
+    templateVersionPolicy: input.templateVersionPolicy ?? "pin_at_execution",
     status: "draft",
     objective: input.objective,
     primarySpecialist: input.primarySpecialist,
@@ -904,6 +1318,19 @@ export async function updateCustomBlueprint(
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (input.title !== undefined) updates.title = input.title;
   if (input.version !== undefined) updates.version = input.version;
+  if (input.blueprintFamily !== undefined) updates.blueprintFamily = input.blueprintFamily;
+  if (input.supportedModes !== undefined) updates.supportedModes = input.supportedModes;
+  if (input.maturityState !== undefined) updates.maturityState = input.maturityState;
+  if (input.ownerType !== undefined) updates.ownerType = input.ownerType;
+  if (input.purpose !== undefined) updates.purpose = input.purpose;
+  if (input.primaryDeliverable !== undefined) updates.primaryDeliverable = input.primaryDeliverable;
+  if (input.deliverableContract !== undefined) updates.deliverableContract = input.deliverableContract;
+  if (input.evidenceContract !== undefined) updates.evidenceContract = input.evidenceContract;
+  if (input.permittedOrgOverrides !== undefined) updates.permittedOrgOverrides = input.permittedOrgOverrides;
+  if (input.defaultTemplateId !== undefined) updates.defaultTemplateId = input.defaultTemplateId;
+  if (input.templateRequired !== undefined) updates.templateRequired = input.templateRequired;
+  if (input.allowedOrgTemplateOverride !== undefined) updates.allowedOrgTemplateOverride = input.allowedOrgTemplateOverride;
+  if (input.templateVersionPolicy !== undefined) updates.templateVersionPolicy = input.templateVersionPolicy;
   if (input.objective !== undefined) updates.objective = input.objective;
   if (input.primarySpecialist !== undefined) updates.primarySpecialist = input.primarySpecialist;
   if (input.supportingSpecialists !== undefined) updates.supportingSpecialists = input.supportingSpecialists;
@@ -1024,6 +1451,19 @@ export async function cloneBlueprint(
     code,
     title,
     version: "1.0.0",
+    blueprintFamily: source.blueprintFamily ?? source.code,
+    supportedModes: source.supportedModes,
+    maturityState: "placeholder",
+    ownerType: "organisation_owned",
+    purpose: source.purpose,
+    primaryDeliverable: source.primaryDeliverable,
+    deliverableContract: source.deliverableContract,
+    evidenceContract: source.evidenceContract,
+    permittedOrgOverrides: source.permittedOrgOverrides,
+    defaultTemplateId: source.defaultTemplateId,
+    templateRequired: source.templateRequired,
+    allowedOrgTemplateOverride: source.allowedOrgTemplateOverride,
+    templateVersionPolicy: source.templateVersionPolicy,
     status: "draft",
     objective: source.objective,
     primarySpecialist: source.primarySpecialist,
@@ -1208,6 +1648,19 @@ export async function rollbackToVersion(
     code:                    String(snap.code ?? ""),
     title:                   `${String(snap.title ?? "")} (Rollback from v${version.versionLabel})`,
     version:                 String(snap.version ?? "1.0.0"),
+    blueprintFamily:         String(snap.blueprintFamily ?? snap.code ?? ""),
+    supportedModes:          (snap.supportedModes as string[]) ?? ["create"],
+    maturityState:           (snap.maturityState as BlueprintMaturityState) ?? "placeholder",
+    ownerType:               "organisation_owned",
+    purpose:                 (snap.purpose as string | null) ?? null,
+    primaryDeliverable:      (snap.primaryDeliverable as string | null) ?? null,
+    deliverableContract:     (snap.deliverableContract as BlueprintDeliverableContract | null) ?? null,
+    evidenceContract:        (snap.evidenceContract as BlueprintEvidenceContract | null) ?? null,
+    permittedOrgOverrides:   (snap.permittedOrgOverrides as BlueprintPermittedOrgOverrides) ?? {},
+    defaultTemplateId:       (snap.defaultTemplateId as string | null) ?? null,
+    templateRequired:        Boolean(snap.templateRequired ?? false),
+    allowedOrgTemplateOverride: Boolean(snap.allowedOrgTemplateOverride ?? false),
+    templateVersionPolicy:   (snap.templateVersionPolicy as BlueprintTemplateVersionPolicy) ?? "pin_at_execution",
     status:                  "draft",
     objective:               String(snap.objective ?? ""),
     primarySpecialist:       String(snap.primarySpecialist ?? ""),
@@ -1386,6 +1839,19 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       code: def.code,
       title: def.title,
       version: "1.0.0",
+      blueprintFamily: def.blueprintFamily ?? def.code,
+      supportedModes: def.supportedModes ?? ["create"],
+      maturityState: def.maturityState ?? "placeholder",
+      ownerType: "platform_owned",
+      purpose: def.purpose ?? def.objective,
+      primaryDeliverable: def.primaryDeliverable ?? def.outputTypes?.[0] ?? null,
+      deliverableContract: def.deliverableContract ?? null,
+      evidenceContract: def.evidenceContract ?? null,
+      permittedOrgOverrides: def.permittedOrgOverrides ?? {},
+      defaultTemplateId: def.defaultTemplateId ?? null,
+      templateRequired: def.templateRequired ?? def.deliverableContract?.templateRequired ?? false,
+      allowedOrgTemplateOverride: def.allowedOrgTemplateOverride ?? false,
+      templateVersionPolicy: def.templateVersionPolicy ?? "pin_at_execution",
       status: "published",
       objective: def.objective,
       primarySpecialist: def.primarySpecialist,
@@ -1405,5 +1871,181 @@ export async function seedBuiltInBlueprints(): Promise<void> {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
+  }
+
+  await seedSyntheticCarePlanVerticalSlice();
+}
+
+async function seedSyntheticCarePlanVerticalSlice(): Promise<void> {
+  const now = new Date();
+  const templateId = "platform_template_synthetic_care_plan_v1";
+  const blueprintId = "platform_blueprint_synthetic_care_plan_v1";
+
+  const existingTemplate = await db
+    .select({ id: workTemplatesTable.id })
+    .from(workTemplatesTable)
+    .where(eq(workTemplatesTable.id, templateId))
+    .limit(1);
+
+  if (existingTemplate.length === 0) {
+    await db.insert(workTemplatesTable).values({
+      id: templateId,
+      organizationId: null,
+      ownerType: "platform_owned",
+      code: "synthetic_care_plan_template",
+      title: "Synthetic Care Plan Architecture Test Template",
+      version: "1.0.0",
+      status: "published",
+      maturityState: "placeholder",
+      templateType: "synthetic_test",
+      sourceFileReference: "synthetic://care-plan-template-v1",
+      mimeType: "application/vnd.needsops.synthetic-template",
+      mergeFieldSchema: { synthetic: true, fields: ["TEST_FIELD_A"] },
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const existingBlueprint = await db
+    .select({ id: workBlueprintsTable.id })
+    .from(workBlueprintsTable)
+    .where(eq(workBlueprintsTable.id, blueprintId))
+    .limit(1);
+
+  if (existingBlueprint.length === 0) {
+    await db.insert(workBlueprintsTable).values({
+      id: blueprintId,
+      organizationId: null,
+      code: "care_plan_synthetic_architecture",
+      title: "Synthetic Care Plan Architecture Proof",
+      version: "1.0.0",
+      blueprintFamily: "care_plan",
+      supportedModes: ["create", "review", "revise"],
+      maturityState: "placeholder",
+      ownerType: "platform_owned",
+      purpose: "Synthetic Care Plan architecture proof only. Not professional content.",
+      primaryDeliverable: "care_plan",
+      deliverableContract: {
+        primaryDeliverable: "care_plan",
+        secondaryDeliverables: [],
+        allowedInternalAnalysis: ["risk_context_review"],
+        prohibitedDeliverables: ["risk_assessment"],
+        artifactRequired: true,
+        primaryFormat: "docx",
+        secondaryFormats: ["pdf"],
+        namingConvention: "SYNTHETIC_TEST_ONLY",
+        templateRequired: true,
+        completionRequirements: ["all_required_sections", "artifact_generated"],
+      },
+      evidenceContract: {
+        requiredEvidenceCategories: ["synthetic_participant_context"],
+        optionalEvidenceCategories: ["synthetic_policy_context"],
+        allowedSourceTypes: ["synthetic_source", "task_upload"],
+        restrictedSourceTypes: ["unauthorised_external"],
+        requiredEntityTypes: ["synthetic_participant"],
+        minimumEvidenceCount: 1,
+        freshnessRules: { synthetic: true },
+        claimIntegrityRequired: true,
+        missingEvidenceBehaviour: "block_completion",
+      },
+      permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true },
+      defaultTemplateId: templateId,
+      templateRequired: true,
+      allowedOrgTemplateOverride: true,
+      templateVersionPolicy: "pin_at_execution",
+      status: "published",
+      objective: "Prove the generic production blueprint foundation using synthetic Care Plan fixtures only.",
+      primarySpecialist: "operations_manager",
+      supportingSpecialists: ["compliance_quality_manager"],
+      requiredLibraryKnowledge: [],
+      requiredEntityKnowledge: {},
+      requiredMemories: [],
+      requiredApprovals: {},
+      validationRules: [],
+      qualityRules: [],
+      successCriteria: ["Synthetic architecture gates pass"],
+      outputTypes: ["care_plan"],
+      escalationRules: [],
+      mandatoryCitations: [],
+      isBuiltIn: true,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+
+  const sectionDefs = [
+    {
+      id: "platform_blueprint_synthetic_care_plan_v1_section_a",
+      sectionCode: "TEST_SECTION_A",
+      title: "TEST_SECTION_A",
+      description: "Synthetic required section A.",
+      instructions: "Synthetic instruction A. Do not use professional Care Plan content.",
+      required: true,
+      minimumContentExpectation: "At least 20 characters of synthetic test content.",
+      evidenceRequirements: { requiredEvidenceCategories: ["synthetic_participant_context"], minimumEvidenceCount: 1 },
+      allowedSourceTypes: ["synthetic_source", "task_upload"],
+      prohibitedAssumptions: ["Do not invent synthetic participant facts."],
+      validationRules: [{ rule: "min_length_20", required: true, description: "Synthetic section must not be empty." }],
+      qualityCriteria: [{ criterion: "synthetic_only", description: "Must remain synthetic." }],
+      sortOrder: 10,
+    },
+    {
+      id: "platform_blueprint_synthetic_care_plan_v1_section_b",
+      sectionCode: "TEST_SECTION_B",
+      title: "TEST_SECTION_B",
+      description: "Synthetic required section B.",
+      instructions: "Synthetic instruction B. Do not use professional Care Plan content.",
+      required: true,
+      minimumContentExpectation: "At least 20 characters of synthetic test content.",
+      evidenceRequirements: {},
+      allowedSourceTypes: ["synthetic_source", "task_upload"],
+      prohibitedAssumptions: ["Do not invent synthetic organisational facts."],
+      validationRules: [{ rule: "min_length_20", required: true, description: "Synthetic section must not be empty." }],
+      qualityCriteria: [{ criterion: "synthetic_only", description: "Must remain synthetic." }],
+      sortOrder: 20,
+    },
+  ];
+
+  for (const section of sectionDefs) {
+    const existing = await db
+      .select({ id: blueprintSectionsTable.id })
+      .from(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.id, section.id))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(blueprintSectionsTable).values({
+        ...section,
+        blueprintId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  }
+
+  for (const [intent, mode] of [
+    ["care_plan.create", "create"],
+    ["care_plan.review", "review"],
+    ["care_plan.revise", "revise"],
+  ] as const) {
+    const mappingId = `platform_mapping_${intent.replace(".", "_")}`;
+    const existing = await db
+      .select({ id: blueprintIntentMappingsTable.id })
+      .from(blueprintIntentMappingsTable)
+      .where(eq(blueprintIntentMappingsTable.id, mappingId))
+      .limit(1);
+    if (existing.length === 0) {
+      await db.insert(blueprintIntentMappingsTable).values({
+        id: mappingId,
+        canonicalIntent: intent,
+        blueprintFamily: "care_plan",
+        blueprintMode: mode,
+        blueprintId,
+        organizationId: null,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
   }
 }

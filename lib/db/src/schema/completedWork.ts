@@ -15,7 +15,7 @@
  *
  * Tenant isolation enforced by RLS on organization_id.
  */
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations.js";
 
 export const COMPLETED_WORK_STATUSES = [
@@ -26,6 +26,12 @@ export const COMPLETED_WORK_STATUSES = [
   "archived",
   "superseded",
   "reopened",
+  "content_drafting",
+  "validation",
+  "awaiting_clarification",
+  "artifact_generation",
+  "artifact_generation_failed",
+  "completed",
 ] as const;
 export type CompletedWorkStatus = (typeof COMPLETED_WORK_STATUSES)[number];
 
@@ -61,6 +67,10 @@ export const completedWorkTable = pgTable("completed_work", {
 
   /** Blueprint used to govern execution */
   blueprintId: text("blueprint_id"),
+  blueprintVersion: text("blueprint_version"),
+  blueprintFamily: text("blueprint_family"),
+  blueprintMode: text("blueprint_mode"),
+  canonicalIntent: text("canonical_intent"),
 
   /** Work Package Manifest for this execution */
   manifestId: text("manifest_id"),
@@ -76,6 +86,9 @@ export const completedWorkTable = pgTable("completed_work", {
 
   /** Current lifecycle status */
   status: text("status").notNull().default("draft"),
+  artifactState: text("artifact_state"),
+  artifactRequired: boolean("artifact_required").notNull().default(false),
+  artifactId: text("artifact_id"),
 
   /** ID of the current active version in completed_work_versions */
   currentVersionId: text("current_version_id"),

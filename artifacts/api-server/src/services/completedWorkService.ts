@@ -35,6 +35,10 @@ export interface CreateDraftInput {
   organizationId: string;
   conversationId?: string;
   blueprintId?: string;
+  blueprintVersion?: string | null;
+  blueprintFamily?: string | null;
+  blueprintMode?: string | null;
+  canonicalIntent?: string | null;
   manifestId?: string;
   primarySpecialist: string;
   title: string;
@@ -48,6 +52,9 @@ export interface CreateDraftInput {
     role?: "primary" | "supporting" | "citation" | "style" | "template";
     citationRef?: string;
   }>;
+  artifactRequired?: boolean;
+  artifactState?: string | null;
+  artifactId?: string | null;
 }
 
 export interface CompletedWorkItem {
@@ -55,6 +62,10 @@ export interface CompletedWorkItem {
   organizationId: string;
   conversationId: string | null;
   blueprintId: string | null;
+  blueprintVersion: string | null;
+  blueprintFamily: string | null;
+  blueprintMode: string | null;
+  canonicalIntent: string | null;
   manifestId: string | null;
   primarySpecialist: string;
   title: string;
@@ -68,6 +79,9 @@ export interface CompletedWorkItem {
    * Null for legacy rows created before this field existed.
    */
   approvedVersionId: string | null;
+  artifactState: string | null;
+  artifactRequired: boolean;
+  artifactId: string | null;
   createdByUserId: string;
   approvedByUserId: string | null;
   approvedAt: Date | null;
@@ -121,6 +135,10 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
       organizationId: input.organizationId,
       conversationId: input.conversationId ?? null,
       blueprintId: input.blueprintId ?? null,
+      blueprintVersion: input.blueprintVersion ?? null,
+      blueprintFamily: input.blueprintFamily ?? null,
+      blueprintMode: input.blueprintMode ?? null,
+      canonicalIntent: input.canonicalIntent ?? null,
       manifestId: input.manifestId ?? null,
       primarySpecialist: input.primarySpecialist,
       title: input.title,
@@ -128,6 +146,9 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
       status: "draft",
       currentVersionId: versionId,
       approvalWorkflow: {},
+      artifactState: input.artifactState ?? null,
+      artifactRequired: input.artifactRequired ?? false,
+      artifactId: input.artifactId ?? null,
       createdByUserId: input.createdByUserId,
       approvedByUserId: null,
       approvedAt: null,
@@ -813,6 +834,10 @@ function mapRow(row: typeof completedWorkTable.$inferSelect): CompletedWorkItem 
     organizationId: row.organizationId,
     conversationId: row.conversationId ?? null,
     blueprintId: row.blueprintId ?? null,
+    blueprintVersion: row.blueprintVersion ?? null,
+    blueprintFamily: row.blueprintFamily ?? null,
+    blueprintMode: row.blueprintMode ?? null,
+    canonicalIntent: row.canonicalIntent ?? null,
     manifestId: row.manifestId ?? null,
     primarySpecialist: row.primarySpecialist,
     title: row.title,
@@ -820,6 +845,9 @@ function mapRow(row: typeof completedWorkTable.$inferSelect): CompletedWorkItem 
     status: row.status as CompletedWorkStatus,
     currentVersionId: row.currentVersionId ?? null,
     approvedVersionId: (row as any).approvedVersionId ?? null,
+    artifactState: row.artifactState ?? null,
+    artifactRequired: row.artifactRequired ?? false,
+    artifactId: row.artifactId ?? null,
     createdByUserId: row.createdByUserId,
     approvedByUserId: row.approvedByUserId ?? null,
     approvedAt: row.approvedAt ?? null,

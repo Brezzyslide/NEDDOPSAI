@@ -15,6 +15,7 @@
   },
   "devDependencies": {
     "@rollup/rollup-darwin-arm64": "4.62.2",
+    "@rollup/rollup-darwin-x64": "4.62.2",
     "@rollup/rollup-win32-x64-msvc": "4.62.2",
     "prettier": "^3.9.5",
     "typescript": "~5.9.3"

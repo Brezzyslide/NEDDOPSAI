@@ -49,6 +49,7 @@ export async function executeWork(input: ExecuteWorkInput): Promise<ExecuteWorkR
     userRequest: input.userRequest,
     blueprintCode: input.blueprintCode,
     blueprintId: input.blueprintId,
+    canonicalIntent: input.canonicalIntent,
     taskUploadSourceIds: input.taskUploadSourceIds,
     entityKnowledge: input.entityKnowledge,
     title: input.title,

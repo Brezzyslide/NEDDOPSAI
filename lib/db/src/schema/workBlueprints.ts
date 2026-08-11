@@ -12,7 +12,7 @@
  * Tenant isolation: see RLS note below — NULL org_id rows are accessible to
  * all orgs (built-ins), org rows are tenant-isolated.
  */
-import { pgTable, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb, integer } from "drizzle-orm/pg-core";
 import { organizationsTable } from "./organizations.js";
 
 export const WORK_BLUEPRINT_OUTPUT_TYPES = [
@@ -34,6 +34,67 @@ export const WORK_BLUEPRINT_OUTPUT_TYPES = [
 ] as const;
 export type WorkBlueprintOutputType = (typeof WORK_BLUEPRINT_OUTPUT_TYPES)[number];
 
+export const BLUEPRINT_MATURITY_STATES = [
+  "placeholder",
+  "draft",
+  "professional_review",
+  "production_ready",
+  "superseded",
+] as const;
+export type BlueprintMaturityState = (typeof BLUEPRINT_MATURITY_STATES)[number];
+
+export const BLUEPRINT_OWNER_TYPES = [
+  "platform_owned",
+  "organisation_owned",
+] as const;
+export type BlueprintOwnerType = (typeof BLUEPRINT_OWNER_TYPES)[number];
+
+export const BLUEPRINT_MISSING_EVIDENCE_BEHAVIOURS = [
+  "clarification_required",
+  "continue_with_flagged_gaps",
+  "block_completion",
+  "not_applicable_allowed",
+] as const;
+export type BlueprintMissingEvidenceBehaviour = (typeof BLUEPRINT_MISSING_EVIDENCE_BEHAVIOURS)[number];
+
+export interface BlueprintDeliverableContract {
+  primaryDeliverable: string;
+  secondaryDeliverables?: string[];
+  allowedInternalAnalysis?: string[];
+  prohibitedDeliverables?: string[];
+  artifactRequired?: boolean;
+  primaryFormat?: string;
+  secondaryFormats?: string[];
+  namingConvention?: string;
+  templateRequired?: boolean;
+  completionRequirements?: string[];
+}
+
+export interface BlueprintEvidenceContract {
+  requiredEvidenceCategories?: string[];
+  optionalEvidenceCategories?: string[];
+  allowedSourceTypes?: string[];
+  restrictedSourceTypes?: string[];
+  requiredEntityTypes?: string[];
+  minimumEvidenceCount?: number;
+  freshnessRules?: Record<string, unknown>;
+  claimIntegrityRequired?: boolean;
+  missingEvidenceBehaviour?: BlueprintMissingEvidenceBehaviour;
+}
+
+export interface BlueprintPermittedOrgOverrides {
+  templateSubstitution?: boolean;
+  outputFormatPreferences?: boolean;
+  namingConvention?: boolean;
+  approvalWorkflow?: boolean;
+}
+
+export const BLUEPRINT_TEMPLATE_VERSION_POLICIES = [
+  "pin_at_execution",
+  "use_latest",
+] as const;
+export type BlueprintTemplateVersionPolicy = (typeof BLUEPRINT_TEMPLATE_VERSION_POLICIES)[number];
+
 export const workBlueprintsTable = pgTable("work_blueprints", {
   id: text("id").primaryKey(),
 
@@ -52,6 +113,52 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
 
   /** Semver version of this blueprint definition */
   version: text("version").notNull().default("1.0.0"),
+
+  /** Canonical work-product family, e.g. care_plan */
+  blueprintFamily: text("blueprint_family"),
+
+  /** Supported execution modes, e.g. ["create", "review", "revise"] */
+  supportedModes: jsonb("supported_modes")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+
+  /** Professional maturity; distinct from lifecycle publication status */
+  maturityState: text("maturity_state")
+    .$type<BlueprintMaturityState>()
+    .notNull()
+    .default("placeholder"),
+
+  /** Platform-owned or organisation-owned */
+  ownerType: text("owner_type")
+    .$type<BlueprintOwnerType>()
+    .notNull()
+    .default("platform_owned"),
+
+  /** Tenant-safe purpose summary */
+  purpose: text("purpose"),
+
+  /** Primary deliverable code/name */
+  primaryDeliverable: text("primary_deliverable"),
+
+  deliverableContract: jsonb("deliverable_contract")
+    .$type<BlueprintDeliverableContract | null>(),
+
+  evidenceContract: jsonb("evidence_contract")
+    .$type<BlueprintEvidenceContract | null>(),
+
+  permittedOrgOverrides: jsonb("permitted_org_overrides")
+    .$type<BlueprintPermittedOrgOverrides>()
+    .notNull()
+    .default({}),
+
+  defaultTemplateId: text("default_template_id"),
+  templateRequired: boolean("template_required").notNull().default(false),
+  allowedOrgTemplateOverride: boolean("allowed_org_template_override").notNull().default(false),
+  templateVersionPolicy: text("template_version_policy")
+    .$type<BlueprintTemplateVersionPolicy>()
+    .notNull()
+    .default("pin_at_execution"),
 
   /** What the specialist must achieve by executing this blueprint */
   objective: text("objective").notNull(),
@@ -135,6 +242,97 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
    */
   status: text("status").notNull().default("draft"),
 
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const blueprintSectionsTable = pgTable("blueprint_sections", {
+  id: text("id").primaryKey(),
+
+  blueprintId: text("blueprint_id")
+    .notNull()
+    .references(() => workBlueprintsTable.id, { onDelete: "cascade" }),
+
+  sectionCode: text("section_code").notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  instructions: text("instructions"),
+  required: boolean("required").notNull().default(false),
+  minimumContentExpectation: text("minimum_content_expectation"),
+  evidenceRequirements: jsonb("evidence_requirements")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  allowedSourceTypes: jsonb("allowed_source_types")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  prohibitedAssumptions: jsonb("prohibited_assumptions")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  validationRules: jsonb("validation_rules")
+    .$type<Array<{ rule: string; required: boolean; description: string }>>()
+    .notNull()
+    .default([]),
+  qualityCriteria: jsonb("quality_criteria")
+    .$type<Array<{ criterion: string; description: string }>>()
+    .notNull()
+    .default([]),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const WORK_TEMPLATE_TYPES = [
+  "docx",
+  "pdf",
+  "markdown",
+  "html",
+  "synthetic_test",
+] as const;
+export type WorkTemplateType = (typeof WORK_TEMPLATE_TYPES)[number];
+
+export const workTemplatesTable = pgTable("work_templates", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .references(() => organizationsTable.id, { onDelete: "cascade" }),
+  ownerType: text("owner_type")
+    .$type<BlueprintOwnerType>()
+    .notNull()
+    .default("platform_owned"),
+  code: text("code").notNull(),
+  title: text("title").notNull(),
+  version: text("version").notNull().default("1.0.0"),
+  status: text("status").notNull().default("draft"),
+  maturityState: text("maturity_state")
+    .$type<BlueprintMaturityState>()
+    .notNull()
+    .default("placeholder"),
+  templateType: text("template_type")
+    .$type<WorkTemplateType>()
+    .notNull(),
+  sourceFileReference: text("source_file_reference"),
+  mimeType: text("mime_type"),
+  mergeFieldSchema: jsonb("merge_field_schema")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const blueprintIntentMappingsTable = pgTable("blueprint_intent_mappings", {
+  id: text("id").primaryKey(),
+  canonicalIntent: text("canonical_intent").notNull(),
+  blueprintFamily: text("blueprint_family").notNull(),
+  blueprintMode: text("blueprint_mode").notNull(),
+  blueprintId: text("blueprint_id")
+    .notNull()
+    .references(() => workBlueprintsTable.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .references(() => organizationsTable.id, { onDelete: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

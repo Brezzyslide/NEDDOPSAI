@@ -31,11 +31,17 @@ import {
   buildDNASystemInstruction,
   captureSpecialistRunVersions,
 } from "@workspace/workforce-dna";
-import { db, specialistRunsTable, taskExecutionPlansTable } from "@workspace/db";
+import { db, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
-import { selectBlueprint, getBlueprintById } from "./workBlueprintService.js";
-import type { WorkBlueprint } from "./workBlueprintService.js";
+import {
+  selectBlueprint,
+  getBlueprintById,
+  resolveCanonicalBlueprint,
+  getBlueprintExecutionContract,
+} from "./workBlueprintService.js";
+import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
+import { validateBlueprintRuntimeCompletion } from "./blueprintRuntimeValidationService.js";
 import {
   assembleWorkPackage,
   updateManifestObservability,
@@ -190,6 +196,7 @@ export interface ExecuteWorkInput {
   userRequest: string;
   blueprintCode?: string;
   blueprintId?: string;
+  canonicalIntent?: string;
   taskUploadSourceIds?: string[];
   entityKnowledge?: Record<string, unknown>;
   title?: string;
@@ -275,6 +282,7 @@ export interface ExecutionRequest {
   // Task execution fields
   blueprintCode?: string;
   blueprintId?: string;
+  canonicalIntent?: string;
   taskUploadSourceIds?: string[];
   entityKnowledge?: Record<string, unknown>;
   title?: string;
@@ -877,6 +885,7 @@ export class UnifiedExecutionEngine {
     let blueprint: WorkBlueprint | null = null;
     let manifest: WorkPackageManifest;
     let selectionMeta: BlueprintSelectionMetadata | undefined;
+    let blueprintContract: BlueprintExecutionContract | null = null;
 
     if (request.checkpointData) {
       blueprint = request.checkpointData.blueprint;
@@ -891,7 +900,23 @@ export class UnifiedExecutionEngine {
       blueprint = null;
       const t1 = Date.now();
 
-      if (request.blueprintId) {
+      const canonicalSelection = await resolveCanonicalBlueprint(
+        request.canonicalIntent ?? request.blueprintCode,
+        organizationId,
+      );
+
+      if (canonicalSelection) {
+        blueprint = canonicalSelection.blueprint;
+        selectionMeta = {
+          method: "canonical",
+          confidence: canonicalSelection.confidence,
+          matchedKeywords: [],
+          fallbackUsed: canonicalSelection.fallbackUsed,
+          canonicalIntent: canonicalSelection.canonicalIntent,
+          blueprintFamily: canonicalSelection.blueprintFamily,
+          blueprintMode: canonicalSelection.blueprintMode,
+        };
+      } else if (request.blueprintId) {
         blueprint = await getBlueprintById(request.blueprintId, organizationId);
         selectionMeta = { method: "keyword", confidence: 1.0, matchedKeywords: [request.blueprintId], fallbackUsed: false };
       } else if (request.blueprintCode) {
@@ -902,6 +927,9 @@ export class UnifiedExecutionEngine {
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
+          canonicalIntent: selection.canonicalIntent,
+          blueprintFamily: selection.blueprintFamily,
+          blueprintMode: selection.blueprintMode,
         };
       } else {
         const selection = await selectBlueprint(userRequest, organizationId);
@@ -911,6 +939,9 @@ export class UnifiedExecutionEngine {
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
+          canonicalIntent: selection.canonicalIntent,
+          blueprintFamily: selection.blueprintFamily,
+          blueprintMode: selection.blueprintMode,
         };
       }
       tBlueprintMs = Date.now() - t1;
@@ -957,6 +988,77 @@ export class UnifiedExecutionEngine {
           "This task cannot be resumed — the work package was not captured before " +
           "your question. Please start a new conversation and describe the task again.",
       };
+    }
+
+    if (blueprint) {
+      blueprintContract = await getBlueprintExecutionContract(
+        blueprint,
+        organizationId,
+        selectionMeta?.blueprintMode ?? manifest.blueprintMode,
+      );
+      if (blueprintContract) {
+        await db
+          .update(workPackageManifestsTable)
+          .set({
+            templateVersion: blueprintContract.template?.version ?? null,
+            contractSnapshot: {
+              blueprint: {
+                id: blueprint.id,
+                code: blueprint.code,
+                version: blueprint.version,
+                family: blueprint.blueprintFamily,
+                mode: blueprintContract.mode,
+                maturityState: blueprint.maturityState,
+                ownerType: blueprint.ownerType,
+              },
+              sections: blueprintContract.sections.map((section) => ({
+                sectionCode: section.sectionCode,
+                required: section.required,
+                sortOrder: section.sortOrder,
+                evidenceRequirements: section.evidenceRequirements,
+              })),
+              deliverableContract: blueprint.deliverableContract,
+              evidenceContract: blueprint.evidenceContract,
+              template: blueprintContract.template
+                ? {
+                    id: blueprintContract.template.id,
+                    code: blueprintContract.template.code,
+                    version: blueprintContract.template.version,
+                    ownerType: blueprintContract.template.ownerType,
+                  }
+                : null,
+            },
+          })
+          .where(eq(workPackageManifestsTable.id, manifest.id));
+        manifest.templateVersion = blueprintContract.template?.version ?? null;
+        manifest.contractSnapshot = {
+          blueprint: {
+            id: blueprint.id,
+            code: blueprint.code,
+            version: blueprint.version,
+            family: blueprint.blueprintFamily,
+            mode: blueprintContract.mode,
+            maturityState: blueprint.maturityState,
+            ownerType: blueprint.ownerType,
+          },
+          sections: blueprintContract.sections.map((section) => ({
+            sectionCode: section.sectionCode,
+            required: section.required,
+            sortOrder: section.sortOrder,
+            evidenceRequirements: section.evidenceRequirements,
+          })),
+          deliverableContract: blueprint.deliverableContract,
+          evidenceContract: blueprint.evidenceContract,
+          template: blueprintContract.template
+            ? {
+                id: blueprintContract.template.id,
+                code: blueprintContract.template.code,
+                version: blueprintContract.template.version,
+                ownerType: blueprintContract.template.ownerType,
+              }
+            : null,
+        };
+      }
     }
 
     // ── Sprint 29F.1 Part 5: Manifest integrity hash ──────────────────────────
@@ -1257,6 +1359,7 @@ export class UnifiedExecutionEngine {
         userRequest, manifest, blueprint, styleGuidance.guidanceBlock,
         { userId: requesterId, organizationId, role: request.requesterRole! },
         evidencePack ?? undefined,
+        blueprintContract,
       );
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
@@ -1315,6 +1418,49 @@ export class UnifiedExecutionEngine {
     });
     tReviewMs = Date.now() - t6;
 
+    const runtimeGate = validateBlueprintRuntimeCompletion({
+      contract: blueprintContract,
+      contentMarkdown: reviewResult.finalContent,
+      rawClaims,
+      evidencePack: evidencePack ?? null,
+      artifactId: null,
+    });
+    if (!runtimeGate.passed) {
+      const blockingMessage = runtimeGate.failures
+        .map((failure) => `${failure.gate}: ${failure.message}`)
+        .join("; ");
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+            ? "awaiting_clarification"
+            : "failed",
+          failedStage: "completion_gates",
+          rootCause: blockingMessage,
+          retryAvailable: true,
+          clarificationItems: runtimeGate.failures
+            .filter((failure) => failure.state === "awaiting_clarification")
+            .map((failure) => ({ name: failure.gate, reason: failure.message })),
+        },
+      }).catch(() => {});
+
+      taskSession = runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+        ? closeExecutionSession(taskSession)
+        : markSessionError(taskSession, blockingMessage);
+      ctx.session = taskSession;
+
+      return {
+        outcome: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+          ? "awaiting_clarification"
+          : "validation_failed",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message: `Blueprint completion gates blocked this work: ${blockingMessage}`,
+        clarificationQuestions: runtimeGate.failures
+          .filter((failure) => failure.state === "awaiting_clarification")
+          .map((failure) => failure.message),
+      };
+    }
+
     await progress("creating_completed_work");
     const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
 
@@ -1351,6 +1497,10 @@ export class UnifiedExecutionEngine {
       organizationId,
       conversationId: request.conversationId,
       blueprintId: blueprint?.id,
+      blueprintVersion: manifest.blueprintVersion ?? blueprint?.version ?? null,
+      blueprintFamily: manifest.blueprintFamily ?? blueprint?.blueprintFamily ?? null,
+      blueprintMode: manifest.blueprintMode ?? blueprintContract?.mode ?? null,
+      canonicalIntent: manifest.canonicalIntent ?? selectionMeta?.canonicalIntent ?? null,
       manifestId: manifest.id,
       primarySpecialist: manifest.primarySpecialist,
       title,
@@ -1359,6 +1509,9 @@ export class UnifiedExecutionEngine {
       reviewResult,
       createdByUserId: requesterId,
       assetIds,
+      artifactRequired: blueprint?.deliverableContract?.artifactRequired === true,
+      artifactState: blueprint?.deliverableContract?.artifactRequired === true ? "content_drafting" : null,
+      artifactId: null,
     });
 
     // ── Sprint 29K.3: Full provenance chain (evidence + claims) ──────────────
@@ -1536,6 +1689,7 @@ export class UnifiedExecutionEngine {
     styleGuidanceBlock: string,
     authCtx: { userId: string; organizationId: string; role: string },
     evidencePack?: EvidencePack,
+    blueprintContract?: BlueprintExecutionContract | null,
   ): Promise<{ content: string; claims: RawClaim[] }> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
@@ -1568,13 +1722,13 @@ export class UnifiedExecutionEngine {
       systemPrompt = `You are a professional specialist at a disability services organisation. Produce high-quality professional work outputs.`;
     }
 
-    systemPrompt += buildWorkExecutionAddendum(blueprint);
+    systemPrompt += buildWorkExecutionAddendum(blueprint, blueprintContract);
     // Sprint 29K.3: add claim emission addendum — instructs the specialist to
     // return { content, claims } JSON rather than plain text. outputMode changes
     // to "json" below.  Claim JSON must NOT appear inside contentMarkdown.
     systemPrompt += buildClaimEmissionAddendum(evidencePack);
 
-    const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack);
+    const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract);
 
     const retrievedFields: string[] = [
       "organisationLibrarySources.sourceId",
@@ -2021,8 +2175,25 @@ AVAILABLE EVIDENCE CHUNK IDs (from your AUTHORITATIVE EVIDENCE section):
 ${chunkSummary}`;
 }
 
-function buildWorkExecutionAddendum(blueprint: WorkBlueprint | null): string {
+function buildWorkExecutionAddendum(
+  blueprint: WorkBlueprint | null,
+  contract?: BlueprintExecutionContract | null,
+): string {
   if (!blueprint) return "";
+  const sectionLines = contract?.sections.length
+    ? contract.sections.map((section) => [
+        `- ${section.sectionCode}: ${section.title}${section.required ? " (required)" : ""}`,
+        section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
+        section.instructions ? `  Instructions: ${section.instructions}` : "",
+        section.prohibitedAssumptions.length > 0 ? `  Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
+      ].filter(Boolean).join("\n")).join("\n")
+    : "No structured sections configured.";
+  const deliverableContract = blueprint.deliverableContract
+    ? JSON.stringify(blueprint.deliverableContract)
+    : "No deliverable contract configured.";
+  const evidenceContract = blueprint.evidenceContract
+    ? JSON.stringify(blueprint.evidenceContract)
+    : "No evidence contract configured.";
   return `
 
 ---
@@ -2037,6 +2208,15 @@ You are executing professional work governed by the "${blueprint.title}" bluepri
 ${blueprint.successCriteria.map(c => `- ${c}`).join("\n")}
 
 **Mandatory Citations:** ${blueprint.mandatoryCitations.join(", ") || "None specified"}
+
+**Blueprint Family/Mode:** ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}
+
+**Structured Sections:**
+${sectionLines}
+
+**Deliverable Contract:** ${deliverableContract}
+
+**Evidence Contract:** ${evidenceContract}
 
 **EXECUTION RULES:**
 1. Never invent facts, policy positions, or legislative requirements
@@ -2053,6 +2233,7 @@ function buildWorkPackagePrompt(
   blueprint: WorkBlueprint | null,
   styleGuidanceBlock: string,
   evidencePack?: EvidencePack,
+  contract?: BlueprintExecutionContract | null,
 ): string {
   const sections: string[] = [];
 
@@ -2097,8 +2278,24 @@ function buildWorkPackagePrompt(
     sections.push(
       `=== BLUEPRINT: ${blueprint.title} ===\n` +
       `Objective: ${blueprint.objective}\n` +
+      `Family/mode: ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}\n` +
       `Output types: ${blueprint.outputTypes.join(", ")}\n` +
       `Mandatory citations: ${blueprint.mandatoryCitations.join(", ") || "none"}`
+    );
+  }
+
+  if (contract?.sections.length) {
+    sections.push(
+      `=== STRUCTURED BLUEPRINT SECTIONS ===\n` +
+      contract.sections.map((section) =>
+        [
+          `${section.sortOrder}. ${section.sectionCode} — ${section.title}${section.required ? " [REQUIRED]" : ""}`,
+          section.description ? `Description: ${section.description}` : "",
+          section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
+          section.instructions ? `Instructions: ${section.instructions}` : "",
+          section.prohibitedAssumptions.length ? `Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
+        ].filter(Boolean).join("\n")
+      ).join("\n\n")
     );
   }
 

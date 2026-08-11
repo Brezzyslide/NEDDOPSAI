@@ -5,6 +5,11 @@ packages:
   - agents/*
   - scripts
 
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
+  keytar: true
+
 autoInstallPeers: false
 
 catalog:
@@ -45,6 +50,7 @@ onlyBuiltDependencies:
   - '@swc/core'
   - better-sqlite3
   - esbuild
+  - keytar
   - msw
   - unrs-resolver
 
