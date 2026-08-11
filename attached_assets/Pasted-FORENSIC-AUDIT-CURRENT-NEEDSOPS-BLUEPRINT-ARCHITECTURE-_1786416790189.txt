@@ -1,0 +1,339 @@
+FORENSIC AUDIT — CURRENT NEEDSOPS BLUEPRINT ARCHITECTURE
+
+Do NOT change code.
+Do NOT improve the blueprints.
+Do NOT create new blueprints.
+Do NOT seed additional data.
+
+I want to understand exactly how the existing NeedsOps blueprint system was originally developed and how it operates today.
+
+We are about to redesign major work-product blueprints such as Care Plan, Risk Assessment, Policy Review, Incident Review and Rostering Review. Before doing that, establish the current truth.
+
+## 1. What exactly is a "blueprint" in NeedsOps?
+
+Trace the blueprint architecture from source code through database and UI.
+
+Identify:
+
+* blueprint-related tables
+* schemas/types
+* services
+* APIs
+* seed files
+* migration files
+* UI components/pages
+* execution/work-product services that consume blueprints
+
+Explain the complete lifecycle:
+
+Blueprint definition
+→ storage
+→ selection
+→ task/work-product execution
+→ output.
+
+## 2. How were the existing blueprints created?
+
+For every currently existing blueprint, determine whether it originated from:
+
+* hardcoded source code
+* database seed
+* migration
+* placeholder/demo data
+* runtime-generated configuration
+* manually entered DB data
+* UI-created configuration
+* another source
+
+Produce a table:
+
+| Blueprint | Purpose | Origin | Source file/table | Placeholder or production-intended? |
+| --------- | ------- | ------ | ----------------- | ----------------------------------- |
+
+Do not infer. Trace each one to evidence.
+
+## 3. Are blueprint definitions hardcoded?
+
+Search the entire repository for blueprint definitions and work-product specifications.
+
+Determine which parts are hardcoded, including if applicable:
+
+* blueprint IDs
+* names
+* descriptions
+* required sections
+* prompts
+* specialist assignments
+* capabilities
+* evidence requirements
+* output types
+* templates
+* completion rules
+* risk requirements
+* artifact formats
+
+Distinguish between:
+
+`HARDCODED APPLICATION LOGIC`
+
+and
+
+`CONFIGURABLE BLUEPRINT DATA`.
+
+## 4. Were the current blueprints intended as placeholders?
+
+Look at:
+
+* comments
+* sprint documentation
+* seed descriptions
+* migration names
+* test fixtures
+* commit history where available
+* memory/project documentation
+
+Determine whether the current generic blueprints were deliberately temporary scaffolding/placeholders or intended as the final production blueprint architecture.
+
+For example, explain why a Care Plan request can currently route through generic drafting behaviour and why a Risk Assessment may also be produced.
+
+Do not speculate where evidence is unavailable.
+
+## 5. What fields does a blueprint currently support?
+
+Show the actual current blueprint data model.
+
+For each supported field explain what it controls.
+
+Specifically determine whether the current model supports:
+
+* name
+* work-product type
+* description
+* required sections
+* section instructions
+* template
+* evidence requirements
+* evidence source policy
+* specialist ownership
+* required capabilities
+* approval gates
+* output format
+* DOCX
+* PDF
+* structured data
+* supporting analysis
+* prohibited outputs
+* completion criteria
+* validation rules
+* organisation-specific overrides
+* versioning
+* publication state
+* effective dates
+
+Mark unsupported capabilities clearly.
+
+## 6. Are blueprints editable?
+
+Determine whether blueprint definitions can currently be:
+
+* created
+* viewed
+* edited
+* duplicated
+* versioned
+* published
+* archived/deactivated
+* deleted
+
+For each action identify whether it can be performed through:
+
+* Platform Console
+* organisation admin UI
+* API only
+* database only
+* source-code change only
+
+Produce:
+
+| Action | Platform UI | Tenant UI | API | DB | Code change required |
+| ------ | ----------- | --------- | --- | -- | -------------------- |
+
+## 7. Are blueprints visible anywhere in the UI?
+
+Search the complete NeedsOps frontend.
+
+Identify every page where a platform administrator, organisation administrator or ordinary user can see blueprint information.
+
+If there is a blueprint-management page, show:
+
+* route
+* component
+* permissions
+* fields displayed
+* actions available
+
+If there is NO blueprint management UI, state that explicitly.
+
+Also determine whether users only see the resulting task/work product without knowing which blueprint produced it.
+
+## 8. Platform blueprint vs organisation blueprint
+
+Determine whether the architecture currently supports:
+
+`NeedsOps global blueprint`
+
+versus
+
+`organisation-specific blueprint`
+
+For example:
+
+NeedsOps Care Plan Blueprint v3
+→ default for all tenants
+
+Organisation A
+→ uses default
+
+Organisation B
+→ customised Care Plan Blueprint
+
+Organisation C
+→ uses default but substitutes its own DOCX template.
+
+Is anything like this currently supported?
+
+Show database and service evidence.
+
+## 9. Blueprint selection
+
+Trace exactly how a user request such as:
+
+"Create a comprehensive care plan for Chase Summerfield"
+
+becomes associated with a blueprint.
+
+Show:
+
+User message
+→ CoS classification
+→ task intent
+→ capability
+→ specialist
+→ blueprint/work-product selection
+→ execution.
+
+Identify whether blueprint selection is:
+
+* deterministic
+* keyword-based
+* LLM-selected
+* specialist-selected
+* capability-selected
+* hardcoded mapping
+* fallback/generic
+* combination of these.
+
+This is particularly important.
+
+## 10. Care Plan forensic trace
+
+Trace the exact Care Plan request we previously tested.
+
+Explain why the resulting work:
+
+* did not follow our expected Care Plan template
+* was not sufficiently detailed
+* produced system output instead of a DOCX/PDF deliverable
+* also produced Risk Assessment content/output
+
+Identify the exact code/data decisions responsible for each behaviour.
+
+Do not fix them yet.
+
+## 11. Template architecture
+
+Determine whether "blueprint" and "template" are currently the same thing or separate concepts.
+
+Identify whether NeedsOps currently has a mechanism for:
+
+* DOCX templates
+* PDF templates
+* organisation-uploaded templates
+* template placeholders/merge fields
+* document rendering
+* template versioning
+* associating templates with blueprints.
+
+Show what exists versus what is merely planned.
+
+## 12. Blueprint ownership and governance
+
+Determine who currently owns blueprint definitions technically.
+
+Is it:
+
+* source code
+* platform database
+* tenant database
+* specialist DNA
+* Workforce Registry
+* Work Product Engine
+* another subsystem?
+
+Then state where blueprint ownership SHOULD NOT be confused with specialist personality/DNA.
+
+This audit should describe current architecture only, not redesign it.
+
+## 13. Final architecture diagram
+
+Give me the CURRENT real flow in plain text:
+
+User Request
+↓
+...
+↓
+Blueprint Selection
+↓
+...
+↓
+Work Product
+↓
+Artifact/Output
+
+Mark every generic fallback or placeholder boundary.
+
+## 14. Final truth table
+
+Return:
+
+| Question                                          | Answer                 | Evidence |
+| ------------------------------------------------- | ---------------------- | -------- |
+| Are blueprints hardcoded?                         | YES/PARTLY/NO          |          |
+| Are current blueprints placeholders?              | YES/PARTLY/NO/UNPROVEN |          |
+| Stored in DB?                                     |                        |          |
+| Seeded?                                           |                        |          |
+| Editable via UI?                                  |                        |          |
+| Visible via UI?                                   |                        |          |
+| Editable via API?                                 |                        |          |
+| Versioned?                                        |                        |          |
+| Tenant-specific overrides supported?              |                        |          |
+| Templates separate from blueprints?               |                        |          |
+| DOCX templates supported?                         |                        |          |
+| PDF generation supported?                         |                        |          |
+| Blueprint selected deterministically?             |                        |          |
+| Generic fallback exists?                          |                        |          |
+| Care Plan has dedicated blueprint?                |                        |          |
+| Risk Assessment has dedicated blueprint?          |                        |          |
+| Care Plan can incorrectly invoke Risk Assessment? |                        |          |
+
+Finally provide exactly four conclusions:
+
+### CURRENT BLUEPRINT ARCHITECTURE
+
+### WHY THE CURRENT CARE PLAN TEST BEHAVED AS IT DID
+
+### WHAT IS PLACEHOLDER/GENERIC TODAY
+
+### WHAT MUST BE DECIDED BEFORE WE REDESIGN BLUEPRINTS
+
+Do not implement anything.
