@@ -12,11 +12,45 @@
  *   4. Organisation Workforce Health executive summary
  */
 
-import { useState } from "react";
+import { Component, type ReactNode, useState } from "react";
 import { useParams, useLocation } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
+
+// ─── Route-scoped error boundary ─────────────────────────────────────────────
+// Catches render errors inside WorkforceOpsCentre so they don't propagate to
+// the top-level ClerkErrorBoundary and take down the whole app.
+
+class WorkforceErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full gap-4 text-[#64748B] py-24">
+          <p className="text-lg font-semibold text-white">Workforce Operations failed to load</p>
+          <p className="text-sm max-w-sm text-center">{this.state.error.message}</p>
+          <button
+            onClick={() => { this.setState({ error: null }); window.location.reload(); }}
+            className="mt-2 px-4 py-2 rounded-lg bg-[#1E3A5F] text-[#00D4FF] text-sm hover:bg-[#1E3A5F]/80 transition-colors"
+          >
+            Reload page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -289,6 +323,7 @@ export default function WorkforceOpsCentre() {
 
   return (
     <AppShell orgSlug={slug ?? ""}>
+      <WorkforceErrorBoundary>
       {/* ── Header ── */}
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4">
@@ -497,6 +532,7 @@ export default function WorkforceOpsCentre() {
           )}
         </div>
       </div>
+      </WorkforceErrorBoundary>
     </AppShell>
   );
 }

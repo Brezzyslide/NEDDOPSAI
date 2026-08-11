@@ -38,10 +38,12 @@ export function useOrgRole(orgSlug: string | undefined): OrgRoleState {
   const { data, isLoading } = useQuery({
     queryKey:  ["me-orgs"],
     queryFn:   () =>
-      apiFetch("/v1/me/organisations").then(r =>
-        r.ok ? r.json() : { organisations: [] },
-      ),
+      apiFetch("/v1/me/organisations").then(r => {
+        if (!r.ok) throw new Error(`me/organisations ${r.status}`);
+        return r.json();
+      }),
     staleTime: 5 * 60_000,
+    retry: 3,
     enabled:   !!orgSlug,
   });
 

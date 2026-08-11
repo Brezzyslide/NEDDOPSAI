@@ -115,8 +115,12 @@ export default function AppShell({ orgSlug, children }: AppShellProps) {
   // "admin" (short form) does not exist — always use "administrator".
   const { data: meOrgsData } = useQuery({
     queryKey:  ["me-orgs"],
-    queryFn:   () => apiFetch("/v1/me/organisations").then(r => r.ok ? r.json() : { organisations: [] }),
+    queryFn:   () => apiFetch("/v1/me/organisations").then(r => {
+      if (!r.ok) throw new Error(`me/organisations ${r.status}`);
+      return r.json();
+    }),
     staleTime: 5 * 60_000,
+    retry: 3,
   });
   const orgRole: string =
     (meOrgsData?.organisations as Array<{ slug: string; role: string }> | undefined)
