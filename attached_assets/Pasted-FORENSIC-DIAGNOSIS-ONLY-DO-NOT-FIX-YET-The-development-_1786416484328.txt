@@ -1,0 +1,92 @@
+FORENSIC DIAGNOSIS ONLY — DO NOT FIX YET.
+
+The development Mac is now paired successfully.
+
+Live broker evidence shows:
+
+* relay credentials loaded
+* refreshTokenPresent = true
+* RelayClient starts
+* it connects to:
+
+`wss://6e3c7ebd-ed0f-4f21-ad0b-b6e56268e1d3-00-3qklsjmelyipg.kirk.replit.dev/v1/devices/relay`
+
+* connection repeatedly fails
+* exact error: `WebSocket handshake has timed out`
+* client then closes and schedules reconnect
+
+There is no `auth_ok` and no `auth_error`.
+
+Therefore pairing/authentication has not yet been reached. The failure is at the WebSocket transport/upgrade layer.
+
+Diagnose the exact first failing boundary.
+
+1. Confirm the API server actually registers `/v1/devices/relay` on the same HTTP server that serves the public Replit dev URL.
+
+2. Show the exact `WebSocketServer` construction and how it is attached to the HTTP server.
+
+3. Confirm whether Replit's public dev hostname supports WebSocket Upgrade requests to this API server process.
+
+4. Verify whether the correct public WebSocket URL is really:
+
+`wss://6e3c7ebd-ed0f-4f21-ad0b-b6e56268e1d3-00-3qklsjmelyipg.kirk.replit.dev/v1/devices/relay`
+
+or whether another:
+
+* host
+* port
+* preview path
+* artifact path prefix
+* deployment URL
+
+is required.
+
+5. From within Replit, inspect current server/listener configuration and identify:
+
+* API server port
+* public routing/preview mapping
+* whether HTTP requests to `/v1/...` and WebSocket upgrades use the same external route
+* whether a proxy strips or fails to forward `Connection: Upgrade`
+
+6. Perform a real WebSocket upgrade test against the public URL if possible.
+
+Do not use ordinary HTTP 200 as proof.
+
+Show whether the server receives the upgrade request.
+
+7. Inspect API logs during one Mac connection attempt and determine whether the request reaches:
+
+* Replit edge/proxy
+* Node HTTP server
+* WebSocket upgrade handler
+* `/v1/devices/relay`
+
+If the server sees nothing, state that clearly.
+
+8. Check whether the handshake timeout is caused by:
+
+* wrong endpoint
+* reverse proxy / Replit preview transport
+* server not listening
+* wrong server instance
+* path prefix mismatch
+* TLS issue
+* another proven cause
+
+9. Return:
+
+| Layer                                    | Result                | Evidence |
+| ---------------------------------------- | --------------------- | -------- |
+| Mac resolves public host                 | PASS/FAIL             |          |
+| TCP/TLS connection established           | PASS/FAIL             |          |
+| WebSocket Upgrade reaches Replit         | PASS/FAIL/UNPROVEN    |          |
+| Upgrade reaches Node API server          | PASS/FAIL/UNPROVEN    |          |
+| `/v1/devices/relay` handler sees request | PASS/FAIL/UNPROVEN    |          |
+| Authentication begins                    | PASS/FAIL/NOT REACHED |          |
+| `auth_ok` returned                       | PASS/FAIL/NOT REACHED |          |
+
+10. Give ONE exact:
+
+`FIRST FAILING BOUNDARY`
+
+Do not implement a fix until the transport issue is proven.
