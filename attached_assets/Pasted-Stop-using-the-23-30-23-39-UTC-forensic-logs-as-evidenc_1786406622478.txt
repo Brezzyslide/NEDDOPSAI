@@ -1,0 +1,171 @@
+Stop using the 23:30–23:39 UTC forensic logs as evidence of the CURRENT runtime state.
+
+Those logs correctly prove that the broker was offline DURING THAT HISTORICAL TEST WINDOW.
+
+Since then, the environment has changed.
+
+We have independently proven AFTER A FULL MAC REBOOT that:
+
+* Runtime Broker auto-started on `127.0.0.1:19002`
+* `/v1/health` returned `status = healthy`
+* `gateway.adapter = live`
+* `gateway.ok = true`
+* `gateway.detail = "spawn mode; bin=openclaw"`
+* Cloudflare Quick Tunnel auto-started
+* a new Quick Tunnel URL was generated
+* Replit `OPENCLAW_RUNTIME_URL` was updated to the new tunnel URL
+* from Replit Shell, calling:
+
+`$OPENCLAW_RUNTIME_URL/v1/health`
+
+returned healthy with live OpenClaw gateway status
+
+Therefore the statement:
+
+“the runtime is not connected because the 23:30 test used null_no_runtime”
+
+is not a valid diagnosis of the CURRENT state.
+
+Do not ask me to manually start the broker or Cloudflare again. They are already running.
+
+Perform a CURRENT-TIME live investigation now.
+
+I need you to prove why the actual NeedsOps API/execution layer currently believes the runtime is unavailable even though Replit Shell can reach the live broker.
+
+### 1. Current API process environment
+
+Determine the value of `OPENCLAW_RUNTIME_URL` inside the actual running API server process, not just Replit Shell.
+
+Sanitize any secrets.
+
+Report:
+
+* Shell runtime URL
+* API server runtime URL
+* whether they match
+
+### 2. Current broker reachability FROM the API process
+
+From the same execution context as the NeedsOps API server, call the current runtime health endpoint.
+
+Show:
+
+* URL used
+* HTTP status
+* parsed health body
+* gateway.adapter
+* gateway.ok
+
+### 3. Current `isAvailable()` result
+
+Call or instrument the exact runtime/discovery adapter availability method used by DiscoveryOrchestrator.
+
+Show:
+
+* method/function
+* source file
+* returned value
+* reason
+
+I specifically want to know whether:
+
+`HTTP broker reachable = true`
+
+but:
+
+`adapter.isAvailable() = false`
+
+If so, explain the additional condition causing false.
+
+### 4. Adapter construction/current configuration
+
+Determine when the OpenClaw/Desktop discovery adapter is instantiated.
+
+Check whether:
+
+* it reads `OPENCLAW_RUNTIME_URL` once at process startup
+* it cached the old URL
+* it needs an API server restart
+* the adapter instance holds stale state
+* the adapter availability result is cached
+
+### 5. Current adapter selection
+
+Run the same adapter-selection logic DiscoveryOrchestrator would use RIGHT NOW for a scope requiring local desktop/file discovery.
+
+Report all candidate adapters and selection result.
+
+Expected output format:
+
+| Adapter              | Available? | Reason |
+| -------------------- | ---------: | ------ |
+| Internal KRS         |        ... | ...    |
+| Desktop/OpenClaw     |        ... | ...    |
+| NullDiscoveryAdapter |        ... | ...    |
+
+Then report which one would be selected now.
+
+### 6. Device state versus HTTP runtime state
+
+Check whether DesktopDiscoveryAdapter requires a registered connected device in addition to broker HTTP health.
+
+Inspect whether it checks:
+
+* device registry
+* organisation-device mapping
+* device heartbeat
+* `connected` status
+* relay session
+* activation state
+* device token
+* tenant mapping
+
+If the manually configured broker is healthy but NeedsOps does not consider a device connected, show exactly where that mismatch occurs.
+
+### 7. Do not confuse production installer status with dev runtime status
+
+We already know the customer Desktop Connector installer is not implemented.
+
+That does NOT mean our manually configured development broker cannot be used.
+
+These are separate facts:
+
+A. Customer installer/productisation = incomplete
+
+B. Development Mac Runtime Broker = currently running and reachable
+
+Do not use A as evidence that B is unavailable.
+
+### 8. Current truth table
+
+Return:
+
+| Current check                   | Result             | Evidence |
+| ------------------------------- | ------------------ | -------- |
+| Mac broker healthy              | PASS/FAIL          |          |
+| OpenClaw gateway live           | PASS/FAIL          |          |
+| Cloudflare endpoint reachable   | PASS/FAIL          |          |
+| Replit Shell reaches broker     | PASS/FAIL          |          |
+| API process has current URL     | PASS/FAIL          |          |
+| API process reaches broker      | PASS/FAIL          |          |
+| Desktop adapter `isAvailable()` | PASS/FAIL          |          |
+| Desktop adapter selected        | PASS/FAIL          |          |
+| Null adapter avoided            | PASS/FAIL          |          |
+| Ready for new local-file task   | PASS/FAIL/UNPROVEN |          |
+
+### 9. Give ONE current first failing boundary
+
+Do not cite the old test window as the current failure.
+
+Examples:
+
+* API server still holds old tunnel URL
+* adapter instance cached stale URL
+* device registry says disconnected
+* adapter requires relay connection, not HTTP broker health
+* runtime health response is not interpreted as connected
+* another current cause
+
+Anything not directly demonstrated should be marked UNPROVEN.
+
+Do not implement a fix yet.
