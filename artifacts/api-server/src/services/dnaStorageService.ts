@@ -422,7 +422,7 @@ export async function seedDNAFromStaticRegistry(
     ownerType:    canonicalProfile.governance.ownerType,
     visibilityTier: canonicalProfile.governance.visibilityTier,
     professionalReviewRequired: canonicalProfile.governance.professionalReviewRequired,
-    approvedBy:   canonicalProfile.governance.approvedBy,
+    approvedBy:   canonicalProfile.governance.approvedBy ?? publishedBy,
     changeReason: canonicalProfile.governance.changeReason,
     effectiveFrom: canonicalProfile.governance.effectiveFrom
       ? new Date(canonicalProfile.governance.effectiveFrom)
@@ -446,8 +446,6 @@ export async function seedDNAFromStaticRegistry(
     escalationRules,
     prohibitedBehaviours: profile.professionalBoundaries.cannotDo,
     memoryPolicy: { allowedScopes, prohibitedScopes },
-    changeDescription: profile.currentVersion.changeDescription,
-    publishedBy,
     publishedAt: new Date(),
   });
 

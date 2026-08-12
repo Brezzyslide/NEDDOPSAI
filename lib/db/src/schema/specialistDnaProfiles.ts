@@ -114,12 +114,6 @@ export const specialistDnaProfilesTable = pgTable("specialist_dna_profiles", {
    */
   memoryPolicy: jsonb("memory_policy").notNull().default({}),
 
-  /** Legacy compatibility: older static-DNA seed path change summary. */
-  changeDescription: text("change_description"),
-
-  /** Legacy compatibility: older static-DNA seed path publisher. */
-  publishedBy: text("published_by"),
-
   createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   retiredAt:   timestamp("retired_at",   { withTimezone: true }),
