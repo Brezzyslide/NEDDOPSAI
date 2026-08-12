@@ -18,6 +18,7 @@ import { WORKFORCE_PACKS, SPECIALISTS, getSpecialistCapabilities, DEPRECATED_ROL
 import { db, tenantWorkforcePacksTable, organizationsTable, workforcePacksTable, specialistCatalogueTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { listCatalogue } from "../../services/specialistCatalogueService.js";
+import { getCanonicalDNAProfile } from "@workspace/workforce-dna";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -148,6 +149,22 @@ router.get("/specialists", ...auth, async (req, res, next) => {
 
     res.json({ specialists: merged, total: merged.length });
   } catch (err) { next(err); }
+});
+
+// Platform-private canonical DNA inspection. Tenant workforce routes only expose
+// safe descriptors; full DNA remains platform IP behind platform auth.
+router.get("/specialists/:code/dna", ...auth, (req, res) => {
+  const dna = getCanonicalDNAProfile(req.params.code);
+  if (!dna) {
+    res.status(404).json({
+      error: {
+        code: "RESOURCE_NOT_FOUND",
+        message: "Canonical DNA is not published for this specialist.",
+      },
+    });
+    return;
+  }
+  res.json({ dna });
 });
 
 router.get("/specialists/:code", ...auth, async (req, res, next) => {

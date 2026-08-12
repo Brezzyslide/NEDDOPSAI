@@ -23,13 +23,14 @@
  * That remains in executionService.ts → checkExecutionAccess.
  */
 
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import {
   db,
   specialistDnaProfilesTable,
   specialistDnaCompetenciesTable,
   organisationSpecialistConfigTable,
 } from "@workspace/db";
+import type { DNAProfile, WorkforceDNA, WorkforceDNARuntimeProjection } from "@workspace/workforce-dna";
 
 // ─── Static fallback (development only) ──────────────────────────────────────
 
@@ -49,10 +50,14 @@ function isStaticFallbackAllowed(): boolean {
 // ─── Resolved DNA shape ───────────────────────────────────────────────────────
 
 export interface ResolvedDNA {
+  /** Stable canonical DNA ID. Defaults to specialistId for legacy records. */
+  dnaId?: string;
   /** Workforce role code */
   specialistId: string;
   /** Semver DNA version */
   version: string;
+  /** SHA-256 hash of the canonical DNA version, when available */
+  versionHash?: string;
   /** Where this DNA came from */
   source: "database" | "static_fallback";
   /** Display domain — e.g. "Strategic Operations", "Operations" */
@@ -79,6 +84,10 @@ export interface ResolvedDNA {
     allowedScopes: string[];
     prohibitedScopes: string[];
   };
+  /** Full canonical structured Workforce DNA profile, when available */
+  canonicalProfile?: WorkforceDNA;
+  /** Runtime projection rules for this DNA version, when available */
+  runtimeProjection?: WorkforceDNARuntimeProjection;
 }
 
 // ─── Resolved organisation context ────────────────────────────────────────────
@@ -112,6 +121,11 @@ export async function loadDNAFromDatabase(roleCode: string): Promise<ResolvedDNA
         eq(specialistDnaProfilesTable.status, "published"),
       ),
     )
+    .orderBy(
+      desc(specialistDnaProfilesTable.effectiveFrom),
+      desc(specialistDnaProfilesTable.publishedAt),
+      desc(specialistDnaProfilesTable.createdAt),
+    )
     .limit(1);
 
   if (rows.length === 0) return null;
@@ -140,10 +154,17 @@ export async function loadDNAFromDatabase(roleCode: string): Promise<ResolvedDNA
     profile.memoryPolicy,
     {},
   );
+  const canonicalProfile = parse<WorkforceDNA | null>(profile.canonicalProfile, null);
+  const runtimeProjection = parse<WorkforceDNARuntimeProjection | null>(
+    profile.runtimeProjection,
+    null,
+  );
 
   return {
+    dnaId:            profile.dnaId ?? profile.specialistId,
     specialistId:     profile.specialistId,
     version:          profile.version,
+    versionHash:      profile.versionHash ?? canonicalProfile?.versioning.versionHash,
     source:           "database" as const,
     mission:          profile.mission,
     objectives:       parse<string[]>(profile.objectives, []),
@@ -167,6 +188,8 @@ export async function loadDNAFromDatabase(roleCode: string): Promise<ResolvedDNA
       allowedScopes:    memPolicy.allowedScopes    ?? [],
       prohibitedScopes: memPolicy.prohibitedScopes ?? [],
     },
+    canonicalProfile: canonicalProfile ?? undefined,
+    runtimeProjection: runtimeProjection ?? canonicalProfile?.runtimeProjection,
   };
 }
 
@@ -196,19 +219,7 @@ export async function loadDNAWithStaticFallback(roleCode: string): Promise<Resol
   }
 
   // Dynamically load static registry (avoids hard dependency in production builds)
-  let staticProfile: {
-    identity: { roleCode: string; title: string; domain: string };
-    currentVersion: { version: string; isActive: boolean };
-    mission: { primaryMission: string; objectives: string[]; values: string[] };
-    competencies: Array<{ code: string; name: string; level: string; description: string }>;
-    escalationFramework: {
-      rules: Array<{ trigger: string; action: string; priority: string }>;
-      hardStops: string[];
-    };
-    professionalBoundaries: { canDo: string[]; cannotDo: string[]; securityConstraints: string[] };
-    communicationStyle: { toneOfVoice: string; languageRegister: string; conversationLabel: string };
-    memoryPolicy: { readCategories: string[]; writeCategories: string[] };
-  } | null;
+  let staticProfile: DNAProfile | null;
 
   try {
     const { getDNAProfile } = await import("@workspace/workforce-dna");
@@ -247,9 +258,14 @@ export async function loadDNAWithStaticFallback(roleCode: string): Promise<Resol
     .filter(c => c.toLowerCase().includes("memory") || c.toLowerCase().includes("session"))
     .slice(0, 5);
 
+  const { mapLegacyDNAProfileToWorkforceDNA } = await import("@workspace/workforce-dna");
+  const canonicalProfile = mapLegacyDNAProfileToWorkforceDNA(staticProfile);
+
   return {
+    dnaId:            canonicalProfile.versioning.dnaId,
     specialistId:     staticProfile.identity.roleCode,
     version:          dnaVersion,
+    versionHash:      canonicalProfile.versioning.versionHash,
     source:           "static_fallback" as const,
     mission:          staticProfile.mission.primaryMission,
     objectives:       staticProfile.mission.objectives,
@@ -273,6 +289,8 @@ export async function loadDNAWithStaticFallback(roleCode: string): Promise<Resol
       allowedScopes,
       prohibitedScopes,
     },
+    canonicalProfile,
+    runtimeProjection: canonicalProfile.runtimeProjection,
   };
 }
 
@@ -351,7 +369,7 @@ export async function seedDNAFromStaticRegistry(
   roleCode: string,
   publishedBy: string = "seed_script",
 ): Promise<"created" | "already_exists"> {
-  const { getDNAProfile } = await import("@workspace/workforce-dna");
+  const { getDNAProfile, mapLegacyDNAProfileToWorkforceDNA } = await import("@workspace/workforce-dna");
   const profile = getDNAProfile(roleCode);
   if (!profile || !profile.currentVersion.isActive) {
     throw new Error(`No active static DNA profile found for "${roleCode}"`);
@@ -384,6 +402,7 @@ export async function seedDNAFromStaticRegistry(
   ];
 
   const dnaVersion = profile.currentVersion.version;
+  const canonicalProfile = mapLegacyDNAProfileToWorkforceDNA(profile);
   const allowedScopes = [
     ...profile.memoryPolicy.readCategories,
     ...profile.memoryPolicy.writeCategories.filter(
@@ -398,6 +417,22 @@ export async function seedDNAFromStaticRegistry(
     id:           profileId,
     specialistId: roleCode,
     version:      dnaVersion,
+    dnaId:        canonicalProfile.versioning.dnaId,
+    versionHash:  canonicalProfile.versioning.versionHash,
+    ownerType:    canonicalProfile.governance.ownerType,
+    visibilityTier: canonicalProfile.governance.visibilityTier,
+    professionalReviewRequired: canonicalProfile.governance.professionalReviewRequired,
+    approvedBy:   canonicalProfile.governance.approvedBy,
+    changeReason: canonicalProfile.governance.changeReason,
+    effectiveFrom: canonicalProfile.governance.effectiveFrom
+      ? new Date(canonicalProfile.governance.effectiveFrom)
+      : undefined,
+    previousVersion: canonicalProfile.versioning.previousVersion,
+    supersedes:   canonicalProfile.versioning.supersedes,
+    migrationNotes: canonicalProfile.versioning.migrationNotes,
+    canonicalProfile,
+    runtimeProjection: canonicalProfile.runtimeProjection,
+    immutablePublishedSnapshot: canonicalProfile.versioning.immutablePublishedSnapshot,
     status:       "published",
     mission:      profile.mission.primaryMission,
     objectives:   profile.mission.objectives,

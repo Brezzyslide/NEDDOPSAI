@@ -17,6 +17,11 @@
 
 import type { DNAProfile, RunVersionRecord } from "./types.js";
 import { captureRunVersions } from "./types.js";
+import type { SafeWorkforceDNADescriptor, WorkforceDNA } from "./canonical.js";
+import {
+  buildSafeWorkforceDNADescriptor,
+  mapLegacyDNAProfileToWorkforceDNA,
+} from "./canonical.js";
 import { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
 import { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
 import { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
@@ -81,6 +86,30 @@ export function getAllActiveDNAProfiles(): DNAProfile[] {
 export function hasActiveDNA(roleCode: string): boolean {
   const profile = REGISTRY.get(roleCode);
   return profile?.currentVersion.isActive ?? false;
+}
+
+/**
+ * Returns the canonical structured Workforce DNA projection for an activated
+ * role. This preserves legacy DNA content but maps it into the canonical
+ * structured model used by the runtime projection pipeline.
+ */
+export function getCanonicalDNAProfile(roleCode: string): WorkforceDNA | null {
+  const profile = REGISTRY.get(roleCode);
+  if (!profile || !profile.currentVersion.isActive) return null;
+  return mapLegacyDNAProfileToWorkforceDNA(profile);
+}
+
+/**
+ * Returns a tenant-safe specialist descriptor. This deliberately excludes
+ * private platform DNA such as reasoning methodology, evidence philosophy,
+ * collaboration rules, escalation internals and compiled instructions.
+ */
+export function getSafeDNADescriptor(
+  roleCode: string,
+  availability: SafeWorkforceDNADescriptor["availability"] = "available",
+): SafeWorkforceDNADescriptor | null {
+  const canonical = getCanonicalDNAProfile(roleCode);
+  return canonical ? buildSafeWorkforceDNADescriptor(canonical, availability) : null;
 }
 
 /**

@@ -84,6 +84,162 @@ export interface SpecialistManifestCompetency {
   version: string;
 }
 
+export interface SpecialistManifestIdentityDescriptor {
+  specialistId: string;
+  displayName: string;
+  title: string;
+  domainFamily: string;
+  roleType: string;
+  seniorityLevel: string;
+  specialistKind: string;
+  descriptor: string;
+}
+
+export interface SpecialistManifestMission {
+  missionStatement: string;
+  primaryPurpose: string;
+  responsibilities: string[];
+  nonResponsibilities: string[];
+  successDefinition: string[];
+}
+
+export interface SpecialistManifestExpertise {
+  domains: string[];
+  subdomains: string[];
+  capabilityClaims: string[];
+  knowledgeBoundaries: string[];
+  regulatoryDomains: string[];
+}
+
+export interface SpecialistManifestProfessionalPractice {
+  practicePrinciples: string[];
+  qualityStandards: string[];
+  professionalIndependence: string[];
+  challengeBehaviour: string[];
+  assumptionDiscipline: string[];
+  decisionDiscipline: string[];
+}
+
+export interface SpecialistManifestReasoningModel {
+  reasoningPrinciples: string[];
+  decisionMethodology: Array<{
+    stepId: string;
+    name: string;
+    description: string;
+    type: string;
+    mandatory: boolean;
+    dependsOn: string[];
+    instruction: string;
+  }>;
+  prioritisationLogic: string[];
+  contradictionHandling: string[];
+  assumptionHandling: string[];
+  pauseOrEscalateConditions: string[];
+}
+
+export interface SpecialistManifestEvidenceModel {
+  evidencePhilosophy: string[];
+  sourcePreference: Array<{
+    type: string;
+    weight: string;
+    requirements: string[];
+  }>;
+  corroborationRules: string[];
+  factualClaimDiscipline: string[];
+  insufficientEvidenceBehaviour: string[];
+  confidenceExpression: string[];
+}
+
+export interface SpecialistManifestBoundaryModel {
+  prohibitedBehaviours: string[];
+  outOfScopeDecisions: string[];
+  authorityLimitPrinciples: string[];
+  mustNotRepresentAs: string[];
+  mustDeferWhen: string[];
+  humanReviewTriggers: string[];
+}
+
+export interface SpecialistManifestRiskAndUncertaintyModel {
+  riskPosture: string;
+  confidenceThresholds: {
+    minimumFindingConfidence?: number;
+    minimumRunConfidence?: number;
+    blockThreshold?: number;
+  };
+  uncertaintyBehaviour: string[];
+  escalationThresholds: string[];
+  highRiskTriggers: string[];
+}
+
+export interface SpecialistManifestCollaborationModel {
+  canConsultDomains: string[];
+  shouldConsultDomains: string[];
+  mustConsultDomains: string[];
+  deferToDomains: string[];
+  peerReviewByDomains: string[];
+  challengeConditions: string[];
+  cannotOverrideDomains: string[];
+  disagreementEscalation: string[];
+}
+
+export interface SpecialistManifestCommunicationModel {
+  tone: string;
+  detailLevel: string;
+  structurePreference: string;
+  audienceAdaptation: string[];
+  uncertaintyLanguage: string[];
+  escalationLanguage: string[];
+  prohibitedCommunicationPatterns: string[];
+}
+
+export interface SpecialistManifestMemoryBehaviour {
+  relevantMemoryCategories: string[];
+  recencyPreference: string;
+  priorConclusionReliance: string;
+  reconsiderationTriggers: string[];
+  memoryUseLimits: string[];
+}
+
+export interface SpecialistManifestRegulatoryAwareness {
+  regulatoryDomains: string[];
+  authoritativeSourcePreference: string[];
+  currentSourceRequired: boolean;
+  doNotInventRegulation: boolean;
+  citationExpectation: string;
+  changedGuidanceReviewRequired: boolean;
+}
+
+export interface SpecialistManifestOrganisationContextUse {
+  allowedContextTypes: string[];
+  contextVerificationBehaviour: string;
+  organisationPreferenceHandling: string;
+  conflictWithProfessionalStandardBehaviour: string;
+  sensitiveEntityHandling: string[];
+}
+
+export interface SpecialistManifestBlueprintInteraction {
+  mustFollowBlueprintContract: boolean;
+  blueprintChallengeConditions: string[];
+  missingBlueprintBehaviour: string;
+  workProductBoundaryRespect: string;
+  evidenceContractRespect: string;
+}
+
+export interface SpecialistManifestWorkerProfileReference {
+  profileCode: string;
+  minimumExperienceLevel: string;
+  dedicatedProfileRequired: boolean;
+  version?: string;
+}
+
+export interface SpecialistManifestRuntimeProjection {
+  projectionVersion: string;
+  promptContext: string[];
+  policyInputs: string[];
+  referenceOnly: string[];
+  excludedFromRuntime: string[];
+}
+
 export interface SpecialistRuntimeManifest {
   // ── Identity ──────────────────────────────────────────────────────────────
   /** Canonical workforce role code, e.g. "chief_of_staff" */
@@ -98,6 +254,8 @@ export interface SpecialistRuntimeManifest {
   dnaProfileId: string;
   /** Semver string of the DNA version this manifest was compiled from */
   dnaVersion: string;
+  /** SHA-256 hash of the immutable canonical DNA version, when available */
+  dnaVersionHash?: string;
   /**
    * Manifest format version.
    * Increment this when the shape of SpecialistRuntimeManifest changes.
@@ -177,6 +335,29 @@ export interface SpecialistRuntimeManifest {
     /** Named escalation contacts (names only — never email/phone) */
     escalationContacts?: string[];
   };
+
+  // ── Canonical Workforce DNA projection ────────────────────────────────────
+  //
+  // These structured sections are the deliberate runtime projection of the
+  // canonical Workforce DNA model. They do not grant permissions and they do
+  // not override WorkerProfile, Blueprint or platform policy enforcement.
+  runtimeProjectionVersion?: string;
+  identityDescriptor?: SpecialistManifestIdentityDescriptor;
+  professionalMission?: SpecialistManifestMission;
+  expertise?: SpecialistManifestExpertise;
+  professionalPractice?: SpecialistManifestProfessionalPractice;
+  reasoningModel?: SpecialistManifestReasoningModel;
+  evidenceModel?: SpecialistManifestEvidenceModel;
+  boundaryModel?: SpecialistManifestBoundaryModel;
+  riskAndUncertaintyModel?: SpecialistManifestRiskAndUncertaintyModel;
+  collaborationModel?: SpecialistManifestCollaborationModel;
+  communicationModel?: SpecialistManifestCommunicationModel;
+  memoryBehaviour?: SpecialistManifestMemoryBehaviour;
+  regulatoryAwareness?: SpecialistManifestRegulatoryAwareness;
+  organisationContextUse?: SpecialistManifestOrganisationContextUse;
+  blueprintInteraction?: SpecialistManifestBlueprintInteraction;
+  workerProfileReference?: SpecialistManifestWorkerProfileReference;
+  runtimeProjection?: SpecialistManifestRuntimeProjection;
 
   // ── Audit ─────────────────────────────────────────────────────────────────
   /**

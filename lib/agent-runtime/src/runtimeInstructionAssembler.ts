@@ -130,6 +130,11 @@ export interface AssembledRuntimeInstructions {
   injectedMemoryIds: string[];
 }
 
+function listBlock(title: string, values: string[]): string {
+  if (!values.length) return "";
+  return [`### ${title}`, values.map(value => `- ${value}`).join("\n")].join("\n");
+}
+
 /**
  * Assembles a structured runtime instruction from the specialist manifest,
  * execution steps, constraints, and optional organisation context.
@@ -223,6 +228,145 @@ export function assembleRuntimeInstructions(
     `approval gates, tenant isolation) is enforced by the broker layer`,
     `independently of these instructions.`,
   ].join("\n");
+
+  const canonicalSections: string[] = [];
+
+  if (manifest.professionalPractice) {
+    canonicalSections.push([
+      `## PROFESSIONAL PRACTICE`,
+      listBlock("Practice principles", manifest.professionalPractice.practicePrinciples),
+      listBlock("Quality standards", manifest.professionalPractice.qualityStandards),
+      listBlock("Professional independence", manifest.professionalPractice.professionalIndependence),
+      listBlock("Challenge behaviour", manifest.professionalPractice.challengeBehaviour),
+      listBlock("Assumption discipline", manifest.professionalPractice.assumptionDiscipline),
+      listBlock("Decision discipline", manifest.professionalPractice.decisionDiscipline),
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.reasoningModel) {
+    canonicalSections.push([
+      `## REASONING`,
+      listBlock("Reasoning principles", manifest.reasoningModel.reasoningPrinciples),
+      listBlock("Prioritisation logic", manifest.reasoningModel.prioritisationLogic),
+      listBlock("Contradiction handling", manifest.reasoningModel.contradictionHandling),
+      listBlock("Assumption handling", manifest.reasoningModel.assumptionHandling),
+      listBlock("Pause or escalate when", manifest.reasoningModel.pauseOrEscalateConditions),
+      manifest.reasoningModel.decisionMethodology.length > 0
+        ? [
+            `### Decision methodology`,
+            manifest.reasoningModel.decisionMethodology.map(step => [
+              `- **${step.name}** (${step.stepId}${step.mandatory ? ", mandatory" : ""})`,
+              `  ${step.instruction}`,
+            ].join("\n")).join("\n"),
+          ].join("\n")
+        : "",
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.evidenceModel) {
+    canonicalSections.push([
+      `## EVIDENCE`,
+      listBlock("Evidence philosophy", manifest.evidenceModel.evidencePhilosophy),
+      manifest.evidenceModel.sourcePreference.length > 0
+        ? [
+            `### Source preference`,
+            manifest.evidenceModel.sourcePreference.map(source =>
+              `- ${source.type} (${source.weight}): ${source.requirements.join("; ")}`,
+            ).join("\n"),
+          ].join("\n")
+        : "",
+      listBlock("Corroboration rules", manifest.evidenceModel.corroborationRules),
+      listBlock("Factual claim discipline", manifest.evidenceModel.factualClaimDiscipline),
+      listBlock("Insufficient evidence behaviour", manifest.evidenceModel.insufficientEvidenceBehaviour),
+      listBlock("Confidence expression", manifest.evidenceModel.confidenceExpression),
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.boundaryModel) {
+    canonicalSections.push([
+      `## PROFESSIONAL BOUNDARIES`,
+      listBlock("Out of scope decisions", manifest.boundaryModel.outOfScopeDecisions),
+      listBlock("Authority limit principles", manifest.boundaryModel.authorityLimitPrinciples),
+      listBlock("Must not represent as", manifest.boundaryModel.mustNotRepresentAs),
+      listBlock("Must defer when", manifest.boundaryModel.mustDeferWhen),
+      listBlock("Human review triggers", manifest.boundaryModel.humanReviewTriggers),
+      `These professional boundaries do not grant or expand technical permissions. WorkerProfile and platform policy remain authoritative for execution.`,
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.riskAndUncertaintyModel) {
+    canonicalSections.push([
+      `## RISK AND UNCERTAINTY`,
+      `- **Risk posture:** ${manifest.riskAndUncertaintyModel.riskPosture}`,
+      `- **Minimum finding confidence:** ${manifest.riskAndUncertaintyModel.confidenceThresholds.minimumFindingConfidence ?? "not specified"}`,
+      `- **Minimum run confidence:** ${manifest.riskAndUncertaintyModel.confidenceThresholds.minimumRunConfidence ?? "not specified"}`,
+      `- **Block threshold:** ${manifest.riskAndUncertaintyModel.confidenceThresholds.blockThreshold ?? "not specified"}`,
+      listBlock("Uncertainty behaviour", manifest.riskAndUncertaintyModel.uncertaintyBehaviour),
+      listBlock("Escalation thresholds", manifest.riskAndUncertaintyModel.escalationThresholds),
+      listBlock("High-risk triggers", manifest.riskAndUncertaintyModel.highRiskTriggers),
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.collaborationModel) {
+    canonicalSections.push([
+      `## COLLABORATION`,
+      listBlock("Can consult domains", manifest.collaborationModel.canConsultDomains),
+      listBlock("Should consult domains", manifest.collaborationModel.shouldConsultDomains),
+      listBlock("Must consult domains", manifest.collaborationModel.mustConsultDomains),
+      listBlock("Defer to domains", manifest.collaborationModel.deferToDomains),
+      listBlock("Peer review by domains", manifest.collaborationModel.peerReviewByDomains),
+      listBlock("Challenge conditions", manifest.collaborationModel.challengeConditions),
+      listBlock("Cannot override domains", manifest.collaborationModel.cannotOverrideDomains),
+      listBlock("Disagreement escalation", manifest.collaborationModel.disagreementEscalation),
+    ].filter(Boolean).join("\n\n"));
+  }
+
+  if (manifest.memoryBehaviour || manifest.regulatoryAwareness || manifest.organisationContextUse || manifest.blueprintInteraction) {
+    canonicalSections.push([
+      `## CONTEXT USE`,
+      manifest.memoryBehaviour
+        ? [
+            `### Memory behaviour`,
+            listBlock("Relevant memory categories", manifest.memoryBehaviour.relevantMemoryCategories),
+            `- **Recency preference:** ${manifest.memoryBehaviour.recencyPreference}`,
+            `- **Prior conclusion reliance:** ${manifest.memoryBehaviour.priorConclusionReliance}`,
+            listBlock("Reconsideration triggers", manifest.memoryBehaviour.reconsiderationTriggers),
+            listBlock("Memory use limits", manifest.memoryBehaviour.memoryUseLimits),
+          ].filter(Boolean).join("\n")
+        : "",
+      manifest.regulatoryAwareness
+        ? [
+            `### Regulatory awareness`,
+            listBlock("Regulatory domains", manifest.regulatoryAwareness.regulatoryDomains),
+            listBlock("Authoritative source preference", manifest.regulatoryAwareness.authoritativeSourcePreference),
+            `- **Current source required:** ${manifest.regulatoryAwareness.currentSourceRequired ? "yes" : "no"}`,
+            `- **Do not invent regulation:** ${manifest.regulatoryAwareness.doNotInventRegulation ? "yes" : "no"}`,
+            `- **Citation expectation:** ${manifest.regulatoryAwareness.citationExpectation}`,
+            `- **Changed guidance review required:** ${manifest.regulatoryAwareness.changedGuidanceReviewRequired ? "yes" : "no"}`,
+          ].filter(Boolean).join("\n")
+        : "",
+      manifest.organisationContextUse
+        ? [
+            `### Organisation context use`,
+            listBlock("Allowed context types", manifest.organisationContextUse.allowedContextTypes),
+            `- **Context verification:** ${manifest.organisationContextUse.contextVerificationBehaviour}`,
+            `- **Organisation preference handling:** ${manifest.organisationContextUse.organisationPreferenceHandling}`,
+            `- **Conflict with professional standard:** ${manifest.organisationContextUse.conflictWithProfessionalStandardBehaviour}`,
+            listBlock("Sensitive entity handling", manifest.organisationContextUse.sensitiveEntityHandling),
+          ].filter(Boolean).join("\n")
+        : "",
+      manifest.blueprintInteraction
+        ? [
+            `### Blueprint behaviour`,
+            `- **Must follow Blueprint contract:** ${manifest.blueprintInteraction.mustFollowBlueprintContract ? "yes" : "no"}`,
+            listBlock("Blueprint challenge conditions", manifest.blueprintInteraction.blueprintChallengeConditions),
+            `- **Missing Blueprint behaviour:** ${manifest.blueprintInteraction.missingBlueprintBehaviour}`,
+            `- **Work-product boundary respect:** ${manifest.blueprintInteraction.workProductBoundaryRespect}`,
+            `- **Evidence contract respect:** ${manifest.blueprintInteraction.evidenceContractRespect}`,
+          ].filter(Boolean).join("\n")
+        : "",
+    ].filter(Boolean).join("\n\n"));
+  }
 
   // ── 9–12. Organisation context (when provided) ────────────────────────────
 
@@ -419,6 +563,7 @@ export function assembleRuntimeInstructions(
     communicationSection,
     escalationSection,
     prohibitedSection,
+    ...canonicalSections,
     ...orgSections,
     taskSection,
     constraintsSection,

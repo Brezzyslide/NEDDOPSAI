@@ -20,6 +20,7 @@ import {
   integer,
   timestamp,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 export const specialistDnaProfilesTable = pgTable("specialist_dna_profiles", {
@@ -33,11 +34,56 @@ export const specialistDnaProfilesTable = pgTable("specialist_dna_profiles", {
 
   /**
    * Publication status.
-   *   draft     — under development, not usable for execution
-   *   published — active canonical version; only one per specialistId
-   *   retired   — superseded; preserved for audit
+   *   draft               — under development, not usable for execution
+   *   professional_review — awaiting professional review
+   *   approved            — approved, but not live
+   *   published           — active canonical version; only one per specialistId
+   *   superseded          — replaced by a newer published version
+   *   retired             — withdrawn; preserved for audit
    */
   status: text("status").notNull().default("draft"),
+
+  /** Stable canonical DNA ID. Defaults to specialistId for platform DNA. */
+  dnaId: text("dna_id"),
+
+  /** SHA-256 hash of the immutable canonical DNA version. */
+  versionHash: text("version_hash"),
+
+  /** platform | organisation */
+  ownerType: text("owner_type").notNull().default("platform"),
+
+  /** public_descriptor | tenant_admin_descriptor | platform_private */
+  visibilityTier: text("visibility_tier").notNull().default("platform_private"),
+
+  /** Whether this DNA requires professional review before publication. */
+  professionalReviewRequired: boolean("professional_review_required").notNull().default(false),
+
+  /** Platform admin/professional approver ID, where applicable. */
+  approvedBy: text("approved_by"),
+
+  /** Human-readable reason for this version/change. */
+  changeReason: text("change_reason"),
+
+  /** When this version becomes effective. */
+  effectiveFrom: timestamp("effective_from", { withTimezone: true }),
+
+  /** Previous DNA version, if any. */
+  previousVersion: text("previous_version"),
+
+  /** DNA version superseded by this version, if any. */
+  supersedes: text("supersedes"),
+
+  /** Migration notes and historical compatibility notes. */
+  migrationNotes: jsonb("migration_notes").notNull().default([]),
+
+  /** Full canonical WorkforceDNA profile. Platform-private. */
+  canonicalProfile: jsonb("canonical_profile"),
+
+  /** Runtime projection rules used for this DNA version. */
+  runtimeProjection: jsonb("runtime_projection"),
+
+  /** True once this version is published and should be treated as immutable. */
+  immutablePublishedSnapshot: boolean("immutable_published_snapshot").notNull().default(false),
 
   /** One-sentence mission statement */
   mission: text("mission").notNull(),

@@ -69,6 +69,44 @@ export type {
 
 export { captureRunVersions } from "./types.js";
 
+export type {
+  SpecialistKind,
+  SeniorityLevel,
+  DnaOwnerType,
+  DnaVisibilityTier,
+  CanonicalDnaStatus,
+  RuntimeProjectionClassification,
+  RuntimeProjectionRule,
+  WorkforceDNAIdentity,
+  WorkforceDNAProfessionalMission,
+  WorkforceDNADomainExpertise,
+  WorkforceDNAProfessionalPractice,
+  WorkforceDNAReasoningModel,
+  WorkforceDNAEvidenceModel,
+  WorkforceDNABoundaryModel,
+  WorkforceDNARiskAndUncertaintyModel,
+  WorkforceDNACollaborationModel,
+  WorkforceDNACommunicationModel,
+  WorkforceDNAMemoryBehaviour,
+  WorkforceDNARegulatoryAwareness,
+  WorkforceDNAOrganisationContextUse,
+  WorkforceDNABlueprintInteraction,
+  WorkforceDNAGovernance,
+  WorkforceDNARuntimeProjection,
+  WorkforceDNAVersioning,
+  RequiredWorkerProfileReference,
+  WorkforceDNA,
+  SafeWorkforceDNADescriptor,
+} from "./canonical.js";
+
+export {
+  CANONICAL_DNA_PROJECTION_VERSION,
+  CANONICAL_DNA_PROJECTION_RULES,
+  computeWorkforceDNAHash,
+  mapLegacyDNAProfileToWorkforceDNA,
+  buildSafeWorkforceDNADescriptor,
+} from "./canonical.js";
+
 // ─── Constitution ─────────────────────────────────────────────────────────────
 export {
   NEEDSOPS_CONSTITUTION,
@@ -128,6 +166,8 @@ export {
   getOutputSchemaVersion,
   captureSpecialistRunVersions,
   buildDNASystemInstruction,
+  getCanonicalDNAProfile,
+  getSafeDNADescriptor,
   getActivatedRoleCodes,
   getDNASummary,
   // Sprint 12 additions

@@ -21,7 +21,7 @@
 import { createHash } from "crypto";
 import {
   getDNAProfile,
-  hasActiveDNA,
+  mapLegacyDNAProfileToWorkforceDNA,
 } from "@workspace/workforce-dna";
 import type { SpecialistRuntimeManifest } from "@workspace/agent-runtime";
 import {
@@ -63,13 +63,15 @@ export class InactiveDNAError extends Error {
  * The hash is computed over a canonical JSON serialisation with:
  *   - Keys sorted alphabetically at every level
  *   - `manifestHash` field set to "" (excluded from the hash input)
+ *   - `generatedAt` field set to "" so the same DNA projection has a stable
+ *     manifest identity hash across compilations
  *
  * This guarantees the same DNA version always produces the same hash.
  */
 export function computeManifestHash(manifest: Omit<SpecialistRuntimeManifest, "manifestHash"> & { manifestHash: string }): string {
   // Build the canonical object with manifestHash set to "" so it is
   // structurally present but not a circular dependency
-  const canonical = sortedKeys({ ...manifest, manifestHash: "" });
+  const canonical = sortedKeys({ ...manifest, manifestHash: "", generatedAt: "" });
   const json = JSON.stringify(canonical);
   return createHash("sha256").update(json, "utf8").digest("hex");
 }
@@ -107,6 +109,7 @@ function compileFromResolvedDNA(
     domain:        dna.domain ?? "Operations",  // set from DB profile or static registry
     dnaProfileId:  dna.specialistId,
     dnaVersion:    dna.version,
+    dnaVersionHash: dna.versionHash,
     manifestVersion: 1,
 
     mission:             dna.mission,
@@ -132,6 +135,52 @@ function compileFromResolvedDNA(
     // Phase 5: organisation context — included only when available
     // Must not contain credentials, tokens, passwords, or cross-tenant data.
     organisationContext: orgContext,
+
+    runtimeProjectionVersion: dna.runtimeProjection?.projectionVersion,
+    identityDescriptor: dna.canonicalProfile?.identity,
+    professionalMission: dna.canonicalProfile?.professionalMission,
+    expertise: {
+      domains: dna.canonicalProfile?.domainExpertise.domains ?? [],
+      subdomains: dna.canonicalProfile?.domainExpertise.subdomains ?? [],
+      capabilityClaims: dna.canonicalProfile?.domainExpertise.capabilityClaims ?? [],
+      knowledgeBoundaries: dna.canonicalProfile?.domainExpertise.knowledgeBoundaries ?? [],
+      regulatoryDomains: dna.canonicalProfile?.domainExpertise.regulatoryDomains ?? [],
+    },
+    professionalPractice: dna.canonicalProfile?.professionalPractice,
+    reasoningModel: dna.canonicalProfile?.reasoningModel,
+    evidenceModel: dna.canonicalProfile?.evidenceModel,
+    boundaryModel: dna.canonicalProfile?.boundaryModel,
+    riskAndUncertaintyModel: dna.canonicalProfile?.riskAndUncertaintyModel,
+    collaborationModel: dna.canonicalProfile?.collaborationModel,
+    communicationModel: dna.canonicalProfile?.communicationModel,
+    memoryBehaviour: dna.canonicalProfile?.memoryBehaviour,
+    regulatoryAwareness: dna.canonicalProfile?.regulatoryAwareness,
+    organisationContextUse: dna.canonicalProfile?.organisationContextUse,
+    blueprintInteraction: dna.canonicalProfile?.blueprintInteraction,
+    workerProfileReference: dna.canonicalProfile
+      ? {
+          profileCode: dna.canonicalProfile.requiredWorkerProfile.profileCode,
+          minimumExperienceLevel: dna.canonicalProfile.requiredWorkerProfile.minimumExperienceLevel,
+          dedicatedProfileRequired: dna.canonicalProfile.requiredWorkerProfile.dedicatedProfileRequired,
+        }
+      : undefined,
+    runtimeProjection: dna.runtimeProjection
+      ? {
+          projectionVersion: dna.runtimeProjection.projectionVersion,
+          promptContext: dna.runtimeProjection.rules
+            .filter(r => r.classification === "PROMPT_CONTEXT")
+            .map(r => String(r.component)),
+          policyInputs: dna.runtimeProjection.rules
+            .filter(r => r.classification === "POLICY_INPUT")
+            .map(r => String(r.component)),
+          referenceOnly: dna.runtimeProjection.rules
+            .filter(r => r.classification === "REFERENCE_ONLY")
+            .map(r => String(r.component)),
+          excludedFromRuntime: dna.runtimeProjection.rules
+            .filter(r => r.classification === "EXCLUDED_FROM_RUNTIME")
+            .map(r => String(r.component)),
+        }
+      : undefined,
 
     manifestHash: "", // placeholder — filled in below
     generatedAt:  new Date().toISOString(),
@@ -210,6 +259,7 @@ export function compileSpecialistManifest(
 
   // 3. Build a ResolvedDNA from the static profile
   const dnaVersion = profile.currentVersion.version;
+  const canonicalProfile = mapLegacyDNAProfileToWorkforceDNA(profile);
   const escalationRules: string[] = [
     ...profile.escalationFramework.rules.map(r =>
       `${r.trigger} → ${r.action} (priority: ${r.priority})`,
@@ -228,8 +278,10 @@ export function compileSpecialistManifest(
     .slice(0, 5);
 
   const resolvedDNA: ResolvedDNA = {
+    dnaId:            canonicalProfile.versioning.dnaId,
     specialistId:     profile.identity.roleCode,
     version:          dnaVersion,
+    versionHash:      canonicalProfile.versioning.versionHash,
     source:           "static_fallback",
     domain:           profile.identity.domain,
     mission:          profile.mission.primaryMission,
@@ -248,6 +300,8 @@ export function compileSpecialistManifest(
     escalationRules,
     prohibitedBehaviours: profile.professionalBoundaries.cannotDo,
     memoryPolicy: { allowedScopes, prohibitedScopes },
+    canonicalProfile,
+    runtimeProjection: canonicalProfile.runtimeProjection,
   };
 
   return compileFromResolvedDNA(resolvedDNA);

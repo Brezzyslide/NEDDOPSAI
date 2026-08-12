@@ -38,7 +38,8 @@ vi.mock("../services/dnaStorageService.js", () => ({
 // Must be mocked before importing specialistRuntimeManifestService,
 // which imports from @workspace/workforce-dna at module load time.
 
-vi.mock("@workspace/workforce-dna", () => {
+vi.mock("@workspace/workforce-dna", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@workspace/workforce-dna")>();
   const activeDNA = {
     identity: {
       roleCode: "chief_of_staff",
@@ -194,6 +195,7 @@ vi.mock("@workspace/workforce-dna", () => {
   };
 
   return {
+    ...actual,
     getDNAProfile: vi.fn((roleCode: string) => {
       if (roleCode === "chief_of_staff") return activeDNA;
       if (roleCode === "inactive_specialist") return inactiveDNA;

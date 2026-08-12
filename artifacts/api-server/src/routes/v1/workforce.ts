@@ -16,6 +16,7 @@ import {
   getSpecialistCapabilities,
 } from "../../lib/workforceRegistry.js";
 import { getCatalogueEntry, listCatalogue } from "../../services/specialistCatalogueService.js";
+import { getSafeDNADescriptor } from "@workspace/workforce-dna";
 
 const router = Router();
 
@@ -78,6 +79,7 @@ router.get("/specialists", async (req, res, next) => {
           comingSoon:  false,
           _source: "registry_only",
         }),
+        safeDnaDescriptor: getSafeDNADescriptor(s.code, s.dnaStatus === "approved" ? "available" : "pending"),
       };
     });
 
@@ -127,6 +129,10 @@ router.get("/specialists/:code", async (req, res, next) => {
         comingSoon: false,
         _source: "registry_only",
       }),
+      safeDnaDescriptor: getSafeDNADescriptor(
+        registryEntry.code,
+        registryEntry.dnaStatus === "approved" ? "available" : "pending",
+      ),
     };
 
     res.json({ specialist, capabilities });
