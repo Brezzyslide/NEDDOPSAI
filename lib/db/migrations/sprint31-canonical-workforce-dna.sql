@@ -25,8 +25,6 @@ SET
   dna_id = COALESCE(dna_id, specialist_id),
   owner_type = COALESCE(NULLIF(owner_type, ''), 'platform'),
   visibility_tier = COALESCE(NULLIF(visibility_tier, ''), 'platform_private'),
-  approved_by = COALESCE(approved_by, published_by),
-  change_reason = COALESCE(change_reason, change_description),
   effective_from = COALESCE(effective_from, published_at, created_at),
   immutable_published_snapshot = CASE
     WHEN status = 'published' THEN TRUE
@@ -35,10 +33,39 @@ SET
 WHERE dna_id IS NULL
    OR owner_type IS NULL OR owner_type = ''
    OR visibility_tier IS NULL OR visibility_tier = ''
-   OR approved_by IS NULL
-   OR change_reason IS NULL
    OR effective_from IS NULL
    OR (status = 'published' AND immutable_published_snapshot IS NOT TRUE);
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'specialist_dna_profiles'
+      AND column_name = 'published_by'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE specialist_dna_profiles
+      SET approved_by = COALESCE(approved_by, published_by)
+      WHERE approved_by IS NULL
+    $sql$;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'specialist_dna_profiles'
+      AND column_name = 'change_description'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE specialist_dna_profiles
+      SET change_reason = COALESCE(change_reason, change_description)
+      WHERE change_reason IS NULL
+    $sql$;
+  END IF;
+END$$;
 
 CREATE INDEX IF NOT EXISTS specialist_dna_profiles_dna_id_version_idx
   ON specialist_dna_profiles(dna_id, version);

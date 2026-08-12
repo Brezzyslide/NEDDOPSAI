@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { existsSync, readFileSync } from "fs";
+import { resolve } from "path";
 
 const { mockLoadDNAWithStaticFallback, mockLoadOrgSpecialistConfig } = vi.hoisted(() => ({
   mockLoadDNAWithStaticFallback: vi.fn(),
@@ -31,6 +33,59 @@ import {
 } from "../services/specialistRuntimeManifestService.js";
 import type { ResolvedDNA, ResolvedOrgContext } from "../services/dnaStorageService.js";
 import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService.js";
+
+function readSprint31Migration(): string {
+  const candidates = [
+    resolve(process.cwd(), "../../lib/db/migrations/sprint31-canonical-workforce-dna.sql"),
+    resolve(process.cwd(), "lib/db/migrations/sprint31-canonical-workforce-dna.sql"),
+  ];
+  const migrationPath = candidates.find(candidate => existsSync(candidate));
+  if (!migrationPath) {
+    throw new Error("Sprint 31 migration not found");
+  }
+  return readFileSync(migrationPath, "utf8");
+}
+
+interface SimulatedDnaRow {
+  specialist_id: string;
+  status: string;
+  dna_id?: string | null;
+  owner_type?: string | null;
+  visibility_tier?: string | null;
+  approved_by?: string | null;
+  published_by?: string | null;
+  change_reason?: string | null;
+  change_description?: string | null;
+  effective_from?: string | null;
+  published_at?: string | null;
+  created_at: string;
+  immutable_published_snapshot?: boolean | null;
+}
+
+function simulateSprint31Backfill(
+  rows: SimulatedDnaRow[],
+  columns: { publishedBy: boolean; changeDescription: boolean },
+): SimulatedDnaRow[] {
+  return rows.map(row => {
+    const next: SimulatedDnaRow = { ...row };
+    next.dna_id = next.dna_id ?? next.specialist_id;
+    next.owner_type = next.owner_type && next.owner_type !== "" ? next.owner_type : "platform";
+    next.visibility_tier = next.visibility_tier && next.visibility_tier !== ""
+      ? next.visibility_tier
+      : "platform_private";
+    next.effective_from = next.effective_from ?? next.published_at ?? next.created_at;
+    next.immutable_published_snapshot = next.status === "published"
+      ? true
+      : next.immutable_published_snapshot;
+    if (columns.publishedBy && next.approved_by == null) {
+      next.approved_by = next.published_by ?? null;
+    }
+    if (columns.changeDescription && next.change_reason == null) {
+      next.change_reason = next.change_description ?? null;
+    }
+    return next;
+  });
+}
 
 function resolvedFromCanonical(dna: WorkforceDNA): ResolvedDNA {
   return {
@@ -238,5 +293,99 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.governance.status).toBe("published");
     expect(dna?.versioning.immutablePublishedSnapshot).toBe(true);
     expect(dna?.versioning.versionHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("keeps Sprint 31 migration safe when legacy publisher/change columns are absent", () => {
+    const migration = readSprint31Migration();
+    const baseUpdate = migration.slice(0, migration.indexOf("DO $$"));
+    const conditionalBlock = migration.slice(migration.indexOf("DO $$"));
+
+    expect(baseUpdate).not.toContain("published_by");
+    expect(baseUpdate).not.toContain("change_description");
+    expect(conditionalBlock).toContain("column_name = 'published_by'");
+    expect(conditionalBlock).toContain("column_name = 'change_description'");
+    expect(conditionalBlock).toContain("EXECUTE $sql$");
+    expect(migration).not.toMatch(/DROP\s+COLUMN/i);
+    expect(migration).not.toMatch(/DROP\s+TABLE/i);
+
+    const result = simulateSprint31Backfill([
+      {
+        specialist_id: "chief_of_staff",
+        status: "published",
+        created_at: "2026-08-12T00:00:00Z",
+      },
+    ], { publishedBy: false, changeDescription: false });
+
+    expect(result[0]).toMatchObject({
+      dna_id: "chief_of_staff",
+      owner_type: "platform",
+      visibility_tier: "platform_private",
+      effective_from: "2026-08-12T00:00:00Z",
+      immutable_published_snapshot: true,
+    });
+    expect(result[0]?.approved_by).toBeUndefined();
+    expect(result[0]?.change_reason).toBeUndefined();
+  });
+
+  it("backfills Sprint 31 canonical fields from legacy columns only when they exist", () => {
+    const result = simulateSprint31Backfill([
+      {
+        specialist_id: "operations_manager",
+        status: "published",
+        created_at: "2026-08-10T00:00:00Z",
+        published_at: "2026-08-11T00:00:00Z",
+        published_by: "legacy-publisher",
+        change_description: "legacy change summary",
+      },
+    ], { publishedBy: true, changeDescription: true });
+
+    expect(result[0]?.approved_by).toBe("legacy-publisher");
+    expect(result[0]?.change_reason).toBe("legacy change summary");
+    expect(result[0]?.effective_from).toBe("2026-08-11T00:00:00Z");
+  });
+
+  it("does not overwrite existing Sprint 31 canonical approved_by/change_reason values", () => {
+    const result = simulateSprint31Backfill([
+      {
+        specialist_id: "chief_of_staff",
+        status: "published",
+        created_at: "2026-08-10T00:00:00Z",
+        approved_by: "canonical-approver",
+        published_by: "legacy-publisher",
+        change_reason: "canonical reason",
+        change_description: "legacy reason",
+      },
+    ], { publishedBy: true, changeDescription: true });
+
+    expect(result[0]?.approved_by).toBe("canonical-approver");
+    expect(result[0]?.change_reason).toBe("canonical reason");
+  });
+
+  it("keeps Sprint 31 migration safe for empty tables, existing canonical columns and reruns", () => {
+    expect(simulateSprint31Backfill([], { publishedBy: false, changeDescription: false })).toEqual([]);
+
+    const first = simulateSprint31Backfill([
+      {
+        specialist_id: "chief_of_staff",
+        status: "published",
+        dna_id: "custom-dna-id",
+        owner_type: "platform",
+        visibility_tier: "platform_private",
+        approved_by: "approver",
+        change_reason: "reason",
+        effective_from: "2026-08-12T00:00:00Z",
+        created_at: "2026-08-10T00:00:00Z",
+        immutable_published_snapshot: true,
+      },
+    ], { publishedBy: true, changeDescription: true });
+    const second = simulateSprint31Backfill(first, { publishedBy: true, changeDescription: true });
+
+    expect(second).toEqual(first);
+    expect(second[0]).toMatchObject({
+      dna_id: "custom-dna-id",
+      approved_by: "approver",
+      change_reason: "reason",
+      immutable_published_snapshot: true,
+    });
   });
 });

@@ -114,10 +114,10 @@ export const specialistDnaProfilesTable = pgTable("specialist_dna_profiles", {
    */
   memoryPolicy: jsonb("memory_policy").notNull().default({}),
 
-  /** Human-readable description of this version's changes */
+  /** Legacy compatibility: older static-DNA seed path change summary. */
   changeDescription: text("change_description"),
 
-  /** Platform admin user ID who published this version */
+  /** Legacy compatibility: older static-DNA seed path publisher. */
   publishedBy: text("published_by"),
 
   createdAt:   timestamp("created_at",   { withTimezone: true }).notNull().defaultNow(),
