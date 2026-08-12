@@ -334,10 +334,51 @@ function splitDomain(domain: string): string[] {
 
 export function mapLegacyDNAProfileToWorkforceDNA(profile: DNAProfile): WorkforceDNA {
   const specialistKind = inferSpecialistKind(profile.identity.roleCode);
+  const isOrchestrator = specialistKind === "orchestrator";
   const domains = splitDomain(profile.identity.domain);
   const regulatoryEvidence = profile.evidenceStandards.standards
     .filter(s => s.type === "regulatory")
     .flatMap(s => s.requirements);
+  const orchestrationConsultationRules = isOrchestrator
+    ? [
+        "Any active domain-owning specialist where the task materially depends on professional knowledge outside orchestration competence.",
+        "Any specialist whose conclusion materially affects another specialist's work.",
+        "Any specialist required by the applicable Blueprint, governance rule, or approval pathway.",
+      ]
+    : [];
+  const orchestrationShouldConsultRules = isOrchestrator
+    ? [
+        "Material uncertainty exists outside the specialist's own professional competence.",
+        "Multiple professional domains materially intersect.",
+        "Evidence conflicts, risk exceeds orchestration competence, or specialist professional judgement is required.",
+      ]
+    : [];
+  const orchestrationPeerReviewRules = isOrchestrator
+    ? [
+        "Seek independent specialist review for high-consequence, high-uncertainty, conflicting-evidence, novel, cross-domain, or high-impact external-submission work.",
+        "Do not make peer review automatic for routine low-risk work unless Blueprint or platform policy requires it.",
+      ]
+    : [];
+  const orchestrationDisagreementRules = isOrchestrator
+    ? [
+        "Preserve genuine unresolved professional disagreement; do not manufacture consensus for a cleaner answer.",
+        "Escalate unresolved disagreement that materially affects safety, legality/regulation, finance, employment, participant/client outcomes, approval, external submission, significant business decisions, or reliable completion.",
+      ]
+    : [];
+  const orchestrationMemoryRules = isOrchestrator
+    ? [
+        "Memory informs current reasoning; memory does not automatically establish current truth.",
+        "Distinguish historical fact, current verified fact, previous assumption, previous recommendation, previous professional conclusion, previous decision, and superseded information.",
+        "A previous assumption must not become a fact merely through repetition.",
+        "A previous specialist conclusion is not automatically current authority when circumstances, evidence, authoritative guidance, or material context may have changed.",
+      ]
+    : [];
+  const orchestrationRegulatoryRules = isOrchestrator
+    ? [
+        "Recognise material regulatory implications and route or defer to the appropriate regulatory/domain specialist when specialist interpretation is required.",
+        "Do not become the regulatory authority; require current authoritative evidence and provenance for material regulatory claims.",
+      ]
+    : [];
 
   const partial: Omit<WorkforceDNA, "versioning"> & { versioning: Omit<WorkforceDNAVersioning, "versionHash"> & { versionHash?: string } } = {
     identity: {
@@ -449,21 +490,41 @@ export function mapLegacyDNAProfileToWorkforceDNA(profile: DNAProfile): Workforc
       highRiskTriggers: profile.riskTolerance.escalationFactors,
     },
     collaborationModel: {
-      canConsultDomains: [],
-      shouldConsultDomains: [],
-      mustConsultDomains: profile.conflictPolicy.onConflict === "pause_and_escalate"
-        ? profile.conflictPolicy.defersTo
-        : [],
+      canConsultDomains: orchestrationConsultationRules,
+      shouldConsultDomains: orchestrationShouldConsultRules,
+      mustConsultDomains: [
+        ...(profile.conflictPolicy.onConflict === "pause_and_escalate"
+          ? profile.conflictPolicy.defersTo
+          : []),
+        ...(isOrchestrator
+          ? ["Consult or defer when specialist professional judgement is required before the work can be completed reliably."]
+          : []),
+      ],
       deferToDomains: profile.conflictPolicy.defersTo,
-      peerReviewByDomains: [],
+      peerReviewByDomains: orchestrationPeerReviewRules,
       challengeConditions: [
         profile.decisionFramework.conflictResolution,
         ...profile.confidenceModel.confidenceReducers,
+        ...(isOrchestrator
+          ? [
+              "The specialist may not have addressed the actual question.",
+              "The conclusion appears unsupported, assumption-heavy, contradictory, or outside the specialist's authority.",
+              "Another professional domain is materially affected.",
+            ]
+          : []),
       ],
       cannotOverrideDomains: profile.conflictPolicy.overrides.length === 0
         ? profile.conflictPolicy.defersTo
-        : [],
-      disagreementEscalation: [profile.conflictPolicy.onConflict],
+        : [
+            ...profile.conflictPolicy.defersTo,
+            ...(isOrchestrator
+              ? ["Adequately evidenced domain-owning specialist conclusions that are within that specialist's authority."]
+              : []),
+          ],
+      disagreementEscalation: [
+        profile.conflictPolicy.onConflict,
+        ...orchestrationDisagreementRules,
+      ],
     },
     communicationModel: {
       tone: profile.communicationStyle.toneOfVoice,
@@ -478,22 +539,41 @@ export function mapLegacyDNAProfileToWorkforceDNA(profile: DNAProfile): Workforc
       relevantMemoryCategories: profile.memoryPolicy.readCategories,
       recencyPreference: `Retrieve up to ${profile.memoryPolicy.maxRelevantMessages} relevant messages when available.`,
       priorConclusionReliance: profile.memoryPolicy.usePreviousWorkPackages
-        ? "May use previous work packages as context, subject to evidence review."
+        ? [
+            "May use previous work packages as context, subject to evidence review.",
+            ...orchestrationMemoryRules,
+          ].join(" ")
         : "Does not rely on previous work packages unless separately provided.",
       reconsiderationTriggers: profile.learningPolicy.usePreviousTaskOutcomes
-        ? ["Previous task outcomes may be reconsidered when new evidence conflicts."]
+        ? [
+            "Previous task outcomes may be reconsidered when new evidence conflicts.",
+            "Current evidence conflicts with historical memory.",
+            "Circumstances, underlying evidence, authoritative guidance, approvals, or professional authority have changed.",
+            "Information appears superseded or its continuing validity is uncertain.",
+          ]
         : [],
-      memoryUseLimits: profile.professionalBoundaries.securityConstraints.filter(c =>
-        c.toLowerCase().includes("memory") || c.toLowerCase().includes("tenant"),
-      ),
+      memoryUseLimits: [
+        ...profile.professionalBoundaries.securityConstraints.filter(c =>
+          c.toLowerCase().includes("memory") || c.toLowerCase().includes("tenant"),
+        ),
+        ...(isOrchestrator
+          ? [
+              "Do not silently prefer memory over current authoritative evidence.",
+              "Do not treat repeated assumptions or historical specialist conclusions as current facts without checking continuing validity.",
+            ]
+          : []),
+      ],
     },
     regulatoryAwareness: {
       regulatoryDomains: profile.riskTolerance.riskCategories,
-      authoritativeSourcePreference: regulatoryEvidence,
+      authoritativeSourcePreference: [
+        ...regulatoryEvidence,
+        ...orchestrationRegulatoryRules,
+      ],
       currentSourceRequired: regulatoryEvidence.length > 0,
       doNotInventRegulation: true,
       citationExpectation: regulatoryEvidence.length > 0
-        ? "Use authoritative current regulatory sources when making regulatory claims."
+        ? "Use authoritative current regulatory sources when making regulatory claims; route or defer to the appropriate specialist when regulatory expertise is required."
         : "Cite source material when the task requires factual or regulatory claims.",
       changedGuidanceReviewRequired: regulatoryEvidence.length > 0,
     },

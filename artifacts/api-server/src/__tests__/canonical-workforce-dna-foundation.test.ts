@@ -197,6 +197,84 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(result.instruction).toContain("### Blueprint behaviour");
   });
 
+  it("codifies Chief of Staff specialist deference without surrendering evidence challenge", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const deference = manifest.collaborationModel?.deferToDomains.join(" ");
+    const challenge = manifest.collaborationModel?.challengeConditions.join(" ");
+    const nonOverride = manifest.collaborationModel?.cannotOverrideDomains.join(" ");
+
+    expect(deference).toContain("domain-owning specialist");
+    expect(deference).toContain("adequately evidenced");
+    expect(challenge).toContain("unsupported");
+    expect(challenge).toContain("outside the specialist's authority");
+    expect(nonOverride).toContain("Adequately evidenced domain-owning specialist conclusions");
+    expect(manifest.boundaryModel?.prohibitedBehaviours).toContain("Treat orchestration authority as domain authority");
+  });
+
+  it("preserves and escalates material specialist disagreement rather than manufacturing consensus", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const disagreement = manifest.collaborationModel?.disagreementEscalation.join(" ");
+    const risk = manifest.riskAndUncertaintyModel?.escalationThresholds.join(" ");
+    const communication = manifest.communicationModel?.structurePreference;
+
+    expect(disagreement).toContain("Preserve genuine unresolved professional disagreement");
+    expect(disagreement).toContain("do not manufacture consensus");
+    expect(disagreement).toContain("reliable completion");
+    expect(risk).toContain("Material specialist disagreement affects safety");
+    expect(communication).toContain("preserve the disagreement");
+  });
+
+  it("makes specialist consultation and peer review proportionate to domain risk and materiality", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const canConsult = manifest.collaborationModel?.canConsultDomains.join(" ");
+    const shouldConsult = manifest.collaborationModel?.shouldConsultDomains.join(" ");
+    const peerReview = manifest.collaborationModel?.peerReviewByDomains.join(" ");
+
+    expect(canConsult).toContain("professional knowledge outside orchestration competence");
+    expect(shouldConsult).toContain("Multiple professional domains materially intersect");
+    expect(peerReview).toContain("high-consequence");
+    expect(peerReview).toContain("Do not make peer review automatic");
+  });
+
+  it("treats memory as context requiring freshness and supersession discipline", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const reliance = manifest.memoryBehaviour?.priorConclusionReliance;
+    const triggers = manifest.memoryBehaviour?.reconsiderationTriggers.join(" ");
+    const limits = manifest.memoryBehaviour?.memoryUseLimits.join(" ");
+
+    expect(reliance).toContain("Memory informs current reasoning");
+    expect(reliance).toContain("does not automatically establish current truth");
+    expect(reliance).toContain("A previous assumption must not become a fact");
+    expect(triggers).toContain("Current evidence conflicts with historical memory");
+    expect(triggers).toContain("Information appears superseded");
+    expect(limits).toContain("Do not silently prefer memory over current authoritative evidence");
+  });
+
+  it("clarifies regulatory awareness without turning Chief of Staff into a regulatory specialist", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const dna = getCanonicalDNAProfile("chief_of_staff");
+    const sourcePreference = manifest.regulatoryAwareness?.authoritativeSourcePreference.join(" ");
+    const citationExpectation = manifest.regulatoryAwareness?.citationExpectation;
+
+    expect(sourcePreference).toContain("Recognise material regulatory implications");
+    expect(sourcePreference).toContain("route or defer");
+    expect(sourcePreference).toContain("Do not become the regulatory authority");
+    expect(citationExpectation).toContain("route or defer to the appropriate specialist");
+    expect(dna?.domainExpertise.domains.join(" ")).toContain("executive");
+    expect(dna?.domainExpertise.domains.join(" ")).not.toContain("legal");
+  });
+
+  it("projects the refined collaboration and memory behaviours into runtime instructions", () => {
+    const manifest = compileSpecialistManifest("chief_of_staff");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("Any active domain-owning specialist");
+    expect(result.instruction).toContain("Preserve genuine unresolved professional disagreement");
+    expect(result.instruction).toContain("Do not make peer review automatic");
+    expect(result.instruction).toContain("Memory informs current reasoning");
+    expect(result.instruction).toContain("Do not become the regulatory authority");
+  });
+
   it("keeps organisation context separate from canonical DNA", () => {
     const manifest = compileSpecialistManifest("chief_of_staff");
     const orgContext: SpecialistOrganisationContext = {
