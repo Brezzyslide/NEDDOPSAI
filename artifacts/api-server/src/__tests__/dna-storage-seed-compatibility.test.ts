@@ -18,10 +18,12 @@ const state = vi.hoisted(() => ({
   profiles: [] as StoredProfile[],
   competencies: [] as StoredCompetency[],
   profileInsertPayloads: [] as Array<Record<string, unknown>>,
+  failCompetencyInsert: false,
   reset() {
     this.profiles.length = 0;
     this.competencies.length = 0;
     this.profileInsertPayloads.length = 0;
+    this.failCompetencyInsert = false;
   },
 }));
 
@@ -67,11 +69,27 @@ vi.mock("@workspace/db", async (importOriginal) => {
           }
         }
         if (table === actual.specialistDnaCompetenciesTable) {
+          if (state.failCompetencyInsert) {
+            throw new Error("simulated competency insert failure");
+          }
           state.competencies.push(...(values as StoredCompetency[]));
         }
         return Promise.resolve();
       }),
     })),
+    transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
+      const profileSnapshot = [...state.profiles];
+      const competencySnapshot = [...state.competencies];
+      const payloadSnapshot = [...state.profileInsertPayloads];
+      try {
+        return await callback(db);
+      } catch (error) {
+        state.profiles.splice(0, state.profiles.length, ...profileSnapshot);
+        state.competencies.splice(0, state.competencies.length, ...competencySnapshot);
+        state.profileInsertPayloads.splice(0, state.profileInsertPayloads.length, ...payloadSnapshot);
+        throw error;
+      }
+    }),
   };
 
   return {
@@ -140,6 +158,44 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(second).toBe("already_exists");
     expect(state.profiles).toHaveLength(1);
     expect(state.competencies).toHaveLength(CHIEF_OF_STAFF_DNA.competencies.length);
+  });
+
+  it("generates competency IDs required by the live table schema", async () => {
+    await seedDNAFromStaticRegistry("chief_of_staff", "live_replit_seed");
+
+    expect(state.competencies).toHaveLength(CHIEF_OF_STAFF_DNA.competencies.length);
+    for (const competency of state.competencies) {
+      expect(competency.id).toEqual(expect.any(String));
+      expect(competency.dnaProfileId).toBe(state.profiles[0]?.id);
+    }
+  });
+
+  it("rolls back the parent profile if competency insertion fails", async () => {
+    state.failCompetencyInsert = true;
+
+    await expect(seedDNAFromStaticRegistry("chief_of_staff", "live_replit_seed"))
+      .rejects.toThrow("simulated competency insert failure");
+
+    expect(state.profiles).toHaveLength(0);
+    expect(state.competencies).toHaveLength(0);
+    expect(state.profileInsertPayloads).toHaveLength(0);
+  });
+
+  it("detects an existing published profile with missing competencies instead of returning already_exists", async () => {
+    state.profiles.push({
+      id: "3322bf05-c6f4-472b-89e5-22afbc7e0def",
+      specialistId: "chief_of_staff",
+      version: CHIEF_OF_STAFF_DNA.currentVersion.version,
+    });
+
+    await expect(seedDNAFromStaticRegistry("chief_of_staff", "live_replit_seed"))
+      .rejects.toMatchObject({
+        code: "INCOMPLETE_DNA_PUBLICATION",
+        profileId: "3322bf05-c6f4-472b-89e5-22afbc7e0def",
+      });
+
+    expect(state.profiles).toHaveLength(1);
+    expect(state.competencies).toHaveLength(0);
   });
 
   it("loads the seeded published profile through database resolution", async () => {

@@ -10,13 +10,14 @@ import {
   pgTable,
   text,
   timestamp,
-  primaryKey,
 } from "drizzle-orm/pg-core";
 import { specialistDnaProfilesTable } from "./specialistDnaProfiles.js";
 
 export const specialistDnaCompetenciesTable = pgTable(
   "specialist_dna_competencies",
   {
+    id: text("id").primaryKey(),
+
     /** References specialist_dna_profiles.id */
     dnaProfileId: text("dna_profile_id")
       .notNull()
@@ -45,9 +46,6 @@ export const specialistDnaCompetenciesTable = pgTable(
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => ({
-    pk: primaryKey({ columns: [table.dnaProfileId, table.competencyCode] }),
-  }),
 );
 
 export type SpecialistDnaCompetency   = typeof specialistDnaCompetenciesTable.$inferSelect;

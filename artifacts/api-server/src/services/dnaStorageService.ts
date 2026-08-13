@@ -389,7 +389,36 @@ export async function seedDNAFromStaticRegistry(
     )
     .limit(1);
 
-  if (existing.length > 0) return "already_exists";
+  if (existing.length > 0) {
+    const existingProfileId = existing[0]!.id;
+    const expectedCompetencyCodes = new Set(profile.competencies.map(c => c.code));
+    const existingCompetencies = await db
+      .select({ competencyCode: specialistDnaCompetenciesTable.competencyCode })
+      .from(specialistDnaCompetenciesTable)
+      .where(eq(specialistDnaCompetenciesTable.dnaProfileId, existingProfileId));
+    const existingCompetencyCodes = new Set(existingCompetencies.map(c => c.competencyCode));
+    const missingCompetencies = [...expectedCompetencyCodes]
+      .filter(code => !existingCompetencyCodes.has(code));
+
+    if (missingCompetencies.length > 0 || existingCompetencyCodes.size < expectedCompetencyCodes.size) {
+      throw Object.assign(
+        new Error(
+          `Published DNA profile "${roleCode}" v${version} is incomplete: ` +
+          `missing ${missingCompetencies.length} competency row(s). ` +
+          `Manual reconciliation is required before reseeding.`,
+        ),
+        {
+          code: "INCOMPLETE_DNA_PUBLICATION",
+          specialistId: roleCode,
+          version,
+          profileId: existingProfileId,
+          missingCompetencies,
+        },
+      );
+    }
+
+    return "already_exists";
+  }
 
   const { randomUUID } = await import("crypto");
   const profileId = randomUUID();
@@ -413,55 +442,58 @@ export async function seedDNAFromStaticRegistry(
     .filter(c => c.toLowerCase().includes("memory") || c.toLowerCase().includes("session"))
     .slice(0, 5);
 
-  await db.insert(specialistDnaProfilesTable).values({
-    id:           profileId,
-    specialistId: roleCode,
-    version:      dnaVersion,
-    dnaId:        canonicalProfile.versioning.dnaId,
-    versionHash:  canonicalProfile.versioning.versionHash,
-    ownerType:    canonicalProfile.governance.ownerType,
-    visibilityTier: canonicalProfile.governance.visibilityTier,
-    professionalReviewRequired: canonicalProfile.governance.professionalReviewRequired,
-    approvedBy:   canonicalProfile.governance.approvedBy ?? publishedBy,
-    changeReason: canonicalProfile.governance.changeReason,
-    effectiveFrom: canonicalProfile.governance.effectiveFrom
-      ? new Date(canonicalProfile.governance.effectiveFrom)
-      : undefined,
-    previousVersion: canonicalProfile.versioning.previousVersion,
-    supersedes:   canonicalProfile.versioning.supersedes,
-    migrationNotes: canonicalProfile.versioning.migrationNotes,
-    canonicalProfile,
-    runtimeProjection: canonicalProfile.runtimeProjection,
-    immutablePublishedSnapshot: canonicalProfile.versioning.immutablePublishedSnapshot,
-    status:       "published",
-    mission:      profile.mission.primaryMission,
-    objectives:   profile.mission.objectives,
-    responsibilities: profile.professionalBoundaries.canDo,
-    operatingPrinciples: profile.mission.values,
-    communicationStyle: {
-      tone:        profile.communicationStyle.toneOfVoice,
-      detailLevel: profile.communicationStyle.languageRegister,
-      language:    profile.communicationStyle.conversationLabel,
-    },
-    escalationRules,
-    prohibitedBehaviours: profile.professionalBoundaries.cannotDo,
-    memoryPolicy: { allowedScopes, prohibitedScopes },
-    publishedAt: new Date(),
-  });
+  await db.transaction(async (tx) => {
+    await tx.insert(specialistDnaProfilesTable).values({
+      id:           profileId,
+      specialistId: roleCode,
+      version:      dnaVersion,
+      dnaId:        canonicalProfile.versioning.dnaId,
+      versionHash:  canonicalProfile.versioning.versionHash,
+      ownerType:    canonicalProfile.governance.ownerType,
+      visibilityTier: canonicalProfile.governance.visibilityTier,
+      professionalReviewRequired: canonicalProfile.governance.professionalReviewRequired,
+      approvedBy:   canonicalProfile.governance.approvedBy ?? publishedBy,
+      changeReason: canonicalProfile.governance.changeReason,
+      effectiveFrom: canonicalProfile.governance.effectiveFrom
+        ? new Date(canonicalProfile.governance.effectiveFrom)
+        : undefined,
+      previousVersion: canonicalProfile.versioning.previousVersion,
+      supersedes:   canonicalProfile.versioning.supersedes,
+      migrationNotes: canonicalProfile.versioning.migrationNotes,
+      canonicalProfile,
+      runtimeProjection: canonicalProfile.runtimeProjection,
+      immutablePublishedSnapshot: canonicalProfile.versioning.immutablePublishedSnapshot,
+      status:       "published",
+      mission:      profile.mission.primaryMission,
+      objectives:   profile.mission.objectives,
+      responsibilities: profile.professionalBoundaries.canDo,
+      operatingPrinciples: profile.mission.values,
+      communicationStyle: {
+        tone:        profile.communicationStyle.toneOfVoice,
+        detailLevel: profile.communicationStyle.languageRegister,
+        language:    profile.communicationStyle.conversationLabel,
+      },
+      escalationRules,
+      prohibitedBehaviours: profile.professionalBoundaries.cannotDo,
+      memoryPolicy: { allowedScopes, prohibitedScopes },
+      publishedAt: new Date(),
+    });
 
-  // Insert competencies
-  if (profile.competencies.length > 0) {
-    await db.insert(specialistDnaCompetenciesTable).values(
-      profile.competencies.map(c => ({
-        dnaProfileId:   profileId,
-        competencyCode: c.code,
-        name:           c.name,
-        level:          c.level,
-        description:    c.description,
-        version:        dnaVersion,
-      })),
-    );
-  }
+    // Insert competencies in the same transaction as the parent publication.
+    if (profile.competencies.length > 0) {
+      await tx.insert(specialistDnaCompetenciesTable).values(
+        profile.competencies.map(c => ({
+          id:             randomUUID(),
+          dnaProfileId:   profileId,
+          competencyCode: c.code,
+          name:           c.name,
+          level:          c.level,
+          description:    c.description,
+          version:        dnaVersion,
+        })),
+      );
+    }
+  });
 
   return "created";
 }
