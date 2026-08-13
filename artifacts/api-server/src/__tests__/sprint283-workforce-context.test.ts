@@ -107,6 +107,16 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       catalogueVersion: "2",
     },
     {
+      code: "authorised_program_officer",
+      displayName: "Authorised Program Officer",
+      packCode: "compliance",
+      capabilities: ["restrictive_practice_governance", "monthly_rp_reporting"],
+      executionStatus: "dna_pending",
+      dnaStatus: "pending_design",
+      departmentCode: "compliance",
+      catalogueVersion: "2",
+    },
+    {
       code: "executive_assistant",
       displayName: "Executive Assistant",
       packCode: "core",
@@ -114,6 +124,16 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       executionStatus: "available",
       dnaStatus: "approved",
       departmentCode: "executive",
+      catalogueVersion: "2",
+    },
+    {
+      code: "behaviour_support_implementation_specialist",
+      displayName: "Behaviour Support Implementation Specialist",
+      packCode: "operations",
+      capabilities: ["bsp_implementation", "service_delivery_review"],
+      executionStatus: "dna_pending",
+      dnaStatus: "pending_design",
+      departmentCode: "operations",
       catalogueVersion: "2",
     },
     {
@@ -288,7 +308,7 @@ describe("getConversationWorkforceContext", () => {
   it("returns correct summary counts", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     expect(ctx.summary.dispatchableCount).toBeGreaterThanOrEqual(1); // at least operations_manager
-    expect(ctx.summary.unavailableCount).toBe(0);                    // fixture contains only dispatchable current v2 roles
+    expect(ctx.summary.unavailableCount).toBe(2);                    // APO and BSI are visible but dna_pending
     expect(ctx.summary.availableCount).toBeGreaterThan(0);
   });
 

@@ -305,6 +305,8 @@ describe("H11: dna_pending and non-production specialists are not dispatchable",
   const NON_PRODUCTION = [
     "knowledge_documentation_specialist",
     "policy_governance_specialist",
+    "authorised_program_officer",
+    "behaviour_support_implementation_specialist",
   ];
 
   for (const code of NON_PRODUCTION) {
@@ -332,6 +334,30 @@ describe("H12: Incident & Safeguarding Specialist is eligible for incident revie
     // compliance_quality_manager is in eligibleRoles for incident.review and now has active v2 DNA.
     const eligible = validateSpecialistEligibilitySync("compliance_quality_manager", "incident.review");
     expect(eligible).toBe(true);
+  });
+});
+
+// ─── Sprint 33B: pending professional owners must not fall back silently ─────
+
+describe("Sprint 33B authority-boundary routing", () => {
+  it("S33B-1: monthly restrictive practice reporting maps to APO-owned capability and remains non-dispatchable", async () => {
+    const result = await identify("Prepare monthly restrictive practice reporting reconciliation for July");
+    const cap = findCap(result, "restrictive_practice.monthly_reporting");
+    expect(cap).toBeDefined();
+    expect(cap!.requestedLevel).toBe("professional_analysis");
+    expect(validateSpecialistEligibilitySync("authorised_program_officer", "restrictive_practice.monthly_reporting")).toBe(false);
+    expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", "restrictive_practice.monthly_reporting")).toBe(false);
+    expect(validateSpecialistEligibilitySync("operations_manager", "restrictive_practice.monthly_reporting")).toBe(false);
+  });
+
+  it("S33B-2: BSP implementation maps to BSI-owned capability and remains non-dispatchable", async () => {
+    const result = await identify("Review approved BSP implementation fidelity and staff practice guidance");
+    const cap = findCap(result, "behaviour_support.implementation");
+    expect(cap).toBeDefined();
+    expect(cap!.requestedLevel).toBe("professional_analysis");
+    expect(validateSpecialistEligibilitySync("behaviour_support_implementation_specialist", "behaviour_support.implementation")).toBe(false);
+    expect(validateSpecialistEligibilitySync("operations_manager", "behaviour_support.implementation")).toBe(false);
+    expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", "behaviour_support.implementation")).toBe(false);
   });
 });
 

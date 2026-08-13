@@ -88,12 +88,16 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "behaviour_support.review":   { family: "behaviour_support", mode: "review",   code: "behaviour_support_plan_review", isAction: false },
   "behaviour_support.revise":   { family: "behaviour_support", mode: "revise",   code: "behaviour_support_plan_review", isAction: false },
   "behaviour_support.analysis": { family: "behaviour_support", mode: "analysis", code: "behaviour_trigger_analysis",    isAction: false },
+  "behaviour_support.implementation": { family: "behaviour_support", mode: "implementation", code: "behaviour_support_plan_review", isAction: false },
+  "bsp.implementation": { family: "behaviour_support", mode: "implementation", code: "behaviour_support_plan_review", isAction: false },
 
   // ── Restrictive Practices ─────────────────────────────────────────────────
   "restrictive_practice.risk_assessment": { family: "restrictive_practice", mode: "risk_assessment", code: "restrictive_practice_risk_assessment",    isAction: false },
   "restrictive_practice.comparison":      { family: "restrictive_practice", mode: "comparison",      code: "restrictive_practice_comparison",          isAction: false },
   "restrictive_practice.authorisation":   { family: "restrictive_practice", mode: "authorisation",   code: "restrictive_practice_authorisation",        isAction: false },
   "restrictive_practice.review":          { family: "restrictive_practice", mode: "review",          code: "unauthorised_restrictive_practice_review",  isAction: false },
+  "restrictive_practice.governance":      { family: "restrictive_practice", mode: "governance",      code: "restrictive_practice_authorisation",        isAction: false },
+  "restrictive_practice.monthly_reporting": { family: "restrictive_practice", mode: "monthly_reporting", code: "restrictive_practice_authorisation",     isAction: false },
 
   // ── Incidents & Safeguarding ──────────────────────────────────────────────
   "incident.investigation": { family: "incident",     mode: "investigation", code: "incident_investigation",    isAction: false },

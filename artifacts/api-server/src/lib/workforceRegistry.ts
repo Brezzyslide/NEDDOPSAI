@@ -13,7 +13,7 @@
  *
  * Used to seed the database and serve the /v1/workforce/* endpoints.
  *
- * catalogueVersion "2" = current 17-employee catalogue (Sprint 11+)
+ * catalogueVersion "2" = current 19-employee catalogue (Sprint 11+ / Sprint 33B)
  * catalogueVersion "1" = deprecated legacy roles
  */
 
@@ -100,6 +100,9 @@ export const CAPABILITIES: RegistryCapability[] = [
   { id: "cap_review_incident", code: "review_incident", name: "Review Incident", description: "Investigate and document incidents" },
   { id: "cap_audit_preparation", code: "audit_preparation", name: "Audit Preparation", description: "Prepare documentation and evidence for audits" },
   { id: "cap_restrictive_practice_review", code: "restrictive_practice_review", name: "Restrictive Practice Review", description: "Review and document restrictive practice use" },
+  { id: "cap_restrictive_practice_governance", code: "restrictive_practice_governance", name: "Restrictive Practice Governance", description: "Monitor restrictive practice authorisation, registers, usage reconciliation, and governance actions" },
+  { id: "cap_monthly_rp_reporting", code: "monthly_rp_reporting", name: "Monthly Restrictive Practice Reporting", description: "Prepare governance review and reconciliation for monthly restrictive practice reporting" },
+  { id: "cap_bsp_implementation", code: "bsp_implementation", name: "BSP Implementation", description: "Operationalise approved Behaviour Support Plans and monitor implementation fidelity" },
   { id: "cap_quality_review", code: "quality_review", name: "Quality Review", description: "Assess service quality against standards" },
   { id: "cap_corrective_action", code: "corrective_action", name: "Corrective Action", description: "Develop and track corrective action plans" },
   { id: "cap_draft_policy", code: "draft_policy", name: "Draft Policy", description: "Draft and update organisational policies" },
@@ -130,13 +133,13 @@ export const CAPABILITIES: RegistryCapability[] = [
 ];
 
 // ─── Specialists ──────────────────────────────────────────────────────────────
-// Catalogue v2: 17 active AI employees, grouped by department.
+// Catalogue v2: 19 active AI employees, grouped by department.
 // Catalogue v1: 28 deprecated legacy roles, grouped at the bottom.
 
 export const SPECIALISTS: RegistrySpecialist[] = [
 
   // ════════════════════════════════════════════════════════════════════════════
-  // CATALOGUE v2 — 17 Current AI Employees (Sprint 11)
+  // CATALOGUE v2 — 19 Current AI Employees (Sprint 11 + Sprint 33B)
   // ════════════════════════════════════════════════════════════════════════════
 
   // ── EXECUTIVE DEPARTMENT ───────────────────────────────────────────────────
@@ -249,6 +252,27 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     catalogueVersion: "2",
     replacementType: "none",
   },
+  {
+    id: "spec_authorised_program_officer",
+    code: "authorised_program_officer",
+    displayName: "Authorised Program Officer",
+    packCode: "compliance",
+    description: "Future professional owner for restrictive-practice governance, authority pathway checking, registers, usage reconciliation, monthly reporting, and reduction/elimination governance. Professional DNA and WorkerProfile are pending.",
+    icon: "🔐",
+    colour: "#8B1E3F",
+    capabilities: ["restrictive_practice_governance", "monthly_rp_reporting", "restrictive_practice_review", "audit_preparation", "draft_document"],
+    requiredPermissions: ["compliance:read"],
+    requiredEntitlements: ["compliance_workforce"],
+    approvalRequirements: "compliance_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: [],
+    departmentCode: "compliance_governance",
+    dnaStatus: "pending_design",
+    displayOrder: 18,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
 
   // ── OPERATIONS DEPARTMENT ─────────────────────────────────────────────────
 
@@ -333,6 +357,27 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     departmentCode: "operations",
     dnaStatus: "pending_design",
     displayOrder: 9,
+    catalogueVersion: "2",
+    replacementType: "none",
+  },
+  {
+    id: "spec_behaviour_support_implementation_specialist",
+    code: "behaviour_support_implementation_specialist",
+    displayName: "Behaviour Support Implementation Specialist",
+    packCode: "operations",
+    description: "Future professional owner for operationalising approved Behaviour Support Plans, implementation fidelity, staff practice guidance, behaviour/RP data analysis, and practitioner-review escalation. This is not a Behaviour Support Practitioner role.",
+    icon: "🧭",
+    colour: "#4F46E5",
+    capabilities: ["bsp_implementation", "service_delivery_review", "restrictive_practice_review", "draft_document"],
+    requiredPermissions: ["operations:read", "compliance:read"],
+    requiredEntitlements: ["operations_workforce"],
+    approvalRequirements: "manager_approval",
+    executionStatus: "dna_pending",
+    version: "2.0.0",
+    workerProfileCodes: [],
+    departmentCode: "operations",
+    dnaStatus: "pending_design",
+    displayOrder: 19,
     catalogueVersion: "2",
     replacementType: "none",
   },
@@ -739,10 +784,10 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     dnaStatus: "not_applicable",
     displayOrder: 108,
     catalogueVersion: "1",
-    replacementRoleCode: "incident_safeguarding_specialist",
-    replacementType: "merged",
+    replacementRoleCode: "authorised_program_officer",
+    replacementType: "capability_distribution",
     deprecatedAt: "2026-07-28",
-    deprecationReason: "Merged into Incident & Safeguarding Specialist (incident_safeguarding_specialist).",
+    deprecationReason: "Historical restrictive-practice officer is preserved. Future RP governance maps to Authorised Program Officer; incident/safeguarding consequences remain with Incident & Safeguarding Specialist.",
   },
   {
     id: "spec_policy_officer",
@@ -1324,6 +1369,7 @@ export function getSpecialistCapabilities(specialistCode: string): RegistryCapab
 export const DEPRECATED_ROLE_ALIASES: Record<string, string> = {
   compliance_officer: "compliance_quality_manager",
   document_specialist: "knowledge_documentation_specialist",
+  restrictive_practice_officer: "authorised_program_officer",
 };
 
 /**

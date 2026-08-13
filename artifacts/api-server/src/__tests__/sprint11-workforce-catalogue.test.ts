@@ -1,8 +1,8 @@
 /**
- * Sprint 11 — Workforce Catalogue Tests (32 → 17 Specialists)
+ * Sprint 11 — Workforce Catalogue Tests (32 → 17 Specialists, then 19 in Sprint 33B)
  *
  * Tests cover:
- *  - Catalogue structure: 17 current + 28 deprecated entries
+ *  - Catalogue structure: 19 current + 28 deprecated entries
  *  - Department mapping across all 7 departments
  *  - DNA status (approved / pending_design)
  *  - Pack membership for all 6 packs
@@ -72,7 +72,7 @@ vi.mock("../lib/workerProfileRegistry.js", () => ({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 type DNAStatus = "approved" | "pending_design";
-type ExecutionStatus = "available" | "beta" | "coming_soon" | "deprecated";
+type ExecutionStatus = "available" | "beta" | "coming_soon" | "deprecated" | "dna_pending";
 type ReplacementType = "merged_into" | "capability_distribution" | "renamed" | "retired" | null;
 
 interface CatalogueEntry {
@@ -88,7 +88,7 @@ interface CatalogueEntry {
   capabilities: string[];
 }
 
-// ─── The 17 current employees (catalogueVersion "2") ─────────────────────────
+// ─── The 19 current employees (catalogueVersion "2") ─────────────────────────
 
 const CURRENT_SPECIALISTS: CatalogueEntry[] = [
   // Executive (2)
@@ -143,6 +143,16 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     executionStatus: "available",
     capabilities: ["draft_policy", "review_policy", "research"],
   },
+  {
+    code: "authorised_program_officer",
+    displayName: "Authorised Program Officer",
+    departmentCode: "compliance_governance",
+    packCode: "compliance",
+    catalogueVersion: "2",
+    dnaStatus: "pending_design",
+    executionStatus: "dna_pending",
+    capabilities: ["restrictive_practice_governance", "monthly_rp_reporting", "restrictive_practice_review"],
+  },
   // Operations (4)
   {
     code: "operations_manager",
@@ -183,6 +193,16 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     dnaStatus: "pending_design",
     executionStatus: "available",
     capabilities: ["asset_management", "create_workflow", "draft_document"],
+  },
+  {
+    code: "behaviour_support_implementation_specialist",
+    displayName: "Behaviour Support Implementation Specialist",
+    departmentCode: "operations",
+    packCode: "operations",
+    catalogueVersion: "2",
+    dnaStatus: "pending_design",
+    executionStatus: "dna_pending",
+    capabilities: ["bsp_implementation", "service_delivery_review", "restrictive_practice_review"],
   },
   // Finance (3)
   {
@@ -390,7 +410,7 @@ const DEPRECATED_SPECIALISTS: CatalogueEntry[] = [
     replacementRoleCode: "compliance_quality_manager",
     capabilities: ["corrective_action", "review_incident", "draft_document"],
   },
-  // restrictive_practice_officer → incident_safeguarding_specialist
+  // restrictive_practice_officer → authorised_program_officer for future RP governance
   {
     code: "restrictive_practice_officer",
     displayName: "Restrictive Practice Officer",
@@ -753,11 +773,11 @@ function checkDispatchEligibility(code: string): DispatchDecision {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe("Sprint 11 — Catalogue structure", () => {
-  it("getCurrentSpecialists() returns exactly 17 employees", () => {
-    expect(getCurrentSpecialists()).toHaveLength(17);
+  it("getCurrentSpecialists() returns exactly 19 employees", () => {
+    expect(getCurrentSpecialists()).toHaveLength(19);
   });
 
-  it("getCurrentSpecialists() contains all 17 expected role codes", () => {
+  it("getCurrentSpecialists() contains all 19 expected role codes", () => {
     const codes = getCurrentSpecialists().map(s => s.code);
     const expectedCodes = [
       "chief_of_staff",
@@ -765,10 +785,12 @@ describe("Sprint 11 — Catalogue structure", () => {
       "compliance_quality_manager",
       "incident_safeguarding_specialist",
       "policy_governance_specialist",
+      "authorised_program_officer",
       "operations_manager",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
       "process_asset_coordinator",
+      "behaviour_support_implementation_specialist",
       "finance_officer",
       "payroll_workforce_cost_officer",
       "financial_planning_reporting_manager",
@@ -807,7 +829,7 @@ describe("Sprint 11 — Catalogue structure", () => {
     expect(entry!.replacementRoleCode).toBeNull();
   });
 
-  it("all 17 current employees have catalogueVersion '2'", () => {
+  it("all 19 current employees have catalogueVersion '2'", () => {
     for (const specialist of getCurrentSpecialists()) {
       expect(specialist.catalogueVersion, `${specialist.code} should have catalogueVersion "2"`).toBe("2");
     }
@@ -857,12 +879,12 @@ describe("Sprint 11 — Department mapping", () => {
     expect(getSpecialistsByDepartment("executive")).toHaveLength(2);
   });
 
-  it("getSpecialistsByDepartment('compliance_governance') returns 3 employees", () => {
-    expect(getSpecialistsByDepartment("compliance_governance")).toHaveLength(3);
+  it("getSpecialistsByDepartment('compliance_governance') returns 4 employees", () => {
+    expect(getSpecialistsByDepartment("compliance_governance")).toHaveLength(4);
   });
 
-  it("getSpecialistsByDepartment('operations') returns 4 employees", () => {
-    expect(getSpecialistsByDepartment("operations")).toHaveLength(4);
+  it("getSpecialistsByDepartment('operations') returns 5 employees", () => {
+    expect(getSpecialistsByDepartment("operations")).toHaveLength(5);
   });
 
   it("getSpecialistsByDepartment('finance') returns 3 employees", () => {
@@ -903,13 +925,15 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 12 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 12 pending v2 employees (excluding approved CoS, CQM, ISS, OM and EA)
+  it("all 14 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 14 pending v2 employees (excluding approved CoS, CQM, ISS, OM and EA)
     const newlyCodes = [
       "policy_governance_specialist",
+      "authorised_program_officer",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
       "process_asset_coordinator",
+      "behaviour_support_implementation_specialist",
       "finance_officer",
       "payroll_workforce_cost_officer",
       "financial_planning_reporting_manager",
@@ -931,9 +955,9 @@ describe("Sprint 11 — DNA status", () => {
     expect(approved).toHaveLength(5);
   });
 
-  it("exactly 12 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 14 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(12);
+    expect(pending).toHaveLength(14);
   });
 });
 
@@ -950,21 +974,23 @@ describe("Sprint 11 — Pack membership", () => {
     expect(corePack).toContain("knowledge_documentation_specialist");
   });
 
-  it("Compliance pack contains exactly: compliance_quality_manager, incident_safeguarding_specialist, policy_governance_specialist", () => {
+  it("Compliance pack contains CQM, ISS, Policy & Governance, and pending APO", () => {
     const pack = WORKFORCE_PACKS.compliance.employees;
-    expect(pack).toHaveLength(3);
+    expect(pack).toHaveLength(4);
     expect(pack).toContain("compliance_quality_manager");
     expect(pack).toContain("incident_safeguarding_specialist");
     expect(pack).toContain("policy_governance_specialist");
+    expect(pack).toContain("authorised_program_officer");
   });
 
-  it("Operations pack contains exactly: operations_manager, service_delivery_coordinator, workforce_rostering_coordinator, process_asset_coordinator", () => {
+  it("Operations pack contains operations roles plus pending BSI", () => {
     const pack = WORKFORCE_PACKS.operations.employees;
-    expect(pack).toHaveLength(4);
+    expect(pack).toHaveLength(5);
     expect(pack).toContain("operations_manager");
     expect(pack).toContain("service_delivery_coordinator");
     expect(pack).toContain("workforce_rostering_coordinator");
     expect(pack).toContain("process_asset_coordinator");
+    expect(pack).toContain("behaviour_support_implementation_specialist");
   });
 
   it("Finance pack contains exactly: finance_officer, payroll_workforce_cost_officer, financial_planning_reporting_manager", () => {
@@ -1056,6 +1082,18 @@ describe("Sprint 11 — Dispatch protection", () => {
 
   it("dna_pending specialist returns deny with code 'dna_design_pending'", () => {
     const decision = checkDispatchEligibility("policy_governance_specialist");
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasonCode).toBe("dna_design_pending");
+  });
+
+  it("pending Authorised Program Officer returns deny with code 'dna_design_pending'", () => {
+    const decision = checkDispatchEligibility("authorised_program_officer");
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasonCode).toBe("dna_design_pending");
+  });
+
+  it("pending Behaviour Support Implementation Specialist returns deny with code 'dna_design_pending'", () => {
+    const decision = checkDispatchEligibility("behaviour_support_implementation_specialist");
     expect(decision.allowed).toBe(false);
     expect(decision.reasonCode).toBe("dna_design_pending");
   });
@@ -1164,8 +1202,8 @@ describe("Sprint 11 — Migration idempotency", () => {
     expect(getDeprecatedSpecialists().length).toBe(getDeprecatedSpecialists().length);
   });
 
-  it("SPECIALISTS.length === 45 (17 current + 28 deprecated)", () => {
-    expect(SPECIALISTS).toHaveLength(45);
+  it("SPECIALISTS.length === 47 (19 current + 28 deprecated)", () => {
+    expect(SPECIALISTS).toHaveLength(47);
   });
 
   it("getCurrentSpecialists().length + getDeprecatedSpecialists().length === SPECIALISTS.length", () => {
