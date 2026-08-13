@@ -32,9 +32,12 @@ export type SensitivityLevel =
 /** Authority levels — higher authority wins in conflict resolution */
 export type AuthorityLevel =
   | "mandatory"
+  | "authoritative"
   | "primary"
   | "supporting"
-  | "reference";
+  | "reference"
+  | "reference_only"
+  | "example_only";
 
 /** Priority layer for ordering and token budget allocation */
 export type PriorityLayer =
@@ -195,10 +198,13 @@ export const PRIORITY_ORDER: PriorityLayer[] = [
 
 /** Authority bonus applied during ranking */
 export const AUTHORITY_BONUS: Record<AuthorityLevel, number> = {
-  mandatory:  0.30,
-  primary:    0.20,
-  supporting: 0.00,
-  reference:  -0.05,
+  mandatory:     0.30,
+  authoritative: 0.20,
+  primary:       0.20,
+  supporting:    0.00,
+  reference:    -0.05,
+  reference_only:-0.05,
+  example_only: -0.12,
 };
 
 /** Default sensitivity levels a standard specialist may access */

@@ -747,6 +747,35 @@ describe("orchestrateKnowledge — retrieval pipeline", () => {
     expect(allCalls.some(c => c.includes("public"))).toBe(true);
   });
 
+  it("sample/example authority scores below approved policy authority", async () => {
+    const { computeAuthorityBonus } = await import("../services/hybridRetrievalService.js");
+
+    expect(computeAuthorityBonus("mandatory")).toBeGreaterThan(computeAuthorityBonus("example_only"));
+    expect(computeAuthorityBonus("authoritative")).toBeGreaterThan(computeAuthorityBonus("example_only"));
+    expect(computeAuthorityBonus("supporting")).toBeGreaterThan(computeAuthorityBonus("example_only"));
+  });
+
+  it("hybrid retrieval filters current approved source versions before semantic ranking", async () => {
+    const { retrieveChunks } = await import("../services/hybridRetrievalService.js");
+
+    await retrieveChunks({
+      organisationId: "org-version-guard",
+      query: "medication management",
+      queryEmbedding: null,
+      scopeMode: "org_library",
+      limit: 5,
+    });
+
+    const sqlText = mockDb.execute.mock.calls.map(c => JSON.stringify(c[0])).join("\n");
+    expect(sqlText).toContain("JOIN knowledge_source_versions");
+    expect(sqlText).toContain("ksv.id = kc.source_version_id");
+    expect(sqlText).toContain("ksv.is_current = true");
+    expect(sqlText).toContain("ksv.status NOT IN");
+    expect(sqlText).toContain("ksv.status = 'approved'");
+    expect(sqlText).toContain("ksv.ingestion_status = 'complete'");
+    expect(sqlText.indexOf("ksv.is_current = true")).toBeLessThan(sqlText.indexOf("ORDER BY"));
+  });
+
   it("graceful degradation: returns empty context when DB throws without throwing itself", async () => {
     mockDb.execute.mockRejectedValue(new Error("DB connection lost"));
     const ctx = await orchestrateKnowledge({ ...baseInput, writeAudit: false });

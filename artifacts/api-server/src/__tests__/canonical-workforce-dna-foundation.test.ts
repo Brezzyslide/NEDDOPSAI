@@ -31,6 +31,7 @@ import {
   compileSpecialistManifest,
   resolveAndCompileManifest,
 } from "../services/specialistRuntimeManifestService.js";
+import { assembleCanonicalTaskRuntimeInstruction } from "../services/unifiedExecutionEngine.js";
 import type { ResolvedDNA, ResolvedOrgContext } from "../services/dnaStorageService.js";
 import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService.js";
 
@@ -158,6 +159,54 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("service delivery");
     expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("om."))).toBe(true);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(OPERATIONS_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("UEE task runtime uses canonical SRM sections for a specialist without requiring an Employee File", async () => {
+    mockLoadDNAWithStaticFallback.mockResolvedValueOnce(
+      resolvedFromCanonical(mapLegacyDNAProfileToWorkforceDNA(OPERATIONS_MANAGER_DNA)),
+    );
+    mockLoadOrgSpecialistConfig.mockResolvedValueOnce(null);
+
+    const result = await assembleCanonicalTaskRuntimeInstruction({
+      specialistCode: "operations_manager",
+      organizationId: "org-1",
+      userRequest: "Prepare an operational capacity review.",
+      manifest: {
+        id: "manifest-1",
+        executionId: "exec-1",
+        organizationId: "org-1",
+        primarySpecialist: "operations_manager",
+        supportingSpecialists: [],
+        organisationLibrarySources: [],
+        cosMemories: [],
+        specialistMemories: [],
+        taskUploads: [],
+        entityKnowledge: {},
+        blueprintId: null,
+        blueprintVersion: null,
+        modelVersion: null,
+        promptVersion: "1.0.0",
+        assembledAt: new Date(),
+      },
+      blueprint: null,
+      blueprintContract: null,
+      evidencePack: null,
+    });
+
+    expect(result.systemPrompt).toContain("# SPECIALIST IDENTITY");
+    expect(result.systemPrompt).toContain("## PROFESSIONAL PRACTICE");
+    expect(result.systemPrompt).toContain("## REASONING");
+    expect(result.systemPrompt).toContain("## EVIDENCE");
+    expect(result.systemPrompt).toContain("## PROFESSIONAL BOUNDARIES");
+    expect(result.systemPrompt).toContain("## RISK AND UNCERTAINTY");
+    expect(result.systemPrompt).toContain("## COLLABORATION");
+    expect(result.systemPrompt).toContain("### Memory behaviour");
+    expect(result.systemPrompt).toContain("### Regulatory awareness");
+    expect(result.systemPrompt).toContain("### Organisation context use");
+    expect(result.systemPrompt).toContain("### Blueprint behaviour");
+    expect(result.systemPrompt).toContain("RUNTIME CONTEXT ORDER AND TRUST BOUNDARIES");
+    expect(result.systemPrompt).not.toContain("Employee File");
+    expect(result.dnaVersion).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
   });
 
   it("preserves fields previously dropped before SpecialistRuntimeManifest", () => {

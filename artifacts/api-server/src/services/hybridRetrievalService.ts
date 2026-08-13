@@ -12,8 +12,8 @@
  *
  * PRIVACY: Never returns raw embedding vectors. Only scores + metadata.
  * TENANT: organisationId is mandatory in every query.
- * FRESHNESS: Sources not yet effective or already expired are excluded.
- * SUPERSEDED: Only isCurrent = true sources are returned.
+ * FRESHNESS: Sources/versions not yet effective or already expired are excluded.
+ * SUPERSEDED: Only current source versions can be returned for active retrieval.
  */
 
 import { db } from "@workspace/db";
@@ -71,6 +71,9 @@ export interface RawChunk {
   effectiveFrom: Date | null;
   effectiveTo: Date | null;
   isCurrent: boolean;
+  sourceVersionStatus?: string;
+  sourceVersionIsCurrent?: boolean;
+  sourceVersionLabel?: string;
   semanticScore: number;
   lexicalScore: number;
   baseScore: number;
@@ -82,10 +85,13 @@ const DEFAULT_LIMIT = 30;
 // ─── Authority bonus applied to final score ────────────────────────────────────
 
 const AUTHORITY_SCORE_BONUS: Record<string, number> = {
-  mandatory:  0.30,
-  primary:    0.20,
-  supporting: 0.00,
-  reference:  -0.05,
+  mandatory:      0.30,
+  authoritative:  0.20,
+  primary:        0.20,
+  supporting:     0.00,
+  reference:     -0.05,
+  reference_only: -0.05,
+  example_only:  -0.12,
 };
 
 // ─── Main retrieval function ───────────────────────────────────────────────────
@@ -166,18 +172,31 @@ export async function retrieveChunks(params: ChunkRetrievalParams): Promise<RawC
       ks.task_id              AS "taskId",
       ks.effective_from       AS "effectiveFrom",
       ks.effective_to         AS "effectiveTo",
-      ks.is_current           AS "isCurrent",
+      (ks.is_current AND ksv.is_current) AS "isCurrent",
+      ksv.status              AS "sourceVersionStatus",
+      ksv.is_current          AS "sourceVersionIsCurrent",
+      ksv.version_label       AS "sourceVersionLabel",
       (${semanticExpr})       AS "semanticScore",
       (${lexicalExpr})        AS "lexicalScore",
       (${finalScoreExpr})     AS "baseScore"
     FROM knowledge_chunks kc
     JOIN knowledge_sources ks ON ks.id = kc.knowledge_source_id
+    JOIN knowledge_source_versions ksv
+      ON ksv.id = kc.source_version_id
+     AND ksv.knowledge_source_id = ks.id
+     AND ksv.organization_id = kc.organization_id
     WHERE kc.organization_id = '${organisationId.replace(/'/g, "''")}'
       AND kc.deleted_at IS NULL
       AND ks.status = 'approved'
       AND ks.is_current = true
+      AND ksv.is_current = true
+      AND ksv.status NOT IN ('superseded', 'archived', 'revoked', 'failed')
+      AND (ks.source_scope = 'task' OR ksv.status = 'approved')
+      AND ksv.ingestion_status = 'complete'
       AND (ks.effective_from IS NULL OR ks.effective_from <= NOW())
       AND (ks.effective_to IS NULL OR ks.effective_to >= NOW())
+      AND (ksv.effective_from IS NULL OR ksv.effective_from <= NOW())
+      AND (ksv.effective_to IS NULL OR ksv.effective_to >= NOW())
       AND ks.sensitivity_classification IN (${sensitivityList})
       ${excludeClause}
       ${scopeClause}

@@ -449,6 +449,17 @@ async function runPipeline(
         ),
       );
 
+    await db
+      .update(knowledgeSourceVersionsTable)
+      .set({ status: finalSourceStatus, updatedAt: new Date() })
+      .where(
+        and(
+          eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
+          eq(knowledgeSourceVersionsTable.organizationId, organizationId),
+          eq(knowledgeSourceVersionsTable.isCurrent,      true),
+        ),
+      );
+
     logOrgEvent({
       eventType:      "knowledge_hub.ingestion_complete",
       organizationId,
