@@ -268,6 +268,10 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(hasActiveIntelligence("compliance_quality_manager")).toBe(true);
     });
 
+    it("returns true for incident_safeguarding_specialist (current v2 intelligence activated)", () => {
+      expect(hasActiveIntelligence("incident_safeguarding_specialist")).toBe(true);
+    });
+
     it("returns false for knowledge_documentation_specialist (dna_pending — intelligence not yet activated)", () => {
       expect(hasActiveIntelligence("knowledge_documentation_specialist")).toBe(false);
     });

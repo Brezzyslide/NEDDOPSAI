@@ -723,6 +723,136 @@ describe("Sprint 33A — Compliance & Quality Manager authority", () => {
   });
 });
 
+describe("Sprint 33A — Incident & Safeguarding Specialist authority", () => {
+  const incidentSafeguarding = profile("incident_safeguarding_specialist_profile");
+
+  it("permits internal incident review drafting within ISS authority", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "prepare_incident_review_draft",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "reporting_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.workerProfileCode).toBe("incident_safeguarding_specialist_profile");
+  });
+
+  it("holds external incident reports for approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "generate_external_incident_report",
+      actionType: "create_file",
+      executionChannel: "document_store",
+      toolCategory: "reporting_tools",
+      connectorCategory: "document_management",
+    });
+
+    expect(decision.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("permits an approval-required ISS action only after approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "update_incident_review_status",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.approved).toBe(true);
+  });
+
+  it("blocks regulatory notification and serious incident closure even with approval", () => {
+    const notificationDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "submit_reportable_incident_to_ndis",
+      actionType: "send_email",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+    const closureDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "close_serious_incident",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(notificationDecision.decision).toBe("PROHIBITED");
+    expect(closureDecision.decision).toBe("PROHIBITED");
+  });
+
+  it("blocks participant/staff mutation and restrictive-practice authorisation", () => {
+    const participantDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "modify_participant_records",
+      actionType: "update_file",
+      executionChannel: "database_query",
+      toolCategory: "data_tools",
+    });
+    const rpDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "authorise_restrictive_practice",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+    });
+
+    expect(participantDecision.decision).toBe("PROHIBITED");
+    expect(rpDecision.decision).toBe("PROHIBITED");
+  });
+
+  it("denies browser and NDIS portal connector execution for ISS", () => {
+    const browserDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "browse_ndis_portal",
+      actionType: "browser_interaction",
+      executionChannel: "web_browser",
+      toolCategory: "search_tools",
+      browserDomain: "ndiscommission.gov.au",
+    });
+    const connectorDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "submit_to_ndis_portal",
+      actionType: "send_email",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      connectorCategory: "ndis_portal",
+    });
+
+    expect(browserDecision.decision).toBe("PROHIBITED");
+    expect(connectorDecision.decision).toBe("PROHIBITED");
+  });
+
+  it("fails closed for unknown ISS executable action types", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "incident_safeguarding_specialist",
+      workerProfile: incidentSafeguarding,
+      actionIdentifier: "certify_incident_reportability",
+      actionType: "certify_incident_reportability",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+    });
+
+    expect(decision.decision).toBe("UNMAPPED_AUTHORITY");
+  });
+});
+
 describe("Sprint 33A — generic cross-specialist enforcement", () => {
   it("works for a second specialist profile without Operations Manager hardcoding", () => {
     const communication = profile("communication_specialist_profile");

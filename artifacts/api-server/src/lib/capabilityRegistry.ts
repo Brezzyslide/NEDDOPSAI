@@ -394,12 +394,10 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
   {
     code: "incident.review",
     displayName: "Incident Review",
-    description: "Investigate, document, and analyse incidents and near-misses. Until incident_safeguarding_specialist is approved for production, routed to operations_manager.",
+    description: "Investigate, document, and analyse incidents, near-misses and safeguarding concerns.",
     category: "incident", packCode: "compliance",
-    // Sprint 29H Part B: operations_manager is the approved production specialist for incident
-    // management operational review until incident_safeguarding_specialist completes DNA design.
-    eligibleRoles: ["operations_manager", "compliance_quality_manager", "incident_safeguarding_specialist"],
-    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    eligibleRoles: ["incident_safeguarding_specialist", "compliance_quality_manager"],
+    requiredWorkerProfiles: ["incident_safeguarding_specialist_profile"], requiredExecutionChannels: [], requiredConnectorCategories: [],
     defaultRiskLevel: "critical", defaultApprovalRequired: true,
     informationAllowed: true, analysisAllowed: true, executionAllowed: true,
     status: "active", version: "1.1", effectiveDate: "2026-08-07",
@@ -410,7 +408,7 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
     description: "Review and document use of restrictive practices per NDIS requirements",
     category: "compliance", packCode: "compliance",
     eligibleRoles: ["incident_safeguarding_specialist"],
-    requiredWorkerProfiles: ["compliance_auditor"], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    requiredWorkerProfiles: ["incident_safeguarding_specialist_profile"], requiredExecutionChannels: [], requiredConnectorCategories: [],
     defaultRiskLevel: "critical", defaultApprovalRequired: true,
     informationAllowed: true, analysisAllowed: true, executionAllowed: false,
     status: "active", version: "1.0", effectiveDate: "2025-01-01",

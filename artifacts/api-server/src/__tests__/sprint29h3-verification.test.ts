@@ -791,23 +791,24 @@ describe("PART H — Partial execution (if user says 'Continue with available pa
     console.log("\nREMOVED capability:");
     console.log("  policy.review @ execution — blocked (level_not_supported)");
     console.log("\nSPECIALIST SELECTION:");
-    console.log("  incident.review eligible roles: [operations_manager, compliance_quality_manager, incident_safeguarding_specialist]");
-    console.log("  → Operations Manager IS eligible for incident.review");
+    console.log("  incident.review eligible roles: [incident_safeguarding_specialist, compliance_quality_manager]");
+    console.log("  → Incident & Safeguarding Specialist IS eligible for incident.review");
     console.log("\nKRS ACCESS:");
     console.log("  Policy documents ARE accessible via KRS (separate from capability gate)");
     console.log("  Capability gate controls PRODUCT execution, not document evidence access");
     console.log("  OM receives Incident Management Policy as evidence regardless of policy.review cap");
 
-    // Verify incident.review eligibleRoles includes operations_manager
+    // Verify incident.review eligibleRoles now uses the current v2 incident specialist.
     const cap = getCapability("incident.review")!;
-    expect(cap.eligibleRoles).toContain("operations_manager");
-    console.log("\n→ OM is eligible for incident.review: CONFIRMED");
+    expect(cap.eligibleRoles).toContain("incident_safeguarding_specialist");
+    expect(cap.eligibleRoles).not.toContain("operations_manager");
+    console.log("\n→ Incident & Safeguarding Specialist is eligible for incident.review: CONFIRMED");
 
     // Verify policy.review is NOT in incident.review execution requirements
     const policyReviewCap = getCapability("policy.review")!;
     expect(policyReviewCap.eligibleRoles).not.toContain("operations_manager");
     console.log("→ policy.review eligible roles do NOT include operations_manager");
-    console.log("→ policy.review was never a valid primary execution capability for OM");
+    console.log("→ policy.review remains separate from incident.review routing");
   });
 
   it("H2: 'Continue with available parts' message — would gate fire again?", async () => {
@@ -847,7 +848,7 @@ describe("PART H — Partial execution (if user says 'Continue with available pa
 
   it("H3: output contract — what the deliverable would look like without policy.review", () => {
     console.log("\n=== H3: OUTPUT CONTRACT ANALYSIS ===");
-    console.log("If OM executes incident.review at professional_analysis:");
+    console.log("If Incident & Safeguarding executes incident.review at professional_analysis:");
     console.log("  Input evidence: Incident Management Policy (via KRS — available)");
     console.log("  Execution type: professional_analysis (analysis, not execution/submission)");
     console.log("  Output contract: analysis findings, gap report, recommendations");
@@ -856,13 +857,13 @@ describe("PART H — Partial execution (if user says 'Continue with available pa
     console.log("What is MISSING without policy.review as primary capability:");
     console.log("  policy.review targets compliance_quality_manager / KDS");
     console.log("  → Different specialist, different analysis angle");
-    console.log("  → OM (incident.review) would produce incident management analysis");
+    console.log("  → Incident & Safeguarding (incident.review) would produce incident/safeguarding analysis");
     console.log("  → CQM (policy.review) would produce policy compliance analysis");
     console.log("  These are different work products, not the same thing with a cap removed");
     console.log("");
     console.log("→ The deliverable would NOT be incomplete due to policy.review absence");
     console.log("→ policy.review was a false-positive identification — it was never required");
-    console.log("→ OM incident.review covers the user's actual request (incident management improvement plan)");
+    console.log("→ incident.review covers the user's actual request (incident management improvement plan)");
     console.log("→ KRS provides policy document as evidence regardless of cap gate");
   });
 });
@@ -899,7 +900,7 @@ describe("PART I — Final classification", () => {
       {
         q: "1. Is policy.review actually required for this request?",
         a: "NO. The user asked to review an Incident Management Policy document and produce an improvement plan. " +
-           "This is incident.review (OM eligible). policy.review is a false-positive from the bare 'policy' keyword " +
+           "This is incident.review. policy.review is a false-positive from the bare 'policy' keyword " +
            "matching the document name.",
       },
       {

@@ -129,7 +129,7 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "compliance_governance",
     packCode: "compliance",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
     capabilities: ["review_incident", "restrictive_practice_review", "draft_document"],
   },
@@ -903,10 +903,9 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 13 newly created employees have dnaStatus 'pending_design'", () => {
-    // The remaining 13 pending v2 employees (excluding approved CoS, CQM, OM and EA)
+  it("all 12 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 12 pending v2 employees (excluding approved CoS, CQM, ISS, OM and EA)
     const newlyCodes = [
-      "incident_safeguarding_specialist",
       "policy_governance_specialist",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
@@ -927,14 +926,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 4 employees have dnaStatus 'approved'", () => {
+  it("exactly 5 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(4);
+    expect(approved).toHaveLength(5);
   });
 
-  it("exactly 13 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 12 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(13);
+    expect(pending).toHaveLength(12);
   });
 });
 
@@ -1063,6 +1062,12 @@ describe("Sprint 11 — Dispatch protection", () => {
 
   it("available compliance_quality_manager with approved DNA can be dispatched", () => {
     const decision = checkDispatchEligibility("compliance_quality_manager");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
+  });
+
+  it("available incident_safeguarding_specialist with approved DNA can be dispatched", () => {
+    const decision = checkDispatchEligibility("incident_safeguarding_specialist");
     expect(decision.allowed).toBe(true);
     expect(decision.reasonCode).toBe("eligible");
   });

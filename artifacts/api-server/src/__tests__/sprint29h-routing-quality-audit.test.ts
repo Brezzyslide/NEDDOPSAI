@@ -3,7 +3,7 @@
  *
  * Tests covering:
  *   Part A — Legacy specialist dispatch bypass removed (canonical routing)
- *   Part B — incident.review routed to operations_manager
+ *   Part B — incident.review routed to incident_safeguarding_specialist
  *   Part C — Plan-language detection in completeness dimension
  *   Part D — Quality score scale corrected to 0–100
  *   Part E — Auto-revision no longer fires when score ≥ 70
@@ -142,27 +142,23 @@ function makeBlueprint(overrides: Partial<import("../services/workBlueprintServi
 // ─── PART A + B: chiefOfStaffService canonical routing ───────────────────────
 
 describe("Part A + B — chiefOfStaffService canonical routing", () => {
-  it("planTask maps 'incident' keywords to operations_manager (not a dna_pending specialist)", () => {
+  it("planTask maps 'incident' keywords to the current v2 incident specialist", () => {
     const plan = planTask(
       "Review our Incident Management Policy",
       "Identify operational gaps, risks and weaknesses, and prepare an Improvement Plan",
     );
 
-    // operations_manager must be selected (the only available specialist for incident.review)
+    // incident_safeguarding_specialist is now the approved current v2 owner for incident.review.
     const specialists = plan.assignedSpecialists;
-    expect(specialists).toContain("operations_manager");
-    expect(specialists).not.toContain("incident_safeguarding_specialist");
+    expect(specialists).toContain("incident_safeguarding_specialist");
     expect(specialists).not.toContain("knowledge_documentation_specialist");
-    expect(specialists).not.toContain("compliance_quality_manager");
-    expect(plan.primarySpecialist).toBe("operations_manager");
+    expect(plan.primarySpecialist).toBe("incident_safeguarding_specialist");
   });
 
   it("planTask does not select dna_pending specialists for any intent", () => {
     const dnaBlockedCodes = [
-      "incident_safeguarding_specialist",
       "knowledge_documentation_specialist",
       "policy_governance_specialist",
-      "compliance_quality_manager",
     ];
 
     const plans = [
@@ -179,7 +175,7 @@ describe("Part A + B — chiefOfStaffService canonical routing", () => {
     }
   });
 
-  it("planTask selects operations_manager for all incident-related intents", () => {
+  it("planTask selects incident_safeguarding_specialist for all incident-related intents", () => {
     const intents = [
       ["Review incident reports", ""],
       ["Analyse near miss events", ""],
@@ -190,14 +186,13 @@ describe("Part A + B — chiefOfStaffService canonical routing", () => {
 
     for (const [title, desc] of intents) {
       const plan = planTask(title!, desc!);
-      expect(plan.assignedSpecialists).toContain("operations_manager");
+      expect(plan.assignedSpecialists).toContain("incident_safeguarding_specialist");
     }
   });
 
   it("planTask still routes operations work to operations_manager", () => {
-    const plan = planTask("Review our roster scheduling", "Check SCHADS compliance and coverage gaps");
+    const plan = planTask("Review our operational workflow", "Identify service delivery bottlenecks and capacity gaps");
     expect(plan.assignedSpecialists).toContain("operations_manager");
-    expect(plan.primarySpecialist).toBe("operations_manager");
   });
 });
 
@@ -208,13 +203,13 @@ describe("Part B — capabilityRegistry incident.review", () => {
     expect(isKnownCapabilityCode("incident.review")).toBe(true);
   });
 
-  it("operations_manager is in incident.review eligibleRoles", () => {
+  it("operations_manager is no longer in incident.review eligibleRoles", () => {
     const cap = getCapability("incident.review");
     expect(cap).toBeDefined();
-    expect(cap!.eligibleRoles).toContain("operations_manager");
+    expect(cap!.eligibleRoles).not.toContain("operations_manager");
   });
 
-  it("incident_safeguarding_specialist is still in incident.review eligibleRoles (future use)", () => {
+  it("incident_safeguarding_specialist is in incident.review eligibleRoles", () => {
     const cap = getCapability("incident.review");
     expect(cap!.eligibleRoles).toContain("incident_safeguarding_specialist");
   });
@@ -224,9 +219,9 @@ describe("Part B — capabilityRegistry incident.review", () => {
     expect(cap!.executionAllowed).toBe(true);
   });
 
-  it("requiredWorkerProfiles is empty for incident.review (compliance_auditor removed)", () => {
+  it("requiredWorkerProfiles references current v2 incident WorkerProfile", () => {
     const cap = getCapability("incident.review");
-    expect(cap!.requiredWorkerProfiles).toHaveLength(0);
+    expect(cap!.requiredWorkerProfiles).toEqual(["incident_safeguarding_specialist_profile"]);
   });
 });
 

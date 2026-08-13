@@ -8,7 +8,7 @@
  *   H9:      Genuine execution request triggers entitlement gate
  *   H10:     Analytical task does not trigger partial-access confirmation
  *   H11:     dna_pending specialist is not dispatchable
- *   H12:     Operations Manager is eligible for incident operational review
+ *   H12:     Incident & Safeguarding Specialist is eligible for incident review
  *
  * Evidence level: 1 (unit test — deterministic scoring, registry lookups, sync eligibility checks)
  * No real DB, no LLM, no AI gateway. AI_PROVIDER=internal forces deterministic path.
@@ -303,7 +303,6 @@ describe("H10: Analytical task (all capabilities @ professional_analysis) must n
 
 describe("H11: dna_pending and non-production specialists are not dispatchable", () => {
   const NON_PRODUCTION = [
-    "incident_safeguarding_specialist",
     "knowledge_documentation_specialist",
     "policy_governance_specialist",
   ];
@@ -316,17 +315,17 @@ describe("H11: dna_pending and non-production specialists are not dispatchable",
   }
 });
 
-// ─── H12: Operations Manager eligibility for incident review ─────────────────
+// ─── H12: Current v2 incident specialist eligibility for incident review ─────
 
-describe("H12: Operations Manager is eligible for incident management review", () => {
-  it("H12a: operations_manager is eligible for incident.review capability", () => {
+describe("H12: Incident & Safeguarding Specialist is eligible for incident review", () => {
+  it("H12a: operations_manager is no longer the temporary incident.review fallback", () => {
     const eligible = validateSpecialistEligibilitySync("operations_manager", "incident.review");
-    expect(eligible, "operations_manager must be eligible for incident.review").toBe(true);
+    expect(eligible).toBe(false);
   });
 
-  it("H12b: incident_safeguarding_specialist is NOT eligible for incident.review (dna_pending)", () => {
+  it("H12b: incident_safeguarding_specialist is eligible for incident.review", () => {
     const eligible = validateSpecialistEligibilitySync("incident_safeguarding_specialist", "incident.review");
-    expect(eligible).toBe(false);
+    expect(eligible).toBe(true);
   });
 
   it("H12c: compliance_quality_manager eligibility reflects current v2 activation", () => {

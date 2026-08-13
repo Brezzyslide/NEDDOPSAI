@@ -97,6 +97,16 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       catalogueVersion: "2",
     },
     {
+      code: "incident_safeguarding_specialist",
+      displayName: "Incident & Safeguarding Specialist",
+      packCode: "compliance",
+      capabilities: ["review_incident", "restrictive_practice_review", "draft_document"],
+      executionStatus: "available",
+      dnaStatus: "approved",
+      departmentCode: "compliance",
+      catalogueVersion: "2",
+    },
+    {
       code: "executive_assistant",
       displayName: "Executive Assistant",
       packCode: "core",
@@ -531,7 +541,7 @@ describe("classifyMessageLLM — workforce context", () => {
     );
 
     // Only dispatchable codes should appear in relatedWorkforceRoles
-    const allowedCodes = new Set(["chief_of_staff", "operations_manager", "compliance_quality_manager", "executive_assistant"]);
+    const allowedCodes = new Set(["chief_of_staff", "operations_manager", "compliance_quality_manager", "incident_safeguarding_specialist", "executive_assistant"]);
     for (const role of result.relatedWorkforceRoles) {
       expect(allowedCodes.has(role)).toBe(true);
     }

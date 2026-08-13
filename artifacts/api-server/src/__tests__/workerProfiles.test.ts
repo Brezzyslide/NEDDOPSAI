@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 33 worker profiles (one per specialist)", () => {
-    expect(WORKER_PROFILES).toHaveLength(33);
+  it("contains exactly 34 worker profiles (one per specialist)", () => {
+    expect(WORKER_PROFILES).toHaveLength(34);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 33 specialists", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(33);
+  it("ROLE_TO_PROFILES covers all 34 specialists", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(34);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
@@ -286,7 +286,7 @@ describe("Architecture correctness — Workforce Role vs Worker Profile separati
 describe("Risk classification", () => {
   it("finance and compliance profiles involving external submissions are medium or high risk", () => {
     const sensitiveRoles = ["payroll_officer", "accounts_officer", "financial_reporting_officer",
-      "incident_review_officer", "restrictive_practice_officer", "compliance_quality_manager"];
+      "incident_review_officer", "restrictive_practice_officer", "compliance_quality_manager", "incident_safeguarding_specialist"];
     for (const role of sensitiveRoles) {
       const profiles = getWorkerProfilesForRole(role);
       for (const p of profiles) {

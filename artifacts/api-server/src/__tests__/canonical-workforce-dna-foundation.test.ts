@@ -22,6 +22,7 @@ import {
   CHIEF_OF_STAFF_DNA,
   COMPLIANCE_QUALITY_MANAGER_DNA,
   EXECUTIVE_ASSISTANT_DNA_V1,
+  INCIDENT_SAFEGUARDING_SPECIALIST_DNA,
   OPERATIONS_MANAGER_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
@@ -217,6 +218,57 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(result.instruction).toContain("Corrective action closure lacks effectiveness evidence");
     expect(result.instruction).toContain("Blueprint requirements as professional competence or technical authority");
     expect(manifest.workerProfileReference?.profileCode).toBe("compliance_quality_manager_profile");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
+  });
+
+  it("maps Incident & Safeguarding Specialist as the current v2 incident specialist", () => {
+    const dna = getCanonicalDNAProfile("incident_safeguarding_specialist");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("incident_safeguarding_specialist");
+    expect(dna?.professionalMission.missionStatement).toContain("incident and safeguarding work");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(7);
+    expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("iss."))).toBe(true);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(INCIDENT_SAFEGUARDING_SPECIALIST_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("preserves Incident & Safeguarding fact, chronology, memory and closure discipline", () => {
+    const manifest = compileSpecialistManifest("incident_safeguarding_specialist");
+    const evidence = JSON.stringify(manifest.evidenceModel);
+    const memory = [
+      manifest.memoryBehaviour?.priorConclusionReliance,
+      ...(manifest.memoryBehaviour?.memoryUseLimits ?? []),
+      ...(manifest.memoryBehaviour?.reconsiderationTriggers ?? []),
+    ].join(" ");
+    const risk = manifest.riskAndUncertaintyModel?.highRiskTriggers.join(" ");
+    const boundaries = [
+      ...(manifest.boundaryModel?.outOfScopeDecisions ?? []),
+      ...(manifest.boundaryModel?.prohibitedBehaviours ?? []),
+      ...(manifest.boundaryModel?.mustNotRepresentAs ?? []),
+    ].join(" ");
+
+    expect(evidence).toContain("Allegation treated as established fact");
+    expect(evidence).toContain("Observation merged with interpretation");
+    expect(evidence).toContain("Chronology lacks source, timestamp or sequence evidence");
+    expect(evidence).toContain("Missing evidence used to imply the event did not occur");
+    expect(memory).toContain("Previous task outcomes may be reconsidered when new evidence conflicts");
+    expect(memory).toContain("Information appears superseded");
+    expect(risk).toContain("Potential abuse, neglect, exploitation");
+    expect(boundaries).toContain("Make final legal or regulatory reportability determinations");
+    expect(boundaries).toContain("Treat allegations, memory, previous incident conclusions or samples as current established truth");
+  });
+
+  it("projects Incident & Safeguarding runtime without adding technical authority", () => {
+    const manifest = compileSpecialistManifest("incident_safeguarding_specialist");
+    const profile = getWorkerProfileByCode("incident_safeguarding_specialist_profile");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("Immediate safeguarding and safety risk");
+    expect(result.instruction).toContain("Allegation treated as established fact");
+    expect(result.instruction).toContain("closure-readiness recommendations must preserve unresolved material uncertainty");
+    expect(result.instruction).toContain("Blueprint requirements as professional competence or technical authority");
+    expect(manifest.workerProfileReference?.profileCode).toBe("incident_safeguarding_specialist_profile");
     expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
     expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
     expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
@@ -603,8 +655,9 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(13);
+    expect(pending.length).toBeGreaterThanOrEqual(12);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
+    expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("compliance_quality_manager")).not.toBeNull();
     expect(getSafeDNADescriptor("compliance_quality_manager")).not.toBeNull();
