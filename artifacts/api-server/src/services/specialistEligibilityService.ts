@@ -68,10 +68,11 @@ export interface EligibilityCheckContext {
 // Sprint 11+: Only specialists with approved DNA are active.
 // compliance_officer was deprecated and merged into compliance_quality_manager.
 // document_specialist was renamed to knowledge_documentation_specialist.
-// Neither compliance_quality_manager nor knowledge_documentation_specialist have
-// approved DNA yet — they are dna_pending and not yet dispatchable.
+// knowledge_documentation_specialist does not have approved DNA yet — it is
+// dna_pending and not yet dispatchable.
 
 const ACTIVE_SPECIALISTS = new Set([
+  "compliance_quality_manager",
   "executive_assistant",
   "operations_manager",
 ]);

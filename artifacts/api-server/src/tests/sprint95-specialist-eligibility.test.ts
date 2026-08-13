@@ -42,8 +42,7 @@ const BASE_CONTEXT = {
 describe("Sprint 9.5 — Specialist Eligibility", () => {
   describe("validateSpecialistEligibilitySync", () => {
     // compliance_officer was deprecated in Sprint 11 (merged into compliance_quality_manager).
-    // compliance_quality_manager is dna_pending so the sync check returns false for it too.
-    // Updated to use chief_of_staff + administration.general — a currently approved specialist.
+    // This check uses chief_of_staff + administration.general as a stable approved specialist path.
     it("returns true for chief_of_staff + administration.general", () => {
       const result = validateSpecialistEligibilitySync(
         "chief_of_staff",
@@ -98,8 +97,7 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
   });
 
   describe("checkSpecialistEligibility — allowed paths", () => {
-    // compliance_officer deprecated Sprint 11; compliance_quality_manager (its successor)
-    // is dna_pending and not yet eligible. Use operations_manager — the only approved specialist.
+    // This check uses operations_manager as a stable approved specialist path.
     it("returns eligible=true for operations_manager + operations.capacity_analysis", async () => {
       const decision = await checkSpecialistEligibility(
         "operations_manager",
@@ -265,11 +263,9 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
   });
 
   describe("hasActiveIntelligence", () => {
-    // Sprint 11: compliance_officer deprecated → compliance_quality_manager (dna_pending, not active).
     // Sprint 11: document_specialist renamed → knowledge_documentation_specialist (dna_pending, not active).
-    // These tests now verify that dna_pending successors are correctly NOT listed as active.
-    it("returns false for compliance_quality_manager (dna_pending — intelligence not yet activated)", () => {
-      expect(hasActiveIntelligence("compliance_quality_manager")).toBe(false);
+    it("returns true for compliance_quality_manager (current v2 intelligence activated)", () => {
+      expect(hasActiveIntelligence("compliance_quality_manager")).toBe(true);
     });
 
     it("returns false for knowledge_documentation_specialist (dna_pending — intelligence not yet activated)", () => {

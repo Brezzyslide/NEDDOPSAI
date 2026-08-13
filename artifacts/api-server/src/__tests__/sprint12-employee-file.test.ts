@@ -529,10 +529,9 @@ describe("Group 9: Dispatch behaviour is unchanged", () => {
     expect(result).toBe(false);
   });
 
-  it("the eligibility service still blocks dna_pending specialists", () => {
-    // compliance_quality_manager is dna_pending
+  it("the eligibility service allows current v2 compliance_quality_manager", () => {
     const result = validateSpecialistEligibilitySync("compliance_quality_manager", "compliance.audit_readiness");
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
   it("chief_of_staff is 'available' in the workforce registry", () => {

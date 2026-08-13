@@ -603,6 +603,126 @@ describe("Sprint 33A — Executive Assistant authority", () => {
   });
 });
 
+describe("Sprint 33A — Compliance & Quality Manager authority", () => {
+  const complianceQualityManager = profile("compliance_quality_manager_profile");
+
+  it("permits internal compliance analysis and reporting within CQM authority", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "prepare_compliance_gap_report",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "reporting_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.workerProfileCode).toBe("compliance_quality_manager_profile");
+  });
+
+  it("holds external compliance reports for approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "generate_external_compliance_report",
+      actionType: "create_file",
+      executionChannel: "document_store",
+      toolCategory: "reporting_tools",
+      connectorCategory: "document_management",
+    });
+
+    expect(decision.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("permits an approval-required CQM action only after approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "update_compliance_register_status",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.approved).toBe(true);
+  });
+
+  it("blocks regulatory submission even when approval is present", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "submit_regulatory_notification",
+      actionType: "send_email",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PROHIBITED");
+  });
+
+  it("blocks participant and staff record mutation", () => {
+    const participantDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "modify_participant_records",
+      actionType: "update_file",
+      executionChannel: "database_query",
+      toolCategory: "data_tools",
+    });
+    const staffDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "modify_staff_records",
+      actionType: "update_file",
+      executionChannel: "database_query",
+      toolCategory: "data_tools",
+    });
+
+    expect(participantDecision.decision).toBe("PROHIBITED");
+    expect(staffDecision.decision).toBe("PROHIBITED");
+  });
+
+  it("denies browser and NDIS portal connector execution for CQM", () => {
+    const browserDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "browse_ndis_portal",
+      actionType: "browser_interaction",
+      executionChannel: "web_browser",
+      toolCategory: "search_tools",
+      browserDomain: "ndiscommission.gov.au",
+    });
+    const connectorDecision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "submit_to_ndis_portal",
+      actionType: "send_email",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      connectorCategory: "ndis_portal",
+    });
+
+    expect(browserDecision.decision).toBe("PROHIBITED");
+    expect(connectorDecision.decision).toBe("PROHIBITED");
+  });
+
+  it("fails closed for unknown CQM executable action types", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "compliance_quality_manager",
+      workerProfile: complianceQualityManager,
+      actionIdentifier: "certify_provider_registration",
+      actionType: "certify_provider_registration",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+    });
+
+    expect(decision.decision).toBe("UNMAPPED_AUTHORITY");
+  });
+});
+
 describe("Sprint 33A — generic cross-specialist enforcement", () => {
   it("works for a second specialist profile without Operations Manager hardcoding", () => {
     const communication = profile("communication_specialist_profile");

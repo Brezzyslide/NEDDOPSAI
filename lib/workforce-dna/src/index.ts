@@ -182,6 +182,7 @@ export {
 // ─── Profiles (direct access — prefer registry for runtime use) ────────────────
 export { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
 export { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
+export { COMPLIANCE_QUALITY_MANAGER_DNA } from "./profiles/complianceQualityManager.js";
 export { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";

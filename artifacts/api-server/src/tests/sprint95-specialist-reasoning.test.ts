@@ -48,9 +48,9 @@ vi.mock("@workspace/ai-gateway", () => ({
   }),
 }));
 
-// Sprint 11: compliance_officer was deprecated and merged into compliance_quality_manager (dna_pending).
+// Sprint 11: compliance_officer was deprecated and merged into compliance_quality_manager.
 // document_specialist was renamed to knowledge_documentation_specialist (dna_pending).
-// ACTIVE_SPECIALIST_VERSIONS now only contains chief_of_staff and operations_manager.
+// The active specialist set now includes current v2 specialists as their DNA is completed.
 // All tests that exercised compliance_officer / document_specialist must use an approved specialist.
 const FAKE_WORK_PACKAGE: SpecialistWorkPackage = {
   specialistRunId: "run-1",
@@ -118,8 +118,7 @@ describe("Sprint 9.5 — Specialist Intelligence Service", () => {
   });
 
   describe("Deterministic provider (internal)", () => {
-    // Sprint 11: compliance_officer → compliance_quality_manager (dna_pending — not in ACTIVE_SPECIALIST_VERSIONS).
-    // Now tests chief_of_staff, which has approved DNA and is in ACTIVE_SPECIALIST_VERSIONS.
+    // Uses chief_of_staff as a stable approved specialist path.
     it("returns a completed result for chief_of_staff", async () => {
       const service = createSpecialistIntelligenceService();
       const pkg = {

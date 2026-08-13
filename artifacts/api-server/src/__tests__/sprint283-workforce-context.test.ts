@@ -91,8 +91,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       displayName: "Compliance & Quality Manager",
       packCode: "compliance",
       capabilities: ["review_policy", "audit_preparation", "quality_review"],
-      executionStatus: "dna_pending",
-      dnaStatus: "pending_design",
+      executionStatus: "available",
+      dnaStatus: "approved",
       departmentCode: "compliance",
       catalogueVersion: "2",
     },
@@ -187,13 +187,15 @@ describe("getConversationWorkforceContext", () => {
     expect(om!.unavailableReason).toBeUndefined();
   });
 
-  it("marks compliance_quality_manager as NOT dispatchable (DNA pending)", async () => {
+  it("marks compliance_quality_manager as dispatchable (approved DNA + entitled + runtime ready)", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     const cqm = ctx.specialists.find(s => s.code === "compliance_quality_manager");
     expect(cqm).toBeDefined();
-    expect(cqm!.availableForDispatch).toBe(false);
+    expect(cqm!.availableForDispatch).toBe(true);
     expect(cqm!.availableForConversation).toBe(true);
-    expect(cqm!.unavailableReason).toBe("Professional design pending");
+    expect(cqm!.runtimeReady).toBe(true);
+    expect(cqm!.entitled).toBe(true);
+    expect(cqm!.unavailableReason).toBeUndefined();
   });
 
   it("marks executive_assistant as dispatchable (approved DNA + entitled + runtime ready)", async () => {
@@ -276,7 +278,7 @@ describe("getConversationWorkforceContext", () => {
   it("returns correct summary counts", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     expect(ctx.summary.dispatchableCount).toBeGreaterThanOrEqual(1); // at least operations_manager
-    expect(ctx.summary.unavailableCount).toBeGreaterThan(0);         // at least compliance_quality_manager
+    expect(ctx.summary.unavailableCount).toBe(0);                    // fixture contains only dispatchable current v2 roles
     expect(ctx.summary.availableCount).toBeGreaterThan(0);
   });
 
@@ -336,11 +338,16 @@ describe("buildWorkforceSection", () => {
   });
 
   it("lists unavailable specialists with their customer-facing reason", async () => {
+    mocks.listCatalogue.mockResolvedValue({
+      entries: [{ specialistCode: "operations_manager", executionStatus: "dna_pending", isArchived: false, comingSoon: false }],
+    });
+    _clearWorkforceCache();
+
     const ctx = await getConversationWorkforceContext(ORG_A);
     const section = buildWorkforceSection(ctx);
 
     expect(section).toContain("Available for discussion but not dispatch:");
-    expect(section).toContain("Compliance & Quality Manager");
+    expect(section).toContain("Operations Manager");
     expect(section).toContain("Professional design pending");
   });
 
@@ -448,10 +455,7 @@ describe("classifyMessageLLM — workforce context", () => {
     expect(result.relatedWorkforceRoles).toContain("chief_of_staff");
   });
 
-  it("removes unavailable specialist from relatedWorkforceRoles", async () => {
-    // compliance_quality_manager is dna_pending — not in conversationCodes from live context
-    // Actually wait — it IS available for conversation per the service design.
-    // Let me test that it's removed from specialistSequence instead.
+  it("preserves available compliance_quality_manager in specialistSequence", async () => {
     mocks.gatewayProcess.mockResolvedValue({
       content: makeLLMResponse({
         relatedWorkforceRoles: ["chief_of_staff", "compliance_quality_manager", "operations_manager"],
@@ -465,9 +469,8 @@ describe("classifyMessageLLM — workforce context", () => {
 
     const result = await classifyMessageLLM("Review our operations", baseCtx, authCtx);
 
-    // specialistSequence must only contain dispatchable specialists
     const seqCodes = (result.specialistSequence ?? []).map((s: any) => s.roleCode);
-    expect(seqCodes).not.toContain("compliance_quality_manager");
+    expect(seqCodes).toContain("compliance_quality_manager");
     expect(seqCodes).toContain("operations_manager");
   });
 
@@ -490,7 +493,7 @@ describe("classifyMessageLLM — workforce context", () => {
     mocks.gatewayProcess.mockResolvedValue({
       content: makeLLMResponse({
         specialistSequence: [
-          { roleCode: "compliance_quality_manager", dependsOn: [], rationale: "CQM review" },
+          { roleCode: "compliance_officer", dependsOn: [], rationale: "legacy compliance review" },
         ],
       }),
       usedFallback: false,
@@ -505,15 +508,15 @@ describe("classifyMessageLLM — workforce context", () => {
       content: makeLLMResponse({
         relatedWorkforceRoles: ["chief_of_staff"],
         specialistSequence: [
-          { roleCode: "compliance_quality_manager", dependsOn: [], rationale: "CQM" },
+          { roleCode: "compliance_officer", dependsOn: [], rationale: "legacy compliance review" },
         ],
-        customerResponse: "I will assign the Compliance Manager for this review.",
+        customerResponse: "I will assign the old Compliance Officer for this review.",
       }),
       usedFallback: false,
     });
 
     const result = await classifyMessageLLM("Review our compliance", baseCtx, authCtx);
-    // The compliance_quality_manager was removed; disclosure appended
+    // The deprecated compliance_officer was removed; disclosure appended
     expect(result.customerResponse).toContain("Note:");
     expect(result.customerResponse).toMatch(/not currently available for dispatch/i);
   });
@@ -528,7 +531,7 @@ describe("classifyMessageLLM — workforce context", () => {
     );
 
     // Only dispatchable codes should appear in relatedWorkforceRoles
-    const allowedCodes = new Set(["chief_of_staff", "operations_manager"]);
+    const allowedCodes = new Set(["chief_of_staff", "operations_manager", "compliance_quality_manager", "executive_assistant"]);
     for (const role of result.relatedWorkforceRoles) {
       expect(allowedCodes.has(role)).toBe(true);
     }
@@ -695,7 +698,7 @@ describe("regression — Medication Management Policy + workforce context", () =
     expect((result as any).workforceViolationDetected).not.toBe(true);
   });
 
-  it("compliance_quality_manager must not appear in specialistSequence (DNA pending)", async () => {
+  it("compliance_quality_manager may appear in specialistSequence when approved and ready", async () => {
     mocks.checkOrganisationLibraryPresence.mockResolvedValue({
       searched: true, matches: [],
       summary: { exactMatch: false, partialMatch: false, searchable: false, usable: false, reason: "Not found" },
@@ -717,12 +720,12 @@ describe("regression — Medication Management Policy + workforce context", () =
     );
 
     const seqCodes = (result.specialistSequence ?? []).map((s: any) => s.roleCode);
-    expect(seqCodes).not.toContain("compliance_quality_manager");
+    expect(seqCodes).toContain("compliance_quality_manager");
     expect(seqCodes).toContain("operations_manager");
-    expect((result as any).workforceViolationDetected).toBe(true);
+    expect((result as any).workforceViolationDetected).not.toBe(true);
   });
 
-  it("CoS may explain compliance_quality_manager unavailability", async () => {
+  it("CoS may present compliance_quality_manager as dispatchable", async () => {
     mocks.checkOrganisationLibraryPresence.mockResolvedValue({
       searched: true, matches: [],
       summary: { exactMatch: false, partialMatch: false, searchable: false, usable: false, reason: "Not found" },
@@ -739,8 +742,8 @@ describe("regression — Medication Management Policy + workforce context", () =
       authCtx,
     );
 
-    // Workforce section shows CQM as unavailable for discussion
+    // Workforce section shows CQM as available for dispatch
     expect(captured[0]).toContain("Compliance & Quality Manager");
-    expect(captured[0]).toContain("Professional design pending");
+    expect(captured[0]).toContain("Dispatchable now:");
   });
 });

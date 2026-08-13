@@ -24,6 +24,7 @@ import {
 } from "./canonical.js";
 import { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
 import { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
+import { COMPLIANCE_QUALITY_MANAGER_DNA } from "./profiles/complianceQualityManager.js";
 import { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 import { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 import { INCIDENT_MANAGEMENT_DNA } from "./profiles/incidentManagement.js";
@@ -48,6 +49,7 @@ import {
 const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
   ["chief_of_staff",       CHIEF_OF_STAFF_DNA],
   ["executive_assistant",  EXECUTIVE_ASSISTANT_DNA_V1],
+  ["compliance_quality_manager", COMPLIANCE_QUALITY_MANAGER_DNA],
   ["compliance_officer",   COMPLIANCE_OFFICER_DNA],
   ["operations_manager",   OPERATIONS_MANAGER_DNA],
   ["document_specialist",  DOCUMENT_SPECIALIST_DNA],

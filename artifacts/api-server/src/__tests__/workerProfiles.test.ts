@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 32 worker profiles (one per specialist)", () => {
-    expect(WORKER_PROFILES).toHaveLength(32);
+  it("contains exactly 33 worker profiles (one per specialist)", () => {
+    expect(WORKER_PROFILES).toHaveLength(33);
   });
 
   it("every profile has a unique id", () => {
@@ -157,14 +157,14 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 32 specialists", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(32);
+  it("ROLE_TO_PROFILES covers all 33 specialists", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(33);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
-    const profiles = getWorkerProfilesForRole("compliance_officer");
+    const profiles = getWorkerProfilesForRole("compliance_quality_manager");
     expect(profiles.length).toBeGreaterThan(0);
-    expect(profiles[0]!.code).toBe("compliance_officer_profile");
+    expect(profiles[0]!.code).toBe("compliance_quality_manager_profile");
   });
 
   it("getWorkerProfilesForRole returns empty array for unknown role", () => {
@@ -274,7 +274,7 @@ describe("Architecture correctness — Workforce Role vs Worker Profile separati
 
   it("Workforce Roles do not own execution permissions — that is Worker Profile's concern", () => {
     // Specialists (Workforce Roles) have no direct channel or tool access fields
-    const specialist = getSpecialistByCode("compliance_officer");
+    const specialist = getSpecialistByCode("compliance_quality_manager");
     expect((specialist as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
     expect((specialist as unknown as Record<string, unknown>)["allowedToolCategories"]).toBeUndefined();
     expect((specialist as unknown as Record<string, unknown>)["prohibitedActions"]).toBeUndefined();
@@ -286,7 +286,7 @@ describe("Architecture correctness — Workforce Role vs Worker Profile separati
 describe("Risk classification", () => {
   it("finance and compliance profiles involving external submissions are medium or high risk", () => {
     const sensitiveRoles = ["payroll_officer", "accounts_officer", "financial_reporting_officer",
-      "incident_review_officer", "restrictive_practice_officer"];
+      "incident_review_officer", "restrictive_practice_officer", "compliance_quality_manager"];
     for (const role of sensitiveRoles) {
       const profiles = getWorkerProfilesForRole(role);
       for (const p of profiles) {

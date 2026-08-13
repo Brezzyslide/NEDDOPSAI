@@ -88,7 +88,7 @@ vi.mock("../lib/workforceRegistry.js", () => ({
   SPECIALISTS: [
     { code: "chief_of_staff",            displayName: "Chief of Staff",             packCode: "core",       capabilities: [], executionStatus: "available",  dnaStatus: "approved",      departmentCode: "executive",  catalogueVersion: "2" },
     { code: "operations_manager",         displayName: "Operations Manager",          packCode: "core",       capabilities: [], executionStatus: "available",  dnaStatus: "approved",      departmentCode: "operations", catalogueVersion: "2" },
-    { code: "compliance_quality_manager", displayName: "Compliance & Quality Manager",packCode: "compliance", capabilities: [], executionStatus: "dna_pending", dnaStatus: "pending_design",departmentCode: "compliance", catalogueVersion: "2" },
+    { code: "compliance_quality_manager", displayName: "Compliance & Quality Manager",packCode: "compliance", capabilities: [], executionStatus: "available", dnaStatus: "approved",departmentCode: "compliance", catalogueVersion: "2" },
   ],
 }));
 

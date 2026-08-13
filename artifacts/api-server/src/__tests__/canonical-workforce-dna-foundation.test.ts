@@ -20,6 +20,7 @@ import {
   getSafeDNADescriptor,
   mapLegacyDNAProfileToWorkforceDNA,
   CHIEF_OF_STAFF_DNA,
+  COMPLIANCE_QUALITY_MANAGER_DNA,
   EXECUTIVE_ASSISTANT_DNA_V1,
   OPERATIONS_MANAGER_DNA,
   type WorkforceDNA,
@@ -170,6 +171,55 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("executive work is organised");
     expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("EA."))).toBe(true);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(EXECUTIVE_ASSISTANT_DNA_V1.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Compliance & Quality Manager as the current v2 compliance specialist", () => {
+    const dna = getCanonicalDNAProfile("compliance_quality_manager");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("compliance_quality_manager");
+    expect(dna?.professionalMission.missionStatement).toContain("compliance and quality-management assurance");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(7);
+    expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("cqm."))).toBe(true);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(COMPLIANCE_QUALITY_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("preserves Compliance & Quality Manager evidence, memory and corrective-action discipline", () => {
+    const manifest = compileSpecialistManifest("compliance_quality_manager");
+    const evidence = JSON.stringify(manifest.evidenceModel);
+    const memory = [
+      manifest.memoryBehaviour?.priorConclusionReliance,
+      ...(manifest.memoryBehaviour?.memoryUseLimits ?? []),
+      ...(manifest.memoryBehaviour?.reconsiderationTriggers ?? []),
+    ].join(" ");
+    const risk = manifest.riskAndUncertaintyModel?.highRiskTriggers.join(" ");
+    const boundaries = [
+      ...(manifest.boundaryModel?.outOfScopeDecisions ?? []),
+      ...(manifest.boundaryModel?.prohibitedBehaviours ?? []),
+      ...(manifest.boundaryModel?.mustNotRepresentAs ?? []),
+    ].join(" ");
+
+    expect(evidence).toContain("Absence of evidence is not evidence of compliance");
+    expect(evidence).toContain("Previous audit/report outcome treated as current without revalidation");
+    expect(memory).toContain("Previous task outcomes may be reconsidered when new evidence conflicts");
+    expect(memory).toContain("Information appears superseded");
+    expect(risk).toContain("Corrective action closed without evidence");
+    expect(boundaries).toContain("Make final legal determinations");
+    expect(boundaries).toContain("Treat previous compliance conclusions, samples or memory as current truth");
+  });
+
+  it("projects Compliance & Quality Manager runtime without adding technical authority", () => {
+    const manifest = compileSpecialistManifest("compliance_quality_manager");
+    const profile = getWorkerProfileByCode("compliance_quality_manager_profile");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("compliance and quality-management assurance");
+    expect(result.instruction).toContain("Absence of evidence is not evidence of compliance");
+    expect(result.instruction).toContain("Corrective action closure lacks effectiveness evidence");
+    expect(result.instruction).toContain("Blueprint requirements as professional competence or technical authority");
+    expect(manifest.workerProfileReference?.profileCode).toBe("compliance_quality_manager_profile");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
   });
 
   it("preserves Executive Assistant evidence, memory, collaboration and Blueprint boundaries", () => {
@@ -553,11 +603,13 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(14);
-    expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(true);
+    expect(pending.length).toBeGreaterThanOrEqual(13);
+    expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
-    expect(getCanonicalDNAProfile("compliance_quality_manager")).toBeNull();
-    expect(getSafeDNADescriptor("compliance_quality_manager", "pending")).toBeNull();
+    expect(getCanonicalDNAProfile("compliance_quality_manager")).not.toBeNull();
+    expect(getSafeDNADescriptor("compliance_quality_manager")).not.toBeNull();
+    expect(getCanonicalDNAProfile("policy_governance_specialist")).toBeNull();
+    expect(getSafeDNADescriptor("policy_governance_specialist", "pending")).toBeNull();
   });
 
   it("uses deterministic manifest hash for the same canonical DNA version", () => {

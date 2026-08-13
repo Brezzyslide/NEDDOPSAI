@@ -329,13 +329,10 @@ describe("H12: Operations Manager is eligible for incident management review", (
     expect(eligible).toBe(false);
   });
 
-  it("H12c: compliance_quality_manager is NOT eligible if dna_pending", () => {
-    // compliance_quality_manager is in eligibleRoles for incident.review but may be dna_pending
+  it("H12c: compliance_quality_manager eligibility reflects current v2 activation", () => {
+    // compliance_quality_manager is in eligibleRoles for incident.review and now has active v2 DNA.
     const eligible = validateSpecialistEligibilitySync("compliance_quality_manager", "incident.review");
-    // If dna_pending → false; if available → true; record either result as known fact
-    console.log(`compliance_quality_manager + incident.review eligible: ${eligible}`);
-    // The important constraint is dna_pending → false, regardless of eligibleRoles
-    expect(typeof eligible).toBe("boolean");
+    expect(eligible).toBe(true);
   });
 });
 

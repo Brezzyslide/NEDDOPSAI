@@ -9,8 +9,8 @@
  * External callers (chiefOfStaffOrchestrator, tests) continue to use the same
  * createSpecialistIntelligenceService() factory and interface — no changes required upstream.
  *
- * Active specialists (approved DNA): chief_of_staff, executive_assistant, operations_manager
- * DNA Pending (not yet dispatchable): compliance_quality_manager, knowledge_documentation_specialist
+ * Active specialists (approved DNA): chief_of_staff, compliance_quality_manager, executive_assistant, operations_manager
+ * DNA Pending (not yet dispatchable): knowledge_documentation_specialist
  */
 
 import { createUnifiedExecutionEngine } from "./unifiedExecutionEngine.js";
