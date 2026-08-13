@@ -202,6 +202,108 @@ describe("Sprint 33A — Operations Manager authority", () => {
 });
 
 describe("Sprint 33A — UEE action validation with WorkerProfile", () => {
+  it("fails closed when an executable action is validated without a WorkerProfile", () => {
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "prepare_capacity_summary",
+        actionType: "create_file",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-missing-profile");
+
+    const result = validateExecutionActions(actions, emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: null,
+      workerProfileCode: null,
+      executionId: "exec-missing-profile",
+      taskId: "task-missing-profile",
+    });
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.invalid).toHaveLength(1);
+    expect(result.authorityDecisions[0]?.decision).toBe("UNMAPPED_AUTHORITY");
+    expect(result.authorityDecisions[0]?.workerProfileCode).toBeNull();
+  });
+
+  it("fails closed when the WorkerProfile code is unresolved", () => {
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "prepare_capacity_summary",
+        actionType: "create_file",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-unresolved-profile");
+
+    const result = validateExecutionActions(actions, emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: undefined,
+      workerProfileCode: "missing_operations_manager_profile",
+    });
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.invalid[0]?.reason).toContain("WorkerProfile authority is missing");
+    expect(result.authorityDecisions[0]).toMatchObject({
+      decision: "UNMAPPED_AUTHORITY",
+      workerProfileCode: "missing_operations_manager_profile",
+    });
+  });
+
+  it("keeps unknown executable action types unmapped instead of normalising to write_file", () => {
+    const operationsManager = profile("operations_manager_profile");
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "operations_manager",
+      workerProfile: operationsManager,
+      actionIdentifier: "approve_roster_allocation",
+      actionType: "approve_roster_allocation",
+      executionChannel: "internal_api",
+      toolCategory: "data_tools",
+    });
+
+    expect(decision.decision).toBe("UNMAPPED_AUTHORITY");
+
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "approve_roster_allocation",
+        actionType: "approve_roster_allocation",
+        executionChannel: "internal_api",
+        toolCategory: "data_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-unknown-action");
+
+    expect(actions).toHaveLength(0);
+  });
+
+  it("still parses and permits known legitimate action aliases", () => {
+    const operationsManager = profile("operations_manager_profile");
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "prepare_capacity_summary",
+        actionType: "create",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-known-alias");
+
+    const result = validateExecutionActions(actions, emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: operationsManager,
+    });
+
+    expect(actions[0]?.actionType).toBe("create_file");
+    expect(result.valid).toHaveLength(1);
+    expect(result.authorityDecisions[0]?.decision).toBe("PERMITTED");
+  });
+
   it("model-generated prohibited intent cannot bypass WorkerProfile", () => {
     const operationsManager = profile("operations_manager_profile");
     const actions = parseExecutionActions([
@@ -295,6 +397,112 @@ describe("Sprint 33A — UEE action validation with WorkerProfile", () => {
     expect(result.valid[0]?.requiresApproval).toBe(true);
     expect(result.approvalRequirements).toHaveLength(1);
     expect(result.authorityDecisions[0]?.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("permits an approval-required action after approval round-trip status is present", () => {
+    const operationsManager = profile("operations_manager_profile");
+    const [approvedAction] = parseExecutionActions([
+      {
+        actionIdentifier: "generate_executive_operations_report",
+        actionType: "create_file",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-approved");
+    if (!approvedAction) throw new Error("Expected action fixture");
+
+    approvedAction.status = "approved";
+    approvedAction.approvedAt = "2026-08-13T00:00:00.000Z";
+    approvedAction.approvedByUserId = "user-approver";
+
+    const result = validateExecutionActions([approvedAction], emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: operationsManager,
+      approvedActionIdentifiers: ["generate_executive_operations_report"],
+    });
+
+    expect(result.valid).toHaveLength(1);
+    expect(result.valid[0]?.requiresApproval).toBe(false);
+    expect(result.approvalRequirements).toHaveLength(0);
+    expect(result.authorityDecisions[0]?.decision).toBe("PERMITTED");
+    expect(result.authorityDecisions[0]?.approved).toBe(true);
+  });
+
+  it("keeps a prohibited action prohibited after approval status is present", () => {
+    const operationsManager = profile("operations_manager_profile");
+    const [approvedAction] = parseExecutionActions([
+      {
+        actionIdentifier: "modify_staff_records",
+        actionType: "update_file",
+        executionChannel: "internal_api",
+        toolCategory: "data_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-prohibited-approved");
+    if (!approvedAction) throw new Error("Expected action fixture");
+
+    approvedAction.status = "approved";
+    approvedAction.approvedAt = "2026-08-13T00:00:00.000Z";
+    approvedAction.approvedByUserId = "user-approver";
+
+    const result = validateExecutionActions([approvedAction], emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: operationsManager,
+      approvedActionIdentifiers: ["modify_staff_records"],
+    });
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.authorityDecisions[0]?.decision).toBe("PROHIBITED");
+    expect(result.authorityDecisions[0]?.approved).toBe(true);
+  });
+
+  it("Blueprint cannot bypass missing WorkerProfile authority", () => {
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "prepare_capacity_summary",
+        actionType: "create_file",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-blueprint-missing-profile");
+
+    const result = validateExecutionActions(actions, emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: null,
+      workerProfileCode: "operations_manager_profile",
+      blueprintProhibitedActions: [],
+    });
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.authorityDecisions[0]?.decision).toBe("UNMAPPED_AUTHORITY");
+  });
+
+  it("model-generated executable action cannot bypass missing WorkerProfile authority", () => {
+    const actions = parseExecutionActions([
+      {
+        actionIdentifier: "generate_executive_operations_report",
+        actionType: "create_file",
+        executionChannel: "internal_api",
+        toolCategory: "reporting_tools",
+        approvalRequired: false,
+        riskLevel: "low",
+      },
+    ], "run-model-missing-profile");
+
+    const result = validateExecutionActions(actions, emptyPlan, {
+      specialistCode: "operations_manager",
+      workerProfile: undefined,
+      workerProfileCode: "operations_manager_profile",
+    });
+
+    expect(result.valid).toHaveLength(0);
+    expect(result.approvalRequirements).toHaveLength(0);
+    expect(result.authorityDecisions[0]?.decision).toBe("UNMAPPED_AUTHORITY");
   });
 
   it("records enforcement provenance/audit data on decisions", () => {

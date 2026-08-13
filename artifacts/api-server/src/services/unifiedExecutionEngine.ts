@@ -728,6 +728,7 @@ export class UnifiedExecutionEngine {
         const actionValidation = validateExecutionActions(parsedActions, ctx.resourcePlan, {
           specialistCode: roleCode,
           workerProfile,
+          workerProfileCode: workPackage.workerProfileCode,
           blueprintProhibitedActions: workPackage.prohibitedActions,
           executionId: ctx.executionId,
           taskId: workPackage.taskId,

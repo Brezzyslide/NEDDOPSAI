@@ -117,6 +117,7 @@ export interface WorkerProfileAuthorityRequest {
 export interface WorkerProfileActionValidationContext {
   specialistCode?: string;
   workerProfile?: WorkerProfileAuthorityRequest["workerProfile"] | null;
+  workerProfileCode?: string | null;
   blueprintProhibitedActions?: string[];
   approvedActionIdentifiers?: string[];
   executionId?: string;
@@ -193,8 +194,9 @@ export function validateExecutionActions(
       issues.push(`Unknown actionType "${action.actionType}"`);
     }
 
-    const authorityDecision = authorityContext?.workerProfile
-      ? evaluateWorkerProfileAuthority({
+    const authorityDecision = authorityContext
+      ? authorityContext.workerProfile
+        ? evaluateWorkerProfileAuthority({
           specialistCode:             authorityContext.specialistCode,
           workerProfile:              authorityContext.workerProfile,
           actionIdentifier,
@@ -210,6 +212,20 @@ export function validateExecutionActions(
           executionId:                authorityContext.executionId,
           taskId:                     authorityContext.taskId,
         })
+        : buildUnmappedWorkerProfileDecision({
+            specialistCode:     authorityContext.specialistCode,
+            workerProfileCode:  authorityContext.workerProfileCode,
+            actionIdentifier,
+            actionType:         action.actionType,
+            executionChannel:   getStringParam(action, "executionChannel"),
+            toolCategory:       getStringParam(action, "toolCategory"),
+            connectorCategory:  getOptionalStringParam(action, "connectorCategory"),
+            browserDomain:      getBrowserDomain(action),
+            approved:           action.status === "approved" ||
+              (authorityContext.approvedActionIdentifiers ?? []).includes(actionIdentifier),
+            executionId:        authorityContext.executionId,
+            taskId:             authorityContext.taskId,
+          })
       : null;
     if (authorityDecision) {
       authorityDecisions.push(authorityDecision);
@@ -325,6 +341,9 @@ export function evaluateWorkerProfileAuthority(
   if (!actionIdentifier || !actionType) {
     return deny("UNMAPPED_AUTHORITY", "Action identity is missing or unmapped; WorkerProfile authority cannot be proven");
   }
+  if (!KNOWN_ACTION_TYPES.has(actionType as ExecutionActionType)) {
+    return deny("UNMAPPED_AUTHORITY", `Action type "${actionType}" is unknown; WorkerProfile authority cannot be proven`);
+  }
   if (blueprintProhibited.has(actionIdentifier) || blueprintProhibited.has(actionType)) {
     return deny("PROHIBITED", `Blueprint prohibits action "${actionIdentifier}"`);
   }
@@ -367,6 +386,43 @@ export function evaluateWorkerProfileAuthority(
   return permit(`WorkerProfile "${request.workerProfile.code}" permits "${actionIdentifier}"`);
 }
 
+interface UnmappedWorkerProfileDecisionInput {
+  specialistCode?: string;
+  workerProfileCode?: string | null;
+  actionIdentifier: string;
+  actionType: string;
+  executionChannel?: string | null;
+  toolCategory?: string | null;
+  connectorCategory?: string | null;
+  browserDomain?: string | null;
+  approved?: boolean;
+  executionId?: string;
+  taskId?: string;
+}
+
+function buildUnmappedWorkerProfileDecision(
+  input: UnmappedWorkerProfileDecisionInput,
+): WorkerProfileAuthorityDecision {
+  return {
+    decision:             "UNMAPPED_AUTHORITY",
+    specialistCode:       input.specialistCode ?? null,
+    workerProfileCode:    input.workerProfileCode ?? null,
+    workerProfileVersion: null,
+    actionIdentifier:     normaliseAuthorityIdentifier(input.actionIdentifier),
+    actionType:           normaliseAuthorityIdentifier(input.actionType),
+    executionChannel:     normaliseAuthorityIdentifier(input.executionChannel ?? "") || null,
+    toolCategory:         normaliseAuthorityIdentifier(input.toolCategory ?? "") || null,
+    connectorCategory:    normaliseAuthorityIdentifier(input.connectorCategory ?? "") || null,
+    browserDomain:        normaliseBrowserDomain(input.browserDomain ?? "") || null,
+    reason:               "WorkerProfile authority is missing or unresolved; executable action authority cannot be proven",
+    approvalRequired:     false,
+    approved:             input.approved === true,
+    decidedAt:            new Date().toISOString(),
+    executionId:          input.executionId,
+    taskId:               input.taskId,
+  };
+}
+
 /**
  * Builds the full write-target list from a set of validated ExecutionActions.
  * Used by the engine to populate ResourcePlan.writeTargets.
@@ -393,6 +449,9 @@ export function extractWriteTargets(
 
 function parseOneAction(raw: RawRequestedAction, specialistRunId: string): ExecutionAction {
   const actionType = normaliseActionType(raw.actionType);
+  if (!actionType) {
+    throw new Error(`Unknown executable action type "${raw.actionType}"`);
+  }
   const domain     = normaliseDomain(raw.toolCategory, raw.executionChannel);
   const riskLevel  = normaliseRiskLevel(raw.riskLevel);
 
@@ -488,9 +547,9 @@ const ACTION_TYPE_MAP: Record<string, ExecutionActionType> = {
   shell:               "terminal_command",
 };
 
-function normaliseActionType(raw: string): ExecutionActionType {
+function normaliseActionType(raw: string): ExecutionActionType | null {
   const key = (raw ?? "").toLowerCase().replace(/[-\s]/g, "_");
-  return ACTION_TYPE_MAP[key] ?? "write_file";
+  return ACTION_TYPE_MAP[key] ?? null;
 }
 
 function normaliseDomain(
