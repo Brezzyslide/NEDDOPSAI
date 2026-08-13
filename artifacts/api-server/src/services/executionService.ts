@@ -120,6 +120,31 @@ interface ContextAudit {
   tokenBudgetUsed: number;
 }
 
+function mapWorkerProfileChannelToRuntimeChannel(
+  channel: string,
+): ExecutionPackage["workerProfile"]["allowedChannels"][number] {
+  switch (channel) {
+    case "web_browser":
+      return "browser";
+    case "local_files":
+      return "local_files";
+    case "internal_api":
+    case "document_store":
+    case "calendar_system":
+    case "email_system":
+    case "database_query":
+      return "internal";
+    default:
+      return "internal";
+  }
+}
+
+function mapWorkerProfileRiskLevel(
+  riskLevel: string,
+): ExecutionPackage["workerProfile"]["riskLevel"] {
+  return riskLevel === "critical" ? "high" : riskLevel as ExecutionPackage["workerProfile"]["riskLevel"];
+}
+
 async function buildExecutionPackage(
   task: typeof tasksTable.$inferSelect,
   planRow: typeof taskExecutionPlansTable.$inferSelect,
@@ -150,13 +175,15 @@ async function buildExecutionPackage(
   // Default profile values when the specialist has no specific profile
   const workerProfileConstraints: ExecutionPackage["workerProfile"] = profile
     ? {
-        allowedChannels: profile.allowedChannels as ExecutionPackage["workerProfile"]["allowedChannels"],
+        allowedChannels: Array.from(
+          new Set(profile.allowedExecutionChannels.map(mapWorkerProfileChannelToRuntimeChannel)),
+        ),
         allowedBrowserDomains: profile.allowedBrowserDomains ?? [],
         allowedLocalPathCategories: profile.allowedLocalPathCategories ?? [],
         allowedApplicationCategories: profile.allowedApplicationCategories ?? [],
         prohibitedActions: profile.prohibitedActions ?? [],
-        riskLevel: profile.riskLevel as "low" | "medium" | "high",
-        requiresApprovalFor: profile.requiresApprovalFor ?? [],
+        riskLevel: mapWorkerProfileRiskLevel(profile.riskLevel),
+        requiresApprovalFor: profile.approvalRequiredActions ?? [],
       }
     : {
         allowedChannels: ["api", "internal"],
@@ -266,11 +293,9 @@ async function buildExecutionPackage(
     runtimeInstructions,
     workerProfile: workerProfileConstraints,
     steps,
-    requestedTools: workerProfileConstraints.allowedChannels.includes("api")
-      ? ["api_call"]
-      : ["internal"],
+    requestedTools: profile?.allowedToolCategories ?? ["internal"],
     requestedChannels: workerProfileConstraints.allowedChannels,
-    requestedConnectorCategories: [],
+    requestedConnectorCategories: profile?.allowedConnectorCategories ?? [],
     approvalState: task.approvalState,
     constraints,
     callbackUrl: "", // resolved by engine from OPENCLAW_CALLBACK_BASE_URL

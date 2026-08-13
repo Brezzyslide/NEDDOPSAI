@@ -100,6 +100,7 @@ import { resolveAndCompileManifest } from "./specialistRuntimeManifestService.js
 import { loadSpecialistContext } from "./specialistContextService.js";
 // Sprint 29H Part H: architectural specialist status guard
 import { getSpecialistByCode } from "../lib/workforceRegistry.js";
+import { getWorkerProfileByCode } from "../lib/workerProfileRegistry.js";
 import { buildExecutionContext } from "./executionContextBuilderService.js";
 import {
   openExecutionSession,
@@ -723,7 +724,25 @@ export class UnifiedExecutionEngine {
         // (P6) will execute approved actions in a future sprint.
         const rawActions = (parsed.requestedExternalActions ?? []) as RawRequestedAction[];
         const parsedActions = parseExecutionActions(rawActions, runId);
-        const actionValidation = validateExecutionActions(parsedActions, ctx.resourcePlan);
+        const workerProfile = getWorkerProfileByCode(workPackage.workerProfileCode);
+        const actionValidation = validateExecutionActions(parsedActions, ctx.resourcePlan, {
+          specialistCode: roleCode,
+          workerProfile,
+          blueprintProhibitedActions: workPackage.prohibitedActions,
+          executionId: ctx.executionId,
+          taskId: workPackage.taskId,
+        });
+        if (actionValidation.authorityDecisions.length > 0) {
+          await logRunAudit(workPackage.organizationId, "worker_profile.authority_evaluated", runId, roleCode, {
+            capabilityCode: workPackage.capabilityCode,
+            workerProfileCode: workerProfile?.code ?? workPackage.workerProfileCode,
+            workerProfileVersion: workerProfile?.version ?? null,
+            authorityDecisions: actionValidation.authorityDecisions,
+            validActionCount: actionValidation.valid.length,
+            invalidActionCount: actionValidation.invalid.length,
+            requesterId: ctx.requesterId,
+          });
+        }
         ctx.executionActions = actionValidation.valid;
         ctx.resourcePlan = {
           ...ctx.resourcePlan,

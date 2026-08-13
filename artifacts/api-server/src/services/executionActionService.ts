@@ -31,15 +31,20 @@
 
 import { randomUUID } from "crypto";
 import type { ExecutionAction, ExecutionActionType, ApprovalRequirementRef, ResourcePlan } from "../types/canonicalExecutionContext.js";
+import type { WorkerProfile } from "../lib/workerProfileRegistry.js";
 import { resolveWriteTarget } from "./writeTargetResolverService.js";
 
 // ─── Raw action type from specialist output ───────────────────────────────────
 
 export interface RawRequestedAction {
+  /** Stable technical authority identifier when it differs from the typed execution action. */
+  actionIdentifier?: string;
   actionType: string;
   executionChannel: string;
   toolCategory: string;
   connectorCategory?: string;
+  browserDomain?: string;
+  url?: string;
   approvalRequired: boolean;
   riskLevel: string;
   /** Optional — specialist may supply a human-readable description */
@@ -56,6 +61,66 @@ export interface ActionValidationResult {
   valid: ExecutionAction[];
   invalid: Array<{ raw: RawRequestedAction; reason: string }>;
   approvalRequirements: ApprovalRequirementRef[];
+  authorityDecisions: WorkerProfileAuthorityDecision[];
+}
+
+export type WorkerProfileAuthorityStatus =
+  | "PERMITTED"
+  | "APPROVAL_REQUIRED"
+  | "PROHIBITED"
+  | "UNMAPPED_AUTHORITY";
+
+export interface WorkerProfileAuthorityDecision {
+  decision: WorkerProfileAuthorityStatus;
+  specialistCode: string | null;
+  workerProfileCode: string | null;
+  workerProfileVersion: string | null;
+  actionIdentifier: string;
+  actionType: string;
+  executionChannel: string | null;
+  toolCategory: string | null;
+  connectorCategory: string | null;
+  browserDomain: string | null;
+  reason: string;
+  approvalRequired: boolean;
+  approved: boolean;
+  decidedAt: string;
+  executionId?: string;
+  taskId?: string;
+}
+
+export interface WorkerProfileAuthorityRequest {
+  specialistCode?: string;
+  workerProfile: Pick<
+    WorkerProfile,
+    | "code"
+    | "version"
+    | "allowedExecutionChannels"
+    | "allowedToolCategories"
+    | "allowedConnectorCategories"
+    | "allowedBrowserDomains"
+    | "prohibitedActions"
+    | "approvalRequiredActions"
+  >;
+  actionIdentifier: string;
+  actionType: string;
+  executionChannel?: string | null;
+  toolCategory?: string | null;
+  connectorCategory?: string | null;
+  browserDomain?: string | null;
+  approvalGranted?: boolean;
+  blueprintProhibitedActions?: string[];
+  executionId?: string;
+  taskId?: string;
+}
+
+export interface WorkerProfileActionValidationContext {
+  specialistCode?: string;
+  workerProfile?: WorkerProfileAuthorityRequest["workerProfile"] | null;
+  blueprintProhibitedActions?: string[];
+  approvedActionIdentifiers?: string[];
+  executionId?: string;
+  taskId?: string;
 }
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
@@ -112,23 +177,55 @@ export function parseExecutionActions(
 export function validateExecutionActions(
   actions: ExecutionAction[],
   resourcePlan: ResourcePlan,
+  authorityContext?: WorkerProfileActionValidationContext,
 ): ActionValidationResult {
   const valid: ExecutionAction[] = [];
   const invalid: Array<{ raw: RawRequestedAction; reason: string }> = [];
   const approvalRequirements: ApprovalRequirementRef[] = [];
+  const authorityDecisions: WorkerProfileAuthorityDecision[] = [];
 
   for (const action of actions) {
     const issues: string[] = [];
+    const actionIdentifier = getActionIdentifier(action);
 
     // Rule 1: Must be a recognised action type
     if (!KNOWN_ACTION_TYPES.has(action.actionType)) {
       issues.push(`Unknown actionType "${action.actionType}"`);
     }
 
+    const authorityDecision = authorityContext?.workerProfile
+      ? evaluateWorkerProfileAuthority({
+          specialistCode:             authorityContext.specialistCode,
+          workerProfile:              authorityContext.workerProfile,
+          actionIdentifier,
+          actionType:                 action.actionType,
+          executionChannel:           getStringParam(action, "executionChannel"),
+          toolCategory:               getStringParam(action, "toolCategory"),
+          connectorCategory:          getOptionalStringParam(action, "connectorCategory"),
+          browserDomain:              getBrowserDomain(action),
+          approvalGranted:
+            action.status === "approved" ||
+            (authorityContext.approvedActionIdentifiers ?? []).includes(actionIdentifier),
+          blueprintProhibitedActions: authorityContext.blueprintProhibitedActions,
+          executionId:                authorityContext.executionId,
+          taskId:                     authorityContext.taskId,
+        })
+      : null;
+    if (authorityDecision) {
+      authorityDecisions.push(authorityDecision);
+      if (
+        authorityDecision.decision === "PROHIBITED" ||
+        authorityDecision.decision === "UNMAPPED_AUTHORITY"
+      ) {
+        issues.push(authorityDecision.reason);
+      }
+    }
+
     // Rule 2: High-risk must always require approval (engine override)
     const forcedApproval =
       action.riskLevel === "high" ||
-      action.resolvedDestination?.approvalRequired === true;
+      action.resolvedDestination?.approvalRequired === true ||
+      authorityDecision?.decision === "APPROVAL_REQUIRED";
 
     // Rule 3: write_targets must be resolvable (null destination on write action is a warning, not failure)
     if (isWriteAction(action.actionType) && action.resolvedDestination === null) {
@@ -149,7 +246,9 @@ export function validateExecutionActions(
           ...action,
           requiresApproval: true,
           approvalReason:
-            action.approvalReason ??
+            authorityDecision?.decision === "APPROVAL_REQUIRED"
+              ? authorityDecision.reason
+              : action.approvalReason ??
             (action.riskLevel === "high"
               ? "High-risk actions require explicit approval before execution"
               : action.resolvedDestination?.approvalReason ?? "Approval required"),
@@ -168,7 +267,104 @@ export function validateExecutionActions(
     }
   }
 
-  return { valid, invalid, approvalRequirements };
+  return { valid, invalid, approvalRequirements, authorityDecisions };
+}
+
+export function evaluateWorkerProfileAuthority(
+  request: WorkerProfileAuthorityRequest,
+): WorkerProfileAuthorityDecision {
+  const actionIdentifier = normaliseAuthorityIdentifier(request.actionIdentifier);
+  const actionType = normaliseAuthorityIdentifier(request.actionType);
+  const executionChannel = normaliseAuthorityIdentifier(request.executionChannel ?? "");
+  const toolCategory = normaliseAuthorityIdentifier(request.toolCategory ?? "");
+  const connectorCategory = normaliseAuthorityIdentifier(request.connectorCategory ?? "");
+  const browserDomain = normaliseBrowserDomain(request.browserDomain ?? "");
+  const prohibited = new Set(request.workerProfile.prohibitedActions.map(normaliseAuthorityIdentifier));
+  const approvalRequired = new Set(request.workerProfile.approvalRequiredActions.map(normaliseAuthorityIdentifier));
+  const blueprintProhibited = new Set((request.blueprintProhibitedActions ?? []).map(normaliseAuthorityIdentifier));
+  const decidedAt = new Date().toISOString();
+
+  const base = {
+    specialistCode: request.specialistCode ?? null,
+    workerProfileCode: request.workerProfile.code,
+    workerProfileVersion: request.workerProfile.version,
+    actionIdentifier,
+    actionType,
+    executionChannel: executionChannel || null,
+    toolCategory: toolCategory || null,
+    connectorCategory: connectorCategory || null,
+    browserDomain: browserDomain || null,
+    approved: request.approvalGranted === true,
+    decidedAt,
+    executionId: request.executionId,
+    taskId: request.taskId,
+  };
+
+  const deny = (
+    decision: Exclude<WorkerProfileAuthorityStatus, "PERMITTED" | "APPROVAL_REQUIRED">,
+    reason: string,
+  ): WorkerProfileAuthorityDecision => ({
+    ...base,
+    decision,
+    reason,
+    approvalRequired: false,
+  });
+  const needsApproval = (reason: string): WorkerProfileAuthorityDecision => ({
+    ...base,
+    decision: "APPROVAL_REQUIRED",
+    reason,
+    approvalRequired: true,
+  });
+  const permit = (reason: string): WorkerProfileAuthorityDecision => ({
+    ...base,
+    decision: "PERMITTED",
+    reason,
+    approvalRequired: false,
+  });
+
+  if (!actionIdentifier || !actionType) {
+    return deny("UNMAPPED_AUTHORITY", "Action identity is missing or unmapped; WorkerProfile authority cannot be proven");
+  }
+  if (blueprintProhibited.has(actionIdentifier) || blueprintProhibited.has(actionType)) {
+    return deny("PROHIBITED", `Blueprint prohibits action "${actionIdentifier}"`);
+  }
+  if (prohibited.has(actionIdentifier) || prohibited.has(actionType)) {
+    return deny("PROHIBITED", `WorkerProfile "${request.workerProfile.code}" prohibits action "${actionIdentifier}"`);
+  }
+  if (!executionChannel) {
+    return deny("UNMAPPED_AUTHORITY", "Execution channel is missing; WorkerProfile authority cannot be proven");
+  }
+  if (!request.workerProfile.allowedExecutionChannels.map(normaliseAuthorityIdentifier).includes(executionChannel)) {
+    return deny("PROHIBITED", `Execution channel "${executionChannel}" is not permitted for WorkerProfile "${request.workerProfile.code}"`);
+  }
+  if (!toolCategory) {
+    return deny("UNMAPPED_AUTHORITY", "Tool category is missing; WorkerProfile authority cannot be proven");
+  }
+  if (!request.workerProfile.allowedToolCategories.map(normaliseAuthorityIdentifier).includes(toolCategory)) {
+    return deny("PROHIBITED", `Tool category "${toolCategory}" is not permitted for WorkerProfile "${request.workerProfile.code}"`);
+  }
+  if (connectorCategory) {
+    const allowedConnectors = request.workerProfile.allowedConnectorCategories.map(normaliseAuthorityIdentifier);
+    if (!allowedConnectors.includes(connectorCategory)) {
+      return deny("PROHIBITED", `Connector category "${connectorCategory}" is not permitted for WorkerProfile "${request.workerProfile.code}"`);
+    }
+  }
+  if (actionType === "browser_interaction" || executionChannel === "web_browser" || browserDomain) {
+    const allowedDomains = request.workerProfile.allowedBrowserDomains.map(normaliseBrowserDomain).filter(Boolean);
+    if (!browserDomain) {
+      return deny("UNMAPPED_AUTHORITY", "Browser action has no domain; WorkerProfile browser authority cannot be proven");
+    }
+    if (allowedDomains.length === 0 || !allowedDomains.some((domain) => domainMatches(browserDomain, domain))) {
+      return deny("PROHIBITED", `Browser domain "${browserDomain}" is not permitted for WorkerProfile "${request.workerProfile.code}"`);
+    }
+  }
+  if (approvalRequired.has(actionIdentifier) || approvalRequired.has(actionType)) {
+    return request.approvalGranted === true
+      ? permit(`WorkerProfile approval requirement satisfied for "${actionIdentifier}"`)
+      : needsApproval(`WorkerProfile "${request.workerProfile.code}" requires approval for "${actionIdentifier}"`);
+  }
+
+  return permit(`WorkerProfile "${request.workerProfile.code}" permits "${actionIdentifier}"`);
 }
 
 /**
@@ -201,6 +397,7 @@ function parseOneAction(raw: RawRequestedAction, specialistRunId: string): Execu
   const riskLevel  = normaliseRiskLevel(raw.riskLevel);
 
   const parameters: Record<string, unknown> = {
+    actionIdentifier: raw.actionIdentifier ?? raw.actionType,
     executionChannel:  raw.executionChannel,
     toolCategory:      raw.toolCategory,
     connectorCategory: raw.connectorCategory,
@@ -208,6 +405,8 @@ function parseOneAction(raw: RawRequestedAction, specialistRunId: string): Execu
   };
   if (raw.path)        parameters.path        = raw.path;
   if (raw.destination) parameters.destination = raw.destination;
+  if (raw.browserDomain) parameters.browserDomain = raw.browserDomain;
+  if (raw.url)           parameters.url           = raw.url;
 
   const resolvedDestination = resolveWriteTarget(actionType, domain, parameters);
 
@@ -347,6 +546,7 @@ function isWriteAction(actionType: ExecutionActionType): boolean {
 
 function actionToRaw(action: ExecutionAction): RawRequestedAction {
   return {
+    actionIdentifier:   getActionIdentifier(action),
     actionType:        action.actionType,
     executionChannel:  String(action.parameters.executionChannel ?? ""),
     toolCategory:      String(action.parameters.toolCategory ?? ""),
@@ -355,6 +555,50 @@ function actionToRaw(action: ExecutionAction): RawRequestedAction {
     riskLevel:         action.riskLevel,
     description:       action.description,
   };
+}
+
+function getActionIdentifier(action: ExecutionAction): string {
+  return normaliseAuthorityIdentifier(
+    String(action.parameters.actionIdentifier ?? action.actionType ?? ""),
+  );
+}
+
+function getStringParam(action: ExecutionAction, key: string): string {
+  return normaliseAuthorityIdentifier(String(action.parameters[key] ?? ""));
+}
+
+function getOptionalStringParam(action: ExecutionAction, key: string): string | null {
+  const value = normaliseAuthorityIdentifier(String(action.parameters[key] ?? ""));
+  return value || null;
+}
+
+function getBrowserDomain(action: ExecutionAction): string | null {
+  const explicit = normaliseBrowserDomain(String(action.parameters.browserDomain ?? ""));
+  if (explicit) return explicit;
+  const url = String(action.parameters.url ?? "");
+  if (!url) return null;
+  try {
+    return normaliseBrowserDomain(new URL(url).hostname);
+  } catch {
+    return null;
+  }
+}
+
+function normaliseAuthorityIdentifier(value: string): string {
+  return (value ?? "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+}
+
+function normaliseBrowserDomain(value: string): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/^www\./, "");
+}
+
+function domainMatches(candidate: string, allowed: string): boolean {
+  return candidate === allowed || candidate.endsWith(`.${allowed}`);
 }
 
 function deriveApprovalLevel(
