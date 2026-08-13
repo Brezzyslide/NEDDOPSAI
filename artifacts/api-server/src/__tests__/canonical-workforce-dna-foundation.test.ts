@@ -161,6 +161,102 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.requiredWorkerProfile.profileCode).toBe(OPERATIONS_MANAGER_DNA.requiredWorkerProfile.profileCode);
   });
 
+  it("preserves refined Operations Manager collaboration and deference boundaries", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const deferTo = manifest.collaborationModel?.deferToDomains.join(" ");
+    const challenge = manifest.collaborationModel?.challengeConditions.join(" ");
+    const cannotOverride = manifest.collaborationModel?.cannotOverrideDomains.join(" ");
+    const disagreement = manifest.collaborationModel?.disagreementEscalation.join(" ");
+
+    expect(deferTo).toContain("domain-owning specialist");
+    expect(deferTo).toContain("Chief of Staff");
+    expect(deferTo).toContain("regulatory interpretation");
+    expect(challenge).toContain("unsupported or operationally impractical advice");
+    expect(cannotOverride).toContain("domain-owning specialist");
+    expect(disagreement).toContain("flag_and_continue");
+  });
+
+  it("preserves Operations Manager cross-domain operational impact and risk-based review", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const highRisk = manifest.riskAndUncertaintyModel?.highRiskTriggers.join(" ");
+    const escalation = manifest.riskAndUncertaintyModel?.escalationThresholds.join(" ");
+    const boundaries = manifest.boundaryModel?.outOfScopeDecisions.join(" ");
+
+    expect(highRisk).toContain("staffing pressure");
+    expect(highRisk).toContain("workload/capacity risk");
+    expect(highRisk).toContain("irreversible operational consequence");
+    expect(escalation).toContain("valid recommendation from another professional domain");
+    expect(escalation).toContain("Independent specialist review is proportionate");
+    expect(boundaries).toContain("determinations that belong to another professional domain");
+  });
+
+  it("preserves Operations Manager memory freshness and current evidence precedence", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const categories = manifest.memoryBehaviour?.relevantMemoryCategories.join(" ");
+    const reliance = manifest.memoryBehaviour?.priorConclusionReliance;
+    const limits = manifest.memoryBehaviour?.memoryUseLimits.join(" ");
+    const reconsideration = manifest.memoryBehaviour?.reconsiderationTriggers.join(" ");
+    const contradictions = manifest.reasoningModel?.contradictionHandling.join(" ");
+
+    expect(categories).toContain("staffing_availability");
+    expect(categories).toContain("previous_operational_plans");
+    expect(reliance).toContain("previous work packages as context");
+    expect(limits).toContain("historical rosters");
+    expect(limits).toContain("current truth without material revalidation");
+    expect(reconsideration).toContain("Current evidence conflicts with historical memory");
+    expect(contradictions).toContain("Current verified operational evidence takes precedence");
+  });
+
+  it("preserves Operations Manager regulatory source discipline without making it legal authority", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const sourcePreference = manifest.regulatoryAwareness?.authoritativeSourcePreference.join(" ");
+    const citationExpectation = manifest.regulatoryAwareness?.citationExpectation;
+    const boundaries = manifest.boundaryModel?.outOfScopeDecisions.join(" ");
+
+    expect(manifest.regulatoryAwareness?.currentSourceRequired).toBe(true);
+    expect(sourcePreference).toContain("current authoritative SCHADS");
+    expect(sourcePreference).toContain("consult or defer");
+    expect(citationExpectation).toContain("appropriate specialist");
+    expect(boundaries).toContain("Legal determination of SCHADS entitlements");
+    expect(boundaries).toContain("payroll");
+  });
+
+  it("keeps Operations Manager Blueprint interaction bounded by professional scope", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const dna = getCanonicalDNAProfile("operations_manager");
+    const boundaries = manifest.boundaryModel?.mustNotRepresentAs.join(" ");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(dna?.blueprintInteraction.mustFollowBlueprintContract).toBe(true);
+    expect(dna?.blueprintInteraction.workProductBoundaryRespect).toContain("Do not replace Blueprint");
+    expect(boundaries).toContain("Blueprint as granting Operations Manager professional competence");
+    expect(result.instruction).toContain("### Blueprint behaviour");
+    expect(result.instruction).toContain("Blueprint as granting Operations Manager professional competence");
+  });
+
+  it("projects refined Operations Manager behaviour into runtime instructions", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("domain-owning specialist");
+    expect(result.instruction).toContain("staffing pressure");
+    expect(result.instruction).toContain("current truth without material revalidation");
+    expect(result.instruction).toContain("current authoritative SCHADS");
+    expect(result.instruction).toContain("Independent specialist review is proportionate");
+  });
+
+  it("preserves Chief of Staff boundary and does not add Operations Manager execution authority", () => {
+    const manifest = compileSpecialistManifest("operations_manager");
+    const profile = getWorkerProfileByCode("operations_manager_profile");
+
+    expect(manifest.collaborationModel?.deferToDomains.join(" ")).toContain("Chief of Staff");
+    expect(manifest.professionalMission.nonResponsibilities.join(" ")).toContain("Enterprise strategy");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "database_query"]);
+    expect(profile?.allowedToolCategories).toEqual(["data_tools", "reporting_tools"]);
+    expect(profile?.allowedConnectorCategories).toEqual([]);
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
+  });
+
   it("UEE task runtime uses canonical SRM sections for a specialist without requiring an Employee File", async () => {
     mockLoadDNAWithStaticFallback.mockResolvedValueOnce(
       resolvedFromCanonical(mapLegacyDNAProfileToWorkforceDNA(OPERATIONS_MANAGER_DNA)),

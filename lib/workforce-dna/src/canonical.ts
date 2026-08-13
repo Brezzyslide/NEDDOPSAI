@@ -554,7 +554,11 @@ export function mapLegacyDNAProfileToWorkforceDNA(profile: DNAProfile): Workforc
         : [],
       memoryUseLimits: [
         ...profile.professionalBoundaries.securityConstraints.filter(c =>
-          c.toLowerCase().includes("memory") || c.toLowerCase().includes("tenant"),
+          c.toLowerCase().includes("memory") ||
+          c.toLowerCase().includes("tenant") ||
+          c.toLowerCase().includes("historical") ||
+          c.toLowerCase().includes("superseded") ||
+          c.toLowerCase().includes("current truth"),
         ),
         ...(isOrchestrator
           ? [
