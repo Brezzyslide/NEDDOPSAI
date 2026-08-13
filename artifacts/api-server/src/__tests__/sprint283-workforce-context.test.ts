@@ -101,8 +101,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       displayName: "Executive Assistant",
       packCode: "core",
       capabilities: ["manage_calendar", "draft_communication"],
-      executionStatus: "dna_pending",
-      dnaStatus: "pending_design",
+      executionStatus: "available",
+      dnaStatus: "approved",
       departmentCode: "executive",
       catalogueVersion: "2",
     },
@@ -196,11 +196,14 @@ describe("getConversationWorkforceContext", () => {
     expect(cqm!.unavailableReason).toBe("Professional design pending");
   });
 
-  it("marks executive_assistant as NOT dispatchable (DNA pending)", async () => {
+  it("marks executive_assistant as dispatchable (approved DNA + entitled + runtime ready)", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     const ea = ctx.specialists.find(s => s.code === "executive_assistant");
-    expect(ea!.availableForDispatch).toBe(false);
-    expect(ea!.unavailableReason).toBe("Professional design pending");
+    expect(ea).toBeDefined();
+    expect(ea!.availableForDispatch).toBe(true);
+    expect(ea!.runtimeReady).toBe(true);
+    expect(ea!.entitled).toBe(true);
+    expect(ea!.unavailableReason).toBeUndefined();
   });
 
   it("excludes deprecated v1 specialists entirely", async () => {

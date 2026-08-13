@@ -77,11 +77,12 @@ export interface ConversationWorkforceContext {
 // ─── Runtime activation set ───────────────────────────────────────────────────
 // Reflects the ACTIVE_SPECIALISTS set in specialistEligibilityService.
 // chief_of_staff is always runtime-ready (it IS the conversation manager).
-// Only add a specialist here when it has an approved DNA, complete Employee
-// File, and has been activated for live execution.
+// Only add a specialist here when it has approved canonical WorkforceDNA,
+// a mapped WorkerProfile, and has been activated for live execution.
 
 const RUNTIME_READY = new Set([
   "chief_of_staff",
+  "executive_assistant",
   "operations_manager",
 ]);
 

@@ -108,7 +108,7 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "executive",
     packCode: "core",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
     capabilities: ["manage_calendar", "draft_communication", "schedule_meeting", "summarise"],
   },
@@ -895,8 +895,8 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("operations_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("executive_assistant has dnaStatus 'pending_design'", () => {
-    expect(getSpecialistByCode("executive_assistant")!.dnaStatus).toBe("pending_design");
+  it("executive_assistant has dnaStatus 'approved'", () => {
+    expect(getSpecialistByCode("executive_assistant")!.dnaStatus).toBe("approved");
   });
 
   it("all 13 newly created employees have dnaStatus 'pending_design'", () => {
@@ -924,14 +924,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 2 employees have dnaStatus 'approved'", () => {
+  it("exactly 3 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(2);
+    expect(approved).toHaveLength(3);
   });
 
-  it("exactly 15 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 14 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(15);
+    expect(pending).toHaveLength(14);
   });
 });
 
@@ -1058,10 +1058,10 @@ describe("Sprint 11 — Dispatch protection", () => {
     expect(decision.reasonCode).toBe("dna_design_pending");
   });
 
-  it("dna_pending executive_assistant returns deny with code 'dna_design_pending'", () => {
+  it("available executive_assistant with approved DNA can be dispatched", () => {
     const decision = checkDispatchEligibility("executive_assistant");
-    expect(decision.allowed).toBe(false);
-    expect(decision.reasonCode).toBe("dna_design_pending");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
   });
 
   it("available specialist with approved DNA can be dispatched — chief_of_staff", () => {

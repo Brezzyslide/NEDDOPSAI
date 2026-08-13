@@ -526,6 +526,83 @@ describe("Sprint 33A — UEE action validation with WorkerProfile", () => {
   });
 });
 
+describe("Sprint 33A — Executive Assistant authority", () => {
+  const executiveAssistant = profile("executive_assistant_profile");
+
+  it("permits an internal calendar draft/action-preparation request within EA authority", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "executive_assistant",
+      workerProfile: executiveAssistant,
+      actionIdentifier: "prepare_meeting_agenda",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "communication_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.workerProfileCode).toBe("executive_assistant_profile");
+  });
+
+  it("holds send_email_on_behalf_of_user for approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "executive_assistant",
+      workerProfile: executiveAssistant,
+      actionIdentifier: "send_email_on_behalf_of_user",
+      actionType: "send_email",
+      executionChannel: "email_system",
+      toolCategory: "communication_tools",
+      connectorCategory: "email_system",
+    });
+
+    expect(decision.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("permits send_email_on_behalf_of_user only after approval is present", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "executive_assistant",
+      workerProfile: executiveAssistant,
+      actionIdentifier: "send_email_on_behalf_of_user",
+      actionType: "send_email",
+      executionChannel: "email_system",
+      toolCategory: "communication_tools",
+      connectorCategory: "email_system",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.approved).toBe(true);
+  });
+
+  it("blocks prohibited private correspondence access even with approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "executive_assistant",
+      workerProfile: executiveAssistant,
+      actionIdentifier: "access_private_correspondence",
+      actionType: "draft_email",
+      executionChannel: "email_system",
+      toolCategory: "communication_tools",
+      connectorCategory: "email_system",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PROHIBITED");
+  });
+
+  it("fails closed for unknown EA executable action types", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "executive_assistant",
+      workerProfile: executiveAssistant,
+      actionIdentifier: "externally_commit_contract",
+      actionType: "externally_commit_contract",
+      executionChannel: "email_system",
+      toolCategory: "communication_tools",
+      connectorCategory: "email_system",
+    });
+
+    expect(decision.decision).toBe("UNMAPPED_AUTHORITY");
+  });
+});
+
 describe("Sprint 33A — generic cross-specialist enforcement", () => {
   it("works for a second specialist profile without Operations Manager hardcoding", () => {
     const communication = profile("communication_specialist_profile");

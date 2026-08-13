@@ -20,6 +20,7 @@ import {
   getSafeDNADescriptor,
   mapLegacyDNAProfileToWorkforceDNA,
   CHIEF_OF_STAFF_DNA,
+  EXECUTIVE_ASSISTANT_DNA_V1,
   OPERATIONS_MANAGER_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
@@ -159,6 +160,61 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("service delivery");
     expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("om."))).toBe(true);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(OPERATIONS_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Executive Assistant as the current v2 support specialist", () => {
+    const dna = getCanonicalDNAProfile("executive_assistant");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistKind).toBe("support_specialist");
+    expect(dna?.identity.specialistId).toBe("executive_assistant");
+    expect(dna?.professionalMission.missionStatement).toContain("executive work is organised");
+    expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("EA."))).toBe(true);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(EXECUTIVE_ASSISTANT_DNA_V1.requiredWorkerProfile.profileCode);
+  });
+
+  it("preserves Executive Assistant evidence, memory, collaboration and Blueprint boundaries", () => {
+    const manifest = compileSpecialistManifest("executive_assistant");
+    const evidence = JSON.stringify(manifest.evidenceModel?.sourcePreference);
+    const memory = [
+      manifest.memoryBehaviour?.priorConclusionReliance,
+      ...(manifest.memoryBehaviour?.memoryUseLimits ?? []),
+      ...(manifest.memoryBehaviour?.reconsiderationTriggers ?? []),
+    ].join(" ");
+    const collaboration = [
+      ...(manifest.collaborationModel?.deferToDomains ?? []),
+      ...(manifest.collaborationModel?.challengeConditions ?? []),
+      ...(manifest.collaborationModel?.cannotOverrideDomains ?? []),
+    ].join(" ");
+    const boundaries = [
+      ...(manifest.boundaryModel?.outOfScopeDecisions ?? []),
+      ...(manifest.boundaryModel?.prohibitedBehaviours ?? []),
+      ...(manifest.boundaryModel?.mustNotRepresentAs ?? []),
+    ].join(" ");
+
+    expect(evidence).toContain("Approved policies, procedures and templates outrank samples");
+    expect(evidence).toContain("Examples, samples and previous work must be labelled as precedent/context");
+    expect(memory).toContain("May use previous work packages as context");
+    expect(memory).toContain("Current evidence conflicts with historical memory");
+    expect(memory).toContain("Information appears superseded");
+    expect(collaboration).toContain("domain-owning specialist");
+    expect(collaboration).toContain("Conflicting instructions from multiple executives");
+    expect(boundaries).toContain("Blueprint requirements as granting professional competence or technical authority");
+    expect(boundaries).toContain("Treat previous work products, samples or memory as current authoritative organisational truth");
+  });
+
+  it("projects Executive Assistant current-v2 behaviour into runtime instructions without adding technical authority", () => {
+    const manifest = compileSpecialistManifest("executive_assistant");
+    const profile = getWorkerProfileByCode("executive_assistant_profile");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("Approved policies, procedures and templates outrank samples");
+    expect(result.instruction).toContain("Historical memory may inform administrative judgement");
+    expect(result.instruction).toContain("Blueprint requirements as granting professional competence or technical authority");
+    expect(result.instruction).toContain("domain-owning specialist");
+    expect(manifest.workerProfileReference?.profileCode).toBe("executive_assistant_profile");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "calendar_system", "email_system"]);
+    expect(profile?.approvalRequiredActions).toContain("send_email_on_behalf_of_user");
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
   });
 
   it("preserves refined Operations Manager collaboration and deference boundaries", () => {
@@ -497,8 +553,9 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(15);
+    expect(pending.length).toBeGreaterThanOrEqual(14);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(true);
+    expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("compliance_quality_manager")).toBeNull();
     expect(getSafeDNADescriptor("compliance_quality_manager", "pending")).toBeNull();
   });

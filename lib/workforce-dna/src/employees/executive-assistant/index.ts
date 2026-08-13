@@ -2,8 +2,11 @@
  * Executive Assistant — Employee File
  * Sprint 13: Executive Assistant Employee File
  *
- * Assembles the complete Employee File for the AI Executive Assistant.
- * This is the source of truth for the Executive Assistant's professional identity.
+ * Assembles the Employee File for Executive Assistant presentation,
+ * resource metadata and legacy conversation compatibility.
+ *
+ * Canonical WorkforceDNA is the source of truth for task-runtime
+ * professional behaviour.
  *
  * Usage:
  *   import { EXECUTIVE_ASSISTANT_EMPLOYEE_FILE } from "@workspace/workforce-dna";

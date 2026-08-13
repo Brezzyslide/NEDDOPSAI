@@ -7,8 +7,8 @@
  *  - Professional oath content
  *  - Soul and personality traits
  *  - Authority boundaries (may / mayNot)
- *  - DNA is draft only (no active published version)
- *  - Dispatch is blocked (dna_pending)
+ *  - Canonical DNA is active
+ *  - Dispatch is available through the current v2 role
  *  - Capabilities and Worker Profile
  *  - Runtime Manifest compilation and sensitive section exclusion
  *  - Migration from deprecated calendar_specialist / communication_specialist
@@ -390,10 +390,10 @@ describe("Group 5: Authority boundaries", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GROUP 6: DNA is draft only
+// GROUP 6: Canonical DNA is active
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("Group 6: DNA is draft only", () => {
+describe("Group 6: Canonical DNA is active", () => {
   it("EXECUTIVE_ASSISTANT_DNA_V1 is defined", () => {
     expect(EXECUTIVE_ASSISTANT_DNA_V1).toBeDefined();
   });
@@ -402,17 +402,19 @@ describe("Group 6: DNA is draft only", () => {
     expect(EXECUTIVE_ASSISTANT_DNA_V1.currentVersion.version).toBe("1.0.0");
   });
 
-  it("EXECUTIVE_ASSISTANT_DNA_V1.currentVersion.isActive is false (draft — not yet active)", () => {
-    expect(EXECUTIVE_ASSISTANT_DNA_V1.currentVersion.isActive).toBe(false);
+  it("EXECUTIVE_ASSISTANT_DNA_V1.currentVersion.isActive is true", () => {
+    expect(EXECUTIVE_ASSISTANT_DNA_V1.currentVersion.isActive).toBe(true);
   });
 
-  it("professionalDNA.activeVersion is 'none'", () => {
-    expect(EXECUTIVE_ASSISTANT_EMPLOYEE_FILE.professionalDNA.activeVersion).toBe("none");
+  it("professionalDNA.activeVersion is '1.0.0'", () => {
+    expect(EXECUTIVE_ASSISTANT_EMPLOYEE_FILE.professionalDNA.activeVersion).toBe("1.0.0");
   });
 
-  it("getDNAProfile('executive_assistant') returns null (not in active DNA registry)", () => {
+  it("getDNAProfile('executive_assistant') returns the active canonical DNA", () => {
     const profile = getDNAProfile("executive_assistant");
-    expect(profile).toBeNull();
+    expect(profile).toBeDefined();
+    expect(profile?.identity.roleCode).toBe("executive_assistant");
+    expect(profile?.currentVersion.isActive).toBe(true);
   });
 
   it("getEmployeeFile('executive_assistant') returns the Employee File", () => {
@@ -424,31 +426,30 @@ describe("Group 6: DNA is draft only", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// GROUP 7: Dispatch is blocked
+// GROUP 7: Dispatch is available
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe("Group 7: Dispatch is blocked", () => {
-  it("validateSpecialistEligibilitySync('executive_assistant', 'calendar.management') returns false (dna_pending)", () => {
-    // executive_assistant has executionStatus: "dna_pending" in the workforce registry
+describe("Group 7: Dispatch is available", () => {
+  it("validateSpecialistEligibilitySync('executive_assistant', 'calendar.management') returns true", () => {
     const result = validateSpecialistEligibilitySync("executive_assistant", "calendar.management");
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
-  it("validateSpecialistEligibilitySync('executive_assistant', 'communications.draft') returns false (dna_pending)", () => {
+  it("validateSpecialistEligibilitySync('executive_assistant', 'communications.draft') returns true", () => {
     const result = validateSpecialistEligibilitySync("executive_assistant", "communications.draft");
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
-  it("executive_assistant has executionStatus 'dna_pending' in the workforce registry", () => {
+  it("executive_assistant has executionStatus 'available' in the workforce registry", () => {
     const specialist = getSpecialistByCode("executive_assistant");
     expect(specialist).toBeDefined();
-    expect(specialist!.executionStatus).toBe("dna_pending");
+    expect(specialist!.executionStatus).toBe("available");
   });
 
-  it("executive_assistant has dnaStatus 'pending_design' in the workforce registry", () => {
+  it("executive_assistant has dnaStatus 'approved' in the workforce registry", () => {
     const specialist = getSpecialistByCode("executive_assistant");
     expect(specialist).toBeDefined();
-    expect(specialist!.dnaStatus).toBe("pending_design");
+    expect(specialist!.dnaStatus).toBe("approved");
   });
 
   it("chief_of_staff can still be dispatched (regression check)", () => {
