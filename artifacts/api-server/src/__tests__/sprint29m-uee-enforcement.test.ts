@@ -47,6 +47,9 @@ const {
   mockValidateExecutionActions,
   mockExtractWriteTargets,
   mockGetSpecialistByCode,
+  mockLoadDNAWithStaticFallback,
+  mockLoadOrgSpecialistConfig,
+  mockLoadSpecialistContext,
 } = vi.hoisted(() => {
   const mockDbSelect = vi.fn();
   const mockDbInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
@@ -73,6 +76,9 @@ const {
     mockValidateExecutionActions:  vi.fn().mockReturnValue({ valid: true, blockedActions: [] }),
     mockExtractWriteTargets:       vi.fn().mockReturnValue([]),
     mockGetSpecialistByCode:       vi.fn(),
+    mockLoadDNAWithStaticFallback: vi.fn(),
+    mockLoadOrgSpecialistConfig:   vi.fn(),
+    mockLoadSpecialistContext:     vi.fn(),
   };
 });
 
@@ -118,6 +124,17 @@ vi.mock("@workspace/workforce-dna", () => ({
   buildSystemInstructionForEmployee: mockBuildSystemInstruction,
   buildDNASystemInstruction:         vi.fn().mockReturnValue(""),
   captureSpecialistRunVersions:      mockCaptureVersions,
+  getDNAProfile:                     vi.fn(),
+  mapLegacyDNAProfileToWorkforceDNA: vi.fn(),
+}));
+
+vi.mock("../services/dnaStorageService.js", () => ({
+  loadDNAWithStaticFallback: mockLoadDNAWithStaticFallback,
+  loadOrgSpecialistConfig:   mockLoadOrgSpecialistConfig,
+}));
+
+vi.mock("../services/specialistContextService.js", () => ({
+  loadSpecialistContext: mockLoadSpecialistContext,
 }));
 
 vi.mock("../lib/workforceRegistry.js", () => ({
@@ -277,6 +294,154 @@ function makeEvidencePack(chunks = 2) {
   };
 }
 
+const mockCanonicalProfile = {
+  identity: {
+    specialistId: "operations_manager",
+    displayName:  "Operations Manager",
+    domainFamily: "Operations",
+  },
+  professionalMission: {
+    missionStatement:  "Improve service delivery operations.",
+    successDefinition: ["Operational review completed"],
+    responsibilities:  ["Analyse operations"],
+  },
+  domainExpertise: {
+    domains:             ["operations"],
+    subdomains:          ["capacity"],
+    capabilityClaims:    ["capacity review"],
+    knowledgeBoundaries: ["No payroll determinations"],
+    regulatoryDomains:   ["SCHADS awareness"],
+    competencies:        [{ code: "ops.capacity", name: "Capacity Review", level: "advanced", description: "Reviews capacity." }],
+  },
+  professionalPractice: {
+    practicePrinciples:      ["Use current operational evidence"],
+    qualityStandards:        ["Evidence-backed"],
+    professionalIndependence: ["Challenge unsupported assumptions"],
+    challengeBehaviour:      ["Flag gaps"],
+    assumptionDiscipline:    ["State assumptions"],
+    decisionDiscipline:      ["Recommend practical next steps"],
+  },
+  reasoningModel: {
+    reasoningPrinciples:       ["Map current state first"],
+    prioritisationLogic:       ["Participant safety first"],
+    contradictionHandling:     ["Escalate contradictions"],
+    assumptionHandling:        ["Label assumptions"],
+    pauseOrEscalateConditions: ["Insufficient evidence"],
+    decisionMethodology:       [{ stepId: "om.1", name: "Scope", instruction: "Define scope.", mandatory: true }],
+  },
+  evidenceModel: {
+    evidencePhilosophy:          ["Use current records"],
+    sourcePreference:            [],
+    corroborationRules:          ["Corroborate where possible"],
+    factualClaimDiscipline:      ["Do not invent evidence"],
+    insufficientEvidenceBehaviour: ["Mark incomplete"],
+    confidenceExpression:        ["State confidence"],
+  },
+  boundaryModel: {
+    prohibitedBehaviours:       ["Do not approve payroll"],
+    outOfScopeDecisions:        ["Payroll/legal decisions"],
+    authorityLimitPrinciples:   ["Draft only"],
+    mustNotRepresentAs:         ["Human manager"],
+    mustDeferWhen:              ["Legal interpretation required"],
+    humanReviewTriggers:        ["High-risk operational recommendation"],
+  },
+  riskAndUncertaintyModel: {
+    riskPosture:          "cautious",
+    confidenceThresholds: { minimumFindingConfidence: 0.7, minimumRunConfidence: 0.7, blockThreshold: 0.4 },
+    uncertaintyBehaviour: ["Escalate uncertainty"],
+    escalationThresholds: ["High risk"],
+    highRiskTriggers:     ["Participant safety"],
+  },
+  collaborationModel: {
+    canConsultDomains:       ["operations"],
+    shouldConsultDomains:    ["compliance"],
+    mustConsultDomains:      [],
+    deferToDomains:          ["chief_of_staff"],
+    peerReviewByDomains:     [],
+    challengeConditions:     ["Unsupported recommendation"],
+    cannotOverrideDomains:   ["legal"],
+    disagreementEscalation:  ["Escalate to Chief of Staff"],
+  },
+  communicationModel: {
+    tone:               "professional",
+    detailLevel:        "concise",
+    structure:          ["summary"],
+    audienceAdaptation: [],
+  },
+  memoryBehaviour: {
+    relevantMemoryCategories: ["operations"],
+    recencyPreference:        "recent",
+    priorConclusionReliance:  "informational_only",
+    reconsiderationTriggers:  ["new evidence"],
+    memoryUseLimits:          ["Do not treat memory as current truth"],
+  },
+  regulatoryAwareness: {
+    regulatoryDomains:             ["NDIS"],
+    authoritativeSourcePreference: ["approved policy"],
+    currentSourceRequired:         true,
+    doNotInventRegulation:         true,
+    citationExpectation:           "cite current sources",
+    changedGuidanceReviewRequired: true,
+  },
+  organisationContextUse: {
+    allowedContextTypes:                     ["organisation profile"],
+    contextVerificationBehaviour:            "verify against current source",
+    organisationPreferenceHandling:          "apply if lawful",
+    conflictWithProfessionalStandardBehaviour: "professional standard wins",
+    sensitiveEntityHandling:                 ["least privilege"],
+  },
+  blueprintInteraction: {
+    mustFollowBlueprintContract: true,
+    blueprintChallengeConditions: ["missing evidence"],
+    missingBlueprintBehaviour:    "continue with caution",
+    workProductBoundaryRespect:   "do not create prohibited deliverables",
+    evidenceContractRespect:      "respect evidence requirements",
+  },
+  requiredWorkerProfile: {
+    profileCode:               "operations_manager",
+    minimumExperienceLevel:     "advanced",
+    dedicatedProfileRequired:   false,
+  },
+  runtimeProjection: {
+    projectionVersion: "test",
+    rules:             [],
+  },
+  versioning: {
+    dnaId:       "operations_manager",
+    version:     "1.0.0",
+    versionHash: "a".repeat(64),
+  },
+};
+
+const mockResolvedDNA = {
+  dnaId:                 "operations_manager",
+  specialistId:          "operations_manager",
+  version:               "1.0.0",
+  versionHash:           "a".repeat(64),
+  source:                "database",
+  domain:                "Operations",
+  mission:               "Improve service delivery operations.",
+  objectives:            ["Operational review completed"],
+  responsibilities:      ["Analyse operations"],
+  operatingPrinciples:   ["Use current evidence"],
+  communicationStyle:    { tone: "professional", detailLevel: "concise", language: "Operations Manager" },
+  competencies:          [{ code: "ops.capacity", name: "Capacity Review", level: "advanced", description: "Reviews capacity.", version: "1.0.0" }],
+  escalationRules:       ["Escalate high risk"],
+  prohibitedBehaviours:  ["Do not approve payroll"],
+  memoryPolicy:          { allowedScopes: ["operations"], prohibitedScopes: ["cross-tenant"] },
+  canonicalProfile:      mockCanonicalProfile,
+  runtimeProjection:     mockCanonicalProfile.runtimeProjection,
+};
+
+const mockSpecialistContextPackage = {
+  specialistConfig:  null,
+  languageProfile:   null,
+  approvedMemory:    [],
+  injectedMemoryIds: [],
+  tokenBudgetUsed:   0,
+  retrievedKnowledge: null,
+};
+
 function makeRequest(overrides: Record<string, unknown> = {}) {
   return {
     trigger:        "task" as const,
@@ -302,6 +467,10 @@ function makeEngine() {
 }
 
 function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "required" = "none") {
+  mockLoadDNAWithStaticFallback.mockResolvedValue(mockResolvedDNA);
+  mockLoadOrgSpecialistConfig.mockResolvedValue(null);
+  mockLoadSpecialistContext.mockResolvedValue(mockSpecialistContextPackage);
+
   // The plan is present so the specialist readiness check passes
   mockDbSelect.mockImplementationOnce(() =>
     makeSelectChain([makePlan("operations_manager")]),
@@ -368,6 +537,7 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
 describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.AI_PROVIDER = "openai";
     mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     // Reset session mocks to return an object (not undefined)
@@ -454,6 +624,7 @@ describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
 describe("B — UEE approval override (laneContext.requiresApproval=true blocks opt-out)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.AI_PROVIDER = "openai";
     mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
@@ -521,6 +692,7 @@ describe("B — UEE approval override (laneContext.requiresApproval=true blocks 
 describe("C — PROFESSIONAL_WORK lane: evidence gate does not fire (best-effort unchanged)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.AI_PROVIDER = "openai";
     mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
