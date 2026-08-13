@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 34 worker profiles (one per specialist)", () => {
-    expect(WORKER_PROFILES).toHaveLength(34);
+  it("contains exactly 35 worker profiles (including current v2 APO)", () => {
+    expect(WORKER_PROFILES).toHaveLength(35);
   });
 
   it("every profile has a unique id", () => {
@@ -157,14 +157,23 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 34 specialists", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(34);
+  it("ROLE_TO_PROFILES covers all 35 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(35);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
     const profiles = getWorkerProfilesForRole("compliance_quality_manager");
     expect(profiles.length).toBeGreaterThan(0);
     expect(profiles[0]!.code).toBe("compliance_quality_manager_profile");
+  });
+
+  it("maps Authorised Program Officer to the current v2 restrictive-practice WorkerProfile", () => {
+    const profiles = getWorkerProfilesForRole("authorised_program_officer");
+    expect(profiles.map(p => p.code)).toEqual(["authorised_program_officer_profile"]);
+    expect(profiles[0]?.riskLevel).toBe("high");
+    expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profiles[0]?.prohibitedActions).toContain("authorise_restrictive_practice");
+    expect(profiles[0]?.approvalRequiredActions).toContain("submit_monthly_rp_report");
   });
 
   it("getWorkerProfilesForRole returns empty array for unknown role", () => {

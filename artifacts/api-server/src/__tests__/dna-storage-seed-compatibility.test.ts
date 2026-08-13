@@ -103,6 +103,7 @@ import {
 } from "@workspace/db";
 import {
   CANONICAL_DNA_PROJECTION_VERSION,
+  AUTHORISED_PROGRAM_OFFICER_DNA,
   CHIEF_OF_STAFF_DNA,
 } from "@workspace/workforce-dna";
 import {
@@ -210,5 +211,24 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(resolved?.canonicalProfile?.identity.specialistId).toBe("chief_of_staff");
     expect(resolved?.runtimeProjection?.projectionVersion).toBe(CANONICAL_DNA_PROJECTION_VERSION);
     expect(resolved?.competencies).toHaveLength(CHIEF_OF_STAFF_DNA.competencies.length);
+  });
+
+  it("recognises Authorised Program Officer on the static DB publication path", async () => {
+    const result = await seedDNAFromStaticRegistry("authorised_program_officer", "live_replit_seed");
+
+    expect(result).toBe("created");
+    const row = state.profiles[0]!;
+    expect(row.specialistId).toBe("authorised_program_officer");
+    expect(row.dnaId).toBe("authorised_program_officer");
+    expect(row.version).toBe(AUTHORISED_PROGRAM_OFFICER_DNA.currentVersion.version);
+    expect(row.versionHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.canonicalProfile).toMatchObject({
+      identity: { specialistId: "authorised_program_officer" },
+      requiredWorkerProfile: { profileCode: "authorised_program_officer_profile" },
+    });
+    expect(row.runtimeProjection).toMatchObject({
+      projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
+    });
+    expect(state.competencies).toHaveLength(AUTHORISED_PROGRAM_OFFICER_DNA.competencies.length);
   });
 });

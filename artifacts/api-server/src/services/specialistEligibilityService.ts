@@ -72,6 +72,7 @@ export interface EligibilityCheckContext {
 // dna_pending and not yet dispatchable.
 
 const ACTIVE_SPECIALISTS = new Set([
+  "authorised_program_officer",
   "compliance_quality_manager",
   "executive_assistant",
   "incident_safeguarding_specialist",

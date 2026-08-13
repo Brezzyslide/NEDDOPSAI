@@ -149,8 +149,8 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "compliance_governance",
     packCode: "compliance",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
-    executionStatus: "dna_pending",
+    dnaStatus: "approved",
+    executionStatus: "available",
     capabilities: ["restrictive_practice_governance", "monthly_rp_reporting", "restrictive_practice_review"],
   },
   // Operations (4)
@@ -925,11 +925,10 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 14 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 14 pending v2 employees (excluding approved CoS, CQM, ISS, OM and EA)
+  it("all 13 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 13 pending v2 employees (excluding approved CoS, CQM, ISS, OM, EA and APO)
     const newlyCodes = [
       "policy_governance_specialist",
-      "authorised_program_officer",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
       "process_asset_coordinator",
@@ -950,14 +949,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 5 employees have dnaStatus 'approved'", () => {
+  it("exactly 6 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(5);
+    expect(approved).toHaveLength(6);
   });
 
-  it("exactly 14 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 13 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(14);
+    expect(pending).toHaveLength(13);
   });
 });
 
@@ -974,7 +973,7 @@ describe("Sprint 11 — Pack membership", () => {
     expect(corePack).toContain("knowledge_documentation_specialist");
   });
 
-  it("Compliance pack contains CQM, ISS, Policy & Governance, and pending APO", () => {
+  it("Compliance pack contains CQM, ISS, Policy & Governance, and APO", () => {
     const pack = WORKFORCE_PACKS.compliance.employees;
     expect(pack).toHaveLength(4);
     expect(pack).toContain("compliance_quality_manager");
@@ -1086,10 +1085,10 @@ describe("Sprint 11 — Dispatch protection", () => {
     expect(decision.reasonCode).toBe("dna_design_pending");
   });
 
-  it("pending Authorised Program Officer returns deny with code 'dna_design_pending'", () => {
+  it("authored Authorised Program Officer is eligible for dispatch", () => {
     const decision = checkDispatchEligibility("authorised_program_officer");
-    expect(decision.allowed).toBe(false);
-    expect(decision.reasonCode).toBe("dna_design_pending");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
   });
 
   it("pending Behaviour Support Implementation Specialist returns deny with code 'dna_design_pending'", () => {

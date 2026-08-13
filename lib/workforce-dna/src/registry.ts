@@ -23,6 +23,7 @@ import {
   mapLegacyDNAProfileToWorkforceDNA,
 } from "./canonical.js";
 import { CHIEF_OF_STAFF_DNA } from "./profiles/chiefOfStaff.js";
+import { AUTHORISED_PROGRAM_OFFICER_DNA } from "./profiles/authorisedProgramOfficer.js";
 import { COMPLIANCE_OFFICER_DNA } from "./profiles/complianceOfficer.js";
 import { COMPLIANCE_QUALITY_MANAGER_DNA } from "./profiles/complianceQualityManager.js";
 import { INCIDENT_SAFEGUARDING_SPECIALIST_DNA } from "./profiles/incidentSafeguardingSpecialist.js";
@@ -49,6 +50,7 @@ import {
  */
 const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
   ["chief_of_staff",       CHIEF_OF_STAFF_DNA],
+  ["authorised_program_officer", AUTHORISED_PROGRAM_OFFICER_DNA],
   ["executive_assistant",  EXECUTIVE_ASSISTANT_DNA_V1],
   ["compliance_quality_manager", COMPLIANCE_QUALITY_MANAGER_DNA],
   ["incident_safeguarding_specialist", INCIDENT_SAFEGUARDING_SPECIALIST_DNA],

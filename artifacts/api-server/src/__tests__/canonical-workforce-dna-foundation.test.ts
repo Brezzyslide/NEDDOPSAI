@@ -16,6 +16,7 @@ vi.mock("../services/dnaStorageService.js", () => ({
 
 import {
   CANONICAL_DNA_PROJECTION_VERSION,
+  AUTHORISED_PROGRAM_OFFICER_DNA,
   getCanonicalDNAProfile,
   getSafeDNADescriptor,
   mapLegacyDNAProfileToWorkforceDNA,
@@ -182,6 +183,55 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(7);
     expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("cqm."))).toBe(true);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(COMPLIANCE_QUALITY_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Authorised Program Officer as the current v2 restrictive-practice governance specialist", () => {
+    const dna = getCanonicalDNAProfile("authorised_program_officer");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("authorised_program_officer");
+    expect(dna?.professionalMission.missionStatement).toContain("restrictive-practice governance");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(9);
+    expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("apo."))).toBe(true);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(AUTHORISED_PROGRAM_OFFICER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("preserves Authorised Program Officer authority, evidence and memory discipline", () => {
+    const manifest = compileSpecialistManifest("authorised_program_officer");
+    const evidence = JSON.stringify(manifest.evidenceModel);
+    const memory = [
+      manifest.memoryBehaviour?.priorConclusionReliance,
+      ...(manifest.memoryBehaviour?.memoryUseLimits ?? []),
+      ...(manifest.memoryBehaviour?.reconsiderationTriggers ?? []),
+    ].join(" ");
+    const risk = manifest.riskAndUncertaintyModel?.highRiskTriggers.join(" ");
+    const boundaries = [
+      ...(manifest.boundaryModel?.outOfScopeDecisions ?? []),
+      ...(manifest.boundaryModel?.prohibitedBehaviours ?? []),
+      ...(manifest.boundaryModel?.mustNotRepresentAs ?? []),
+    ].join(" ");
+
+    expect(evidence).toContain("BSP presence treated as proof");
+    expect(evidence).toContain("Previous monthly report treated as current compliance without revalidation");
+    expect(evidence).toContain("RP register count conflicts");
+    expect(memory).toContain("previous work packages");
+    expect(memory).toContain("Information appears superseded");
+    expect(risk).toContain("Possible unauthorised restrictive practice");
+    expect(boundaries).toContain("Author or amend a formal Behaviour Support Plan");
+    expect(boundaries).toContain("Treat memory, previous reports, BSP presence, samples or user assertions as current authority");
+  });
+
+  it("projects Authorised Program Officer runtime without adding technical authority", () => {
+    const manifest = compileSpecialistManifest("authorised_program_officer");
+    const profile = getWorkerProfileByCode("authorised_program_officer_profile");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("A BSP entry does not prove each use was authorised");
+    expect(result.instruction).toContain("monthly reporting outputs must reconcile evidence sources");
+    expect(result.instruction).toContain("Use Blueprint requirements as professional competence or technical authority");
+    expect(manifest.workerProfileReference?.profileCode).toBe("authorised_program_officer_profile");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
   });
 
   it("preserves Compliance & Quality Manager evidence, memory and corrective-action discipline", () => {
@@ -658,7 +708,10 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.length).toBeGreaterThanOrEqual(12);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
+    expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
+    expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
+    expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
     expect(getCanonicalDNAProfile("compliance_quality_manager")).not.toBeNull();
     expect(getSafeDNADescriptor("compliance_quality_manager")).not.toBeNull();
     expect(getCanonicalDNAProfile("policy_governance_specialist")).toBeNull();

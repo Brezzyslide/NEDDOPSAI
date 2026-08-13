@@ -111,8 +111,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       displayName: "Authorised Program Officer",
       packCode: "compliance",
       capabilities: ["restrictive_practice_governance", "monthly_rp_reporting"],
-      executionStatus: "dna_pending",
-      dnaStatus: "pending_design",
+      executionStatus: "available",
+      dnaStatus: "approved",
       departmentCode: "compliance",
       catalogueVersion: "2",
     },
@@ -308,7 +308,7 @@ describe("getConversationWorkforceContext", () => {
   it("returns correct summary counts", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     expect(ctx.summary.dispatchableCount).toBeGreaterThanOrEqual(1); // at least operations_manager
-    expect(ctx.summary.unavailableCount).toBe(2);                    // APO and BSI are visible but dna_pending
+    expect(ctx.summary.unavailableCount).toBe(1);                    // BSI is visible but dna_pending
     expect(ctx.summary.availableCount).toBeGreaterThan(0);
   });
 

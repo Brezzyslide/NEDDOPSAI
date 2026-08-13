@@ -201,6 +201,97 @@ describe("Sprint 33A — Operations Manager authority", () => {
   });
 });
 
+describe("Sprint 33A — Authorised Program Officer authority", () => {
+  const apo = profile("authorised_program_officer_profile");
+
+  it("permits internal RP governance report drafting within allowed channel and tool category", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "authorised_program_officer",
+      workerProfile: apo,
+      actionIdentifier: "draft_rp_governance_review",
+      actionType: "create_file",
+      executionChannel: "document_store",
+      toolCategory: "document_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.workerProfileCode).toBe("authorised_program_officer_profile");
+  });
+
+  it("holds monthly RP report submission for approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "authorised_program_officer",
+      workerProfile: apo,
+      actionIdentifier: "submit_monthly_rp_report",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+    });
+
+    expect(decision.decision).toBe("APPROVAL_REQUIRED");
+    expect(decision.approvalRequired).toBe(true);
+  });
+
+  it("allows approved monthly RP report submission through the approval path", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "authorised_program_officer",
+      workerProfile: apo,
+      actionIdentifier: "submit_monthly_rp_report",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.approved).toBe(true);
+  });
+
+  it("blocks restrictive-practice authorisation even with approval present", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "authorised_program_officer",
+      workerProfile: apo,
+      actionIdentifier: "authorise_restrictive_practice",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "form_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PROHIBITED");
+  });
+
+  it("blocks clinical and practitioner decisions structurally", () => {
+    for (const actionIdentifier of ["make_clinical_decision", "make_behaviour_support_practitioner_decision"]) {
+      const decision = evaluateWorkerProfileAuthority({
+        specialistCode: "authorised_program_officer",
+        workerProfile: apo,
+        actionIdentifier,
+        actionType: "update_file",
+        executionChannel: "internal_api",
+        toolCategory: "data_tools",
+        approvalGranted: true,
+      });
+
+      expect(decision.decision).toBe("PROHIBITED");
+    }
+  });
+
+  it("denies browser execution for APO", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "authorised_program_officer",
+      workerProfile: apo,
+      actionIdentifier: "open_ndis_portal_for_rp_submission",
+      actionType: "browser_interaction",
+      executionChannel: "web_browser",
+      toolCategory: "form_tools",
+      browserDomain: "example.gov.au",
+    });
+
+    expect(decision.decision).toBe("PROHIBITED");
+  });
+});
+
 describe("Sprint 33A — UEE action validation with WorkerProfile", () => {
   it("fails closed when an executable action is validated without a WorkerProfile", () => {
     const actions = parseExecutionActions([

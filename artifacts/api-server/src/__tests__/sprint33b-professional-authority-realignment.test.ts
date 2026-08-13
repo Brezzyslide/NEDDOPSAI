@@ -1,8 +1,9 @@
 /**
  * Sprint 33B — Professional Authority Realignment
  *
- * Proves the current-v2 workforce can recognise APO/BSI professional destinations
- * without making either role executable before canonical DNA and WorkerProfiles exist.
+ * Proves the current-v2 workforce recognises APO/BSI professional destinations.
+ * APO is now authored and executable within WorkerProfile authority; BSI remains
+ * non-dispatchable until its DNA and WorkerProfile are authored.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -51,14 +52,14 @@ describe("Sprint 33B current-v2 catalogue expansion", () => {
     ]));
   });
 
-  it("adds Authorised Program Officer as dna_pending and non-runtime", () => {
+  it("keeps Authorised Program Officer as current-v2 available after profile authoring", () => {
     const apo = getSpecialistByCode("authorised_program_officer");
     expect(apo).toBeDefined();
     expect(apo!.displayName).toBe("Authorised Program Officer");
-    expect(apo!.executionStatus).toBe("dna_pending");
-    expect(apo!.dnaStatus).toBe("pending_design");
-    expect(apo!.workerProfileCodes).toEqual([]);
-    expect(hasActiveIntelligence(apo!.code)).toBe(false);
+    expect(apo!.executionStatus).toBe("available");
+    expect(apo!.dnaStatus).toBe("approved");
+    expect(apo!.workerProfileCodes).toEqual(["authorised_program_officer_profile"]);
+    expect(hasActiveIntelligence(apo!.code)).toBe(true);
   });
 
   it("adds Behaviour Support Implementation Specialist as dna_pending and non-runtime", () => {
@@ -74,6 +75,7 @@ describe("Sprint 33B current-v2 catalogue expansion", () => {
   it("keeps completed current specialists runtime-active", () => {
     for (const code of [
       "executive_assistant",
+      "authorised_program_officer",
       "compliance_quality_manager",
       "incident_safeguarding_specialist",
       "operations_manager",
@@ -88,7 +90,7 @@ describe("Sprint 33B current-v2 catalogue expansion", () => {
 });
 
 describe("Sprint 33B restrictive practice authority boundaries", () => {
-  it("maps legacy restrictive_practice_officer toward future APO governance rather than ISS", () => {
+  it("maps legacy restrictive_practice_officer toward current APO governance rather than ISS", () => {
     expect(resolveAlias("restrictive_practice_officer")).toBe("authorised_program_officer");
     expect(getSpecialistByCode("restrictive_practice_officer")?.replacementRoleCode).toBe("authorised_program_officer");
   });
@@ -99,7 +101,7 @@ describe("Sprint 33B restrictive practice authority boundaries", () => {
 
     expect(incidentReview?.displayName).toMatch(/Incident\/Safeguarding/);
     expect(incidentReview?.description).toMatch(/incident|safeguarding/i);
-    expect(incidentReview?.description).toMatch(/governance belongs to the future Authorised Program Officer/i);
+    expect(incidentReview?.description).toMatch(/RP governance, authority and monthly reporting questions belong to the Authorised Program Officer/i);
     expect(incidentReview?.eligibleRoles).toEqual(expect.arrayContaining([
       "incident_safeguarding_specialist",
       "authorised_program_officer",
@@ -110,19 +112,19 @@ describe("Sprint 33B restrictive practice authority boundaries", () => {
     expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", "restrictive_practice.governance")).toBe(false);
   });
 
-  it("blocks APO-owned work while APO DNA is pending and does not fall back to ISS, OM or CoS", () => {
-    expect(validateSpecialistEligibilitySync("authorised_program_officer", "restrictive_practice.governance")).toBe(false);
+  it("routes APO-owned work to APO and does not fall back to ISS, OM or CoS", () => {
+    expect(validateSpecialistEligibilitySync("authorised_program_officer", "restrictive_practice.governance")).toBe(true);
     expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", "restrictive_practice.governance")).toBe(false);
     expect(validateSpecialistEligibilitySync("operations_manager", "restrictive_practice.governance")).toBe(false);
     expect(validateSpecialistEligibilitySync("chief_of_staff", "restrictive_practice.governance")).toBe(false);
   });
 
-  it("establishes monthly RP reporting as future APO-owned and non-executable", () => {
+  it("establishes monthly RP reporting as APO-owned and executable within approval-gated authority", () => {
     const cap = getCapability("restrictive_practice.monthly_reporting");
     expect(cap).toBeDefined();
     expect(cap!.eligibleRoles).toEqual(["authorised_program_officer"]);
-    expect(cap!.executionAllowed).toBe(false);
-    expect(validateSpecialistEligibilitySync("authorised_program_officer", cap!.code)).toBe(false);
+    expect(cap!.executionAllowed).toBe(true);
+    expect(validateSpecialistEligibilitySync("authorised_program_officer", cap!.code)).toBe(true);
   });
 });
 
@@ -185,16 +187,20 @@ describe("Sprint 33B care, policy, performance and fallback boundaries", () => {
     expect(performance?.purpose).toMatch(/workforce compliance limited to credential/i);
   });
 
-  it("conversation context can mention APO and BSI but cannot dispatch them", async () => {
+  it("conversation context can dispatch APO but still blocks BSI", async () => {
     _clearWorkforceCache();
     const ctx = await getConversationWorkforceContext(ORG_ID);
-    for (const code of ["authorised_program_officer", "behaviour_support_implementation_specialist"]) {
-      const entry = ctx.specialists.find(s => s.code === code);
-      expect(entry, code).toBeDefined();
-      expect(entry!.availableForConversation).toBe(true);
-      expect(entry!.availableForDispatch).toBe(false);
-      expect(entry!.runtimeReady).toBe(false);
-      expect(entry!.unavailableReason).toBe("Professional design pending");
-    }
+    const apo = ctx.specialists.find(s => s.code === "authorised_program_officer");
+    expect(apo).toBeDefined();
+    expect(apo!.availableForConversation).toBe(true);
+    expect(apo!.availableForDispatch).toBe(true);
+    expect(apo!.runtimeReady).toBe(true);
+
+    const bsi = ctx.specialists.find(s => s.code === "behaviour_support_implementation_specialist");
+    expect(bsi).toBeDefined();
+    expect(bsi!.availableForConversation).toBe(true);
+    expect(bsi!.availableForDispatch).toBe(false);
+    expect(bsi!.runtimeReady).toBe(false);
+    expect(bsi!.unavailableReason).toBe("Professional design pending");
   });
 });

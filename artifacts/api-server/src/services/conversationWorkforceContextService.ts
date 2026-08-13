@@ -81,6 +81,7 @@ export interface ConversationWorkforceContext {
 // a mapped WorkerProfile, and has been activated for live execution.
 
 const RUNTIME_READY = new Set([
+  "authorised_program_officer",
   "chief_of_staff",
   "compliance_quality_manager",
   "executive_assistant",
