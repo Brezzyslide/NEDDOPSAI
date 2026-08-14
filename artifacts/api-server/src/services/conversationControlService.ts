@@ -68,6 +68,25 @@ export interface ConversationResolution {
   reason: string;
 }
 
+export interface PendingConversationConfirmation {
+  id: string;
+  action: CanonicalConversationAction;
+  taskId?: string;
+  taskTitle?: string;
+  approvalId?: string;
+  candidateTasks: TaskReferenceCandidate[];
+  createdAt: string;
+  status: "pending" | "confirmed" | "declined" | "resolved" | "superseded";
+  expectedResponse: "yes_no" | "task_selection";
+  reason: string;
+}
+
+export type PendingConfirmationAnswer =
+  | { kind: "confirm" }
+  | { kind: "decline" }
+  | { kind: "task_selection"; candidate: TaskReferenceCandidate }
+  | { kind: "unrelated" };
+
 export interface ConversationTaskSummary {
   id: string;
   title: string;
@@ -110,6 +129,8 @@ const STATUS_PATTERNS = [/\b(where are we|what'?s pending|what are you waiting f
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
 const NEW_TASK_PATTERNS = [/\b(also|now|next)\b.*\b(prepare|create|check|review|audit|draft|build)\b/i, /\bprepare\b.*\b(roster|report|policy|plan)\b/i];
+const CONFIRM_PATTERNS = [/^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|do it|cancel it|cancel that)\.?$/i];
+const DECLINE_PATTERNS = [/^(no|nope|don't|do not|don'?t cancel|keep it|leave it|not anymore)\.?$/i];
 
 function matches(patterns: RegExp[], text: string): boolean {
   return patterns.some(pattern => pattern.test(text));
@@ -149,6 +170,36 @@ function titleScore(text: string, title: string): number {
   const matchesCount = words.filter(word => lower.includes(word)).length;
   if (titleLower && lower.includes(titleLower)) return 60;
   return matchesCount * 12;
+}
+
+function editDistance(a: string, b: string): number {
+  const dp: number[][] = Array.from({ length: a.length + 1 }, () => Array(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) dp[i]![0] = i;
+  for (let j = 0; j <= b.length; j += 1) dp[0]![j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      dp[i]![j] = Math.min(
+        dp[i - 1]![j] + 1,
+        dp[i]![j - 1] + 1,
+        dp[i - 1]![j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+  }
+  return dp[a.length]![b.length]!;
+}
+
+function fuzzySelectionScore(text: string, title: string): number {
+  const textWords = text.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
+  const titleWords = title.toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2);
+  let score = titleScore(text, title);
+  for (const inputWord of textWords) {
+    for (const titleWord of titleWords) {
+      if (inputWord === titleWord) score += 35;
+      else if (inputWord.length >= 5 && titleWord.length >= 5 && editDistance(inputWord, titleWord) <= 2) score += 24;
+      else if (titleWord.includes(inputWord) || inputWord.includes(titleWord)) score += 18;
+    }
+  }
+  return score;
 }
 
 export function resolveConversationReference(input: {
@@ -271,6 +322,150 @@ export async function getConversationFocus(input: {
   return null;
 }
 
+export async function getPendingConversationConfirmation(input: {
+  organizationId: string;
+  conversationId: string;
+}): Promise<PendingConversationConfirmation | null> {
+  const rows = await db
+    .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "system_notice"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(30);
+
+  for (const row of rows) {
+    const sc = row.structuredContent as any;
+    if (sc?.type === "conversation_pending_confirmation" && sc.data?.status === "pending") {
+      return { ...sc.data, id: sc.data.id ?? row.id } as PendingConversationConfirmation;
+    }
+  }
+  return null;
+}
+
+export async function persistConversationConfirmation(input: {
+  organizationId: string;
+  conversationId: string;
+  action: CanonicalConversationAction;
+  taskId?: string;
+  taskTitle?: string;
+  approvalId?: string;
+  candidateTasks?: TaskReferenceCandidate[];
+  expectedResponse: PendingConversationConfirmation["expectedResponse"];
+  reason: string;
+}): Promise<PendingConversationConfirmation> {
+  const confirmation: PendingConversationConfirmation = {
+    id: randomUUID(),
+    action: input.action,
+    taskId: input.taskId,
+    taskTitle: input.taskTitle,
+    approvalId: input.approvalId,
+    candidateTasks: input.candidateTasks ?? [],
+    createdAt: new Date().toISOString(),
+    status: "pending",
+    expectedResponse: input.expectedResponse,
+    reason: input.reason,
+  };
+
+  await db.insert(conversationMessagesTable).values({
+    id: randomUUID(),
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: input.taskId ?? null,
+    senderType: "system",
+    messageType: "system_notice",
+    content: `Pending conversation confirmation ${confirmation.id}.`,
+    structuredContent: { type: "conversation_pending_confirmation", data: confirmation },
+    status: "delivered",
+  });
+
+  await logOrgEvent({
+    eventType: "conversation.pending_confirmation_created",
+    organizationId: input.organizationId,
+    actorType: "system",
+    resourceType: "conversation",
+    resourceId: input.conversationId,
+    metadata: { confirmationId: confirmation.id, action: confirmation.action, taskId: confirmation.taskId },
+  }).catch(() => {});
+
+  return confirmation;
+}
+
+export async function markConversationConfirmationResolved(input: {
+  organizationId: string;
+  conversationId: string;
+  confirmation: PendingConversationConfirmation;
+  status: Exclude<PendingConversationConfirmation["status"], "pending">;
+}): Promise<void> {
+  const rows = await db
+    .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "system_notice"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(30);
+
+  const row = rows.find(candidate => {
+    const sc = candidate.structuredContent as any;
+    return sc?.type === "conversation_pending_confirmation" && sc.data?.id === input.confirmation.id;
+  });
+  if (!row) return;
+  const data = {
+    ...(input.confirmation as Record<string, unknown>),
+    status: input.status,
+    resolvedAt: new Date().toISOString(),
+  };
+  await db
+    .update(conversationMessagesTable)
+    .set({ structuredContent: { type: "conversation_pending_confirmation", data }, updatedAt: new Date() })
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.id, row.id),
+    ));
+}
+
+export function resolvePendingConfirmationAnswer(
+  text: string,
+  confirmation: PendingConversationConfirmation,
+): PendingConfirmationAnswer {
+  const trimmed = text.trim();
+  if (matches(CONFIRM_PATTERNS, trimmed)) return { kind: "confirm" };
+  if (matches(DECLINE_PATTERNS, trimmed)) return { kind: "decline" };
+  if (matches(NEW_TASK_PATTERNS, trimmed) || matches(STATUS_PATTERNS, trimmed) || matches(SWITCH_PATTERNS, trimmed)) {
+    return { kind: "unrelated" };
+  }
+
+  if (confirmation.candidateTasks.length > 0) {
+    const lower = trimmed.toLowerCase();
+    const keywordCandidate = confirmation.candidateTasks.find(candidate => {
+      const title = candidate.title.toLowerCase();
+      return (
+        (/\b(service|serice|servcie|delivery|delievery)\b/.test(lower) && /service delivery|delivery/i.test(title)) ||
+        (/\broster|coverage\b/.test(lower) && /roster|coverage/i.test(title))
+      );
+    });
+    if (keywordCandidate) return { kind: "task_selection", candidate: keywordCandidate };
+
+    const ranked = confirmation.candidateTasks
+      .map(candidate => ({ candidate, score: fuzzySelectionScore(trimmed, candidate.title) }))
+      .sort((a, b) => b.score - a.score);
+    const best = ranked[0];
+    const second = ranked[1];
+    if (best && best.score >= 35 && (!second || best.score - second.score >= 12)) {
+      return { kind: "task_selection", candidate: best.candidate };
+    }
+  }
+
+  return { kind: "unrelated" };
+}
+
 export async function persistConversationFocus(input: {
   organizationId: string;
   conversationId: string;
@@ -318,6 +513,7 @@ export async function getOpenConversationTasks(input: {
   organizationId: string;
   conversationId: string;
   currentTaskId?: string | null;
+  focusedTaskId?: string | null;
 }): Promise<ConversationTaskSummary[]> {
   const messageRows = await db
     .select({ taskId: conversationMessagesTable.taskId })
@@ -332,6 +528,7 @@ export async function getOpenConversationTasks(input: {
 
   const taskIds = [...new Set([
     input.currentTaskId ?? undefined,
+    input.focusedTaskId ?? undefined,
     ...messageRows.map(r => r.taskId ?? undefined),
   ].filter(Boolean) as string[])];
 

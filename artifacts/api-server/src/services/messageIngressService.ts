@@ -42,12 +42,18 @@ import {
   classifyCanonicalConversationAction,
   getConversationFocus,
   getOpenConversationTasks,
+  getPendingConversationConfirmation,
   getPendingApprovalsForConversation,
   holdTaskFromConversation,
   isLikelyCheckpointAnswer,
+  markConversationConfirmationResolved,
   persistConversationFocus,
+  persistConversationConfirmation,
+  resolvePendingConfirmationAnswer,
   resolveConversationReference,
   resolveSingleApproval,
+  type PendingConversationConfirmation,
+  type TaskReferenceCandidate,
 } from "./conversationControlService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -134,6 +140,25 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   }
 
   // ── 2. Check for active durable checkpoint ────────────────────────────────
+
+  const pendingConfirmation = await getPendingConversationConfirmation({
+    organizationId,
+    conversationId,
+  }).catch(() => null);
+  if (pendingConfirmation) {
+    const confirmationResult = await maybeHandlePendingConfirmation({
+      content,
+      organizationId,
+      conversationId,
+      taskId,
+      userId,
+      idempotencyKey: input.idempotencyKey,
+      confirmation: pendingConfirmation,
+    });
+    if (confirmationResult) {
+      return { type: "normal", result: confirmationResult, conversationId };
+    }
+  }
 
   const checkpoint = await getActiveCheckpointByConversation(conversationId);
   const controlIntent = classifyCanonicalConversationAction(content);
@@ -303,6 +328,188 @@ function controlUnderstanding(params: {
   };
 }
 
+async function addControlMessages(input: {
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+  userId: string;
+  content: string;
+  response: string;
+  idempotencyKey?: string;
+  mode: ConversationUnderstanding["conversationMode"];
+  action?: ConversationUnderstanding["requestedTaskAction"];
+  confidence: number;
+  messageType?: Parameters<typeof addMessage>[0]["messageType"];
+}): Promise<ProcessMessageResult> {
+  const userMessage = await addMessage({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: input.taskId,
+    senderType: "user",
+    senderUserId: input.userId,
+    messageType: "text",
+    content: input.content,
+    correlationId: input.idempotencyKey,
+  });
+  const agentMessage = await addMessage({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: input.taskId,
+    senderType: "chief_of_staff",
+    workforceRoleCode: "chief_of_staff",
+    messageType: input.messageType ?? "status_change",
+    content: input.response,
+  });
+  return {
+    userMessage,
+    agentMessage,
+    understanding: controlUnderstanding({
+      mode: input.mode,
+      confidence: input.confidence,
+      action: input.action,
+      response: input.response,
+      existingTaskId: input.taskId,
+    }),
+    structuredContent: null,
+  };
+}
+
+async function maybeHandlePendingConfirmation(input: {
+  content: string;
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+  userId: string;
+  idempotencyKey?: string;
+  confirmation: PendingConversationConfirmation;
+}): Promise<ProcessMessageResult | null> {
+  const answer = resolvePendingConfirmationAnswer(input.content, input.confirmation);
+  if (answer.kind === "unrelated") return null;
+
+  if (answer.kind === "decline") {
+    await markConversationConfirmationResolved({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      confirmation: input.confirmation,
+      status: "declined",
+    }).catch(() => {});
+    return addControlMessages({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.confirmation.taskId ?? input.taskId,
+      userId: input.userId,
+      content: input.content,
+      response: input.confirmation.action === "CANCEL_TASK"
+        ? "Okay, I have not cancelled it. The task remains active."
+        : "Okay, I have not changed anything.",
+      idempotencyKey: input.idempotencyKey,
+      mode: input.confirmation.action === "CANCEL_TASK" ? "cancellation_request" : "task_followup",
+      action: input.confirmation.action === "CANCEL_TASK" ? "cancel" : undefined,
+      confidence: 0.98,
+    });
+  }
+
+  if (answer.kind === "task_selection") {
+    await markConversationConfirmationResolved({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      confirmation: input.confirmation,
+      status: "resolved",
+    }).catch(() => {});
+    await persistConversationFocus({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: answer.candidate.taskId,
+      reason: "explicit_task_selection",
+      source: "explicit_switch",
+    }).catch(() => {});
+
+    if (input.confirmation.action === "CANCEL_TASK") {
+      await persistConversationConfirmation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        action: "CANCEL_TASK",
+        taskId: answer.candidate.taskId,
+        taskTitle: answer.candidate.title,
+        expectedResponse: "yes_no",
+        reason: "task_selection_for_cancellation",
+      });
+      return addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: answer.candidate.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `I need to confirm whether you want to cancel "${answer.candidate.title}". Reply yes to cancel it, or no to keep it active.`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "cancellation_request",
+        action: "cancel",
+        confidence: 0.92,
+        messageType: "question",
+      });
+    }
+
+    if (input.confirmation.action === "STATUS_QUERY") {
+      return addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: answer.candidate.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `The task "${answer.candidate.title}" is currently ${answer.candidate.state.replace(/_/g, " ")}.`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "status_request",
+        action: "status",
+        confidence: 0.92,
+      });
+    }
+
+    return addControlMessages({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: answer.candidate.taskId,
+      userId: input.userId,
+      content: input.content,
+      response: `Okay, focus is now on "${answer.candidate.title}".`,
+      idempotencyKey: input.idempotencyKey,
+      mode: "task_followup",
+      confidence: 0.9,
+    });
+  }
+
+  if (answer.kind === "confirm" && input.confirmation.action === "CANCEL_TASK" && input.confirmation.taskId) {
+    const result = await cancelTaskFromConversation({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.confirmation.taskId,
+      actorUserId: input.userId,
+    });
+    await markConversationConfirmationResolved({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      confirmation: input.confirmation,
+      status: "confirmed",
+    }).catch(() => {});
+    const title = input.confirmation.taskTitle ?? "that task";
+    return addControlMessages({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.confirmation.taskId,
+      userId: input.userId,
+      content: input.content,
+      response: result.status === "already_cancelled"
+        ? `"${title}" is already cancelled. I have not changed anything else.`
+        : `Cancelled. I have stopped "${title}" and preserved its history.`,
+      idempotencyKey: input.idempotencyKey,
+      mode: "cancellation_request",
+      action: "cancel",
+      confidence: 0.99,
+    });
+  }
+
+  return null;
+}
+
 async function maybeHandleDeterministicControl(input: {
   content: string;
   organizationId: string;
@@ -331,6 +538,7 @@ async function maybeHandleDeterministicControl(input: {
     organizationId: input.organizationId,
     conversationId: input.conversationId,
     currentTaskId: input.taskId,
+    focusedTaskId: focus?.taskId,
   }).catch(() => []);
   const pendingApprovals = await getPendingApprovalsForConversation({
     organizationId: input.organizationId,
@@ -363,6 +571,15 @@ async function maybeHandleDeterministicControl(input: {
 
   if (resolution.requiresClarification) {
     const options = resolution.candidateTasks.map(c => `- ${c.title} (${c.state})`).join("\n");
+    const expectedResponse = resolution.candidateTasks.length > 0 ? "task_selection" : "yes_no";
+    await persistConversationConfirmation({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      action: resolution.intent,
+      candidateTasks: resolution.candidateTasks,
+      expectedResponse,
+      reason: resolution.reason,
+    }).catch(() => {});
     response = resolution.intent === "APPROVE_ACTION" || resolution.intent === "REJECT_ACTION"
       ? "I need you to confirm which pending approval or action you mean before I change anything."
       : `I need you to confirm which task you mean before I change anything.${options ? `\n\n${options}` : ""}`;
@@ -387,15 +604,19 @@ async function maybeHandleDeterministicControl(input: {
     case "CANCEL_TASK": {
       action = "cancel";
       mode = "cancellation_request";
-      const result = await cancelTaskFromConversation({
+      const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
+      await persistConversationConfirmation({
         organizationId: input.organizationId,
         conversationId: input.conversationId,
         taskId: resolution.resolvedTaskId!,
-        actorUserId: input.userId,
+        taskTitle: task?.title,
+        action: "CANCEL_TASK",
+        expectedResponse: "yes_no",
+        reason: resolution.reason,
       });
-      response = result.status === "already_cancelled"
-        ? "That task is already cancelled. I have not changed anything else."
-        : "Cancelled. I have stopped that task and preserved its history.";
+      response = task
+        ? `I need to confirm whether you want to cancel "${task.title}". Reply yes to cancel it, or no to keep it active.`
+        : "I need to confirm whether you want to cancel that task. Reply yes to cancel it, or no to keep it active.";
       break;
     }
     case "PAUSE_TASK": {

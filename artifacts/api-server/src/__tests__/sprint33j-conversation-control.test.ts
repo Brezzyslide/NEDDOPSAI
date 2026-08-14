@@ -22,7 +22,9 @@ vi.mock("../services/auditService.js", () => ({
 import {
   classifyCanonicalConversationAction,
   isLikelyCheckpointAnswer,
+  resolvePendingConfirmationAnswer,
   resolveConversationReference,
+  type PendingConversationConfirmation,
   type ConversationFocus,
   type ConversationTaskSummary,
 } from "../services/conversationControlService.js";
@@ -38,6 +40,27 @@ const rosterTask: ConversationTaskSummary = {
   title: "Next week roster",
   currentState: "queued",
 };
+
+const serviceDeliveryTask: ConversationTaskSummary = {
+  id: "task-service-delivery",
+  title: "Service Delivery Review for Michael",
+  currentState: "awaiting_approval",
+};
+
+function pendingConfirmation(overrides: Partial<PendingConversationConfirmation> = {}): PendingConversationConfirmation {
+  return {
+    id: "confirm-1",
+    action: "CANCEL_TASK",
+    taskId: reportTask.id,
+    taskTitle: reportTask.title,
+    candidateTasks: [],
+    createdAt: new Date("2026-08-14T00:00:00Z").toISOString(),
+    status: "pending",
+    expectedResponse: "yes_no",
+    reason: "test",
+    ...overrides,
+  };
+}
 
 function focus(taskId: string): ConversationFocus {
   return {
@@ -143,6 +166,66 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     });
 
     expect(resolved.resolvedTaskId).toBe(rosterTask.id);
+  });
+
+  it("reproduces live failure: service-delivery focus resolves 'Where are we with that?'", () => {
+    const resolved = resolveConversationReference({
+      text: "Where are we with that?",
+      intent: "STATUS_QUERY",
+      focus: focus(serviceDeliveryTask.id),
+      activeTasks: [serviceDeliveryTask, rosterTask],
+    });
+
+    expect(resolved.resolvedTaskId).toBe(serviceDeliveryTask.id);
+    expect(resolved.requiresClarification).toBe(false);
+  });
+
+  it("makes explicit task disambiguation sticky even with typoed service-delivery wording", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "serice delivery task",
+      pendingConfirmation({
+        action: "STATUS_QUERY",
+        taskId: undefined,
+        taskTitle: undefined,
+        expectedResponse: "task_selection",
+        candidateTasks: [
+          { taskId: serviceDeliveryTask.id, title: serviceDeliveryTask.title, state: serviceDeliveryTask.currentState, score: 45, reason: "candidate" },
+          { taskId: rosterTask.id, title: rosterTask.title, state: rosterTask.currentState, score: 45, reason: "candidate" },
+        ],
+      }),
+    );
+
+    expect(answer.kind).toBe("task_selection");
+    if (answer.kind === "task_selection") {
+      expect(answer.candidate.taskId).toBe(serviceDeliveryTask.id);
+    }
+  });
+
+  it("binds yes to pending CONFIRM_CANCEL instead of generic approval resolution", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "yes",
+      pendingConfirmation({ action: "CANCEL_TASK", taskId: reportTask.id, expectedResponse: "yes_no" }),
+    );
+
+    expect(answer.kind).toBe("confirm");
+  });
+
+  it("binds no to pending CONFIRM_CANCEL without touching unrelated approvals", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "No.",
+      pendingConfirmation({ action: "CANCEL_TASK", taskId: reportTask.id, expectedResponse: "yes_no" }),
+    );
+
+    expect(answer.kind).toBe("decline");
+  });
+
+  it("does not consume an unrelated roster status request as a cancel confirmation answer", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "Actually, show me the roster status.",
+      pendingConfirmation({ action: "CANCEL_TASK", taskId: reportTask.id, expectedResponse: "yes_no" }),
+    );
+
+    expect(answer.kind).toBe("unrelated");
   });
 
   it("binds free-text approval only when exactly one approval is pending", () => {
