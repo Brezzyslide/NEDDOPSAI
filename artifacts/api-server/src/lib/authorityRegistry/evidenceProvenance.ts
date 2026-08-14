@@ -1,12 +1,50 @@
 import { lookupAuthorityById, normaliseDomain } from "./index.js";
 import type { AcceptedEvidence } from "../../types/candidateEvidence.js";
-import type { EvidenceChunk } from "../../services/knowledgeResolutionService.js";
+
+export interface ProvenanceEvidenceChunk {
+  chunkId: string;
+  sourceId: string;
+  sourceVersionId: string | null;
+  sourceTitle: string;
+  versionLabel: string | null;
+  sourceType: string;
+  authorityLevel: string;
+  sectionTitle: string | null;
+  pageNumber: number | null;
+  text: string;
+  confidence: number;
+  citation: string;
+  selectionReason: string;
+  provenance: {
+    sourceOrigin: "internal_krs" | "external_authority" | "task_upload" | "specialist_knowledge" | "memory" | "connector";
+    authorityRegistryId?: string;
+    authorityName?: string;
+    authorityClass?: string;
+    jurisdiction?: string;
+    professionalDomains?: string[];
+    transport?: string;
+    originalUrl?: string;
+    recordIdentifier?: string;
+    documentIdentifier?: string;
+    publisherDomain?: string;
+    claimedPublisher?: string;
+    retrievedAt?: string;
+    publishedAt?: string;
+    effectiveFrom?: string;
+  };
+  currentness: {
+    status: "CURRENT" | "HISTORICAL" | "SUPERSEDED" | "EXPIRED" | "UNKNOWN";
+    checkedAt?: string;
+    version?: string | null;
+    supersededStatus?: string | null;
+  };
+}
 
 export function buildAcceptedEvidenceChunk(
   accepted: AcceptedEvidence,
   selectionReason: string,
   externalPrefix = "ext",
-): EvidenceChunk {
+): ProvenanceEvidenceChunk {
   const registryEntry = accepted.authorityRegistryId ? lookupAuthorityById(accepted.authorityRegistryId) : null;
   const cand = accepted.candidate;
   const sourceOrigin = cand.isExternal ? "external_authority" : "internal_krs";

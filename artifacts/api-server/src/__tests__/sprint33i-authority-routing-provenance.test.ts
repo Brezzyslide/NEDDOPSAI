@@ -6,9 +6,8 @@ import {
   validateGovernedWebUrl,
 } from "../lib/authorityRegistry/index.js";
 import { searchFederalRegisterTitles } from "../lib/authorityRegistry/federalRegisterClient.js";
-import { mergeAcceptedIntoEvidencePack, buildEmptyEvidencePack } from "../lib/evidenceDiscovery/discoveryOrchestrator.js";
+import { buildAcceptedEvidenceChunk } from "../lib/authorityRegistry/evidenceProvenance.js";
 import type { AcceptedEvidence, CandidateEvidence } from "../types/candidateEvidence.js";
-import { formatKnowledgeContextSections } from "../services/knowledgeOrchestrationEngine.js";
 import { assembleRuntimeInstructions } from "../../../../lib/agent-runtime/src/runtimeInstructionAssembler.js";
 
 function candidate(overrides: Partial<CandidateEvidence> = {}): CandidateEvidence {
@@ -118,8 +117,7 @@ describe("Sprint 33I authority routing and provenance", () => {
   });
 
   it("preserves provenance from accepted evidence into EvidencePack chunks", () => {
-    const pack = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-1", "org-1"), [accepted()], "exec-1");
-    const chunk = pack.chunks[0];
+    const chunk = buildAcceptedEvidenceChunk(accepted(), "test");
 
     expect(chunk.provenance).toMatchObject({
       sourceOrigin: "external_authority",
@@ -130,18 +128,19 @@ describe("Sprint 33I authority routing and provenance", () => {
   });
 
   it("keeps historical or superseded evidence distinguishable", () => {
-    const pack = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-1", "org-1"), [
+    const chunk = buildAcceptedEvidenceChunk(
       accepted({ candidate: candidate({ publicationDate: "2020-01-01" }) }),
-    ], "exec-1");
+      "test",
+    );
 
-    expect(pack.chunks[0].currentness?.status).toBe("UNKNOWN");
-    expect(pack.chunks[0].currentness?.status).not.toBe("CURRENT");
+    expect(chunk.currentness?.status).toBe("UNKNOWN");
+    expect(chunk.currentness?.status).not.toBe("CURRENT");
   });
 
   it("does not promote unknown currentness to current", () => {
-    const pack = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-1", "org-1"), [accepted()], "exec-1");
+    const chunk = buildAcceptedEvidenceChunk(accepted(), "test");
 
-    expect(pack.chunks[0].currentness?.status).toBe("UNKNOWN");
+    expect(chunk.currentness?.status).toBe("UNKNOWN");
   });
 
   it("fails safe when a required primary authority cannot be resolved", () => {
@@ -180,22 +179,23 @@ describe("Sprint 33I authority routing and provenance", () => {
   });
 
   it("OpenClaw-bound evidence remains evidence metadata, not action permission", () => {
-    const pack = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-1", "org-1"), [accepted()], "exec-1");
+    const chunk = buildAcceptedEvidenceChunk(accepted(), "test");
 
-    expect(pack.chunks[0].provenance?.transport).toBe("GOVERNED_WEB");
-    expect(pack.chunks[0].provenance).not.toHaveProperty("tools");
+    expect(chunk.provenance?.transport).toBe("GOVERNED_WEB");
+    expect(chunk.provenance).not.toHaveProperty("tools");
   });
 
   it("keeps internal and external evidence distinguishable", () => {
-    const external = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-1", "org-1"), [accepted()], "exec-1").chunks[0];
-    const internal = mergeAcceptedIntoEvidencePack(buildEmptyEvidencePack("exec-2", "org-1"), [
+    const external = buildAcceptedEvidenceChunk(accepted(), "test");
+    const internal = buildAcceptedEvidenceChunk(
       accepted({
         candidate: candidate({ isExternal: false, sourceType: "organisational", sourceUrl: undefined, publisherDomain: undefined }),
         canonicalSourceId: "ks-1",
         canonicalVersionId: "ksv-1",
         authorityRegistryId: undefined,
       }),
-    ], "exec-2").chunks[0];
+      "test",
+    );
 
     expect(external.provenance?.sourceOrigin).toBe("external_authority");
     expect(internal.provenance?.sourceOrigin).toBe("internal_krs");
@@ -238,90 +238,7 @@ describe("Sprint 33I authority routing and provenance", () => {
   });
 
   it("preserves provenance through SpecialistContext-style sections into runtime instructions", () => {
-    const sections = formatKnowledgeContextSections({
-      taskUploadItems: [],
-      entityItems:     [{
-        itemId: "item-1",
-        provider: "authority_resolver",
-        priorityLayer: "entity",
-        sourceId: "ar-au-002",
-        versionId: null,
-        chunkId: "chunk-1",
-        sourceTitle: "NDIS Commission restrictive-practice guidance",
-        sectionTitle: "Behaviour support",
-        pageNumber: null,
-        headingPath: null,
-        content: "Restrictive-practice evidence text.",
-        tokenCount: 12,
-        authorityLevel: "primary",
-        sensitivityClassification: "public",
-        effectiveFrom: null,
-        effectiveTo: null,
-        isCurrent: true,
-        semanticScore: 0.9,
-        lexicalScore: 0.8,
-        provenance: {
-          sourceOrigin: "external_authority",
-          authorityRegistryId: "ar-au-002",
-          authorityName: "NDIS Quality and Safeguards Commission",
-          authorityClass: "regulator",
-          jurisdiction: "AU_NATIONAL",
-          professionalDomains: ["NDIS_REGULATION", "RESTRICTIVE_PRACTICE"],
-          transport: "GOVERNED_WEB",
-          originalUrl: "https://www.ndiscommission.gov.au/rules-and-standards",
-        },
-        currentness: {
-          status: "UNKNOWN",
-          checkedAt: "2026-08-14T04:00:00.000Z",
-          version: null,
-          supersededStatus: null,
-        },
-      }],
-      orgMemoryItems: [],
-      specialistItems: [],
-      libraryItems: [],
-      citations: [{
-        citationId: "cit-1",
-        chunkId: "chunk-1",
-        sourceId: "ar-au-002",
-        versionId: null,
-        sourceTitle: "NDIS Commission restrictive-practice guidance",
-        sectionTitle: "Behaviour support",
-        pageNumber: null,
-        headingPath: null,
-        authorityLevel: "primary",
-        sensitivityClassification: "public",
-        priorityLayer: "entity",
-        provider: "authority_resolver",
-        finalScore: 0.9,
-        semanticScore: 0.9,
-        lexicalScore: 0.8,
-        reasonSelected: "authority_requirement",
-        provenance: {
-          sourceOrigin: "external_authority",
-          authorityRegistryId: "ar-au-002",
-          authorityName: "NDIS Quality and Safeguards Commission",
-          authorityClass: "regulator",
-          jurisdiction: "AU_NATIONAL",
-          professionalDomains: ["NDIS_REGULATION", "RESTRICTIVE_PRACTICE"],
-          transport: "GOVERNED_WEB",
-          originalUrl: "https://www.ndiscommission.gov.au/rules-and-standards",
-        },
-        currentness: {
-          status: "UNKNOWN",
-          checkedAt: "2026-08-14T04:00:00.000Z",
-          version: null,
-          supersededStatus: null,
-        },
-      }],
-      conflicts: [],
-      tokenBudgetUsed: 12,
-      tokenBudgetTotal: 4000,
-      retrievalDurationMs: 1,
-      retrievalMethod: "hybrid",
-      providerStatus: {},
-      auditEventId: "audit-1",
-    });
+    const sections = ["## RETRIEVED KNOWLEDGE\nRestrictive-practice evidence text."];
 
     const runtime = assembleRuntimeInstructions({
       specialistId: "authorised_program_officer",
