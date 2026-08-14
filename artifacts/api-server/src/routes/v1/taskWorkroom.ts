@@ -67,7 +67,11 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
     const ctx = req.tenantContext!;
     const user = req.appUser!;
     const { taskId } = req.params as { taskId: string };
-    const { content } = req.body as { content?: string };
+    const { content, idempotencyKey } = req.body as { content?: string; idempotencyKey?: string };
+    const requestIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : req.header("Idempotency-Key") ?? req.header("X-Idempotency-Key") ?? undefined;
 
     if (!content || content.trim().length === 0) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "content is required." } });
@@ -108,6 +112,7 @@ router.post("/messages", requireAuth, resolveTenantFromSlug, async (req, res, ne
       conversationId: conv.id,
       taskId,
       userId: user.id,
+      idempotencyKey: requestIdempotencyKey,
     });
 
     if (ingressResult.type === "checkpoint_resume") {

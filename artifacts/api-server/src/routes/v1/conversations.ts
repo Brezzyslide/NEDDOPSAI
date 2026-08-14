@@ -136,7 +136,11 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
   try {
     const ctx = req.tenantContext!;
     const user = req.appUser!;
-    const { content, taskId } = req.body as { content?: string; taskId?: string };
+    const { content, taskId, idempotencyKey } = req.body as { content?: string; taskId?: string; idempotencyKey?: string };
+    const requestIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : req.header("Idempotency-Key") ?? req.header("X-Idempotency-Key") ?? undefined;
 
     if (!content || typeof content !== "string" || content.trim().length === 0) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "content is required." } });
@@ -186,6 +190,7 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
       conversationId: req.params.conversationId!,
       taskId: resolvedTaskId,
       userId: user.id,
+      idempotencyKey: requestIdempotencyKey,
     });
 
     if (ingressResult.type === "checkpoint_resume") {

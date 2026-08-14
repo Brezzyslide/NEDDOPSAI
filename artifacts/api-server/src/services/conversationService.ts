@@ -501,6 +501,7 @@ export async function processUserMessage(
   userId: string,
   text: string,
   taskId?: string,
+  correlationId?: string,
 ): Promise<ProcessMessageResult> {
   // 1. Store user message
   const userMessage = await addMessage({
@@ -511,6 +512,7 @@ export async function processUserMessage(
     senderUserId: userId,
     messageType: "text",
     content: text,
+    correlationId,
   });
 
   // 2. Build context

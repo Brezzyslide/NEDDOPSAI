@@ -62,6 +62,7 @@ const mockDispatch          = vi.fn().mockResolvedValue(undefined);
 const mockEmitEvent         = vi.fn();
 const mockExecuteWork       = vi.fn();
 const mockLogOrg            = vi.fn().mockResolvedValue(undefined);
+const mockDbSelect          = vi.fn();
 
 vi.mock("../services/executionCoordinatorService.js", () => ({
   resumeFromCheckpointById: (...a: unknown[]) => mockResumeById(...a),
@@ -89,10 +90,6 @@ vi.mock("../services/auditService.js", () => ({
 }));
 
 vi.mock("@workspace/db", () => {
-  const selectChain = () => ({
-    from:  vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
-  });
   const updateChain = () => ({
     set:      vi.fn().mockReturnThis(),
     where:    vi.fn().mockReturnThis(),
@@ -104,7 +101,7 @@ vi.mock("@workspace/db", () => {
   });
   return {
     db: {
-      select: vi.fn().mockReturnValue(selectChain()),
+      select: (...a: unknown[]) => mockDbSelect(...a),
       update: vi.fn().mockReturnValue(updateChain()),
       insert: vi.fn().mockReturnValue(insertChain()),
     },
@@ -117,6 +114,16 @@ vi.mock("@workspace/db", () => {
     taskExecutionPlansTable: {},
   };
 });
+
+function makeSelectChain(rows: unknown[] = []) {
+  return {
+    from:     vi.fn().mockReturnThis(),
+    leftJoin: vi.fn().mockReturnThis(),
+    where:    vi.fn().mockReturnThis(),
+    orderBy:  vi.fn().mockReturnThis(),
+    limit:    vi.fn().mockResolvedValue(rows),
+  };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -164,6 +171,7 @@ function makeProcessResult() {
 describe("messageIngressService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockImplementation(() => makeSelectChain());
     mockGetOrCreateWorkroom.mockResolvedValue({ id: "conv-1" });
   });
 
@@ -265,6 +273,25 @@ describe("messageIngressService", () => {
     expect(mockResumeById).not.toHaveBeenCalled();
   });
 
+  it("prevents duplicate network submission when idempotencyKey already exists", async () => {
+    mockDbSelect.mockImplementation(() => makeSelectChain([{ id: "message-existing" }]));
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "Cancel that.",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+      idempotencyKey: "retry-key-1",
+    });
+
+    expect(result.type).toBe("checkpoint_duplicate");
+    expect((result as any).reason).toBe("duplicate_message");
+    expect(mockAddMessage).not.toHaveBeenCalled();
+    expect(mockProcessUserMessage).not.toHaveBeenCalled();
+  });
+
   it("returns error type when processUserMessage throws", async () => {
     mockGetActiveCheckpoint.mockResolvedValue(null);
     mockProcessUserMessage.mockRejectedValue(new Error("CoS exploded"));
@@ -318,6 +345,7 @@ describe("messageIngressService", () => {
 describe("messageIngressService — coordinator delegation contract", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelect.mockImplementation(() => makeSelectChain());
     mockGetOrCreateWorkroom.mockResolvedValue({ id: "conv-1" });
   });
 

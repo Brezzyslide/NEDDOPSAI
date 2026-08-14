@@ -21,6 +21,8 @@
 
 import { randomUUID } from "crypto";
 import type { ConversationMessage } from "@workspace/db";
+import { db, conversationMessagesTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import {
   addMessage,
   getOrCreateWorkroom,
@@ -33,6 +35,20 @@ import {
 } from "./executionCheckpointService.js";
 import { resumeFromCheckpointById } from "./executionCoordinatorService.js";
 import { logOrgEvent } from "./auditService.js";
+import type { ProcessMessageResult } from "./conversationService.js";
+import type { ConversationUnderstanding } from "./conversationIntelligenceService.js";
+import {
+  cancelTaskFromConversation,
+  classifyCanonicalConversationAction,
+  getConversationFocus,
+  getOpenConversationTasks,
+  getPendingApprovalsForConversation,
+  holdTaskFromConversation,
+  isLikelyCheckpointAnswer,
+  persistConversationFocus,
+  resolveConversationReference,
+  resolveSingleApproval,
+} from "./conversationControlService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,11 +106,39 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     return { type: "error", message: "conversationId is required", conversationId: "" };
   }
 
+  if (input.idempotencyKey) {
+    const [duplicateUserMessage] = await db
+      .select({ id: conversationMessagesTable.id })
+      .from(conversationMessagesTable)
+      .where(and(
+        eq(conversationMessagesTable.organizationId, organizationId),
+        eq(conversationMessagesTable.conversationId, conversationId),
+        eq(conversationMessagesTable.senderType, "user"),
+        eq(conversationMessagesTable.senderUserId, userId),
+        eq(conversationMessagesTable.correlationId, input.idempotencyKey),
+      ))
+      .limit(1);
+
+    if (duplicateUserMessage) {
+      await logOrgEvent({
+        eventType: "message.ingress.duplicate_prevented",
+        organizationId,
+        actorType: "user",
+        actorUserId: userId,
+        resourceType: "conversation",
+        resourceId: conversationId,
+        metadata: { idempotencyKey: input.idempotencyKey },
+      }).catch(() => {});
+      return { type: "checkpoint_duplicate", reason: "duplicate_message", conversationId };
+    }
+  }
+
   // ── 2. Check for active durable checkpoint ────────────────────────────────
 
   const checkpoint = await getActiveCheckpointByConversation(conversationId);
+  const controlIntent = classifyCanonicalConversationAction(content);
 
-  if (checkpoint) {
+  if (checkpoint && isLikelyCheckpointAnswer(content, checkpoint)) {
     // ── 3a. Clarification answer path ─────────────────────────────────────
 
     // Persist user message before anything else so it's durable
@@ -106,6 +150,7 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
       senderUserId: userId,
       messageType: "text",
       content,
+      correlationId: input.idempotencyKey,
     });
 
     // Store the clarification answer against the checkpoint
@@ -178,11 +223,40 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     };
   }
 
+  if (checkpoint) {
+    await logOrgEvent({
+      eventType: "checkpoint.deferred_unrelated_message",
+      organizationId,
+      actorType: "user",
+      actorUserId: userId,
+      resourceType: "conversation",
+      resourceId: conversationId,
+      metadata: {
+        checkpointId: checkpoint.id,
+        classifiedIntent: controlIntent,
+        taskId: checkpoint.taskId,
+      },
+    }).catch(() => {});
+  }
+
+  const controlResult = await maybeHandleDeterministicControl({
+    content,
+    organizationId,
+    conversationId,
+    taskId,
+    userId,
+    intent: controlIntent,
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (controlResult) {
+    return { type: "normal", result: controlResult, conversationId };
+  }
+
   // ── 3b. Normal CoS message path ───────────────────────────────────────────
   // processUserMessage persists both user and agent messages internally.
 
   try {
-    const result = await processUserMessage(organizationId, conversationId, userId, content, taskId);
+    const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey);
 
     await logOrgEvent({
       eventType: "message.ingress.normal",
@@ -205,4 +279,230 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
       conversationId,
     };
   }
+}
+
+function controlUnderstanding(params: {
+  mode: ConversationUnderstanding["conversationMode"];
+  confidence: number;
+  action?: ConversationUnderstanding["requestedTaskAction"];
+  response: string;
+  existingTaskId?: string;
+  clarification?: string[];
+}): ConversationUnderstanding {
+  return {
+    conversationMode: params.mode,
+    confidence: params.confidence,
+    existingTaskId: params.existingTaskId,
+    clarificationRequired: (params.clarification?.length ?? 0) > 0,
+    clarificationQuestions: params.clarification ?? [],
+    shouldCreateTask: false,
+    shouldUpdateTask: !!params.existingTaskId,
+    requestedTaskAction: params.action,
+    relatedWorkforceRoles: ["chief_of_staff"],
+    customerResponse: params.response,
+  };
+}
+
+async function maybeHandleDeterministicControl(input: {
+  content: string;
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+  userId: string;
+  intent: ReturnType<typeof classifyCanonicalConversationAction>;
+  idempotencyKey?: string;
+}): Promise<ProcessMessageResult | null> {
+  const actionable = [
+    "CANCEL_TASK",
+    "PAUSE_TASK",
+    "RESUME_TASK",
+    "APPROVE_ACTION",
+    "REJECT_ACTION",
+    "STATUS_QUERY",
+    "SWITCH_TASK",
+  ].includes(input.intent);
+  if (!actionable) return null;
+
+  const focus = await getConversationFocus({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+  }).catch(() => null);
+  const openTasks = await getOpenConversationTasks({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    currentTaskId: input.taskId,
+  }).catch(() => []);
+  const pendingApprovals = await getPendingApprovalsForConversation({
+    organizationId: input.organizationId,
+    taskIds: openTasks.map(task => task.id),
+  }).catch(() => []);
+
+  const resolution = resolveConversationReference({
+    text: input.content,
+    intent: input.intent,
+    focus,
+    currentTaskId: input.taskId,
+    activeTasks: openTasks,
+    pendingApprovals,
+  });
+
+  const userMessage = await addMessage({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: resolution.resolvedTaskId ?? input.taskId,
+    senderType: "user",
+    senderUserId: input.userId,
+    messageType: "text",
+    content: input.content,
+    correlationId: input.idempotencyKey,
+  });
+
+  let response: string;
+  let mode: ConversationUnderstanding["conversationMode"] = "execution_query";
+  let action: ConversationUnderstanding["requestedTaskAction"] | undefined;
+
+  if (resolution.requiresClarification) {
+    const options = resolution.candidateTasks.map(c => `- ${c.title} (${c.state})`).join("\n");
+    response = resolution.intent === "APPROVE_ACTION" || resolution.intent === "REJECT_ACTION"
+      ? "I need you to confirm which pending approval or action you mean before I change anything."
+      : `I need you to confirm which task you mean before I change anything.${options ? `\n\n${options}` : ""}`;
+    const agentMessage = await addMessage({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.taskId,
+      senderType: "chief_of_staff",
+      workforceRoleCode: "chief_of_staff",
+      messageType: "question",
+      content: response,
+    });
+    return {
+      userMessage,
+      agentMessage,
+      understanding: controlUnderstanding({ mode, confidence: resolution.confidence, action, response, clarification: [response] }),
+      structuredContent: null,
+    };
+  }
+
+  switch (resolution.intent) {
+    case "CANCEL_TASK": {
+      action = "cancel";
+      mode = "cancellation_request";
+      const result = await cancelTaskFromConversation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: resolution.resolvedTaskId!,
+        actorUserId: input.userId,
+      });
+      response = result.status === "already_cancelled"
+        ? "That task is already cancelled. I have not changed anything else."
+        : "Cancelled. I have stopped that task and preserved its history.";
+      break;
+    }
+    case "PAUSE_TASK": {
+      action = "pause";
+      await holdTaskFromConversation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: resolution.resolvedTaskId!,
+        actorUserId: input.userId,
+        hold: true,
+      });
+      response = "Held. I have marked that task as paused without completing or cancelling it.";
+      break;
+    }
+    case "RESUME_TASK": {
+      action = "resume";
+      await holdTaskFromConversation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: resolution.resolvedTaskId!,
+        actorUserId: input.userId,
+        hold: false,
+      });
+      response = "Resumed. I have removed the hold and kept the task open.";
+      break;
+    }
+    case "APPROVE_ACTION":
+    case "REJECT_ACTION": {
+      action = resolution.intent === "APPROVE_ACTION" ? "approve" : "reject";
+      mode = "approval_response";
+      const result = await resolveSingleApproval({
+        organizationId: input.organizationId,
+        actorUserId: input.userId,
+        approvalId: resolution.resolvedApprovalId!,
+        action: resolution.intent === "APPROVE_ACTION" ? "approved" : "rejected",
+      });
+      response = result.state === "approved"
+        ? "Approved. I have applied that approval to the specific pending action."
+        : "Rejected. I have applied that decision to the specific pending action.";
+      break;
+    }
+    case "STATUS_QUERY": {
+      action = "status";
+      mode = "status_request";
+      const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
+      response = task
+        ? `The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`
+        : "I could not resolve which task you want a status update on.";
+      break;
+    }
+    case "SWITCH_TASK": {
+      mode = "task_followup";
+      const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
+      await persistConversationFocus({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: resolution.resolvedTaskId,
+        reason: resolution.reason,
+        source: "explicit_switch",
+      });
+      response = task
+        ? `Okay, focus is back on "${task.title}".`
+        : "Okay, I have updated the conversation focus.";
+      break;
+    }
+    default:
+      return null;
+  }
+
+  await persistConversationFocus({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: resolution.resolvedTaskId,
+    reason: resolution.reason,
+    source: "state_change",
+  }).catch(() => {});
+
+  const agentMessage = await addMessage({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: resolution.resolvedTaskId ?? input.taskId,
+    senderType: "chief_of_staff",
+    workforceRoleCode: "chief_of_staff",
+    messageType: mode === "approval_response" ? "approval_decision" : "status_change",
+    content: response,
+  });
+
+  await logOrgEvent({
+    eventType: "conversation.control_applied",
+    organizationId: input.organizationId,
+    actorType: "user",
+    actorUserId: input.userId,
+    resourceType: "conversation",
+    resourceId: input.conversationId,
+    metadata: {
+      intent: resolution.intent,
+      taskId: resolution.resolvedTaskId,
+      approvalId: resolution.resolvedApprovalId,
+      confidence: resolution.confidence,
+      reason: resolution.reason,
+    },
+  }).catch(() => {});
+
+  return {
+    userMessage,
+    agentMessage,
+    understanding: controlUnderstanding({ mode, confidence: resolution.confidence, action, response, existingTaskId: resolution.resolvedTaskId }),
+    structuredContent: null,
+  };
 }
