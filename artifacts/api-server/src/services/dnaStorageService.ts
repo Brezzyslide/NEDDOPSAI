@@ -172,6 +172,22 @@ function emptySummary(): Record<WorkforceDnaReconciliationStatus, number> {
   };
 }
 
+function compareDnaVersions(a?: string, b?: string): number {
+  if (!a || !b) return 0;
+  const parse = (value: string) => value.split(".").map(part => {
+    const parsed = Number.parseInt(part, 10);
+    return Number.isFinite(parsed) ? parsed : 0;
+  });
+  const left = parse(a);
+  const right = parse(b);
+  const max = Math.max(left.length, right.length);
+  for (let index = 0; index < max; index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
 async function loadDnaRowsForRole(roleCode: string) {
   return db
     .select()
@@ -256,9 +272,16 @@ export async function buildWorkforceDnaPublicationInventory(
       } else if (publishedVersion === sourceVersion && publishedVersionHash !== sourceVersionHash) {
         status = "UPDATED_NEW_VERSION_REQUIRED";
         reasons.push("Source hash differs for the same version; create a new immutable DNA version before publication.");
+      } else if (compareDnaVersions(sourceVersion, publishedVersion) > 0) {
+        status = "NEW";
+        reasons.push(
+          `Eligible source DNA is a newer immutable version (${sourceVersion}) than the active DB publication (${publishedVersion}).`,
+        );
       } else {
         status = "UPDATED_NEW_VERSION_REQUIRED";
-        reasons.push(`Source version/hash differs from active DB publication (${publishedVersion ?? "none"}).`);
+        reasons.push(
+          `Source version/hash differs from active DB publication (${publishedVersion ?? "none"}); manual version-history review is required.`,
+        );
       }
 
       entries.push({

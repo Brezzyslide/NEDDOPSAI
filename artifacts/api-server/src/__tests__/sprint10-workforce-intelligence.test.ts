@@ -107,6 +107,7 @@ import {
   captureSpecialistRunVersions,
   buildDNASystemInstruction,
   getDNASummary,
+  OPERATIONS_MANAGER_DNA,
 } from "@workspace/workforce-dna";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -357,11 +358,12 @@ describe("lib/workforce-dna — DNA system instruction", () => {
       }
     });
 
-    it("all 4 profiles have version '1.0.0'", () => {
+    it("all 4 profiles have active semantic versions", () => {
       for (const roleCode of roleCodes) {
         const profile = getDNAProfile(roleCode);
         expect(profile).not.toBeNull();
-        expect(profile!.currentVersion.version).toBe("1.0.0");
+        expect(profile!.currentVersion.version).toMatch(/^\d+\.\d+\.\d+$/);
+        expect(profile!.currentVersion.isActive).toBe(true);
       }
     });
 
@@ -1014,9 +1016,9 @@ describe("Specialist run version recording", () => {
     expect(record.reasoningVersion).toBe(expectedReasoningVersion);
   });
 
-  it("captureSpecialistRunVersions for operations_manager returns dnaVersion '1.0.0'", () => {
+  it("captureSpecialistRunVersions for operations_manager returns the current DNA version", () => {
     const record = captureSpecialistRunVersions("operations_manager", "gpt-4o");
-    expect(record.dnaVersion).toBe("1.0.0");
+    expect(record.dnaVersion).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
   });
 
   it("captureSpecialistRunVersions for document_specialist returns dnaVersion '1.0.0'", () => {

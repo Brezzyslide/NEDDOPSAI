@@ -128,6 +128,7 @@ import {
 
 import {
   CHIEF_OF_STAFF_DNA,
+  OPERATIONS_MANAGER_DNA,
 } from "@workspace/workforce-dna";
 
 // ─── Import workforce registry ────────────────────────────────────────────────
@@ -701,6 +702,6 @@ describe("Group 12: Existing tests regression", () => {
   it("getDNAProfile('operations_manager') is still active (regression check)", () => {
     const profile = getDNAProfile("operations_manager");
     expect(profile).not.toBeNull();
-    expect(profile!.currentVersion.version).toBe("1.0.0");
+    expect(profile!.currentVersion.version).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
   });
 });

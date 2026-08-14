@@ -109,6 +109,7 @@ import {
   buildDNASystemInstruction,
   captureSpecialistRunVersions,
   CHIEF_OF_STAFF_DNA,
+  OPERATIONS_MANAGER_DNA,
 } from "@workspace/workforce-dna";
 
 // ─── Import Chief of Staff Employee File (created in Sprint 12) ──────────────
@@ -507,9 +508,9 @@ describe("Group 8: Historical runs remain reproducible", () => {
     expect(record.reasoningVersion).toBe("1.0.0");
   });
 
-  it("captureSpecialistRunVersions('operations_manager', 'gpt-4o').dnaVersion === '1.0.0'", () => {
+  it("captureSpecialistRunVersions('operations_manager', 'gpt-4o').dnaVersion matches current OM DNA", () => {
     const record = captureSpecialistRunVersions("operations_manager", "gpt-4o");
-    expect(record.dnaVersion).toBe("1.0.0");
+    expect(record.dnaVersion).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
   });
 
   it("captureSpecialistRunVersions('nonexistent', 'gpt-4o').dnaVersion === 'N/A'", () => {

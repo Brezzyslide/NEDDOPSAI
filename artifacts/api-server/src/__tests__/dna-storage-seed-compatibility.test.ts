@@ -54,9 +54,19 @@ vi.mock("@workspace/db", async (importOriginal) => {
         const chain = {
           where: vi.fn(() => chain),
           orderBy: vi.fn(() => chain),
-          limit: vi.fn((count: number) =>
-            Promise.resolve(selectedRows(table, selection).slice(0, count)),
-          ),
+          limit: vi.fn((count: number) => {
+            const rows = selectedRows(table, selection);
+            if (table === actual.specialistDnaProfilesTable) {
+              return Promise.resolve(
+                rows
+                  .filter(row => (row as StoredProfile).status === undefined || (row as StoredProfile).status === "published")
+                  .slice()
+                  .reverse()
+                  .slice(0, count),
+              );
+            }
+            return Promise.resolve(rows.slice(0, count));
+          }),
           then: (
             resolve: (value: unknown[]) => unknown,
             reject: (reason: unknown) => unknown,
@@ -126,6 +136,7 @@ import {
   AUTHORISED_PROGRAM_OFFICER_DNA,
   BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA,
   CHIEF_OF_STAFF_DNA,
+  OPERATIONS_MANAGER_DNA,
   POLICY_GOVERNANCE_SPECIALIST_DNA,
   SERVICE_DELIVERY_COORDINATOR_DNA,
   WORKFORCE_ROSTERING_COORDINATOR_DNA,
@@ -419,5 +430,62 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(result.entries[0]?.status).toBe("UPDATED_NEW_VERSION_REQUIRED");
     expect(state.profiles).toHaveLength(1);
     expect(state.profiles[0]?.versionHash).toBe("different-hash");
+  });
+
+  it("treats a newer source DNA version as a valid publication progression", async () => {
+    state.profiles.push({
+      id: "operations-manager-1-0-0",
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "published",
+      versionHash: "ac57d397a07f2da4f8b8dca21a3d003c6be59a18a343524c0e661be8d1e6ad33",
+    });
+
+    const dryRun = await reconcileWorkforceDnaPublication({ roleCodes: ["operations_manager"] });
+
+    expect(dryRun.entries[0]?.status).toBe("NEW");
+    expect(dryRun.entries[0]?.publishedVersion).toBe("1.0.0");
+    expect(dryRun.entries[0]?.sourceVersion).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
+    expect(dryRun.entries[0]?.reasons.join(" ")).toContain("newer immutable version");
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0]?.status).toBe("published");
+  });
+
+  it("publishes a newer source DNA version by superseding the old active row", async () => {
+    state.profiles.push({
+      id: "operations-manager-1-0-0",
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "published",
+      versionHash: "ac57d397a07f2da4f8b8dca21a3d003c6be59a18a343524c0e661be8d1e6ad33",
+    });
+
+    const result = await reconcileWorkforceDnaPublication({
+      roleCodes: ["operations_manager"],
+      apply: true,
+      publishedBy: "version_integrity_test",
+    });
+
+    expect(result.entries[0]?.status).toBe("UNCHANGED");
+    expect(result.entries[0]?.publishedVersion).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
+    expect(result.entries[0]?.publishedVersionHash).toBe(result.entries[0]?.sourceVersionHash);
+    expect(state.profiles).toHaveLength(2);
+    expect(state.profiles[0]).toMatchObject({
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "superseded",
+    });
+    expect(state.profiles[0]?.retiredAt).toBeInstanceOf(Date);
+    expect(state.profiles[1]).toMatchObject({
+      specialistId: "operations_manager",
+      version: OPERATIONS_MANAGER_DNA.currentVersion.version,
+      status: "published",
+    });
+
+    const resolved = await loadDNAFromDatabase("operations_manager");
+
+    expect(resolved?.version).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
+    expect(resolved?.canonicalProfile?.versioning.previousVersion).toBe("1.0.0");
+    expect(resolved?.canonicalProfile?.versioning.supersedes).toBe("1.0.0");
   });
 });

@@ -1,7 +1,7 @@
 /**
  * Operations Manager — Professional DNA Profile
  *
- * Version: 1.0.0 (Sprint 10)
+ * Version: 1.1.0 (Sprint 33H.1)
  *
  * The NeedsOps AI Operations Manager specialises in the day-to-day
  * operational mechanics of disability services delivery: rostering,
@@ -20,21 +20,31 @@ export const OPERATIONS_MANAGER_DNA: DNAProfile = {
   },
 
   currentVersion: {
-    version: "1.0.0",
-    publishedAt: "2026-07-28T00:00:00.000Z",
+    version: "1.1.0",
+    publishedAt: "2026-08-14T00:00:00.000Z",
     publishedBy: "NeedsOps Platform",
-    changeDescription: "Sprint 10 initial publication",
+    changeDescription:
+      "Sprint 33H.1 immutable version bump for the refined Operations Manager professional DNA. Professional content was refined in Sprint 33 without changing the 1.0.0 version identifier; this version preserves the approved content and restores publication hash integrity.",
     isActive: true,
-    previousVersion: null,
+    previousVersion: "1.0.0",
   },
 
   versionHistory: [
+    {
+      version: "1.1.0",
+      publishedAt: "2026-08-14T00:00:00.000Z",
+      publishedBy: "NeedsOps Platform",
+      changeDescription:
+        "Immutable version bump for refined Operations Manager professional DNA; no professional content changes in this versioning sprint.",
+      isActive: true,
+      previousVersion: "1.0.0",
+    },
     {
       version: "1.0.0",
       publishedAt: "2026-07-28T00:00:00.000Z",
       publishedBy: "NeedsOps Platform",
       changeDescription: "Sprint 10 initial publication",
-      isActive: true,
+      isActive: false,
       previousVersion: null,
     },
   ],
