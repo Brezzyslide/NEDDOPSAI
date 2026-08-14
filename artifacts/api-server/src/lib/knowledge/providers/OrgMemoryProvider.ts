@@ -27,6 +27,7 @@ import type {
   KnowledgeProviderResult,
   KnowledgeItem,
 } from "../IKnowledgeProvider.js";
+import { mapKnowledgeCurrentness } from "../currentness.js";
 
 /** Confidence threshold below which memory items are deprioritised */
 const MIN_CONFIDENCE = 0.5;
@@ -84,41 +85,46 @@ export class OrgMemoryProvider implements IKnowledgeProvider {
         return bScore - aScore;
       });
 
-    const items: KnowledgeItem[] = scoredRows.map(({ row, relevanceScore }) => ({
-      itemId:                   randomUUID(),
-      provider:                 this.providerId,
-      priorityLayer:            "org_memory",
-      sourceId:                 row.id,
-      versionId:                null,
-      chunkId:                  null,
-      sourceTitle:              row.title,
-      sectionTitle:             row.memoryType,
-      pageNumber:               null,
-      headingPath:              null,
-      content:                  row.content,
-      tokenCount:               estimateTokens(row.content),
-      authorityLevel:           "primary",  // org memory is primary authority
-      sensitivityClassification: "internal",
-      effectiveFrom:            row.effectiveFrom?.toISOString() ?? null,
-      effectiveTo:              row.effectiveTo?.toISOString() ?? null,
-      isCurrent:                true,
-      provenance: {
-        sourceOrigin:       "memory",
-        recordIdentifier:   row.id,
-        documentIdentifier: row.id,
-        retrievedAt:        new Date().toISOString(),
-        effectiveFrom:      row.effectiveFrom?.toISOString(),
-        effectiveTo:        row.effectiveTo?.toISOString(),
-      },
-      currentness: {
-        status:           "CURRENT",
-        checkedAt:        new Date().toISOString(),
-        version:          null,
-        supersededStatus: null,
-      },
-      semanticScore:            relevanceScore,
-      lexicalScore:             relevanceScore,
-    }));
+    const items: KnowledgeItem[] = scoredRows.map(({ row, relevanceScore }) => {
+      const retrievedAt = new Date().toISOString();
+      return {
+        itemId:                   randomUUID(),
+        provider:                 this.providerId,
+        priorityLayer:            "org_memory",
+        sourceId:                 row.id,
+        versionId:                null,
+        chunkId:                  null,
+        sourceTitle:              row.title,
+        sectionTitle:             row.memoryType,
+        pageNumber:               null,
+        headingPath:              null,
+        content:                  row.content,
+        tokenCount:               estimateTokens(row.content),
+        authorityLevel:           "primary",  // org memory is primary for organisation-specific facts
+        sensitivityClassification: "internal",
+        effectiveFrom:            row.effectiveFrom?.toISOString() ?? null,
+        effectiveTo:              row.effectiveTo?.toISOString() ?? null,
+        isCurrent:                true,
+        provenance: {
+          sourceOrigin:       "memory",
+          recordIdentifier:   row.id,
+          documentIdentifier: row.id,
+          retrievedAt,
+          effectiveFrom:      row.effectiveFrom?.toISOString(),
+          effectiveTo:        row.effectiveTo?.toISOString(),
+        },
+        currentness: mapKnowledgeCurrentness({
+          isCurrent: true,
+          sourceVersionStatus: row.status,
+          effectiveFrom: row.effectiveFrom,
+          effectiveTo: row.effectiveTo,
+          checkedAt: retrievedAt,
+          version: null,
+        }),
+        semanticScore:            relevanceScore,
+        lexicalScore:             relevanceScore,
+      };
+    });
 
     return {
       provider:      this.providerId,

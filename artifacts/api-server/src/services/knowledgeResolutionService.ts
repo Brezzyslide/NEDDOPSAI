@@ -34,6 +34,7 @@ import type { WorkPackageManifest } from "./workPackageService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import { OpenAIEmbeddingProvider } from "../lib/embeddings/openaiEmbeddingProvider.js";
 import { EmbeddingError } from "../lib/embeddings/embeddingInterface.js";
+import { mapKnowledgeCurrentness } from "../lib/knowledge/currentness.js";
 
 // ─── Query embedding generator ────────────────────────────────────────────────
 
@@ -219,6 +220,7 @@ function mapRawChunk(
   selectionReason: string,
 ): EvidenceChunk {
   const confidence = Math.max(0, Math.min(1, chunk.baseScore));
+  const retrievedAt = new Date().toISOString();
   return {
     chunkId:         chunk.id,
     sourceId:        chunk.knowledgeSourceId,
@@ -237,13 +239,19 @@ function mapRawChunk(
       sourceOrigin: selectionReason === "specialist_knowledge" ? "specialist_knowledge" : "internal_krs",
       recordIdentifier: chunk.knowledgeSourceId,
       documentIdentifier: chunk.sourceVersionId ?? chunk.knowledgeSourceId,
-      retrievedAt: new Date().toISOString(),
+      retrievedAt,
+      effectiveFrom: chunk.effectiveFrom?.toISOString(),
+      effectiveTo: chunk.effectiveTo?.toISOString(),
     },
-    currentness: {
-      status: "CURRENT",
-      checkedAt: new Date().toISOString(),
+    currentness: mapKnowledgeCurrentness({
+      isCurrent: chunk.isCurrent,
+      sourceVersionIsCurrent: chunk.sourceVersionIsCurrent,
+      sourceVersionStatus: chunk.sourceVersionStatus,
+      effectiveFrom: chunk.effectiveFrom,
+      effectiveTo: chunk.effectiveTo,
+      checkedAt: retrievedAt,
       version: versionLabel,
-    },
+    }),
   };
 }
 
@@ -513,6 +521,8 @@ export async function resolveEvidence(
         row.pageNumber ? `p.${row.pageNumber}` : null,
       ].filter(Boolean).join(", ");
 
+      const retrievedAt = new Date().toISOString();
+
       allEvidenceChunks.push({
         chunkId:         row.id,
         sourceId:        row.knowledgeSourceId,
@@ -531,13 +541,12 @@ export async function resolveEvidence(
           sourceOrigin: "task_upload",
           recordIdentifier: row.knowledgeSourceId,
           documentIdentifier: row.sourceVersionId ?? row.knowledgeSourceId,
-          retrievedAt: new Date().toISOString(),
+          retrievedAt,
         },
-        currentness: {
-          status: "UNKNOWN",
-          checkedAt: new Date().toISOString(),
+        currentness: mapKnowledgeCurrentness({
+          checkedAt: retrievedAt,
           version: vLabel,
-        },
+        }),
       });
     }
   }

@@ -23,6 +23,20 @@ export interface EvidenceReference {
   referenceId: string;
   excerpt: string;
   relevance: string;
+  sourceId?: string;
+  sourceVersionId?: string | null;
+  sourceTitle?: string;
+  authorityLevel?: string;
+  authorityName?: string;
+  authorityClass?: string;
+  jurisdiction?: string;
+  transport?: string;
+  currentness?: string;
+  sourceOrigin?: string;
+  originalUrl?: string;
+  recordIdentifier?: string;
+  documentIdentifier?: string;
+  retrievedAt?: string;
 }
 
 export interface SpecialistRunResult {

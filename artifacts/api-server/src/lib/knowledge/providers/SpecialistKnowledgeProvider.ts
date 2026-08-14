@@ -20,6 +20,7 @@ import type {
   KnowledgeItem,
 } from "../IKnowledgeProvider.js";
 import { retrieveChunks } from "../../../services/hybridRetrievalService.js";
+import { mapKnowledgeCurrentness } from "../currentness.js";
 
 export class SpecialistKnowledgeProvider implements IKnowledgeProvider {
   readonly providerId    = "specialist_knowledge";
@@ -41,41 +42,47 @@ export class SpecialistKnowledgeProvider implements IKnowledgeProvider {
       limit:             context.maxItems ?? 20,
     });
 
-    const items: KnowledgeItem[] = chunks.map(chunk => ({
-      itemId:                   randomUUID(),
-      provider:                 this.providerId,
-      priorityLayer:            "specialist",
-      sourceId:                 chunk.knowledgeSourceId,
-      versionId:                chunk.sourceVersionId,
-      chunkId:                  chunk.id,
-      sourceTitle:              chunk.sourceTitle,
-      sectionTitle:             chunk.sectionTitle,
-      pageNumber:               chunk.pageNumber,
-      headingPath:              chunk.headingPath,
-      content:                  chunk.text,
-      tokenCount:               chunk.tokenCount ?? estimateTokens(chunk.text),
-      authorityLevel:           chunk.authorityLevel as any,
-      sensitivityClassification: chunk.sensitivityClassification as any,
-      effectiveFrom:            chunk.effectiveFrom?.toISOString() ?? null,
-      effectiveTo:              chunk.effectiveTo?.toISOString() ?? null,
-      isCurrent:                chunk.isCurrent,
-      provenance: {
-        sourceOrigin:       "specialist_knowledge",
-        recordIdentifier:   chunk.knowledgeSourceId,
-        documentIdentifier: chunk.sourceVersionId,
-        retrievedAt:        new Date().toISOString(),
-        effectiveFrom:      chunk.effectiveFrom?.toISOString(),
-        effectiveTo:        chunk.effectiveTo?.toISOString(),
-      },
-      currentness: {
-        status:           chunk.isCurrent ? "CURRENT" : "SUPERSEDED",
-        checkedAt:        new Date().toISOString(),
-        version:          chunk.sourceVersionLabel ?? chunk.sourceVersionId,
-        supersededStatus: chunk.isCurrent ? null : (chunk.sourceVersionStatus ?? "not_current"),
-      },
-      semanticScore:            chunk.semanticScore,
-      lexicalScore:             chunk.lexicalScore,
-    }));
+    const items: KnowledgeItem[] = chunks.map(chunk => {
+      const retrievedAt = new Date().toISOString();
+      return {
+        itemId:                   randomUUID(),
+        provider:                 this.providerId,
+        priorityLayer:            "specialist",
+        sourceId:                 chunk.knowledgeSourceId,
+        versionId:                chunk.sourceVersionId,
+        chunkId:                  chunk.id,
+        sourceTitle:              chunk.sourceTitle,
+        sectionTitle:             chunk.sectionTitle,
+        pageNumber:               chunk.pageNumber,
+        headingPath:              chunk.headingPath,
+        content:                  chunk.text,
+        tokenCount:               chunk.tokenCount ?? estimateTokens(chunk.text),
+        authorityLevel:           chunk.authorityLevel as any,
+        sensitivityClassification: chunk.sensitivityClassification as any,
+        effectiveFrom:            chunk.effectiveFrom?.toISOString() ?? null,
+        effectiveTo:              chunk.effectiveTo?.toISOString() ?? null,
+        isCurrent:                chunk.isCurrent,
+        provenance: {
+          sourceOrigin:       "specialist_knowledge",
+          recordIdentifier:   chunk.knowledgeSourceId,
+          documentIdentifier: chunk.sourceVersionId,
+          retrievedAt,
+          effectiveFrom:      chunk.effectiveFrom?.toISOString(),
+          effectiveTo:        chunk.effectiveTo?.toISOString(),
+        },
+        currentness: mapKnowledgeCurrentness({
+          isCurrent: chunk.isCurrent,
+          sourceVersionIsCurrent: chunk.sourceVersionIsCurrent,
+          sourceVersionStatus: chunk.sourceVersionStatus,
+          effectiveFrom: chunk.effectiveFrom,
+          effectiveTo: chunk.effectiveTo,
+          checkedAt: retrievedAt,
+          version: chunk.sourceVersionLabel ?? chunk.sourceVersionId,
+        }),
+        semanticScore:            chunk.semanticScore,
+        lexicalScore:             chunk.lexicalScore,
+      };
+    });
 
     return {
       provider:      this.providerId,

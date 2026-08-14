@@ -45,6 +45,8 @@ import {
   type KnowledgeCitation,
 } from "./knowledgeOrchestrationEngine.js";
 import type { SensitivityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
+import { projectKnowledgeCitationsToEvidenceReferences } from "../lib/knowledge/evidenceReferenceProjection.js";
+import type { EvidenceReference } from "./specialistIntelligenceService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -405,7 +407,7 @@ export async function buildSpecialistContext(params: {
   unresolvedQuestions:      string[];
   relevantMessages:         Array<{ id: string; role: string; content: string }>;
   previousOutputs:          Array<{ specialistRunId: string; role: string; summary: string }>;
-  evidenceReferences:       never[];
+  evidenceReferences:       EvidenceReference[];
   approvalState:            string;
   executionEntitlementState: string;
 }> {
@@ -414,7 +416,7 @@ export async function buildSpecialistContext(params: {
     workforceRoleCode,
   } = params;
 
-  const [task, orgMemoryRows, convMemRow, previousRunRows, conversationMessageRows] =
+  const [task, convMemRow, previousRunRows, conversationMessageRows] =
     await Promise.all([
       // Task row — scope + approval state
       taskId
@@ -424,28 +426,6 @@ export async function buildSpecialistContext(params: {
             .limit(1)
             .then(r => r[0] ?? null)
         : Promise.resolve(null),
-
-      // Approved org memory (org-wide + this specialist)
-      db.select({
-        id:          organisationMemoryTable.id,
-        content:     organisationMemoryTable.content,
-        memoryType:  organisationMemoryTable.memoryType,
-        specialistId: organisationMemoryTable.specialistId,
-        expiresAt:   organisationMemoryTable.expiresAt,
-        effectiveFrom: organisationMemoryTable.effectiveFrom,
-        effectiveTo: organisationMemoryTable.effectiveTo,
-        supersededBy: organisationMemoryTable.supersededBy,
-      })
-        .from(organisationMemoryTable)
-        .where(and(
-          eq(organisationMemoryTable.organizationId, organizationId),
-          eq(organisationMemoryTable.status, "approved"),
-          or(
-            isNull(organisationMemoryTable.specialistId),
-            eq(organisationMemoryTable.specialistId, workforceRoleCode),
-          ),
-        ))
-        .limit(40),
 
       // Pinned decisions from conversation memory
       conversationId
@@ -493,20 +473,6 @@ export async function buildSpecialistContext(params: {
         : Promise.resolve([]),
     ]);
 
-  const now = new Date();
-
-  // Filter memory for validity
-  const approvedMemory = orgMemoryRows
-    .filter(r => !r.supersededBy)
-    .filter(r => !r.expiresAt  || r.expiresAt  > now)
-    .filter(r => !r.effectiveTo  || r.effectiveTo  > now)
-    .filter(r => !r.effectiveFrom || r.effectiveFrom <= now)
-    .map(r => ({
-      id:       r.id,
-      content:  r.content,
-      category: r.memoryType,
-    }));
-
   // Extract pinned decisions
   interface PinnedDecision { id: string; decision: string; }
   const pinnedDecisions: PinnedDecision[] =
@@ -532,6 +498,31 @@ export async function buildSpecialistContext(params: {
     ? `${task.title} [${task.currentState}]`
     : "Unknown task";
 
+  const canonicalContext = await loadSpecialistContext(
+    organizationId,
+    workforceRoleCode,
+    DEFAULT_CONTEXT_TOKEN_BUDGET,
+    {
+      query: [
+        taskScope,
+        ...relevantMessages.slice(-10).map(message => message.content),
+      ].filter(Boolean).join("\n"),
+      taskId: taskId ?? undefined,
+      executionId: params.specialistRunId,
+      writeAudit: true,
+    },
+  );
+
+  const approvedMemory = canonicalContext.approvedMemory.map(memory => ({
+    id:       memory.id,
+    content:  memory.content,
+    category: memory.memoryType,
+  }));
+
+  const evidenceReferences = projectKnowledgeCitationsToEvidenceReferences(
+    canonicalContext.retrievedKnowledge?.citations,
+  ) as EvidenceReference[];
+
   return {
     taskScope,
     approvedMemory,
@@ -539,7 +530,7 @@ export async function buildSpecialistContext(params: {
     unresolvedQuestions: [],
     relevantMessages,
     previousOutputs,
-    evidenceReferences: [],
+    evidenceReferences,
     approvalState:             task?.approvalState ?? "not_required",
     executionEntitlementState: "ok",
   };
