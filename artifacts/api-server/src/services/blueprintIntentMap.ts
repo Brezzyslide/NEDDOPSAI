@@ -142,6 +142,10 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "policy.create": { family: "policy", mode: "create", code: "policy", isAction: false },
   "policy.review": { family: "policy", mode: "review", code: "policy", isAction: false },
   "policy.revise": { family: "policy", mode: "revise", code: "policy", isAction: false },
+  "governance.framework": { family: "policy", mode: "framework", code: "governance_framework", isAction: false },
+  "governance.regulatory_change_impact": { family: "policy", mode: "impact_assessment", code: "regulatory_change_impact_assessment", isAction: false },
+  "governance.gap_analysis": { family: "policy", mode: "gap_analysis", code: "governance_gap_analysis", isAction: false },
+  "governance.delegation_framework": { family: "policy", mode: "delegation_framework", code: "delegation_framework", isAction: false },
 
   // ── Compliance & Regulatory ───────────────────────────────────────────────
   "compliance.audit_readiness":    { family: "compliance", mode: "audit_readiness",    code: "compliance_audit_readiness",    isAction: false },

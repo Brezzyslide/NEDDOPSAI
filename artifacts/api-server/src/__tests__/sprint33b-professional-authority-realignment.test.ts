@@ -177,7 +177,7 @@ describe("Sprint 33B care, policy, performance and fallback boundaries", () => {
     const policyBlueprint = getRegistryEntry("policy");
     expect(policyCap?.eligibleRoles[0]).toBe("policy_governance_specialist");
     expect(policyBlueprint?.futureOwnerRoleCode).toBe("policy_governance_specialist");
-    expect(validateSpecialistEligibilitySync("policy_governance_specialist", "policy.review")).toBe(false);
+    expect(validateSpecialistEligibilitySync("policy_governance_specialist", "policy.review")).toBe(true);
     expect(validateSpecialistEligibilitySync("compliance_quality_manager", "policy.review")).toBe(true);
   });
 

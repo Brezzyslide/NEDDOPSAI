@@ -106,6 +106,7 @@ import {
   AUTHORISED_PROGRAM_OFFICER_DNA,
   BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA,
   CHIEF_OF_STAFF_DNA,
+  POLICY_GOVERNANCE_SPECIALIST_DNA,
 } from "@workspace/workforce-dna";
 import {
   loadDNAFromDatabase,
@@ -250,5 +251,24 @@ describe("DNA static seed canonical schema compatibility", () => {
       projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
     });
     expect(state.competencies).toHaveLength(BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA.competencies.length);
+  });
+
+  it("recognises Policy & Governance Specialist on the static DB publication path", async () => {
+    const result = await seedDNAFromStaticRegistry("policy_governance_specialist", "live_replit_seed");
+
+    expect(result).toBe("created");
+    const row = state.profiles[0]!;
+    expect(row.specialistId).toBe("policy_governance_specialist");
+    expect(row.dnaId).toBe("policy_governance_specialist");
+    expect(row.version).toBe(POLICY_GOVERNANCE_SPECIALIST_DNA.currentVersion.version);
+    expect(row.versionHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.canonicalProfile).toMatchObject({
+      identity: { specialistId: "policy_governance_specialist" },
+      requiredWorkerProfile: { profileCode: "policy_governance_specialist_profile" },
+    });
+    expect(row.runtimeProjection).toMatchObject({
+      projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
+    });
+    expect(state.competencies).toHaveLength(POLICY_GOVERNANCE_SPECIALIST_DNA.competencies.length);
   });
 });

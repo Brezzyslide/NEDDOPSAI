@@ -139,9 +139,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "compliance_governance",
     packCode: "compliance",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["draft_policy", "review_policy", "research"],
+    capabilities: ["draft_policy", "review_policy", "governance_framework", "regulatory_change_impact", "governance_gap_analysis", "draft_document"],
   },
   {
     code: "authorised_program_officer",
@@ -925,10 +925,9 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 12 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 12 pending v2 employees (excluding approved CoS, CQM, ISS, OM, EA, APO and BSI)
+  it("all 11 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 11 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO and BSI)
     const newlyCodes = [
-      "policy_governance_specialist",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
       "process_asset_coordinator",
@@ -948,14 +947,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 7 employees have dnaStatus 'approved'", () => {
+  it("exactly 8 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(7);
+    expect(approved).toHaveLength(8);
   });
 
-  it("exactly 12 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 11 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(12);
+    expect(pending).toHaveLength(11);
   });
 });
 
@@ -1078,10 +1077,10 @@ describe("Sprint 11 — Dispatch protection", () => {
     expect(decision.reasonCode).toBe("specialist_deprecated");
   });
 
-  it("dna_pending specialist returns deny with code 'dna_design_pending'", () => {
+  it("authored Policy & Governance Specialist is eligible for dispatch", () => {
     const decision = checkDispatchEligibility("policy_governance_specialist");
-    expect(decision.allowed).toBe(false);
-    expect(decision.reasonCode).toBe("dna_design_pending");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
   });
 
   it("authored Authorised Program Officer is eligible for dispatch", () => {

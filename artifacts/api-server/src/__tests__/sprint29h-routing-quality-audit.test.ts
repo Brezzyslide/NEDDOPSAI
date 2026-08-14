@@ -158,7 +158,6 @@ describe("Part A + B — chiefOfStaffService canonical routing", () => {
   it("planTask does not select dna_pending specialists for any intent", () => {
     const dnaBlockedCodes = [
       "knowledge_documentation_specialist",
-      "policy_governance_specialist",
     ];
 
     const plans = [
