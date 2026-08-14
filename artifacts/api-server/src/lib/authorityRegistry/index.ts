@@ -39,11 +39,14 @@ export type AuthorityStrength = "primary" | "secondary";
 
 export type AuthoritySourceClass =
   | "primary_law"
+  | "legislative_instrument"
   | "regulator"
+  | "state_regulator"
   | "government_agency"
   | "official_industrial_instrument"
   | "official_government_guidance"
   | "accredited_professional_standard"
+  | "government_api_discovery"
   | "organisation_approved_internal_source"
   | "secondary_professional_source"
   | "general_web_source"
@@ -52,6 +55,64 @@ export type AuthoritySourceClass =
   | "sample_example";
 
 export type AuthorityCurrentnessStatus = "current" | "superseded" | "inactive" | "requires_review";
+export type AuthorityJurisdiction =
+  | "AU_COMMONWEALTH"
+  | "AU_NATIONAL"
+  | "AU"
+  | "AU-Federal"
+  | "AU-model"
+  | "VIC"
+  | "NSW"
+  | "QLD"
+  | "SA"
+  | "WA"
+  | "TAS"
+  | "ACT"
+  | "NT"
+  | "MULTI_JURISDICTION"
+  | "GLOBAL"
+  | string;
+
+export type ProfessionalDomain =
+  | "NDIS_REGULATION"
+  | "LEGISLATION"
+  | "RESTRICTIVE_PRACTICE"
+  | "BEHAVIOUR_SUPPORT"
+  | "INCIDENT_MANAGEMENT"
+  | "SAFEGUARDING"
+  | "SERVICE_DELIVERY"
+  | "WORKFORCE"
+  | "ROSTERING"
+  | "PAYROLL"
+  | "INDUSTRIAL_RELATIONS"
+  | "TAX"
+  | "SUPERANNUATION"
+  | "PRIVACY"
+  | "DATA_GOVERNANCE"
+  | "WORK_HEALTH_SAFETY"
+  | "CORPORATE_GOVERNANCE"
+  | "HUMAN_RIGHTS"
+  | "LONG_SERVICE_LEAVE"
+  | "FINANCE"
+  | "AGED_CARE"
+  | "CLINICAL"
+  | string;
+
+export type AuthorityTransport =
+  | "API_PUBLIC"
+  | "API_AUTHENTICATED"
+  | "API_RESTRICTED"
+  | "OAUTH_CONNECTOR"
+  | "BULK_DATA"
+  | "OFFICIAL_DOCUMENT"
+  | "GOVERNED_WEB"
+  | "INTERNAL_KRS"
+  | "NOT_CONFIGURED"
+  | "NOT_AVAILABLE";
+
+export type ApiStatus = "AVAILABLE" | "RESTRICTED" | "NOT_CONFIGURED" | "NOT_AVAILABLE" | "UNKNOWN";
+export type CredentialStatus = "NOT_REQUIRED" | "NOT_CONFIGURED" | "CONFIGURED" | "RESTRICTED" | "UNKNOWN";
+export type SourceVerificationStatus = "VERIFIED" | "REQUIRES_REVIEW" | "REJECTED";
 
 /**
  * A single entry in the Authority Registry.
@@ -62,6 +123,10 @@ export interface AuthorityRegistryEntry {
   id: string;
   /** Human-readable name of the authority */
   name: string;
+  /** Authority organisation/publisher. */
+  organisation?: string;
+  /** Canonical official domain for display and provenance. */
+  officialDomain?: string;
   /**
    * Approved domains for this authority.
    * Candidate URLs must have one of these as their registered domain.
@@ -105,8 +170,29 @@ export interface AuthorityRegistryEntry {
   governanceNote?: string;
   /** Professional evidence classification. Search result ranking never sets this. */
   sourceClass?: AuthoritySourceClass;
+  /** Controlled professional domains supported by this source. */
+  professionalDomains?: ProfessionalDomain[];
+  /** Current governance status of the source definition. */
+  sourceStatus?: "ACTIVE" | "INACTIVE" | "SUPERSEDED" | "REQUIRES_REVIEW";
+  /** Whether the source definition has been verified from official material. */
+  verificationStatus?: SourceVerificationStatus;
   /** Workforce domains where this source may be treated as relevant authority. */
   applicableWorkforceDomains?: string[];
+  currentTransport?: AuthorityTransport;
+  preferredTransport?: AuthorityTransport;
+  fallbackTransport?: AuthorityTransport;
+  apiStatus?: ApiStatus;
+  apiBaseUrl?: string;
+  developerPortal?: string;
+  authenticationType?: "NONE" | "API_KEY" | "OAUTH2" | "ACCOUNT" | "UNKNOWN";
+  credentialStatus?: CredentialStatus;
+  approvedDocumentSources?: string[];
+  versionSupport?: "SUPPORTED" | "PARTIAL" | "NOT_AVAILABLE" | "UNKNOWN";
+  effectiveDateSupport?: "SUPPORTED" | "PARTIAL" | "NOT_AVAILABLE" | "UNKNOWN";
+  historicalSupport?: "SUPPORTED" | "PARTIAL" | "NOT_AVAILABLE" | "UNKNOWN";
+  freshnessStrategy?: "API_CURRENTNESS" | "VERSIONED_PUBLICATION" | "LAST_MODIFIED" | "RETRIEVED_AT_ONLY" | "UNKNOWN";
+  connectorId?: string;
+  futureConnectorId?: string;
   /** Domain-specific retrieval governance for this source. */
   retrievalPolicy?: {
     mode: "official_domain_allowlist" | "api_preferred" | "manual_review_required";
@@ -285,14 +371,31 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
   {
     id: "ar-au-001",
     name: "Federal Register of Legislation",
+    organisation: "Office of Parliamentary Counsel",
+    officialDomain: "legislation.gov.au",
     approvedDomains: ["legislation.gov.au"],
     category: "legislation",
-    jurisdictions: ["AU", "AU-Federal"],
+    jurisdictions: ["AU", "AU-Federal", "AU_COMMONWEALTH", "AU_NATIONAL"],
     subjectAreas: ["commonwealth_legislation", "federal_law", "regulatory_obligations", "privacy", "tax", "employment", "ndis"],
     strength: "primary",
     status: "active",
     evidenceAuthorityClass: "mandatory",
     sourceClass: "primary_law",
+    professionalDomains: ["LEGISLATION", "NDIS_REGULATION", "PRIVACY", "TAX", "INDUSTRIAL_RELATIONS", "CORPORATE_GOVERNANCE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "API_PUBLIC",
+    preferredTransport: "API_PUBLIC",
+    fallbackTransport: "GOVERNED_WEB",
+    apiStatus: "AVAILABLE",
+    apiBaseUrl: "https://api.prod.legislation.gov.au/v1",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.legislation.gov.au/"],
+    versionSupport: "SUPPORTED",
+    effectiveDateSupport: "SUPPORTED",
+    historicalSupport: "SUPPORTED",
+    freshnessStrategy: "API_CURRENTNESS",
     applicableWorkforceDomains: ["policy_governance", "compliance_quality", "workforce_compliance", "payroll_workforce_cost", "privacy", "ndis"],
     retrievalPolicy: {
       mode: "official_domain_allowlist",
@@ -307,6 +410,8 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
   {
     id: "ar-au-002",
     name: "NDIS Quality and Safeguards Commission",
+    organisation: "NDIS Quality and Safeguards Commission",
+    officialDomain: "ndiscommission.gov.au",
     approvedDomains: ["ndiscommission.gov.au"],
     category: "regulation",
     jurisdictions: ["AU"],
@@ -315,6 +420,20 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     status: "active",
     evidenceAuthorityClass: "primary",
     sourceClass: "regulator",
+    professionalDomains: ["NDIS_REGULATION", "RESTRICTIVE_PRACTICE", "BEHAVIOUR_SUPPORT", "INCIDENT_MANAGEMENT", "SAFEGUARDING", "SERVICE_DELIVERY", "WORKFORCE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.ndiscommission.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
     applicableWorkforceDomains: ["compliance_quality", "restrictive_practice_governance", "behaviour_support_implementation", "incident_safeguarding", "policy_governance"],
     retrievalPolicy: {
       mode: "official_domain_allowlist",
@@ -373,6 +492,8 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
   {
     id: "ar-au-005",
     name: "Fair Work Commission and Modern Awards Pay Database",
+    organisation: "Fair Work Commission",
+    officialDomain: "fwc.gov.au",
     approvedDomains: ["fwc.gov.au", "developer.fwc.gov.au"],
     category: "regulation",
     jurisdictions: ["AU"],
@@ -381,6 +502,21 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     status: "active",
     evidenceAuthorityClass: "mandatory",
     sourceClass: "official_industrial_instrument",
+    professionalDomains: ["INDUSTRIAL_RELATIONS", "PAYROLL", "WORKFORCE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "API_AUTHENTICATED",
+    fallbackTransport: "GOVERNED_WEB",
+    apiStatus: "AVAILABLE",
+    developerPortal: "https://developer.fwc.gov.au/",
+    authenticationType: "ACCOUNT",
+    credentialStatus: "NOT_CONFIGURED",
+    approvedDocumentSources: ["https://www.fwc.gov.au/", "https://developer.fwc.gov.au/"],
+    versionSupport: "SUPPORTED",
+    effectiveDateSupport: "SUPPORTED",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "API_CURRENTNESS",
     applicableWorkforceDomains: ["payroll_workforce_cost", "workforce_compliance", "people_culture", "policy_governance"],
     retrievalPolicy: {
       mode: "api_preferred",
@@ -499,6 +635,237 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     provenance: { officialSourceUrl: "https://abr.business.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
     governanceNote: "Official ABN/entity lookup source for organisation identity and registration status.",
   },
+  {
+    id: "ar-au-011",
+    name: "Australian Human Rights Commission",
+    organisation: "Australian Human Rights Commission",
+    officialDomain: "humanrights.gov.au",
+    approvedDomains: ["humanrights.gov.au"],
+    category: "government_guidance",
+    jurisdictions: ["AU", "AU_NATIONAL"],
+    subjectAreas: ["human_rights", "discrimination", "disability_rights", "equal_opportunity"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "primary",
+    sourceClass: "regulator",
+    professionalDomains: ["HUMAN_RIGHTS", "WORKFORCE", "SERVICE_DELIVERY"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://humanrights.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
+    applicableWorkforceDomains: ["policy_governance", "people_culture", "service_delivery", "compliance_quality"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://humanrights.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "National human-rights and anti-discrimination authority source.",
+  },
+  {
+    id: "ar-au-012",
+    name: "api.gov.au",
+    organisation: "Digital Transformation Agency",
+    officialDomain: "api.gov.au",
+    approvedDomains: ["api.gov.au"],
+    category: "government_guidance",
+    jurisdictions: ["AU", "AU_NATIONAL"],
+    subjectAreas: ["api_discovery", "government_api_design", "technical_integration"],
+    strength: "secondary",
+    status: "active",
+    evidenceAuthorityClass: "reference",
+    sourceClass: "government_api_discovery",
+    professionalDomains: ["DATA_GOVERNANCE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "NOT_AVAILABLE",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://api.gov.au/"],
+    versionSupport: "NOT_AVAILABLE",
+    effectiveDateSupport: "NOT_AVAILABLE",
+    historicalSupport: "NOT_AVAILABLE",
+    freshnessStrategy: "RETRIEVED_AT_ONLY",
+    applicableWorkforceDomains: ["technical_integration", "data_governance"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "retrieved_at_only" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://api.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "API discovery and technical design source only; not substantive regulatory or legal authority.",
+  },
+  {
+    id: "ar-vic-001",
+    name: "Victorian Legislation",
+    organisation: "Victorian Government",
+    officialDomain: "legislation.vic.gov.au",
+    approvedDomains: ["legislation.vic.gov.au"],
+    category: "legislation",
+    jurisdictions: ["VIC"],
+    subjectAreas: ["victorian_legislation", "state_law", "workplace_safety", "long_service_leave", "human_rights"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "mandatory",
+    sourceClass: "primary_law",
+    professionalDomains: ["LEGISLATION", "WORK_HEALTH_SAFETY", "LONG_SERVICE_LEAVE", "HUMAN_RIGHTS", "WORKFORCE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.legislation.vic.gov.au/"],
+    versionSupport: "SUPPORTED",
+    effectiveDateSupport: "SUPPORTED",
+    historicalSupport: "SUPPORTED",
+    freshnessStrategy: "VERSIONED_PUBLICATION",
+    applicableWorkforceDomains: ["policy_governance", "workforce_compliance", "people_culture", "operations"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "versioned_publication" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://www.legislation.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "Primary source for Victorian Acts, statutory rules and legislative instruments.",
+  },
+  {
+    id: "ar-vic-002",
+    name: "Victorian Senior Practitioner / DFFH",
+    organisation: "Department of Families, Fairness and Housing Victoria",
+    officialDomain: "dffh.vic.gov.au",
+    approvedDomains: ["dffh.vic.gov.au", "providers.dffh.vic.gov.au"],
+    category: "government_guidance",
+    jurisdictions: ["VIC"],
+    subjectAreas: ["restrictive_practice", "behaviour_support", "authorised_program_officer", "disability_services"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "primary",
+    sourceClass: "state_regulator",
+    professionalDomains: ["RESTRICTIVE_PRACTICE", "BEHAVIOUR_SUPPORT", "SERVICE_DELIVERY", "LEGISLATION"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.dffh.vic.gov.au/", "https://providers.dffh.vic.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
+    applicableWorkforceDomains: ["restrictive_practice_governance", "behaviour_support_implementation", "policy_governance", "service_delivery"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://www.dffh.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "Victorian authority source for Senior Practitioner, restrictive-practice and behaviour-support material where applicable.",
+  },
+  {
+    id: "ar-vic-003",
+    name: "WorkSafe Victoria",
+    organisation: "WorkSafe Victoria",
+    officialDomain: "worksafe.vic.gov.au",
+    approvedDomains: ["worksafe.vic.gov.au"],
+    category: "regulation",
+    jurisdictions: ["VIC"],
+    subjectAreas: ["occupational_health_safety", "workplace_safety", "work_health_safety", "workers_compensation"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "primary",
+    sourceClass: "state_regulator",
+    professionalDomains: ["WORK_HEALTH_SAFETY", "WORKFORCE", "SERVICE_DELIVERY"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.worksafe.vic.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
+    applicableWorkforceDomains: ["operations", "people_culture", "workforce_compliance", "policy_governance", "compliance_quality"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://www.worksafe.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "Victorian operative OHS and workplace safety regulator source.",
+  },
+  {
+    id: "ar-vic-004",
+    name: "Portable Long Service Authority Victoria",
+    organisation: "Portable Long Service Authority Victoria",
+    officialDomain: "plsa.vic.gov.au",
+    approvedDomains: ["plsa.vic.gov.au"],
+    category: "government_guidance",
+    jurisdictions: ["VIC"],
+    subjectAreas: ["portable_long_service_leave", "long_service_leave", "community_services"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "primary",
+    sourceClass: "state_regulator",
+    professionalDomains: ["LONG_SERVICE_LEAVE", "PAYROLL", "WORKFORCE", "INDUSTRIAL_RELATIONS"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.plsa.vic.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
+    applicableWorkforceDomains: ["payroll_workforce_cost", "workforce_compliance", "people_culture"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://www.plsa.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "Victorian portable long-service-leave authority source.",
+  },
+  {
+    id: "ar-vic-005",
+    name: "Wage Inspectorate Victoria",
+    organisation: "Wage Inspectorate Victoria",
+    officialDomain: "wageinspectorate.vic.gov.au",
+    approvedDomains: ["wageinspectorate.vic.gov.au"],
+    category: "regulation",
+    jurisdictions: ["VIC"],
+    subjectAreas: ["wage_theft", "child_employment", "long_service_leave", "employment_obligations"],
+    strength: "primary",
+    status: "active",
+    evidenceAuthorityClass: "primary",
+    sourceClass: "state_regulator",
+    professionalDomains: ["INDUSTRIAL_RELATIONS", "WORKFORCE", "PAYROLL", "LONG_SERVICE_LEAVE"],
+    sourceStatus: "ACTIVE",
+    verificationStatus: "VERIFIED",
+    currentTransport: "GOVERNED_WEB",
+    preferredTransport: "GOVERNED_WEB",
+    fallbackTransport: "OFFICIAL_DOCUMENT",
+    apiStatus: "NOT_AVAILABLE",
+    authenticationType: "NONE",
+    credentialStatus: "NOT_REQUIRED",
+    approvedDocumentSources: ["https://www.wageinspectorate.vic.gov.au/"],
+    versionSupport: "PARTIAL",
+    effectiveDateSupport: "PARTIAL",
+    historicalSupport: "PARTIAL",
+    freshnessStrategy: "LAST_MODIFIED",
+    applicableWorkforceDomains: ["payroll_workforce_cost", "workforce_compliance", "people_culture"],
+    retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
+    currentness: { status: "current", verifiedAt: "2026-08-14" },
+    provenance: { officialSourceUrl: "https://www.wageinspectorate.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
+    governanceNote: "Victorian employment enforcement authority source where state employment obligations are in scope.",
+  },
 ];
 
 // ─── Lookup interface ─────────────────────────────────────────────────────────
@@ -587,15 +954,25 @@ export interface AuthorityRankingContext {
   jurisdiction?: string;
   subjectArea?: string;
   workforceDomain?: string;
+  professionalDomain?: ProfessionalDomain;
+  requiredAuthorityClass?: AuthoritySourceClass;
+  preferredAuthorityClass?: AuthoritySourceClass;
+  requireCurrent?: boolean;
+  allowHistorical?: boolean;
+  internalEvidenceRequired?: boolean;
+  externalEvidenceRequired?: boolean;
 }
 
 const AUTHORITY_CLASS_RANK: Record<AuthoritySourceClass, number> = {
   primary_law: 100,
+  legislative_instrument: 98,
   official_industrial_instrument: 95,
   regulator: 90,
+  state_regulator: 90,
   government_agency: 80,
   official_government_guidance: 75,
   accredited_professional_standard: 65,
+  government_api_discovery: 15,
   organisation_approved_internal_source: 60,
   secondary_professional_source: 40,
   general_web_source: 10,
@@ -613,14 +990,16 @@ const EVIDENCE_CLASS_RANK: Record<AuthorityRegistryEntry["evidenceAuthorityClass
 
 function matchesJurisdiction(entry: AuthorityRegistryEntry, jurisdiction?: string): boolean {
   if (!jurisdiction) return true;
+  const stateJurisdictions = ["VIC", "NSW", "QLD", "SA", "WA", "TAS", "ACT", "NT"];
   return entry.jurisdictions.includes("GLOBAL") ||
     entry.jurisdictions.includes(jurisdiction) ||
+    (["AU_NATIONAL", "AU_COMMONWEALTH"].includes(jurisdiction) && (entry.jurisdictions.includes("AU") || entry.jurisdictions.includes("AU-Federal"))) ||
+    (stateJurisdictions.includes(jurisdiction) && (entry.jurisdictions.includes("AU") || entry.jurisdictions.includes("AU_NATIONAL"))) ||
     (jurisdiction.startsWith("AU-") && entry.jurisdictions.includes("AU"));
 }
 
 function matchesSubjectArea(entry: AuthorityRegistryEntry, subjectArea?: string): boolean {
   if (!subjectArea) return true;
-  if (entry.subjectAreas.length === 0) return true;
   return entry.subjectAreas.includes(subjectArea);
 }
 
@@ -628,6 +1007,12 @@ function matchesWorkforceDomain(entry: AuthorityRegistryEntry, workforceDomain?:
   if (!workforceDomain) return true;
   const domains = entry.applicableWorkforceDomains ?? [];
   return domains.length === 0 || domains.includes(workforceDomain);
+}
+
+function matchesProfessionalDomain(entry: AuthorityRegistryEntry, professionalDomain?: ProfessionalDomain): boolean {
+  if (!professionalDomain) return true;
+  const domains = entry.professionalDomains ?? [];
+  return domains.includes(professionalDomain);
 }
 
 /**
@@ -660,7 +1045,21 @@ export function scoreAuthorityForContext(
   if (matchesWorkforceDomain(entry, context.workforceDomain)) score += 10;
   else score -= 30;
 
+  if (matchesProfessionalDomain(entry, context.professionalDomain)) score += 25;
+  else score -= 70;
+
+  if (context.requiredAuthorityClass && sourceClass !== context.requiredAuthorityClass) score -= 100;
+  if (context.preferredAuthorityClass && sourceClass === context.preferredAuthorityClass) score += 25;
+  if (
+    context.professionalDomain &&
+    context.professionalDomain !== "LEGISLATION" &&
+    ["regulator", "state_regulator", "official_government_guidance"].includes(sourceClass)
+  ) {
+    score += 25;
+  }
+
   if (entry.currentness?.status && entry.currentness.status !== "current") score -= 100;
+  if (context.requireCurrent && entry.currentness?.status !== "current") score -= 100;
 
   return Math.max(score, 0);
 }
@@ -678,6 +1077,121 @@ export function findAuthoritiesForContext(
 
 export function getAuthorityRegistryEntries(): AuthorityRegistryEntry[] {
   return [...AUTHORITY_REGISTRY_ENTRIES];
+}
+
+export interface EvidenceRequirement {
+  domain?: ProfessionalDomain;
+  subject?: string;
+  jurisdiction?: AuthorityJurisdiction;
+  requiredAuthorityClass?: AuthoritySourceClass;
+  preferredAuthorityClass?: AuthoritySourceClass;
+  currentnessRequirement?: "CURRENT_REQUIRED" | "CURRENT_PREFERRED" | "UNKNOWN_ALLOWED";
+  historicalEvidenceAllowed?: boolean;
+  internalEvidenceRequired?: boolean;
+  externalEvidenceRequired?: boolean;
+}
+
+export interface AuthorityResolution {
+  source: AuthorityRegistryEntry;
+  score: number;
+  selectedTransport: AuthorityTransport;
+  fallbackTransport?: AuthorityTransport;
+  currentness: AuthorityCurrentnessStatus | "unknown";
+  reason: string;
+}
+
+export function resolveAuthoritiesForRequirement(
+  requirement: EvidenceRequirement,
+  limit = 5,
+): AuthorityResolution[] {
+  const requireCurrent = requirement.currentnessRequirement === "CURRENT_REQUIRED";
+  return AUTHORITY_REGISTRY_ENTRIES
+    .filter(entry => entry.status === "active")
+    .filter(entry => !requirement.externalEvidenceRequired || entry.currentTransport !== "INTERNAL_KRS")
+    .filter(entry => matchesJurisdiction(entry, requirement.jurisdiction))
+    .filter(entry => matchesProfessionalDomain(entry, requirement.domain))
+    .filter(entry => matchesSubjectArea(entry, requirement.subject))
+    .map(source => {
+      const score = scoreAuthorityForContext(source, {
+        jurisdiction:             requirement.jurisdiction,
+        subjectArea:              requirement.subject,
+        professionalDomain:       requirement.domain,
+        requiredAuthorityClass:   requirement.requiredAuthorityClass,
+        preferredAuthorityClass:  requirement.preferredAuthorityClass,
+        requireCurrent,
+        allowHistorical:          requirement.historicalEvidenceAllowed,
+        internalEvidenceRequired: requirement.internalEvidenceRequired,
+        externalEvidenceRequired: requirement.externalEvidenceRequired,
+      });
+      const selectedTransport = selectTransport(source);
+      const reason = [
+        requirement.domain ? `domain:${requirement.domain}` : null,
+        requirement.subject ? `subject:${requirement.subject}` : null,
+        requirement.jurisdiction ? `jurisdiction:${requirement.jurisdiction}` : null,
+        `transport:${selectedTransport}`,
+      ].filter(Boolean).join(" ");
+      const currentness: AuthorityCurrentnessStatus | "unknown" = source.currentness?.status ?? "unknown";
+      return {
+        source,
+        score,
+        selectedTransport,
+        fallbackTransport: source.fallbackTransport,
+        currentness,
+        reason,
+      };
+    })
+    .filter(result => result.score > 0)
+    .sort((a, b) => b.score - a.score || a.source.id.localeCompare(b.source.id))
+    .slice(0, limit);
+}
+
+function selectTransport(entry: AuthorityRegistryEntry): AuthorityTransport {
+  if (
+    entry.preferredTransport?.startsWith("API_") &&
+    entry.credentialStatus &&
+    !["NOT_REQUIRED", "CONFIGURED"].includes(entry.credentialStatus)
+  ) {
+    return entry.fallbackTransport ?? "NOT_CONFIGURED";
+  }
+  return entry.preferredTransport ?? entry.currentTransport ?? "GOVERNED_WEB";
+}
+
+export interface GovernedWebValidationResult {
+  ok: boolean;
+  authority?: AuthorityRegistryEntry;
+  reason?: string;
+}
+
+export function validateGovernedWebUrl(url: string, authorityId?: string): GovernedWebValidationResult {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { ok: false, reason: "INVALID_URL" };
+  }
+
+  if (parsed.protocol !== "https:") return { ok: false, reason: "HTTPS_REQUIRED" };
+  if (isPrivateOrLocalHostname(parsed.hostname)) return { ok: false, reason: "PRIVATE_NETWORK_BLOCKED" };
+
+  const authority = authorityId ? lookupAuthorityById(authorityId) : isApprovedExternalSource(url);
+  if (!authority) return { ok: false, reason: "AUTHORITY_UNKNOWN" };
+  if (authority.currentTransport !== "GOVERNED_WEB" && authority.fallbackTransport !== "GOVERNED_WEB") {
+    return { ok: false, authority, reason: "GOVERNED_WEB_NOT_APPROVED_FOR_AUTHORITY" };
+  }
+
+  const normalisedDomain = normaliseDomain(parsed.hostname);
+  const approved = authority.approvedDomains.some(d => normalisedDomain === d || normalisedDomain.endsWith(`.${d}`));
+  if (!approved) return { ok: false, authority, reason: "DOMAIN_NOT_APPROVED_FOR_AUTHORITY" };
+  return { ok: true, authority };
+}
+
+function isPrivateOrLocalHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
+  if (host === "::1" || host === "[::1]") return true;
+  return false;
 }
 
 /**

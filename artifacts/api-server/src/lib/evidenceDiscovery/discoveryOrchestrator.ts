@@ -40,6 +40,7 @@ import { nullDiscoveryAdapter } from "./NullDiscoveryAdapter.js";
 import { cloudOpenClawDiscoveryAdapter } from "./CloudOpenClawDiscoveryAdapter.js";
 import { validateCandidateBatch } from "../../services/evidenceAcceptanceService.js";
 import type { EvidencePack, EvidenceChunk } from "../../services/knowledgeResolutionService.js";
+import { buildAcceptedEvidenceChunk } from "../authorityRegistry/evidenceProvenance.js";
 
 // ─── Adapter registry ─────────────────────────────────────────────────────────
 // Sprint 29O.1: CloudOpenClawDiscoveryAdapter is registered before the null
@@ -203,22 +204,7 @@ export function mergeAcceptedIntoEvidencePack(
   accepted: AcceptedEvidence[],
   executionId: string,
 ): EvidencePack {
-  const newChunks: EvidenceChunk[] = accepted.map(a => ({
-    chunkId:         a.candidate.discoveryId,
-    sourceId:        a.canonicalSourceId ?? `ext-${a.candidate.discoveryId}`,
-    sourceVersionId: a.canonicalVersionId ?? null,
-    sourceTitle:     a.candidate.sourceTitle,
-    versionLabel:    null,
-    sourceType:      a.candidate.contentType,
-    authorityLevel:  a.authorityClass,
-    sectionTitle:    null,
-    pageNumber:      null,
-    text:            a.candidate.supportingPassage,
-    // Use relevanceScore as confidence — never openClawConfidence
-    confidence:      a.candidate.relevanceScore,
-    citation:        `${a.candidate.sourceTitle}${a.candidate.sourceUrl ? ` (${a.candidate.sourceUrl})` : ""}`,
-    selectionReason: `discovery:${a.candidate.retrievalMethod}`,
-  }));
+  const newChunks: EvidenceChunk[] = accepted.map(a => buildAcceptedEvidenceChunk(a, `discovery:${a.candidate.retrievalMethod}`));
 
   const allChunks = [...v1Pack.chunks, ...newChunks];
 
@@ -299,9 +285,10 @@ export function buildInsufficientEvidenceMessage(
   }
 
   if (discoveryResult?.allCandidatesRejected) {
+    const candidatesReturned = discoveryResult.accepted.length + discoveryResult.rejected.length;
     return (
       `This task requires evidence that could not be verified as authoritative. ` +
-      `${discoveryResult.candidatesReturned} source(s) were discovered but all were rejected ` +
+      `${candidatesReturned} source(s) were discovered but all were rejected ` +
       `by the evidence authority gate (rejection reasons: ` +
       `${discoveryResult.rejected.map(r => r.rejectionReason).join(", ")}). ` +
       "Please contact your administrator if you believe this is incorrect."

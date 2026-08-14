@@ -58,6 +58,7 @@ import {
   type OrchestratorResult,
 } from "./discoveryOrchestrator.js";
 import type { EvidenceEscalationDecision } from "../../services/evidenceEscalationService.js";
+import { lookupAuthorityById, normaliseDomain } from "../authorityRegistry/index.js";
 
 // ─── Parallel discovery parameters ────────────────────────────────────────────
 
@@ -512,6 +513,7 @@ function detectContradiction(
 
 function buildOpenClawChunk(accepted: AcceptedEvidence, executionId: string): EvidenceChunk {
   const cand = accepted.candidate;
+  const registryEntry = accepted.authorityRegistryId ? lookupAuthorityById(accepted.authorityRegistryId) : null;
   return {
     chunkId:         cand.discoveryId,
     sourceId:        accepted.canonicalSourceId ?? `openclaw-ext-${cand.discoveryId}`,
@@ -529,6 +531,29 @@ function buildOpenClawChunk(accepted: AcceptedEvidence, executionId: string): Ev
     citation:        buildCitation(cand.sourceTitle, cand.sourceUrl),
     // Provenance annotation: chunk came from OpenClaw discovery
     selectionReason: `parallel_discovery:${cand.retrievalMethod}`,
+    provenance: {
+      sourceOrigin: cand.isExternal ? "external_authority" : "internal_krs",
+      authorityRegistryId: accepted.authorityRegistryId,
+      authorityName:       registryEntry?.name,
+      authorityClass:      registryEntry?.sourceClass,
+      jurisdiction:        cand.jurisdiction ?? registryEntry?.jurisdictions[0],
+      professionalDomains: registryEntry?.professionalDomains,
+      transport:           registryEntry?.currentTransport ?? (cand.isExternal ? "GOVERNED_WEB" : "INTERNAL_KRS"),
+      originalUrl:         cand.sourceUrl,
+      recordIdentifier:    accepted.canonicalSourceId ?? cand.sourceUrl ?? cand.discoveryId,
+      documentIdentifier:  accepted.canonicalVersionId ?? cand.sourceUrl ?? cand.discoveryId,
+      publisherDomain:     cand.publisherDomain ?? (cand.sourceUrl ? normaliseDomain(cand.sourceUrl) : undefined),
+      claimedPublisher:    cand.claimedPublisher,
+      retrievedAt:         cand.retrievalTimestamp,
+      publishedAt:         cand.publicationDate,
+      effectiveFrom:       cand.effectiveDate,
+    },
+    currentness: {
+      status: "UNKNOWN",
+      checkedAt: cand.retrievalTimestamp,
+      version: cand.publicationDate ?? null,
+      supersededStatus: null,
+    },
   };
 }
 

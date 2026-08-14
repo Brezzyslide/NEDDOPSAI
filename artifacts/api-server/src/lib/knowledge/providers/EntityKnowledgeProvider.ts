@@ -82,6 +82,20 @@ export class EntityKnowledgeProvider implements IKnowledgeProvider {
       effectiveFrom:            chunk.effectiveFrom?.toISOString() ?? null,
       effectiveTo:              chunk.effectiveTo?.toISOString() ?? null,
       isCurrent:                chunk.isCurrent,
+      provenance: {
+        sourceOrigin:       "internal_krs",
+        recordIdentifier:   chunk.knowledgeSourceId,
+        documentIdentifier: chunk.sourceVersionId,
+        retrievedAt:        new Date().toISOString(),
+        effectiveFrom:      chunk.effectiveFrom?.toISOString(),
+        effectiveTo:        chunk.effectiveTo?.toISOString(),
+      },
+      currentness: {
+        status:           chunk.isCurrent ? "CURRENT" : "SUPERSEDED",
+        checkedAt:        new Date().toISOString(),
+        version:          chunk.sourceVersionLabel ?? chunk.sourceVersionId,
+        supersededStatus: chunk.isCurrent ? null : (chunk.sourceVersionStatus ?? "not_current"),
+      },
       semanticScore:            chunk.semanticScore,
       lexicalScore:             chunk.lexicalScore,
     }));

@@ -50,6 +50,33 @@ export type PriorityLayer =
   | "cloud"              // P7
   | "web_search";        // P8
 
+export interface KnowledgeItemProvenance {
+  sourceOrigin: "internal_krs" | "external_authority" | "task_upload" | "specialist_knowledge" | "memory" | "connector";
+  authorityRegistryId?: string;
+  authorityName?: string;
+  authorityClass?: string;
+  jurisdiction?: string;
+  professionalDomains?: string[];
+  transport?: string;
+  originalUrl?: string;
+  apiEndpoint?: string;
+  recordIdentifier?: string;
+  documentIdentifier?: string;
+  publisherDomain?: string;
+  claimedPublisher?: string;
+  retrievedAt?: string;
+  publishedAt?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface KnowledgeItemCurrentness {
+  status: "CURRENT" | "HISTORICAL" | "SUPERSEDED" | "EXPIRED" | "UNKNOWN";
+  checkedAt?: string;
+  version?: string | null;
+  supersededStatus?: string | null;
+}
+
 /**
  * A single retrieved knowledge item.
  * Never contains raw document content in sensitive fields.
@@ -94,6 +121,10 @@ export interface KnowledgeItem {
   effectiveTo: string | null;
   /** Whether this is the current version of the source */
   isCurrent: boolean;
+  /** Structured provenance retained for SpecialistContext/runtime projection. */
+  provenance?: KnowledgeItemProvenance;
+  /** Currentness/version status. Unknown must never be promoted to current. */
+  currentness?: KnowledgeItemCurrentness;
 
   // ── Retrieval scores ─────────────────────────────────────────────────────────
   semanticScore: number;   // 0–1 cosine similarity (0 if not computed)

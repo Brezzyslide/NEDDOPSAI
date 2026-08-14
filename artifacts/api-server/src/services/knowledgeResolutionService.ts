@@ -97,6 +97,37 @@ export interface EvidenceChunk {
   citation: string;
   /** Why this chunk was selected (selection category) */
   selectionReason: string;
+  /** Structured provenance preserved through SpecialistContext and persistence. */
+  provenance?: EvidenceChunkProvenance;
+  /** Currentness/version status. Unknown must not be promoted to current. */
+  currentness?: EvidenceChunkCurrentness;
+}
+
+export interface EvidenceChunkProvenance {
+  sourceOrigin: "internal_krs" | "external_authority" | "task_upload" | "specialist_knowledge" | "memory" | "connector";
+  authorityRegistryId?: string;
+  authorityName?: string;
+  authorityClass?: string;
+  jurisdiction?: string;
+  professionalDomains?: string[];
+  transport?: string;
+  originalUrl?: string;
+  apiEndpoint?: string;
+  recordIdentifier?: string;
+  documentIdentifier?: string;
+  publisherDomain?: string;
+  claimedPublisher?: string;
+  retrievedAt?: string;
+  publishedAt?: string;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+}
+
+export interface EvidenceChunkCurrentness {
+  status: "CURRENT" | "HISTORICAL" | "SUPERSEDED" | "EXPIRED" | "UNKNOWN";
+  checkedAt?: string;
+  version?: string | null;
+  supersededStatus?: string | null;
 }
 
 export interface EvidencePackMetrics {
@@ -202,6 +233,17 @@ function mapRawChunk(
     confidence,
     citation:        buildCitation(chunk, versionLabel),
     selectionReason,
+    provenance: {
+      sourceOrigin: selectionReason === "specialist_knowledge" ? "specialist_knowledge" : "internal_krs",
+      recordIdentifier: chunk.knowledgeSourceId,
+      documentIdentifier: chunk.sourceVersionId ?? chunk.knowledgeSourceId,
+      retrievedAt: new Date().toISOString(),
+    },
+    currentness: {
+      status: "CURRENT",
+      checkedAt: new Date().toISOString(),
+      version: versionLabel,
+    },
   };
 }
 
@@ -485,6 +527,17 @@ export async function resolveEvidence(
         confidence:      0.8, // task uploads are always directly relevant
         citation,
         selectionReason: "task_upload",
+        provenance: {
+          sourceOrigin: "task_upload",
+          recordIdentifier: row.knowledgeSourceId,
+          documentIdentifier: row.sourceVersionId ?? row.knowledgeSourceId,
+          retrievedAt: new Date().toISOString(),
+        },
+        currentness: {
+          status: "UNKNOWN",
+          checkedAt: new Date().toISOString(),
+          version: vLabel,
+        },
       });
     }
   }
@@ -780,5 +833,7 @@ export function buildCitationSummary(pack: EvidencePack): Record<string, unknown
     authorityLevel: c.authorityLevel,
     citation:      c.citation,
     confidence:    c.confidence,
+    provenance:    c.provenance ?? null,
+    currentness:   c.currentness ?? null,
   }));
 }

@@ -102,6 +102,20 @@ export class OrgMemoryProvider implements IKnowledgeProvider {
       effectiveFrom:            row.effectiveFrom?.toISOString() ?? null,
       effectiveTo:              row.effectiveTo?.toISOString() ?? null,
       isCurrent:                true,
+      provenance: {
+        sourceOrigin:       "memory",
+        recordIdentifier:   row.id,
+        documentIdentifier: row.id,
+        retrievedAt:        new Date().toISOString(),
+        effectiveFrom:      row.effectiveFrom?.toISOString(),
+        effectiveTo:        row.effectiveTo?.toISOString(),
+      },
+      currentness: {
+        status:           "CURRENT",
+        checkedAt:        new Date().toISOString(),
+        version:          null,
+        supersededStatus: null,
+      },
       semanticScore:            relevanceScore,
       lexicalScore:             relevanceScore,
     }));

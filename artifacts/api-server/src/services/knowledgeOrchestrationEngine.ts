@@ -114,6 +114,10 @@ export interface KnowledgeCitation {
   lexicalScore:             number;
   /** Why this item was selected */
   reasonSelected:           string;
+  /** Structured provenance retained for SpecialistContext/runtime projection */
+  provenance?:              KnowledgeItem["provenance"];
+  /** Currentness/version state retained for runtime reasoning */
+  currentness?:             KnowledgeItem["currentness"];
 }
 
 /** Structured context returned by the orchestration engine */
@@ -472,6 +476,8 @@ function generateCitations(scored: ScoredItem[]): KnowledgeCitation[] {
     semanticScore:            item.semanticScore,
     lexicalScore:             item.lexicalScore,
     reasonSelected,
+    provenance:               item.provenance,
+    currentness:              item.currentness,
   }));
 }
 
@@ -637,12 +643,22 @@ export function formatKnowledgeContextSections(
           item.headingPath,
         ].filter(Boolean).join(" › ");
 
-        lines.push(
+        const provenanceBits = [
+          item.provenance?.sourceOrigin ? `Origin: ${item.provenance.sourceOrigin}` : null,
+          item.provenance?.authorityName ? `Authority source: ${item.provenance.authorityName}` : null,
+          item.provenance?.authorityClass ? `Authority class: ${item.provenance.authorityClass}` : null,
+          item.provenance?.jurisdiction ? `Jurisdiction: ${item.provenance.jurisdiction}` : null,
+          item.currentness?.status ? `Currentness: ${item.currentness.status}` : `Currentness: ${item.isCurrent ? "CURRENT" : "UNKNOWN"}`,
+          item.provenance?.transport ? `Transport: ${item.provenance.transport}` : null,
+        ].filter(Boolean).join(" | ");
+
+        lines.push(...[
           `#### Document ${itemIndex}: ${item.sourceTitle}${location ? ` — ${location}` : ""}`,
           `*Authority: ${item.authorityLevel} | Source: ${item.priorityLayer}*`,
+          provenanceBits ? `*Provenance: ${provenanceBits}*` : "",
           item.content,
           ``,
-        );
+        ].filter(Boolean));
         itemIndex++;
       }
     }

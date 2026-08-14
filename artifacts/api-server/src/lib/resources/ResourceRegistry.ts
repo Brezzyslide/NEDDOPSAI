@@ -298,6 +298,20 @@ export class ResourceRegistry {
           confidence:    handle.confidence,
           citation:      `Desktop File: ${title}`,
           selectionReason: "desktop_file",
+          provenance: {
+            sourceOrigin:       "connector",
+            transport:          "INTERNAL_KRS",
+            originalUrl:        handle.uri,
+            recordIdentifier:   handle.id,
+            documentIdentifier: version ?? handle.id,
+            retrievedAt:        new Date().toISOString(),
+          },
+          currentness: {
+            status:           "UNKNOWN",
+            checkedAt:        new Date().toISOString(),
+            version,
+            supersededStatus: null,
+          },
         } satisfies EvidenceChunk;
       });
   }

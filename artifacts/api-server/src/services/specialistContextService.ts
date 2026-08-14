@@ -42,6 +42,7 @@ import { estimateTokens } from "./contextSelectionService.js";
 import {
   orchestrateKnowledge,
   formatKnowledgeContextSections,
+  type KnowledgeCitation,
 } from "./knowledgeOrchestrationEngine.js";
 import type { SensitivityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
 
@@ -104,6 +105,7 @@ export interface SpecialistContextPackage {
     totalChunks: number;
     tokenBudgetUsed: number;
     citationIds: string[];
+    citations: KnowledgeCitation[];
     conflictCount: number;
     auditEventId: string | null;
   } | null;
@@ -205,6 +207,7 @@ export async function loadSpecialistContext(
         totalChunks:      allItems.length,
         tokenBudgetUsed:  kCtx.tokenBudgetUsed,
         citationIds,
+        citations:        kCtx.citations,
         conflictCount:    kCtx.conflicts.length,
         auditEventId:     kCtx.auditEventId,
       };
