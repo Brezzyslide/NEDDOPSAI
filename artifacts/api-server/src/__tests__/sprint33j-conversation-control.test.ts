@@ -28,6 +28,7 @@ import {
   type ConversationFocus,
   type ConversationTaskSummary,
 } from "../services/conversationControlService.js";
+import { planTask } from "../services/chiefOfStaffService.js";
 
 const reportTask: ConversationTaskSummary = {
   id: "task-rp-report",
@@ -44,6 +45,24 @@ const rosterTask: ConversationTaskSummary = {
 const serviceDeliveryTask: ConversationTaskSummary = {
   id: "task-service-delivery",
   title: "Service Delivery Review for Michael",
+  currentState: "awaiting_approval",
+};
+
+const rosterReviewTask: ConversationTaskSummary = {
+  id: "task-roster-review",
+  title: "Roster Review for Michael",
+  currentState: "awaiting_approval",
+};
+
+const fatigueTask: ConversationTaskSummary = {
+  id: "task-fatigue",
+  title: "Review Rostering Approach for Fatigue Management",
+  currentState: "awaiting_approval",
+};
+
+const policyTask: ConversationTaskSummary = {
+  id: "task-policy",
+  title: "Review and Improve Restrictive Practice Policy",
   currentState: "awaiting_approval",
 };
 
@@ -180,6 +199,27 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(resolved.requiresClarification).toBe(false);
   });
 
+  it("reproduces live failure: explicit switch to service delivery resolves and can back the next 'that'", () => {
+    const switchResolved = resolveConversationReference({
+      text: "Go back to the service delivery review.",
+      intent: "SWITCH_TASK",
+      activeTasks: [serviceDeliveryTask, rosterReviewTask, fatigueTask, policyTask],
+    });
+
+    expect(switchResolved.resolvedTaskId).toBe(serviceDeliveryTask.id);
+    expect(switchResolved.requiresClarification).toBe(false);
+
+    const cancelResolved = resolveConversationReference({
+      text: "Cancel that one. I don't need the service delivery review anymore.",
+      intent: "CANCEL_TASK",
+      focus: focus(switchResolved.resolvedTaskId!),
+      activeTasks: [serviceDeliveryTask, rosterReviewTask, fatigueTask, policyTask],
+    });
+
+    expect(cancelResolved.resolvedTaskId).toBe(serviceDeliveryTask.id);
+    expect(cancelResolved.requiresClarification).toBe(false);
+  });
+
   it("makes explicit task disambiguation sticky even with typoed service-delivery wording", () => {
     const answer = resolvePendingConfirmationAnswer(
       "serice delivery task",
@@ -199,6 +239,58 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     if (answer.kind === "task_selection") {
       expect(answer.candidate.taskId).toBe(serviceDeliveryTask.id);
     }
+  });
+
+  it("preserves CANCEL_TASK when task-selection clarification is answered with service delivery", () => {
+    const confirmation = pendingConfirmation({
+      action: "CANCEL_TASK",
+      taskId: undefined,
+      taskTitle: undefined,
+      expectedResponse: "task_selection",
+      candidateTasks: [
+        { taskId: serviceDeliveryTask.id, title: serviceDeliveryTask.title, state: serviceDeliveryTask.currentState, score: 45, reason: "candidate" },
+        { taskId: rosterReviewTask.id, title: rosterReviewTask.title, state: rosterReviewTask.currentState, score: 45, reason: "candidate" },
+        { taskId: policyTask.id, title: policyTask.title, state: policyTask.currentState, score: 12, reason: "candidate" },
+      ],
+    });
+    const answer = resolvePendingConfirmationAnswer("service delivery", confirmation);
+
+    expect(confirmation.action).toBe("CANCEL_TASK");
+    expect(answer.kind).toBe("task_selection");
+    if (answer.kind === "task_selection") {
+      expect(answer.candidate.taskId).toBe(serviceDeliveryTask.id);
+    }
+  });
+
+  it("preserves STATUS_QUERY when task-selection clarification is answered with roster review", () => {
+    const confirmation = pendingConfirmation({
+      action: "STATUS_QUERY",
+      taskId: undefined,
+      taskTitle: undefined,
+      expectedResponse: "task_selection",
+      candidateTasks: [
+        { taskId: rosterReviewTask.id, title: rosterReviewTask.title, state: rosterReviewTask.currentState, score: 45, reason: "candidate" },
+        { taskId: fatigueTask.id, title: fatigueTask.title, state: fatigueTask.currentState, score: 35, reason: "candidate" },
+      ],
+    });
+    const answer = resolvePendingConfirmationAnswer("roster review", confirmation);
+
+    expect(confirmation.action).toBe("STATUS_QUERY");
+    expect(answer.kind).toBe("task_selection");
+    if (answer.kind === "task_selection") {
+      expect(answer.candidate.taskId).toBe(rosterReviewTask.id);
+    }
+  });
+
+  it("reproduces live failure: explicit roster-review status query ignores unrelated policy review tasks", () => {
+    const resolved = resolveConversationReference({
+      text: "What is the status of the roster review?",
+      intent: "STATUS_QUERY",
+      activeTasks: [serviceDeliveryTask, fatigueTask, policyTask, rosterReviewTask],
+    });
+
+    expect(resolved.resolvedTaskId).toBe(rosterReviewTask.id);
+    expect(resolved.requiresClarification).toBe(false);
   });
 
   it("binds yes to pending CONFIRM_CANCEL instead of generic approval resolution", () => {
@@ -271,5 +363,27 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     });
 
     expect(resolved.resolvedTaskId).toBe(rosterTask.id);
+  });
+
+  it("routes service_delivery.review task proposals to SDC before OM", () => {
+    const plan = planTask(
+      "Service Delivery Review for Michael",
+      "Prepare a service delivery review for Michael for July 2026. Review whether his supports were delivered as planned and identify any service delivery gaps.",
+    );
+
+    expect(plan.intent).toBe("service_delivery.review");
+    expect(plan.primarySpecialist).toBe("service_delivery_coordinator");
+    expect(plan.assignedSpecialists).toEqual(expect.arrayContaining(["service_delivery_coordinator"]));
+  });
+
+  it("routes roster.review task proposals to WRC before OM", () => {
+    const plan = planTask(
+      "Roster Review for Michael",
+      "Prepare a roster review for Michael for next week and identify any coverage gaps.",
+    );
+
+    expect(plan.intent).toBe("roster.review");
+    expect(plan.primarySpecialist).toBe("workforce_rostering_coordinator");
+    expect(plan.assignedSpecialists).toEqual(expect.arrayContaining(["workforce_rostering_coordinator"]));
   });
 });

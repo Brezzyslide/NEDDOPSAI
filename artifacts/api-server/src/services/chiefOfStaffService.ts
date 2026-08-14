@@ -66,13 +66,13 @@ const ROUTING_RULES: RouteRule[] = [
   { keywords: ["behaviour support implementation", "bsp implementation", "bsp fidelity", "approved bsp"], capabilities: ["behaviour_support.implementation"], weight: 10 },
   { keywords: ["quality", "standard", "benchmark", "practice standard"], capabilities: ["quality.practice_standard_review"], weight: 8 },
   { keywords: ["corrective action", "improvement", "non-conformance", "non-compliance"], capabilities: ["compliance.corrective_actions"], weight: 9 },
-  { keywords: ["gap analysis", "gap", "gaps"], capabilities: ["compliance.gap_analysis", "incident.review"], weight: 9 },
+  { keywords: ["gap analysis", "compliance gap", "compliance gaps", "audit gap", "audit gaps"], capabilities: ["compliance.gap_analysis", "incident.review"], weight: 9 },
   // Operations
-  { keywords: ["roster", "shift", "schedule", "scheduling", "staff allocation"], capabilities: ["roster.review", "roster.plan"], weight: 9 },
-  { keywords: ["coverage gap", "uncovered shift", "vacancy", "replacement staff", "roster exception"], capabilities: ["roster.coverage", "roster.vacancy_management", "roster.exception_review"], weight: 9 },
+  { keywords: ["roster", "shift", "schedule", "scheduling", "staff allocation"], capabilities: ["roster.review", "roster.plan"], weight: 12 },
+  { keywords: ["coverage gap", "coverage gaps", "uncovered shift", "vacancy", "replacement staff", "roster exception"], capabilities: ["roster.coverage", "roster.vacancy_management", "roster.exception_review"], weight: 12 },
   { keywords: ["workflow", "process", "procedure", "sop"], capabilities: ["operations.workflow_review"], weight: 8 },
   { keywords: ["capacity", "resource", "staffing level", "headcount"], capabilities: ["operations.capacity_analysis"], weight: 8 },
-  { keywords: ["service delivery", "participant", "support coordination"], capabilities: ["service_delivery.review"], weight: 8 },
+  { keywords: ["service delivery", "planned vs actual support", "support delivery", "service gap", "service gaps"], capabilities: ["service_delivery.review"], weight: 12 },
   { keywords: ["asset", "equipment", "vehicle", "property", "maintenance"], capabilities: ["asset.review"], weight: 7 },
   // Finance
   { keywords: ["invoice", "invoicing", "claim", "billing"], capabilities: ["finance.invoice_review"], weight: 9 },

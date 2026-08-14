@@ -104,6 +104,7 @@ export const CONSEQUENTIAL_ACTIONS: CanonicalConversationAction[] = [
   "REJECT_ACTION",
   "MODIFY_TASK",
   "STATUS_QUERY",
+  "SWITCH_TASK",
 ];
 
 const OPEN_TASK_STATES: TaskState[] = [
@@ -163,13 +164,48 @@ export function isLikelyCheckpointAnswer(text: string, checkpoint: Pick<ActiveCh
   return lower.split(/\s+/).length <= 12;
 }
 
+const GENERIC_REFERENCE_WORDS = new Set([
+  "review",
+  "report",
+  "task",
+  "status",
+  "progress",
+  "prepare",
+  "improve",
+  "management",
+  "approach",
+]);
+
+function phraseScore(textLower: string, titleLower: string): number {
+  let score = 0;
+  const phrases = [
+    "service delivery",
+    "roster review",
+    "coverage gap",
+    "coverage",
+    "restrictive practice",
+    "fatigue management",
+    "policy",
+  ];
+  for (const phrase of phrases) {
+    if (textLower.includes(phrase) && titleLower.includes(phrase)) score += phrase.split(" ").length > 1 ? 72 : 38;
+  }
+  if (/\broster\b/.test(textLower) && /\broster(ing)?\b/.test(titleLower)) score += 42;
+  if (/\bdelivery\b/.test(textLower) && /\bdelivery\b/.test(titleLower)) score += 42;
+  return score;
+}
+
 function titleScore(text: string, title: string): number {
   const lower = text.toLowerCase();
   const titleLower = title.toLowerCase();
   const words = titleLower.split(/[^a-z0-9]+/).filter(w => w.length > 2);
-  const matchesCount = words.filter(word => lower.includes(word)).length;
-  if (titleLower && lower.includes(titleLower)) return 60;
-  return matchesCount * 12;
+  if (titleLower && lower.includes(titleLower)) return 120;
+  let score = phraseScore(lower, titleLower);
+  for (const word of words) {
+    if (!lower.includes(word)) continue;
+    score += GENERIC_REFERENCE_WORDS.has(word) ? 3 : 14;
+  }
+  return score;
 }
 
 function editDistance(a: string, b: string): number {
@@ -227,6 +263,10 @@ export function resolveConversationReference(input: {
     if (/\broster\b/.test(lower) && /roster/i.test(task.title)) {
       score += 45;
       reasons.push("work_type_roster");
+    }
+    if (/\bservice delivery\b/.test(lower) && /service delivery/i.test(task.title)) {
+      score += 55;
+      reasons.push("work_type_service_delivery");
     }
     if (/\breport\b/.test(lower) && /report/i.test(task.title)) {
       score += 35;
