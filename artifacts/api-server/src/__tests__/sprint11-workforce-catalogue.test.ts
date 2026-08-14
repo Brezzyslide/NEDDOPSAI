@@ -180,7 +180,7 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "operations",
     packCode: "operations",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
     capabilities: ["review_roster", "capacity_analysis", "manage_calendar"],
   },
@@ -925,10 +925,9 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 10 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 10 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI and SDC)
+  it("all 9 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 9 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC and WRC)
     const newlyCodes = [
-      "workforce_rostering_coordinator",
       "process_asset_coordinator",
       "finance_officer",
       "payroll_workforce_cost_officer",
@@ -946,14 +945,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 9 employees have dnaStatus 'approved'", () => {
+  it("exactly 10 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(9);
+    expect(approved).toHaveLength(10);
   });
 
-  it("exactly 10 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 9 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(10);
+    expect(pending).toHaveLength(9);
   });
 });
 
@@ -1096,6 +1095,12 @@ describe("Sprint 11 — Dispatch protection", () => {
 
   it("authored Service Delivery Coordinator is eligible for dispatch", () => {
     const decision = checkDispatchEligibility("service_delivery_coordinator");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
+  });
+
+  it("authored Workforce Rostering Coordinator is eligible for dispatch", () => {
+    const decision = checkDispatchEligibility("workforce_rostering_coordinator");
     expect(decision.allowed).toBe(true);
     expect(decision.reasonCode).toBe("eligible");
   });

@@ -286,13 +286,13 @@ describe("updateCatalogueEntry", () => {
 
 describe("archiveCatalogueEntry", () => {
   it("archives a non-active specialist (dna_pending)", async () => {
-    const pending = makeRow({ executionStatus: "dna_pending", specialistCode: "workforce_rostering_coordinator" });
+    const pending = makeRow({ executionStatus: "dna_pending", specialistCode: "process_asset_coordinator" });
     const archived = makeRow({ ...pending, isArchived: true, isActive: false, versionCounter: 2 });
     mockDb.select.mockReturnValue(makeSelectChain([pending]));
     const updateChain = makeUpdateChain(archived);
     mockDb.update.mockReturnValue(updateChain);
 
-    const result = await archiveCatalogueEntry("workforce_rostering_coordinator", "user_123");
+    const result = await archiveCatalogueEntry("process_asset_coordinator", "user_123");
 
     expect(result.isArchived).toBe(true);
     expect(result.isActive).toBe(false);

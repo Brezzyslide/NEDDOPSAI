@@ -80,6 +80,7 @@ const ACTIVE_SPECIALISTS = new Set([
   "operations_manager",
   "policy_governance_specialist",
   "service_delivery_coordinator",
+  "workforce_rostering_coordinator",
 ]);
 
 // ─── Main eligibility check ───────────────────────────────────────────────────
