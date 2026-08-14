@@ -89,6 +89,7 @@ const RUNTIME_READY = new Set([
   "incident_safeguarding_specialist",
   "operations_manager",
   "policy_governance_specialist",
+  "service_delivery_coordinator",
 ]);
 
 // ─── Customer-facing status labels ────────────────────────────────────────────

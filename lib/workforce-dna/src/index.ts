@@ -188,6 +188,7 @@ export { COMPLIANCE_QUALITY_MANAGER_DNA } from "./profiles/complianceQualityMana
 export { INCIDENT_SAFEGUARDING_SPECIALIST_DNA } from "./profiles/incidentSafeguardingSpecialist.js";
 export { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 export { POLICY_GOVERNANCE_SPECIALIST_DNA } from "./profiles/policyGovernanceSpecialist.js";
+export { SERVICE_DELIVERY_COORDINATOR_DNA } from "./profiles/serviceDeliveryCoordinator.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
 export { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";

@@ -360,12 +360,14 @@ const BUILT_IN_BLUEPRINTS: Omit<CreateBlueprintInput, never>[] = [
     title: "Care Plan",
     objective: "Draft an operational/service-delivery support plan documenting goals, supports, coordination requirements and escalation needs. Do not make clinical, medication, dysphagia, mealtime or other credentialed health judgements.",
     primarySpecialist: "service_delivery_coordinator",
-    supportingSpecialists: ["operations_manager", "compliance_quality_manager"],
+    supportingSpecialists: ["operations_manager", "behaviour_support_implementation_specialist", "authorised_program_officer", "compliance_quality_manager"],
     requiredLibraryKnowledge: ["care_plan", "policy", "legislation"],
     requiredMemories: ["operating_preference"],
     validationRules: [
       { rule: "participant_context_present", required: true, description: "Participant information must be provided" },
       { rule: "clinical_authority_boundary_checked", required: true, description: "Clinical or credentialed health decisions must be identified for external/credentialed authority" },
+      { rule: "goal_outcome_boundary_checked", required: true, description: "Activities must not be presented as participant goal achievement without supporting outcome evidence" },
+      { rule: "bsp_rp_boundary_checked", required: true, description: "BSP implementation and RP governance issues must be routed to BSI/APO as appropriate" },
     ],
     qualityRules: [
       { dimension: "completeness", weight: 35, description: "All care plan sections populated" },
@@ -375,7 +377,12 @@ const BUILT_IN_BLUEPRINTS: Omit<CreateBlueprintInput, never>[] = [
     ],
     successCriteria: ["Goals measurable", "Operational supports documented", "Clinical/credentialed boundaries escalated where relevant"],
     outputTypes: ["operational_support_plan"],
-    escalationRules: [{ trigger: "clinical_judgement_required", action: "defer_to_external_or_credentialed_health_professional" }],
+    escalationRules: [
+      { trigger: "clinical_judgement_required", action: "defer_to_external_or_credentialed_health_professional" },
+      { trigger: "bsp_implementation_analysis_required", action: "defer_to_behaviour_support_implementation_specialist" },
+      { trigger: "restrictive_practice_governance_required", action: "defer_to_authorised_program_officer" },
+      { trigger: "organisation_capacity_constraint", action: "defer_to_operations_manager" },
+    ],
     mandatoryCitations: ["legislation"],
   },
   {

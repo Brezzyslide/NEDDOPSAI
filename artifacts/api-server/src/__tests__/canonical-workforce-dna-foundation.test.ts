@@ -27,6 +27,7 @@ import {
   INCIDENT_SAFEGUARDING_SPECIALIST_DNA,
   OPERATIONS_MANAGER_DNA,
   POLICY_GOVERNANCE_SPECIALIST_DNA,
+  SERVICE_DELIVERY_COORDINATOR_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
@@ -761,12 +762,13 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(11);
+    expect(pending.length).toBeGreaterThanOrEqual(10);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
     expect(pending.some(s => s.code === "behaviour_support_implementation_specialist")).toBe(false);
     expect(pending.some(s => s.code === "policy_governance_specialist")).toBe(false);
+    expect(pending.some(s => s.code === "service_delivery_coordinator")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
@@ -776,6 +778,17 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(getSafeDNADescriptor("compliance_quality_manager")).not.toBeNull();
     expect(getCanonicalDNAProfile("policy_governance_specialist")).not.toBeNull();
     expect(getSafeDNADescriptor("policy_governance_specialist")).not.toBeNull();
+    expect(getCanonicalDNAProfile("service_delivery_coordinator")).not.toBeNull();
+    expect(getSafeDNADescriptor("service_delivery_coordinator")).not.toBeNull();
+  });
+
+  it("maps Service Delivery Coordinator as the current v2 service implementation specialist", () => {
+    const dna = getCanonicalDNAProfile("service_delivery_coordinator");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("service_delivery_coordinator");
+    expect(dna?.professionalMission.missionStatement).toContain("approved service");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(9);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(SERVICE_DELIVERY_COORDINATOR_DNA.requiredWorkerProfile.profileCode);
   });
 
   it("maps Policy & Governance Specialist as the current v2 policy/governance specialist", () => {

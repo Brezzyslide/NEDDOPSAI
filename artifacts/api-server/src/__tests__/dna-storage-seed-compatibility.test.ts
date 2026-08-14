@@ -107,6 +107,7 @@ import {
   BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA,
   CHIEF_OF_STAFF_DNA,
   POLICY_GOVERNANCE_SPECIALIST_DNA,
+  SERVICE_DELIVERY_COORDINATOR_DNA,
 } from "@workspace/workforce-dna";
 import {
   loadDNAFromDatabase,
@@ -270,5 +271,24 @@ describe("DNA static seed canonical schema compatibility", () => {
       projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
     });
     expect(state.competencies).toHaveLength(POLICY_GOVERNANCE_SPECIALIST_DNA.competencies.length);
+  });
+
+  it("recognises Service Delivery Coordinator on the static DB publication path", async () => {
+    const result = await seedDNAFromStaticRegistry("service_delivery_coordinator", "live_replit_seed");
+
+    expect(result).toBe("created");
+    const row = state.profiles[0]!;
+    expect(row.specialistId).toBe("service_delivery_coordinator");
+    expect(row.dnaId).toBe("service_delivery_coordinator");
+    expect(row.version).toBe(SERVICE_DELIVERY_COORDINATOR_DNA.currentVersion.version);
+    expect(row.versionHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.canonicalProfile).toMatchObject({
+      identity: { specialistId: "service_delivery_coordinator" },
+      requiredWorkerProfile: { profileCode: "service_delivery_coordinator_profile" },
+    });
+    expect(row.runtimeProjection).toMatchObject({
+      projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
+    });
+    expect(state.competencies).toHaveLength(SERVICE_DELIVERY_COORDINATOR_DNA.competencies.length);
   });
 });
