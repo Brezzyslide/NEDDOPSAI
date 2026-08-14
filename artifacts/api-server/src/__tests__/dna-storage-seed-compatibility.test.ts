@@ -108,9 +108,9 @@ vi.mock("@workspace/db", async (importOriginal) => {
       })),
     })),
     transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
-      const profileSnapshot = [...state.profiles];
-      const competencySnapshot = [...state.competencies];
-      const payloadSnapshot = [...state.profileInsertPayloads];
+      const profileSnapshot = state.profiles.map(profile => ({ ...profile }));
+      const competencySnapshot = state.competencies.map(competency => ({ ...competency }));
+      const payloadSnapshot = state.profileInsertPayloads.map(payload => ({ ...payload }));
       try {
         return await callback(db);
       } catch (error) {
@@ -199,7 +199,7 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(state.competencies).toHaveLength(CHIEF_OF_STAFF_DNA.competencies.length);
   });
 
-  it("preserves older published rows as superseded when a new source version is published", async () => {
+  it("preserves older published rows as retired when a new source version is published", async () => {
     state.profiles.push({
       id: "old-chief-dna",
       specialistId: "chief_of_staff",
@@ -212,7 +212,7 @@ describe("DNA static seed canonical schema compatibility", () => {
 
     expect(result).toBe("created");
     expect(state.profiles).toHaveLength(2);
-    expect(state.profiles[0]?.status).toBe("superseded");
+    expect(state.profiles[0]?.status).toBe("retired");
     expect(state.profiles[0]?.retiredAt).toBeInstanceOf(Date);
     expect(state.profiles[1]?.status).toBe("published");
     expect(state.profiles[1]?.version).toBe(CHIEF_OF_STAFF_DNA.currentVersion.version);
@@ -451,7 +451,7 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(state.profiles[0]?.status).toBe("published");
   });
 
-  it("publishes a newer source DNA version by superseding the old active row", async () => {
+  it("publishes a newer source DNA version by retiring the old active row", async () => {
     state.profiles.push({
       id: "operations-manager-1-0-0",
       specialistId: "operations_manager",
@@ -473,7 +473,7 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(state.profiles[0]).toMatchObject({
       specialistId: "operations_manager",
       version: "1.0.0",
-      status: "superseded",
+      status: "retired",
     });
     expect(state.profiles[0]?.retiredAt).toBeInstanceOf(Date);
     expect(state.profiles[1]).toMatchObject({
@@ -487,5 +487,55 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(resolved?.version).toBe(OPERATIONS_MANAGER_DNA.currentVersion.version);
     expect(resolved?.canonicalProfile?.versioning.previousVersion).toBe("1.0.0");
     expect(resolved?.canonicalProfile?.versioning.supersedes).toBe("1.0.0");
+  });
+
+  it("second apply after a newer source version publication is idempotent", async () => {
+    state.profiles.push({
+      id: "operations-manager-1-0-0",
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "published",
+      versionHash: "ac57d397a07f2da4f8b8dca21a3d003c6be59a18a343524c0e661be8d1e6ad33",
+    });
+
+    const firstApply = await reconcileWorkforceDnaPublication({
+      roleCodes: ["operations_manager"],
+      apply: true,
+      publishedBy: "version_integrity_test",
+    });
+    const secondApply = await reconcileWorkforceDnaPublication({
+      roleCodes: ["operations_manager"],
+      apply: true,
+      publishedBy: "version_integrity_test",
+    });
+
+    expect(firstApply.entries[0]?.status).toBe("UNCHANGED");
+    expect(secondApply.entries[0]?.status).toBe("UNCHANGED");
+    expect(state.profiles).toHaveLength(2);
+    expect(state.profiles.filter(profile => profile.status === "published")).toHaveLength(1);
+    expect(state.profiles.filter(profile => profile.version === OPERATIONS_MANAGER_DNA.currentVersion.version)).toHaveLength(1);
+  });
+
+  it("rolls back newer-version publication without retiring the active historical row when child insert fails", async () => {
+    state.profiles.push({
+      id: "operations-manager-1-0-0",
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "published",
+      versionHash: "ac57d397a07f2da4f8b8dca21a3d003c6be59a18a343524c0e661be8d1e6ad33",
+    });
+    state.failCompetencyInsert = true;
+
+    await expect(seedDNAFromStaticRegistry("operations_manager", "version_integrity_test"))
+      .rejects.toThrow("simulated competency insert failure");
+
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0]).toMatchObject({
+      specialistId: "operations_manager",
+      version: "1.0.0",
+      status: "published",
+      versionHash: "ac57d397a07f2da4f8b8dca21a3d003c6be59a18a343524c0e661be8d1e6ad33",
+    });
+    expect(state.profileInsertPayloads).toHaveLength(0);
   });
 });

@@ -38,8 +38,8 @@ export const specialistDnaProfilesTable = pgTable("specialist_dna_profiles", {
    *   professional_review — awaiting professional review
    *   approved            — approved, but not live
    *   published           — active canonical version; only one per specialistId
-   *   superseded          — replaced by a newer published version
-   *   retired             — withdrawn; preserved for audit
+   *   retired             — withdrawn or replaced by a newer published version;
+   *                         preserved for audit and linked by supersedes/previousVersion
    */
   status: text("status").notNull().default("draft"),
 

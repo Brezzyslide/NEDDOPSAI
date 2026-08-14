@@ -251,7 +251,7 @@ export async function buildWorkforceDnaPublicationInventory(
       const dbPublished = !!activePublished;
 
       if (activePublishedRows.length > 1) {
-        reasons.push("Multiple published DNA rows are active for this role; historical versions must be superseded before execution.");
+        reasons.push("Multiple published DNA rows are active for this role; historical versions must be deactivated before execution.");
         status = "INVALID";
       } else if (!staticDbPublicationEligible) {
         if (specialist.executionStatus === "dna_pending" || specialist.dnaStatus !== "approved") {
@@ -340,7 +340,7 @@ export async function buildWorkforceDnaPublicationInventory(
  * Dry-run by default. With apply=true, only NEW eligible profiles are published.
  * Changed profiles are intentionally not auto-published unless the source DNA
  * version has been explicitly advanced and the normal seed path can preserve the
- * prior version as superseded.
+ * prior version as inactive historical evidence.
  */
 export async function reconcileWorkforceDnaPublication(
   options: ReconcileWorkforceDnaPublicationOptions = {},
@@ -723,11 +723,13 @@ export async function seedDNAFromStaticRegistry(
   await db.transaction(async (tx) => {
     const now = new Date();
 
-    // Preserve historical versions and enforce the table contract that only one
-    // version per specialist remains status="published" at a time.
+    // Preserve historical versions and enforce the live table contract that
+    // only one version per specialist remains status="published" at a time.
+    // The original DB status check supports retired as the inactive historical
+    // state; the new row carries supersedes/previousVersion provenance.
     await tx
       .update(specialistDnaProfilesTable)
-      .set({ status: "superseded", retiredAt: now })
+      .set({ status: "retired", retiredAt: now })
       .where(
         and(
           eq(specialistDnaProfilesTable.specialistId, roleCode),
