@@ -22,7 +22,13 @@ import {
   executionSessionsTable,
   executionEventsTable,
 } from "@workspace/db";
-import type { ExecutionPackage, ExecutionSessionInfo, CompiledRuntimeInstructions } from "@workspace/agent-runtime";
+import type {
+  BlueprintExecutionContractSnapshot,
+  ExecutionAuthorityValidationSnapshot,
+  ExecutionPackage,
+  ExecutionSessionInfo,
+  CompiledRuntimeInstructions,
+} from "@workspace/agent-runtime";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
 import {
   OpenClawExecutionEngine,
@@ -30,7 +36,7 @@ import {
   isOpenClawConfigured,
   getStatusMessage,
 } from "@workspace/openclaw";
-import { getActiveWorkerProfilesForRole } from "../lib/workerProfileRegistry.js";
+import { getActiveWorkerProfilesForRole, type WorkerProfile } from "../lib/workerProfileRegistry.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
 import {
   resolveAndCompileManifest,
@@ -39,6 +45,12 @@ import {
   InactiveDNAError,
 } from "./specialistRuntimeManifestService.js";
 import { loadSpecialistContext } from "./specialistContextService.js";
+import {
+  getBlueprintById,
+  getBlueprintExecutionContract,
+  type BlueprintExecutionContract,
+} from "./workBlueprintService.js";
+import { getRegistryEntry } from "./blueprintRegistry.js";
 
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
@@ -145,6 +157,303 @@ function mapWorkerProfileRiskLevel(
   return riskLevel === "critical" ? "high" : riskLevel as ExecutionPackage["workerProfile"]["riskLevel"];
 }
 
+function unique<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+export class PreDispatchAuthorityError extends Error {
+  code = "PRE_DISPATCH_AUTHORITY_DENIED";
+  decision: ExecutionAuthorityValidationSnapshot;
+
+  constructor(message: string, decision: ExecutionAuthorityValidationSnapshot) {
+    super(message);
+    this.name = "PreDispatchAuthorityError";
+    this.decision = decision;
+  }
+}
+
+export function buildWorkerProfileExecutionConstraints(
+  profile: WorkerProfile,
+): ExecutionPackage["workerProfile"] {
+  return {
+    allowedChannels: unique(
+      profile.allowedExecutionChannels.map(mapWorkerProfileChannelToRuntimeChannel),
+    ),
+    allowedBrowserDomains: profile.allowedBrowserDomains ?? [],
+    allowedLocalPathCategories: profile.allowedLocalPathCategories ?? [],
+    allowedApplicationCategories: profile.allowedApplicationCategories ?? [],
+    prohibitedActions: profile.prohibitedActions ?? [],
+    riskLevel: mapWorkerProfileRiskLevel(profile.riskLevel),
+    requiresApprovalFor: profile.approvalRequiredActions ?? [],
+  };
+}
+
+function failClosedDecision(input: {
+  reason: string;
+  organizationId: string;
+  taskId: string;
+  executionId: string;
+  specialistRole: string;
+  dnaVersion: string;
+  dnaHash: string;
+  workerProfileCode?: string | null;
+  workerProfileVersion?: string | null;
+  requestedChannels?: ExecutionPackage["requestedChannels"];
+  requestedTools?: string[];
+  requestedConnectorCategories?: string[];
+  prohibitedActions?: string[];
+  approvalRequiredActions?: string[];
+  blueprintCode?: string | null;
+  blueprintVersion?: string | null;
+  decision?: ExecutionAuthorityValidationSnapshot["decision"];
+}): ExecutionAuthorityValidationSnapshot {
+  return {
+    decision: input.decision ?? "UNMAPPED_AUTHORITY",
+    reason: input.reason,
+    validatedAt: new Date().toISOString(),
+    organizationId: input.organizationId,
+    taskId: input.taskId,
+    executionId: input.executionId,
+    specialistRole: input.specialistRole,
+    dnaVersion: input.dnaVersion,
+    dnaHash: input.dnaHash,
+    workerProfileCode: input.workerProfileCode ?? "UNRESOLVED",
+    workerProfileVersion: input.workerProfileVersion ?? "UNRESOLVED",
+    blueprintCode: input.blueprintCode ?? null,
+    blueprintVersion: input.blueprintVersion ?? null,
+    requestedChannels: input.requestedChannels ?? [],
+    requestedTools: input.requestedTools ?? [],
+    requestedConnectorCategories: input.requestedConnectorCategories ?? [],
+    prohibitedActions: input.prohibitedActions ?? [],
+    approvalRequiredActions: input.approvalRequiredActions ?? [],
+  };
+}
+
+function resolvePrimaryWorkerProfileOrThrow(input: {
+  primaryRole: string;
+  organizationId: string;
+  taskId: string;
+  executionId: string;
+  dnaVersion: string;
+  dnaHash: string;
+}): WorkerProfile {
+  const profiles = getActiveWorkerProfilesForRole(input.primaryRole);
+  const profile = profiles[0];
+  if (!profile) {
+    const decision = failClosedDecision({
+      reason: `No active WorkerProfile resolves for runtime-ready specialist "${input.primaryRole}"`,
+      organizationId: input.organizationId,
+      taskId: input.taskId,
+      executionId: input.executionId,
+      specialistRole: input.primaryRole,
+      dnaVersion: input.dnaVersion,
+      dnaHash: input.dnaHash,
+    });
+    throw new PreDispatchAuthorityError(decision.reason, decision);
+  }
+  return profile;
+}
+
+function getPlanBlueprintId(planData: Record<string, unknown>): string | null {
+  const direct = planData.blueprintId;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const nested = planData.blueprint;
+  if (nested && typeof nested === "object" && "id" in nested) {
+    const id = (nested as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) return id;
+  }
+  return null;
+}
+
+function getPlanBlueprintCode(planData: Record<string, unknown>): string | null {
+  const direct = planData.blueprintCode ?? planData.canonicalIntent;
+  if (typeof direct === "string" && direct.trim()) return direct;
+  const nested = planData.blueprint;
+  if (nested && typeof nested === "object" && "code" in nested) {
+    const code = (nested as { code?: unknown }).code;
+    if (typeof code === "string" && code.trim()) return code;
+  }
+  return null;
+}
+
+function buildBlueprintSnapshotFromExecutionContract(
+  contract: BlueprintExecutionContract,
+): BlueprintExecutionContractSnapshot {
+  const sectionNames = contract.sections.map(section => section.title ?? section.code ?? section.id);
+  const deliverableContract = contract.blueprint.deliverableContract as Record<string, unknown> | null;
+  const evidenceContract = contract.blueprint.evidenceContract as Record<string, unknown> | null;
+  const prohibitedDeliverables = Array.isArray(deliverableContract?.prohibitedDeliverables)
+    ? deliverableContract.prohibitedDeliverables.filter((v): v is string => typeof v === "string")
+    : [];
+
+  return {
+    blueprintId: contract.blueprint.id,
+    blueprintCode: contract.blueprint.code,
+    blueprintVersion: contract.blueprint.version,
+    blueprintFamily: contract.blueprint.blueprintFamily,
+    primarySpecialist: contract.blueprint.primarySpecialist,
+    supportingSpecialists: contract.blueprint.supportingSpecialists,
+    primaryDeliverable: contract.blueprint.primaryDeliverable,
+    deliverableContract,
+    evidenceContract,
+    requiredSections: sectionNames,
+    requiredTemplate: contract.template?.id ?? contract.blueprint.defaultTemplateId ?? null,
+    prohibitedActions: prohibitedDeliverables,
+    approvalRequirements: Object.keys(contract.blueprint.requiredApprovals ?? {}),
+    externalAuthorityRequiredFor: [],
+    professionalAuthority: "needsops_ai",
+  };
+}
+
+function buildBlueprintSnapshotFromRegistryCode(
+  code: string,
+): BlueprintExecutionContractSnapshot | null {
+  const entry = getRegistryEntry(code);
+  if (!entry) return null;
+  return {
+    blueprintCode: entry.code,
+    blueprintVersion: "registry-placeholder",
+    blueprintId: null,
+    blueprintFamily: entry.blueprintFamily,
+    primarySpecialist: entry.futureOwnerRoleCode ?? null,
+    supportingSpecialists: [],
+    professionalAuthority: entry.professionalAuthority ?? null,
+    primaryDeliverable: entry.primaryDeliverable,
+    deliverableContract: null,
+    evidenceContract: null,
+    requiredSections: [],
+    requiredTemplate: null,
+    prohibitedActions: [],
+    approvalRequirements: [],
+    externalAuthorityRequiredFor: entry.externalAuthorityRequiredFor ?? [],
+  };
+}
+
+async function resolveBlueprintContractSnapshot(
+  planData: Record<string, unknown>,
+  organizationId: string,
+): Promise<BlueprintExecutionContractSnapshot | null> {
+  const blueprintId = getPlanBlueprintId(planData);
+  if (blueprintId) {
+    const blueprint = await getBlueprintById(blueprintId, organizationId);
+    if (!blueprint) {
+      throw Object.assign(new Error(`Blueprint "${blueprintId}" could not be resolved for execution`), {
+        code: "BLUEPRINT_CONTRACT_UNRESOLVED",
+      });
+    }
+    return buildBlueprintSnapshotFromExecutionContract(
+      await getBlueprintExecutionContract(blueprint, organizationId),
+    );
+  }
+
+  const blueprintCode = getPlanBlueprintCode(planData);
+  if (!blueprintCode) return null;
+
+  const snapshot = buildBlueprintSnapshotFromRegistryCode(blueprintCode);
+  if (!snapshot) {
+    throw Object.assign(new Error(`Blueprint code "${blueprintCode}" could not be resolved for execution`), {
+      code: "BLUEPRINT_CONTRACT_UNRESOLVED",
+    });
+  }
+  return snapshot;
+}
+
+export function validateOpenClawExecutionPackageAuthority(input: {
+  pkg: ExecutionPackage;
+  workerProfile?: WorkerProfile | null;
+  blueprintContract?: BlueprintExecutionContractSnapshot | null;
+}): ExecutionAuthorityValidationSnapshot {
+  const { pkg, workerProfile, blueprintContract } = input;
+  if (!workerProfile) {
+    return failClosedDecision({
+      reason: "WorkerProfile authority is missing or unresolved; OpenClaw dispatch is not permitted",
+      organizationId: pkg.tenantId,
+      taskId: pkg.taskId,
+      executionId: pkg.executionId,
+      specialistRole: pkg.workforceRole,
+      dnaVersion: pkg.specialistManifest.dnaVersion,
+      dnaHash: pkg.specialistManifest.manifestHash,
+      requestedChannels: pkg.requestedChannels,
+      requestedTools: pkg.requestedTools,
+      requestedConnectorCategories: pkg.requestedConnectorCategories,
+      prohibitedActions: pkg.workerProfile?.prohibitedActions ?? [],
+      approvalRequiredActions: pkg.workerProfile?.requiresApprovalFor ?? [],
+      blueprintCode: blueprintContract?.blueprintCode ?? null,
+      blueprintVersion: blueprintContract?.blueprintVersion ?? null,
+    });
+  }
+
+  const expectedChannels = buildWorkerProfileExecutionConstraints(workerProfile).allowedChannels;
+  const allowedTools = new Set(workerProfile.allowedToolCategories);
+  const allowedConnectors = new Set(workerProfile.allowedConnectorCategories);
+  const requestedOutsideChannels = pkg.requestedChannels.filter(ch => !expectedChannels.includes(ch));
+  const requestedOutsideTools = pkg.requestedTools.filter(tool => !allowedTools.has(tool as never));
+  const requestedOutsideConnectors = pkg.requestedConnectorCategories.filter(cc => !allowedConnectors.has(cc as never));
+  const profileProhibitions = workerProfile.prohibitedActions ?? [];
+  const missingProfileProhibitions = profileProhibitions.filter(action => !pkg.workerProfile.prohibitedActions.includes(action));
+  const blueprintProhibitions = blueprintContract?.prohibitedActions ?? [];
+  const missingBlueprintProhibitions = blueprintProhibitions.filter(action => !pkg.workerProfile.prohibitedActions.includes(action));
+  const missingApprovals = (workerProfile.approvalRequiredActions ?? [])
+    .filter(action => !pkg.workerProfile.requiresApprovalFor.includes(action));
+
+  const failure =
+    requestedOutsideChannels.length > 0
+      ? `Execution package requests channels outside WorkerProfile: ${requestedOutsideChannels.join(", ")}`
+      : requestedOutsideTools.length > 0
+      ? `Execution package requests tools outside WorkerProfile: ${requestedOutsideTools.join(", ")}`
+      : requestedOutsideConnectors.length > 0
+      ? `Execution package requests connectors outside WorkerProfile: ${requestedOutsideConnectors.join(", ")}`
+      : missingProfileProhibitions.length > 0
+      ? `Execution package removed WorkerProfile prohibitions: ${missingProfileProhibitions.join(", ")}`
+      : missingBlueprintProhibitions.length > 0
+      ? `Execution package removed Blueprint prohibitions: ${missingBlueprintProhibitions.join(", ")}`
+      : missingApprovals.length > 0
+      ? `Execution package removed WorkerProfile approval gates: ${missingApprovals.join(", ")}`
+      : null;
+
+  if (failure) {
+    return failClosedDecision({
+      decision: "PROHIBITED",
+      reason: failure,
+      organizationId: pkg.tenantId,
+      taskId: pkg.taskId,
+      executionId: pkg.executionId,
+      specialistRole: pkg.workforceRole,
+      dnaVersion: pkg.specialistManifest.dnaVersion,
+      dnaHash: pkg.specialistManifest.manifestHash,
+      workerProfileCode: workerProfile.code,
+      workerProfileVersion: workerProfile.version,
+      requestedChannels: pkg.requestedChannels,
+      requestedTools: pkg.requestedTools,
+      requestedConnectorCategories: pkg.requestedConnectorCategories,
+      prohibitedActions: pkg.workerProfile.prohibitedActions,
+      approvalRequiredActions: pkg.workerProfile.requiresApprovalFor,
+      blueprintCode: blueprintContract?.blueprintCode ?? null,
+      blueprintVersion: blueprintContract?.blueprintVersion ?? null,
+    });
+  }
+
+  return failClosedDecision({
+    decision: "PERMITTED",
+    reason: "NeedsOps pre-dispatch authority validation passed",
+    organizationId: pkg.tenantId,
+    taskId: pkg.taskId,
+    executionId: pkg.executionId,
+    specialistRole: pkg.workforceRole,
+    dnaVersion: pkg.specialistManifest.dnaVersion,
+    dnaHash: pkg.specialistManifest.manifestHash,
+    workerProfileCode: workerProfile.code,
+    workerProfileVersion: workerProfile.version,
+    requestedChannels: pkg.requestedChannels,
+    requestedTools: pkg.requestedTools,
+    requestedConnectorCategories: pkg.requestedConnectorCategories,
+    prohibitedActions: pkg.workerProfile.prohibitedActions,
+    approvalRequiredActions: pkg.workerProfile.requiresApprovalFor,
+    blueprintCode: blueprintContract?.blueprintCode ?? null,
+    blueprintVersion: blueprintContract?.blueprintVersion ?? null,
+  });
+}
+
 async function buildExecutionPackage(
   task: typeof tasksTable.$inferSelect,
   planRow: typeof taskExecutionPlansTable.$inferSelect,
@@ -167,33 +476,6 @@ async function buildExecutionPackage(
   };
 
   const primaryRole = planData.assignedSpecialists?.[0] ?? "chief_of_staff";
-
-  // Retrieve the worker profile for the primary specialist
-  const profiles = getActiveWorkerProfilesForRole(primaryRole);
-  const profile = profiles[0];
-
-  // Default profile values when the specialist has no specific profile
-  const workerProfileConstraints: ExecutionPackage["workerProfile"] = profile
-    ? {
-        allowedChannels: Array.from(
-          new Set(profile.allowedExecutionChannels.map(mapWorkerProfileChannelToRuntimeChannel)),
-        ),
-        allowedBrowserDomains: profile.allowedBrowserDomains ?? [],
-        allowedLocalPathCategories: profile.allowedLocalPathCategories ?? [],
-        allowedApplicationCategories: profile.allowedApplicationCategories ?? [],
-        prohibitedActions: profile.prohibitedActions ?? [],
-        riskLevel: mapWorkerProfileRiskLevel(profile.riskLevel),
-        requiresApprovalFor: profile.approvalRequiredActions ?? [],
-      }
-    : {
-        allowedChannels: ["api", "internal"],
-        allowedBrowserDomains: [],
-        allowedLocalPathCategories: [],
-        allowedApplicationCategories: [],
-        prohibitedActions: [],
-        riskLevel: "low",
-        requiresApprovalFor: [],
-      };
 
   // Map plan steps into ExecutionPackage steps
   const steps: ExecutionPackage["steps"] =
@@ -229,6 +511,24 @@ async function buildExecutionPackage(
     primaryRole,
     task.organizationId,
   );
+
+  const profile = resolvePrimaryWorkerProfileOrThrow({
+    primaryRole,
+    organizationId: task.organizationId,
+    taskId: task.id,
+    executionId,
+    dnaVersion: specialistManifest.dnaVersion,
+    dnaHash: specialistManifest.manifestHash,
+  });
+  const blueprintContract = await resolveBlueprintContractSnapshot(
+    planData as Record<string, unknown>,
+    task.organizationId,
+  );
+  const workerProfileConstraints = buildWorkerProfileExecutionConstraints(profile);
+  workerProfileConstraints.prohibitedActions = unique([
+    ...workerProfileConstraints.prohibitedActions,
+    ...(blueprintContract?.prohibitedActions ?? []),
+  ]);
 
   const constraints: ExecutionPackage["constraints"] = {
     maxDurationSeconds: 300,
@@ -284,7 +584,7 @@ async function buildExecutionPackage(
     compiledAt:      new Date().toISOString(),
   };
 
-  return {
+  const pkg: ExecutionPackage & { dnaSource: "database" | "static_fallback"; contextAudit: ContextAudit } = {
     executionId,
     taskId: task.id,
     tenantId: task.organizationId,
@@ -293,9 +593,10 @@ async function buildExecutionPackage(
     runtimeInstructions,
     workerProfile: workerProfileConstraints,
     steps,
-    requestedTools: profile?.allowedToolCategories ?? ["internal"],
+    requestedTools: profile.allowedToolCategories,
     requestedChannels: workerProfileConstraints.allowedChannels,
-    requestedConnectorCategories: profile?.allowedConnectorCategories ?? [],
+    requestedConnectorCategories: profile.allowedConnectorCategories,
+    blueprintContract,
     approvalState: task.approvalState,
     constraints,
     callbackUrl: "", // resolved by engine from OPENCLAW_CALLBACK_BASE_URL
@@ -308,6 +609,18 @@ async function buildExecutionPackage(
       tokenBudgetUsed: specialistContext.tokenBudgetUsed,
     },
   };
+
+  const authorityValidation = validateOpenClawExecutionPackageAuthority({
+    pkg,
+    workerProfile: profile,
+    blueprintContract,
+  });
+  pkg.authorityValidation = authorityValidation;
+  if (authorityValidation.decision !== "PERMITTED") {
+    throw new PreDispatchAuthorityError(authorityValidation.reason, authorityValidation);
+  }
+
+  return pkg;
 }
 
 // ─── Submit execution ─────────────────────────────────────────────────────────
@@ -359,6 +672,26 @@ export async function submitTaskExecution(
       );
     }
     throw err;
+  }
+
+  if (pkg.authorityValidation?.decision !== "PERMITTED") {
+    const decision = pkg.authorityValidation ?? failClosedDecision({
+      reason: "Execution package is missing NeedsOps pre-dispatch authority validation",
+      organizationId: task.organizationId,
+      taskId: task.id,
+      executionId: pkg.executionId,
+      specialistRole: pkg.workforceRole,
+      dnaVersion: pkg.specialistManifest.dnaVersion,
+      dnaHash: pkg.specialistManifest.manifestHash,
+      requestedChannels: pkg.requestedChannels,
+      requestedTools: pkg.requestedTools,
+      requestedConnectorCategories: pkg.requestedConnectorCategories,
+      prohibitedActions: pkg.workerProfile.prohibitedActions,
+      approvalRequiredActions: pkg.workerProfile.requiresApprovalFor,
+      blueprintCode: pkg.blueprintContract?.blueprintCode ?? null,
+      blueprintVersion: pkg.blueprintContract?.blueprintVersion ?? null,
+    });
+    throw new PreDispatchAuthorityError(decision.reason, decision);
   }
 
   // 3a. Record manifest + instruction audit event (including injected context IDs)

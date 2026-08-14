@@ -71,6 +71,10 @@ export interface OpenClawExecutionPackage {
   requestedChannels: string[];
   /** External connector categories the runtime may access */
   requestedConnectorCategories: string[];
+  /** Structured work-product contract NeedsOps resolved before runtime dispatch */
+  blueprintContract?: import("@workspace/agent-runtime").BlueprintExecutionContractSnapshot | null;
+  /** NeedsOps pre-dispatch authority validation snapshot */
+  authorityValidation?: import("@workspace/agent-runtime").ExecutionAuthorityValidationSnapshot;
   /** Approval state at submission time */
   approvalState: string;
   /** Hard execution constraints the runtime must enforce */

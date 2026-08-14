@@ -431,6 +431,45 @@ export interface ExecutionConstraints {
   allowedDataCategories: string[];
 }
 
+export interface BlueprintExecutionContractSnapshot {
+  blueprintCode: string;
+  blueprintVersion: string;
+  blueprintId?: string | null;
+  blueprintFamily?: string | null;
+  primarySpecialist?: string | null;
+  supportingSpecialists?: string[];
+  professionalAuthority?: "needsops_ai" | "external_or_credentialed" | "mixed" | null;
+  primaryDeliverable?: string | null;
+  deliverableContract?: Record<string, unknown> | null;
+  evidenceContract?: Record<string, unknown> | null;
+  requiredSections?: string[];
+  requiredTemplate?: string | null;
+  prohibitedActions: string[];
+  approvalRequirements: string[];
+  externalAuthorityRequiredFor: string[];
+}
+
+export interface ExecutionAuthorityValidationSnapshot {
+  decision: "PERMITTED" | "PROHIBITED" | "UNMAPPED_AUTHORITY";
+  reason: string;
+  validatedAt: string;
+  organizationId: string;
+  taskId: string;
+  executionId: string;
+  specialistRole: string;
+  dnaVersion: string;
+  dnaHash: string;
+  workerProfileCode: string;
+  workerProfileVersion: string;
+  blueprintCode?: string | null;
+  blueprintVersion?: string | null;
+  requestedChannels: ExecutionChannel[];
+  requestedTools: string[];
+  requestedConnectorCategories: string[];
+  prohibitedActions: string[];
+  approvalRequiredActions: string[];
+}
+
 export interface ExecutionPackage {
   /** NeedsOps execution session identifier (the session's own ID) */
   executionId: string;
@@ -467,6 +506,10 @@ export interface ExecutionPackage {
   requestedChannels: ExecutionChannel[];
   /** External connector categories the runtime may access */
   requestedConnectorCategories: string[];
+  /** Structured work-product contract NeedsOps resolved before runtime dispatch */
+  blueprintContract?: BlueprintExecutionContractSnapshot | null;
+  /** NeedsOps pre-dispatch authority validation snapshot */
+  authorityValidation?: ExecutionAuthorityValidationSnapshot;
   /** Approval state at the time of submission */
   approvalState: string;
   /** Hard constraints the runtime must not exceed */

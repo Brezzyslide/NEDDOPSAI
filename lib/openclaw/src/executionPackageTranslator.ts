@@ -198,6 +198,8 @@ export function translateToOpenClawPackage(
     requestedTools: pkg.requestedTools,
     requestedChannels: pkg.requestedChannels,
     requestedConnectorCategories: pkg.requestedConnectorCategories,
+    blueprintContract: pkg.blueprintContract ?? null,
+    authorityValidation: pkg.authorityValidation,
     approvalState: pkg.approvalState,
 
     constraints: {
