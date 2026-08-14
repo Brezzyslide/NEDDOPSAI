@@ -82,6 +82,7 @@ export interface ConversationWorkforceContext {
 
 const RUNTIME_READY = new Set([
   "authorised_program_officer",
+  "behaviour_support_implementation_specialist",
   "chief_of_staff",
   "compliance_quality_manager",
   "executive_assistant",

@@ -200,8 +200,8 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "operations",
     packCode: "operations",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
-    executionStatus: "dna_pending",
+    dnaStatus: "approved",
+    executionStatus: "available",
     capabilities: ["bsp_implementation", "service_delivery_review", "restrictive_practice_review"],
   },
   // Finance (3)
@@ -925,14 +925,13 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 13 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 13 pending v2 employees (excluding approved CoS, CQM, ISS, OM, EA and APO)
+  it("all 12 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 12 pending v2 employees (excluding approved CoS, CQM, ISS, OM, EA, APO and BSI)
     const newlyCodes = [
       "policy_governance_specialist",
       "service_delivery_coordinator",
       "workforce_rostering_coordinator",
       "process_asset_coordinator",
-      "behaviour_support_implementation_specialist",
       "finance_officer",
       "payroll_workforce_cost_officer",
       "financial_planning_reporting_manager",
@@ -949,14 +948,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 6 employees have dnaStatus 'approved'", () => {
+  it("exactly 7 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(6);
+    expect(approved).toHaveLength(7);
   });
 
-  it("exactly 13 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 12 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(13);
+    expect(pending).toHaveLength(12);
   });
 });
 
@@ -982,7 +981,7 @@ describe("Sprint 11 — Pack membership", () => {
     expect(pack).toContain("authorised_program_officer");
   });
 
-  it("Operations pack contains operations roles plus pending BSI", () => {
+  it("Operations pack contains operations roles plus BSI", () => {
     const pack = WORKFORCE_PACKS.operations.employees;
     expect(pack).toHaveLength(5);
     expect(pack).toContain("operations_manager");
@@ -1091,10 +1090,10 @@ describe("Sprint 11 — Dispatch protection", () => {
     expect(decision.reasonCode).toBe("eligible");
   });
 
-  it("pending Behaviour Support Implementation Specialist returns deny with code 'dna_design_pending'", () => {
+  it("authored Behaviour Support Implementation Specialist is eligible for dispatch", () => {
     const decision = checkDispatchEligibility("behaviour_support_implementation_specialist");
-    expect(decision.allowed).toBe(false);
-    expect(decision.reasonCode).toBe("dna_design_pending");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
   });
 
   it("available compliance_quality_manager with approved DNA can be dispatched", () => {

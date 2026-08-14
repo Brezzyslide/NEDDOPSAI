@@ -292,6 +292,108 @@ describe("Sprint 33A — Authorised Program Officer authority", () => {
   });
 });
 
+describe("Sprint 33A — Behaviour Support Implementation Specialist authority", () => {
+  const bsi = profile("behaviour_support_implementation_specialist_profile");
+
+  it("permits internal implementation fidelity review drafting", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "draft_bsp_implementation_fidelity_review",
+      actionType: "create_file",
+      executionChannel: "document_store",
+      toolCategory: "document_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.workerProfileCode).toBe("behaviour_support_implementation_specialist_profile");
+  });
+
+  it("permits behaviour/context data analysis within allowed data tools", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "analyse_behaviour_context_patterns",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "data_tools",
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+  });
+
+  it("holds implementation guidance publication for approval", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "publish_bsp_implementation_guidance",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "document_tools",
+    });
+
+    expect(decision.decision).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("allows approved implementation guidance publication through the approval path", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "publish_bsp_implementation_guidance",
+      actionType: "create_file",
+      executionChannel: "internal_api",
+      toolCategory: "document_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PERMITTED");
+    expect(decision.approved).toBe(true);
+  });
+
+  it("keeps BSP amendment prohibited after approval is present", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "amend_behaviour_support_plan",
+      actionType: "update_file",
+      executionChannel: "internal_api",
+      toolCategory: "document_tools",
+      approvalGranted: true,
+    });
+
+    expect(decision.decision).toBe("PROHIBITED");
+  });
+
+  it("blocks RP authorisation, clinical action and staff disciplinary decisions", () => {
+    for (const actionIdentifier of ["authorise_restrictive_practice", "make_clinical_decision", "make_staff_disciplinary_decision"]) {
+      const decision = evaluateWorkerProfileAuthority({
+        specialistCode: "behaviour_support_implementation_specialist",
+        workerProfile: bsi,
+        actionIdentifier,
+        actionType: "update_file",
+        executionChannel: "internal_api",
+        toolCategory: "data_tools",
+        approvalGranted: true,
+      });
+
+      expect(decision.decision).toBe("PROHIBITED");
+    }
+  });
+
+  it("fails closed for unknown practitioner-level strategy action types", () => {
+    const decision = evaluateWorkerProfileAuthority({
+      specialistCode: "behaviour_support_implementation_specialist",
+      workerProfile: bsi,
+      actionIdentifier: "replace_approved_strategy",
+      actionType: "replace_approved_strategy",
+      executionChannel: "internal_api",
+      toolCategory: "document_tools",
+    });
+
+    expect(decision.decision).toBe("UNMAPPED_AUTHORITY");
+  });
+});
+
 describe("Sprint 33A — UEE action validation with WorkerProfile", () => {
   it("fails closed when an executable action is validated without a WorkerProfile", () => {
     const actions = parseExecutionActions([

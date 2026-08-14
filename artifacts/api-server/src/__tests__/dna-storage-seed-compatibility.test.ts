@@ -104,6 +104,7 @@ import {
 import {
   CANONICAL_DNA_PROJECTION_VERSION,
   AUTHORISED_PROGRAM_OFFICER_DNA,
+  BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA,
   CHIEF_OF_STAFF_DNA,
 } from "@workspace/workforce-dna";
 import {
@@ -230,5 +231,24 @@ describe("DNA static seed canonical schema compatibility", () => {
       projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
     });
     expect(state.competencies).toHaveLength(AUTHORISED_PROGRAM_OFFICER_DNA.competencies.length);
+  });
+
+  it("recognises Behaviour Support Implementation Specialist on the static DB publication path", async () => {
+    const result = await seedDNAFromStaticRegistry("behaviour_support_implementation_specialist", "live_replit_seed");
+
+    expect(result).toBe("created");
+    const row = state.profiles[0]!;
+    expect(row.specialistId).toBe("behaviour_support_implementation_specialist");
+    expect(row.dnaId).toBe("behaviour_support_implementation_specialist");
+    expect(row.version).toBe(BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA.currentVersion.version);
+    expect(row.versionHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.canonicalProfile).toMatchObject({
+      identity: { specialistId: "behaviour_support_implementation_specialist" },
+      requiredWorkerProfile: { profileCode: "behaviour_support_implementation_specialist_profile" },
+    });
+    expect(row.runtimeProjection).toMatchObject({
+      projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
+    });
+    expect(state.competencies).toHaveLength(BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA.competencies.length);
   });
 });

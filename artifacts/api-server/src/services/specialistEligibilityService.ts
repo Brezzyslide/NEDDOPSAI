@@ -73,6 +73,7 @@ export interface EligibilityCheckContext {
 
 const ACTIVE_SPECIALISTS = new Set([
   "authorised_program_officer",
+  "behaviour_support_implementation_specialist",
   "compliance_quality_manager",
   "executive_assistant",
   "incident_safeguarding_specialist",

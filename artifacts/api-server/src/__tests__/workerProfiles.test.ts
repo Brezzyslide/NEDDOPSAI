@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 35 worker profiles (including current v2 APO)", () => {
-    expect(WORKER_PROFILES).toHaveLength(35);
+  it("contains exactly 36 worker profiles (including current v2 APO and BSI)", () => {
+    expect(WORKER_PROFILES).toHaveLength(36);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 35 mapped specialist identities", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(35);
+  it("ROLE_TO_PROFILES covers all 36 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(36);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
@@ -174,6 +174,15 @@ describe("Role-to-Worker-Profile mapping", () => {
     expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
     expect(profiles[0]?.prohibitedActions).toContain("authorise_restrictive_practice");
     expect(profiles[0]?.approvalRequiredActions).toContain("submit_monthly_rp_report");
+  });
+
+  it("maps Behaviour Support Implementation Specialist to the current v2 implementation WorkerProfile", () => {
+    const profiles = getWorkerProfilesForRole("behaviour_support_implementation_specialist");
+    expect(profiles.map(p => p.code)).toEqual(["behaviour_support_implementation_specialist_profile"]);
+    expect(profiles[0]?.riskLevel).toBe("high");
+    expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profiles[0]?.prohibitedActions).toContain("amend_behaviour_support_plan");
+    expect(profiles[0]?.approvalRequiredActions).toContain("publish_bsp_implementation_guidance");
   });
 
   it("getWorkerProfilesForRole returns empty array for unknown role", () => {

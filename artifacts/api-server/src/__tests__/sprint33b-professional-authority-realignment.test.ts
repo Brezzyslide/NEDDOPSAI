@@ -2,8 +2,7 @@
  * Sprint 33B — Professional Authority Realignment
  *
  * Proves the current-v2 workforce recognises APO/BSI professional destinations.
- * APO is now authored and executable within WorkerProfile authority; BSI remains
- * non-dispatchable until its DNA and WorkerProfile are authored.
+ * APO and BSI are now authored and executable within WorkerProfile authority.
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -62,20 +61,21 @@ describe("Sprint 33B current-v2 catalogue expansion", () => {
     expect(hasActiveIntelligence(apo!.code)).toBe(true);
   });
 
-  it("adds Behaviour Support Implementation Specialist as dna_pending and non-runtime", () => {
+  it("keeps Behaviour Support Implementation Specialist as current-v2 available after profile authoring", () => {
     const bsi = getSpecialistByCode("behaviour_support_implementation_specialist");
     expect(bsi).toBeDefined();
     expect(bsi!.displayName).toBe("Behaviour Support Implementation Specialist");
-    expect(bsi!.executionStatus).toBe("dna_pending");
-    expect(bsi!.dnaStatus).toBe("pending_design");
-    expect(bsi!.workerProfileCodes).toEqual([]);
-    expect(hasActiveIntelligence(bsi!.code)).toBe(false);
+    expect(bsi!.executionStatus).toBe("available");
+    expect(bsi!.dnaStatus).toBe("approved");
+    expect(bsi!.workerProfileCodes).toEqual(["behaviour_support_implementation_specialist_profile"]);
+    expect(hasActiveIntelligence(bsi!.code)).toBe(true);
   });
 
   it("keeps completed current specialists runtime-active", () => {
     for (const code of [
       "executive_assistant",
       "authorised_program_officer",
+      "behaviour_support_implementation_specialist",
       "compliance_quality_manager",
       "incident_safeguarding_specialist",
       "operations_manager",
@@ -129,12 +129,12 @@ describe("Sprint 33B restrictive practice authority boundaries", () => {
 });
 
 describe("Sprint 33B behaviour support and external professional authority", () => {
-  it("recognises BSI implementation work without making BSI dispatchable", () => {
+  it("routes BSI implementation work to BSI without making it practitioner authority", () => {
     const cap = getCapability("behaviour_support.implementation");
     expect(cap).toBeDefined();
     expect(cap!.eligibleRoles).toEqual(["behaviour_support_implementation_specialist"]);
     expect(cap!.description).toMatch(/not practitioner authority/i);
-    expect(validateSpecialistEligibilitySync("behaviour_support_implementation_specialist", cap!.code)).toBe(false);
+    expect(validateSpecialistEligibilitySync("behaviour_support_implementation_specialist", cap!.code)).toBe(true);
     expect(validateSpecialistEligibilitySync("operations_manager", cap!.code)).toBe(false);
     expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", cap!.code)).toBe(false);
   });
@@ -154,7 +154,7 @@ describe("Sprint 33B behaviour support and external professional authority", () 
     const resolved = resolveIntent("behaviour_support.implementation");
     expect(resolved && !resolved.isAction ? resolved.code : null).toBe("behaviour_support_plan_review");
     const bsp = getRegistryEntry("behaviour_support_plan_review");
-    expect(bsp?.title).toBe("Behaviour Support Plan Review");
+    expect(bsp?.title).toBe("Behaviour Support Implementation Review");
     expect(bsp?.futureOwnerRoleCode).toBe("behaviour_support_implementation_specialist");
     expect(bsp?.externalAuthorityRequiredFor?.join(" ")).toMatch(/Behaviour Support Plan authorship/);
   });
@@ -187,7 +187,7 @@ describe("Sprint 33B care, policy, performance and fallback boundaries", () => {
     expect(performance?.purpose).toMatch(/workforce compliance limited to credential/i);
   });
 
-  it("conversation context can dispatch APO but still blocks BSI", async () => {
+  it("conversation context can dispatch APO and BSI", async () => {
     _clearWorkforceCache();
     const ctx = await getConversationWorkforceContext(ORG_ID);
     const apo = ctx.specialists.find(s => s.code === "authorised_program_officer");
@@ -199,8 +199,7 @@ describe("Sprint 33B care, policy, performance and fallback boundaries", () => {
     const bsi = ctx.specialists.find(s => s.code === "behaviour_support_implementation_specialist");
     expect(bsi).toBeDefined();
     expect(bsi!.availableForConversation).toBe(true);
-    expect(bsi!.availableForDispatch).toBe(false);
-    expect(bsi!.runtimeReady).toBe(false);
-    expect(bsi!.unavailableReason).toBe("Professional design pending");
+    expect(bsi!.availableForDispatch).toBe(true);
+    expect(bsi!.runtimeReady).toBe(true);
   });
 });

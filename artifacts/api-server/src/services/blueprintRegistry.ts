@@ -400,11 +400,11 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
   {
     code: "behaviour_support_plan_review",
     blueprintFamily: "behaviour_support",
-    title: "Behaviour Support Plan Review",
+    title: "Behaviour Support Implementation Review",
     purpose: "Review approved BSP implementation evidence and prepare a practitioner-review brief. Formal BSP authorship, amendment and practitioner-level strategy decisions require Behaviour Support Practitioner authority.",
     category: "behaviour",
     supportedModes: ["review", "revise", "implementation"],
-    primaryDeliverable: "Behaviour Support Plan Review report",
+    primaryDeliverable: "Behaviour Support Implementation Review report",
     maturityState: "placeholder",
     ownerType: "platform_owned",
     legacyCode: "behaviour_support_plan",
@@ -420,7 +420,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
   {
     code: "behaviour_trigger_analysis",
     blueprintFamily: "behaviour_support",
-    title: "Behaviour / Trigger Analysis",
+    title: "Behaviour and Context Data Analysis",
     purpose: "Analyse behaviour data, antecedents and consequences to support implementation monitoring and practitioner escalation. Practitioner-level functional behaviour assessment remains external or credentialed authority.",
     category: "behaviour",
     supportedModes: ["analysis"],

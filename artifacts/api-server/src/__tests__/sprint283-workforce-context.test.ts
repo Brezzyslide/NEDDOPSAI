@@ -131,8 +131,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
       displayName: "Behaviour Support Implementation Specialist",
       packCode: "operations",
       capabilities: ["bsp_implementation", "service_delivery_review"],
-      executionStatus: "dna_pending",
-      dnaStatus: "pending_design",
+      executionStatus: "available",
+      dnaStatus: "approved",
       departmentCode: "operations",
       catalogueVersion: "2",
     },
@@ -308,7 +308,7 @@ describe("getConversationWorkforceContext", () => {
   it("returns correct summary counts", async () => {
     const ctx = await getConversationWorkforceContext(ORG_A);
     expect(ctx.summary.dispatchableCount).toBeGreaterThanOrEqual(1); // at least operations_manager
-    expect(ctx.summary.unavailableCount).toBe(1);                    // BSI is visible but dna_pending
+    expect(ctx.summary.unavailableCount).toBe(0);
     expect(ctx.summary.availableCount).toBeGreaterThan(0);
   });
 

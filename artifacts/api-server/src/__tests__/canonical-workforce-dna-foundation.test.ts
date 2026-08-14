@@ -17,6 +17,7 @@ vi.mock("../services/dnaStorageService.js", () => ({
 import {
   CANONICAL_DNA_PROJECTION_VERSION,
   AUTHORISED_PROGRAM_OFFICER_DNA,
+  BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA,
   getCanonicalDNAProfile,
   getSafeDNADescriptor,
   mapLegacyDNAProfileToWorkforceDNA,
@@ -229,6 +230,60 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(result.instruction).toContain("monthly reporting outputs must reconcile evidence sources");
     expect(result.instruction).toContain("Use Blueprint requirements as professional competence or technical authority");
     expect(manifest.workerProfileReference?.profileCode).toBe("authorised_program_officer_profile");
+    expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
+    expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
+  });
+
+  it("maps Behaviour Support Implementation Specialist as the current v2 BSP implementation specialist", () => {
+    const dna = getCanonicalDNAProfile("behaviour_support_implementation_specialist");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("behaviour_support_implementation_specialist");
+    expect(dna?.professionalMission.missionStatement).toContain("approved behaviour-support requirements");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(9);
+    expect(dna?.reasoningModel.decisionMethodology.some(step => step.stepId.startsWith("bsi."))).toBe(true);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(BEHAVIOUR_SUPPORT_IMPLEMENTATION_SPECIALIST_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("preserves Behaviour Support Implementation evidence, fidelity and practitioner-boundary discipline", () => {
+    const manifest = compileSpecialistManifest("behaviour_support_implementation_specialist");
+    const evidence = JSON.stringify(manifest.evidenceModel);
+    const memory = [
+      manifest.memoryBehaviour?.priorConclusionReliance,
+      ...(manifest.memoryBehaviour?.memoryUseLimits ?? []),
+      ...(manifest.memoryBehaviour?.reconsiderationTriggers ?? []),
+    ].join(" ");
+    const risk = manifest.riskAndUncertaintyModel?.highRiskTriggers.join(" ");
+    const collaboration = [
+      ...(manifest.collaborationModel?.deferToDomains ?? []),
+      ...(manifest.collaborationModel?.cannotOverrideDomains ?? []),
+    ].join(" ");
+    const boundaries = [
+      ...(manifest.boundaryModel?.outOfScopeDecisions ?? []),
+      ...(manifest.boundaryModel?.prohibitedBehaviours ?? []),
+      ...(manifest.boundaryModel?.mustNotRepresentAs ?? []),
+    ].join(" ");
+
+    expect(evidence).toContain("Not documented treated as proven not implemented");
+    expect(evidence).toContain("Behaviour pattern treated as causal without evidence");
+    expect(evidence).toContain("Strategy ineffectiveness used to rewrite the BSP");
+    expect(memory).toContain("previous work packages");
+    expect(memory).toContain("Information appears superseded");
+    expect(risk).toContain("Implementation variance may increase safeguarding");
+    expect(collaboration).toContain("credentialled Behaviour Support Practitioner");
+    expect(boundaries).toContain("Author, amend, approve or represent an output as a formal Behaviour Support Plan");
+    expect(boundaries).toContain("Treat memory, previous reviews, samples or user assertions as current participant/client evidence");
+  });
+
+  it("projects Behaviour Support Implementation runtime without adding practitioner or technical authority", () => {
+    const manifest = compileSpecialistManifest("behaviour_support_implementation_specialist");
+    const profile = getWorkerProfileByCode("behaviour_support_implementation_specialist_profile");
+    const result = assembleRuntimeInstructions(manifest, steps(), constraints());
+
+    expect(result.instruction).toContain("Not documented is not the same as proven not implemented");
+    expect(result.instruction).toContain("strategy changes, BSP amendment and practitioner-level decisions must be deferred");
+    expect(result.instruction).toContain("Use Blueprint requirements as professional competence or technical authority");
+    expect(manifest.workerProfileReference?.profileCode).toBe("behaviour_support_implementation_specialist_profile");
     expect(profile?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
     expect(profile?.allowedConnectorCategories).toEqual(["document_management"]);
     expect((manifest as unknown as Record<string, unknown>)["allowedExecutionChannels"]).toBeUndefined();
@@ -709,9 +764,12 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
+    expect(pending.some(s => s.code === "behaviour_support_implementation_specialist")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
+    expect(getCanonicalDNAProfile("behaviour_support_implementation_specialist")).not.toBeNull();
+    expect(getSafeDNADescriptor("behaviour_support_implementation_specialist")).not.toBeNull();
     expect(getCanonicalDNAProfile("compliance_quality_manager")).not.toBeNull();
     expect(getSafeDNADescriptor("compliance_quality_manager")).not.toBeNull();
     expect(getCanonicalDNAProfile("policy_governance_specialist")).toBeNull();

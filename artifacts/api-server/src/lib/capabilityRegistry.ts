@@ -440,12 +440,12 @@ export const BUSINESS_CAPABILITIES: BusinessCapability[] = [
   {
     code: "behaviour_support.implementation",
     displayName: "Behaviour Support Implementation",
-    description: "Operationalise approved BSP requirements, monitor implementation fidelity, analyse behaviour/RP data, improve staff practice and escalate practitioner-review triggers. Future BSI-owned; not practitioner authority.",
+    description: "Operationalise approved BSP requirements, monitor implementation fidelity, analyse behaviour/RP data, improve staff practice and escalate practitioner-review triggers. BSI-owned; not practitioner authority.",
     category: "behaviour_support", packCode: "operations",
     eligibleRoles: ["behaviour_support_implementation_specialist"],
-    requiredWorkerProfiles: [], requiredExecutionChannels: [], requiredConnectorCategories: [],
+    requiredWorkerProfiles: ["behaviour_support_implementation_specialist_profile"], requiredExecutionChannels: ["internal_api", "document_store", "database_query"], requiredConnectorCategories: ["document_management"],
     defaultRiskLevel: "high", defaultApprovalRequired: true,
-    informationAllowed: true, analysisAllowed: true, executionAllowed: false,
+    informationAllowed: true, analysisAllowed: true, executionAllowed: true,
     status: "active", version: "1.0", effectiveDate: "2026-08-14",
   },
   {

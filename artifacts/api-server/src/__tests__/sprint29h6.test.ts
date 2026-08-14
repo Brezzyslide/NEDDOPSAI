@@ -305,7 +305,6 @@ describe("H11: dna_pending and non-production specialists are not dispatchable",
   const NON_PRODUCTION = [
     "knowledge_documentation_specialist",
     "policy_governance_specialist",
-    "behaviour_support_implementation_specialist",
   ];
 
   for (const code of NON_PRODUCTION) {
@@ -349,12 +348,12 @@ describe("Sprint 33B authority-boundary routing", () => {
     expect(validateSpecialistEligibilitySync("operations_manager", "restrictive_practice.monthly_reporting")).toBe(false);
   });
 
-  it("S33B-2: BSP implementation maps to BSI-owned capability and remains non-dispatchable", async () => {
+  it("S33B-2: BSP implementation maps to BSI-owned capability and is dispatchable to BSI only", async () => {
     const result = await identify("Review approved BSP implementation fidelity and staff practice guidance");
     const cap = findCap(result, "behaviour_support.implementation");
     expect(cap).toBeDefined();
     expect(cap!.requestedLevel).toBe("professional_analysis");
-    expect(validateSpecialistEligibilitySync("behaviour_support_implementation_specialist", "behaviour_support.implementation")).toBe(false);
+    expect(validateSpecialistEligibilitySync("behaviour_support_implementation_specialist", "behaviour_support.implementation")).toBe(true);
     expect(validateSpecialistEligibilitySync("operations_manager", "behaviour_support.implementation")).toBe(false);
     expect(validateSpecialistEligibilitySync("incident_safeguarding_specialist", "behaviour_support.implementation")).toBe(false);
   });
