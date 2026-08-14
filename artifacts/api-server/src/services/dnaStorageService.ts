@@ -31,6 +31,8 @@ import {
   organisationSpecialistConfigTable,
 } from "@workspace/db";
 import type { DNAProfile, WorkforceDNA, WorkforceDNARuntimeProjection } from "@workspace/workforce-dna";
+import { getCurrentSpecialists } from "../lib/workforceRegistry.js";
+import { getActiveWorkerProfilesForRole } from "../lib/workerProfileRegistry.js";
 
 // ─── Static fallback (development only) ──────────────────────────────────────
 
@@ -101,6 +103,257 @@ export interface ResolvedOrgContext {
   systems?: string[];
   firstWeekGoals?: string[];
   escalationContacts?: string[];
+}
+
+// ─── Publication reconciliation ──────────────────────────────────────────────
+
+export type WorkforceDnaReconciliationStatus =
+  | "NEW"
+  | "UNCHANGED"
+  | "UPDATED_NEW_VERSION_REQUIRED"
+  | "INACTIVE"
+  | "INVALID"
+  | "NOT_PUBLICATION_ELIGIBLE"
+  | "ERROR";
+
+export interface WorkforceDnaPublicationInventoryEntry {
+  roleCode: string;
+  catalogueStatus: string;
+  executionStatus: string;
+  dnaStatus: string;
+  dnaProfileExists: boolean;
+  activeDnaRegistryEntry: boolean;
+  getDNAProfileResolves: boolean;
+  canonicalMappingWorks: boolean;
+  workerProfileCodes: string[];
+  workerProfileResolves: boolean;
+  runtimeReady: boolean;
+  specialistEligibilityReady: boolean;
+  conversationWorkforceContextEligible: boolean;
+  staticDbPublicationEligible: boolean;
+  dbPublished: boolean;
+  publishedVersion?: string;
+  publishedVersionHash?: string;
+  sourceVersion?: string;
+  sourceVersionHash?: string;
+  sourceVsDbMismatch?: string;
+  status: WorkforceDnaReconciliationStatus;
+  reasons: string[];
+}
+
+export interface WorkforceDnaReconciliationResult {
+  applied: boolean;
+  generatedAt: string;
+  entries: WorkforceDnaPublicationInventoryEntry[];
+  summary: Record<WorkforceDnaReconciliationStatus, number>;
+}
+
+export interface ReconcileWorkforceDnaPublicationOptions {
+  /**
+   * false = dry-run only.
+   * true = publish NEW eligible source profiles through seedDNAFromStaticRegistry().
+   * Changed profiles are reported as UPDATED_NEW_VERSION_REQUIRED and require an
+   * explicit source version bump before publication.
+   */
+  apply?: boolean;
+  publishedBy?: string;
+  roleCodes?: string[];
+}
+
+function emptySummary(): Record<WorkforceDnaReconciliationStatus, number> {
+  return {
+    NEW: 0,
+    UNCHANGED: 0,
+    UPDATED_NEW_VERSION_REQUIRED: 0,
+    INACTIVE: 0,
+    INVALID: 0,
+    NOT_PUBLICATION_ELIGIBLE: 0,
+    ERROR: 0,
+  };
+}
+
+async function loadDnaRowsForRole(roleCode: string) {
+  return db
+    .select()
+    .from(specialistDnaProfilesTable)
+    .where(eq(specialistDnaProfilesTable.specialistId, roleCode))
+    .orderBy(
+      desc(specialistDnaProfilesTable.effectiveFrom),
+      desc(specialistDnaProfilesTable.publishedAt),
+      desc(specialistDnaProfilesTable.createdAt),
+    );
+}
+
+/**
+ * Builds a deterministic source/DB inventory for current-v2 specialists.
+ *
+ * This does not mutate the database. It is intentionally conservative: a role is
+ * publication-eligible only when the current-v2 catalogue, active static DNA,
+ * canonical projection and active WorkerProfile all resolve.
+ */
+export async function buildWorkforceDnaPublicationInventory(
+  roleCodes?: string[],
+): Promise<WorkforceDnaPublicationInventoryEntry[]> {
+  const selectedRoleCodes = roleCodes ? new Set(roleCodes) : null;
+  const { getDNAProfile, getCanonicalDNAProfile } = await import("@workspace/workforce-dna");
+
+  const candidates = getCurrentSpecialists()
+    .filter(s => !selectedRoleCodes || selectedRoleCodes.has(s.code))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const entries: WorkforceDnaPublicationInventoryEntry[] = [];
+
+  for (const specialist of candidates) {
+    const reasons: string[] = [];
+    let status: WorkforceDnaReconciliationStatus = "NOT_PUBLICATION_ELIGIBLE";
+
+    try {
+      const sourceProfile = getDNAProfile(specialist.code);
+      const canonicalProfile = getCanonicalDNAProfile(specialist.code);
+      const activeWorkerProfiles = getActiveWorkerProfilesForRole(specialist.code);
+      const publishedRows = await loadDnaRowsForRole(specialist.code);
+      const activePublishedRows = publishedRows.filter(row => row.status === "published");
+      const activePublished = activePublishedRows[0];
+
+      const executionAvailable = specialist.executionStatus === "available" || specialist.executionStatus === "beta";
+      const dnaApproved = specialist.dnaStatus === "approved";
+      const sourceActive = !!sourceProfile?.currentVersion.isActive;
+      const canonicalWorks = !!canonicalProfile;
+      const workerProfileResolves = activeWorkerProfiles.length > 0;
+      const staticDbPublicationEligible =
+        specialist.catalogueVersion === "2" &&
+        executionAvailable &&
+        dnaApproved &&
+        sourceActive &&
+        canonicalWorks &&
+        workerProfileResolves;
+
+      const sourceVersion = sourceProfile?.currentVersion.version;
+      const sourceVersionHash = canonicalProfile?.versioning.versionHash;
+      const publishedVersion = activePublished?.version;
+      const publishedVersionHash = activePublished?.versionHash ?? undefined;
+      const dbPublished = !!activePublished;
+
+      if (activePublishedRows.length > 1) {
+        reasons.push("Multiple published DNA rows are active for this role; historical versions must be superseded before execution.");
+        status = "INVALID";
+      } else if (!staticDbPublicationEligible) {
+        if (specialist.executionStatus === "dna_pending" || specialist.dnaStatus !== "approved") {
+          status = "NOT_PUBLICATION_ELIGIBLE";
+          reasons.push("Role is current-v2 but DNA is not approved/available.");
+        } else {
+          status = "INVALID";
+          if (!sourceActive) reasons.push("Active static DNA profile does not resolve.");
+          if (!canonicalWorks) reasons.push("Canonical WorkforceDNA mapping does not resolve.");
+          if (!workerProfileResolves) reasons.push("Mandatory active WorkerProfile does not resolve.");
+        }
+      } else if (!dbPublished) {
+        status = "NEW";
+        reasons.push("Eligible source profile has no active published DB version.");
+      } else if (publishedVersion === sourceVersion && publishedVersionHash === sourceVersionHash) {
+        status = "UNCHANGED";
+        reasons.push("Active DB DNA version matches the canonical source version and hash.");
+      } else if (publishedVersion === sourceVersion && publishedVersionHash !== sourceVersionHash) {
+        status = "UPDATED_NEW_VERSION_REQUIRED";
+        reasons.push("Source hash differs for the same version; create a new immutable DNA version before publication.");
+      } else {
+        status = "UPDATED_NEW_VERSION_REQUIRED";
+        reasons.push(`Source version/hash differs from active DB publication (${publishedVersion ?? "none"}).`);
+      }
+
+      entries.push({
+        roleCode: specialist.code,
+        catalogueStatus: specialist.catalogueVersion,
+        executionStatus: specialist.executionStatus,
+        dnaStatus: specialist.dnaStatus,
+        dnaProfileExists: !!sourceProfile,
+        activeDnaRegistryEntry: sourceActive,
+        getDNAProfileResolves: !!sourceProfile,
+        canonicalMappingWorks: canonicalWorks,
+        workerProfileCodes: activeWorkerProfiles.map(p => p.code),
+        workerProfileResolves,
+        runtimeReady: staticDbPublicationEligible,
+        specialistEligibilityReady: staticDbPublicationEligible,
+        conversationWorkforceContextEligible: staticDbPublicationEligible,
+        staticDbPublicationEligible,
+        dbPublished,
+        publishedVersion,
+        publishedVersionHash,
+        sourceVersion,
+        sourceVersionHash,
+        sourceVsDbMismatch: status === "UNCHANGED" ? undefined : reasons.join(" "),
+        status,
+        reasons,
+      });
+    } catch (error) {
+      entries.push({
+        roleCode: specialist.code,
+        catalogueStatus: specialist.catalogueVersion,
+        executionStatus: specialist.executionStatus,
+        dnaStatus: specialist.dnaStatus,
+        dnaProfileExists: false,
+        activeDnaRegistryEntry: false,
+        getDNAProfileResolves: false,
+        canonicalMappingWorks: false,
+        workerProfileCodes: [],
+        workerProfileResolves: false,
+        runtimeReady: false,
+        specialistEligibilityReady: false,
+        conversationWorkforceContextEligible: false,
+        staticDbPublicationEligible: false,
+        dbPublished: false,
+        status: "ERROR",
+        reasons: [error instanceof Error ? error.message : String(error)],
+      });
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Reconcile current-v2 WorkforceDNA publication state.
+ *
+ * Dry-run by default. With apply=true, only NEW eligible profiles are published.
+ * Changed profiles are intentionally not auto-published unless the source DNA
+ * version has been explicitly advanced and the normal seed path can preserve the
+ * prior version as superseded.
+ */
+export async function reconcileWorkforceDnaPublication(
+  options: ReconcileWorkforceDnaPublicationOptions = {},
+): Promise<WorkforceDnaReconciliationResult> {
+  const apply = options.apply === true;
+  const publishedBy = options.publishedBy ?? "workforce_dna_reconciliation";
+  const entries = await buildWorkforceDnaPublicationInventory(options.roleCodes);
+
+  if (apply) {
+    for (const entry of entries) {
+      if (entry.status !== "NEW" || !entry.staticDbPublicationEligible) continue;
+      try {
+        await seedDNAFromStaticRegistry(entry.roleCode, publishedBy);
+        entry.dbPublished = true;
+        entry.publishedVersion = entry.sourceVersion;
+        entry.publishedVersionHash = entry.sourceVersionHash;
+        entry.status = "UNCHANGED";
+        entry.reasons = ["Published missing eligible DNA through the generic static registry seed path."];
+        entry.sourceVsDbMismatch = undefined;
+      } catch (error) {
+        entry.status = "ERROR";
+        entry.reasons = [error instanceof Error ? error.message : String(error)];
+        entry.sourceVsDbMismatch = entry.reasons.join(" ");
+      }
+    }
+  }
+
+  const summary = emptySummary();
+  for (const entry of entries) summary[entry.status] += 1;
+
+  return {
+    applied: apply,
+    generatedAt: new Date().toISOString(),
+    entries,
+    summary,
+  };
 }
 
 // ─── Database loader ──────────────────────────────────────────────────────────
@@ -377,20 +630,22 @@ export async function seedDNAFromStaticRegistry(
 
   const version = profile.currentVersion.version;
 
-  // Check if this version already exists
-  const existing = await db
-    .select({ id: specialistDnaProfilesTable.id })
+  // Check if this version already exists. Keep the role query broad and filter
+  // the immutable version explicitly so reconciliation tests and future
+  // publication audits can reason about historical versions deterministically.
+  const existingForRole = await db
+    .select({
+      id: specialistDnaProfilesTable.id,
+      version: specialistDnaProfilesTable.version,
+      status: specialistDnaProfilesTable.status,
+    })
     .from(specialistDnaProfilesTable)
-    .where(
-      and(
-        eq(specialistDnaProfilesTable.specialistId, roleCode),
-        eq(specialistDnaProfilesTable.version, version),
-      ),
-    )
-    .limit(1);
+    .where(eq(specialistDnaProfilesTable.specialistId, roleCode));
 
-  if (existing.length > 0) {
-    const existingProfileId = existing[0]!.id;
+  const existing = existingForRole.find(row => row.version === version);
+
+  if (existing) {
+    const existingProfileId = existing.id;
     const expectedCompetencyCodes = new Set(profile.competencies.map(c => c.code));
     const existingCompetencies = await db
       .select({ competencyCode: specialistDnaCompetenciesTable.competencyCode })
@@ -443,6 +698,20 @@ export async function seedDNAFromStaticRegistry(
     .slice(0, 5);
 
   await db.transaction(async (tx) => {
+    const now = new Date();
+
+    // Preserve historical versions and enforce the table contract that only one
+    // version per specialist remains status="published" at a time.
+    await tx
+      .update(specialistDnaProfilesTable)
+      .set({ status: "superseded", retiredAt: now })
+      .where(
+        and(
+          eq(specialistDnaProfilesTable.specialistId, roleCode),
+          eq(specialistDnaProfilesTable.status, "published"),
+        ),
+      );
+
     await tx.insert(specialistDnaProfilesTable).values({
       id:           profileId,
       specialistId: roleCode,
@@ -476,7 +745,7 @@ export async function seedDNAFromStaticRegistry(
       escalationRules,
       prohibitedBehaviours: profile.professionalBoundaries.cannotDo,
       memoryPolicy: { allowedScopes, prohibitedScopes },
-      publishedAt: new Date(),
+      publishedAt: now,
     });
 
     // Insert competencies in the same transaction as the parent publication.

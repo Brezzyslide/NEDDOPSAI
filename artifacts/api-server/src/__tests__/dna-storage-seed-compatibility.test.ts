@@ -6,6 +6,9 @@ interface StoredProfile {
   id: string;
   specialistId: string;
   version: string;
+  status?: string;
+  retiredAt?: Date | null;
+  versionHash?: string;
 }
 
 interface StoredCompetency {
@@ -32,9 +35,12 @@ vi.mock("@workspace/db", async (importOriginal) => {
 
   function selectedRows(table: unknown, selection?: Record<string, unknown>) {
     if (table === actual.specialistDnaProfilesTable) {
-      return selection && "id" in selection
-        ? state.profiles.map(profile => ({ id: profile.id }))
-        : state.profiles;
+      if (!selection) return state.profiles;
+      return state.profiles.map(profile => {
+        const selected: Record<string, unknown> = {};
+        for (const key of Object.keys(selection)) selected[key] = profile[key];
+        return selected;
+      });
     }
     if (table === actual.specialistDnaCompetenciesTable) {
       return state.competencies;
@@ -77,6 +83,20 @@ vi.mock("@workspace/db", async (importOriginal) => {
         return Promise.resolve();
       }),
     })),
+    update: vi.fn((table: unknown) => ({
+      set: vi.fn((payload: Record<string, unknown>) => ({
+        where: vi.fn(() => {
+          if (table === actual.specialistDnaProfilesTable) {
+            for (const profile of state.profiles) {
+              if (profile.status === "published") {
+                Object.assign(profile, payload);
+              }
+            }
+          }
+          return Promise.resolve();
+        }),
+      })),
+    })),
     transaction: vi.fn(async (callback: (tx: typeof db) => Promise<unknown>) => {
       const profileSnapshot = [...state.profiles];
       const competencySnapshot = [...state.competencies];
@@ -112,8 +132,11 @@ import {
 } from "@workspace/workforce-dna";
 import {
   loadDNAFromDatabase,
+  buildWorkforceDnaPublicationInventory,
+  reconcileWorkforceDnaPublication,
   seedDNAFromStaticRegistry,
 } from "../services/dnaStorageService.js";
+import { getCurrentSpecialists } from "../lib/workforceRegistry.js";
 
 describe("DNA static seed canonical schema compatibility", () => {
   beforeEach(() => {
@@ -163,6 +186,25 @@ describe("DNA static seed canonical schema compatibility", () => {
     expect(second).toBe("already_exists");
     expect(state.profiles).toHaveLength(1);
     expect(state.competencies).toHaveLength(CHIEF_OF_STAFF_DNA.competencies.length);
+  });
+
+  it("preserves older published rows as superseded when a new source version is published", async () => {
+    state.profiles.push({
+      id: "old-chief-dna",
+      specialistId: "chief_of_staff",
+      version: "0.9.0",
+      versionHash: "oldhash",
+      status: "published",
+    });
+
+    const result = await seedDNAFromStaticRegistry("chief_of_staff", "live_replit_seed");
+
+    expect(result).toBe("created");
+    expect(state.profiles).toHaveLength(2);
+    expect(state.profiles[0]?.status).toBe("superseded");
+    expect(state.profiles[0]?.retiredAt).toBeInstanceOf(Date);
+    expect(state.profiles[1]?.status).toBe("published");
+    expect(state.profiles[1]?.version).toBe(CHIEF_OF_STAFF_DNA.currentVersion.version);
   });
 
   it("generates competency IDs required by the live table schema", async () => {
@@ -310,5 +352,72 @@ describe("DNA static seed canonical schema compatibility", () => {
       projectionVersion: CANONICAL_DNA_PROJECTION_VERSION,
     });
     expect(state.competencies).toHaveLength(WORKFORCE_ROSTERING_COORDINATOR_DNA.competencies.length);
+  });
+
+  it("discovers every current-v2 approved runtime-ready specialist through the generic publication mechanism", async () => {
+    const inventory = await buildWorkforceDnaPublicationInventory();
+    const eligible = inventory.filter(entry => entry.staticDbPublicationEligible);
+    const expected = getCurrentSpecialists().filter(s =>
+      s.catalogueVersion === "2" &&
+      s.executionStatus === "available" &&
+      s.dnaStatus === "approved"
+    );
+
+    expect(eligible.map(entry => entry.roleCode).sort()).toEqual(expected.map(s => s.code).sort());
+    expect(eligible).toHaveLength(10);
+    expect(eligible.every(entry => entry.status === "NEW")).toBe(true);
+  });
+
+  it("excludes dna_pending specialists from DB publication eligibility", async () => {
+    const inventory = await buildWorkforceDnaPublicationInventory();
+    const pending = inventory.filter(entry => entry.executionStatus === "dna_pending");
+
+    expect(pending.length).toBeGreaterThan(0);
+    expect(pending.every(entry => entry.staticDbPublicationEligible === false)).toBe(true);
+    expect(pending.every(entry => entry.status === "NOT_PUBLICATION_ELIGIBLE")).toBe(true);
+  });
+
+  it("does not make a dna_pending role executable merely because a DB row exists", async () => {
+    state.profiles.push({
+      id: "pending-role-dna",
+      specialistId: "payroll_workforce_cost_officer",
+      version: "2.0.0",
+      status: "published",
+      versionHash: "not-source-truth",
+    });
+
+    const inventory = await buildWorkforceDnaPublicationInventory(["payroll_workforce_cost_officer"]);
+
+    expect(inventory).toHaveLength(1);
+    expect(inventory[0]?.dbPublished).toBe(true);
+    expect(inventory[0]?.staticDbPublicationEligible).toBe(false);
+    expect(inventory[0]?.status).toBe("NOT_PUBLICATION_ELIGIBLE");
+  });
+
+  it("reports unchanged DNA as idempotent without creating duplicate versions", async () => {
+    await seedDNAFromStaticRegistry("chief_of_staff", "live_replit_seed");
+
+    const first = await reconcileWorkforceDnaPublication({ roleCodes: ["chief_of_staff"] });
+    const second = await reconcileWorkforceDnaPublication({ roleCodes: ["chief_of_staff"], apply: true });
+
+    expect(first.entries[0]?.status).toBe("UNCHANGED");
+    expect(second.entries[0]?.status).toBe("UNCHANGED");
+    expect(state.profiles).toHaveLength(1);
+  });
+
+  it("flags changed source DNA as version-required and preserves historical rows", async () => {
+    state.profiles.push({
+      id: "chief-current",
+      specialistId: "chief_of_staff",
+      version: CHIEF_OF_STAFF_DNA.currentVersion.version,
+      status: "published",
+      versionHash: "different-hash",
+    });
+
+    const result = await reconcileWorkforceDnaPublication({ roleCodes: ["chief_of_staff"], apply: true });
+
+    expect(result.entries[0]?.status).toBe("UPDATED_NEW_VERSION_REQUIRED");
+    expect(state.profiles).toHaveLength(1);
+    expect(state.profiles[0]?.versionHash).toBe("different-hash");
   });
 });
