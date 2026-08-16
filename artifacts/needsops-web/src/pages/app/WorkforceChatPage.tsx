@@ -47,7 +47,19 @@ interface TaskProposalData {
   summary: string;
   priority: string;
   suggestedRoles: string[];
+  primaryProfessionalOwner?: string;
+  primaryProfessionalOwnerName?: string;
+  supportingSpecialists?: string[];
+  supportingSpecialistNames?: string[];
+  coordinator?: string | null;
+  coordinatorName?: string | null;
+  assignedSpecialists?: string[];
+  assignedSpecialistNames?: string[];
   actions: string[];
+}
+
+function formatRoleName(role: string) {
+  return role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function SenderLabel({ senderType, workforceRoleCode }: { senderType: MessageSenderType; workforceRoleCode?: string }) {
@@ -83,13 +95,42 @@ function TaskProposalCard({
         )}
       </div>
       <p className="text-[#E2E8F0] font-semibold text-sm">{data.title}</p>
-      {data.suggestedRoles?.filter(r => r !== "chief_of_staff").length > 0 && (
+      {data.primaryProfessionalOwner ? (
+        <div className="space-y-2">
+          <div>
+            <p className="text-[#64748B] text-xs mb-1">Primary specialist:</p>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#1E3A5F] text-[#E2E8F0]">
+              {data.primaryProfessionalOwnerName ?? formatRoleName(data.primaryProfessionalOwner)}
+            </span>
+          </div>
+          {(data.supportingSpecialists?.length ?? 0) > 0 && (
+            <div>
+              <p className="text-[#64748B] text-xs mb-1">Supporting specialists:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.supportingSpecialists!.map((r, index) => (
+                  <span key={r} className="text-xs px-2 py-0.5 rounded-full bg-[#1E3A5F] text-[#94A3B8]">
+                    {data.supportingSpecialistNames?.[index] ?? formatRoleName(r)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {data.coordinator && (
+            <div>
+              <p className="text-[#64748B] text-xs mb-1">Coordinator:</p>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-[#13263F] text-[#94A3B8]">
+                {data.coordinatorName ?? formatRoleName(data.coordinator)}
+              </span>
+            </div>
+          )}
+        </div>
+      ) : data.suggestedRoles?.filter(r => r !== "chief_of_staff").length > 0 && (
         <div>
           <p className="text-[#64748B] text-xs mb-1">Suggested workforce:</p>
           <div className="flex flex-wrap gap-1.5">
             {data.suggestedRoles.filter(r => r !== "chief_of_staff").map(r => (
               <span key={r} className="text-xs px-2 py-0.5 rounded-full bg-[#1E3A5F] text-[#94A3B8]">
-                {r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
+                {formatRoleName(r)}
               </span>
             ))}
           </div>

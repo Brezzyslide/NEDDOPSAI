@@ -43,6 +43,7 @@ import { resolveActionDecision, type ConversationActionDecision } from "./conver
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { detectAndProposeConversationKnowledge } from "./conversationLearningService.js";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
+import { buildAuthoritativeTaskProposalPresentation } from "./taskProposalWorkforcePresentationService.js";
 // Sprint 29M — Three-lane execution classifier
 import {
   classifyExecutionRequest,
@@ -705,7 +706,14 @@ export async function processUserMessage(
     // Override the CoS response text
     understanding.customerResponse = capabilityGateOverride.text;
   } else if (understanding.conversationMode === "task_intent" && understanding.proposedTask) {
-    structuredContent = buildTaskProposalCard(understanding);
+    const authoritativeProposal = buildAuthoritativeTaskProposalPresentation(understanding);
+    if (authoritativeProposal) {
+      understanding.relatedWorkforceRoles = authoritativeProposal.workforce.assignedSpecialists;
+      understanding.customerResponse = authoritativeProposal.response;
+      structuredContent = authoritativeProposal.structuredContent;
+    } else {
+      structuredContent = buildTaskProposalCard(understanding);
+    }
     messageType = "task_proposal";
   } else if (understanding.conversationMode === "task_clarification") {
     structuredContent = understanding.clarificationQuestions.length > 0

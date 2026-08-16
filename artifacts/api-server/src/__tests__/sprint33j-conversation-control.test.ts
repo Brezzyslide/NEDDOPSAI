@@ -30,6 +30,7 @@ import {
 } from "../services/conversationControlService.js";
 import { classifyMessage } from "../services/conversationIntelligenceService.js";
 import { planTask } from "../services/chiefOfStaffService.js";
+import { buildAuthoritativeTaskProposalPresentation } from "../services/taskProposalWorkforcePresentationService.js";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 
@@ -471,14 +472,124 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(streamIdx).toBeGreaterThan(ingressIdx);
   });
 
-  it("processUserMessage canonicalises proposal workforce before building task proposal cards", () => {
+  it("processUserMessage applies authoritative task-plan workforce before building task proposal cards", () => {
     const src = readFileSync(resolve(process.cwd(), "src/services/conversationService.ts"), "utf8");
     const canonicalIdx = src.indexOf("resolveCanonicalConversationRoles");
     const assignIdx = src.indexOf("understanding.relatedWorkforceRoles = canonicalRoles.roles");
+    const authoritativeIdx = src.indexOf("buildAuthoritativeTaskProposalPresentation(understanding)");
     const cardIdx = src.indexOf("structuredContent = buildTaskProposalCard(understanding)");
 
     expect(canonicalIdx).toBeGreaterThan(0);
     expect(assignIdx).toBeGreaterThan(canonicalIdx);
-    expect(cardIdx).toBeGreaterThan(assignIdx);
+    expect(authoritativeIdx).toBeGreaterThan(assignIdx);
+    expect(cardIdx).toBeGreaterThan(authoritativeIdx);
+  });
+
+  it("grounds service-delivery proposal presentation in SDC primary ownership even if conversation roles said OM", () => {
+    const result = buildAuthoritativeTaskProposalPresentation({
+      conversationMode: "task_intent",
+      confidence: 0.9,
+      proposedTask: {
+        title: "Service Delivery Review for Michael",
+        summary: "Prepare a service delivery review for Michael for July 2026.",
+        priority: "high",
+        requestedOutcome: "Review whether supports were delivered as planned and identify service delivery gaps.",
+        knownConstraints: [],
+      },
+      clarificationRequired: false,
+      clarificationQuestions: [],
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: ["operations_manager"],
+      customerResponse: "I'll coordinate with the Operations Manager.",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.workforce.primaryProfessionalOwner).toBe("service_delivery_coordinator");
+    expect(result!.workforce.supportingSpecialists).toContain("operations_manager");
+    expect(result!.response).toContain("Service Delivery Coordinator as the primary specialist");
+    expect(result!.structuredContent?.data.primaryProfessionalOwner).toBe("service_delivery_coordinator");
+    expect(result!.structuredContent?.data.suggestedRoles).toEqual(
+      expect.arrayContaining(["service_delivery_coordinator", "operations_manager"]),
+    );
+  });
+
+  it("grounds roster proposal presentation in WRC primary ownership even if conversation roles said OM", () => {
+    const result = buildAuthoritativeTaskProposalPresentation({
+      conversationMode: "task_intent",
+      confidence: 0.9,
+      proposedTask: {
+        title: "Roster Review for Michael",
+        summary: "Prepare a roster review for Michael for next week.",
+        priority: "high",
+        requestedOutcome: "Identify any coverage gaps.",
+        knownConstraints: [],
+      },
+      clarificationRequired: false,
+      clarificationQuestions: [],
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: ["operations_manager"],
+      customerResponse: "I'll coordinate with the Operations Manager.",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.workforce.primaryProfessionalOwner).toBe("workforce_rostering_coordinator");
+    expect(result!.workforce.supportingSpecialists).toContain("operations_manager");
+    expect(result!.response).toContain("Workforce Rostering Coordinator as the primary specialist");
+    expect(result!.structuredContent?.data.primaryProfessionalOwner).toBe("workforce_rostering_coordinator");
+  });
+
+  it("does not mention OM when authoritative restrictive-practice plan excludes OM", () => {
+    const result = buildAuthoritativeTaskProposalPresentation({
+      conversationMode: "task_intent",
+      confidence: 0.9,
+      proposedTask: {
+        title: "Review Michael's restrictive practice arrangements",
+        summary: "Review Michael's restrictive practice arrangements and identify any compliance issues.",
+        priority: "high",
+        requestedOutcome: "Identify compliance issues.",
+        knownConstraints: [],
+      },
+      clarificationRequired: false,
+      clarificationQuestions: [],
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: ["operations_manager"],
+      customerResponse: "I'll coordinate with the Operations Manager.",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.workforce.assignedSpecialists).not.toContain("operations_manager");
+    expect(result!.response).not.toContain("Operations Manager");
+    expect(result!.structuredContent?.data.suggestedRoles).not.toEqual(
+      expect.arrayContaining(["operations_manager"]),
+    );
+  });
+
+  it("preserves primary, supporting and coordinator distinctions in proposal cards", () => {
+    const result = buildAuthoritativeTaskProposalPresentation({
+      conversationMode: "task_intent",
+      confidence: 0.9,
+      proposedTask: {
+        title: "Service Delivery Review for Michael",
+        summary: "Prepare a service delivery review for Michael for July 2026.",
+        priority: "high",
+        requestedOutcome: "Review support delivery gaps.",
+        knownConstraints: [],
+      },
+      clarificationRequired: false,
+      clarificationQuestions: [],
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: ["operations_manager"],
+      customerResponse: "Draft response",
+    });
+
+    expect(result!.structuredContent?.data.coordinator).toBe("chief_of_staff");
+    expect(result!.structuredContent?.data.primaryProfessionalOwner).toBe("service_delivery_coordinator");
+    expect(result!.structuredContent?.data.supportingSpecialists).toEqual(
+      expect.arrayContaining(["operations_manager"]),
+    );
   });
 });
