@@ -63,11 +63,16 @@ const mockEmitEvent         = vi.fn();
 const mockExecuteWork       = vi.fn();
 const mockLogOrg            = vi.fn().mockResolvedValue(undefined);
 const mockDbSelect          = vi.fn();
+const mockAutoCreateAndDispatch = vi.fn();
 
 vi.mock("../services/executionCoordinatorService.js", () => ({
   resumeFromCheckpointById: (...a: unknown[]) => mockResumeById(...a),
   resumeFromCheckpoint:     (...a: unknown[]) => mockResumeCheckpoint(...a),
   dispatchWorkExecution:    (...a: unknown[]) => mockDispatch(...a),
+}));
+
+vi.mock("../services/autoDispatchService.js", () => ({
+  autoCreateAndDispatch: (...a: unknown[]) => mockAutoCreateAndDispatch(...a),
 }));
 
 // executionCheckpointStore was the legacy in-memory store (deleted — superseded by executionCheckpointService)
@@ -173,6 +178,15 @@ describe("messageIngressService", () => {
     vi.clearAllMocks();
     mockDbSelect.mockImplementation(() => makeSelectChain());
     mockGetOrCreateWorkroom.mockResolvedValue({ id: "conv-1" });
+    mockAutoCreateAndDispatch.mockResolvedValue({
+      taskId: "task-created-1",
+      title: "Service Delivery Review for Michael",
+      conversationId: "conv-1",
+      workroomConversationId: "workroom-1",
+      dispatched: false,
+      requiresApproval: true,
+      approvalId: "approval-1",
+    });
   });
 
   it("returns error when conversationId and taskId are both absent", async () => {
@@ -271,6 +285,90 @@ describe("messageIngressService", () => {
     expect(result.type).toBe("normal");
     expect((result as any).result.understanding.conversationMode).toBe("casual_chat");
     expect(mockResumeById).not.toHaveBeenCalled();
+  });
+
+  it("production path: task proposal creates a bound task confirmation", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockProcessUserMessage.mockResolvedValue({
+      userMessage:  { id: "um-1", content: "Prepare a service delivery review", senderType: "user" },
+      agentMessage: { id: "am-1", content: "Please confirm to proceed", senderType: "chief_of_staff" },
+      understanding: {
+        conversationMode:      "task_intent",
+        confidence:            0.9,
+        shouldCreateTask:      false,
+        clarificationRequired: false,
+        clarificationQuestions: [],
+        requestedTaskAction:   "create",
+        proposedTask: {
+          title: "Service Delivery Review for Michael",
+          summary: "Prepare a service delivery review for Michael for July 2026.",
+          priority: "normal",
+          requestedOutcome: "Review delivery gaps",
+          knownConstraints: [],
+        },
+        relatedWorkforceRoles: ["service_delivery_coordinator", "chief_of_staff"],
+        customerResponse: "Please confirm to proceed.",
+      },
+    });
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "Prepare a service delivery review for Michael for July 2026.",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+    });
+
+    expect(result.type).toBe("normal");
+    expect(mockProcessUserMessage).toHaveBeenCalledTimes(1);
+    expect(((await import("@workspace/db")) as any).db.insert).toHaveBeenCalled();
+  });
+
+  it("production path: bound task confirmation consumes typoed proceed without replanning", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockDbSelect.mockImplementation(() => makeSelectChain([{
+      id: "notice-1",
+      structuredContent: {
+        type: "conversation_pending_confirmation",
+        data: {
+          id: "confirm-create-1",
+          action: "NEW_TASK",
+          proposedTask: {
+            title: "Service Delivery Review for Michael",
+            summary: "Prepare a service delivery review for Michael for July 2026.",
+            priority: "normal",
+            requestedOutcome: "Review delivery gaps",
+            knownConstraints: [],
+          },
+          candidateTasks: [],
+          createdAt: new Date("2026-08-16T00:00:00Z").toISOString(),
+          status: "pending",
+          expectedResponse: "yes_no",
+          reason: "task_proposal_confirmation",
+        },
+      },
+    }]));
+    mockAddMessage
+      .mockResolvedValueOnce({ id: "um-proceed", senderType: "user", content: "please procceed" })
+      .mockResolvedValueOnce({ id: "am-created", senderType: "chief_of_staff", content: "Created." });
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "please procceed",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+    });
+
+    expect(result.type).toBe("normal");
+    expect(mockProcessUserMessage).not.toHaveBeenCalled();
+    expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      requesterId: "user-1",
+      proposedTask: expect.objectContaining({ title: "Service Delivery Review for Michael" }),
+    }));
+    expect((result as any).result.agentMessage.content).toMatch(/Created/);
   });
 
   it("prevents duplicate network submission when idempotencyKey already exists", async () => {

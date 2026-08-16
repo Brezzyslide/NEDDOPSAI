@@ -74,6 +74,13 @@ export interface PendingConversationConfirmation {
   taskId?: string;
   taskTitle?: string;
   approvalId?: string;
+  proposedTask?: {
+    title: string;
+    summary: string;
+    priority?: string;
+    requestedOutcome?: string;
+    knownConstraints?: string[];
+  };
   candidateTasks: TaskReferenceCandidate[];
   createdAt: string;
   status: "pending" | "confirmed" | "declined" | "resolved" | "superseded";
@@ -130,8 +137,8 @@ const STATUS_PATTERNS = [/\b(where are we|what'?s pending|what are you waiting f
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
 const NEW_TASK_PATTERNS = [/\b(also|now|next)\b.*\b(prepare|create|check|review|audit|draft|build)\b/i, /\bprepare\b.*\b(roster|report|policy|plan)\b/i];
-const CONFIRM_PATTERNS = [/^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|do it|cancel it|cancel that)\.?$/i];
-const DECLINE_PATTERNS = [/^(no|nope|don't|do not|don'?t cancel|keep it|leave it|not anymore)\.?$/i];
+const CONFIRM_PATTERNS = [/^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|procced|procceed|please proceed|please procced|please procceed|do it|cancel it|cancel that|okay proceed|ok proceed)\.?$/i];
+const DECLINE_PATTERNS = [/^(no|nope|no[, ]+don'?t proceed|no[, ]+do not proceed|don't|do not|don'?t cancel|keep it|leave it|not anymore|do not proceed)\.?$/i];
 
 function matches(patterns: RegExp[], text: string): boolean {
   return patterns.some(pattern => pattern.test(text));
@@ -273,7 +280,10 @@ export function resolveConversationReference(input: {
       reasons.push("work_type_report");
     }
     return { taskId: task.id, title: task.title, state: task.currentState, score, reason: reasons.join("+") || "candidate" };
-  }).filter(c => c.score > 0).sort((a, b) => b.score - a.score);
+  }).filter(c => {
+    if (c.score >= 12) return true;
+    return /\b(conversation_focus|workroom_task|work_type_)/.test(c.reason);
+  }).sort((a, b) => b.score - a.score);
 
   if (intent === "NEW_TASK" || intent === "NEW_UNRELATED_REQUEST") {
     return { intent, confidence: 0.9, ambiguity: "none", candidateTasks: candidates, requiresClarification: false, reason: "new_request_signal" };
@@ -393,6 +403,7 @@ export async function persistConversationConfirmation(input: {
   taskId?: string;
   taskTitle?: string;
   approvalId?: string;
+  proposedTask?: PendingConversationConfirmation["proposedTask"];
   candidateTasks?: TaskReferenceCandidate[];
   expectedResponse: PendingConversationConfirmation["expectedResponse"];
   reason: string;
@@ -403,6 +414,7 @@ export async function persistConversationConfirmation(input: {
     taskId: input.taskId,
     taskTitle: input.taskTitle,
     approvalId: input.approvalId,
+    proposedTask: input.proposedTask,
     candidateTasks: input.candidateTasks ?? [],
     createdAt: new Date().toISOString(),
     status: "pending",

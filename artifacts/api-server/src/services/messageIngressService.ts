@@ -34,9 +34,10 @@ import {
   beginResume,
 } from "./executionCheckpointService.js";
 import { resumeFromCheckpointById } from "./executionCoordinatorService.js";
+import { autoCreateAndDispatch } from "./autoDispatchService.js";
 import { logOrgEvent } from "./auditService.js";
 import type { ProcessMessageResult } from "./conversationService.js";
-import type { ConversationUnderstanding } from "./conversationIntelligenceService.js";
+import type { ConversationUnderstanding, StructuredContent } from "./conversationIntelligenceService.js";
 import {
   cancelTaskFromConversation,
   classifyCanonicalConversationAction,
@@ -283,6 +284,20 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   try {
     const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey);
 
+    if (
+      result.understanding.conversationMode === "task_intent" &&
+      result.understanding.proposedTask
+    ) {
+      await persistConversationConfirmation({
+        organizationId,
+        conversationId,
+        action: "NEW_TASK",
+        proposedTask: result.understanding.proposedTask,
+        expectedResponse: "yes_no",
+        reason: "task_proposal_confirmation",
+      }).catch(() => {});
+    }
+
     await logOrgEvent({
       eventType: "message.ingress.normal",
       organizationId,
@@ -340,6 +355,7 @@ async function addControlMessages(input: {
   action?: ConversationUnderstanding["requestedTaskAction"];
   confidence: number;
   messageType?: Parameters<typeof addMessage>[0]["messageType"];
+  structuredContent?: StructuredContent | null;
 }): Promise<ProcessMessageResult> {
   const userMessage = await addMessage({
     organizationId: input.organizationId,
@@ -359,6 +375,7 @@ async function addControlMessages(input: {
     workforceRoleCode: "chief_of_staff",
     messageType: input.messageType ?? "status_change",
     content: input.response,
+    structuredContent: input.structuredContent ?? null,
   });
   return {
     userMessage,
@@ -370,7 +387,7 @@ async function addControlMessages(input: {
       response: input.response,
       existingTaskId: input.taskId,
     }),
-    structuredContent: null,
+    structuredContent: input.structuredContent ?? null,
   };
 }
 
@@ -504,6 +521,50 @@ async function maybeHandlePendingConfirmation(input: {
       mode: "cancellation_request",
       action: "cancel",
       confidence: 0.99,
+    });
+  }
+
+  if (answer.kind === "confirm" && input.confirmation.action === "NEW_TASK" && input.confirmation.proposedTask) {
+    const created = await autoCreateAndDispatch({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      requesterId: input.userId,
+      proposedTask: input.confirmation.proposedTask,
+    });
+    await markConversationConfirmationResolved({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      confirmation: input.confirmation,
+      status: "confirmed",
+    }).catch(() => {});
+    await persistConversationFocus({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: created.taskId,
+      reason: "confirmed_task_proposal",
+      source: "state_change",
+    }).catch(() => {});
+    return addControlMessages({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: created.taskId,
+      userId: input.userId,
+      content: input.content,
+      response: `Created. I have opened "${created.title}" and prepared the work plan.`,
+      idempotencyKey: input.idempotencyKey,
+      mode: "task_confirmation",
+      action: "create",
+      confidence: 0.99,
+      messageType: "task_created",
+      structuredContent: {
+        type: "task_created",
+        data: {
+          taskId: created.taskId,
+          title: created.title,
+          autoDispatched: created.dispatched,
+          workroomConversationId: created.workroomConversationId,
+        },
+      },
     });
   }
 

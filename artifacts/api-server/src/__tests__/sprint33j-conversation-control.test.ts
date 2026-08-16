@@ -28,7 +28,10 @@ import {
   type ConversationFocus,
   type ConversationTaskSummary,
 } from "../services/conversationControlService.js";
+import { classifyMessage } from "../services/conversationIntelligenceService.js";
 import { planTask } from "../services/chiefOfStaffService.js";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 const reportTask: ConversationTaskSummary = {
   id: "task-rp-report",
@@ -291,6 +294,56 @@ describe("Sprint 33J.1 conversation control resolver", () => {
 
     expect(resolved.resolvedTaskId).toBe(rosterReviewTask.id);
     expect(resolved.requiresClarification).toBe(false);
+    expect(resolved.candidateTasks.map(t => t.taskId)).not.toContain(policyTask.id);
+  });
+
+  it("does not treat unrelated policy review overlap as a plausible roster-review candidate", () => {
+    const resolved = resolveConversationReference({
+      text: "What is the status of the roster review?",
+      intent: "STATUS_QUERY",
+      activeTasks: [policyTask],
+    });
+
+    expect(resolved.resolvedTaskId).toBeUndefined();
+    expect(resolved.candidateTasks).toEqual([]);
+  });
+
+  it("binds typoed proceed to a pending task proposal confirmation", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "please procceed",
+      pendingConfirmation({
+        action: "NEW_TASK",
+        taskId: undefined,
+        taskTitle: undefined,
+        expectedResponse: "yes_no",
+        proposedTask: {
+          title: "Service Delivery Review for Michael",
+          summary: "Prepare a service delivery review for Michael for July 2026.",
+          priority: "normal",
+        },
+      }),
+    );
+
+    expect(answer.kind).toBe("confirm");
+  });
+
+  it("binds no to a pending task proposal without creating or approving anything else", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "No, don't proceed.",
+      pendingConfirmation({
+        action: "NEW_TASK",
+        taskId: undefined,
+        taskTitle: undefined,
+        expectedResponse: "yes_no",
+        proposedTask: {
+          title: "Service Delivery Review for Michael",
+          summary: "Prepare a service delivery review for Michael for July 2026.",
+          priority: "normal",
+        },
+      }),
+    );
+
+    expect(answer.kind).toBe("decline");
   });
 
   it("binds yes to pending CONFIRM_CANCEL instead of generic approval resolution", () => {
@@ -385,5 +438,47 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(plan.intent).toBe("roster.review");
     expect(plan.primarySpecialist).toBe("workforce_rostering_coordinator");
     expect(plan.assignedSpecialists).toEqual(expect.arrayContaining(["workforce_rostering_coordinator"]));
+  });
+
+  it("routes service-delivery live chat fallback proposals to SDC instead of OM", () => {
+    const result = classifyMessage(
+      "Prepare a service delivery review for Michael for July 2026. Review whether his supports were delivered as planned and identify any service delivery gaps.",
+      { conversationId: "conv-1", organizationId: "org-1" },
+    );
+
+    expect(result.conversationMode).toBe("task_intent");
+    expect(result.relatedWorkforceRoles).toContain("service_delivery_coordinator");
+    expect(result.relatedWorkforceRoles).not.toContain("operations_manager");
+  });
+
+  it("routes roster-review live chat fallback proposals to WRC instead of OM", () => {
+    const result = classifyMessage(
+      "Prepare a roster review for Michael for next week, focusing on identifying any coverage gaps.",
+      { conversationId: "conv-1", organizationId: "org-1" },
+    );
+
+    expect(result.conversationMode).toBe("task_intent");
+    expect(result.relatedWorkforceRoles).toContain("workforce_rostering_coordinator");
+    expect(result.relatedWorkforceRoles).not.toContain("operations_manager");
+  });
+
+  it("production route uses unified message ingress before response streaming", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/routes/v1/conversations.ts"), "utf8");
+    const ingressIdx = src.indexOf("const ingressResult = await handleIncomingMessage");
+    const streamIdx = src.indexOf("const words = result.understanding.customerResponse.split");
+
+    expect(ingressIdx).toBeGreaterThan(0);
+    expect(streamIdx).toBeGreaterThan(ingressIdx);
+  });
+
+  it("processUserMessage canonicalises proposal workforce before building task proposal cards", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/services/conversationService.ts"), "utf8");
+    const canonicalIdx = src.indexOf("resolveCanonicalConversationRoles");
+    const assignIdx = src.indexOf("understanding.relatedWorkforceRoles = canonicalRoles.roles");
+    const cardIdx = src.indexOf("structuredContent = buildTaskProposalCard(understanding)");
+
+    expect(canonicalIdx).toBeGreaterThan(0);
+    expect(assignIdx).toBeGreaterThan(canonicalIdx);
+    expect(cardIdx).toBeGreaterThan(assignIdx);
   });
 });

@@ -51,6 +51,9 @@ import {
 import { extractDocumentSearchTerms } from "./conversationContextBuilder.js";
 // Sprint 9.4 — Capability gate
 import { identifyCapabilities } from "./capabilityIdentificationService.js";
+import type { CapabilityIdentificationResult } from "./capabilityIdentificationService.js";
+import { getCapability } from "../lib/capabilityRegistry.js";
+import { getConversationWorkforceContext } from "./conversationWorkforceContextService.js";
 import { decideMixedCapabilityAccess } from "./capabilityAccessDecisionService.js";
 import {
   buildBlockedCapabilityResponse,
@@ -58,6 +61,51 @@ import {
   buildCapabilityBlockedCard,
   buildMixedCapabilityCard,
 } from "./capabilityGateService.js";
+
+async function resolveCanonicalConversationRoles(input: {
+  organizationId: string;
+  capabilityIdResult: CapabilityIdentificationResult;
+  currentRoles: string[];
+}): Promise<{ roles: string[]; changed: boolean }> {
+  const ordered = input.capabilityIdResult.requestedCapabilities
+    .slice()
+    .sort((a, b) => b.confidence - a.confidence);
+  const workforce = await getConversationWorkforceContext(input.organizationId).catch(() => null);
+  const dispatchable = new Set(
+    workforce?.specialists
+      .filter(s => s.availableForDispatch)
+      .map(s => s.code) ?? [],
+  );
+
+  const roles: string[] = [];
+  for (const requested of ordered) {
+    const capability = getCapability(requested.capabilityCode);
+    if (!capability) continue;
+    const primary = capability.eligibleRoles.find(role => dispatchable.has(role)) ?? capability.eligibleRoles[0];
+    if (primary && !roles.includes(primary)) roles.push(primary);
+  }
+
+  if (roles.length > 0 && !roles.includes("chief_of_staff")) roles.push("chief_of_staff");
+  const nextRoles = roles.length > 0 ? roles : input.currentRoles;
+  return {
+    roles: nextRoles,
+    changed: nextRoles.join("|") !== input.currentRoles.join("|"),
+  };
+}
+
+function buildCanonicalTaskProposalResponse(input: {
+  title: string;
+  roles: string[];
+}): string {
+  const roleNames = input.roles
+    .filter(r => r !== "chief_of_staff")
+    .map(r => r.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()))
+    .slice(0, 3);
+  const roleList = roleNames.length > 0
+    ? `\n\nI recommend involving:\n${roleNames.map(r => `• ${r}`).join("\n")}`
+    : "";
+  return `This looks like a formal task request.\n\nProposed task:\n${input.title}${roleList}\n\nWould you like me to create the task and prepare the work plan?`;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -567,6 +615,21 @@ export async function processUserMessage(
       });
 
       if (capabilityIdResult.requestedCapabilities.length > 0) {
+        const canonicalRoles = await resolveCanonicalConversationRoles({
+          organizationId,
+          capabilityIdResult,
+          currentRoles: understanding.relatedWorkforceRoles,
+        });
+        if (canonicalRoles.changed) {
+          understanding.relatedWorkforceRoles = canonicalRoles.roles;
+          if (understanding.conversationMode === "task_intent" && understanding.proposedTask) {
+            understanding.customerResponse = buildCanonicalTaskProposalResponse({
+              title: understanding.proposedTask.title,
+              roles: canonicalRoles.roles,
+            });
+          }
+        }
+
         const mixed = await decideMixedCapabilityAccess(
           organizationId, userId, capabilityIdResult,
           { conversationId, taskId, correlationId },
