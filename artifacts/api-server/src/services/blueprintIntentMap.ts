@@ -135,6 +135,16 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "workforce_compliance.expiry_monitoring": { family: "workforce_compliance", mode: "expiry_monitoring", code: "workforce_compliance_assessment", isAction: false },
   "workforce_compliance.exception_review": { family: "workforce_compliance", mode: "exception_review", code: "workforce_compliance_assessment", isAction: false },
   "workforce_compliance.onboarding_readiness": { family: "workforce_compliance", mode: "onboarding_readiness", code: "workforce_compliance_assessment", isAction: false },
+  "payroll.review": { family: "payroll_workforce_cost", mode: "payroll_review", code: "payroll_workforce_cost_review", isAction: false },
+  "payroll.reconciliation": { family: "payroll_workforce_cost", mode: "reconciliation", code: "payroll_workforce_cost_review", isAction: false },
+  "payroll.exception_review": { family: "payroll_workforce_cost", mode: "exception_review", code: "payroll_workforce_cost_review", isAction: false },
+  "workforce_cost.review": { family: "payroll_workforce_cost", mode: "cost_review", code: "payroll_workforce_cost_review", isAction: false },
+  "workforce_cost.calculate": { family: "payroll_workforce_cost", mode: "cost_calculation", code: "payroll_workforce_cost_review", isAction: false },
+  "award_pay.review": { family: "payroll_workforce_cost", mode: "award_pay_review", code: "payroll_workforce_cost_review", isAction: false },
+  "classification_pay.review": { family: "payroll_workforce_cost", mode: "classification_pay_review", code: "payroll_workforce_cost_review", isAction: false },
+  "allowance.review": { family: "payroll_workforce_cost", mode: "allowance_review", code: "payroll_workforce_cost_review", isAction: false },
+  "overtime.review": { family: "payroll_workforce_cost", mode: "overtime_review", code: "payroll_workforce_cost_review", isAction: false },
+  "penalty_rate.review": { family: "payroll_workforce_cost", mode: "penalty_rate_review", code: "payroll_workforce_cost_review", isAction: false },
 
   // ── Operations ────────────────────────────────────────────────────────────
   "operations.readiness":        { family: "operations", mode: "readiness",       code: "operational_readiness_assessment", isAction: false },

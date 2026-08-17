@@ -764,7 +764,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(8);
+    expect(pending.length).toBeGreaterThanOrEqual(7);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
@@ -773,6 +773,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.some(s => s.code === "service_delivery_coordinator")).toBe(false);
     expect(pending.some(s => s.code === "workforce_rostering_coordinator")).toBe(false);
     expect(pending.some(s => s.code === "workforce_compliance_specialist")).toBe(false);
+    expect(pending.some(s => s.code === "payroll_workforce_cost_officer")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();

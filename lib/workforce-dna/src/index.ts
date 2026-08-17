@@ -191,6 +191,7 @@ export { POLICY_GOVERNANCE_SPECIALIST_DNA } from "./profiles/policyGovernanceSpe
 export { SERVICE_DELIVERY_COORDINATOR_DNA } from "./profiles/serviceDeliveryCoordinator.js";
 export { WORKFORCE_ROSTERING_COORDINATOR_DNA } from "./profiles/workforceRosteringCoordinator.js";
 export { WORKFORCE_COMPLIANCE_SPECIALIST_DNA } from "./profiles/workforceComplianceSpecialist.js";
+export { PAYROLL_WORKFORCE_COST_OFFICER_DNA } from "./profiles/payrollWorkforceCostOfficer.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
 export { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";

@@ -667,6 +667,28 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     ],
     futureOwnerRoleCode: "workforce_compliance_specialist",
   },
+  {
+    code: "payroll_workforce_cost_review",
+    blueprintFamily: "payroll_workforce_cost",
+    title: "Payroll & Workforce Cost Review",
+    purpose: "Review payroll, roster, timesheet, classification, award/rate, allowance, overtime, penalty and workforce-cost evidence to determine payroll treatment, discrepancy risk or cost implications. This does not construct rosters, certify worker eligibility, make HR decisions, execute payroll, provide legal/tax-agent advice or certify accounting/audit outcomes.",
+    category: "financial",
+    supportedModes: ["payroll_review", "reconciliation", "exception_review", "cost_review", "cost_calculation", "award_pay_review", "classification_pay_review", "allowance_review", "overtime_review", "penalty_rate_review", "historical_reconstruction"],
+    primaryDeliverable: "Payroll & Workforce Cost Review report",
+    maturityState: "placeholder",
+    ownerType: "platform_owned",
+    professionalAuthority: "needsops_ai",
+    externalAuthorityRequiredFor: [
+      "legal or industrial-relations advice",
+      "registered tax-agent or accounting certification",
+      "payroll-system mutation, payrun approval or fund transfer",
+      "roster publication or shift allocation",
+      "worker eligibility or credential certification",
+      "employment, disciplinary or performance decision",
+      "clinical, BSP or restrictive-practice professional decision",
+    ],
+    futureOwnerRoleCode: "payroll_workforce_cost_officer",
+  },
 
   // ── Operations ────────────────────────────────────────────────────────────────
   {

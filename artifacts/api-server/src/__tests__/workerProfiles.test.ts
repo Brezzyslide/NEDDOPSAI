@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 39 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC and WCS)", () => {
-    expect(WORKER_PROFILES).toHaveLength(39);
+  it("contains exactly 40 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC, WCS and Payroll)", () => {
+    expect(WORKER_PROFILES).toHaveLength(40);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 39 mapped specialist identities", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(39);
+  it("ROLE_TO_PROFILES covers all 40 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(40);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {

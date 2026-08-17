@@ -221,9 +221,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "finance",
     packCode: "finance",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["payroll_review", "accounts_reconciliation"],
+    capabilities: ["payroll_review", "workforce_cost_analysis", "timesheet_reconciliation"],
   },
   {
     code: "financial_planning_reporting_manager",
@@ -925,12 +925,11 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 8 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 8 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC and WCS)
+  it("all 7 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 7 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC, WCS and Payroll)
     const newlyCodes = [
       "process_asset_coordinator",
       "finance_officer",
-      "payroll_workforce_cost_officer",
       "financial_planning_reporting_manager",
       "people_culture_manager",
       "talent_learning_specialist",
@@ -944,14 +943,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 11 employees have dnaStatus 'approved'", () => {
+  it("exactly 12 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(11);
+    expect(approved).toHaveLength(12);
   });
 
-  it("exactly 8 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 7 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(8);
+    expect(pending).toHaveLength(7);
   });
 });
 
