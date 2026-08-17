@@ -375,7 +375,7 @@ describe("DNA static seed canonical schema compatibility", () => {
     );
 
     expect(eligible.map(entry => entry.roleCode).sort()).toEqual(expected.map(s => s.code).sort());
-    expect(eligible).toHaveLength(14);
+    expect(eligible).toHaveLength(15);
     expect(eligible.every(entry => entry.status === "NEW")).toBe(true);
   });
 

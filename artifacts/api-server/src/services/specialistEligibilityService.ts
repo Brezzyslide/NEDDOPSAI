@@ -81,6 +81,7 @@ const ACTIVE_SPECIALISTS = new Set([
   "payroll_workforce_cost_officer",
   "people_culture_manager",
   "policy_governance_specialist",
+  "process_asset_coordinator",
   "service_delivery_coordinator",
   "talent_learning_specialist",
   "workforce_compliance_specialist",
