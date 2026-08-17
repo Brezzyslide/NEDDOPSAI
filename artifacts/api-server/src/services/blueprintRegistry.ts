@@ -333,6 +333,66 @@ const MEALTIME_SECTIONS = [
   section("RISK_ESCALATION_GAPS", "Risk, Escalation and Gaps", "Known risks, escalation triggers, missing/expired/conflicting clinical evidence.", "Expired, missing or conflicting clinical input must block or escalate completion.", 30),
 ];
 
+function methodGateSection(
+  sectionCode: string,
+  title: string,
+  description: string,
+  sortOrder: number,
+  requiredEvidenceCategories: string[] = [],
+) {
+  return section(
+    sectionCode,
+    title,
+    description,
+    "USER_DEFINITION_REQUIRED: use only approved source material or human-defined method. Do not invent professional assessment logic, thresholds, conclusions or authorisation criteria.",
+    sortOrder,
+    requiredEvidenceCategories,
+    "State the source-approved method used, or explicitly mark USER_DEFINITION_REQUIRED where the method has not yet been supplied.",
+  );
+}
+
+const BEHAVIOUR_REVIEW_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved practitioner, BSP or organisation method that governs the review.", 10, ["behaviour_support_plan"]),
+  section("IMPLEMENTATION_EVIDENCE", "Implementation Evidence", "Evidence showing whether approved BSP strategies are being implemented as written.", "Compare implementation evidence against approved source material only. Do not amend the BSP or create new practitioner strategies.", 20, ["behaviour_implementation_evidence"]),
+  section("VARIANCE_AND_ESCALATION", "Variance and Escalation", "Observed implementation variance, uncertainty, evidence gaps and required practitioner escalation.", "Separate implementation variance from practitioner-level behaviour analysis. Escalate unsupported or practitioner-level conclusions.", 30),
+  section("REVIEW_OUTPUT_LIMITS", "Review Output Limits", "Allowed output, unresolved gaps and professional ownership limits.", "Produce an implementation review/brief only. Do not produce or amend a formal Behaviour Support Plan.", 40),
+];
+
+const BEHAVIOUR_ANALYSIS_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved behaviour-data analysis method, BSP monitoring method or human-defined analysis framework.", 10, ["behaviour_data"]),
+  section("SOURCE_DATA_SUMMARY", "Source Data Summary", "Behaviour data, case notes, incident/context observations and relevant implementation records.", "Summarise the data actually available and identify missing or inconsistent records.", 20, ["behaviour_data"]),
+  section("PATTERN_OBSERVATIONS", "Pattern Observations", "Non-diagnostic observations about possible patterns, triggers, context or implementation variance.", "Describe evidence-backed observations only. Do not perform practitioner-level functional behaviour assessment.", 30),
+  section("ESCALATION_AND_GAPS", "Escalation and Gaps", "Gaps, practitioner questions, implementation actions and escalation requirements.", "Route practitioner-level interpretation or strategy changes to the correct authority.", 40),
+];
+
+const RP_RISK_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved RP governance/risk method or human-defined assessment framework.", 10, ["restrictive_practice_record"]),
+  section("RP_CONTEXT", "Restrictive Practice Context", "Practice type, approval/authority context, participant context and source records.", "Use approved RP records and source evidence. Do not infer authorisation where it is not evidenced.", 20, ["restrictive_practice_record"]),
+  section("RISK_AND_SAFEGUARD_REVIEW", "Risk and Safeguard Review", "Evidence-backed risk, safeguards, monitoring and reporting gaps.", "Identify risk and safeguards without making clinical suitability, legal or prescribing decisions.", 30),
+  section("AUTHORITY_AND_ESCALATION", "Authority and Escalation", "Required APO, practitioner, clinical, safeguarding or regulatory escalation.", "State what authority is required and do not grant or imply authorisation.", 40),
+];
+
+const RP_COMPARISON_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved least-restrictive comparison method or human-defined review framework.", 10, ["restrictive_practice_record"]),
+  section("CURRENT_PRACTICE_AND_EVIDENCE", "Current Practice and Evidence", "Current RP usage, approved requirements and monitoring evidence.", "Use only verified RP records, approved BSP/RP material and implementation evidence.", 20, ["restrictive_practice_record"]),
+  section("ALTERNATIVES_AND_LIMITS", "Alternatives and Limits", "Least-restrictive alternative options, evidence gaps and professional limits.", "Describe alternatives only where source-supported. Practitioner-level strategy amendment requires correct authority.", 30),
+  section("RECOMMENDATION_BOUNDARY", "Recommendation Boundary", "Governance recommendation, escalation, unresolved gaps and approval requirements.", "Do not present alternatives as authorised replacement strategies unless approved by the correct authority.", 40),
+];
+
+const RP_AUTHORISATION_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved RP governance, authority-checking or monthly-reporting method.", 10, ["restrictive_practice_record"]),
+  section("AUTHORITY_CONSENT_STATUS", "Authority and Consent Status", "Evidence of authority, consent, approval period, review date and responsible owner.", "Check and report source evidence only. Do not grant authorisation or make legal determinations.", 20, ["restrictive_practice_record"]),
+  section("USAGE_RECONCILIATION", "Usage Reconciliation", "Usage evidence, monitoring records, variance, missing records and reporting gaps.", "Reconcile evidence against approved reporting period and surface discrepancies.", 30, ["rp_usage_record"]),
+  section("APPROVAL_SUBMISSION_BOUNDARY", "Approval and Submission Boundary", "Human approval, submission readiness, unresolved gaps and external authority boundaries.", "Prepare evidence for approval workflow only. Do not final-submit or represent external approval.", 40),
+];
+
+const UNAUTHORISED_RP_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved unauthorised-RP review method or human-defined safeguarding/governance framework.", 10, ["incident_record", "restrictive_practice_record"]),
+  section("IDENTIFIED_PRACTICE_AND_CONTEXT", "Identified Practice and Context", "What was identified, source records, participant context and immediate evidence.", "Use incident/RP evidence only. Do not make final reportability or legal determinations.", 20, ["incident_record"]),
+  section("SAFEGUARDING_AND_GOVERNANCE_REVIEW", "Safeguarding and Governance Review", "Immediate safety, safeguarding, RP governance and notification considerations.", "Separate ISS safeguarding review from APO RP governance ownership and external reporting authority.", 30),
+  section("ESCALATION_ACTIONS_AND_GAPS", "Escalation, Actions and Gaps", "Escalation route, human approval, missing evidence and unresolved determinations.", "Flag USER_DEFINITION_REQUIRED where method or authority threshold is not supplied.", 40),
+];
+
 // ─── Blueprint Action Taxonomy ────────────────────────────────────────────────
 // These are AGENT ACTIONS, not professional work blueprints.
 // They may be governed by a relevant blueprint (e.g. roster planning),
@@ -1068,7 +1128,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["review", "revise", "implementation"],
     primaryDeliverable: "Behaviour Support Implementation Review report",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     legacyCode: "behaviour_support_plan",
     professionalAuthority: "mixed",
@@ -1079,6 +1139,22 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "practitioner-level behaviour strategy development",
     ],
     futureOwnerRoleCode: "behaviour_support_implementation_specialist",
+    supportingSpecialists: ["authorised_program_officer", "incident_safeguarding_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("behaviour_support_implementation_review", ["implementation_variance_review"], ["behaviour_support_plan", "restrictive_practice_authorisation"]),
+    evidenceContract: participantEvidence(["behaviour_support_plan", "behaviour_implementation_evidence"], ["incident_record", "case_note", "restrictive_practice_record"], 2, "block_completion"),
+    permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true },
+    validationRules: [{ rule: "professional_method_source_or_user_definition_required", required: true, description: "The approved BSP/review method source must be present, or USER_DEFINITION_REQUIRED must remain visible." }],
+    successCriteria: ["Implementation evidence checked against approved source", "BSP amendment boundary preserved", "Practitioner-level questions escalated"],
+    outputTypes: ["behaviour_support_implementation_review"],
+    escalationRules: [
+      { trigger: "bsp_authorship_or_amendment_required", action: "defer_to_credentialed_behaviour_support_practitioner" },
+      { trigger: "rp_governance_required", action: "defer_to_authorised_program_officer" },
+      { trigger: "incident_or_safeguarding_concern", action: "defer_to_incident_safeguarding_specialist" },
+    ],
+    mandatoryCitations: ["behaviour_support_plan", "behaviour_implementation_evidence"],
+    sections: BEHAVIOUR_REVIEW_SECTIONS,
   },
   {
     code: "behaviour_trigger_analysis",
@@ -1088,11 +1164,23 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["analysis"],
     primaryDeliverable: "Behaviour Trigger Analysis report",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["practitioner-level functional behaviour assessment"],
     futureOwnerRoleCode: "behaviour_support_implementation_specialist",
+    supportingSpecialists: ["incident_safeguarding_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("behaviour_context_data_analysis", ["pattern_review"], ["functional_behaviour_assessment", "behaviour_support_plan"]),
+    evidenceContract: participantEvidence(["behaviour_data"], ["case_note", "incident_record", "behaviour_support_plan"], 2, "continue_with_flagged_gaps"),
+    permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true },
+    validationRules: [{ rule: "no_practitioner_level_functional_assessment", required: true, description: "Analysis may identify evidence-backed observations but must not perform practitioner-level functional behaviour assessment." }],
+    successCriteria: ["Source data summarised", "Observed patterns distinguished from functional assessment", "Practitioner questions escalated"],
+    outputTypes: ["behaviour_context_data_analysis"],
+    escalationRules: [{ trigger: "functional_assessment_or_strategy_change_required", action: "defer_to_credentialed_behaviour_support_practitioner" }],
+    mandatoryCitations: ["behaviour_data"],
+    sections: BEHAVIOUR_ANALYSIS_SECTIONS,
   },
 
   // ── Restrictive Practices ─────────────────────────────────────────────────────
@@ -1104,11 +1192,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["risk_assessment"],
     primaryDeliverable: "Restrictive Practice Risk Assessment document",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["clinical suitability", "prescribing or medication decisions", "formal external authorisation"],
     futureOwnerRoleCode: "authorised_program_officer",
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "incident_safeguarding_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("restrictive_practice_risk_assessment", "RP_RISK_ASSESSMENT_{participant}_{date}", ["rp_governance_review"], ["clinical_assessment", "medication_prescribing_decision", "formal_authorisation"]),
+    evidenceContract: participantEvidence(["restrictive_practice_record"], ["behaviour_support_plan", "incident_record", "rp_usage_record"], 2, "block_completion"),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true, authorised_program_owner: true },
+    validationRules: [{ rule: "no_authorisation_or_clinical_decision", required: true, description: "The work may prepare governance/risk evidence but must not authorise, prescribe, or determine clinical suitability." }],
+    successCriteria: ["RP source evidence present", "Authority boundary preserved", "Gaps and escalation surfaced"],
+    outputTypes: ["restrictive_practice_risk_assessment"],
+    escalationRules: [{ trigger: "authorisation_required", action: "defer_to_authorised_program_officer" }, { trigger: "clinical_or_prescribing_question", action: "defer_to_credentialed_clinical_authority" }],
+    mandatoryCitations: ["restrictive_practice_record"],
+    sections: RP_RISK_SECTIONS,
   },
   {
     code: "restrictive_practice_comparison",
@@ -1118,11 +1220,23 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["comparison"],
     primaryDeliverable: "Least Restrictive Alternatives analysis document",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["practitioner-level behaviour strategy amendment"],
     futureOwnerRoleCode: "authorised_program_officer",
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("least_restrictive_alternatives_analysis", ["rp_usage_pattern_review"], ["behaviour_support_plan", "restrictive_practice_authorisation"]),
+    evidenceContract: participantEvidence(["restrictive_practice_record"], ["behaviour_support_plan", "rp_usage_record", "case_note"], 2, "continue_with_flagged_gaps"),
+    permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true, authorised_program_owner: true },
+    validationRules: [{ rule: "alternatives_not_authorised_replacement", required: true, description: "Alternatives may be described only as review options unless approved by the correct authority." }],
+    successCriteria: ["Current practice evidenced", "Alternatives source-supported or flagged", "Approval boundary preserved"],
+    outputTypes: ["least_restrictive_alternatives_analysis"],
+    escalationRules: [{ trigger: "strategy_change_required", action: "defer_to_credentialed_behaviour_support_practitioner" }],
+    mandatoryCitations: ["restrictive_practice_record"],
+    sections: RP_COMPARISON_SECTIONS,
   },
   {
     code: "restrictive_practice_authorisation",
@@ -1132,11 +1246,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["authorisation", "governance", "monthly_reporting"],
     primaryDeliverable: "Restrictive Practice Authorisation package",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["formal authorisation", "legal determination", "clinical or prescribing decision"],
     futureOwnerRoleCode: "authorised_program_officer",
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("restrictive_practice_governance_package", "RP_GOVERNANCE_PACKAGE_{participant}_{date}", ["rp_usage_reconciliation"], ["formal_authorisation", "legal_determination", "clinical_decision"]),
+    evidenceContract: participantEvidence(["restrictive_practice_record"], ["rp_usage_record", "behaviour_support_plan", "consent_or_authority_record"], 2, "block_completion"),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true, authorised_program_owner: true },
+    validationRules: [{ rule: "prepare_not_submit_or_authorise", required: true, description: "Prepare governance/reporting evidence only; do not final-submit or authorise." }],
+    successCriteria: ["Authority/consent evidence checked", "Usage reconciled", "Human approval required before submission"],
+    outputTypes: ["restrictive_practice_governance_package"],
+    escalationRules: [{ trigger: "submission_or_authorisation_requested", action: "require_human_approval_and_apo_review" }],
+    mandatoryCitations: ["restrictive_practice_record", "rp_usage_record"],
+    sections: RP_AUTHORISATION_SECTIONS,
   },
   {
     code: "unauthorised_restrictive_practice_review",
@@ -1146,11 +1274,23 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["review"],
     primaryDeliverable: "Unauthorised Restrictive Practice Review report",
-    maturityState: "placeholder",
+    maturityState: "professional_review",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["formal reportability/legal determination", "formal external regulatory submission"],
     futureOwnerRoleCode: "incident_safeguarding_specialist",
+    supportingSpecialists: ["authorised_program_officer", "behaviour_support_implementation_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("unauthorised_restrictive_practice_review", ["safeguarding_context_review", "rp_governance_review"], ["formal_reportability_determination", "external_regulatory_submission"]),
+    evidenceContract: participantEvidence(["incident_record", "restrictive_practice_record"], ["case_note", "behaviour_support_plan", "rp_usage_record"], 2, "clarification_required"),
+    permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { human_professional_method_owner: true, incident_safeguarding_owner: true },
+    validationRules: [{ rule: "no_final_reportability_or_legal_determination", required: true, description: "Do not make final reportability, legal or external submission determinations." }],
+    successCriteria: ["Incident/RP evidence surfaced", "ISS/APO ownership separated", "Clarification requested when evidence or method is missing"],
+    outputTypes: ["unauthorised_restrictive_practice_review"],
+    escalationRules: [{ trigger: "reportability_or_external_submission_question", action: "defer_to_incident_safeguarding_owner_and_human_approval" }],
+    mandatoryCitations: ["incident_record", "restrictive_practice_record"],
+    sections: UNAUTHORISED_RP_SECTIONS,
   },
 
   // ── Incidents & Safeguarding ──────────────────────────────────────────────────
