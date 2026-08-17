@@ -190,9 +190,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "operations",
     packCode: "operations",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["asset_management", "create_workflow", "draft_document"],
+    capabilities: ["asset_register_review", "asset_lifecycle_review", "process_mapping", "process_review"],
   },
   {
     code: "behaviour_support_implementation_specialist",
@@ -211,9 +211,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "finance",
     packCode: "finance",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["review_invoice", "accounts_reconciliation", "financial_reporting"],
+    capabilities: ["review_invoice", "accounts_reconciliation", "bank_reconciliation", "accounts_payable"],
   },
   {
     code: "payroll_workforce_cost_officer",
@@ -252,9 +252,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "people_culture",
     packCode: "hr",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["recruitment_support", "learning_coordination", "performance_review"],
+    capabilities: ["learning_needs_analysis", "competency_gap_analysis", "mandatory_training", "learning_effectiveness_review"],
   },
   {
     code: "workforce_compliance_specialist",
@@ -925,13 +925,10 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 6 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 6 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC, WCS, Payroll and P&C)
+  it("all 3 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 3 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC, WCS, Payroll, P&C, T&L, PAC and Finance)
     const newlyCodes = [
-      "process_asset_coordinator",
-      "finance_officer",
       "financial_planning_reporting_manager",
-      "talent_learning_specialist",
       "marketing_communications_manager",
       "knowledge_documentation_specialist",
     ];
@@ -942,14 +939,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 13 employees have dnaStatus 'approved'", () => {
+  it("exactly 16 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(13);
+    expect(approved).toHaveLength(16);
   });
 
-  it("exactly 6 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 3 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(6);
+    expect(pending).toHaveLength(3);
   });
 });
 

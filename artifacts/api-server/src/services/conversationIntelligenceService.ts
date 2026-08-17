@@ -182,7 +182,7 @@ const DOMAIN_ROLE_MAP: Array<{ keywords: string[]; roles: string[] }> = [
     roles: ["operations_manager"] },
   { keywords: ["payroll", "wages", "pay run", "timesheet", "overtime", "penalty rate", "allowance", "schads", "award rate", "workforce cost", "labour cost", "labor cost", "shift cost"],
     roles: ["payroll_workforce_cost_officer"] },
-  { keywords: ["invoice", "billing", "budget", "finance", "expenditure"],
+  { keywords: ["invoice", "billing", "accounts payable", "accounts receivable", "supplier invoice", "customer invoice", "bank reconciliation", "financial reconciliation", "payment evidence", "receipt allocation", "expense review", "reimbursement", "credit note", "refund", "finance"],
     roles: ["finance_officer"] },
   { keywords: ["recruit", "hiring", "performance review", "training", "hr policy", "people culture"],
     roles: ["people_culture_manager", "workforce_compliance_specialist"] },

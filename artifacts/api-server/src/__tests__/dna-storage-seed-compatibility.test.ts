@@ -375,7 +375,7 @@ describe("DNA static seed canonical schema compatibility", () => {
     );
 
     expect(eligible.map(entry => entry.roleCode).sort()).toEqual(expected.map(s => s.code).sort());
-    expect(eligible).toHaveLength(15);
+    expect(eligible).toHaveLength(16);
     expect(eligible.every(entry => entry.status === "NEW")).toBe(true);
   });
 
@@ -391,13 +391,13 @@ describe("DNA static seed canonical schema compatibility", () => {
   it("does not make a dna_pending role executable merely because a DB row exists", async () => {
     state.profiles.push({
       id: "pending-role-dna",
-      specialistId: "finance_officer",
+      specialistId: "financial_planning_reporting_manager",
       version: "2.0.0",
       status: "published",
       versionHash: "not-source-truth",
     });
 
-    const inventory = await buildWorkforceDnaPublicationInventory(["finance_officer"]);
+    const inventory = await buildWorkforceDnaPublicationInventory(["financial_planning_reporting_manager"]);
 
     expect(inventory).toHaveLength(1);
     expect(inventory[0]?.dbPublished).toBe(true);

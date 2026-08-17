@@ -1023,6 +1023,30 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     maturityState: "placeholder",
     ownerType: "platform_owned",
   },
+  {
+    code: "operational_finance_reconciliation_review",
+    blueprintFamily: "operational_finance",
+    title: "Operational Finance & Reconciliation Review",
+    purpose:
+      "Review accounts payable, accounts receivable, invoices, payments, receipts, expenses, reimbursements, bank/account/supplier/customer reconciliation, duplicate risks, credit/refund evidence, financial records and finance exceptions without approving payments, fabricating entries, making payroll determinations, owning budgets/forecasts or providing tax/legal/audit advice.",
+    category: "financial",
+    supportedModes: [
+      "reconciliation",
+      "bank_reconciliation",
+      "accounts_payable",
+      "accounts_receivable",
+      "invoice_review",
+      "payment_review",
+      "receipt_review",
+      "expense_review",
+      "transaction_review",
+      "exception_review",
+    ],
+    primaryDeliverable: "Operational Finance & Reconciliation Review report",
+    maturityState: "placeholder",
+    ownerType: "platform_owned",
+    futureOwnerRoleCode: "finance_officer",
+  },
 
   // ── Strategic ─────────────────────────────────────────────────────────────────
   {

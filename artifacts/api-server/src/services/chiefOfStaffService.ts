@@ -76,6 +76,13 @@ const ROUTING_RULES: RouteRule[] = [
   { keywords: ["asset", "equipment", "vehicle", "property", "maintenance"], capabilities: ["asset.review"], weight: 7 },
   // Finance
   { keywords: ["invoice", "invoicing", "claim", "billing"], capabilities: ["finance.invoice_review"], weight: 9 },
+  { keywords: ["accounts payable", "supplier invoice", "supplier statement", "creditor"], capabilities: ["finance.accounts_payable"], weight: 9 },
+  { keywords: ["accounts receivable", "aged receivables", "overdue invoice", "customer payment", "debtor"], capabilities: ["finance.accounts_receivable"], weight: 9 },
+  { keywords: ["bank reconciliation", "bank balance", "bank transaction"], capabilities: ["finance.bank_reconciliation"], weight: 9 },
+  { keywords: ["payment evidence", "payment cleared", "payment discrepancy", "ledger payment"], capabilities: ["finance.payment_review"], weight: 9 },
+  { keywords: ["receipt allocation", "unallocated receipt", "cash receipt"], capabilities: ["finance.receipt_review"], weight: 9 },
+  { keywords: ["expense review", "reimbursement", "receipt evidence"], capabilities: ["finance.expense_review", "finance.reimbursement_review"], weight: 8 },
+  { keywords: ["duplicate invoice", "duplicate transaction", "credit note", "refund"], capabilities: ["finance.duplicate_review", "finance.credit_refund_review"], weight: 9 },
   { keywords: ["payroll", "pay run", "wages", "salary", "award"], capabilities: ["payroll.review"], weight: 9 },
   { keywords: ["budget", "spending", "expenditure", "variance"], capabilities: ["finance.budget_analysis"], weight: 8 },
   { keywords: ["financial report", "financial statement", "p&l", "profit", "loss"], capabilities: ["finance.financial_reporting"], weight: 8 },

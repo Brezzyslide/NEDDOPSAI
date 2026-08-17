@@ -76,6 +76,7 @@ const ACTIVE_SPECIALISTS = new Set([
   "behaviour_support_implementation_specialist",
   "compliance_quality_manager",
   "executive_assistant",
+  "finance_officer",
   "incident_safeguarding_specialist",
   "operations_manager",
   "payroll_workforce_cost_officer",
