@@ -27,7 +27,8 @@ export interface BlueprintRuntimeGateFailure {
     | "claim_integrity"
     | "prohibited_deliverable"
     | "template_required"
-    | "artifact_required";
+    | "artifact_required"
+    | "approval_required";
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];
@@ -39,6 +40,7 @@ export interface BlueprintRuntimeValidationInput {
   rawClaims: RawClaim[];
   evidencePack?: EvidencePack | null;
   artifactId?: string | null;
+  approvalStates?: Record<string, boolean> | null;
 }
 
 export interface BlueprintRuntimeValidationResult {
@@ -89,6 +91,19 @@ export function validateBlueprintRuntimeCompletion(
         message: "Blueprint requires an artifact. Text-only completion is blocked until an artifact is generated and linked.",
       });
     }
+  }
+
+  const requiredApprovals = Object.keys(blueprint.requiredApprovals ?? {});
+  const missingApprovals = requiredApprovals.filter((approval) =>
+    input.approvalStates?.[approval] !== true,
+  );
+  if (missingApprovals.length > 0) {
+    failures.push({
+      gate: "approval_required",
+      state: "awaiting_clarification",
+      message: "Blueprint requires approval before completion.",
+      details: missingApprovals,
+    });
   }
 
   if (evidenceContract) {

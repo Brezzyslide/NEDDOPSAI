@@ -47,6 +47,9 @@ vi.mock("@workspace/db", () => ({
   },
   workBlueprintsTable:  { id: "id", code: "code", organizationId: "organizationId", isActive: "isActive", status: "status" },
   blueprintVersionsTable: { id: "id", blueprintId: "blueprintId", organizationId: "organizationId", createdAt: "createdAt" },
+  blueprintSectionsTable: { id: "id", blueprintId: "blueprintId" },
+  workTemplatesTable: { id: "id" },
+  blueprintIntentMappingsTable: { id: "id" },
 }));
 
 vi.mock("drizzle-orm", () => ({

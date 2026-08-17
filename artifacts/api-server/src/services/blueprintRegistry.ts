@@ -1,7 +1,7 @@
 /**
  * Blueprint Registry — Production Blueprint Architecture
  *
- * Canonical registry of 59 professional work types for the NeedsOps platform.
+ * Canonical registry of professional work-type identities for the NeedsOps platform.
  * Contains IDENTITY AND CLASSIFICATION METADATA ONLY.
  *
  * Professional content (sections, evidence requirements, validation rules, etc.)
@@ -24,6 +24,17 @@ export type BlueprintMaturityState =
   | "superseded";
 
 export type BlueprintOwnerType = "platform_owned" | "organisation_owned";
+
+export const BLUEPRINT_UNRESOLVED_OWNER = "owner_unresolved";
+export const BLUEPRINT_COORDINATOR_ROLE = "chief_of_staff";
+
+export type BlueprintReadinessState =
+  | "placeholder"
+  | "professionally_authored"
+  | "legacy"
+  | "test_only"
+  | "deprecated"
+  | "not_ready";
 
 /** Fields safe to expose publicly (any authenticated user). */
 export interface BlueprintDescriptor {
@@ -90,6 +101,8 @@ export interface RegistryEntry {
   externalAuthorityRequiredFor?: string[];
   /** Future NeedsOps role intended to own this work once professionally authored. */
   futureOwnerRoleCode?: string;
+  /** Optional coordination role. Professional owner remains separate. */
+  coordinatorRoleCode?: string;
 }
 
 // ─── Blueprint Action Taxonomy ────────────────────────────────────────────────
@@ -1233,6 +1246,32 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
 /** Returns the registry entry for a given blueprint code, or undefined. */
 export function getRegistryEntry(code: string): RegistryEntry | undefined {
   return BLUEPRINT_REGISTRY.find(e => e.code === code);
+}
+
+/** Returns the professional owner encoded by registry metadata, if one is known. */
+export function resolveRegistryProfessionalOwner(entry: RegistryEntry): string | null {
+  return entry.futureOwnerRoleCode ?? null;
+}
+
+/**
+ * Returns the DB-safe primarySpecialist value for registry placeholder seeding.
+ *
+ * This deliberately never falls back to Chief of Staff. CoS may coordinate work,
+ * but unresolved professional ownership must remain visible and non-executable.
+ */
+export function getRegistryBlueprintSeedOwner(entry: RegistryEntry): string {
+  return resolveRegistryProfessionalOwner(entry) ?? BLUEPRINT_UNRESOLVED_OWNER;
+}
+
+/**
+ * Registry entries are identity/routing placeholders until domain sprints add
+ * authoritative professional contracts. A known owner is necessary but not
+ * sufficient for production readiness.
+ */
+export function getRegistryBlueprintReadinessState(entry: RegistryEntry): BlueprintReadinessState {
+  if (!resolveRegistryProfessionalOwner(entry)) return "not_ready";
+  if (entry.maturityState === "production_ready") return "professionally_authored";
+  return entry.maturityState;
 }
 
 /** Returns all registry entries for a given family. */

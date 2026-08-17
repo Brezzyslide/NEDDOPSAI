@@ -33,7 +33,11 @@ import { eq, and, or, isNull, desc, ilike, inArray, asc } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
-import { BLUEPRINT_REGISTRY, LEGACY_CODE_MAP } from "./blueprintRegistry.js";
+import {
+  BLUEPRINT_REGISTRY,
+  LEGACY_CODE_MAP,
+  getRegistryBlueprintSeedOwner,
+} from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1951,7 +1955,7 @@ export async function seedBuiltInBlueprints(): Promise<void> {
 }
 
 /**
- * Seed the production Blueprint Registry (59 canonical work types).
+ * Seed the production Blueprint Registry.
  *
  * This is identity/classification metadata only. Existing rows are back-filled
  * with registry metadata but professional instructions/contracts are not
@@ -1960,8 +1964,12 @@ export async function seedBuiltInBlueprints(): Promise<void> {
 export async function seedRegistryBlueprints(): Promise<void> {
   const now = new Date();
   for (const entry of BLUEPRINT_REGISTRY) {
+    const registryOwner = getRegistryBlueprintSeedOwner(entry);
     const existing = await db
-      .select({ id: workBlueprintsTable.id })
+      .select({
+        id: workBlueprintsTable.id,
+        objective: workBlueprintsTable.objective,
+      })
       .from(workBlueprintsTable)
       .where(
         and(
@@ -1972,6 +1980,9 @@ export async function seedRegistryBlueprints(): Promise<void> {
       .limit(1);
 
     if (existing.length > 0) {
+      const existingRow = existing[0]!;
+      const isRegistryPlaceholderRow = typeof existingRow.objective === "string"
+        && existingRow.objective.startsWith("[PLACEHOLDER]");
       await db
         .update(workBlueprintsTable)
         .set({
@@ -1982,9 +1993,10 @@ export async function seedRegistryBlueprints(): Promise<void> {
           purpose: entry.purpose,
           primaryDeliverable: entry.primaryDeliverable,
           permittedOrgOverrides: {},
+          ...(isRegistryPlaceholderRow ? { primarySpecialist: registryOwner } : {}),
           updatedAt: now,
         })
-        .where(eq(workBlueprintsTable.id, existing[0]!.id));
+        .where(eq(workBlueprintsTable.id, existingRow.id));
       continue;
     }
 
@@ -2009,7 +2021,7 @@ export async function seedRegistryBlueprints(): Promise<void> {
       templateVersionPolicy: "pin_at_execution",
       status: "published",
       objective: `[PLACEHOLDER] ${entry.purpose}`,
-      primarySpecialist: "chief_of_staff",
+      primarySpecialist: registryOwner,
       supportingSpecialists: [],
       requiredLibraryKnowledge: [],
       requiredEntityKnowledge: {},

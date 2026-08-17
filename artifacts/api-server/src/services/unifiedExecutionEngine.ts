@@ -429,6 +429,23 @@ export class UnifiedExecutionEngine {
     requesterId: string,
   ): { blocked: false } | { blocked: true; blockedStatus: string } {
     const specialistEntry = getSpecialistByCode(specialistCode);
+    if (!specialistEntry) {
+      void logOrgEvent({
+        organizationId: organisationId,
+        eventType: "specialist.execution_blocked",
+        actorUserId: requesterId,
+        resourceType: "workforce_role",
+        resourceId: specialistCode,
+        metadata: {
+          workforceRoleCode: specialistCode,
+          blocked:           true,
+          blockedStatus:     "unknown_specialist",
+          reason:            "uee_execution_readiness_guard",
+        },
+      }).catch(() => {});
+      return { blocked: true, blockedStatus: "unknown_specialist" };
+    }
+
     const blockedStatus   = specialistEntry?.executionStatus;
     if (
       blockedStatus === "dna_pending" ||
