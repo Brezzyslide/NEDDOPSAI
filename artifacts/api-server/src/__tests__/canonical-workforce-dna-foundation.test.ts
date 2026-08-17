@@ -34,6 +34,7 @@ import {
   TALENT_LEARNING_SPECIALIST_DNA,
   PROCESS_ASSET_COORDINATOR_DNA,
   FINANCE_OFFICER_DNA,
+  FINANCIAL_PLANNING_REPORTING_MANAGER_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
@@ -768,7 +769,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(3);
+    expect(pending.length).toBeGreaterThanOrEqual(2);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
@@ -779,6 +780,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.some(s => s.code === "workforce_compliance_specialist")).toBe(false);
     expect(pending.some(s => s.code === "payroll_workforce_cost_officer")).toBe(false);
     expect(pending.some(s => s.code === "finance_officer")).toBe(false);
+    expect(pending.some(s => s.code === "financial_planning_reporting_manager")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
@@ -802,6 +804,8 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(getSafeDNADescriptor("process_asset_coordinator")).not.toBeNull();
     expect(getCanonicalDNAProfile("finance_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("finance_officer")).not.toBeNull();
+    expect(getCanonicalDNAProfile("financial_planning_reporting_manager")).not.toBeNull();
+    expect(getSafeDNADescriptor("financial_planning_reporting_manager")).not.toBeNull();
   });
 
   it("maps Workforce Rostering Coordinator as the current v2 roster construction specialist", () => {
@@ -856,6 +860,15 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("financial record integrity");
     expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(20);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(FINANCE_OFFICER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Financial Planning & Reporting Manager as the current v2 FP&R specialist", () => {
+    const dna = getCanonicalDNAProfile("financial_planning_reporting_manager");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("financial_planning_reporting_manager");
+    expect(dna?.professionalMission.missionStatement).toContain("management financial intelligence");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(25);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(FINANCIAL_PLANNING_REPORTING_MANAGER_DNA.requiredWorkerProfile.profileCode);
   });
 
   it("maps Service Delivery Coordinator as the current v2 service implementation specialist", () => {

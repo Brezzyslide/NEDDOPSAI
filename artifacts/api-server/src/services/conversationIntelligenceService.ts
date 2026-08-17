@@ -184,6 +184,8 @@ const DOMAIN_ROLE_MAP: Array<{ keywords: string[]; roles: string[] }> = [
     roles: ["payroll_workforce_cost_officer"] },
   { keywords: ["invoice", "billing", "accounts payable", "accounts receivable", "supplier invoice", "customer invoice", "bank reconciliation", "financial reconciliation", "payment evidence", "receipt allocation", "expense review", "reimbursement", "credit note", "refund", "finance"],
     roles: ["finance_officer"] },
+  { keywords: ["budget", "forecast", "cashflow", "cash flow", "scenario", "variance", "management report", "board pack", "financial performance", "profitability", "liquidity"],
+    roles: ["financial_planning_reporting_manager"] },
   { keywords: ["recruit", "hiring", "performance review", "training", "hr policy", "people culture"],
     roles: ["people_culture_manager", "workforce_compliance_specialist"] },
   { keywords: ["marketing", "campaign", "social media", "brand", "content"],

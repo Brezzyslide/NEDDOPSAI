@@ -84,8 +84,9 @@ const ROUTING_RULES: RouteRule[] = [
   { keywords: ["expense review", "reimbursement", "receipt evidence"], capabilities: ["finance.expense_review", "finance.reimbursement_review"], weight: 8 },
   { keywords: ["duplicate invoice", "duplicate transaction", "credit note", "refund"], capabilities: ["finance.duplicate_review", "finance.credit_refund_review"], weight: 9 },
   { keywords: ["payroll", "pay run", "wages", "salary", "award"], capabilities: ["payroll.review"], weight: 9 },
-  { keywords: ["budget", "spending", "expenditure", "variance"], capabilities: ["finance.budget_analysis"], weight: 8 },
-  { keywords: ["financial report", "financial statement", "p&l", "profit", "loss"], capabilities: ["finance.financial_reporting"], weight: 8 },
+  { keywords: ["budget", "budget variance", "actual vs budget", "actual vs forecast"], capabilities: ["finance.budget_analysis", "financial_reporting.variance"], weight: 9 },
+  { keywords: ["forecast", "cashflow", "cash flow", "liquidity", "runway", "scenario", "sensitivity"], capabilities: ["financial_planning.forecast", "financial_planning.cashflow", "financial_planning.scenario"], weight: 9 },
+  { keywords: ["financial report", "financial statement", "management report", "board pack", "p&l", "profit", "loss"], capabilities: ["finance.financial_reporting", "financial_reporting.management"], weight: 8 },
   { keywords: ["accounts", "reconciliation", "bank", "reconcile"], capabilities: ["accounting.reconciliation"], weight: 7 },
   // HR
   { keywords: ["recruit", "hiring", "job ad", "candidate", "interview"], capabilities: ["hr.recruitment"], weight: 9 },
