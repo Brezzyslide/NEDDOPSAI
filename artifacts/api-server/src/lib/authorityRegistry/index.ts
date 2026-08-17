@@ -761,7 +761,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     effectiveDateSupport: "PARTIAL",
     historicalSupport: "PARTIAL",
     freshnessStrategy: "LAST_MODIFIED",
-    applicableWorkforceDomains: ["restrictive_practice_governance", "behaviour_support_implementation", "policy_governance", "service_delivery"],
+    applicableWorkforceDomains: ["restrictive_practice_governance", "behaviour_support_implementation", "people_culture", "policy_governance", "service_delivery"],
     retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
     currentness: { status: "current", verifiedAt: "2026-08-14" },
     provenance: { officialSourceUrl: "https://www.dffh.vic.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },

@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 40 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC, WCS and Payroll)", () => {
-    expect(WORKER_PROFILES).toHaveLength(40);
+  it("contains exactly 41 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC, WCS, Payroll and P&C)", () => {
+    expect(WORKER_PROFILES).toHaveLength(41);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 40 mapped specialist identities", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(40);
+  it("ROLE_TO_PROFILES covers all 41 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(41);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
@@ -193,6 +193,16 @@ describe("Role-to-Worker-Profile mapping", () => {
     expect(profiles[0]?.prohibitedActions).toContain("override_credential_expiry");
     expect(profiles[0]?.prohibitedActions).toContain("publish_roster");
     expect(profiles[0]?.approvalRequiredActions).toContain("update_worker_compliance_status");
+  });
+
+  it("maps People & Culture Manager to the current v2 people-management WorkerProfile", () => {
+    const profiles = getWorkerProfilesForRole("people_culture_manager");
+    expect(profiles.map(p => p.code)).toEqual(["people_culture_manager_profile"]);
+    expect(profiles[0]?.riskLevel).toBe("high");
+    expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query", "email_system"]);
+    expect(profiles[0]?.prohibitedActions).toContain("terminate_employee");
+    expect(profiles[0]?.prohibitedActions).toContain("evidence_free_misconduct_finding");
+    expect(profiles[0]?.approvalRequiredActions).toContain("publish_performance_outcome");
   });
 
   it("getWorkerProfilesForRole returns empty array for unknown role", () => {

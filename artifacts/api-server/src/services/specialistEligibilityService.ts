@@ -79,6 +79,7 @@ const ACTIVE_SPECIALISTS = new Set([
   "incident_safeguarding_specialist",
   "operations_manager",
   "payroll_workforce_cost_officer",
+  "people_culture_manager",
   "policy_governance_specialist",
   "service_delivery_coordinator",
   "workforce_compliance_specialist",
