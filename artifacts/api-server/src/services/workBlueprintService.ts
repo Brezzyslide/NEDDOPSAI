@@ -37,6 +37,7 @@ import {
   BLUEPRINT_REGISTRY,
   LEGACY_CODE_MAP,
   getRegistryBlueprintSeedOwner,
+  type RegistryEntry,
 } from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
 
@@ -1983,6 +1984,8 @@ export async function seedRegistryBlueprints(): Promise<void> {
       const existingRow = existing[0]!;
       const isRegistryPlaceholderRow = typeof existingRow.objective === "string"
         && existingRow.objective.startsWith("[PLACEHOLDER]");
+      const shouldApplyRegistryContract = isRegistryPlaceholderRow
+        || entry.maturityState === "production_ready";
       await db
         .update(workBlueprintsTable)
         .set({
@@ -1993,15 +1996,17 @@ export async function seedRegistryBlueprints(): Promise<void> {
           purpose: entry.purpose,
           primaryDeliverable: entry.primaryDeliverable,
           permittedOrgOverrides: {},
-          ...(isRegistryPlaceholderRow ? { primarySpecialist: registryOwner } : {}),
+          ...(shouldApplyRegistryContract ? registryContractSeedValues(entry, registryOwner) : {}),
           updatedAt: now,
         })
         .where(eq(workBlueprintsTable.id, existingRow.id));
+      await seedRegistryBlueprintSections(entry, existingRow.id, now);
       continue;
     }
 
+    const blueprintId = randomUUID();
     await db.insert(workBlueprintsTable).values({
-      id: randomUUID(),
+      id: blueprintId,
       organizationId: null,
       code: entry.code,
       title: entry.title,
@@ -2012,31 +2017,103 @@ export async function seedRegistryBlueprints(): Promise<void> {
       ownerType: "platform_owned",
       purpose: entry.purpose,
       primaryDeliverable: entry.primaryDeliverable,
-      deliverableContract: null,
-      evidenceContract: null,
-      permittedOrgOverrides: {},
-      defaultTemplateId: null,
-      templateRequired: false,
-      allowedOrgTemplateOverride: false,
-      templateVersionPolicy: "pin_at_execution",
+      deliverableContract: entry.deliverableContract ?? null,
+      evidenceContract: entry.evidenceContract ?? null,
+      permittedOrgOverrides: entry.permittedOrgOverrides ?? {},
+      defaultTemplateId: entry.defaultTemplateId ?? null,
+      templateRequired: entry.templateRequired ?? entry.deliverableContract?.templateRequired ?? false,
+      allowedOrgTemplateOverride: entry.allowedOrgTemplateOverride ?? false,
+      templateVersionPolicy: entry.templateVersionPolicy ?? "pin_at_execution",
       status: "published",
       objective: `[PLACEHOLDER] ${entry.purpose}`,
       primarySpecialist: registryOwner,
-      supportingSpecialists: [],
-      requiredLibraryKnowledge: [],
-      requiredEntityKnowledge: {},
+      supportingSpecialists: entry.supportingSpecialists ?? [],
+      requiredLibraryKnowledge: entry.requiredLibraryKnowledge ?? [],
+      requiredEntityKnowledge: entry.requiredEntityKnowledge ?? {},
       requiredMemories: [],
-      requiredApprovals: {},
-      validationRules: [],
-      qualityRules: [],
-      successCriteria: [],
-      outputTypes: [entry.primaryDeliverable],
-      escalationRules: [],
-      mandatoryCitations: [],
+      requiredApprovals: entry.requiredApprovals ?? {},
+      validationRules: entry.validationRules ?? [],
+      qualityRules: entry.qualityRules ?? [],
+      successCriteria: entry.successCriteria ?? [],
+      outputTypes: entry.outputTypes ?? [entry.primaryDeliverable],
+      escalationRules: entry.escalationRules ?? [],
+      mandatoryCitations: entry.mandatoryCitations ?? [],
       isBuiltIn: true,
       isActive: true,
       createdAt: now,
       updatedAt: now,
+    });
+    await seedRegistryBlueprintSections(entry, blueprintId, now);
+  }
+}
+
+function registryContractSeedValues(entry: RegistryEntry, registryOwner: string) {
+  return {
+    primarySpecialist: registryOwner,
+    supportingSpecialists: entry.supportingSpecialists ?? [],
+    deliverableContract: entry.deliverableContract ?? null,
+    evidenceContract: entry.evidenceContract ?? null,
+    permittedOrgOverrides: entry.permittedOrgOverrides ?? {},
+    defaultTemplateId: entry.defaultTemplateId ?? null,
+    templateRequired: entry.templateRequired ?? entry.deliverableContract?.templateRequired ?? false,
+    allowedOrgTemplateOverride: entry.allowedOrgTemplateOverride ?? false,
+    templateVersionPolicy: entry.templateVersionPolicy ?? "pin_at_execution",
+    requiredLibraryKnowledge: entry.requiredLibraryKnowledge ?? [],
+    requiredEntityKnowledge: entry.requiredEntityKnowledge ?? {},
+    requiredApprovals: entry.requiredApprovals ?? {},
+    validationRules: entry.validationRules ?? [],
+    qualityRules: entry.qualityRules ?? [],
+    successCriteria: entry.successCriteria ?? [],
+    outputTypes: entry.outputTypes ?? [entry.primaryDeliverable],
+    escalationRules: entry.escalationRules ?? [],
+    mandatoryCitations: entry.mandatoryCitations ?? [],
+  };
+}
+
+async function seedRegistryBlueprintSections(
+  entry: RegistryEntry,
+  blueprintId: string,
+  now: Date,
+): Promise<void> {
+  if (!entry.sections || entry.sections.length === 0) return;
+
+  for (const section of entry.sections) {
+    const sectionId = `platform_blueprint_${entry.code}_section_${section.sectionCode.toLowerCase()}`;
+    const existing = await db
+      .select({ id: blueprintSectionsTable.id })
+      .from(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.id, sectionId))
+      .limit(1);
+
+    const values = {
+      blueprintId,
+      sectionCode: section.sectionCode,
+      title: section.title,
+      description: section.description,
+      instructions: section.instructions,
+      required: section.required,
+      minimumContentExpectation: section.minimumContentExpectation,
+      evidenceRequirements: section.evidenceRequirements ?? {},
+      allowedSourceTypes: section.allowedSourceTypes ?? [],
+      prohibitedAssumptions: section.prohibitedAssumptions ?? [],
+      validationRules: section.validationRules ?? [],
+      qualityCriteria: section.qualityCriteria ?? [],
+      sortOrder: section.sortOrder,
+      updatedAt: now,
+    };
+
+    if (existing.length > 0) {
+      await db
+        .update(blueprintSectionsTable)
+        .set(values)
+        .where(eq(blueprintSectionsTable.id, sectionId));
+      continue;
+    }
+
+    await db.insert(blueprintSectionsTable).values({
+      id: sectionId,
+      ...values,
+      createdAt: now,
     });
   }
 }

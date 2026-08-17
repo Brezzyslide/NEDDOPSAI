@@ -58,6 +58,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "goals_review.update":     { family: "goals_review",    mode: "update", code: "participant_goals_review",     isAction: false },
   "periodic_summary.weekly":   { family: "periodic_summary", mode: "weekly",   code: "participant_periodic_summary", isAction: false },
   "periodic_summary.periodic": { family: "periodic_summary", mode: "periodic", code: "participant_periodic_summary", isAction: false },
+  "service_delivery.review":   { family: "service_delivery", mode: "review",   code: "service_delivery_review", isAction: false },
 
   // ── Support Strategy ───────────────────────────────────────────────────────
   "support_strategy.proactive":  { family: "support_strategy", mode: "proactive",  code: "support_strategy_analysis", isAction: false },

@@ -2,16 +2,16 @@
  * Blueprint Registry — Production Blueprint Architecture
  *
  * Canonical registry of professional work-type identities for the NeedsOps platform.
- * Contains IDENTITY AND CLASSIFICATION METADATA ONLY.
- *
- * Professional content (sections, evidence requirements, validation rules, etc.)
- * is NOT populated here. It will be added separately from real organisational
- * source documents once this architecture is accepted.
+ * Contains canonical platform Blueprint identity, classification and, where a
+ * Blueprint has been professionally authored, its production work-product
+ * contract. Tenant templates/configuration may extend this at runtime but must
+ * not silently rewrite professional ownership or safety boundaries.
  *
  * Rules:
  *  - All registry entries are platform_owned.
- *  - All entries start at maturityState = "placeholder".
- *  - No section content, no evidence rules, no internal instructions.
+ *  - Placeholder entries remain identity/classification only.
+ *  - Professionally authored entries may include sections, evidence and
+ *    deliverable contracts for runtime validation.
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -103,7 +103,235 @@ export interface RegistryEntry {
   futureOwnerRoleCode?: string;
   /** Optional coordination role. Professional owner remains separate. */
   coordinatorRoleCode?: string;
+  deliverableContract?: {
+    primaryDeliverable: string;
+    secondaryDeliverables?: string[];
+    allowedInternalAnalysis?: string[];
+    prohibitedDeliverables?: string[];
+    artifactRequired?: boolean;
+    primaryFormat?: string;
+    secondaryFormats?: string[];
+    namingConvention?: string;
+    templateRequired?: boolean;
+    completionRequirements?: string[];
+  };
+  evidenceContract?: {
+    requiredEvidenceCategories?: string[];
+    optionalEvidenceCategories?: string[];
+    allowedSourceTypes?: string[];
+    restrictedSourceTypes?: string[];
+    requiredEntityTypes?: string[];
+    minimumEvidenceCount?: number;
+    freshnessRules?: Record<string, unknown>;
+    claimIntegrityRequired?: boolean;
+    missingEvidenceBehaviour?: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" | "not_applicable_allowed";
+  };
+  permittedOrgOverrides?: {
+    templateSubstitution?: boolean;
+    outputFormatPreferences?: boolean;
+    namingConvention?: boolean;
+    approvalWorkflow?: boolean;
+  };
+  defaultTemplateId?: string | null;
+  templateRequired?: boolean;
+  allowedOrgTemplateOverride?: boolean;
+  templateVersionPolicy?: "pin_at_execution" | "use_latest";
+  supportingSpecialists?: string[];
+  requiredLibraryKnowledge?: string[];
+  requiredEntityKnowledge?: Record<string, unknown>;
+  requiredApprovals?: Record<string, unknown>;
+  validationRules?: Array<{ rule: string; required: boolean; description: string }>;
+  qualityRules?: Array<{ dimension: string; weight: number; description: string }>;
+  successCriteria?: string[];
+  outputTypes?: string[];
+  escalationRules?: Array<{ trigger: string; action: string }>;
+  mandatoryCitations?: string[];
+  sections?: Array<{
+    sectionCode: string;
+    title: string;
+    description: string;
+    instructions: string;
+    required: boolean;
+    minimumContentExpectation: string | null;
+    evidenceRequirements?: Record<string, unknown>;
+    allowedSourceTypes?: string[];
+    prohibitedAssumptions?: string[];
+    validationRules?: Array<{ rule: string; required: boolean; description: string }>;
+    qualityCriteria?: Array<{ criterion: string; description: string }>;
+    sortOrder: number;
+  }>;
 }
+
+const SDC_OWNER = "service_delivery_coordinator";
+const SDC_SUPPORT = [
+  "operations_manager",
+  "behaviour_support_implementation_specialist",
+  "authorised_program_officer",
+  "incident_safeguarding_specialist",
+  "compliance_quality_manager",
+  "knowledge_documentation_specialist",
+];
+
+function docxDeliverable(
+  primaryDeliverable: string,
+  namingConvention: string,
+  allowedInternalAnalysis: string[] = [],
+  prohibitedDeliverables: string[] = [],
+) {
+  return {
+    primaryDeliverable,
+    secondaryDeliverables: ["pdf"],
+    allowedInternalAnalysis,
+    prohibitedDeliverables,
+    artifactRequired: true,
+    primaryFormat: "docx",
+    secondaryFormats: ["pdf"],
+    namingConvention,
+    templateRequired: true,
+    completionRequirements: [
+      "all_required_sections",
+      "material_evidence_reviewed",
+      "unresolved_gaps_flagged",
+      "artifact_generated",
+    ],
+  };
+}
+
+function structuredAnalysisDeliverable(
+  primaryDeliverable: string,
+  allowedInternalAnalysis: string[] = [],
+  prohibitedDeliverables: string[] = [],
+) {
+  return {
+    primaryDeliverable,
+    secondaryDeliverables: [],
+    allowedInternalAnalysis,
+    prohibitedDeliverables,
+    artifactRequired: false,
+    primaryFormat: "structured_analysis",
+    secondaryFormats: [],
+    namingConvention: null,
+    templateRequired: false,
+    completionRequirements: [
+      "all_required_sections",
+      "material_evidence_reviewed",
+      "unresolved_gaps_flagged",
+    ],
+  };
+}
+
+function participantEvidence(
+  requiredEvidenceCategories: string[],
+  optionalEvidenceCategories: string[] = [],
+  minimumEvidenceCount = 2,
+  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+) {
+  return {
+    requiredEvidenceCategories,
+    optionalEvidenceCategories,
+    allowedSourceTypes: [
+      "controlled_document",
+      "participant_record",
+      "service_agreement",
+      "service_delivery_record",
+      "case_note",
+      "risk_assessment",
+      "clinical_professional_document",
+      "behaviour_support_plan",
+      "restrictive_practice_record",
+      "task_upload",
+    ],
+    restrictedSourceTypes: ["memory_only", "user_assertion_only", "uncontrolled_copy"],
+    requiredEntityTypes: ["participant"],
+    minimumEvidenceCount,
+    freshnessRules: {
+      currentnessRequired: true,
+      memoryCannotProveCurrentness: true,
+      historicalPlansRemainHistorical: true,
+      conflictingVersionsRequireResolution: true,
+    },
+    claimIntegrityRequired: true,
+    missingEvidenceBehaviour,
+  };
+}
+
+function section(
+  sectionCode: string,
+  title: string,
+  description: string,
+  instructions: string,
+  sortOrder: number,
+  requiredEvidenceCategories: string[] = [],
+  minimumContentExpectation: string | null = "Material section content must be present or the evidence gap must be explicitly stated.",
+) {
+  return {
+    sectionCode,
+    title,
+    description,
+    instructions,
+    required: true,
+    minimumContentExpectation,
+    evidenceRequirements: requiredEvidenceCategories.length > 0
+      ? { requiredEvidenceCategories, minimumEvidenceCount: 1 }
+      : {},
+    allowedSourceTypes: [
+      "controlled_document",
+      "participant_record",
+      "service_delivery_record",
+      "clinical_professional_document",
+      "task_upload",
+    ],
+    prohibitedAssumptions: [
+      "Do not invent participant facts.",
+      "Do not treat memory or user assertion as current approved evidence.",
+      "Do not change clinical, BSP, RP or safeguarding meaning.",
+    ],
+    validationRules: [],
+    qualityCriteria: [{ criterion: "participant_centred_traceable", description: "Content is participant-centred and traceable to evidence." }],
+    sortOrder,
+  };
+}
+
+const CARE_PLAN_SECTIONS = [
+  section("PARTICIPANT_CONTEXT", "Participant Context", "Participant identity, communication context, service setting and relevant preferences.", "Summarise verified participant context and state gaps rather than inventing missing detail.", 10, ["participant_context"]),
+  section("PURPOSE_AND_SCOPE", "Purpose and Scope", "Why the plan exists and what it does and does not cover.", "Define operational/service-delivery scope and external professional dependencies.", 20),
+  section("GOALS_AND_PREFERENCES", "Goals and Preferences", "Participant goals, preferences, strengths and choice/decision-making considerations.", "Distinguish activity, participation, progress, outcomes and goal achievement.", 30, ["participant_goals"]),
+  section("SUPPORT_REQUIREMENTS", "Support Requirements", "Daily living, community participation, routines and implementation responsibilities.", "Translate approved support requirements into operational support instructions without changing professional meaning.", 40, ["current_support_requirements"]),
+  section("RISKS_SAFEGUARDS_ESCALATION", "Risks, Safeguards and Escalation", "Known support risks, safeguards, emergency/escalation pathways and dependencies.", "Surface risk, BSP, RP, incident, clinical and mealtime dependencies for the correct authority.", 50, ["risk_context"]),
+  section("MONITORING_REVIEW_GAPS", "Monitoring, Review and Evidence Gaps", "Review date, monitoring responsibilities, unresolved conflicts and missing evidence.", "Record currentness, source provenance, review requirements and unresolved evidence gaps.", 60),
+];
+
+const SUPPORT_PLAN_SECTIONS = [
+  section("APPROVED_SUPPORT_BASIS", "Approved Support Basis", "Current approved requirements that govern support implementation.", "Use current approved support evidence; historical arrangements do not silently remain active.", 10, ["current_support_requirements"]),
+  section("IMPLEMENTATION_REQUIREMENTS", "Implementation Requirements", "How approved supports should be implemented day to day.", "Define service-delivery implementation without roster construction or clinical/BSP/RP judgement.", 20),
+  section("ROLES_HANDOFFS_ESCALATION", "Roles, Handoffs and Escalation", "Implementation responsibilities, handoffs and escalation paths.", "Route capacity, rostering, BSP, RP, incident and clinical issues to the correct owner.", 30),
+  section("MONITORING_REVIEW_GAPS", "Monitoring, Review and Gaps", "Monitoring method, review triggers and missing information.", "Surface gaps and unresolved conflicts.", 40),
+];
+
+const SERVICE_REVIEW_SECTIONS = [
+  section("PLANNED_SUPPORT", "Planned Support", "Approved or required support for the review period.", "Identify the current approved service requirement and its source.", 10, ["current_support_requirements"]),
+  section("ACTUAL_DELIVERY", "Actual Delivery", "Evidence of supports actually delivered.", "Use actual service records, case notes and attendance evidence. Scheduled support is not proof of delivery.", 20, ["actual_service_delivery"]),
+  section("VARIANCE_IMPACT", "Variance and Impact", "Variance between planned and actual support, evidence, impact and uncertainty.", "Distinguish service not delivered from delivery not evidenced.", 30),
+  section("ACTION_ESCALATION", "Action and Escalation", "Required follow-up, owner, escalation and review.", "Route operational, incident, clinical, BSP, RP, rostering or quality issues to the correct owner.", 40),
+];
+
+const RISK_SECTIONS = [
+  section("RISK_CONTEXT", "Risk Context", "Scope, participant context and risk domain.", "Identify whether this is service, clinical, behaviour, RP, safeguarding, WHS or environmental risk.", 10, ["participant_context"]),
+  section("RISK_ANALYSIS", "Risk Analysis", "Hazard/concern, exposure, likelihood, consequence, current controls and residual risk.", "Do not collapse professional risk domains; state uncertainty and evidence basis.", 20, ["risk_context"]),
+  section("CONTROLS_AND_ESCALATION", "Controls and Escalation", "Existing controls, control effectiveness, additional controls, owner and review date.", "Escalate clinical, BSP, RP, safeguarding, WHS or external authority matters.", 30),
+];
+
+const EMERGENCY_SECTIONS = [
+  section("PARTICIPANT_EMERGENCY_CONTEXT", "Participant Emergency Context", "Participant-specific emergency support context.", "Identify communication, mobility, health-support and assistance needs from verified evidence.", 10, ["participant_context"]),
+  section("SUPPORT_ACTIONS", "Support Actions", "Participant-specific preparedness, evacuation or emergency support actions.", "Define support actions without impersonating emergency services, fire engineer, WHS certifier or clinician.", 20),
+  section("ESCALATION_AND_GAPS", "Escalation and Gaps", "Contacts, escalation triggers, evidence gaps and review requirements.", "Surface missing emergency-contact, clinical or access evidence.", 30),
+];
+
+const MEALTIME_SECTIONS = [
+  section("CLINICAL_SOURCE_INSTRUCTIONS", "Clinical Source Instructions", "Current credentialed mealtime, dysphagia or swallowing instructions.", "Use only verified current credentialed professional instructions; do not diagnose or prescribe.", 10, ["credentialed_clinical_instruction"]),
+  section("IMPLEMENTATION_SUPPORTS", "Implementation Supports", "Support actions staff must follow during mealtime.", "Translate approved professional instructions into support implementation without changing them.", 20),
+  section("RISK_ESCALATION_GAPS", "Risk, Escalation and Gaps", "Known risks, escalation triggers, missing/expired/conflicting clinical evidence.", "Expired, missing or conflicting clinical input must block or escalate completion.", 30),
+];
 
 // ─── Blueprint Action Taxonomy ────────────────────────────────────────────────
 // These are AGENT ACTIONS, not professional work blueprints.
@@ -135,7 +363,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "Care Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
@@ -145,6 +373,41 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "credentialed health-support planning",
     ],
     futureOwnerRoleCode: "service_delivery_coordinator",
+    supportingSpecialists: SDC_SUPPORT,
+    deliverableContract: docxDeliverable("care_plan", "CARE_PLAN_{participant}_{date}", ["risk_context_review"], ["standalone_risk_assessment"]),
+    evidenceContract: participantEvidence([
+      "participant_context",
+      "current_support_requirements",
+      "participant_goals",
+    ], ["risk_context", "current_bsp", "current_rp_evidence", "credentialed_clinical_instruction"], 3),
+    permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredLibraryKnowledge: ["care_plan", "policy", "legislation"],
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [
+      { rule: "participant_context_present", required: true, description: "Participant context must be present." },
+      { rule: "current_support_requirements_present", required: true, description: "Current approved support requirements must be present or flagged as a blocker." },
+      { rule: "clinical_bsp_rp_boundaries_checked", required: true, description: "Clinical, BSP and RP dependencies must be routed to the correct authority." },
+    ],
+    qualityRules: [
+      { dimension: "participant_centred", weight: 30, description: "Participant goals, preferences and support context are represented respectfully." },
+      { dimension: "evidence_traceability", weight: 30, description: "Material claims are traceable to current evidence." },
+      { dimension: "boundary_integrity", weight: 25, description: "Credentialed/professional boundaries are preserved." },
+      { dimension: "artifact_quality", weight: 15, description: "Document is structured, readable and complete." },
+    ],
+    successCriteria: ["Required sections complete", "Current evidence used", "DOCX artifact generated", "Unresolved gaps surfaced"],
+    outputTypes: ["care_plan"],
+    escalationRules: [
+      { trigger: "clinical_judgement_required", action: "defer_to_external_or_credentialed_health_professional" },
+      { trigger: "bsp_implementation_required", action: "defer_to_behaviour_support_implementation_specialist" },
+      { trigger: "restrictive_practice_governance_required", action: "defer_to_authorised_program_officer" },
+      { trigger: "safeguarding_or_incident_risk", action: "defer_to_incident_safeguarding_specialist" },
+    ],
+    mandatoryCitations: ["participant_context", "current_support_requirements"],
+    sections: CARE_PLAN_SECTIONS,
   },
   {
     code: "individual_support_plan",
@@ -154,7 +417,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "Individual Support Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
@@ -164,6 +427,34 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "legal determination",
     ],
     futureOwnerRoleCode: "service_delivery_coordinator",
+    supportingSpecialists: SDC_SUPPORT,
+    deliverableContract: docxDeliverable("individual_support_plan", "INDIVIDUAL_SUPPORT_PLAN_{participant}_{date}", ["service_delivery_risk_review"], ["standalone_risk_assessment"]),
+    evidenceContract: participantEvidence(["participant_context", "current_support_requirements"], ["participant_goals", "risk_context", "current_bsp", "current_rp_evidence"], 2),
+    permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredLibraryKnowledge: ["care_plan", "policy", "service_agreement"],
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [
+      { rule: "current_support_basis_present", required: true, description: "Current approved support basis must be present." },
+      { rule: "implementation_boundary_checked", required: true, description: "Implementation must not replace clinical, BSP, RP, roster or legal authority." },
+    ],
+    qualityRules: [
+      { dimension: "implementation_clarity", weight: 35, description: "Approved supports are translated into practical implementation requirements." },
+      { dimension: "evidence_traceability", weight: 30, description: "Implementation instructions are traceable to current evidence." },
+      { dimension: "boundary_integrity", weight: 25, description: "External/professional boundaries are preserved." },
+      { dimension: "readability", weight: 10, description: "Plan is clear for service delivery teams." },
+    ],
+    successCriteria: ["Support basis identified", "Implementation requirements documented", "Gaps and escalations surfaced"],
+    outputTypes: ["individual_support_plan"],
+    escalationRules: [
+      { trigger: "roster_construction_required", action: "defer_to_workforce_rostering_coordinator" },
+      { trigger: "clinical_or_bsp_rp_authority_required", action: "defer_to_correct_professional_authority" },
+    ],
+    mandatoryCitations: ["current_support_requirements"],
+    sections: SUPPORT_PLAN_SECTIONS,
   },
   {
     code: "sil_support_plan",
@@ -173,7 +464,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "SIL Support & Implementation Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
@@ -184,6 +475,78 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "legal determination",
     ],
     futureOwnerRoleCode: "service_delivery_coordinator",
+    supportingSpecialists: SDC_SUPPORT,
+    deliverableContract: docxDeliverable("sil_support_plan", "SIL_SUPPORT_PLAN_{participant}_{date}", ["capacity_dependency_review"], ["roster"]),
+    evidenceContract: participantEvidence(["participant_context", "current_support_requirements"], ["sil_quote", "service_agreement", "risk_context", "current_bsp"], 2),
+    permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredLibraryKnowledge: ["care_plan", "policy", "service_agreement"],
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [
+      { rule: "sil_support_requirements_present", required: true, description: "SIL support requirements must be present." },
+      { rule: "roster_boundary_checked", required: true, description: "SIL support planning must not become individual roster construction." },
+    ],
+    qualityRules: [
+      { dimension: "support_requirement_clarity", weight: 35, description: "Support requirements and handoffs are clear." },
+      { dimension: "capacity_boundary", weight: 25, description: "Capacity/roster dependencies are surfaced without constructing rosters." },
+      { dimension: "evidence_traceability", weight: 25, description: "Claims are grounded in current approved evidence." },
+      { dimension: "readability", weight: 15, description: "Document is usable by SIL service teams." },
+    ],
+    successCriteria: ["SIL support needs documented", "Roster/capacity dependencies surfaced", "Professional boundaries preserved"],
+    outputTypes: ["sil_support_plan"],
+    escalationRules: [
+      { trigger: "individual_roster_allocation_required", action: "defer_to_workforce_rostering_coordinator" },
+      { trigger: "capacity_constraint", action: "defer_to_operations_manager" },
+    ],
+    mandatoryCitations: ["current_support_requirements"],
+    sections: SUPPORT_PLAN_SECTIONS,
+  },
+  {
+    code: "service_delivery_review",
+    blueprintFamily: "service_delivery",
+    title: "Service Delivery Review",
+    purpose: "Review whether approved/required participant supports were delivered as planned, what variance occurred, what evidence supports the conclusion and what action or escalation is required.",
+    category: "clinical",
+    supportedModes: ["review"],
+    primaryDeliverable: "Service Delivery Review",
+    maturityState: "production_ready",
+    ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: [
+      "clinical judgement",
+      "formal Behaviour Support Plan amendment",
+      "restrictive-practice authorisation",
+      "safeguarding determination",
+    ],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "workforce_rostering_coordinator", "process_asset_coordinator", "incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: structuredAnalysisDeliverable("service_delivery_review", ["variance_analysis", "risk_context_review"], ["standalone_risk_assessment"]),
+    evidenceContract: participantEvidence(["current_support_requirements", "actual_service_delivery"], ["roster_schedule", "case_notes", "incident_context", "participant_goal_evidence"], 2),
+    requiredLibraryKnowledge: ["care_plan", "service_agreement", "policy"],
+    requiredEntityKnowledge: { participant: true },
+    validationRules: [
+      { rule: "planned_support_identified", required: true, description: "Current planned/approved support must be identified." },
+      { rule: "actual_delivery_evidence_reviewed", required: true, description: "Actual delivery evidence must be reviewed." },
+      { rule: "planned_actual_variance_model_used", required: true, description: "Review must distinguish planned, actual, variance, evidence, impact and action." },
+    ],
+    qualityRules: [
+      { dimension: "planned_actual_reasoning", weight: 35, description: "Planned versus actual support reasoning is explicit." },
+      { dimension: "evidence_traceability", weight: 30, description: "Delivery and variance conclusions are evidence-backed." },
+      { dimension: "gap_discipline", weight: 20, description: "Missing evidence is not treated as proof of non-delivery." },
+      { dimension: "action_clarity", weight: 15, description: "Follow-up owners and escalations are clear." },
+    ],
+    successCriteria: ["Planned and actual evidence reviewed", "Variance and impact stated", "Actions/escalations assigned"],
+    outputTypes: ["service_delivery_review"],
+    escalationRules: [
+      { trigger: "delivery_not_evidenced", action: "surface_as_evidence_gap_not_automatic_non_delivery" },
+      { trigger: "service_not_delivered", action: "escalate_to_service_delivery_and_operations" },
+      { trigger: "incident_or_safeguarding_concern", action: "defer_to_incident_safeguarding_specialist" },
+    ],
+    mandatoryCitations: ["current_support_requirements", "actual_service_delivery"],
+    sections: SERVICE_REVIEW_SECTIONS,
   },
   {
     code: "participant_transition_plan",
@@ -193,8 +556,24 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["create", "review"],
     primaryDeliverable: "Transition & Onboarding Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical judgement", "BSP/RP change", "legal determination"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: SDC_SUPPORT,
+    deliverableContract: docxDeliverable("participant_transition_plan", "PARTICIPANT_TRANSITION_PLAN_{participant}_{date}", ["risk_context_review"], ["standalone_risk_assessment"]),
+    evidenceContract: participantEvidence(["participant_context", "current_support_requirements"], ["service_agreement", "risk_context", "transition_context"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [{ rule: "transition_context_present", required: true, description: "Transition context and current support basis must be present." }],
+    successCriteria: ["Transition support basis identified", "Handoffs and risks surfaced", "Review responsibilities assigned"],
+    outputTypes: ["participant_transition_plan"],
+    mandatoryCitations: ["participant_context", "current_support_requirements"],
+    sections: SUPPORT_PLAN_SECTIONS,
   },
   {
     code: "participant_goals_review",
@@ -204,8 +583,24 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["review", "update"],
     primaryDeliverable: "Goals & Outcomes Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical outcome determination", "BSP/RP determination", "funding or plan-management decision"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("participant_goals_review", ["service_delivery_review"], ["care_plan"]),
+    evidenceContract: participantEvidence(["participant_goals", "actual_service_delivery"], ["participant_feedback", "case_notes", "outcome_evidence"], 2, "continue_with_flagged_gaps"),
+    requiredEntityKnowledge: { participant: true },
+    validationRules: [{ rule: "activity_outcome_boundary_checked", required: true, description: "Activity, participation, progress, outcome and goal achievement must be distinguished." }],
+    successCriteria: ["Goals reviewed with evidence", "Activity not overstated as goal achievement", "Gaps surfaced"],
+    outputTypes: ["participant_goals_review"],
+    mandatoryCitations: ["participant_goals", "actual_service_delivery"],
+    sections: [
+      section("GOAL_CONTEXT", "Goal Context", "Current goals and review period.", "Identify current goals and evidence source.", 10, ["participant_goals"]),
+      section("ACTIVITY_PARTICIPATION_PROGRESS", "Activity, Participation and Progress", "Evidence of activities, participation and progress.", "Do not claim achievement from activity alone.", 20, ["actual_service_delivery"]),
+      section("OUTCOME_AND_GAPS", "Outcome and Gaps", "Outcome evidence, uncertainty, gaps and next actions.", "State whether goal achievement is evidenced, partly evidenced, not evidenced or unresolved.", 30),
+    ],
   },
   {
     code: "participant_periodic_summary",
@@ -215,8 +610,24 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["weekly", "periodic"],
     primaryDeliverable: "Periodic Summary report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical judgement", "BSP/RP amendment", "safeguarding determination"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "incident_safeguarding_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("participant_periodic_summary", ["service_delivery_review"], ["care_plan", "risk_assessment"]),
+    evidenceContract: participantEvidence(["actual_service_delivery"], ["participant_goals", "case_notes", "incident_context"], 1, "continue_with_flagged_gaps"),
+    requiredEntityKnowledge: { participant: true },
+    validationRules: [{ rule: "summary_does_not_overclaim_outcomes", required: true, description: "Summary must distinguish activity from progress/outcome." }],
+    successCriteria: ["Activity and support evidence summarised", "Outcome claims limited to evidence", "Gaps surfaced"],
+    outputTypes: ["participant_periodic_summary"],
+    mandatoryCitations: ["actual_service_delivery"],
+    sections: [
+      section("PERIOD_SCOPE", "Period and Scope", "Reporting period and participant context.", "Define period and available evidence.", 10),
+      section("SUPPORT_ACTIVITY_SUMMARY", "Support and Activity Summary", "Supports delivered, activities and participation evidence.", "Summarise without overstating outcomes.", 20, ["actual_service_delivery"]),
+      section("PROGRESS_RISKS_GAPS", "Progress, Risks and Gaps", "Progress evidence, risks, incidents/escalations and missing information.", "Flag uncertainty and route high-risk issues.", 30),
+    ],
   },
   {
     code: "support_strategy_analysis",
@@ -226,8 +637,20 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["proactive", "reactive", "protective", "combined"],
     primaryDeliverable: "Support Strategy Analysis report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical strategy", "formal Behaviour Support Plan strategy", "restrictive-practice strategy"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "authorised_program_officer", "operations_manager"],
+    deliverableContract: structuredAnalysisDeliverable("support_strategy_analysis", ["risk_context_review"], ["behaviour_support_plan", "restrictive_practice_authorisation"]),
+    evidenceContract: participantEvidence(["participant_context", "current_support_requirements"], ["risk_context", "current_bsp", "current_rp_evidence"], 2),
+    requiredEntityKnowledge: { participant: true },
+    validationRules: [{ rule: "strategy_authority_boundary_checked", required: true, description: "Support strategy must not become BSP/RP/clinical professional strategy." }],
+    successCriteria: ["Support strategy evidence reviewed", "BSP/RP/clinical boundaries preserved", "Actions/escalations clear"],
+    outputTypes: ["support_strategy_analysis"],
+    mandatoryCitations: ["participant_context", "current_support_requirements"],
+    sections: SUPPORT_PLAN_SECTIONS,
   },
   {
     code: "funding_utilisation_review",
@@ -250,8 +673,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["risk_assessment"],
     primaryDeliverable: "Mealtime Risk Assessment document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["dysphagia diagnosis", "texture/fluid modification", "swallowing recommendation", "clinical mealtime prescription"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: docxDeliverable("mealtime_risk_assessment", "MEALTIME_RISK_ASSESSMENT_{participant}_{date}", ["implementation_gap_review"], ["clinical_mealtime_plan"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["incident_context", "current_support_requirements"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "credentialed_clinical_input_present", required: true, description: "Current credentialed mealtime/swallowing instructions must be present." }],
+    successCriteria: ["Clinical source identified", "Implementation risks and gaps surfaced", "No clinical recommendation invented"],
+    outputTypes: ["mealtime_risk_assessment"],
+    escalationRules: [{ trigger: "missing_or_expired_clinical_instruction", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: MEALTIME_SECTIONS,
   },
   {
     code: "mealtime_management_plan_review",
@@ -261,8 +701,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["review"],
     primaryDeliverable: "Mealtime Management Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["dysphagia diagnosis", "texture/fluid modification", "swallowing recommendation", "clinical mealtime prescription"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "incident_safeguarding_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("mealtime_management_plan_review", "MEALTIME_MANAGEMENT_REVIEW_{participant}_{date}", ["implementation_gap_review"], ["clinical_mealtime_plan"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["current_support_requirements", "incident_context"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "current_mealtime_instruction_present", required: true, description: "Current credentialed mealtime plan/instruction must be present." }],
+    successCriteria: ["Current instructions reviewed", "Implementation gaps surfaced", "No clinical recommendations invented"],
+    outputTypes: ["mealtime_management_plan_review"],
+    escalationRules: [{ trigger: "clinical_instruction_missing_expired_or_conflicting", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: MEALTIME_SECTIONS,
   },
   {
     code: "dysphagia_mealtime_safety_review",
@@ -272,8 +729,22 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["dysphagia"],
     primaryDeliverable: "Dysphagia & Mealtime Safety Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["dysphagia diagnosis", "texture/fluid modification", "swallowing recommendation", "clinical mealtime prescription"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: structuredAnalysisDeliverable("dysphagia_mealtime_safety_review", ["implementation_gap_review"], ["clinical_recommendation"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["incident_context", "current_support_requirements"], 2),
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "dysphagia_authority_boundary_checked", required: true, description: "Review must not diagnose dysphagia or prescribe texture/fluid modifications." }],
+    successCriteria: ["Credentialed source checked", "Safety implementation gaps surfaced", "Clinical authority preserved"],
+    outputTypes: ["dysphagia_mealtime_safety_review"],
+    escalationRules: [{ trigger: "missing_or_conflicting_speech_pathology_input", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: MEALTIME_SECTIONS,
   },
   {
     code: "mealtime_support_strategy",
@@ -283,8 +754,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["strategy"],
     primaryDeliverable: "Mealtime Support Strategy document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["dysphagia diagnosis", "texture/fluid modification", "swallowing recommendation", "clinical mealtime prescription"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["behaviour_support_implementation_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("mealtime_support_strategy", "MEALTIME_SUPPORT_STRATEGY_{participant}_{date}", ["implementation_gap_review"], ["clinical_mealtime_plan"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["current_support_requirements"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "clinical_instruction_preserved", required: true, description: "Support strategy must preserve credentialed clinical instructions." }],
+    successCriteria: ["Support actions reflect credentialed instruction", "Gaps surfaced", "No clinical changes invented"],
+    outputTypes: ["mealtime_support_strategy"],
+    escalationRules: [{ trigger: "clinical_instruction_missing_expired_or_conflicting", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: MEALTIME_SECTIONS,
   },
 
   // ── Clinical: Health & Medication ───────────────────────────────────────────
@@ -296,8 +784,26 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["medication_management"],
     primaryDeliverable: "Medication Management Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["prescribing decision", "medication change", "clinical medication judgement"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["compliance_quality_manager", "incident_safeguarding_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("medication_management_review", ["implementation_gap_review"], ["medication_order", "clinical_recommendation"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["medication_record", "incident_context"], 2),
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "prescribing_boundary_checked", required: true, description: "Medication review must not prescribe, change or clinically interpret medication." }],
+    successCriteria: ["Medication support evidence reviewed", "Implementation gaps surfaced", "Clinical authority preserved"],
+    outputTypes: ["medication_management_review"],
+    escalationRules: [{ trigger: "missing_or_conflicting_medication_instruction", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: [
+      section("CURRENT_MEDICATION_SUPPORT_BASIS", "Current Medication Support Basis", "Current authorised medication support instructions.", "Use only verified current authorised medication support evidence.", 10, ["credentialed_clinical_instruction"]),
+      section("IMPLEMENTATION_GAPS", "Implementation Gaps", "Support-process gaps, documentation issues and escalation needs.", "Do not prescribe or change medication; escalate clinical questions.", 20),
+      section("ESCALATION_AND_REVIEW", "Escalation and Review", "Escalation, review and missing/conflicting evidence.", "Surface gaps and unresolved conflict.", 30),
+    ],
   },
   {
     code: "health_support_plan",
@@ -307,8 +813,29 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["health_support"],
     primaryDeliverable: "Health Support Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["clinical assessment", "diagnosis", "prescribing decision", "health-treatment recommendation"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["compliance_quality_manager", "incident_safeguarding_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("health_support_plan", "HEALTH_SUPPORT_PLAN_{participant}_{date}", ["implementation_gap_review"], ["clinical_treatment_plan"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["current_support_requirements", "risk_context"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "clinical_authority_source_present", required: true, description: "Health-support plan must be based on current credentialed professional input." }],
+    successCriteria: ["Clinical source preserved", "Support implementation documented", "Gaps/escalations surfaced"],
+    outputTypes: ["health_support_plan"],
+    escalationRules: [{ trigger: "missing_or_conflicting_clinical_input", action: "seek_credentialed_clinical_input" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: [
+      section("CLINICAL_SOURCE_BASIS", "Clinical Source Basis", "Current credentialed health instructions and source provenance.", "Summarise verified instructions without changing clinical meaning.", 10, ["credentialed_clinical_instruction"]),
+      section("SUPPORT_IMPLEMENTATION", "Support Implementation", "Approved health-support actions staff must implement.", "Translate approved instructions into support actions.", 20),
+      section("ESCALATION_REVIEW_GAPS", "Escalation, Review and Gaps", "Escalation triggers, review date and missing/conflicting evidence.", "Surface gaps and preserve uncertainty.", 30),
+    ],
   },
   {
     code: "health_clinical_escalation_plan",
@@ -318,8 +845,29 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "clinical",
     supportedModes: ["escalation"],
     primaryDeliverable: "Clinical Escalation Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "external_or_credentialed",
+    externalAuthorityRequiredFor: ["clinical triage", "diagnosis", "treatment decision"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: docxDeliverable("health_clinical_escalation_plan", "HEALTH_ESCALATION_PLAN_{participant}_{date}", ["implementation_gap_review"], ["clinical_treatment_plan"]),
+    evidenceContract: participantEvidence(["credentialed_clinical_instruction", "participant_context"], ["emergency_contact", "risk_context"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { clinical_instruction_confirmed: true },
+    validationRules: [{ rule: "clinical_escalation_source_present", required: true, description: "Escalation triggers must be based on authorised clinical/emergency instructions." }],
+    successCriteria: ["Escalation source identified", "Support actions clear", "Clinical authority preserved"],
+    outputTypes: ["health_clinical_escalation_plan"],
+    escalationRules: [{ trigger: "urgent_or_unclear_clinical_escalation", action: "seek_credentialed_clinical_input_or_emergency_services" }],
+    mandatoryCitations: ["credentialed_clinical_instruction"],
+    sections: [
+      section("ESCALATION_CONTEXT", "Escalation Context", "Participant health context and escalation source.", "Use verified clinical/emergency instruction.", 10, ["credentialed_clinical_instruction"]),
+      section("SUPPORT_ACTIONS_AND_CONTACTS", "Support Actions and Contacts", "Required support actions, contacts and escalation pathway.", "Document actions without triage or diagnosis.", 20),
+      section("REVIEW_AND_GAPS", "Review and Gaps", "Review requirements and unresolved evidence gaps.", "Surface missing or conflicting instruction.", 30),
+    ],
   },
 
   // ── Risk: Participant & Environmental ─────────────────────────────────────────
@@ -331,9 +879,30 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "risk",
     supportedModes: ["general", "health", "behavioural", "home"],
     primaryDeliverable: "Risk Assessment document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     legacyCode: "risk_assessment",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical risk determination", "BSP/RP risk determination", "safeguarding determination", "WHS or site technical certification"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "behaviour_support_implementation_specialist", "authorised_program_officer", "incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: docxDeliverable("participant_risk_assessment", "PARTICIPANT_RISK_ASSESSMENT_{participant}_{date}", ["control_review"], ["clinical_risk_assessment", "behaviour_support_plan", "restrictive_practice_authorisation"]),
+    evidenceContract: participantEvidence(["participant_context", "risk_context"], ["current_support_requirements", "current_bsp", "current_rp_evidence", "incident_context", "credentialed_clinical_instruction"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [{ rule: "risk_domain_boundary_checked", required: true, description: "Risk domain and professional owner boundaries must be identified." }],
+    successCriteria: ["Hazard/exposure/likelihood/consequence/control model used", "Residual risk and review owner documented", "Domain boundaries preserved"],
+    outputTypes: ["participant_risk_assessment"],
+    escalationRules: [
+      { trigger: "clinical_risk_authority_required", action: "seek_credentialed_clinical_input" },
+      { trigger: "behaviour_or_rp_risk_required", action: "defer_to_bsi_or_apo" },
+      { trigger: "safeguarding_risk_required", action: "defer_to_incident_safeguarding_specialist" },
+    ],
+    mandatoryCitations: ["participant_context", "risk_context"],
+    sections: RISK_SECTIONS,
   },
   {
     code: "community_access_risk_assessment",
@@ -343,8 +912,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "risk",
     supportedModes: ["community_access"],
     primaryDeliverable: "Community Access Risk Assessment document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical risk determination", "BSP/RP risk determination", "WHS/site technical certification"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "behaviour_support_implementation_specialist", "authorised_program_officer", "incident_safeguarding_specialist"],
+    deliverableContract: docxDeliverable("community_access_risk_assessment", "COMMUNITY_ACCESS_RISK_{participant}_{date}", ["control_review"], ["clinical_risk_assessment"]),
+    evidenceContract: participantEvidence(["participant_context", "risk_context"], ["current_support_requirements", "current_bsp", "incident_context"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [{ rule: "community_access_scope_present", required: true, description: "Community access context and risk scope must be present." }],
+    successCriteria: ["Community access risks identified", "Controls and owner documented", "External/professional boundaries preserved"],
+    outputTypes: ["community_access_risk_assessment"],
+    escalationRules: [{ trigger: "safeguarding_or_behaviour_risk", action: "defer_to_correct_professional_owner" }],
+    mandatoryCitations: ["participant_context", "risk_context"],
+    sections: RISK_SECTIONS,
   },
   {
     code: "site_environmental_risk_assessment",
@@ -378,8 +964,21 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "emergency",
     supportedModes: ["evacuation"],
     primaryDeliverable: "Evacuation & Emergency Readiness Assessment document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["fire engineering", "emergency-services authority", "WHS technical certification", "clinical authority"],
+    futureOwnerRoleCode: "operations_manager",
+    supportingSpecialists: [SDC_OWNER, "process_asset_coordinator", "compliance_quality_manager", "incident_safeguarding_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("evacuation_emergency_assessment", ["participant_support_dependency_review"], ["fire_safety_certification"]),
+    evidenceContract: participantEvidence(["participant_context", "risk_context"], ["site_emergency_plan", "mobility_support_evidence", "credentialed_clinical_instruction"], 2),
+    requiredEntityKnowledge: { participant: true },
+    validationRules: [{ rule: "technical_authority_boundary_checked", required: true, description: "Assessment must not impersonate fire, WHS, emergency-services or clinical authority." }],
+    successCriteria: ["Participant evacuation support dependencies identified", "Technical authority boundaries preserved", "Gaps/escalations surfaced"],
+    outputTypes: ["evacuation_emergency_assessment"],
+    escalationRules: [{ trigger: "technical_fire_or_whs_certification_required", action: "seek_external_or_authorised_technical_authority" }],
+    mandatoryCitations: ["participant_context", "risk_context"],
+    sections: EMERGENCY_SECTIONS,
   },
   {
     code: "participant_disaster_risk_assessment",
@@ -389,8 +988,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "emergency",
     supportedModes: ["participant"],
     primaryDeliverable: "Participant Disaster & Emergency Risk Assessment document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical authority", "fire/WHS technical certification", "emergency-services authority"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "process_asset_coordinator", "incident_safeguarding_specialist", "compliance_quality_manager"],
+    deliverableContract: docxDeliverable("participant_disaster_risk_assessment", "PARTICIPANT_DISASTER_RISK_{participant}_{date}", ["emergency_support_review"], ["fire_safety_certification"]),
+    evidenceContract: participantEvidence(["participant_context", "risk_context"], ["mobility_support_evidence", "emergency_contact", "credentialed_clinical_instruction"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [{ rule: "participant_emergency_support_scope_present", required: true, description: "Participant-specific disaster/emergency support scope must be present." }],
+    successCriteria: ["Participant emergency risks documented", "Support actions and gaps identified", "Technical/clinical authority preserved"],
+    outputTypes: ["participant_disaster_risk_assessment"],
+    escalationRules: [{ trigger: "technical_or_clinical_authority_required", action: "seek_correct_external_or_internal_authority" }],
+    mandatoryCitations: ["participant_context", "risk_context"],
+    sections: EMERGENCY_SECTIONS,
   },
   {
     code: "disaster_emergency_management_plan",
@@ -422,8 +1038,25 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "emergency",
     supportedModes: ["participant"],
     primaryDeliverable: "Individual Emergency Preparedness Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "mixed",
+    externalAuthorityRequiredFor: ["clinical authority", "fire/WHS technical certification", "emergency-services authority"],
+    futureOwnerRoleCode: SDC_OWNER,
+    supportingSpecialists: ["operations_manager", "process_asset_coordinator", "incident_safeguarding_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("individual_emergency_preparedness_plan", "INDIVIDUAL_EMERGENCY_PLAN_{participant}_{date}", ["emergency_support_review"], ["fire_safety_certification"]),
+    evidenceContract: participantEvidence(["participant_context", "risk_context"], ["mobility_support_evidence", "emergency_contact", "credentialed_clinical_instruction"], 2),
+    templateRequired: true,
+    allowedOrgTemplateOverride: true,
+    templateVersionPolicy: "pin_at_execution",
+    requiredEntityKnowledge: { participant: true },
+    requiredApprovals: { participant_support_content_owner: true },
+    validationRules: [{ rule: "individual_emergency_support_needs_present", required: true, description: "Individual emergency support needs must be present or flagged." }],
+    successCriteria: ["Participant-specific emergency support actions documented", "Contacts and escalation captured", "Gaps surfaced"],
+    outputTypes: ["individual_emergency_preparedness_plan"],
+    escalationRules: [{ trigger: "missing_emergency_or_clinical_source", action: "seek_correct_authority_or_clarification" }],
+    mandatoryCitations: ["participant_context", "risk_context"],
+    sections: EMERGENCY_SECTIONS,
   },
 
   // ── Behaviour Support ─────────────────────────────────────────────────────────
