@@ -35,6 +35,7 @@ import { WORKFORCE_ROSTERING_COORDINATOR_DNA } from "./profiles/workforceRosteri
 import { WORKFORCE_COMPLIANCE_SPECIALIST_DNA } from "./profiles/workforceComplianceSpecialist.js";
 import { PAYROLL_WORKFORCE_COST_OFFICER_DNA } from "./profiles/payrollWorkforceCostOfficer.js";
 import { PEOPLE_CULTURE_MANAGER_DNA } from "./profiles/peopleCultureManager.js";
+import { TALENT_LEARNING_SPECIALIST_DNA } from "./profiles/talentLearningSpecialist.js";
 import { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 import { INCIDENT_MANAGEMENT_DNA } from "./profiles/incidentManagement.js";
 import { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";
@@ -70,6 +71,7 @@ const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
   ["workforce_compliance_specialist", WORKFORCE_COMPLIANCE_SPECIALIST_DNA],
   ["payroll_workforce_cost_officer", PAYROLL_WORKFORCE_COST_OFFICER_DNA],
   ["people_culture_manager", PEOPLE_CULTURE_MANAGER_DNA],
+  ["talent_learning_specialist", TALENT_LEARNING_SPECIALIST_DNA],
   ["document_specialist",  DOCUMENT_SPECIALIST_DNA],
   ["incident_management",  INCIDENT_MANAGEMENT_DNA],
 ]);

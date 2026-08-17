@@ -82,6 +82,7 @@ const ACTIVE_SPECIALISTS = new Set([
   "people_culture_manager",
   "policy_governance_specialist",
   "service_delivery_coordinator",
+  "talent_learning_specialist",
   "workforce_compliance_specialist",
   "workforce_rostering_coordinator",
 ]);

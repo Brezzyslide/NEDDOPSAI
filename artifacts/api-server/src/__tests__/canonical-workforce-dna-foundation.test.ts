@@ -31,6 +31,7 @@ import {
   WORKFORCE_ROSTERING_COORDINATOR_DNA,
   WORKFORCE_COMPLIANCE_SPECIALIST_DNA,
   PEOPLE_CULTURE_MANAGER_DNA,
+  TALENT_LEARNING_SPECIALIST_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
@@ -765,7 +766,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(6);
+    expect(pending.length).toBeGreaterThanOrEqual(5);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
@@ -792,6 +793,8 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(getSafeDNADescriptor("workforce_compliance_specialist")).not.toBeNull();
     expect(getCanonicalDNAProfile("people_culture_manager")).not.toBeNull();
     expect(getSafeDNADescriptor("people_culture_manager")).not.toBeNull();
+    expect(getCanonicalDNAProfile("talent_learning_specialist")).not.toBeNull();
+    expect(getSafeDNADescriptor("talent_learning_specialist")).not.toBeNull();
   });
 
   it("maps Workforce Rostering Coordinator as the current v2 roster construction specialist", () => {
@@ -819,6 +822,15 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("people-management");
     expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(24);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(PEOPLE_CULTURE_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Talent & Learning Specialist as the current v2 learning specialist", () => {
+    const dna = getCanonicalDNAProfile("talent_learning_specialist");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("talent_learning_specialist");
+    expect(dna?.professionalMission.missionStatement).toContain("workforce capability");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(24);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(TALENT_LEARNING_SPECIALIST_DNA.requiredWorkerProfile.profileCode);
   });
 
   it("maps Service Delivery Coordinator as the current v2 service implementation specialist", () => {

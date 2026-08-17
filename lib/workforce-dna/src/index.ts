@@ -193,6 +193,7 @@ export { WORKFORCE_ROSTERING_COORDINATOR_DNA } from "./profiles/workforceRosteri
 export { WORKFORCE_COMPLIANCE_SPECIALIST_DNA } from "./profiles/workforceComplianceSpecialist.js";
 export { PAYROLL_WORKFORCE_COST_OFFICER_DNA } from "./profiles/payrollWorkforceCostOfficer.js";
 export { PEOPLE_CULTURE_MANAGER_DNA } from "./profiles/peopleCultureManager.js";
+export { TALENT_LEARNING_SPECIALIST_DNA } from "./profiles/talentLearningSpecialist.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
 export { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";

@@ -434,7 +434,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     effectiveDateSupport: "PARTIAL",
     historicalSupport: "PARTIAL",
     freshnessStrategy: "LAST_MODIFIED",
-    applicableWorkforceDomains: ["compliance_quality", "restrictive_practice_governance", "behaviour_support_implementation", "incident_safeguarding", "policy_governance"],
+    applicableWorkforceDomains: ["compliance_quality", "restrictive_practice_governance", "behaviour_support_implementation", "incident_safeguarding", "policy_governance", "talent_learning"],
     retrievalPolicy: {
       mode: "official_domain_allowlist",
       preferredAccess: "html",
@@ -478,7 +478,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     status: "active",
     evidenceAuthorityClass: "primary",
     sourceClass: "regulator",
-    applicableWorkforceDomains: ["payroll_workforce_cost", "people_culture", "workforce_compliance", "policy_governance"],
+    applicableWorkforceDomains: ["payroll_workforce_cost", "people_culture", "workforce_compliance", "policy_governance", "talent_learning"],
     retrievalPolicy: {
       mode: "official_domain_allowlist",
       preferredAccess: "html",
@@ -517,7 +517,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     effectiveDateSupport: "SUPPORTED",
     historicalSupport: "PARTIAL",
     freshnessStrategy: "API_CURRENTNESS",
-    applicableWorkforceDomains: ["payroll_workforce_cost", "workforce_compliance", "people_culture", "policy_governance"],
+    applicableWorkforceDomains: ["payroll_workforce_cost", "workforce_compliance", "people_culture", "policy_governance", "talent_learning"],
     retrievalPolicy: {
       mode: "api_preferred",
       preferredAccess: "api",
@@ -581,7 +581,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     status: "active",
     evidenceAuthorityClass: "primary",
     sourceClass: "government_agency",
-    applicableWorkforceDomains: ["operations", "people_culture", "workforce_compliance", "policy_governance", "compliance_quality"],
+    applicableWorkforceDomains: ["operations", "people_culture", "workforce_compliance", "policy_governance", "compliance_quality", "talent_learning"],
     retrievalPolicy: {
       mode: "official_domain_allowlist",
       preferredAccess: "download",
@@ -662,7 +662,7 @@ const AUTHORITY_REGISTRY_ENTRIES: AuthorityRegistryEntry[] = [
     effectiveDateSupport: "PARTIAL",
     historicalSupport: "PARTIAL",
     freshnessStrategy: "LAST_MODIFIED",
-    applicableWorkforceDomains: ["policy_governance", "people_culture", "service_delivery", "compliance_quality"],
+    applicableWorkforceDomains: ["policy_governance", "people_culture", "service_delivery", "compliance_quality", "talent_learning"],
     retrievalPolicy: { mode: "official_domain_allowlist", preferredAccess: "html", freshnessCheck: "last_modified" },
     currentness: { status: "current", verifiedAt: "2026-08-14" },
     provenance: { officialSourceUrl: "https://humanrights.gov.au/", verifiedBy: "source_registry_bootstrap", verifiedAt: "2026-08-14" },
