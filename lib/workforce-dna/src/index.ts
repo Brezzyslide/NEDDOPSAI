@@ -197,6 +197,7 @@ export { TALENT_LEARNING_SPECIALIST_DNA } from "./profiles/talentLearningSpecial
 export { PROCESS_ASSET_COORDINATOR_DNA } from "./profiles/processAssetCoordinator.js";
 export { FINANCE_OFFICER_DNA } from "./profiles/financeOfficer.js";
 export { FINANCIAL_PLANNING_REPORTING_MANAGER_DNA } from "./profiles/financialPlanningReportingManager.js";
+export { MARKETING_COMMUNICATIONS_MANAGER_DNA } from "./profiles/marketingCommunicationsManager.js";
 export { DOCUMENT_SPECIALIST_DNA } from "./profiles/documentSpecialist.js";
 export { CHIEF_OF_STAFF_DNA_V2 } from "./profiles/chiefOfStaffV2.js";
 export { EXECUTIVE_ASSISTANT_DNA_V1 } from "./profiles/executiveAssistant.js";

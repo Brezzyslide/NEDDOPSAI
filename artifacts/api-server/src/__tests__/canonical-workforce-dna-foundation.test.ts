@@ -35,6 +35,7 @@ import {
   PROCESS_ASSET_COORDINATOR_DNA,
   FINANCE_OFFICER_DNA,
   FINANCIAL_PLANNING_REPORTING_MANAGER_DNA,
+  MARKETING_COMMUNICATIONS_MANAGER_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
@@ -769,7 +770,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(2);
+    expect(pending.length).toBeGreaterThanOrEqual(1);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
@@ -781,6 +782,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.some(s => s.code === "payroll_workforce_cost_officer")).toBe(false);
     expect(pending.some(s => s.code === "finance_officer")).toBe(false);
     expect(pending.some(s => s.code === "financial_planning_reporting_manager")).toBe(false);
+    expect(pending.some(s => s.code === "marketing_communications_manager")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
@@ -869,6 +871,15 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("management financial intelligence");
     expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(25);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(FINANCIAL_PLANNING_REPORTING_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Marketing & Communications Manager as the current v2 marketing specialist", () => {
+    const dna = getCanonicalDNAProfile("marketing_communications_manager");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("marketing_communications_manager");
+    expect(dna?.professionalMission.missionStatement).toContain("verified organisation");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(24);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(MARKETING_COMMUNICATIONS_MANAGER_DNA.requiredWorkerProfile.profileCode);
   });
 
   it("maps Service Delivery Coordinator as the current v2 service implementation specialist", () => {

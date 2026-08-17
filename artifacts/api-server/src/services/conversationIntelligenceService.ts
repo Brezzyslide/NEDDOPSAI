@@ -188,7 +188,7 @@ const DOMAIN_ROLE_MAP: Array<{ keywords: string[]; roles: string[] }> = [
     roles: ["financial_planning_reporting_manager"] },
   { keywords: ["recruit", "hiring", "performance review", "training", "hr policy", "people culture"],
     roles: ["people_culture_manager", "workforce_compliance_specialist"] },
-  { keywords: ["marketing", "campaign", "social media", "brand", "content"],
+  { keywords: ["marketing", "campaign", "social media", "brand", "content", "newsletter", "website copy", "media release", "press release", "stakeholder communication", "crisis communication", "audience", "positioning"],
     roles: ["marketing_communications_manager"] },
   { keywords: ["document", "report", "draft", "email", "letter", "knowledge base"],
     roles: ["knowledge_documentation_specialist", "chief_of_staff"] },

@@ -32,6 +32,7 @@ import { OPERATIONS_MANAGER_DNA } from "./profiles/operationsManager.js";
 import { PROCESS_ASSET_COORDINATOR_DNA } from "./profiles/processAssetCoordinator.js";
 import { FINANCE_OFFICER_DNA } from "./profiles/financeOfficer.js";
 import { FINANCIAL_PLANNING_REPORTING_MANAGER_DNA } from "./profiles/financialPlanningReportingManager.js";
+import { MARKETING_COMMUNICATIONS_MANAGER_DNA } from "./profiles/marketingCommunicationsManager.js";
 import { POLICY_GOVERNANCE_SPECIALIST_DNA } from "./profiles/policyGovernanceSpecialist.js";
 import { SERVICE_DELIVERY_COORDINATOR_DNA } from "./profiles/serviceDeliveryCoordinator.js";
 import { WORKFORCE_ROSTERING_COORDINATOR_DNA } from "./profiles/workforceRosteringCoordinator.js";
@@ -72,6 +73,7 @@ const REGISTRY: ReadonlyMap<string, DNAProfile> = new Map([
   ["process_asset_coordinator", PROCESS_ASSET_COORDINATOR_DNA],
   ["finance_officer", FINANCE_OFFICER_DNA],
   ["financial_planning_reporting_manager", FINANCIAL_PLANNING_REPORTING_MANAGER_DNA],
+  ["marketing_communications_manager", MARKETING_COMMUNICATIONS_MANAGER_DNA],
   ["service_delivery_coordinator", SERVICE_DELIVERY_COORDINATOR_DNA],
   ["workforce_rostering_coordinator", WORKFORCE_ROSTERING_COORDINATOR_DNA],
   ["workforce_compliance_specialist", WORKFORCE_COMPLIANCE_SPECIALIST_DNA],

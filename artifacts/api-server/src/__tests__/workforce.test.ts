@@ -420,7 +420,7 @@ describe("Platform admin separation", () => {
   });
 
   it("marketing pack has at least one active v2 specialist (dna_pending or available)", () => {
-    // Sprint 11: marketing_communications_manager is dna_pending (DNA design in progress).
+    // Sprint 33R: marketing_communications_manager is the active current-v2 marketing specialist.
     // getSpecialistsByPack may include deprecated legacy entries — verify at least one is current.
     const marketing = getSpecialistsByPack("marketing");
     expect(marketing.length).toBeGreaterThan(0);

@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 45 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC, WCS, Payroll, P&C, T&L, PAC, Finance and FP&R)", () => {
-    expect(WORKER_PROFILES).toHaveLength(45);
+  it("contains exactly 46 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC, WCS, Payroll, P&C, T&L, PAC, Finance, FP&R and Marketing)", () => {
+    expect(WORKER_PROFILES).toHaveLength(46);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 45 mapped specialist identities", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(45);
+  it("ROLE_TO_PROFILES covers all 46 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(46);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
@@ -233,7 +233,7 @@ describe("Role-to-Worker-Profile mapping", () => {
 
 describe("Active Worker Profile filtering", () => {
   it("getActiveWorkerProfilesForRole excludes coming_soon profiles", () => {
-    // Marketing roles have coming_soon profiles
+    // Deprecated legacy marketing roles still have coming_soon profiles.
     const profiles = getActiveWorkerProfilesForRole("marketing_director");
     expect(profiles.filter(p => p.status === "coming_soon")).toHaveLength(0);
   });
@@ -274,7 +274,7 @@ describe("Architecture correctness — Workforce Role vs Worker Profile separati
     expect(profile?.approvalRequiredActions).toContain("submit_rp_report_to_ndis");
   });
 
-  it("all marketing profiles are coming_soon (pack not yet released)", () => {
+  it("deprecated legacy marketing profiles remain coming_soon compatibility shells", () => {
     const marketingRoles = ["marketing_director", "content_strategist", "campaign_manager", "brand_manager", "social_media_specialist"];
     for (const role of marketingRoles) {
       const profiles = getWorkerProfilesForRole(role);

@@ -14,7 +14,7 @@
  * - One Workforce Role may reference one or more Worker Profiles.
  * - OpenClaw (future) selects the appropriate profile at execution time.
  * - No browser domains, local paths, or connector credentials are live yet.
- * - Marketing pack profiles are status: "coming_soon".
+ * - Deprecated legacy Marketing profiles remain status: "coming_soon".
  */
 
 import type {
@@ -1137,7 +1137,58 @@ export const WORKER_PROFILES: WorkerProfile[] = [
     version: "1.0.0",
   },
 
-  // ── Marketing Workforce (coming_soon) ───────────────────────────────────────
+  // ── Marketing Workforce ────────────────────────────────────────────────────
+
+  {
+    id: "wp_marketing_communications_manager",
+    code: "marketing_communications_manager_profile",
+    displayName: "Marketing & Communications Manager - Worker Profile",
+    description: "Current-v2 marketing and communications profile. May read approved organisation/service facts, professional-owner inputs, brand materials, campaign data, audience research and analytics; draft content, campaigns, communications, public copy, social plans and performance reviews; and prepare external publication packages for approval. Public publication, mass sends, paid launch, crisis statements, material public claims and testimonials require approval. False claims, participant-identifying content without consent, incident disclosures, deceptive marketing and professional-claim fabrication are prohibited.",
+    allowedExecutionChannels: ["internal_api", "document_store", "web_browser", "email_system"],
+    allowedToolCategories: ["communication_tools", "document_tools", "search_tools", "reporting_tools", "calendar_tools"],
+    allowedConnectorCategories: ["document_management", "email_system"],
+    allowedBrowserDomains: [],
+    allowedLocalPathCategories: [],
+    allowedApplicationCategories: [],
+    prohibitedActions: [
+      "publish_unverified_professional_claim",
+      "publish_participant_identifying_content_without_consent",
+      "publish_false_testimonial",
+      "invent_marketing_statistic",
+      "invent_accreditation_or_award",
+      "invent_participant_outcome",
+      "invent_customer_number_or_partnership",
+      "invent_regulatory_approval",
+      "invent_pricing_or_fake_scarcity",
+      "make_legal_or_regulatory_statement",
+      "disclose_incident_or_safeguarding_information",
+      "make_clinical_claim_without_evidence",
+      "make_bsp_or_rp_claim_without_specialist_evidence",
+      "make_financial_claim_without_verified_evidence",
+      "publish_discriminatory_targeting",
+      "publish_deceptive_marketing",
+      "alter_policy_meaning",
+      "bypass_publication_approval",
+    ],
+    approvalRequiredActions: [
+      "post_to_social_media",
+      "publish_website_content",
+      "send_mass_email_or_newsletter",
+      "launch_paid_campaign",
+      "send_external_stakeholder_communication",
+      "publish_media_release",
+      "publish_crisis_statement",
+      "publish_material_public_claim",
+      "publish_testimonial_or_case_study",
+      "publish_participant_story",
+      "publish_service_promotion",
+    ],
+    riskLevel: "high",
+    status: "active",
+    version: "1.0.0",
+  },
+
+  // ── Deprecated Marketing Workforce (coming_soon compatibility) ─────────────
 
   {
     id: "wp_marketing_director",
@@ -1272,6 +1323,7 @@ export const ROLE_TO_PROFILES: Record<string, string[]> = {
   staff_compliance_officer:     ["staff_compliance_officer_profile"],
   workforce_compliance_specialist: ["workforce_compliance_specialist_profile"],
   marketing_director:           ["marketing_director_profile"],
+  marketing_communications_manager: ["marketing_communications_manager_profile"],
   content_strategist:           ["content_strategist_profile"],
   campaign_manager:             ["campaign_manager_profile"],
   brand_manager:                ["brand_manager_profile"],
