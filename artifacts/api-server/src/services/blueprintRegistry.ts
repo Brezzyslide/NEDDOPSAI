@@ -646,6 +646,27 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     professionalAuthority: "needsops_ai",
     futureOwnerRoleCode: "people_culture_manager",
   },
+  {
+    code: "workforce_compliance_assessment",
+    blueprintFamily: "workforce_compliance",
+    title: "Workforce Compliance & Eligibility Assessment",
+    purpose: "Assess worker-level compliance and deployment eligibility using current verified credential, screening/check, training, competency, expiry and service-specific workforce evidence. This does not publish rosters, decide HR discipline, calculate pay/SCHADS, make clinical/BSP/RP/legal decisions or waive mandatory requirements.",
+    category: "workforce",
+    supportedModes: ["eligibility_review", "credential_review", "expiry_monitoring", "exception_review", "onboarding_readiness"],
+    primaryDeliverable: "Workforce Compliance Assessment report",
+    maturityState: "placeholder",
+    ownerType: "platform_owned",
+    professionalAuthority: "needsops_ai",
+    externalAuthorityRequiredFor: [
+      "legal opinion",
+      "clinical or practitioner competency certification",
+      "BSP decision or restrictive-practice authorisation",
+      "final employment, disciplinary or recruitment decision",
+      "final SCHADS, payroll or industrial determination",
+      "roster publication or shift allocation",
+    ],
+    futureOwnerRoleCode: "workforce_compliance_specialist",
+  },
 
   // ── Operations ────────────────────────────────────────────────────────────────
   {

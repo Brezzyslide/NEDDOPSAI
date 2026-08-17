@@ -33,8 +33,8 @@ import {
 // ─── Registry integrity ───────────────────────────────────────────────────────
 
 describe("Worker Profile Registry integrity", () => {
-  it("contains exactly 38 worker profiles (including current v2 APO, BSI, PGS, SDC and WRC)", () => {
-    expect(WORKER_PROFILES).toHaveLength(38);
+  it("contains exactly 39 worker profiles (including current v2 APO, BSI, PGS, SDC, WRC and WCS)", () => {
+    expect(WORKER_PROFILES).toHaveLength(39);
   });
 
   it("every profile has a unique id", () => {
@@ -157,8 +157,8 @@ describe("Role-to-Worker-Profile mapping", () => {
     }
   });
 
-  it("ROLE_TO_PROFILES covers all 38 mapped specialist identities", () => {
-    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(38);
+  it("ROLE_TO_PROFILES covers all 39 mapped specialist identities", () => {
+    expect(Object.keys(ROLE_TO_PROFILES)).toHaveLength(39);
   });
 
   it("getWorkerProfilesForRole returns profiles for a valid role", () => {
@@ -183,6 +183,16 @@ describe("Role-to-Worker-Profile mapping", () => {
     expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
     expect(profiles[0]?.prohibitedActions).toContain("amend_behaviour_support_plan");
     expect(profiles[0]?.approvalRequiredActions).toContain("publish_bsp_implementation_guidance");
+  });
+
+  it("maps Workforce Compliance Specialist to the current v2 worker compliance WorkerProfile", () => {
+    const profiles = getWorkerProfilesForRole("workforce_compliance_specialist");
+    expect(profiles.map(p => p.code)).toEqual(["workforce_compliance_specialist_profile"]);
+    expect(profiles[0]?.riskLevel).toBe("high");
+    expect(profiles[0]?.allowedExecutionChannels).toEqual(["internal_api", "document_store", "database_query"]);
+    expect(profiles[0]?.prohibitedActions).toContain("override_credential_expiry");
+    expect(profiles[0]?.prohibitedActions).toContain("publish_roster");
+    expect(profiles[0]?.approvalRequiredActions).toContain("update_worker_compliance_status");
   });
 
   it("getWorkerProfilesForRole returns empty array for unknown role", () => {

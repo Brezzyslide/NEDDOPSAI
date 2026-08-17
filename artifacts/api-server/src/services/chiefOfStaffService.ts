@@ -83,8 +83,13 @@ const ROUTING_RULES: RouteRule[] = [
   // HR
   { keywords: ["recruit", "hiring", "job ad", "candidate", "interview"], capabilities: ["hr.recruitment"], weight: 9 },
   { keywords: ["performance review", "performance", "kpi", "goal setting"], capabilities: ["hr.performance"], weight: 8 },
+  { keywords: ["worker eligibility", "eligible for this duty", "eligible for shift", "assigned to this service", "ineligible worker"], capabilities: ["staff_compliance.worker_eligibility_review", "staff_compliance.deployment_eligibility"], weight: 12 },
+  { keywords: ["credential", "credentials", "worker screening", "wwcc", "police check", "ndis check", "clearance", "licence", "registration"], capabilities: ["staff_compliance.credential_review", "staff_compliance.qualification_review"], weight: 12 },
+  { keywords: ["credential expiry", "credential expiring", "expired credential", "upcoming expiries", "expiry report"], capabilities: ["staff_compliance.expiry_monitoring"], weight: 12 },
+  { keywords: ["compliance exception", "deployment restriction", "restricted worker", "mandatory evidence missing"], capabilities: ["staff_compliance.exception_review"], weight: 12 },
+  { keywords: ["onboarding compliance", "onboarding readiness", "ready for deployment"], capabilities: ["staff_compliance.onboarding_readiness"], weight: 11 },
   { keywords: ["training", "learning", "development", "certification", "cpd"], capabilities: ["learning.training_gap_analysis"], weight: 8 },
-  { keywords: ["worker screening", "wwcc", "police check", "credential", "clearance"], capabilities: ["staff_compliance.qualification_review"], weight: 9 },
+  { keywords: ["training compliance", "competency compliance", "mandatory competency", "competency evidence"], capabilities: ["staff_compliance.training_competency_review"], weight: 11 },
   { keywords: ["hr policy", "leave", "workplace", "employee relations"], capabilities: ["policy.review"], weight: 7 },
   // Marketing
   { keywords: ["campaign", "marketing campaign", "promotion"], capabilities: ["marketing.campaign_planning"], weight: 8 },

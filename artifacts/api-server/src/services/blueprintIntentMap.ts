@@ -130,6 +130,11 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "roster.plan":           { family: "workforce_ops", mode: "planning",          code: "roster_planning",             isAction: false },
   "roster.fatigue_review": { family: "workforce_ops", mode: "fatigue_review",    code: "rostering_fatigue_review",    isAction: false },
   "workforce.performance_review": { family: "workforce_ops", mode: "performance_review", code: "workforce_performance_review", isAction: false },
+  "workforce_compliance.eligibility_review": { family: "workforce_compliance", mode: "eligibility_review", code: "workforce_compliance_assessment", isAction: false },
+  "workforce_compliance.credential_review": { family: "workforce_compliance", mode: "credential_review", code: "workforce_compliance_assessment", isAction: false },
+  "workforce_compliance.expiry_monitoring": { family: "workforce_compliance", mode: "expiry_monitoring", code: "workforce_compliance_assessment", isAction: false },
+  "workforce_compliance.exception_review": { family: "workforce_compliance", mode: "exception_review", code: "workforce_compliance_assessment", isAction: false },
+  "workforce_compliance.onboarding_readiness": { family: "workforce_compliance", mode: "onboarding_readiness", code: "workforce_compliance_assessment", isAction: false },
 
   // ── Operations ────────────────────────────────────────────────────────────
   "operations.readiness":        { family: "operations", mode: "readiness",       code: "operational_readiness_assessment", isAction: false },

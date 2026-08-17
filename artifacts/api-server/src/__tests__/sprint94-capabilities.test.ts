@@ -482,8 +482,8 @@ describe("Specialist Routing Gate", () => {
     expect(validateSpecialistEligibility("workforce_compliance_specialist", "staff_compliance.qualification_review")).toBe(true);
   });
 
-  it("compliance_quality_manager is also eligible for staff_compliance.qualification_review", () => {
-    expect(validateSpecialistEligibility("compliance_quality_manager", "staff_compliance.qualification_review")).toBe(true);
+  it("compliance_quality_manager is not the owner for worker-level qualification review", () => {
+    expect(validateSpecialistEligibility("compliance_quality_manager", "staff_compliance.qualification_review")).toBe(false);
   });
 
   it("unknown specialist code returns false", () => {

@@ -262,9 +262,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "people_culture",
     packCode: "hr",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["staff_compliance_check", "hr_policy_review", "audit_preparation"],
+    capabilities: ["staff_compliance_check", "worker_eligibility_review", "credential_review", "training_competency_review", "expiry_monitoring", "deployment_eligibility", "audit_preparation"],
   },
   // Marketing (1)
   {
@@ -925,8 +925,8 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 9 remaining incomplete employees have dnaStatus 'pending_design'", () => {
-    // The remaining 9 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC and WRC)
+  it("all 8 remaining incomplete employees have dnaStatus 'pending_design'", () => {
+    // The remaining 8 pending v2 employees (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC and WCS)
     const newlyCodes = [
       "process_asset_coordinator",
       "finance_officer",
@@ -934,7 +934,6 @@ describe("Sprint 11 — DNA status", () => {
       "financial_planning_reporting_manager",
       "people_culture_manager",
       "talent_learning_specialist",
-      "workforce_compliance_specialist",
       "marketing_communications_manager",
       "knowledge_documentation_specialist",
     ];
@@ -945,14 +944,14 @@ describe("Sprint 11 — DNA status", () => {
     }
   });
 
-  it("exactly 10 employees have dnaStatus 'approved'", () => {
+  it("exactly 11 employees have dnaStatus 'approved'", () => {
     const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(10);
+    expect(approved).toHaveLength(11);
   });
 
-  it("exactly 9 employees have dnaStatus 'pending_design'", () => {
+  it("exactly 8 employees have dnaStatus 'pending_design'", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(9);
+    expect(pending).toHaveLength(8);
   });
 });
 
