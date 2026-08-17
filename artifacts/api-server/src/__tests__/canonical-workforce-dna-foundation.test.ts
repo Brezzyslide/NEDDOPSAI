@@ -36,6 +36,7 @@ import {
   FINANCE_OFFICER_DNA,
   FINANCIAL_PLANNING_REPORTING_MANAGER_DNA,
   MARKETING_COMMUNICATIONS_MANAGER_DNA,
+  KNOWLEDGE_DOCUMENTATION_SPECIALIST_DNA,
   type WorkforceDNA,
 } from "@workspace/workforce-dna";
 import { assembleRuntimeInstructions } from "@workspace/agent-runtime";
@@ -766,11 +767,11 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect((descriptor as unknown as Record<string, unknown>)["compiledInstructions"]).toBeUndefined();
   });
 
-  it("keeps current DNA-pending v2 specialists from silently receiving production DNA", () => {
+  it("has no remaining current-v2 DNA-pending specialists after KDS activation", () => {
     const pending = SPECIALISTS.filter(s =>
       s.executionStatus === "dna_pending" || s.dnaStatus === "pending_design",
     );
-    expect(pending.length).toBeGreaterThanOrEqual(1);
+    expect(pending).toEqual([]);
     expect(pending.some(s => s.code === "compliance_quality_manager")).toBe(false);
     expect(pending.some(s => s.code === "incident_safeguarding_specialist")).toBe(false);
     expect(pending.some(s => s.code === "authorised_program_officer")).toBe(false);
@@ -783,6 +784,7 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(pending.some(s => s.code === "finance_officer")).toBe(false);
     expect(pending.some(s => s.code === "financial_planning_reporting_manager")).toBe(false);
     expect(pending.some(s => s.code === "marketing_communications_manager")).toBe(false);
+    expect(pending.some(s => s.code === "knowledge_documentation_specialist")).toBe(false);
     expect(pending.some(s => s.code === "executive_assistant")).toBe(false);
     expect(getCanonicalDNAProfile("authorised_program_officer")).not.toBeNull();
     expect(getSafeDNADescriptor("authorised_program_officer")).not.toBeNull();
@@ -880,6 +882,15 @@ describe("Canonical Workforce DNA Foundation", () => {
     expect(dna?.professionalMission.missionStatement).toContain("verified organisation");
     expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(24);
     expect(dna?.requiredWorkerProfile.profileCode).toBe(MARKETING_COMMUNICATIONS_MANAGER_DNA.requiredWorkerProfile.profileCode);
+  });
+
+  it("maps Knowledge & Documentation Specialist as the current v2 knowledge-control specialist", () => {
+    const dna = getCanonicalDNAProfile("knowledge_documentation_specialist");
+    expect(dna).not.toBeNull();
+    expect(dna?.identity.specialistId).toBe("knowledge_documentation_specialist");
+    expect(dna?.professionalMission.missionStatement).toContain("integrity, control and usability");
+    expect(dna?.domainExpertise.competencies.length).toBeGreaterThanOrEqual(20);
+    expect(dna?.requiredWorkerProfile.profileCode).toBe(KNOWLEDGE_DOCUMENTATION_SPECIALIST_DNA.requiredWorkerProfile.profileCode);
   });
 
   it("maps Service Delivery Coordinator as the current v2 service implementation specialist", () => {

@@ -49,7 +49,7 @@ vi.mock("@workspace/ai-gateway", () => ({
 }));
 
 // Sprint 11: compliance_officer was deprecated and merged into compliance_quality_manager.
-// document_specialist was renamed to knowledge_documentation_specialist (dna_pending).
+// document_specialist was renamed to knowledge_documentation_specialist and activated in Sprint 33S.
 // The active specialist set now includes current v2 specialists as their DNA is completed.
 // All tests that exercised compliance_officer / document_specialist must use an approved specialist.
 const FAKE_WORK_PACKAGE: SpecialistWorkPackage = {
@@ -134,7 +134,7 @@ describe("Sprint 9.5 — Specialist Intelligence Service", () => {
       expect(result.capabilityCode).toBe("administration.general");
     });
 
-    // Sprint 11: document_specialist → knowledge_documentation_specialist (dna_pending — not in ACTIVE_SPECIALIST_VERSIONS).
+    // Sprint 11/33S: document_specialist → knowledge_documentation_specialist; this test keeps operations_manager coverage distinct.
     // Now tests operations_manager with an alternate capability to complement the workflow_review test below.
     it("returns a completed result for operations_manager with alternate capability", async () => {
       const service = createSpecialistIntelligenceService();

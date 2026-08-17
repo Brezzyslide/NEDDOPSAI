@@ -76,9 +76,7 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(result).toBe(false);
     });
 
-    // document_specialist was renamed to knowledge_documentation_specialist in Sprint 11.
-    // knowledge_documentation_specialist is dna_pending, so the sync check returns false.
-    // Updated to use operations_manager + operations.capacity_analysis — a currently approved specialist.
+    // Keep this check on operations_manager as a stable approved specialist path.
     it("returns true for operations_manager + operations.capacity_analysis", () => {
       const result = validateSpecialistEligibilitySync(
         "operations_manager",
@@ -111,8 +109,7 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(decision.evaluatedAt).toBeTruthy();
     });
 
-    // document_specialist renamed to knowledge_documentation_specialist (dna_pending).
-    // Use chief_of_staff — a currently approved specialist — to preserve test coverage.
+    // Use chief_of_staff as a stable approved specialist path for asynchronous eligibility.
     it("returns eligible=true for chief_of_staff + administration.general", async () => {
       const decision = await checkSpecialistEligibility(
         "chief_of_staff",
@@ -263,7 +260,7 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
   });
 
   describe("hasActiveIntelligence", () => {
-    // Sprint 11: document_specialist renamed → knowledge_documentation_specialist (dna_pending, not active).
+    // Sprint 33S: document_specialist has been replaced by activated knowledge_documentation_specialist.
     it("returns true for compliance_quality_manager (current v2 intelligence activated)", () => {
       expect(hasActiveIntelligence("compliance_quality_manager")).toBe(true);
     });
@@ -272,8 +269,8 @@ describe("Sprint 9.5 — Specialist Eligibility", () => {
       expect(hasActiveIntelligence("incident_safeguarding_specialist")).toBe(true);
     });
 
-    it("returns false for knowledge_documentation_specialist (dna_pending — intelligence not yet activated)", () => {
-      expect(hasActiveIntelligence("knowledge_documentation_specialist")).toBe(false);
+    it("returns true for knowledge_documentation_specialist (current v2 intelligence activated)", () => {
+      expect(hasActiveIntelligence("knowledge_documentation_specialist")).toBe(true);
     });
 
     it("returns true for operations_manager", () => {

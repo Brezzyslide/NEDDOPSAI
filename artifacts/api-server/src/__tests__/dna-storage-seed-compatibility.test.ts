@@ -140,6 +140,7 @@ import {
   POLICY_GOVERNANCE_SPECIALIST_DNA,
   SERVICE_DELIVERY_COORDINATOR_DNA,
   WORKFORCE_ROSTERING_COORDINATOR_DNA,
+  KNOWLEDGE_DOCUMENTATION_SPECIALIST_DNA,
 } from "@workspace/workforce-dna";
 import {
   loadDNAFromDatabase,
@@ -375,34 +376,32 @@ describe("DNA static seed canonical schema compatibility", () => {
     );
 
     expect(eligible.map(entry => entry.roleCode).sort()).toEqual(expected.map(s => s.code).sort());
-    expect(eligible).toHaveLength(18);
+    expect(eligible).toHaveLength(19);
     expect(eligible.every(entry => entry.status === "NEW")).toBe(true);
   });
 
-  it("excludes dna_pending specialists from DB publication eligibility", async () => {
+  it("has no remaining current-v2 dna_pending specialists in the publication inventory", async () => {
     const inventory = await buildWorkforceDnaPublicationInventory();
     const pending = inventory.filter(entry => entry.executionStatus === "dna_pending");
 
-    expect(pending.length).toBeGreaterThan(0);
-    expect(pending.every(entry => entry.staticDbPublicationEligible === false)).toBe(true);
-    expect(pending.every(entry => entry.status === "NOT_PUBLICATION_ELIGIBLE")).toBe(true);
+    expect(pending).toEqual([]);
   });
 
-  it("does not make a dna_pending role executable merely because a DB row exists", async () => {
+  it("recognises Knowledge & Documentation Specialist on the static DB publication path", async () => {
     state.profiles.push({
-      id: "pending-role-dna",
+      id: "kds-role-dna",
       specialistId: "knowledge_documentation_specialist",
-      version: "2.0.0",
+      version: KNOWLEDGE_DOCUMENTATION_SPECIALIST_DNA.currentVersion.version,
       status: "published",
-      versionHash: "not-source-truth",
+      versionHash: "outdated-hash",
     });
 
     const inventory = await buildWorkforceDnaPublicationInventory(["knowledge_documentation_specialist"]);
 
     expect(inventory).toHaveLength(1);
     expect(inventory[0]?.dbPublished).toBe(true);
-    expect(inventory[0]?.staticDbPublicationEligible).toBe(false);
-    expect(inventory[0]?.status).toBe("NOT_PUBLICATION_ELIGIBLE");
+    expect(inventory[0]?.staticDbPublicationEligible).toBe(true);
+    expect(inventory[0]?.status).toBe("UPDATED_NEW_VERSION_REQUIRED");
   });
 
   it("reports unchanged DNA as idempotent without creating duplicate versions", async () => {

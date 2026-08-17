@@ -89,6 +89,7 @@ const RUNTIME_READY = new Set([
   "finance_officer",
   "financial_planning_reporting_manager",
   "incident_safeguarding_specialist",
+  "knowledge_documentation_specialist",
   "marketing_communications_manager",
   "operations_manager",
   "payroll_workforce_cost_officer",

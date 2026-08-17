@@ -284,9 +284,9 @@ const CURRENT_SPECIALISTS: CatalogueEntry[] = [
     departmentCode: "shared_professional_services",
     packCode: "core",
     catalogueVersion: "2",
-    dnaStatus: "pending_design",
+    dnaStatus: "approved",
     executionStatus: "available",
-    capabilities: ["draft_document", "review_policy", "summarise", "research"],
+    capabilities: ["document_control", "document_lifecycle", "version_review", "metadata_review", "taxonomy", "retrieval_quality", "duplication_review", "knowledge_gap_review", "template_control", "document_quality", "artifact_packaging", "controlled_publication", "archive_review", "review_due_monitoring", "draft_document", "summarise"],
   },
 ];
 
@@ -925,26 +925,19 @@ describe("Sprint 11 — DNA status", () => {
     expect(getSpecialistByCode("compliance_quality_manager")!.dnaStatus).toBe("approved");
   });
 
-  it("all 1 remaining incomplete employee has dnaStatus 'pending_design'", () => {
-    // The remaining pending v2 employee (excluding approved CoS, CQM, ISS, PGS, OM, EA, APO, BSI, SDC, WRC, WCS, Payroll, P&C, T&L, PAC, Finance, FP&R and Marketing)
-    const newlyCodes = [
-      "knowledge_documentation_specialist",
-    ];
-    for (const code of newlyCodes) {
-      const entry = getSpecialistByCode(code);
-      expect(entry, `Entry for ${code} should exist`).toBeDefined();
-      expect(entry!.dnaStatus, `${code} should have dnaStatus "pending_design"`).toBe("pending_design");
-    }
-  });
-
-  it("exactly 18 employees have dnaStatus 'approved'", () => {
-    const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
-    expect(approved).toHaveLength(18);
-  });
-
-  it("exactly 1 employee has dnaStatus 'pending_design'", () => {
+  it("all current-v2 employees have completed professional DNA authoring", () => {
     const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
-    expect(pending).toHaveLength(1);
+    expect(pending).toEqual([]);
+  });
+
+  it("exactly 19 employees have dnaStatus 'approved'", () => {
+    const approved = getCurrentSpecialists().filter(s => s.dnaStatus === "approved");
+    expect(approved).toHaveLength(19);
+  });
+
+  it("exactly 0 employees have dnaStatus 'pending_design'", () => {
+    const pending = getCurrentSpecialists().filter(s => s.dnaStatus === "pending_design");
+    expect(pending).toHaveLength(0);
   });
 });
 
@@ -1123,6 +1116,12 @@ describe("Sprint 11 — Dispatch protection", () => {
 
   it("available specialist with approved DNA can be dispatched — operations_manager", () => {
     const decision = checkDispatchEligibility("operations_manager");
+    expect(decision.allowed).toBe(true);
+    expect(decision.reasonCode).toBe("eligible");
+  });
+
+  it("available specialist with approved DNA can be dispatched — knowledge_documentation_specialist", () => {
+    const decision = checkDispatchEligibility("knowledge_documentation_specialist");
     expect(decision.allowed).toBe(true);
     expect(decision.reasonCode).toBe("eligible");
   });

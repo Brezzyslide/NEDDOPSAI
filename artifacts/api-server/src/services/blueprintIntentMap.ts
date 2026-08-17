@@ -252,6 +252,28 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "accounting.bas_analysis":            { family: "operational_finance", mode: "transaction_review",         code: "operational_finance_reconciliation_review", isAction: false },
   "invoicing.create_draft":             { family: "operational_finance", mode: "invoice_review",             code: "operational_finance_reconciliation_review", isAction: false },
 
+  // ── Knowledge & Documentation ────────────────────────────────────────────
+  "knowledge.document_control":          { family: "knowledge_documentation", mode: "control_review",          code: "document_control_review",        isAction: false },
+  "knowledge.document_lifecycle":        { family: "knowledge_documentation", mode: "lifecycle_review",        code: "document_control_review",        isAction: false },
+  "knowledge.version_review":            { family: "knowledge_documentation", mode: "version_review",          code: "document_control_review",        isAction: false },
+  "knowledge.supersession_review":       { family: "knowledge_documentation", mode: "supersession_review",     code: "document_control_review",        isAction: false },
+  "knowledge.metadata_review":           { family: "knowledge_documentation", mode: "metadata_review",         code: "document_control_review",        isAction: false },
+  "knowledge.review_due_monitoring":     { family: "knowledge_documentation", mode: "review_due",              code: "document_control_review",        isAction: false },
+  "knowledge.archive_review":            { family: "knowledge_documentation", mode: "archive_review",          code: "document_control_review",        isAction: false },
+  "knowledge.taxonomy":                  { family: "knowledge_documentation", mode: "taxonomy",                code: "knowledge_base_review",          isAction: false },
+  "knowledge.classification":            { family: "knowledge_documentation", mode: "classification",          code: "knowledge_base_review",          isAction: false },
+  "knowledge.retrieval_quality":         { family: "knowledge_documentation", mode: "retrieval_quality",       code: "knowledge_base_review",          isAction: false },
+  "knowledge.duplication_review":        { family: "knowledge_documentation", mode: "duplication_review",      code: "knowledge_base_review",          isAction: false },
+  "knowledge.knowledge_gap_review":      { family: "knowledge_documentation", mode: "gap_review",              code: "knowledge_base_review",          isAction: false },
+  "knowledge.template_control":          { family: "knowledge_documentation", mode: "template_control",        code: "controlled_document_assembly",   isAction: false },
+  "knowledge.document_quality":          { family: "knowledge_documentation", mode: "document_quality",        code: "controlled_document_assembly",   isAction: false },
+  "knowledge.artifact_packaging":        { family: "knowledge_documentation", mode: "artifact_packaging",      code: "controlled_document_assembly",   isAction: false },
+  "knowledge.controlled_publication":    { family: "knowledge_documentation", mode: "publication_package",     code: "controlled_document_assembly",   isAction: false },
+  "documentation.control_review":        { family: "knowledge_documentation", mode: "control_review",          code: "document_control_review",        isAction: false },
+  "documentation.template_application":  { family: "knowledge_documentation", mode: "template_application",    code: "controlled_document_assembly",   isAction: false },
+  "documentation.controlled_assembly":   { family: "knowledge_documentation", mode: "assembly",                code: "controlled_document_assembly",   isAction: false },
+  "documentation.docx_pdf_package":      { family: "knowledge_documentation", mode: "docx_pdf_package",        code: "controlled_document_assembly",   isAction: false },
+
   // ── Strategic ─────────────────────────────────────────────────────────────
   "strategic.growth_analysis": { family: "strategic", mode: "growth_analysis", code: "business_growth_analysis",  isAction: false },
   "strategic.marketing":       { family: "strategic", mode: "marketing",       code: "ndis_marketing_strategy",   isAction: false },
