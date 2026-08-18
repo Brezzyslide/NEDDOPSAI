@@ -3,7 +3,6 @@ import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 import {
   BLUEPRINT_REGISTRY,
-  BLUEPRINT_UNRESOLVED_OWNER,
   LEGACY_CODE_MAP,
   getRegistryBlueprintReadinessState,
   getRegistryBlueprintSeedOwner,
@@ -195,12 +194,12 @@ describe("Sprint 34B Blueprint ownership foundation", () => {
     expect(source).toContain("CoS may coordinate work");
   });
 
-  it("3. unresolved registry owner remains unresolved instead of becoming CoS", () => {
+  it("3. formerly unresolved finance analysis now has explicit FP&R owner instead of CoS fallback", () => {
     const entry = getRegistryEntry("business_financial_analysis")!;
-    expect(resolveRegistryProfessionalOwner(entry)).toBeNull();
-    expect(getRegistryBlueprintSeedOwner(entry)).toBe(BLUEPRINT_UNRESOLVED_OWNER);
+    expect(resolveRegistryProfessionalOwner(entry)).toBe("financial_planning_reporting_manager");
+    expect(getRegistryBlueprintSeedOwner(entry)).toBe("financial_planning_reporting_manager");
     expect(getRegistryBlueprintSeedOwner(entry)).not.toBe("chief_of_staff");
-    expect(getRegistryBlueprintReadinessState(entry)).toBe("not_ready");
+    expect(getRegistryBlueprintReadinessState(entry)).toBe("professionally_authored");
   });
 
   it("4. supporting specialist remains distinct from professional owner", () => {
