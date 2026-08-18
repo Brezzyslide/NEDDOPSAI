@@ -36,7 +36,6 @@ const ALL_34D_CODES = [
 ] as const;
 
 const STILL_METHOD_PENDING_34D_CODES = [
-  "restrictive_practice_authorisation",
   "unauthorised_restrictive_practice_review",
 ] as const;
 
@@ -240,14 +239,14 @@ describe("Sprint 34D human professional method gate", () => {
   });
 
   it("7. missing human professional method approval blocks completion", () => {
-    const result = validate("restrictive_practice_authorisation", { approvalStates: approvalsFor("restrictive_practice_authorisation", false) });
+    const result = validate("unauthorised_restrictive_practice_review", { approvalStates: approvalsFor("unauthorised_restrictive_practice_review", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
   it("8. missing method section blocks completion", () => {
-    const result = validate("restrictive_practice_authorisation", {
-      contentMarkdown: "## AUTHORITY_CONSENT_STATUS\nThis section is populated but the method gate is absent.",
+    const result = validate("unauthorised_restrictive_practice_review", {
+      contentMarkdown: "## IDENTIFIED_PRACTICE_AND_CONTEXT\nThis section is populated but the method gate is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -265,14 +264,14 @@ describe("Sprint 34D evidence and currentness controls", () => {
 
   it("10. RP authorisation requires RP records and usage records", () => {
     expect(blueprintFromRegistry("restrictive_practice_authorisation").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["restrictive_practice_record"],
-      optionalEvidenceCategories: expect.arrayContaining(["rp_usage_record", "consent_or_authority_record"]),
+      requiredEvidenceCategories: ["restrictive_practice_record", "behaviour_support_plan", "authorisation_record", "rp_usage_record"],
+      optionalEvidenceCategories: expect.arrayContaining(["consent_or_authority_record", "training_record", "monthly_reporting_record"]),
       missingEvidenceBehaviour: "block_completion",
     });
   });
 
   it("11. memory-only evidence remains restricted", () => {
-    const contract = blueprintFromRegistry("restrictive_practice_authorisation").evidenceContract!;
+    const contract = blueprintFromRegistry("unauthorised_restrictive_practice_review").evidenceContract!;
     const result = enforceEvidenceContract(contract as never, { chunks: [{ sourceType: "memory_only", category: "restrictive_practice_record" }] });
     expect(result.passed).toBe(false);
     expect(result.violations.some((violation) => violation.code === "RESTRICTED_SOURCE_TYPE_PRESENT")).toBe(true);
@@ -357,6 +356,13 @@ describe("Sprint 34D deliverable and completion gates", () => {
     expect(blueprint.maturityState).toBe("production_ready");
     expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(sectionsFromRegistry("restrictive_practice_comparison")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+  });
+
+  it("18c. RP authorisation no longer carries the human method-definition blocker", () => {
+    const blueprint = blueprintFromRegistry("restrictive_practice_authorisation");
+    expect(blueprint.maturityState).toBe("production_ready");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(sectionsFromRegistry("restrictive_practice_authorisation")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 
   it("19. missing RP artifact blocks completion", () => {

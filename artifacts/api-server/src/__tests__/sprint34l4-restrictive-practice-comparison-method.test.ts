@@ -191,12 +191,11 @@ describe("Sprint 34L.4 RP comparison method gate and ownership", () => {
     expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     expect(methodPendingCodes()).not.toContain(RP_COMPARISON_CODE);
-    expect(methodPendingCodes()).toHaveLength(47);
+    expect(methodPendingCodes()).toHaveLength(46);
   });
 
   it("2. leaves unapproved RP Blueprints method-gated", () => {
     expect(methodPendingCodes()).toEqual(expect.arrayContaining([
-      "restrictive_practice_authorisation",
       "unauthorised_restrictive_practice_review",
     ]));
   });

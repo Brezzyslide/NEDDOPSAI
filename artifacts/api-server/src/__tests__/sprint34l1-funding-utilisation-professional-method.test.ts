@@ -209,12 +209,12 @@ describe("Sprint 34L.1 ownership and USER_DEFINITION_REQUIRED removal", () => {
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     expect(funding.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(methodPendingCodes()).not.toContain(FUNDING_CODE);
-    expect(methodPendingCodes()).toHaveLength(47);
+    expect(methodPendingCodes()).toHaveLength(46);
   });
 
   it("4. leaves still-unapproved method-gated Blueprints unchanged", () => {
     expect(methodPendingCodes()).toEqual(expect.arrayContaining([
-      "restrictive_practice_authorisation",
+      "unauthorised_restrictive_practice_review",
       "incident_investigation",
       "policy",
       "rostering_fatigue_review",
