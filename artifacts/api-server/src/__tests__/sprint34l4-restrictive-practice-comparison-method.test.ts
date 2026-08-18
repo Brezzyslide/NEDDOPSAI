@@ -15,13 +15,12 @@ import type {
   BlueprintExecutionContract,
   BlueprintSection,
   WorkBlueprint,
-  WorkTemplate,
 } from "../services/workBlueprintService.js";
 
 const NOW = new Date("2026-08-18T00:00:00Z");
-const RP_CODE = "restrictive_practice_risk_assessment";
+const RP_COMPARISON_CODE = "restrictive_practice_comparison";
 
-function blueprintFromRegistry(code = RP_CODE): WorkBlueprint {
+function blueprintFromRegistry(code = RP_COMPARISON_CODE): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
 
@@ -65,7 +64,7 @@ function blueprintFromRegistry(code = RP_CODE): WorkBlueprint {
   };
 }
 
-function sectionsFromRegistry(code = RP_CODE): BlueprintSection[] {
+function sectionsFromRegistry(code = RP_COMPARISON_CODE): BlueprintSection[] {
   const entry = getRegistryEntry(code);
   if (!entry?.sections) return [];
   return entry.sections.map((section, index) => ({
@@ -88,42 +87,26 @@ function sectionsFromRegistry(code = RP_CODE): BlueprintSection[] {
   }));
 }
 
-const template: WorkTemplate = {
-  id: "tpl-rp-risk",
-  organizationId: "org-1",
-  ownerType: "organisation_owned",
-  code: "restrictive_practice_risk_assessment_template",
-  title: "Restrictive Practice Risk Assessment Template",
-  version: "1.0.0",
-  status: "published",
-  maturityState: "production_ready",
-  templateType: "docx",
-  sourceFileReference: "org://templates/restrictive-practice-risk-assessment.docx",
-  mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  mergeFieldSchema: {},
-  createdAt: NOW,
-  updatedAt: NOW,
-};
-
-function contractFor(templateOverride: WorkTemplate | null = template): BlueprintExecutionContract {
+function contractFor(): BlueprintExecutionContract {
   return {
     blueprint: blueprintFromRegistry(),
     sections: sectionsFromRegistry(),
-    template: templateOverride,
-    mode: "risk_assessment",
+    template: null,
+    mode: "comparison",
   };
 }
 
 function contentFor(): string {
   return sectionsFromRegistry()
-    .map((section) => `## ${section.sectionCode}\nThis section is materially populated with RP source evidence, chronology, currentness, conflicts, untreated risk, alternatives, necessity, proportionality, rights impact, safeguards, residual risk, reduction and elimination, consultation, BSP reconciliation, authorisation pathway, conclusion, actions and provenance.`)
+    .map((section) => `## ${section.sectionCode}
+This section is populated with participant-specific evidence, provenance, chronology, currentness, contradictions, missing evidence, risk foundation, options, comparison dimensions, participant voice, BSP reconciliation, authorisation boundary, professional synthesis and actions.`)
     .join("\n\n");
 }
 
 function evidencePack(categories: string[]) {
   return {
-    executionId: "exec-34l3",
-    organisationId: "org-34l3",
+    executionId: "exec-34l4",
+    organisationId: "org-34l4",
     resolvedAt: NOW,
     totalChunks: categories.length,
     chunks: categories.map((category, index) => ({
@@ -143,7 +126,7 @@ function evidencePack(categories: string[]) {
     entityFacts: {},
     memories: [],
     retrievalMeta: {
-      query: "restrictive practice risk assessment evidence",
+      query: "least restrictive alternatives comparison evidence",
       selectedSourceIds: categories,
       selectedChunkIds: categories,
       selectedMemoryIds: [],
@@ -174,7 +157,7 @@ function validate(overrides: Partial<BlueprintRuntimeValidationInput> = {}) {
     contentMarkdown: contentFor(),
     rawClaims: [],
     evidencePack: evidencePack(evidenceCategories),
-    artifactId: "artifact-34l3",
+    artifactId: null,
     approvalStates: approvalsFor(),
     ...overrides,
   });
@@ -201,134 +184,151 @@ function profile(code: string) {
   return workerProfile;
 }
 
-describe("Sprint 34L.3 RP method gate and ownership", () => {
-  it("1. removes the Product Owner method blocker from RP risk assessment only", () => {
+describe("Sprint 34L.4 RP comparison method gate and ownership", () => {
+  it("1. removes the Product Owner method blocker from RP comparison only", () => {
     const blueprint = blueprintFromRegistry();
     expect(blueprint.maturityState).toBe("production_ready");
     expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
-    expect(methodPendingCodes()).not.toContain(RP_CODE);
+    expect(methodPendingCodes()).not.toContain(RP_COMPARISON_CODE);
     expect(methodPendingCodes()).toHaveLength(47);
   });
 
-  it("2. leaves other RP Blueprints method-gated", () => {
+  it("2. leaves unapproved RP Blueprints method-gated", () => {
     expect(methodPendingCodes()).toEqual(expect.arrayContaining([
       "restrictive_practice_authorisation",
       "unauthorised_restrictive_practice_review",
     ]));
   });
 
-  it("3. preserves APO ownership and KDS artifact-only support boundary", () => {
+  it("3. preserves APO ownership and supporting-specialist authority boundaries", () => {
     const blueprint = blueprintFromRegistry();
-    expect(resolveRegistryProfessionalOwner(getRegistryEntry(RP_CODE)!)).toBe("authorised_program_officer");
+    expect(resolveRegistryProfessionalOwner(getRegistryEntry(RP_COMPARISON_CODE)!)).toBe("authorised_program_officer");
     expect(blueprint.primarySpecialist).toBe("authorised_program_officer");
     expect(blueprint.supportingSpecialists).toEqual(expect.arrayContaining([
       "behaviour_support_implementation_specialist",
-      "incident_safeguarding_specialist",
-      "compliance_quality_manager",
+      "service_delivery_coordinator",
       "knowledge_documentation_specialist",
     ]));
     expect(blueprint.primarySpecialist).not.toBe("knowledge_documentation_specialist");
   });
 });
 
-describe("Sprint 34L.3 approved RP risk method representation", () => {
+describe("Sprint 34L.4 approved comparison method representation", () => {
   it("4. includes all major approved professional stages", () => {
     expect(sectionsFromRegistry().map((section) => section.sectionCode)).toEqual([
-      "ASSESSMENT_CONTEXT",
-      "BEHAVIOUR_RISK_AND_HARM",
-      "EVIDENCE_RECONCILIATION",
-      "RISK_WITHOUT_RP",
-      "FUNCTIONAL_CONTEXT",
-      "LESS_RESTRICTIVE_ALTERNATIVES",
-      "RESTRICTIVE_PRACTICE_DEFINITION",
-      "NECESSITY_PROPORTIONALITY",
-      "RIGHTS_IMPACT_AND_SAFEGUARDS",
-      "RISK_WITH_RP_AND_RESIDUAL_RISK",
-      "REDUCTION_ELIMINATION_AND_REVIEW",
-      "CONSULTATION_BSP_AND_AUTHORISATION",
-      "PROFESSIONAL_CONCLUSION_ACTIONS",
+      "DECISION_QUESTION_AND_SCOPE",
+      "EVIDENCE_AND_RISK_FOUNDATION",
+      "COMPARISON_SET_AND_PRIOR_TRIALS",
+      "MANDATORY_COMPARISON_DIMENSIONS",
+      "COMPARATIVE_MATRIX_AND_EVIDENCE_STRENGTH",
+      "PARTICIPANT_VOICE_AND_BSP_RECONCILIATION",
+      "AUTHORISATION_AND_BOUNDARIES",
+      "PROFESSIONAL_SYNTHESIS_AND_OUTCOME",
+      "RECOMMENDATIONS_ACTIONS_AND_GAPS",
     ]);
   });
 
-  it("5. requires untreated risk analysis before necessity", () => {
-    expect(sectionByCode("RISK_WITHOUT_RP").instructions).toContain("Do not assume the RP is necessary");
-    expect(sectionByCode("NECESSITY_PROPORTIONALITY").instructions).toContain("Assess necessity and proportionality separately");
+  it("5. requires the risk foundation before comparing interventions", () => {
+    expect(sectionByCode("EVIDENCE_AND_RISK_FOUNDATION").instructions).toContain("behaviour, risk, harm");
+    expect(sectionByCode("EVIDENCE_AND_RISK_FOUNDATION").instructions).toContain("do not let a prior assessment predetermine");
   });
 
-  it("6. requires less restrictive alternatives and implementation fidelity", () => {
-    const section = sectionByCode("LESS_RESTRICTIVE_ALTERNATIVES");
-    expect(section.description).toContain("implementation fidelity");
-    expect(section.instructions).toContain("A BSP mention is not proof of implementation");
+  it("6. requires a genuine alternatives set and previous-trial fidelity checks", () => {
+    const section = sectionByCode("COMPARISON_SET_AND_PRIOR_TRIALS");
+    expect(section.description).toContain("ordinary supports");
+    expect(section.instructions).toContain("Strategy mentioned is not strategy properly trialled");
   });
 
-  it("7. represents rights, safeguards, residual risk and reduction/elimination", () => {
-    expect(sectionByCode("RIGHTS_IMPACT_AND_SAFEGUARDS").description.toLowerCase()).toContain("dignity");
-    expect(sectionByCode("RISK_WITH_RP_AND_RESIDUAL_RISK").instructions).toContain("may introduce risk");
-    expect(sectionByCode("REDUCTION_ELIMINATION_AND_REVIEW").instructions).toContain("not treat RP as a permanent endpoint");
+  it("7. represents all ten mandatory comparison dimensions", () => {
+    const section = sectionByCode("MANDATORY_COMPARISON_DIMENSIONS");
+    for (const expected of [
+      "Risk reduction",
+      "rights impact",
+      "restrictiveness",
+      "evidence strength",
+      "feasibility",
+      "duration/frequency",
+      "safeguards",
+      "participant impact",
+      "reversibility",
+      "reduction/elimination potential",
+    ]) {
+      expect(section.description.toLowerCase()).toContain(expected.toLowerCase());
+    }
   });
 
-  it("8. separates BSP inclusion, authorisation and professional assessment", () => {
-    const section = sectionByCode("CONSULTATION_BSP_AND_AUTHORISATION");
-    expect(section.instructions).toContain("BSP inclusion does not itself establish legal/administrative authorisation");
-    expect(section.instructions).toContain("proposed, assessed, BSP included, authorisation requested, authorised, expired, not authorised and unknown");
+  it("8. prevents scoring-only comparison and false equivalence", () => {
+    expect(sectionByCode("COMPARATIVE_MATRIX_AND_EVIDENCE_STRENGTH").instructions).toContain("Do not reduce professional reasoning to a simplistic numeric score");
+    expect(sectionByCode("PROFESSIONAL_SYNTHESIS_AND_OUTCOME").instructions).toContain("no adequately supported option");
   });
 
-  it("9. preserves negative and insufficient-evidence conclusions", () => {
-    expect(sectionByCode("PROFESSIONAL_CONCLUSION_ACTIONS").instructions).toContain("not professionally supported");
-    expect(blueprintFromRegistry().successCriteria).toContain("Negative or insufficient-evidence conclusion remains available");
+  it("9. separates BSP inclusion, consultation and authorisation", () => {
+    const section = sectionByCode("PARTICIPANT_VOICE_AND_BSP_RECONCILIATION");
+    expect(section.instructions).toContain("Distinguish consulted, informed, agreed, consented, recommended and authorised");
+    expect(section.instructions).toContain("BSP inclusion remains separate from authorisation");
+  });
+
+  it("10. preserves non-RP and insufficient-evidence outcomes", () => {
+    expect(blueprintFromRegistry().successCriteria).toEqual(expect.arrayContaining([
+      "Insufficient-evidence and non-restrictive-option outcomes supported",
+    ]));
+    expect(sectionByCode("PROFESSIONAL_SYNTHESIS_AND_OUTCOME").instructions).toContain("non-restrictive option preferred");
+    expect(sectionByCode("PROFESSIONAL_SYNTHESIS_AND_OUTCOME").instructions).toContain("insufficient evidence");
   });
 });
 
-describe("Sprint 34L.3 RP evidence, deliverable and completion gates", () => {
-  it("10. requires current RP, BSP, incident and risk evidence with provenance", () => {
+describe("Sprint 34L.4 RP comparison evidence, deliverable and completion gates", () => {
+  it("11. requires current RP, BSP, risk and alternative-strategy evidence with provenance", () => {
     expect(blueprintFromRegistry().evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["restrictive_practice_record", "behaviour_support_plan", "incident_record", "risk_context"],
+      requiredEvidenceCategories: ["restrictive_practice_record", "behaviour_support_plan", "risk_context", "alternative_strategy_evidence"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
     expect(blueprintFromRegistry().mandatoryCitations).toEqual(expect.arrayContaining([
       "restrictive_practice_record",
       "behaviour_support_plan",
-      "incident_record",
       "risk_context",
+      "alternative_strategy_evidence",
     ]));
   });
 
-  it("11. missing required evidence cannot silently become verified fact", () => {
+  it("12. missing required evidence blocks completion", () => {
     const result = validate({ evidencePack: evidencePack(["restrictive_practice_record", "behaviour_support_plan"]) });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "missing_evidence")).toBe(true);
   });
 
-  it("12. memory-only evidence remains restricted", () => {
+  it("13. memory-only evidence remains restricted", () => {
     const result = enforceEvidenceContract(blueprintFromRegistry().evidenceContract as never, {
-      chunks: [{ sourceType: "memory_only", category: "restrictive_practice_record" }],
+      chunks: [{ sourceType: "memory_only", category: "alternative_strategy_evidence" }],
     });
     expect(result.passed).toBe(false);
     expect(result.violations.some((violation) => violation.code === "RESTRICTED_SOURCE_TYPE_PRESENT")).toBe(true);
   });
 
-  it("13. required artifact, template and APO approval gates remain active", () => {
-    expect(blueprintFromRegistry().deliverableContract).toMatchObject({
-      artifactRequired: true,
-      primaryFormat: "docx",
-      templateRequired: true,
-    });
-    expect(validate({ artifactId: null }).failures.some((failure) => failure.gate === "artifact_required")).toBe(true);
-    expect(validate({ contract: contractFor(null) }).failures.some((failure) => failure.gate === "template_required")).toBe(true);
-    expect(validate({ approvalStates: approvalsFor(false) }).failures.some((failure) => failure.gate === "approval_required")).toBe(true);
+  it("14. keeps supporting analyses internal rather than emitting unsolicited deliverables", () => {
+    expect(blueprintFromRegistry().deliverableContract?.allowedInternalAnalysis).toEqual(expect.arrayContaining([
+      "rp_usage_pattern_review",
+      "options_comparison_matrix",
+    ]));
+    expect(blueprintFromRegistry().deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
+      "restrictive_practice_risk_assessment",
+      "restrictive_practice_authorisation",
+      "behaviour_support_plan",
+    ]));
   });
 
-  it("14. passes runtime validation when method sections, evidence, template, artifact and APO approval are present", () => {
+  it("15. preserves APO approval and runtime completion gates", () => {
+    expect(validate({ approvalStates: approvalsFor(false) }).failures.some((failure) => failure.gate === "approval_required")).toBe(true);
     const result = validate();
     expect(result.failures, JSON.stringify(result.failures)).toEqual([]);
     expect(result.passed).toBe(true);
   });
 });
 
-describe("Sprint 34L.3 RP authority boundaries", () => {
-  it("15. supporting KDS cannot change restrictive-practice professional conclusions", () => {
+describe("Sprint 34L.4 RP comparison authority boundaries", () => {
+  it("16. supporting KDS cannot change or authorise the professional RP conclusion", () => {
     const decision = evaluateWorkerProfileAuthority({
       specialistCode: "knowledge_documentation_specialist",
       workerProfile: profile("knowledge_documentation_specialist_profile"),
@@ -342,7 +342,7 @@ describe("Sprint 34L.3 RP authority boundaries", () => {
     expect(decision.decision).toBe("PROHIBITED");
   });
 
-  it("16. APO can draft the assessment but cannot authorise restrictive practice", () => {
+  it("17. APO may draft comparison but cannot fabricate external authorisation", () => {
     const apo = profile("authorised_program_officer_profile");
     const draftDecision = evaluateWorkerProfileAuthority({
       specialistCode: "authorised_program_officer",
@@ -364,16 +364,5 @@ describe("Sprint 34L.3 RP authority boundaries", () => {
 
     expect(draftDecision.decision).toBe("PERMITTED");
     expect(authorisationDecision.decision).toBe("PROHIBITED");
-  });
-
-  it("17. supporting analysis stays internal and prohibited deliverables remain blocked", () => {
-    expect(blueprintFromRegistry().deliverableContract?.allowedInternalAnalysis).toEqual(expect.arrayContaining([
-      "rp_governance_review",
-    ]));
-    expect(blueprintFromRegistry().deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
-      "clinical_assessment",
-      "medication_prescribing_decision",
-      "formal_authorisation",
-    ]));
   });
 });
