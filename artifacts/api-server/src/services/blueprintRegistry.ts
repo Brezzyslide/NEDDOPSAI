@@ -378,6 +378,51 @@ function workforceEvidence(
   };
 }
 
+function operationsEvidence(
+  requiredEvidenceCategories: string[],
+  optionalEvidenceCategories: string[] = [],
+  requiredEntityTypes: string[] = [],
+  minimumEvidenceCount = 2,
+  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+) {
+  return {
+    requiredEvidenceCategories,
+    optionalEvidenceCategories,
+    allowedSourceTypes: [
+      "controlled_document",
+      "operational_record",
+      "service_requirement",
+      "process_map",
+      "workflow_record",
+      "sop",
+      "work_instruction",
+      "asset_register",
+      "maintenance_record",
+      "inspection_record",
+      "defect_record",
+      "vendor_record",
+      "knowledge_source",
+      "document_register",
+      "template_record",
+      "artifact_record",
+      "task_upload",
+    ],
+    restrictedSourceTypes: ["memory_only", "user_assertion_only", "uncontrolled_copy"],
+    requiredEntityTypes,
+    minimumEvidenceCount,
+    freshnessRules: {
+      currentnessRequired: true,
+      memoryCannotProveCurrentness: true,
+      historicalProcessMapsRemainHistorical: true,
+      historicalAssetRecordsRemainHistorical: true,
+      conflictingVersionsRequireResolution: true,
+      supersededDocumentsRemainSuperseded: true,
+    },
+    claimIntegrityRequired: true,
+    missingEvidenceBehaviour,
+  };
+}
+
 function section(
   sectionCode: string,
   title: string,
@@ -705,6 +750,62 @@ const PAYROLL_WORKFORCE_COST_SECTIONS = [
   section("DRAFT_RECONCILIATION_AND_VARIANCE", "Draft Reconciliation and Variance", "Evidence-backed variances, classifications, allowances, overtime, penalties and cost implications.", "Prepare draft analysis only. Do not execute payroll or approve payments.", 30),
   section("WORKFORCE_COST_IMPACT", "Workforce Cost Impact", "Cost impact, forecast implication, operational dependency and uncertainty.", "Route FP&R/accounting/tax/legal boundaries to correct owner.", 40),
   section("APPROVAL_AND_EXECUTION_LIMITS", "Approval and Execution Limits", "Payroll owner approval, unresolved records, legal/tax/industrial limits and execution boundary.", "Do not mutate payroll systems, approve payruns or make fund transfers.", 50),
+];
+
+const OPERATIONAL_READINESS_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved operational-readiness method, service-launch checklist or human-defined readiness framework.", 10, ["service_requirement"]),
+  section("READINESS_SCOPE_AND_REQUIREMENTS", "Readiness Scope and Requirements", "Service/change scope, required capabilities, systems, staffing, resources and constraints.", "Use approved service/change requirements and current operational evidence.", 20, ["service_requirement"]),
+  section("CURRENT_STATE_AND_GAPS", "Current State and Gaps", "Current operational state, gaps, dependencies, risks and unavailable evidence.", "Do not assume readiness where evidence is missing.", 30),
+  section("ACTION_PLAN_AND_OWNERS", "Action Plan and Owners", "Readiness actions, owners, due dates, dependencies and escalation.", "Prepare readiness actions without approving material resource allocation or service launch.", 40),
+  section("APPROVAL_AND_LAUNCH_LIMITS", "Approval and Launch Limits", "Required approvals, unresolved decisions and go/no-go boundaries.", "Do not authorise launch, resource allocation or service commitment without human approval.", 50),
+];
+
+const SOP_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved SOP/work-instruction method, process standard or human-defined procedure framework.", 10, ["controlled_document"]),
+  section("APPROVED_REQUIREMENT_BASIS", "Approved Requirement Basis", "Approved policy, process, requirement or source that the SOP implements.", "Use approved requirements only; do not change policy or professional meaning.", 20, ["controlled_document"]),
+  section("PROCEDURE_STEPS_AND_CONTROLS", "Procedure Steps and Controls", "Step sequence, actor, input, output, control, record and exception.", "Make steps operationally clear and traceable to approved sources.", 30),
+  section("ROLES_RECORDS_HANDOFFS", "Roles, Records and Handoffs", "Responsible roles, records created, system handoffs and escalation.", "Route policy, compliance, participant, clinical, BSP/RP or asset issues to the right owner.", 40),
+  section("APPROVAL_PUBLICATION_LIMITS", "Approval and Publication Limits", "Required approvals, template/document-control dependencies and publication limits.", "Do not publish or supersede controlled documents without approval.", 50),
+];
+
+const PROCESS_ANALYSIS_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved process-analysis method, workflow standard or human-defined review framework.", 10, ["process_map"]),
+  section("PROCESS_SCOPE_CURRENT_STATE", "Process Scope and Current State", "Process purpose, trigger, inputs, actors, systems, sequence and outputs.", "Map the current process from source evidence and state uncertainty.", 20, ["process_map"]),
+  section("HANDOFFS_CONTROLS_EXCEPTIONS", "Handoffs, Controls and Exceptions", "Decision points, handoffs, controls, exceptions, records and failure points.", "Separate process-control issues from professional policy/compliance/service decisions.", 30),
+  section("IMPROVEMENT_OPTIONS", "Improvement Options", "Improvement options, dependencies, risks, owners and expected impact.", "Prepare options only; do not approve operating-model or resource-allocation changes.", 40),
+  section("APPROVAL_AND_IMPLEMENTATION_LIMITS", "Approval and Implementation Limits", "Required approvals, unresolved risks and implementation boundaries.", "Do not bypass controls, approvals or professional ownership.", 50),
+];
+
+const ASSET_LIFECYCLE_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved asset-control method, maintenance standard or human-defined lifecycle review framework.", 10, ["asset_register"]),
+  section("ASSET_IDENTITY_AND_REGISTER", "Asset Identity and Register", "Asset identity, owner/custodian, location, status, register entry and source evidence.", "Use current asset register evidence and surface missing/conflicting records.", 20, ["asset_register"]),
+  section("CONDITION_MAINTENANCE_DEFECTS", "Condition, Maintenance and Defects", "Condition evidence, maintenance/inspection records, defects, restrictions and warranty/vendor information.", "Do not certify safety, technical condition or compliance beyond supplied evidence.", 30),
+  section("LIFECYCLE_OPTIONS_AND_RISKS", "Lifecycle Options and Risks", "Replacement/repair/disposal options, risk, operational impact and financial/procurement dependencies.", "Prepare options without approving procurement, disposal, write-off or accounting treatment.", 40),
+  section("APPROVAL_CERTIFICATION_LIMITS", "Approval and Certification Limits", "Required approvals, safety/technical certification needs and unresolved records.", "Escalate safety-critical, technical, WHS/OHS, finance or procurement decisions.", 50),
+];
+
+const DOCUMENT_CONTROL_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved document-control method, register standard or human-defined lifecycle framework.", 10, ["document_register"]),
+  section("DOCUMENT_IDENTITY_STATUS", "Document Identity and Status", "Document identity, owner, type, version, approval/publication status and currentness.", "Use controlled register evidence; do not infer current status from filename or memory.", 20, ["document_register"]),
+  section("VERSION_PROVENANCE_LIFECYCLE", "Version, Provenance and Lifecycle", "Lineage, source/provenance, supersession, review due date, archive/retention status and conflicts.", "Surface conflicts and unresolved provenance; do not silently rewrite records.", 30),
+  section("METADATA_ACCESS_ARTIFACT_READINESS", "Metadata, Access and Artifact Readiness", "Metadata, access class, template/artifact status and packaging readiness.", "Do not broaden access permissions or alter substantive professional meaning.", 40),
+  section("APPROVAL_AND_CONTROL_LIMITS", "Approval and Control Limits", "Required approvals for publication, supersession, archive, owner change or deletion.", "Controlled lifecycle changes remain approval-gated.", 50),
+];
+
+const KNOWLEDGE_BASE_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved knowledge-base review method, taxonomy standard or human-defined review framework.", 10, ["knowledge_source"]),
+  section("KNOWLEDGE_SCOPE_AND_INVENTORY", "Knowledge Scope and Inventory", "Knowledge area, source set, taxonomy, owners and inclusion/exclusion boundaries.", "Use existing KRS/provenance architecture; do not create another retrieval or memory system.", 20, ["knowledge_source"]),
+  section("QUALITY_RETRIEVAL_DUPLICATION", "Quality, Retrieval and Duplication", "Metadata quality, discoverability, retrieval issues, duplicates, supersession and gaps.", "Assess hygiene without changing professional meaning inside sources.", 30),
+  section("GAPS_ACTIONS_AND_OWNERS", "Gaps, Actions and Owners", "Knowledge gaps, owners, corrective actions, review due risks and documentation dependencies.", "Route substantive professional conclusions to source owners.", 40),
+  section("APPROVAL_ACCESS_LIMITS", "Approval and Access Limits", "Approvals, access-control limits, unresolved source ownership and lifecycle changes.", "Do not broaden access or mark sources authoritative without approval.", 50),
+];
+
+const CONTROLLED_ASSEMBLY_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved controlled-assembly method, template standard or human-defined packaging framework.", 10, ["template_record"]),
+  section("APPROVED_CONTENT_INPUTS", "Approved Content Inputs", "Approved specialist content, source versions, owner approvals and missing professional content.", "Assemble approved inputs only. Missing content remains visible.", 20, ["controlled_document"]),
+  section("TEMPLATE_METADATA_PROVENANCE", "Template, Metadata and Provenance", "Template, merge fields, metadata, naming, source/version references and artifact linkage.", "Use approved templates and preserve provenance.", 30, ["template_record"]),
+  section("ARTIFACT_PACKAGE_READINESS", "Artifact Package Readiness", "DOCX/PDF readiness, attachments, unresolved fields and validation gaps.", "Prepare package readiness without controlled publication or owner changes.", 40),
+  section("PUBLICATION_LIFECYCLE_LIMITS", "Publication and Lifecycle Limits", "Publication, supersession, archive, access and owner-change approvals.", "Do not publish, supersede, archive or change ownership without approval.", 50),
 ];
 
 // ─── Blueprint Action Taxonomy ────────────────────────────────────────────────
@@ -2044,8 +2145,22 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "operations",
     supportedModes: ["readiness"],
     primaryDeliverable: "Operational Readiness Assessment report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
+    professionalAuthority: "needsops_ai",
+    futureOwnerRoleCode: "operations_manager",
+    supportingSpecialists: ["service_delivery_coordinator", "workforce_rostering_coordinator", "process_asset_coordinator", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("operational_readiness_assessment", ["readiness_gap_review", "launch_risk_review"], ["go_live_approval", "resource_allocation_approval", "service_commitment_approval"]),
+    evidenceContract: operationsEvidence(["service_requirement", "operational_record"], ["roster_schedule", "asset_register", "controlled_document", "compliance_register"], [], 2, "block_completion"),
+    sections: OPERATIONAL_READINESS_SECTIONS,
+    requiredLibraryKnowledge: ["operational_readiness_checklist", "service_delivery_requirements", "quality_framework"],
+    requiredApprovals: { human_professional_method_owner: true, operations_owner: true },
+    validationRules: [{ rule: "operational_readiness_method_source_or_user_definition_required", required: true, description: "Approved readiness method or USER_DEFINITION_REQUIRED must remain visible until supplied." }],
+    successCriteria: ["Readiness scope and gaps are source-backed", "Launch/resource decisions are not made by AI", "Owners and dependencies are explicit"],
+    outputTypes: ["operational_readiness_assessment"],
+    escalationRules: [{ trigger: "go_live_or_resource_decision_required", action: "require_operations_and_human_approval" }],
+    mandatoryCitations: ["service_requirement", "operational_record"],
+    externalAuthorityRequiredFor: ["go-live approval", "resource allocation decision", "service commitment approval", "clinical/BSP/RP or compliance certification"],
   },
   {
     code: "standard_operating_procedure",
@@ -2055,7 +2170,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "operations",
     supportedModes: ["create", "review", "revise", "work_instruction"],
     primaryDeliverable: "Standard Operating Procedure document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     legacyCode: "operational_procedure",
     professionalAuthority: "needsops_ai",
@@ -2067,6 +2182,17 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "asset procurement, disposal, write-off or safety/technical certification",
     ],
     futureOwnerRoleCode: "process_asset_coordinator",
+    supportingSpecialists: ["operations_manager", "policy_governance_specialist", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("standard_operating_procedure", "SOP_{process}_{date}", ["process_step_review", "control_mapping"], ["policy_change", "professional_domain_conclusion", "controlled_publication"]),
+    evidenceContract: operationsEvidence(["controlled_document", "process_map"], ["workflow_record", "operational_record", "template_record"], [], 2, "block_completion"),
+    sections: SOP_SECTIONS,
+    requiredLibraryKnowledge: ["sop_template", "document_control_procedure", "policy_register"],
+    requiredApprovals: { human_professional_method_owner: true, process_asset_owner: true, controlled_document_owner: true },
+    validationRules: [{ rule: "sop_must_implement_approved_requirement_without_changing_policy", required: true, description: "SOP must implement approved requirements and must not change policy/professional meaning." }],
+    successCriteria: ["Approved requirement basis is cited", "Steps and controls are operationally clear", "Publication remains approval-gated"],
+    outputTypes: ["standard_operating_procedure"],
+    escalationRules: [{ trigger: "policy_or_professional_meaning_change_required", action: "defer_to_policy_or_domain_owner" }],
+    mandatoryCitations: ["controlled_document", "process_map"],
   },
   {
     code: "business_process_analysis",
@@ -2076,7 +2202,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "operations",
     supportedModes: ["process_analysis", "map", "review", "improvement", "workflow", "control_review", "handoff_review"],
     primaryDeliverable: "Business Process Analysis report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -2087,6 +2213,17 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "automation that bypasses approval, control or professional ownership",
     ],
     futureOwnerRoleCode: "process_asset_coordinator",
+    supportingSpecialists: ["operations_manager", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("business_process_analysis", ["process_map", "control_review", "handoff_review"], ["operating_model_approval", "resource_allocation_approval", "control_bypass"]),
+    evidenceContract: operationsEvidence(["process_map"], ["workflow_record", "operational_record", "controlled_document", "compliance_register"], [], 2, "clarification_required"),
+    sections: PROCESS_ANALYSIS_SECTIONS,
+    requiredLibraryKnowledge: ["process_map", "workflow_standard", "control_framework"],
+    requiredApprovals: { human_professional_method_owner: true, process_asset_owner: true },
+    validationRules: [{ rule: "process_improvement_options_not_approved_operating_model_change", required: true, description: "Process analysis may recommend options but must not approve operating-model or control changes." }],
+    successCriteria: ["Current state is traceable", "Handoffs and controls are visible", "Implementation remains approval-gated"],
+    outputTypes: ["business_process_analysis"],
+    escalationRules: [{ trigger: "material_operating_model_or_control_change_required", action: "require_operations_compliance_and_human_approval" }],
+    mandatoryCitations: ["process_map"],
   },
   {
     code: "asset_lifecycle_review",
@@ -2104,7 +2241,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "replacement_review",
     ],
     primaryDeliverable: "Asset Lifecycle & Control Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -2115,6 +2252,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "vendor instruction that creates external obligation",
     ],
     futureOwnerRoleCode: "process_asset_coordinator",
+    supportingSpecialists: ["operations_manager", "finance_officer", "compliance_quality_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("asset_lifecycle_control_review", ["asset_register_review", "maintenance_gap_review"], ["procurement_approval", "disposal_approval", "safety_certification", "accounting_treatment"]),
+    evidenceContract: operationsEvidence(["asset_register"], ["maintenance_record", "inspection_record", "defect_record", "vendor_record"], ["asset"], 2, "block_completion"),
+    sections: ASSET_LIFECYCLE_SECTIONS,
+    requiredLibraryKnowledge: ["asset_register", "asset_management_procedure", "procurement_policy"],
+    requiredEntityKnowledge: { asset: true },
+    requiredApprovals: { human_professional_method_owner: true, process_asset_owner: true },
+    validationRules: [{ rule: "asset_review_not_procurement_disposal_or_safety_certification", required: true, description: "Asset lifecycle review must not approve procurement/disposal/write-off or certify technical/safety status." }],
+    successCriteria: ["Asset identity and lifecycle evidence are cited", "Defects/restrictions are visible", "Procurement/disposal/certification remain approval-gated"],
+    outputTypes: ["asset_lifecycle_control_review"],
+    escalationRules: [{ trigger: "procurement_disposal_safety_or_accounting_decision_required", action: "defer_to_finance_operations_or_external_technical_authority" }],
+    mandatoryCitations: ["asset_register"],
   },
 
   // ── Knowledge & Documentation ───────────────────────────────────────────────
@@ -2126,7 +2275,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "documentation",
     supportedModes: ["control_review", "lifecycle_review", "version_review", "metadata_review", "review_due", "archive_review"],
     primaryDeliverable: "Document Control Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     futureOwnerRoleCode: "knowledge_documentation_specialist",
@@ -2137,6 +2286,17 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "legal retention period determination",
       "access-control override or deletion of controlled evidence",
     ],
+    supportingSpecialists: ["policy_governance_specialist", "compliance_quality_manager"],
+    deliverableContract: structuredAnalysisDeliverable("document_control_review", ["version_review", "metadata_review", "lifecycle_review"], ["professional_content_change", "controlled_publication", "access_override", "document_deletion"]),
+    evidenceContract: operationsEvidence(["document_register"], ["controlled_document", "template_record", "artifact_record"], [], 2, "block_completion"),
+    sections: DOCUMENT_CONTROL_SECTIONS,
+    requiredLibraryKnowledge: ["document_control_procedure", "document_register", "retention_schedule"],
+    requiredApprovals: { human_professional_method_owner: true, knowledge_documentation_owner: true },
+    validationRules: [{ rule: "document_control_does_not_change_substantive_professional_meaning", required: true, description: "Document control review must preserve professional content ownership and lifecycle approvals." }],
+    successCriteria: ["Document identity and currentness are source-backed", "Version/provenance conflicts are visible", "Lifecycle changes remain approval-gated"],
+    outputTypes: ["document_control_review"],
+    escalationRules: [{ trigger: "publication_supersession_archive_or_access_change_required", action: "require_kds_and_human_approval" }],
+    mandatoryCitations: ["document_register"],
   },
   {
     code: "knowledge_base_review",
@@ -2146,7 +2306,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "documentation",
     supportedModes: ["knowledge_base_review", "taxonomy", "retrieval_quality", "duplication_review", "gap_review", "metadata_quality"],
     primaryDeliverable: "Knowledge Base Hygiene Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     futureOwnerRoleCode: "knowledge_documentation_specialist",
@@ -2155,6 +2315,17 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "substantive professional interpretation of retrieved knowledge",
       "broadening access permissions to improve discoverability",
     ],
+    supportingSpecialists: ["policy_governance_specialist", "compliance_quality_manager"],
+    deliverableContract: structuredAnalysisDeliverable("knowledge_base_hygiene_review", ["retrieval_quality_review", "duplication_review", "taxonomy_gap_review"], ["new_retrieval_system", "professional_content_interpretation", "access_override"]),
+    evidenceContract: operationsEvidence(["knowledge_source"], ["document_register", "controlled_document", "retrieval_audit", "template_record"], [], 2, "clarification_required"),
+    sections: KNOWLEDGE_BASE_SECTIONS,
+    requiredLibraryKnowledge: ["knowledge_base_taxonomy", "document_control_procedure", "retrieval_quality_guidance"],
+    requiredApprovals: { human_professional_method_owner: true, knowledge_documentation_owner: true },
+    validationRules: [{ rule: "knowledge_review_uses_existing_krs_and_preserves_source_ownership", required: true, description: "Knowledge-base review must use existing KRS/provenance architecture and must not change source meaning." }],
+    successCriteria: ["Taxonomy/retrieval gaps are source-backed", "Duplicate/superseded sources are visible", "Access and professional meaning remain controlled"],
+    outputTypes: ["knowledge_base_hygiene_review"],
+    escalationRules: [{ trigger: "professional_content_or_access_change_required", action: "defer_to_source_owner_or_human_approval" }],
+    mandatoryCitations: ["knowledge_source"],
   },
   {
     code: "controlled_document_assembly",
@@ -2164,7 +2335,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "documentation",
     supportedModes: ["assembly", "template_application", "artifact_packaging", "docx_pdf_package", "controlled_publication_package"],
     primaryDeliverable: "Controlled Document Package",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     futureOwnerRoleCode: "knowledge_documentation_specialist",
@@ -2175,6 +2346,17 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "document owner change",
       "superseding or archiving a controlled document",
     ],
+    supportingSpecialists: ["policy_governance_specialist", "compliance_quality_manager"],
+    deliverableContract: docxDeliverable("controlled_document_package", "CONTROLLED_DOCUMENT_PACKAGE_{document}_{date}", ["artifact_packaging_review", "metadata_provenance_review"], ["professional_content_change", "controlled_publication", "document_owner_change", "supersession_or_archive"]),
+    evidenceContract: operationsEvidence(["template_record", "controlled_document"], ["document_register", "artifact_record", "source_version"], [], 2, "block_completion"),
+    sections: CONTROLLED_ASSEMBLY_SECTIONS,
+    requiredLibraryKnowledge: ["document_control_procedure", "template_register", "artifact_packaging_standard"],
+    requiredApprovals: { human_professional_method_owner: true, knowledge_documentation_owner: true, controlled_publication_owner: true },
+    validationRules: [{ rule: "controlled_assembly_uses_approved_content_and_template_only", required: true, description: "Controlled assembly may package approved content but must not change professional content or publish without approval." }],
+    successCriteria: ["Approved content inputs are traceable", "Template/metadata/provenance are preserved", "Publication/lifecycle changes remain approval-gated"],
+    outputTypes: ["controlled_document_package"],
+    escalationRules: [{ trigger: "publication_owner_change_or_supersession_required", action: "require_kds_and_human_approval" }],
+    mandatoryCitations: ["template_record", "controlled_document"],
   },
 
   // ── Policy & Governance Documents ────────────────────────────────────────────
