@@ -334,6 +334,50 @@ function policyEvidence(
   };
 }
 
+function workforceEvidence(
+  requiredEvidenceCategories: string[],
+  optionalEvidenceCategories: string[] = [],
+  requiredEntityTypes: string[] = [],
+  minimumEvidenceCount = 2,
+  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+) {
+  return {
+    requiredEvidenceCategories,
+    optionalEvidenceCategories,
+    allowedSourceTypes: [
+      "controlled_document",
+      "worker_record",
+      "employment_record",
+      "roster_schedule",
+      "worker_availability",
+      "service_requirement",
+      "credential_record",
+      "training_record",
+      "competency_record",
+      "timesheet",
+      "payroll_record",
+      "performance_record",
+      "supervision_record",
+      "employee_response",
+      "learning_record",
+      "task_upload",
+    ],
+    restrictedSourceTypes: ["memory_only", "user_assertion_only", "uncontrolled_copy"],
+    requiredEntityTypes,
+    minimumEvidenceCount,
+    freshnessRules: {
+      currentnessRequired: true,
+      memoryCannotProveCurrentness: true,
+      historicalAvailabilityRemainsHistorical: true,
+      historicalPerformanceRecordsRemainHistorical: true,
+      conflictingVersionsRequireResolution: true,
+      expiredCredentialsRemainExpired: true,
+    },
+    claimIntegrityRequired: true,
+    missingEvidenceBehaviour,
+  };
+}
+
 function section(
   sectionCode: string,
   title: string,
@@ -605,6 +649,62 @@ const SERVICE_AGREEMENT_SECTIONS = [
   section("CONTENT_ACCURACY_AND_COMPLIANCE_GAPS", "Content Accuracy and Compliance Gaps", "Accuracy issues, required clauses, service/funding alignment and compliance gaps.", "Surface issues without creating legal advice or unilateral amendment.", 30),
   section("SPECIALIST_HANDOFFS_AND_ACTIONS", "Specialist Handoffs and Actions", "SDC, finance, policy/governance, legal or participant-communication handoffs.", "Route funding, service delivery, pricing, legal and participant communication decisions correctly.", 40),
   section("APPROVAL_REVISION_LIMITS", "Approval and Revision Limits", "Required approvals, unresolved gaps and controlled revision/publication limits.", "Do not alter agreement terms, make legal commitments or issue the agreement without approval.", 50),
+];
+
+const ROSTER_FATIGUE_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved roster/fatigue review method, workforce wellbeing framework or human-defined review framework.", 10, ["roster_schedule"]),
+  section("ROSTER_SCOPE_AND_SOURCE_STATUS", "Roster Scope and Source Status", "Roster period, workers, service setting, source records and currentness.", "Use current roster/availability records; historical patterns do not prove current availability.", 20, ["roster_schedule"]),
+  section("FATIGUE_PATTERN_REVIEW", "Fatigue and Pattern Review", "Working-time pattern, rest, consecutive shifts, travel or wellbeing concerns and evidence gaps.", "Prepare evidence-backed observations only; do not make final industrial/legal/SCHADS determinations.", 30),
+  section("RISK_ACTIONS_AND_HANDOFFS", "Risk, Actions and Handoffs", "Roster risks, actions, owner, review timeframe and payroll/P&C/compliance handoffs.", "Route employment, payroll, industrial or disciplinary decisions to the correct owner.", 40),
+  section("APPROVAL_AND_LIMITS", "Approval and Limits", "Required approval, unresolved method gaps and final authority boundaries.", "Do not certify compliance or approve roster changes without authorised approval.", 50),
+];
+
+const ROSTER_PLANNING_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved roster-planning method, service model or human-defined planning framework.", 10, ["service_requirement"]),
+  section("COVERAGE_REQUIREMENTS", "Coverage Requirements", "Required support/service coverage, shift requirements, ratios and hard constraints.", "Use verified service requirements and do not change support ratios or service commitments.", 20, ["service_requirement"]),
+  section("WORKER_AVAILABILITY_ELIGIBILITY", "Worker Availability and Eligibility", "Current availability, eligibility/credential status, worker preferences and exclusions.", "Do not infer current availability or self-certify credentials.", 30, ["worker_availability"]),
+  section("DRAFT_ROSTER_AND_EXCEPTIONS", "Draft Roster and Exceptions", "Draft allocation, vacancies, conflicts, risks and unresolved constraints.", "Show vacancies/conflicts instead of pretending coverage is complete.", 40),
+  section("PUBLICATION_APPROVAL_LIMITS", "Publication Approval Limits", "Approval needed before publication, shift allocation or active roster change.", "Draft only until approved. Do not publish or materially modify active rosters without authority.", 50),
+];
+
+const PERFORMANCE_REVIEW_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved performance-review method, HR procedure or human-defined review framework.", 10, ["performance_record"]),
+  section("ROLE_EXPECTATIONS_AND_EVIDENCE", "Role Expectations and Evidence", "Role expectations, evidence period, source records and employee response status.", "Use current role expectations and evidence; separate facts from opinions.", 20, ["performance_record"]),
+  section("PERFORMANCE_COMPETENCY_GAPS", "Performance and Competency Gaps", "Evidence-backed strengths, gaps, support needs and competency concerns.", "Do not make disciplinary, termination or legal conclusions.", 30),
+  section("SUPPORT_DEVELOPMENT_ACTIONS", "Support and Development Actions", "Coaching, supervision, learning, adjustment or support actions and owners.", "Route learning, compliance, payroll or legal issues to the correct owner.", 40),
+  section("PROCEDURAL_FAIRNESS_AND_APPROVAL", "Procedural Fairness and Approval", "Employee response, fairness steps, approvals and unresolved decisions.", "Block final outcome if employee response, method or approval is missing.", 50),
+];
+
+const PEOPLE_MANAGEMENT_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved people-management method, HR procedure or human-defined review framework.", 10, ["employment_record"]),
+  section("PEOPLE_MATTER_SCOPE", "People Matter Scope", "Matter type, worker context, source records, timeframe and procedural status.", "Use current HR/employment evidence and preserve confidentiality.", 20, ["employment_record"]),
+  section("EVIDENCE_AND_FAIRNESS_REVIEW", "Evidence and Fairness Review", "Evidence, employee response, witness/source reliability, fairness steps and gaps.", "Do not turn untested allegations into findings.", 30),
+  section("OPTIONS_RISKS_AND_HANDOFFS", "Options, Risks and Handoffs", "Support options, risks, legal/industrial/payroll/compliance dependencies and owner.", "Prepare options only. Do not decide termination, suspension or severe discipline.", 40),
+  section("APPROVAL_DECISION_BOUNDARY", "Approval and Decision Boundary", "Human approval, legal/industrial escalation and unresolved decisions.", "Final employment decisions require authorised human approval.", 50),
+];
+
+const LEARNING_CAPABILITY_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved learning-needs method, competency framework or human-defined development framework.", 10, ["training_record"]),
+  section("ROLE_CAPABILITY_BASELINE", "Role and Capability Baseline", "Role expectations, required training, competency standard and worker/cohort context.", "Use current role/training/competency evidence only.", 20, ["training_record"]),
+  section("GAPS_ROOT_CAUSE_AND_NEEDS", "Gaps, Root Cause and Needs", "Learning gaps, root causes, barriers, support needs and evidence quality.", "Do not certify competence or deployment eligibility.", 30),
+  section("LEARNING_PLAN_AND_SUPPORTS", "Learning Plan and Supports", "Learning actions, delivery mode, owner, due dates, supports and review.", "Separate learning support from disciplinary or employment consequences.", 40),
+  section("EFFECTIVENESS_AND_HANDOFFS", "Effectiveness and Handoffs", "Effectiveness measures, reassessment plan, WCS/P&C/operations handoffs and approvals.", "Route mandatory credential or deployment questions to WCS/human authority.", 50),
+];
+
+const WORKFORCE_COMPLIANCE_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved workforce-compliance method, eligibility rule source or human-defined review framework.", 10, ["credential_record"]),
+  section("WORKER_ELIGIBILITY_SCOPE", "Worker Eligibility Scope", "Worker, role/service context, credential/training/check requirements and source status.", "Use current verified records; expired or unverified credentials remain not proven.", 20, ["credential_record"]),
+  section("REQUIREMENT_EVIDENCE_MAPPING", "Requirement and Evidence Mapping", "Requirement, evidence, status, expiry, gaps and conflicts.", "Do not waive mandatory requirements or self-certify credentials.", 30),
+  section("DEPLOYMENT_RISK_AND_EXCEPTIONS", "Deployment Risk and Exceptions", "Eligibility risk, exception request, service impact and escalation.", "Prepare eligibility assessment only; roster publication remains WRC authority.", 40),
+  section("APPROVAL_AND_DECISION_LIMITS", "Approval and Decision Limits", "Human approval, unresolved records and employment/clinical/BSP/RP/legal boundaries.", "Final deployment, employment or clinical decisions require authorised owner approval.", 50),
+];
+
+const PAYROLL_WORKFORCE_COST_SECTIONS = [
+  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved payroll/workforce-cost method, payroll procedure or human-defined review framework.", 10, ["payroll_record"]),
+  section("PAYROLL_COST_SCOPE_AND_RECORDS", "Payroll/Cost Scope and Records", "Period, worker/cohort, roster/timesheet/payroll/classification records and source status.", "Use current payroll, roster and timesheet records; memory cannot prove worked time or rate.", 20, ["payroll_record"]),
+  section("DRAFT_RECONCILIATION_AND_VARIANCE", "Draft Reconciliation and Variance", "Evidence-backed variances, classifications, allowances, overtime, penalties and cost implications.", "Prepare draft analysis only. Do not execute payroll or approve payments.", 30),
+  section("WORKFORCE_COST_IMPACT", "Workforce Cost Impact", "Cost impact, forecast implication, operational dependency and uncertainty.", "Route FP&R/accounting/tax/legal boundaries to correct owner.", 40),
+  section("APPROVAL_AND_EXECUTION_LIMITS", "Approval and Execution Limits", "Payroll owner approval, unresolved records, legal/tax/industrial limits and execution boundary.", "Do not mutate payroll systems, approve payruns or make fund transfers.", 50),
 ];
 
 // ─── Blueprint Action Taxonomy ────────────────────────────────────────────────
@@ -1694,7 +1794,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "workforce",
     supportedModes: ["fatigue_review"],
     primaryDeliverable: "Rostering & Fatigue Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
@@ -1704,6 +1804,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "employment or disciplinary decision",
     ],
     futureOwnerRoleCode: "workforce_rostering_coordinator",
+    supportingSpecialists: ["payroll_workforce_cost_officer", "people_culture_manager", "workforce_compliance_specialist", "operations_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("rostering_fatigue_review", ["fatigue_pattern_review", "roster_exception_review"], ["final_schads_determination", "payroll_entitlement_calculation", "disciplinary_decision"]),
+    evidenceContract: workforceEvidence(["roster_schedule", "worker_availability"], ["timesheet", "employment_record", "incident_record"], ["worker"], 2, "block_completion"),
+    sections: ROSTER_FATIGUE_SECTIONS,
+    requiredLibraryKnowledge: ["rostering_policy", "fatigue_management_policy", "workforce_wellbeing_framework"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, rostering_owner: true },
+    validationRules: [{ rule: "roster_fatigue_method_source_or_user_definition_required", required: true, description: "Approved fatigue/rostering method or USER_DEFINITION_REQUIRED must remain visible until supplied." }],
+    successCriteria: ["Roster source and period are cited", "Fatigue concerns are evidence-backed", "Industrial/payroll/HR decisions are not made"],
+    outputTypes: ["rostering_fatigue_review"],
+    escalationRules: [{ trigger: "industrial_payroll_or_hr_decision_required", action: "defer_to_payroll_pc_or_authorised_human" }],
+    mandatoryCitations: ["roster_schedule", "worker_availability"],
   },
   {
     code: "roster_planning",
@@ -1713,7 +1825,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "workforce",
     supportedModes: ["planning"],
     primaryDeliverable: "Roster Plan document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
@@ -1724,6 +1836,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "clinical, BSP or restrictive-practice professional decision",
     ],
     futureOwnerRoleCode: "workforce_rostering_coordinator",
+    supportingSpecialists: ["service_delivery_coordinator", "workforce_compliance_specialist", "operations_manager", "payroll_workforce_cost_officer", "people_culture_manager"],
+    deliverableContract: docxDeliverable("draft_roster_plan", "DRAFT_ROSTER_PLAN_{period}_{date}", ["coverage_exception_review", "vacancy_review"], ["published_roster", "shift_allocation_approval", "service_requirement_change", "credential_certification"]),
+    evidenceContract: workforceEvidence(["service_requirement", "worker_availability"], ["credential_record", "training_record", "roster_schedule", "worker_preference"], ["worker"], 2, "block_completion"),
+    sections: ROSTER_PLANNING_SECTIONS,
+    requiredLibraryKnowledge: ["rostering_policy", "service_delivery_requirements", "worker_eligibility_requirements"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, rostering_owner: true, roster_publication_owner: true },
+    validationRules: [{ rule: "roster_publication_requires_approval", required: true, description: "Roster planning output remains draft until authorised publication approval is supplied." }],
+    successCriteria: ["Hard coverage constraints are preserved", "Vacancies/conflicts remain visible", "Active roster publication remains approval-gated"],
+    outputTypes: ["draft_roster_plan"],
+    escalationRules: [{ trigger: "credential_or_service_requirement_unclear", action: "defer_to_wcs_sdc_or_human_owner" }],
+    mandatoryCitations: ["service_requirement", "worker_availability"],
   },
   {
     code: "workforce_performance_review",
@@ -1733,11 +1857,23 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "workforce",
     supportedModes: ["performance_review"],
     primaryDeliverable: "Performance & Competency Review document",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     legacyCode: "performance_review",
     professionalAuthority: "needsops_ai",
     futureOwnerRoleCode: "people_culture_manager",
+    supportingSpecialists: ["talent_learning_specialist", "workforce_compliance_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("workforce_performance_competency_review", "PERFORMANCE_COMPETENCY_REVIEW_{worker}_{date}", ["competency_gap_review", "development_action_plan"], ["disciplinary_decision", "termination_decision", "legal_advice"]),
+    evidenceContract: workforceEvidence(["performance_record", "employee_response"], ["supervision_record", "training_record", "competency_record", "role_description"], ["worker"], 2, "block_completion"),
+    sections: PERFORMANCE_REVIEW_SECTIONS,
+    requiredLibraryKnowledge: ["performance_management_policy", "role_expectations", "procedural_fairness_guidance"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, people_culture_owner: true },
+    validationRules: [{ rule: "procedural_fairness_and_employee_response_required", required: true, description: "Performance review must preserve procedural fairness and employee response status." }],
+    successCriteria: ["Evidence and employee response are traceable", "Development actions are separated from decisions", "Employment consequences remain approval-gated"],
+    outputTypes: ["workforce_performance_competency_review"],
+    escalationRules: [{ trigger: "disciplinary_or_termination_decision_required", action: "require_people_culture_human_and_legal_review" }],
+    mandatoryCitations: ["performance_record", "employee_response"],
   },
   {
     code: "people_management_review",
@@ -1759,7 +1895,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "offboarding",
     ],
     primaryDeliverable: "People Management Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -1771,6 +1907,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "clinical, BSP or restrictive-practice professional decision",
     ],
     futureOwnerRoleCode: "people_culture_manager",
+    supportingSpecialists: ["workforce_compliance_specialist", "payroll_workforce_cost_officer", "talent_learning_specialist", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("people_management_review", "PEOPLE_MANAGEMENT_REVIEW_{matter}_{date}", ["procedural_fairness_review", "options_risk_review"], ["termination_decision", "suspension_decision", "disciplinary_decision", "legal_advice"]),
+    evidenceContract: workforceEvidence(["employment_record"], ["employee_response", "performance_record", "supervision_record", "complaint_record", "training_record"], ["worker"], 2, "block_completion"),
+    sections: PEOPLE_MANAGEMENT_SECTIONS,
+    requiredLibraryKnowledge: ["people_management_policy", "procedural_fairness_guidance", "employment_policy"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, people_culture_owner: true },
+    validationRules: [{ rule: "people_management_method_and_fairness_required", required: true, description: "People management review must cite the method/source and preserve procedural fairness." }],
+    successCriteria: ["Matter scope and evidence are clear", "Employee response/fairness status is visible", "Final HR decisions remain approval-gated"],
+    outputTypes: ["people_management_review"],
+    escalationRules: [{ trigger: "legal_or_severe_disciplinary_decision_required", action: "require_people_culture_human_and_legal_review" }],
+    mandatoryCitations: ["employment_record"],
   },
   {
     code: "learning_capability_development_plan",
@@ -1794,7 +1942,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "professional_development",
     ],
     primaryDeliverable: "Learning & Capability Development report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -1806,6 +1954,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "legal or industrial-relations advice",
     ],
     futureOwnerRoleCode: "talent_learning_specialist",
+    supportingSpecialists: ["people_culture_manager", "workforce_compliance_specialist", "operations_manager", "knowledge_documentation_specialist"],
+    deliverableContract: docxDeliverable("learning_capability_development_plan", "LEARNING_CAPABILITY_PLAN_{worker_or_cohort}_{date}", ["learning_needs_analysis", "effectiveness_review"], ["competency_certification", "deployment_eligibility_certification", "disciplinary_decision"]),
+    evidenceContract: workforceEvidence(["training_record"], ["competency_record", "performance_record", "role_description", "supervision_record"], ["worker"], 2, "clarification_required"),
+    sections: LEARNING_CAPABILITY_SECTIONS,
+    requiredLibraryKnowledge: ["learning_framework", "mandatory_training_matrix", "role_expectations"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, talent_learning_owner: true },
+    validationRules: [{ rule: "learning_method_source_or_user_definition_required", required: true, description: "Learning/capability work must cite approved framework or keep USER_DEFINITION_REQUIRED visible." }],
+    successCriteria: ["Learning need is evidence-backed", "Competency/deployment certification is not invented", "Effectiveness review plan is clear"],
+    outputTypes: ["learning_capability_development_plan"],
+    escalationRules: [{ trigger: "mandatory_credential_or_deployment_decision_required", action: "defer_to_workforce_compliance_and_human_owner" }],
+    mandatoryCitations: ["training_record"],
   },
   {
     code: "workforce_compliance_assessment",
@@ -1815,7 +1975,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "workforce",
     supportedModes: ["eligibility_review", "credential_review", "expiry_monitoring", "exception_review", "onboarding_readiness"],
     primaryDeliverable: "Workforce Compliance Assessment report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -1827,6 +1987,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "roster publication or shift allocation",
     ],
     futureOwnerRoleCode: "workforce_compliance_specialist",
+    supportingSpecialists: ["people_culture_manager", "talent_learning_specialist", "workforce_rostering_coordinator", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("workforce_compliance_assessment", ["eligibility_gap_review", "expiry_monitoring_review"], ["credential_certification", "deployment_approval", "roster_publication"]),
+    evidenceContract: workforceEvidence(["credential_record", "training_record"], ["employment_record", "worker_record", "service_requirement"], ["worker"], 2, "block_completion"),
+    sections: WORKFORCE_COMPLIANCE_SECTIONS,
+    requiredLibraryKnowledge: ["worker_eligibility_requirements", "mandatory_training_matrix", "credentialing_policy"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, workforce_compliance_owner: true },
+    validationRules: [{ rule: "current_verified_credentials_required", required: true, description: "Worker eligibility assessment must use current verified records; expired/unverified credentials remain not proven." }],
+    successCriteria: ["Credential/training evidence is current", "Eligibility gaps are visible", "Deployment and roster decisions remain separate"],
+    outputTypes: ["workforce_compliance_assessment"],
+    escalationRules: [{ trigger: "deployment_or_roster_decision_required", action: "defer_to_human_owner_and_wrc" }],
+    mandatoryCitations: ["credential_record", "training_record"],
   },
   {
     code: "payroll_workforce_cost_review",
@@ -1836,7 +2008,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "financial",
     supportedModes: ["payroll_review", "reconciliation", "exception_review", "cost_review", "cost_calculation", "award_pay_review", "classification_pay_review", "allowance_review", "overtime_review", "penalty_rate_review", "historical_reconstruction"],
     primaryDeliverable: "Payroll & Workforce Cost Review report",
-    maturityState: "placeholder",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "needsops_ai",
     externalAuthorityRequiredFor: [
@@ -1849,6 +2021,18 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
       "clinical, BSP or restrictive-practice professional decision",
     ],
     futureOwnerRoleCode: "payroll_workforce_cost_officer",
+    supportingSpecialists: ["workforce_rostering_coordinator", "people_culture_manager", "workforce_compliance_specialist", "financial_planning_reporting_manager", "knowledge_documentation_specialist"],
+    deliverableContract: structuredAnalysisDeliverable("payroll_workforce_cost_review", ["payroll_reconciliation", "workforce_cost_variance_review"], ["payrun_approval", "fund_transfer", "tax_agent_certification", "legal_entitlement_determination"]),
+    evidenceContract: workforceEvidence(["payroll_record", "timesheet"], ["roster_schedule", "employment_record", "award_source", "classification_record"], ["worker"], 2, "block_completion"),
+    sections: PAYROLL_WORKFORCE_COST_SECTIONS,
+    requiredLibraryKnowledge: ["payroll_procedure", "schads_award", "classification_matrix"],
+    requiredEntityKnowledge: { worker: true },
+    requiredApprovals: { human_professional_method_owner: true, payroll_owner: true },
+    validationRules: [{ rule: "payroll_execution_and_fund_transfer_prohibited", required: true, description: "Payroll review may prepare analysis but must not execute payrun, mutate payroll system or transfer funds." }],
+    successCriteria: ["Payroll/timesheet evidence is current", "Variances are traceable", "Execution/legal/tax boundaries are preserved"],
+    outputTypes: ["payroll_workforce_cost_review"],
+    escalationRules: [{ trigger: "payrun_tax_or_legal_decision_required", action: "require_payroll_human_tax_or_legal_review" }],
+    mandatoryCitations: ["payroll_record", "timesheet"],
   },
 
   // ── Operations ────────────────────────────────────────────────────────────────
