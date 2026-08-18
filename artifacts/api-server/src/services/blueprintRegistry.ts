@@ -472,6 +472,54 @@ function operationsEvidence(
   };
 }
 
+function participantSiteEvidence(
+  requiredEvidenceCategories: string[],
+  optionalEvidenceCategories: string[] = [],
+  minimumEvidenceCount = 4,
+  missingEvidenceBehaviour: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" = "block_completion",
+) {
+  return {
+    requiredEvidenceCategories,
+    optionalEvidenceCategories,
+    allowedSourceTypes: [
+      "controlled_document",
+      "participant_record",
+      "service_delivery_record",
+      "case_note",
+      "risk_assessment",
+      "clinical_professional_document",
+      "behaviour_support_plan",
+      "restrictive_practice_record",
+      "operational_record",
+      "roster_schedule",
+      "training_record",
+      "asset_register",
+      "maintenance_record",
+      "inspection_record",
+      "defect_record",
+      "hazard_register",
+      "emergency_plan",
+      "evacuation_drill",
+      "fire_equipment_record",
+      "task_upload",
+    ],
+    restrictedSourceTypes: ["memory_only", "user_assertion_only", "uncontrolled_copy"],
+    requiredEntityTypes: ["participant", "site"],
+    minimumEvidenceCount,
+    freshnessRules: {
+      currentnessRequired: true,
+      memoryCannotProveCurrentness: true,
+      historicalPlansRemainHistorical: true,
+      historicalSiteAssessmentsRemainHistorical: true,
+      historicalOperationalChecksRemainHistorical: true,
+      conflictingVersionsRequireResolution: true,
+      unresolvedCriticalHazardsBlockSuitableConclusion: true,
+    },
+    claimIntegrityRequired: true,
+    missingEvidenceBehaviour,
+  };
+}
+
 function financeEvidence(
   requiredEvidenceCategories: string[],
   optionalEvidenceCategories: string[] = [],
@@ -658,17 +706,20 @@ function methodGateSection(
 }
 
 const BEHAVIOUR_REVIEW_SECTIONS = [
-  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved practitioner, BSP or organisation method that governs the review.", 10, ["behaviour_support_plan"]),
-  section("IMPLEMENTATION_EVIDENCE", "Implementation Evidence", "Evidence showing whether approved BSP strategies are being implemented as written.", "Compare implementation evidence against approved source material only. Do not amend the BSP or create new practitioner strategies.", 20, ["behaviour_implementation_evidence"]),
-  section("VARIANCE_AND_ESCALATION", "Variance and Escalation", "Observed implementation variance, uncertainty, evidence gaps and required practitioner escalation.", "Separate implementation variance from practitioner-level behaviour analysis. Escalate unsupported or practitioner-level conclusions.", 30),
-  section("REVIEW_OUTPUT_LIMITS", "Review Output Limits", "Allowed output, unresolved gaps and professional ownership limits.", "Produce an implementation review/brief only. Do not produce or amend a formal Behaviour Support Plan.", 40),
+  section("BSP_IDENTITY_CURRENTNESS", "BSP Identity and Currentness", "Participant, BSP author, provider, BSP type, effective/review dates and currentness.", "Verify the current BSP source before reviewing implementation. Expired, superseded or conflicting BSP evidence must be surfaced and escalated.", 10, ["behaviour_support_plan"]),
+  section("CONSULTATION_AND_PERSON_CENTRED_CONTENT", "Consultation and Person-Centred Content", "Participant involvement, accessible communication, family/guardian, provider, stakeholder consultation, strengths, preferences, routines and social/health context.", "Assess whether the existing BSP reflects the person and consultation evidence without rewriting the plan.", 20, ["participant_context"]),
+  section("EVIDENCE_BASE_AND_CHRONOLOGY", "Evidence Base and Chronology", "FBA, incidents, behaviour data, case notes, weekly summaries, health/clinical evidence, medication, staff observations and previous reviews.", "Establish chronology, currentness and source authority. Do not treat old observations or memory as current implementation truth.", 30, ["behaviour_implementation_evidence"]),
+  section("BEHAVIOURS_FUNCTION_GOALS_STRATEGIES", "Behaviours, Function, Goals and Strategies", "Observable behaviour definitions, frequency, duration, intensity, setting events, triggers, risks, maintaining factors, functional formulation, goals and strategies.", "Review whether evidence supports the existing BSP formulation. Do not invent functional conclusions or create practitioner-level strategies.", 40, ["behaviour_support_plan"]),
+  section("IMPLEMENTATION_RRP_TRAINING_MONITORING", "Implementation, RRP, Training and Monitoring", "Implementation reality, restrictive-practice governance, worker training/competency, monitoring, review frequency, outcomes and outstanding actions.", "Compare BSP requirements with actual incidents, notes, training and implementation records. Verify RRP authorisation, safeguards, monitoring, reduction/elimination and reporting where applicable.", 50, ["restrictive_practice_record"]),
+  section("CLASSIFICATION_ESCALATION_AND_GAPS", "Classification, Escalation and Gaps", "Currentness classification, material evidence conflicts, authorisation/RP issues, practitioner review needs and insufficient evidence.", "Classify as current/consistent, current with improvements, review required, material conflict, authorisation issue, practitioner review required or insufficient evidence. Preserve BSP practitioner authority.", 60),
 ];
 
 const BEHAVIOUR_ANALYSIS_SECTIONS = [
-  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved behaviour-data analysis method, BSP monitoring method or human-defined analysis framework.", 10, ["behaviour_data"]),
-  section("SOURCE_DATA_SUMMARY", "Source Data Summary", "Behaviour data, case notes, incident/context observations and relevant implementation records.", "Summarise the data actually available and identify missing or inconsistent records.", 20, ["behaviour_data"]),
-  section("PATTERN_OBSERVATIONS", "Pattern Observations", "Non-diagnostic observations about possible patterns, triggers, context or implementation variance.", "Describe evidence-backed observations only. Do not perform practitioner-level functional behaviour assessment.", 30),
-  section("ESCALATION_AND_GAPS", "Escalation and Gaps", "Gaps, practitioner questions, implementation actions and escalation requirements.", "Route practitioner-level interpretation or strategy changes to the correct authority.", 40),
+  section("TARGET_BEHAVIOUR_AND_SOURCE_DATA", "Target Behaviour and Source Data", "Objective target behaviour definition and available BSP/FBA, incident, ABC/QABF, case note, weekly summary, health, medication, staffing, roster, environment, contact, activity and sleep evidence.", "Define behaviour observably and list evidence actually reviewed. Missing longitudinal records remain missing.", 10, ["behaviour_data"]),
+  section("CHRONOLOGY_AND_EVENT_SEQUENCE", "Chronology and Event Sequence", "Sequence of setting events, antecedents/triggers, behaviour, staff/environment response, consequence/outcome and recovery.", "Establish what happened before, during and after events. Do not collapse separate events into one unsupported pattern.", 20, ["incident_record"]),
+  section("PATTERN_AND_TRIGGER_CLASSIFICATION", "Pattern and Trigger Classification", "Repeated patterns, suspected triggers, recurring associations, established BSP triggers, hypothesised function and unsupported speculation.", "Separate correlation from established behavioural function. Do not present suspected triggers as proven functional assessment.", 30, ["behaviour_support_plan"]),
+  section("HEALTH_CONTEXT_BSP_COMPARISON", "Health Context and BSP Comparison", "Health/medical contributors, medication changes, current BSP formulation comparison and contradictory/new evidence.", "Consider health contributors without diagnosis. Escalate new or contradictory evidence to the practitioner authority.", 40),
+  section("RECOMMENDATIONS_ESCALATION_AND_GAPS", "Recommendations, Escalation and Gaps", "Further data collection, BSP practitioner review, environmental/support implementation actions, training review and unresolved evidence gaps.", "Recommend only within implementation authority. Do not independently rewrite BSP functional analysis or strategy.", 50),
 ];
 
 const RP_RISK_SECTIONS = [
@@ -1020,11 +1071,31 @@ const FUNDING_UTILISATION_SECTIONS = [
   section("EVIDENCE_AND_SOURCES", "Evidence and Sources", "Source list, provenance, effective dates, pricing sources, currentness dates and unresolved conflicts.", "Cite authoritative/current evidence and preserve historical pricing/effective-period distinctions.", 220),
 ];
 
-const SITE_FIRE_RISK_SECTIONS = [
-  methodGateSection("USER_DEFINITION_REQUIRED_METHOD", "Method Source Status", "Approved site/fire risk method, WHS/fire source or human-defined review framework.", 10, ["risk_context"]),
-  section("SITE_SCOPE_AND_SOURCE_STATUS", "Site Scope and Source Status", "Site, environment, risk domain, source records, inspections and currentness.", "Use current site evidence and state missing inspections or certifications.", 20, ["risk_context"]),
-  section("HAZARDS_CONTROLS_AND_GAPS", "Hazards, Controls and Gaps", "Hazards, existing controls, gaps, restrictions and escalation needs.", "Prepare operational risk review only; do not certify safety or fire compliance.", 30),
-  section("ACTIONS_APPROVAL_AND_EXTERNAL_AUTHORITY", "Actions, Approval and External Authority", "Actions, owner, due date, external fire/WHS/technical authority and approvals.", "Escalate technical, fire-safety or WHS determinations to authorised professionals.", 40),
+const SITE_ENVIRONMENTAL_RISK_SECTIONS = [
+  section("SITE_SERVICE_CONTEXT", "Site and Service Context", "Site, address, property/environment type, participants, support model, service type, staffing arrangement and environment purpose/use.", "Establish the site and service context before assessing risks. This is not merely a building checklist.", 10, ["risk_context"]),
+  section("PARTICIPANT_ENVIRONMENT_COMPATIBILITY", "Participant-Environment Compatibility", "Care/support plan, BSP, participant risks, RP, mobility, communication, health, medication, behaviour, vulnerability, absconding and emergency support needs.", "Answer whether this environment is suitable for this participant and this support model. Do not assume a generic safe site is participant-suitable.", 20, ["participant_context"]),
+  section("PHYSICAL_ENVIRONMENT_HAZARDS", "Physical Environment Hazards", "Access/egress, entrances/exits, slips/trips/falls, bedroom, bathroom, kitchen, living areas, electrical risks, furniture, windows, cords, sharps, chemicals, medication storage, water temperature, accessibility, external areas, security, lighting, traffic, neighbourhood, equipment and site-specific hazards.", "Identify hazards from verified evidence and distinguish observed, documented, inferred and missing information.", 30, ["inspection_record"]),
+  section("EMERGENCY_AND_OPERATIONAL_READINESS", "Emergency and Operational Readiness", "Fire arrangements, evacuation plan, assembly point, medical emergency response, missing-person response, lockdown, emergency contacts/equipment, participant-specific evacuation needs, daily/weekly checks, hazard register, maintenance requests, corrective actions, evacuation drills, staff induction, incidents and previous assessments.", "Do not assume an old assessment remains true. Reconcile site assessments with current operational checks, defects and incidents.", 40, ["operational_record"]),
+  section("STAFF_READINESS_AND_REINDUCTION", "Staff Readiness and Re-Induction", "Site induction, participant-specific knowledge, emergency knowledge, BSP/RP knowledge, medication competency and site-risk awareness.", "Material site-risk changes must trigger consideration of worker re-induction or competency review; do not certify competence without evidence.", 50, ["training_record"]),
+  section("RISK_RATING_CONTROLS_AND_CLOSURE", "Risk Rating, Controls and Closure Evidence", "Approved organisational risk rating, existing controls, control operation evidence, residual risk, further action, owner, priority, due date and evidence required for closure.", "Use the approved risk method and do not let an overall score conceal a critical hazard. Action assignment is not proof of closure.", 60),
+  section("SUITABILITY_CONCLUSION_REASSESSMENT", "Suitability Conclusion and Reassessment Triggers", "SUITABLE, SUITABLE_WITH_CONTROLS, TEMPORARILY_SUITABLE_WITH_URGENT_ACTION, REASSESSMENT_REQUIRED, NOT_SUITABLE_ESCALATION_REQUIRED or INSUFFICIENT_EVIDENCE conclusion and reassessment triggers.", "Explain material reasoning and trigger reassessment for serious incidents, participant changes, material support changes, BSP/RP change, property modification, serious maintenance defect, emergency/drill failure, environmental change, repeated compliance failure, equipment change, support-model change or regulatory requirement.", 70),
+];
+
+const FIRE_RISK_ASSESSMENT_SECTIONS = [
+  section("PARTICIPANT_SERVICE_FIRE_CONTEXT", "Participant and Service Fire Context", "Participant, accommodation, support model, staffing ratios, diagnoses/functional needs and BSP/RP context relevant to fire vulnerability.", "Establish participant-specific vulnerability and service context before reviewing property controls.", 10, ["participant_context"]),
+  section("CROSS_SYSTEM_FIRE_EVIDENCE", "Cross-System Fire Evidence", "Care/support plan, BSP/FBA, participant risk assessments, community access risk, medication, emergency/evacuation plans, RP documents, previous fire assessment, incidents, notes, summaries, observations, drills, compliance checks, maintenance, hazard register, site assessment and fire equipment records.", "Search across relevant records; the fire assessment title must not artificially restrict evidence discovery.", 20, ["risk_context"]),
+  section("FIRE_VULNERABILITY_EVACUATION_CAPACITY", "Fire Vulnerability and Evacuation Capacity", "Cognition, judgement, alarm recognition, communication, mobility, behaviour, health, medication effects, cooking/heating/smoking risks, intentional fire-related behaviour where evidenced, equipment/property damage, shared-environment factors, ability to call 000/follow instructions and evacuation capability state.", "Classify evacuation capability as independent, requires prompting, requires physical assistance, requires continuous supervision, or not established. Do not convert limited evidence into absolute incapacity, and do not interpret unknown/unanswered fields as No.", 30, ["participant_context"]),
+  section("PROPERTY_CONTROLS_AND_STAFFING", "Property Controls and Staffing", "Smoke alarms, testing evidence, extinguisher, fire blanket, exits, pathways, assembly point, emergency equipment, maintenance defects and whether staffing can implement the evacuation strategy.", "Surface gaps and do not certify fire safety, engineering compliance or WHS status.", 40, ["fire_equipment_record"]),
+  section("CONFLICTS_RP_AND_ESCALATION", "Evidence Conflicts, RP Interaction and Escalation", "Discrepancies between plans, drills and observations; fire controls or restrictions that may constitute or interact with restrictive practice; BSP/authorisation verification needs.", "Explicitly identify conflicts. If a fire control may be restrictive practice, verify BSP/authorisation or escalate; do not casually recommend continuation.", 50, ["restrictive_practice_record"]),
+  section("FIRE_CONTROLS_ACTIONS_AND_REASSESSMENT", "Fire Controls, Actions and Reassessment", "Existing controls, effectiveness, deficiencies, required controls, responsible party, priority/timeframe, closure evidence, overall fire vulnerability, enhanced controls, plan/modification/staffing/BSP/clinical/training escalation and reassessment triggers.", "Determine adequacy based on evidence, state urgent escalation where required, and include reassessment after fire events, failed drills, property/participant/BSP/RP/mobility/health/staffing changes, equipment failure or significant incidents.", 60),
+];
+
+const DISASTER_EMERGENCY_PLAN_SECTIONS = [
+  section("PARTICIPANT_SERVICE_SITE_CONTEXT", "Participant, Service and Site Context", "Participant, service, site, support model, staffing and environment context relevant to emergency preparedness.", "Establish who and what the emergency/disaster plan covers before drafting actions.", 10, ["participant_context"]),
+  section("CREDIBLE_SCENARIOS_AND_VULNERABILITIES", "Credible Scenarios and Vulnerabilities", "Credible site/service scenarios such as fire, medical emergency, severe weather, utilities failure, outbreak, evacuation, missing participant, environmental emergency, service disruption or relocation, and participant vulnerabilities in mobility, communication, cognition, behaviour, medication, health, equipment dependence, emotional regulation, transport and staffing needs.", "Do not manufacture site-specific threats without evidence. Treat missing vulnerability evidence as a gap.", 20, ["risk_context"]),
+  section("PREPAREDNESS_RESPONSE_AND_CONTINUITY", "Preparedness, Response and Support Continuity", "Prevention/preparation, immediate response, evacuation/shelter strategy, emergency contacts, communication, medication continuity, essential support continuity, transport, participant-specific supports, staff responsibilities and escalation.", "Prepare participant/site-specific plan content while preserving emergency-service, WHS, clinical and technical authority boundaries.", 30, ["controlled_document"]),
+  section("RECONCILIATION_RESOURCES_AND_RECOVERY", "Reconciliation, Resources and Recovery", "Reconcile with site/fire risk, participant risk, BSP/RP, medication, staffing/roster, drills, maintenance and previous events; determine resources; define welfare, medical review, reporting, property assessment, staffing, stakeholder communication, debrief, corrective action and plan review.", "Do not treat scheduled, assigned or drafted actions as proof of readiness or closure.", 40, ["operational_record"]),
+  section("DRILLS_TESTING_REVIEW_AND_ARTIFACT", "Drills, Testing, Review and Artifact", "Drill/testing requirements, review triggers, approved template use and required professional artifact.", "Use the approved organisational template where available. Completion requires required sections, source evidence, artifact and approvals; chat output alone is not completion.", 50),
 ];
 
 const DISASTER_BCP_SECTIONS = [
@@ -1750,14 +1821,20 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "operations_manager",
     supportingSpecialists: ["process_asset_coordinator", "compliance_quality_manager", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("site_environmental_risk_assessment", ["site_risk_review"], ["safety_certification", "whs_determination", "technical_certification"]),
-    evidenceContract: participantEvidence(["risk_context"], ["asset_register", "inspection_record", "controlled_document"], 1, "clarification_required"),
-    sections: SITE_FIRE_RISK_SECTIONS,
+    evidenceContract: participantSiteEvidence(
+      ["participant_context", "risk_context", "inspection_record", "operational_record"],
+      ["behaviour_support_plan", "restrictive_practice_record", "maintenance_record", "hazard_register", "evacuation_drill", "training_record", "controlled_document"],
+      4,
+      "block_completion",
+    ),
+    sections: SITE_ENVIRONMENTAL_RISK_SECTIONS,
     requiredLibraryKnowledge: ["risk_management_policy", "site_safety_procedure"],
-    requiredApprovals: { human_professional_method_owner: true, operations_owner: true },
-    validationRules: [{ rule: "site_risk_not_safety_or_whs_certification", required: true, description: "Site/environmental risk assessment must not certify WHS, fire or technical status." }],
-    successCriteria: ["Site risk evidence is cited", "Controls and gaps are visible", "External authority boundaries are preserved"],
+    requiredEntityKnowledge: { participant: true, site: true },
+    requiredApprovals: { operations_owner: true },
+    validationRules: [{ rule: "site_participant_environment_method_applied", required: true, description: "Site suitability must assess this participant, support model, current operational evidence and unresolved critical hazards." }],
+    successCriteria: ["Participant-environment compatibility assessed", "Current site/operational evidence is cited", "Critical hazards and reassessment triggers are visible", "External authority boundaries are preserved"],
     outputTypes: ["site_environmental_risk_assessment"],
-    mandatoryCitations: ["risk_context"],
+    mandatoryCitations: ["participant_context", "risk_context", "inspection_record", "operational_record"],
     externalAuthorityRequiredFor: ["WHS/OHS determination", "safety or technical certification", "legal determination"],
   },
   {
@@ -1774,14 +1851,20 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "operations_manager",
     supportingSpecialists: ["process_asset_coordinator", "compliance_quality_manager", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("fire_risk_assessment", ["fire_risk_review"], ["fire_safety_certification", "engineering_certification", "whs_determination"]),
-    evidenceContract: participantEvidence(["risk_context"], ["inspection_record", "asset_register", "controlled_document"], 1, "clarification_required"),
-    sections: SITE_FIRE_RISK_SECTIONS,
+    evidenceContract: participantSiteEvidence(
+      ["participant_context", "risk_context", "fire_equipment_record"],
+      ["behaviour_support_plan", "restrictive_practice_record", "evacuation_drill", "maintenance_record", "hazard_register", "inspection_record", "operational_record"],
+      4,
+      "block_completion",
+    ),
+    sections: FIRE_RISK_ASSESSMENT_SECTIONS,
     requiredLibraryKnowledge: ["fire_safety_procedure", "emergency_management_plan", "risk_management_policy"],
-    requiredApprovals: { human_professional_method_owner: true, operations_owner: true },
-    validationRules: [{ rule: "fire_risk_not_fire_safety_certification", required: true, description: "Fire risk assessment may surface evidence and controls but must not certify fire safety." }],
-    successCriteria: ["Fire risk evidence is cited", "Controls and external certification needs are visible", "No safety certification is made"],
+    requiredEntityKnowledge: { participant: true, site: true },
+    requiredApprovals: { operations_owner: true },
+    validationRules: [{ rule: "participant_specific_fire_risk_method_applied", required: true, description: "Fire risk assessment must consider participant vulnerability, property controls, staffing, evacuation capability, RP interaction and current operational evidence." }],
+    successCriteria: ["Participant fire vulnerability assessed", "Property controls and staffing capability are evidenced", "RP interaction and conflicts are escalated", "No safety certification is made"],
     outputTypes: ["fire_risk_assessment"],
-    mandatoryCitations: ["risk_context"],
+    mandatoryCitations: ["participant_context", "risk_context", "fire_equipment_record"],
     externalAuthorityRequiredFor: ["fire-safety certification", "engineering/technical certification", "WHS/OHS determination"],
   },
 
@@ -1852,14 +1935,20 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "operations_manager",
     supportingSpecialists: ["service_delivery_coordinator", "compliance_quality_manager", "process_asset_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: docxDeliverable("disaster_emergency_management_plan", "DISASTER_EMERGENCY_PLAN_{scope}_{date}", ["continuity_gap_review"], ["emergency_services_determination", "clinical_determination", "readiness_certification"]),
-    evidenceContract: operationsEvidence(["controlled_document", "operational_record"], ["service_requirement", "asset_register", "roster_schedule"], [], 2, "block_completion"),
-    sections: DISASTER_BCP_SECTIONS,
+    evidenceContract: participantSiteEvidence(
+      ["participant_context", "risk_context", "controlled_document", "operational_record"],
+      ["behaviour_support_plan", "restrictive_practice_record", "medication_record", "roster_schedule", "maintenance_record", "evacuation_drill", "asset_register"],
+      4,
+      "block_completion",
+    ),
+    sections: DISASTER_EMERGENCY_PLAN_SECTIONS,
     requiredLibraryKnowledge: ["emergency_management_plan", "business_continuity_plan", "risk_management_policy"],
-    requiredApprovals: { human_professional_method_owner: true, operations_owner: true },
-    validationRules: [{ rule: "emergency_plan_not_external_authority_certification", required: true, description: "Emergency plan must not certify external emergency, WHS, clinical or technical readiness." }],
-    successCriteria: ["Critical functions and response actions are source-backed", "Testing/review is explicit", "Readiness certification remains approval-gated"],
+    requiredEntityKnowledge: { participant: true, site: true },
+    requiredApprovals: { operations_owner: true },
+    validationRules: [{ rule: "participant_site_emergency_plan_method_applied", required: true, description: "Emergency/disaster plan must reconcile participant, site, emergency, staffing, BSP/RP, medication, drill and maintenance evidence." }],
+    successCriteria: ["Credible scenarios and participant vulnerabilities are evidenced", "Preparedness/response/recovery actions are source-backed", "Testing and review triggers are explicit", "Readiness certification remains prohibited"],
     outputTypes: ["disaster_emergency_management_plan"],
-    mandatoryCitations: ["controlled_document", "operational_record"],
+    mandatoryCitations: ["participant_context", "risk_context", "controlled_document", "operational_record"],
     externalAuthorityRequiredFor: ["emergency-services determination", "WHS/OHS certification", "clinical decision", "readiness certification"],
   },
   {
@@ -1924,7 +2013,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["review", "revise", "implementation"],
     primaryDeliverable: "Behaviour Support Implementation Review report",
-    maturityState: "professional_review",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     legacyCode: "behaviour_support_plan",
     professionalAuthority: "mixed",
@@ -1937,19 +2026,23 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "behaviour_support_implementation_specialist",
     supportingSpecialists: ["authorised_program_officer", "incident_safeguarding_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("behaviour_support_implementation_review", ["implementation_variance_review"], ["behaviour_support_plan", "restrictive_practice_authorisation"]),
-    evidenceContract: participantEvidence(["behaviour_support_plan", "behaviour_implementation_evidence"], ["incident_record", "case_note", "restrictive_practice_record"], 2, "block_completion"),
+    evidenceContract: participantEvidence(
+      ["behaviour_support_plan", "behaviour_implementation_evidence", "participant_context"],
+      ["fba", "incident_record", "case_note", "weekly_summary", "health_record", "medication_record", "restrictive_practice_record", "training_record"],
+      4,
+      "block_completion",
+    ),
     permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
     requiredEntityKnowledge: { participant: true },
-    requiredApprovals: { human_professional_method_owner: true },
-    validationRules: [{ rule: "professional_method_source_or_user_definition_required", required: true, description: "The approved BSP/review method source must be present, or USER_DEFINITION_REQUIRED must remain visible." }],
-    successCriteria: ["Implementation evidence checked against approved source", "BSP amendment boundary preserved", "Practitioner-level questions escalated"],
+    validationRules: [{ rule: "approved_bsp_review_method_applied", required: true, description: "Review must verify BSP identity/currentness, consultation, evidence base, person-centred content, behaviour/risk, function, goals, strategies, implementation, RRP, training and monitoring without replacing practitioner authority." }],
+    successCriteria: ["BSP currentness and consultation reviewed", "Implementation evidence checked against approved source", "RRP governance and training evidence assessed where relevant", "BSP amendment boundary preserved", "Practitioner-level questions escalated"],
     outputTypes: ["behaviour_support_implementation_review"],
     escalationRules: [
       { trigger: "bsp_authorship_or_amendment_required", action: "defer_to_credentialed_behaviour_support_practitioner" },
       { trigger: "rp_governance_required", action: "defer_to_authorised_program_officer" },
       { trigger: "incident_or_safeguarding_concern", action: "defer_to_incident_safeguarding_specialist" },
     ],
-    mandatoryCitations: ["behaviour_support_plan", "behaviour_implementation_evidence"],
+    mandatoryCitations: ["behaviour_support_plan", "behaviour_implementation_evidence", "participant_context"],
     sections: BEHAVIOUR_REVIEW_SECTIONS,
   },
   {
@@ -1960,22 +2053,26 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     category: "behaviour",
     supportedModes: ["analysis"],
     primaryDeliverable: "Behaviour Trigger Analysis report",
-    maturityState: "professional_review",
+    maturityState: "production_ready",
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: ["practitioner-level functional behaviour assessment"],
     futureOwnerRoleCode: "behaviour_support_implementation_specialist",
     supportingSpecialists: ["incident_safeguarding_specialist", "service_delivery_coordinator", "knowledge_documentation_specialist"],
     deliverableContract: structuredAnalysisDeliverable("behaviour_context_data_analysis", ["pattern_review"], ["functional_behaviour_assessment", "behaviour_support_plan"]),
-    evidenceContract: participantEvidence(["behaviour_data"], ["case_note", "incident_record", "behaviour_support_plan"], 2, "continue_with_flagged_gaps"),
+    evidenceContract: participantEvidence(
+      ["behaviour_data", "incident_record"],
+      ["behaviour_support_plan", "fba", "abc_record", "qabf_record", "case_note", "weekly_summary", "health_record", "medication_record", "roster_schedule", "environmental_record", "contact_record", "activity_record", "sleep_record"],
+      4,
+      "continue_with_flagged_gaps",
+    ),
     permittedOrgOverrides: { templateSubstitution: false, outputFormatPreferences: true, namingConvention: false, approvalWorkflow: true },
     requiredEntityKnowledge: { participant: true },
-    requiredApprovals: { human_professional_method_owner: true },
-    validationRules: [{ rule: "no_practitioner_level_functional_assessment", required: true, description: "Analysis may identify evidence-backed observations but must not perform practitioner-level functional behaviour assessment." }],
-    successCriteria: ["Source data summarised", "Observed patterns distinguished from functional assessment", "Practitioner questions escalated"],
+    validationRules: [{ rule: "approved_trigger_analysis_method_applied", required: true, description: "Analysis must define target behaviour, establish chronology, identify repeated associations and separate suspected triggers from established function without performing practitioner-level FBA." }],
+    successCriteria: ["Source data and chronology summarised", "Observed patterns distinguished from established function", "Health/medication/staffing/environment context considered without diagnosis", "Practitioner questions escalated"],
     outputTypes: ["behaviour_context_data_analysis"],
     escalationRules: [{ trigger: "functional_assessment_or_strategy_change_required", action: "defer_to_credentialed_behaviour_support_practitioner" }],
-    mandatoryCitations: ["behaviour_data"],
+    mandatoryCitations: ["behaviour_data", "incident_record"],
     sections: BEHAVIOUR_ANALYSIS_SECTIONS,
   },
 

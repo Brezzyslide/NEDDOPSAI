@@ -35,6 +35,10 @@ const ALL_34D_CODES = [
   ...RESTRICTIVE_PRACTICE_CODES,
 ] as const;
 
+const STILL_METHOD_PENDING_34D_CODES = [
+  ...RESTRICTIVE_PRACTICE_CODES,
+] as const;
+
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
@@ -219,8 +223,8 @@ describe("Sprint 34D ownership and routing", () => {
 });
 
 describe("Sprint 34D human professional method gate", () => {
-  it("5. every 34D blueprint carries a visible USER_DEFINITION_REQUIRED method section", () => {
-    for (const code of ALL_34D_CODES) {
+  it("5. still-unapproved 34D RP blueprints carry a visible USER_DEFINITION_REQUIRED method section", () => {
+    for (const code of STILL_METHOD_PENDING_34D_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
       expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
       expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
@@ -228,14 +232,14 @@ describe("Sprint 34D human professional method gate", () => {
     }
   });
 
-  it("6. every 34D blueprint requires human professional method approval", () => {
-    for (const code of ALL_34D_CODES) {
+  it("6. still-unapproved 34D RP blueprints require human professional method approval", () => {
+    for (const code of STILL_METHOD_PENDING_34D_CODES) {
       expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
     }
   });
 
   it("7. missing human professional method approval blocks completion", () => {
-    const result = validate("behaviour_support_plan_review", { approvalStates: approvalsFor("behaviour_support_plan_review", false) });
+    const result = validate("restrictive_practice_risk_assessment", { approvalStates: approvalsFor("restrictive_practice_risk_assessment", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
@@ -252,7 +256,7 @@ describe("Sprint 34D human professional method gate", () => {
 describe("Sprint 34D evidence and currentness controls", () => {
   it("9. BSP review requires approved BSP and implementation evidence", () => {
     expect(blueprintFromRegistry("behaviour_support_plan_review").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["behaviour_support_plan", "behaviour_implementation_evidence"],
+      requiredEvidenceCategories: ["behaviour_support_plan", "behaviour_implementation_evidence", "participant_context"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
@@ -306,7 +310,7 @@ describe("Sprint 34D authority boundaries", () => {
     const deliverable = blueprintFromRegistry("behaviour_trigger_analysis").deliverableContract!;
     expect(deliverable.prohibitedDeliverables).toContain("functional_behaviour_assessment");
     expect(blueprintFromRegistry("behaviour_trigger_analysis").validationRules).toEqual(expect.arrayContaining([
-      expect.objectContaining({ rule: "no_practitioner_level_functional_assessment" }),
+      expect.objectContaining({ rule: "approved_trigger_analysis_method_applied" }),
     ]));
   });
 

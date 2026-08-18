@@ -32,7 +32,12 @@ const CLOSEOUT_CODES = [
 ] as const;
 
 const STILL_METHOD_PENDING_CLOSEOUT_CODES = CLOSEOUT_CODES.filter(
-  (code) => code !== "funding_utilisation_review",
+  (code) => ![
+    "funding_utilisation_review",
+    "site_environmental_risk_assessment",
+    "fire_risk_assessment",
+    "disaster_emergency_management_plan",
+  ].includes(code),
 );
 
 function blueprintFromRegistry(code: string): WorkBlueprint {
@@ -235,7 +240,7 @@ describe("Sprint 34J deterministic routing", () => {
 });
 
 describe("Sprint 34J human professional method gate", () => {
-  it("6. every close-out Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
+  it("6. still-unapproved close-out Blueprints carry visible USER_DEFINITION_REQUIRED method status", () => {
     for (const code of STILL_METHOD_PENDING_CLOSEOUT_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
       expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
@@ -244,7 +249,7 @@ describe("Sprint 34J human professional method gate", () => {
     }
   });
 
-  it("7. every close-out Blueprint requires human professional method approval", () => {
+  it("7. still-unapproved close-out Blueprints require human professional method approval", () => {
     for (const code of STILL_METHOD_PENDING_CLOSEOUT_CODES) {
       expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
     }

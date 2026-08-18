@@ -204,17 +204,17 @@ describe("Sprint 34L.1 ownership and USER_DEFINITION_REQUIRED removal", () => {
     expect(resolveIntent("funding.review")).toMatchObject({ code: FUNDING_CODE });
   });
 
-  it("3. removes only funding_utilisation_review from USER_DEFINITION_REQUIRED status", () => {
+  it("3. keeps funding_utilisation_review out of USER_DEFINITION_REQUIRED status", () => {
     const funding = blueprintFromRegistry();
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     expect(funding.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(methodPendingCodes()).not.toContain(FUNDING_CODE);
-    expect(methodPendingCodes()).toHaveLength(54);
+    expect(methodPendingCodes()).toHaveLength(49);
   });
 
-  it("4. leaves other method-gated Blueprints unchanged", () => {
+  it("4. leaves still-unapproved method-gated Blueprints unchanged", () => {
     expect(methodPendingCodes()).toEqual(expect.arrayContaining([
-      "behaviour_support_plan_review",
+      "restrictive_practice_risk_assessment",
       "incident_investigation",
       "policy",
       "rostering_fatigue_review",
