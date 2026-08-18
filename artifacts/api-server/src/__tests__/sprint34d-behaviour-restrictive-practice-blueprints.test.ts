@@ -36,7 +36,9 @@ const ALL_34D_CODES = [
 ] as const;
 
 const STILL_METHOD_PENDING_34D_CODES = [
-  ...RESTRICTIVE_PRACTICE_CODES,
+  "restrictive_practice_comparison",
+  "restrictive_practice_authorisation",
+  "unauthorised_restrictive_practice_review",
 ] as const;
 
 function blueprintFromRegistry(code: string): WorkBlueprint {
@@ -239,7 +241,7 @@ describe("Sprint 34D human professional method gate", () => {
   });
 
   it("7. missing human professional method approval blocks completion", () => {
-    const result = validate("restrictive_practice_risk_assessment", { approvalStates: approvalsFor("restrictive_practice_risk_assessment", false) });
+    const result = validate("restrictive_practice_comparison", { approvalStates: approvalsFor("restrictive_practice_comparison", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
@@ -271,7 +273,7 @@ describe("Sprint 34D evidence and currentness controls", () => {
   });
 
   it("11. memory-only evidence remains restricted", () => {
-    const contract = blueprintFromRegistry("restrictive_practice_risk_assessment").evidenceContract!;
+    const contract = blueprintFromRegistry("restrictive_practice_comparison").evidenceContract!;
     const result = enforceEvidenceContract(contract as never, { chunks: [{ sourceType: "memory_only", category: "restrictive_practice_record" }] });
     expect(result.passed).toBe(false);
     expect(result.violations.some((violation) => violation.code === "RESTRICTED_SOURCE_TYPE_PRESENT")).toBe(true);
@@ -314,7 +316,7 @@ describe("Sprint 34D authority boundaries", () => {
     ]));
   });
 
-  it("16. RP risk assessment blocks clinical, prescribing and formal authorisation output", () => {
+  it("16. RP risk assessment remains unable to authorise or make clinical/prescribing decisions", () => {
     const deliverable = blueprintFromRegistry("restrictive_practice_risk_assessment").deliverableContract!;
     expect(deliverable.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "clinical_assessment",
@@ -342,6 +344,13 @@ describe("Sprint 34D deliverable and completion gates", () => {
       primaryFormat: "docx",
       templateRequired: true,
     });
+  });
+
+  it("18a. RP risk assessment no longer carries the human method-definition blocker", () => {
+    const blueprint = blueprintFromRegistry("restrictive_practice_risk_assessment");
+    expect(blueprint.maturityState).toBe("production_ready");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(sectionsFromRegistry("restrictive_practice_risk_assessment")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 
   it("19. missing RP artifact blocks completion", () => {

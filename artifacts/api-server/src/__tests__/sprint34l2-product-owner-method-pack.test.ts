@@ -206,8 +206,8 @@ describe("Sprint 34L.2 Product Owner method-pack activation", () => {
       expect(methodPendingCodes()).not.toContain(code);
     }
 
-    expect(methodPendingCodes()).toContain("restrictive_practice_risk_assessment");
-    expect(methodPendingCodes()).toHaveLength(49);
+    expect(methodPendingCodes()).toContain("restrictive_practice_comparison");
+    expect(methodPendingCodes()).toHaveLength(48);
   });
 
   it("2. marks BSP review and trigger analysis production-ready while preserving professional boundaries", () => {
@@ -221,11 +221,12 @@ describe("Sprint 34L.2 Product Owner method-pack activation", () => {
     ]));
   });
 
-  it("3. keeps truncated RP risk assessment behind the method gate", () => {
+  it("3. keeps other RP work behind the method gate", () => {
     const rp = blueprintFromRegistry("restrictive_practice_risk_assessment");
-    expect(rp.maturityState).toBe("professional_review");
-    expect(rp.requiredApprovals).toHaveProperty("human_professional_method_owner", true);
-    expect(sectionsFromRegistry("restrictive_practice_risk_assessment")[0]?.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(rp.maturityState).toBe("production_ready");
+    expect(rp.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(sectionsFromRegistry("restrictive_practice_comparison")[0]?.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(blueprintFromRegistry("restrictive_practice_comparison").requiredApprovals).toHaveProperty("human_professional_method_owner", true);
   });
 });
 
