@@ -2001,6 +2001,7 @@ export async function seedRegistryBlueprints(): Promise<void> {
       await db
         .update(workBlueprintsTable)
         .set({
+          title: entry.title,
           blueprintFamily: entry.blueprintFamily,
           supportedModes: entry.supportedModes,
           maturityState: entry.maturityState,
