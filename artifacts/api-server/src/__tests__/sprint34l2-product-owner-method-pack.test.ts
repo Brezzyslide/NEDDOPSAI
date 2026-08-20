@@ -206,8 +206,8 @@ describe("Sprint 34L.2 Product Owner method-pack activation", () => {
       expect(methodPendingCodes()).not.toContain(code);
     }
 
-    expect(methodPendingCodes()).toContain("unauthorised_restrictive_practice_review");
-    expect(methodPendingCodes()).toHaveLength(46);
+    expect(methodPendingCodes()).not.toContain("unauthorised_restrictive_practice_review");
+    expect(methodPendingCodes()).toHaveLength(0);
   });
 
   it("2. marks BSP review and trigger analysis production-ready while preserving professional boundaries", () => {
@@ -221,18 +221,20 @@ describe("Sprint 34L.2 Product Owner method-pack activation", () => {
     ]));
   });
 
-  it("3. keeps unauthorised RP behind the method gate while preserving approved RP methods", () => {
+  it("3. keeps approved RP methods out of the method gate", () => {
     const rp = blueprintFromRegistry("restrictive_practice_risk_assessment");
     const comparison = blueprintFromRegistry("restrictive_practice_comparison");
     const authorisation = blueprintFromRegistry("restrictive_practice_authorisation");
+    const unauthorisedReview = blueprintFromRegistry("unauthorised_restrictive_practice_review");
     expect(rp.maturityState).toBe("production_ready");
     expect(rp.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(comparison.maturityState).toBe("production_ready");
     expect(comparison.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(authorisation.maturityState).toBe("production_ready");
     expect(authorisation.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
-    expect(sectionsFromRegistry("unauthorised_restrictive_practice_review")[0]?.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
-    expect(blueprintFromRegistry("unauthorised_restrictive_practice_review").requiredApprovals).toHaveProperty("human_professional_method_owner", true);
+    expect(unauthorisedReview.maturityState).toBe("production_ready");
+    expect(unauthorisedReview.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(sectionsFromRegistry("unauthorised_restrictive_practice_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 });
 

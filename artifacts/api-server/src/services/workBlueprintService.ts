@@ -35,8 +35,9 @@ import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
 import {
   BLUEPRINT_REGISTRY,
-  LEGACY_CODE_MAP,
   getRegistryBlueprintSeedOwner,
+  getRegistryEntry,
+  resolveRegistryCodeForNewWork,
   type RegistryEntry,
 } from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
@@ -884,7 +885,18 @@ export function parseCanonicalCarePlanIntent(value: string | undefined | null): 
 function parseCanonicalIntent(value: string | undefined | null): (IntentResolution & { canonicalIntent: string }) | null {
   const normalised = value?.trim().toLowerCase().replace(/[:/]/g, ".") ?? "";
   const resolved = resolveIntent(normalised);
-  if (!resolved || resolved.isAction) return null;
+  if (!resolved || resolved.isAction) {
+    const canonicalCode = resolveRegistryCodeForNewWork(normalised);
+    const entry = getRegistryEntry(canonicalCode);
+    if (!entry) return null;
+    return {
+      family: entry.blueprintFamily,
+      mode: entry.supportedModes[0] ?? "create",
+      code: entry.code,
+      isAction: false,
+      canonicalIntent: normalised,
+    };
+  }
   return { ...resolved, canonicalIntent: normalised };
 }
 
@@ -892,7 +904,7 @@ async function findBlueprintByCode(
   code: string,
   organizationId: string,
 ): Promise<WorkBlueprint | null> {
-  const canonicalCode = LEGACY_CODE_MAP[code] ?? code;
+  const canonicalCode = resolveRegistryCodeForNewWork(code);
 
   const orgRows = await db
     .select()

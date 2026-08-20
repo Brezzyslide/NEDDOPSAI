@@ -42,6 +42,18 @@ const ALL_34I_CODES = [
   ...STRATEGIC_CODES,
 ] as const;
 
+const STILL_METHOD_PENDING_34I_CODES = ALL_34I_CODES.filter((code) =>
+  code !== "business_financial_analysis"
+  && code !== "financial_planning_reporting_review"
+  && code !== "tax_financial_obligation_review"
+  && code !== "operational_finance_reconciliation_review"
+  && code !== "ndis_marketing_strategy"
+  && code !== "ndis_market_analysis"
+  && code !== "marketing_communications_review"
+  && code !== "business_growth_analysis"
+  && code !== "business_proposal"
+);
+
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
@@ -227,8 +239,8 @@ describe("Sprint 34I ownership and routing", () => {
 });
 
 describe("Sprint 34I human professional method gate", () => {
-  it("5. every 34I Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
-    for (const code of ALL_34I_CODES) {
+  it("5. still-pending 34I Blueprints carry visible USER_DEFINITION_REQUIRED method status", () => {
+    for (const code of STILL_METHOD_PENDING_34I_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
       expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
       expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
@@ -236,21 +248,30 @@ describe("Sprint 34I human professional method gate", () => {
     }
   });
 
-  it("6. every 34I Blueprint requires human professional method approval", () => {
-    for (const code of ALL_34I_CODES) {
+  it("6. still-pending 34I Blueprints require human professional method approval", () => {
+    for (const code of STILL_METHOD_PENDING_34I_CODES) {
       expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
     }
+    expect(blueprintFromRegistry("business_financial_analysis").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("financial_planning_reporting_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("tax_financial_obligation_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("operational_finance_reconciliation_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("ndis_marketing_strategy").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("ndis_market_analysis").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("marketing_communications_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("business_growth_analysis").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("business_proposal").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
   });
 
-  it("7. missing human method approval blocks completion", () => {
+  it("7. missing executive proposal approval blocks completion", () => {
     const result = validate("business_proposal", { approvalStates: approvalsFor("business_proposal", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
-    const result = validate("marketing_communications_review", {
-      contentMarkdown: "## AUDIENCE_OBJECTIVE_AND_CLAIMS\nClaims are populated, but the method gate is absent.",
+  it("8. missing growth objective section blocks completion for approved growth analysis", () => {
+    const result = validate("business_growth_analysis", {
+      contentMarkdown: "## OPTION_DEFINITION_AND_BASELINE\nOptions are populated, but the growth objective is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -284,6 +305,22 @@ describe("Sprint 34I evidence and currentness controls", () => {
   it("12. marketing claims require approved claim sources", () => {
     expect(blueprintFromRegistry("marketing_communications_review").evidenceContract?.freshnessRules).toMatchObject({
       claimsRequireApprovedSource: true,
+      existingPublicContentIsEvidenceNotAuthority: true,
+      materialClaimsRequireEvidence: true,
+      participantRightsAccessibilityPrivacyAndConsentRequired: true,
+      publicationRequiresSeparateApproval: true,
+    });
+    expect(blueprintFromRegistry("ndis_marketing_strategy").evidenceContract?.freshnessRules).toMatchObject({
+      claimsRequireApprovedSource: true,
+      serviceCapabilityMustPrecedeMarketingClaim: true,
+      operationalCapacityMustConstrainCampaignScale: true,
+      participantDignityPrivacyAndConsentRequiredForCaseContent: true,
+    });
+    expect(blueprintFromRegistry("ndis_market_analysis").evidenceContract?.freshnessRules).toMatchObject({
+      currentMarketClaimRequiresCurrentEvidence: true,
+      internalSignalsAreNotMarketSize: true,
+      registeredProviderIsNotActiveAvailableSupply: true,
+      competitorPublicClaimsAreNotVerifiedFact: true,
     });
     const result = validate("ndis_marketing_strategy", { evidencePack: evidencePack(["market_source"]) });
     expect(result.passed).toBe(false);
@@ -310,6 +347,7 @@ describe("Sprint 34I authority boundaries", () => {
     ]));
     expect(blueprintFromRegistry("operational_finance_reconciliation_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "payment_approval",
+      "ndis_claim_submission",
       "financial_system_mutation",
       "payroll_determination",
     ]));
@@ -320,27 +358,49 @@ describe("Sprint 34I authority boundaries", () => {
       "public_publication",
       "regulated_claim_approval",
       "ad_spend_approval",
+      "campaign_launch",
+      "referral_partner_contact",
+      "participant_story_publication",
     ]));
     expect(blueprintFromRegistry("marketing_communications_review").requiredApprovals).toHaveProperty("external_publication_owner", true);
+    expect(blueprintFromRegistry("marketing_communications_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
+      "public_publication",
+      "website_change",
+      "social_media_post",
+      "stakeholder_communication_send",
+      "campaign_launch",
+      "ad_spend_approval",
+    ]));
   });
 
   it("16. market analysis and growth analysis cannot guarantee demand or approve expansion", () => {
     expect(blueprintFromRegistry("ndis_market_analysis").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "guaranteed_revenue_claim",
       "service_launch_approval",
+      "service_expansion_approval",
+      "campaign_launch",
+      "public_market_claim",
     ]));
     expect(blueprintFromRegistry("business_growth_analysis").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "investment_approval",
       "service_launch_approval",
       "contract_commitment",
+      "business_case_document",
+      "registration_submission",
     ]));
   });
 
   it("17. business proposal cannot approve spend, contracts, launch or legal advice", () => {
     expect(blueprintFromRegistry("business_proposal").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "investment_approval",
+      "budget_approval",
+      "expenditure_approval",
       "contract_commitment",
       "service_launch_approval",
+      "hiring_decision",
+      "property_acquisition",
+      "registration_submission",
+      "payment_execution",
       "legal_advice",
     ]));
   });
@@ -373,12 +433,22 @@ describe("Sprint 34I deliverable and completion gates", () => {
     expect(result.failures.some((failure) => failure.gate === "template_required")).toBe(true);
   });
 
-  it("21. finance and market analyses remain structured analysis where no artifact is required", () => {
-    for (const code of ["financial_planning_reporting_review", "operational_finance_reconciliation_review", "ndis_market_analysis"] as const) {
+  it("21. FP&R, NDIS market analysis and growth viability remain structured analysis where no artifact is required", () => {
+    for (const code of ["financial_planning_reporting_review", "ndis_market_analysis", "business_growth_analysis"] as const) {
       const blueprint = blueprintFromRegistry(code);
       expect(blueprint.deliverableContract?.artifactRequired).toBe(false);
       expect(blueprint.templateRequired).toBe(false);
     }
+  });
+
+  it("21b. operational finance reconciliation is template-bound after professionalisation", () => {
+    const blueprint = blueprintFromRegistry("operational_finance_reconciliation_review");
+    expect(blueprint.deliverableContract).toMatchObject({
+      artifactRequired: true,
+      primaryFormat: "docx",
+      templateRequired: true,
+    });
+    expect(blueprint.templateRequired).toBe(true);
   });
 
   it("22. external publication approval must be present before marketing strategy completion", () => {

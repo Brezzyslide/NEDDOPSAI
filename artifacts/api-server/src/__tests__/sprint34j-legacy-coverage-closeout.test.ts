@@ -37,6 +37,10 @@ const STILL_METHOD_PENDING_CLOSEOUT_CODES = CLOSEOUT_CODES.filter(
     "site_environmental_risk_assessment",
     "fire_risk_assessment",
     "disaster_emergency_management_plan",
+    "business_continuity_plan",
+    "governance_executive_review",
+    "formal_stakeholder_correspondence",
+    "complaints_review_response",
   ].includes(code),
 );
 
@@ -240,7 +244,8 @@ describe("Sprint 34J deterministic routing", () => {
 });
 
 describe("Sprint 34J human professional method gate", () => {
-  it("6. still-unapproved close-out Blueprints carry visible USER_DEFINITION_REQUIRED method status", () => {
+  it("6. no close-out Blueprints remain method-pending", () => {
+    expect(STILL_METHOD_PENDING_CLOSEOUT_CODES).toHaveLength(0);
     for (const code of STILL_METHOD_PENDING_CLOSEOUT_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
       expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
@@ -249,21 +254,24 @@ describe("Sprint 34J human professional method gate", () => {
     }
   });
 
-  it("7. still-unapproved close-out Blueprints require human professional method approval", () => {
+  it("7. close-out Blueprints no longer require human professional method approval", () => {
     for (const code of STILL_METHOD_PENDING_CLOSEOUT_CODES) {
       expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
     }
+    for (const code of CLOSEOUT_CODES) {
+      expect(blueprintFromRegistry(code).requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    }
   });
 
-  it("8. missing method approval blocks completion", () => {
-    const result = validate("business_continuity_plan", { approvalStates: approvalsFor("business_continuity_plan", false) });
+  it("8. missing correspondence send approval blocks completion", () => {
+    const result = validate("formal_stakeholder_correspondence", { approvalStates: approvalsFor("formal_stakeholder_correspondence", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("9. missing method section blocks completion", () => {
+  it("9. missing complaint closure section blocks completion", () => {
     const result = validate("complaints_review_response", {
-      contentMarkdown: "## COMPLAINT_SCOPE_AND_EVIDENCE\nComplaint evidence is present but method status is absent.",
+      contentMarkdown: "## COMPLAINT_IDENTITY_AND_INTAKE\nComplaint identity is present, but closure readiness is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -345,6 +353,9 @@ describe("Sprint 34J authority boundaries", () => {
       "sent_correspondence",
       "legal_commitment",
       "financial_commitment",
+      "service_commitment",
+      "employment_decision",
+      "regulatory_position",
     ]));
     expect(blueprintFromRegistry("complaints_review_response").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "final_legal_position",

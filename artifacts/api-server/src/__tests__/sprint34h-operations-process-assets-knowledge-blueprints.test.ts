@@ -217,31 +217,30 @@ describe("Sprint 34H ownership and routing", () => {
   });
 });
 
-describe("Sprint 34H human professional method gate", () => {
-  it("5. every 34H Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
+describe("Sprint 34H approved professional methods", () => {
+  it("5. all 34H Blueprints have resolved their USER_DEFINITION_REQUIRED method status", () => {
     for (const code of ALL_34H_CODES) {
-      const methodSection = sectionsFromRegistry(code)[0];
-      expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
-      expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
-      expect(methodSection.minimumContentExpectation).toContain("USER_DEFINITION_REQUIRED");
+      expect(sectionsFromRegistry(code)[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     }
   });
 
-  it("6. every 34H Blueprint requires human professional method approval", () => {
+  it("6. all 34H Blueprints have removed human professional method approval", () => {
     for (const code of ALL_34H_CODES) {
-      expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
+      expect(blueprintFromRegistry(code).requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     }
   });
 
-  it("7. missing human method approval blocks completion", () => {
-    const result = validate("standard_operating_procedure", { approvalStates: approvalsFor("standard_operating_procedure", false) });
+  it("7. missing controlled publication approval still blocks controlled document assembly", () => {
+    const approvalStates = approvalsFor("controlled_document_assembly");
+    approvalStates.controlled_publication_owner = false;
+    const result = validate("controlled_document_assembly", { approvalStates });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
-    const result = validate("document_control_review", {
-      contentMarkdown: "## DOCUMENT_IDENTITY_STATUS\nDocument status is populated, but the method gate is absent.",
+  it("8. missing assembly position section blocks controlled document assembly", () => {
+    const result = validate("controlled_document_assembly", {
+      contentMarkdown: "## SOURCE_PROFESSIONAL_CONTENT\nApproved content is populated, but the assembly position section is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -251,7 +250,7 @@ describe("Sprint 34H human professional method gate", () => {
 describe("Sprint 34H evidence and currentness controls", () => {
   it("9. operational readiness requires service requirement and operational record evidence", () => {
     expect(blueprintFromRegistry("operational_readiness_assessment").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["service_requirement", "operational_record"],
+      requiredEvidenceCategories: ["service_requirement", "operational_record", "controlled_document", "approval_record"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
@@ -326,6 +325,8 @@ describe("Sprint 34H authority boundaries", () => {
       "controlled_publication",
       "access_override",
       "document_deletion",
+      "domain_method_rewrite",
+      "supersession_execution",
     ]));
   });
 
@@ -336,6 +337,7 @@ describe("Sprint 34H authority boundaries", () => {
       "controlled_publication",
       "document_owner_change",
       "supersession_or_archive",
+      "artifact_renderer",
     ]));
   });
 });

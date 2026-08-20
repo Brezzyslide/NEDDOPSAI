@@ -35,6 +35,8 @@ const ALL_34E_CODES = [
   ...QUALITY_CODES,
 ] as const;
 
+const STILL_METHOD_PENDING_34E_CODES = [] as const;
+
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
@@ -148,6 +150,7 @@ function evidencePack(categories: string[]) {
       authorityLevel: "approved",
       sourceTitle: category,
       sourceType: category,
+      category,
       sectionTitle: category,
       pageNumber: null,
       text: `${category} evidence`,
@@ -218,30 +221,42 @@ describe("Sprint 34E ownership and routing", () => {
 });
 
 describe("Sprint 34E human professional method gate", () => {
-  it("5. every 34E Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
-    for (const code of ALL_34E_CODES) {
+  it("5. professionally approved 34E Blueprints no longer carry visible USER_DEFINITION_REQUIRED method status", () => {
+    for (const code of STILL_METHOD_PENDING_34E_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
       expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
       expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
       expect(methodSection.minimumContentExpectation).toContain("USER_DEFINITION_REQUIRED");
     }
+    expect(sectionsFromRegistry("incident_investigation")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("incident_review_improvement")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("reportable_incident_assessment")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("safeguarding_assessment")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("corrective_action_improvement")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("clinical_governance_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 
-  it("6. every 34E Blueprint requires human professional method approval", () => {
-    for (const code of ALL_34E_CODES) {
+  it("6. professionally approved 34E Blueprints do not require human professional method approval", () => {
+    for (const code of STILL_METHOD_PENDING_34E_CODES) {
       expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
     }
+    expect(blueprintFromRegistry("incident_investigation").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("incident_review_improvement").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("reportable_incident_assessment").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("safeguarding_assessment").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("corrective_action_improvement").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("clinical_governance_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
   });
 
-  it("7. missing human method approval blocks completion", () => {
+  it("7. missing ISS approval blocks incident investigation completion", () => {
     const result = validate("incident_investigation", { approvalStates: approvalsFor("incident_investigation", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
-    const result = validate("reportable_incident_assessment", {
-      contentMarkdown: "## INCIDENT_FACTS_AND_SOURCE_STATUS\nFacts are populated, but the method gate is absent.",
+  it("8. missing clinical strategy source section blocks controlled completion", () => {
+    const result = validate("clinical_governance_review", {
+      contentMarkdown: "## DOCUMENT_CONTROL\nDocument control is populated, but the source discovery section is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -251,22 +266,24 @@ describe("Sprint 34E human professional method gate", () => {
 describe("Sprint 34E evidence and currentness controls", () => {
   it("9. incident investigation requires incident record and incident policy evidence", () => {
     expect(blueprintFromRegistry("incident_investigation").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["incident_record", "incident_policy"],
+      requiredEvidenceCategories: ["incident_record", "incident_policy", "participant_record"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
   });
 
-  it("10. reportable incident assessment requires supplied threshold criteria", () => {
+  it("10. reportable incident assessment requires current authority and participant evidence", () => {
     expect(blueprintFromRegistry("reportable_incident_assessment").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["incident_record", "reportability_criteria"],
+      requiredEvidenceCategories: ["incident_record", "participant_record", "current_reportability_authority"],
       missingEvidenceBehaviour: "block_completion",
     });
   });
 
   it("11. corrective action requires CAPA source evidence", () => {
     expect(blueprintFromRegistry("corrective_action_improvement").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["capa_record"],
+      requiredEvidenceCategories: ["capa_record", "trigger_source_record"],
+      minimumEvidenceCount: 4,
+      missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
   });
@@ -316,6 +333,7 @@ describe("Sprint 34E authority boundaries", () => {
 
   it("17. safeguarding assessment cannot close concern or make final findings", () => {
     const blueprint = blueprintFromRegistry("safeguarding_assessment");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(blueprint.deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "legal_determination",
       "clinical_determination",
@@ -330,10 +348,18 @@ describe("Sprint 34E authority boundaries", () => {
     const entry = getRegistryEntry("clinical_governance_review")!;
     expect(entry.externalAuthorityRequiredFor).toEqual(expect.arrayContaining([
       "clinical determination",
-      "credentialing decision",
+      "professional recommendation change",
+      "medication change",
+      "BSP strategy change",
       "external clinical governance certification",
     ]));
-    expect(blueprintFromRegistry("clinical_governance_review").deliverableContract?.prohibitedDeliverables).toContain("external_certification");
+    expect(blueprintFromRegistry("clinical_governance_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
+      "clinical_determination",
+      "medication_change",
+      "bsp_strategy_change",
+      "therapy_program",
+      "external_certification",
+    ]));
   });
 });
 
@@ -341,6 +367,7 @@ describe("Sprint 34E deliverable and completion gates", () => {
   it("19. incident investigation requires controlled DOCX artifact and template", () => {
     const blueprint = blueprintFromRegistry("incident_investigation");
     expect(blueprint.templateRequired).toBe(true);
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(blueprint.deliverableContract).toMatchObject({
       artifactRequired: true,
       primaryFormat: "docx",
@@ -362,10 +389,12 @@ describe("Sprint 34E deliverable and completion gates", () => {
     expect(result.failures.some((failure) => failure.gate === "template_required")).toBe(true);
   });
 
-  it("22. incident review remains structured analysis rather than forced DOCX artifact", () => {
+  it("22. incident review now requires controlled DOCX artifact and template", () => {
     const blueprint = blueprintFromRegistry("incident_review_improvement");
-    expect(blueprint.deliverableContract?.artifactRequired).toBe(false);
-    expect(blueprint.templateRequired).toBe(false);
+    expect(blueprint.deliverableContract?.artifactRequired).toBe(true);
+    expect(blueprint.deliverableContract?.primaryFormat).toBe("docx");
+    expect(blueprint.deliverableContract?.templateRequired).toBe(true);
+    expect(blueprint.templateRequired).toBe(true);
   });
 
   it("23. corrective action cannot be marked complete without quality approval", () => {
@@ -376,11 +405,14 @@ describe("Sprint 34E deliverable and completion gates", () => {
     expect(result.failures.some((failure) => failure.gate === "approval_required")).toBe(true);
   });
 
-  it("24. clinical governance review is a governance analysis, not clinical certification", () => {
+  it("24. clinical governance review is strategy operationalisation, not clinical certification", () => {
     const blueprint = blueprintFromRegistry("clinical_governance_review");
-    expect(blueprint.deliverableContract?.artifactRequired).toBe(false);
+    expect(blueprint.primaryDeliverable).toBe("Clinical & Professional Strategy Implementation Plan");
+    expect(blueprint.deliverableContract?.artifactRequired).toBe(true);
+    expect(blueprint.deliverableContract?.primaryFormat).toBe("docx");
+    expect(blueprint.templateRequired).toBe(true);
     expect(blueprint.validationRules).toEqual(expect.arrayContaining([
-      expect.objectContaining({ rule: "governance_review_not_clinical_certification" }),
+      expect.objectContaining({ rule: "source_professional_authority_preserved" }),
     ]));
   });
 });

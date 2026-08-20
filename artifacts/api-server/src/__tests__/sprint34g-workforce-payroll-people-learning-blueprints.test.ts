@@ -36,6 +36,10 @@ const ALL_34G_CODES = [
   "payroll_workforce_cost_review",
 ] as const;
 
+const STILL_METHOD_PENDING_34G_CODES = ALL_34G_CODES.filter(
+  (code) => !["rostering_fatigue_review", "roster_planning", "workforce_performance_review", "people_management_review", "learning_capability_development_plan", "workforce_compliance_assessment", "payroll_workforce_cost_review"].includes(code),
+);
+
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
@@ -221,30 +225,36 @@ describe("Sprint 34G ownership and routing", () => {
 });
 
 describe("Sprint 34G human professional method gate", () => {
-  it("5. every 34G Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
-    for (const code of ALL_34G_CODES) {
-      const methodSection = sectionsFromRegistry(code)[0];
-      expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
-      expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
-      expect(methodSection.minimumContentExpectation).toContain("USER_DEFINITION_REQUIRED");
-    }
+  it("5. all 34G Blueprints have Product Owner-approved professional methods", () => {
+    expect(STILL_METHOD_PENDING_34G_CODES).toEqual([]);
+    expect(sectionsFromRegistry("rostering_fatigue_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("roster_planning")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("workforce_performance_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("people_management_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("learning_capability_development_plan")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("workforce_compliance_assessment")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+    expect(sectionsFromRegistry("payroll_workforce_cost_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 
-  it("6. every 34G Blueprint requires human professional method approval", () => {
-    for (const code of ALL_34G_CODES) {
-      expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
-    }
+  it("6. approved 34G Blueprints do not require human professional method approval", () => {
+    expect(blueprintFromRegistry("rostering_fatigue_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("roster_planning").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("workforce_performance_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("people_management_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("learning_capability_development_plan").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("workforce_compliance_assessment").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(blueprintFromRegistry("payroll_workforce_cost_review").requiredApprovals).not.toHaveProperty("human_professional_method_owner");
   });
 
-  it("7. missing human method approval blocks completion", () => {
+  it("7. missing roster approvals block completion", () => {
     const result = validate("roster_planning", { approvalStates: approvalsFor("roster_planning", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
-    const result = validate("people_management_review", {
-      contentMarkdown: "## PEOPLE_MATTER_SCOPE\nMatter scope is populated, but the method gate is absent.",
+  it("8. missing approved payroll section blocks completion", () => {
+    const result = validate("payroll_workforce_cost_review", {
+      contentMarkdown: "## REVIEW_SCOPE_WORKER_IDENTITY_AND_CONTEXT\nPayroll cost scope is populated, but the approved document-control section is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -252,9 +262,9 @@ describe("Sprint 34G human professional method gate", () => {
 });
 
 describe("Sprint 34G evidence and currentness controls", () => {
-  it("9. roster planning requires service requirement and current availability evidence", () => {
+  it("9. roster planning requires service, availability, eligibility, competency and roster evidence", () => {
     expect(blueprintFromRegistry("roster_planning").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["service_requirement", "worker_availability"],
+      requiredEvidenceCategories: ["service_requirement", "worker_availability", "credential_record", "training_record", "roster_schedule"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
@@ -281,13 +291,29 @@ describe("Sprint 34G evidence and currentness controls", () => {
   });
 
   it("12. missing required credential evidence blocks workforce compliance assessment", () => {
-    const result = validate("workforce_compliance_assessment", { evidencePack: evidencePack(["training_record"]) });
+    const result = validate("workforce_compliance_assessment", { evidencePack: evidencePack(["training_record", "employment_record"]) });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "missing_evidence")).toBe(true);
   });
 
   it("13. payroll review requires payroll and timesheet evidence", () => {
-    expect(blueprintFromRegistry("payroll_workforce_cost_review").evidenceContract?.requiredEvidenceCategories).toEqual(["payroll_record", "timesheet"]);
+    expect(blueprintFromRegistry("payroll_workforce_cost_review").evidenceContract?.requiredEvidenceCategories).toEqual(["payroll_record", "timesheet", "employment_record"]);
+  });
+
+  it("13a. learning capability requires worker, training and competency evidence before planning", () => {
+    expect(blueprintFromRegistry("learning_capability_development_plan").evidenceContract).toMatchObject({
+      requiredEvidenceCategories: ["employment_record", "training_record", "competency_record"],
+      missingEvidenceBehaviour: "block_completion",
+      claimIntegrityRequired: true,
+    });
+  });
+
+  it("13b. workforce compliance requires worker, credential and training evidence for deployment assessment", () => {
+    expect(blueprintFromRegistry("workforce_compliance_assessment").evidenceContract).toMatchObject({
+      requiredEvidenceCategories: ["employment_record", "credential_record", "training_record"],
+      missingEvidenceBehaviour: "block_completion",
+      claimIntegrityRequired: true,
+    });
   });
 });
 
@@ -298,7 +324,9 @@ describe("Sprint 34G authority boundaries", () => {
     expect(blueprint.deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "published_roster",
       "shift_allocation_approval",
+      "support_ratio_change",
       "credential_certification",
+      "competency_certification",
     ]));
   });
 
@@ -314,12 +342,14 @@ describe("Sprint 34G authority boundaries", () => {
     expect(blueprintFromRegistry("workforce_performance_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "disciplinary_decision",
       "termination_decision",
+      "formal_conduct_finding",
       "legal_advice",
     ]));
     expect(blueprintFromRegistry("people_management_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "termination_decision",
       "suspension_decision",
       "disciplinary_decision",
+      "formal_workplace_investigation_finding",
     ]));
   });
 
@@ -331,11 +361,23 @@ describe("Sprint 34G authority boundaries", () => {
     ]));
   });
 
+  it("17a. workforce compliance cannot publish rosters, certify competence or create learning plans", () => {
+    expect(blueprintFromRegistry("workforce_compliance_assessment").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
+      "learning_plan",
+      "competency_certification",
+      "deployment_approval",
+      "roster_publication",
+      "clinical_bsp_or_restrictive_practice_decision",
+    ]));
+  });
+
   it("18. payroll review cannot execute payroll, transfer funds or provide legal/tax certification", () => {
     expect(blueprintFromRegistry("payroll_workforce_cost_review").deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "payrun_approval",
       "fund_transfer",
+      "payroll_system_mutation",
       "tax_agent_certification",
+      "personal_income_tax_advice",
       "legal_entitlement_determination",
     ]));
   });
@@ -343,7 +385,7 @@ describe("Sprint 34G authority boundaries", () => {
 
 describe("Sprint 34G deliverable and completion gates", () => {
   it("19. roster plan and people-facing packages require controlled DOCX artifacts", () => {
-    for (const code of ["roster_planning", "workforce_performance_review", "people_management_review", "learning_capability_development_plan"] as const) {
+    for (const code of ["roster_planning", "workforce_performance_review", "people_management_review", "learning_capability_development_plan", "payroll_workforce_cost_review"] as const) {
       const blueprint = blueprintFromRegistry(code);
       expect(blueprint.templateRequired).toBe(true);
       expect(blueprint.deliverableContract).toMatchObject({
@@ -368,12 +410,21 @@ describe("Sprint 34G deliverable and completion gates", () => {
     expect(result.failures.some((failure) => failure.gate === "template_required")).toBe(true);
   });
 
-  it("22. workforce compliance and payroll reviews remain structured analysis rather than forced DOCX artifacts", () => {
-    for (const code of ["workforce_compliance_assessment", "payroll_workforce_cost_review"] as const) {
-      const blueprint = blueprintFromRegistry(code);
-      expect(blueprint.deliverableContract?.artifactRequired).toBe(false);
-      expect(blueprint.templateRequired).toBe(false);
-    }
+  it("22. workforce compliance and payroll now require controlled DOCX artifacts", () => {
+    const blueprint = blueprintFromRegistry("workforce_compliance_assessment");
+    expect(blueprint.templateRequired).toBe(true);
+    expect(blueprint.deliverableContract).toMatchObject({
+      artifactRequired: true,
+      primaryFormat: "docx",
+      templateRequired: true,
+    });
+    const payroll = blueprintFromRegistry("payroll_workforce_cost_review");
+    expect(payroll.templateRequired).toBe(true);
+    expect(payroll.deliverableContract).toMatchObject({
+      artifactRequired: true,
+      primaryFormat: "docx",
+      templateRequired: true,
+    });
   });
 
   it("23. roster publication approval must be present before roster plan completion", () => {

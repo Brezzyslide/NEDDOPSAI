@@ -50,7 +50,7 @@ import {
   getBlueprintExecutionContract,
   type BlueprintExecutionContract,
 } from "./workBlueprintService.js";
-import { getRegistryEntry, resolveRegistryProfessionalOwner } from "./blueprintRegistry.js";
+import { getRegistryEntry, resolveRegistryCodeForNewWork, resolveRegistryProfessionalOwner } from "./blueprintRegistry.js";
 
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
@@ -308,7 +308,7 @@ function buildBlueprintSnapshotFromExecutionContract(
 function buildBlueprintSnapshotFromRegistryCode(
   code: string,
 ): BlueprintExecutionContractSnapshot | null {
-  const entry = getRegistryEntry(code);
+  const entry = getRegistryEntry(resolveRegistryCodeForNewWork(code));
   if (!entry) return null;
   return {
     blueprintCode: entry.code,

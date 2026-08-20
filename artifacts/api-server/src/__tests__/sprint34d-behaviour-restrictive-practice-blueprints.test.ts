@@ -35,9 +35,7 @@ const ALL_34D_CODES = [
   ...RESTRICTIVE_PRACTICE_CODES,
 ] as const;
 
-const STILL_METHOD_PENDING_34D_CODES = [
-  "unauthorised_restrictive_practice_review",
-] as const;
+const STILL_METHOD_PENDING_34D_CODES = [] as const;
 
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
@@ -223,30 +221,31 @@ describe("Sprint 34D ownership and routing", () => {
 });
 
 describe("Sprint 34D human professional method gate", () => {
-  it("5. still-unapproved 34D RP blueprints carry a visible USER_DEFINITION_REQUIRED method section", () => {
-    for (const code of STILL_METHOD_PENDING_34D_CODES) {
+  it("5. approved 34D behaviour and RP blueprints do not carry a visible USER_DEFINITION_REQUIRED method section", () => {
+    for (const code of ALL_34D_CODES) {
       const methodSection = sectionsFromRegistry(code)[0];
-      expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
-      expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
-      expect(methodSection.minimumContentExpectation).toContain("USER_DEFINITION_REQUIRED");
+      expect(methodSection?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+      expect(methodSection?.instructions).not.toContain("USER_DEFINITION_REQUIRED");
+      expect(methodSection?.minimumContentExpectation).not.toContain("USER_DEFINITION_REQUIRED");
     }
   });
 
-  it("6. still-unapproved 34D RP blueprints require human professional method approval", () => {
-    for (const code of STILL_METHOD_PENDING_34D_CODES) {
-      expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
+  it("6. approved 34D behaviour and RP blueprints do not require human professional method approval", () => {
+    for (const code of ALL_34D_CODES) {
+      expect(blueprintFromRegistry(code).requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     }
+    expect(STILL_METHOD_PENDING_34D_CODES).toHaveLength(0);
   });
 
-  it("7. missing human professional method approval blocks completion", () => {
+  it("7. missing ISS approval blocks unauthorised RP review completion", () => {
     const result = validate("unauthorised_restrictive_practice_review", { approvalStates: approvalsFor("unauthorised_restrictive_practice_review", false) });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
+  it("8. missing approved unauthorised RP method section blocks completion", () => {
     const result = validate("unauthorised_restrictive_practice_review", {
-      contentMarkdown: "## IDENTIFIED_PRACTICE_AND_CONTEXT\nThis section is populated but the method gate is absent.",
+      contentMarkdown: "## DOCUMENT_CONTROL\nThis section is populated but the professional finding and closure section is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -327,6 +326,8 @@ describe("Sprint 34D authority boundaries", () => {
     const blueprint = blueprintFromRegistry("unauthorised_restrictive_practice_review");
     expect(blueprint.primarySpecialist).toBe("incident_safeguarding_specialist");
     expect(blueprint.supportingSpecialists).toContain("authorised_program_officer");
+    expect(blueprint.supportingSpecialists).toContain("knowledge_documentation_specialist");
+    expect(blueprint.primarySpecialist).not.toBe("knowledge_documentation_specialist");
     expect(blueprint.validationRules).toEqual(expect.arrayContaining([
       expect.objectContaining({ rule: "no_final_reportability_or_legal_determination" }),
     ]));
@@ -363,6 +364,13 @@ describe("Sprint 34D deliverable and completion gates", () => {
     expect(blueprint.maturityState).toBe("production_ready");
     expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(sectionsFromRegistry("restrictive_practice_authorisation")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
+  });
+
+  it("18d. unauthorised RP review no longer carries the human method-definition blocker", () => {
+    const blueprint = blueprintFromRegistry("unauthorised_restrictive_practice_review");
+    expect(blueprint.maturityState).toBe("production_ready");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
+    expect(sectionsFromRegistry("unauthorised_restrictive_practice_review")[0]?.sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
   });
 
   it("19. missing RP artifact blocks completion", () => {

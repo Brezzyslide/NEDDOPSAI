@@ -45,6 +45,21 @@ const ALL_34F_CODES = [
   "service_agreement_review",
 ] as const;
 
+const STILL_METHOD_PENDING_34F_CODES = ALL_34F_CODES.filter((code) =>
+  code !== "policy"
+  && code !== "governance_framework"
+  && code !== "regulatory_change_impact_assessment"
+  && code !== "governance_gap_analysis"
+  && code !== "delegation_framework"
+  && code !== "compliance_audit_readiness"
+  && code !== "legislation_regulatory_review"
+  && code !== "regulatory_change_impact"
+  && code !== "regulator_response_submission"
+  && code !== "schads_award_analysis"
+  && code !== "employment_compliance_review"
+  && code !== "service_agreement_review"
+);
+
 function blueprintFromRegistry(code: string): WorkBlueprint {
   const entry = getRegistryEntry(code);
   if (!entry) throw new Error(`Missing registry entry: ${code}`);
@@ -208,7 +223,7 @@ describe("Sprint 34F ownership and routing", () => {
   it("2. routes compliance Blueprints to the correct governance/compliance owner", () => {
     expect(resolveRegistryProfessionalOwner(getRegistryEntry("compliance_audit_readiness")!)).toBe("compliance_quality_manager");
     expect(resolveRegistryProfessionalOwner(getRegistryEntry("legislation_regulatory_review")!)).toBe("policy_governance_specialist");
-    expect(resolveRegistryProfessionalOwner(getRegistryEntry("regulatory_change_impact")!)).toBe("compliance_quality_manager");
+    expect(resolveRegistryProfessionalOwner(getRegistryEntry("regulatory_change_impact")!)).toBe("policy_governance_specialist");
     expect(resolveRegistryProfessionalOwner(getRegistryEntry("regulator_response_submission")!)).toBe("compliance_quality_manager");
   });
 
@@ -232,30 +247,30 @@ describe("Sprint 34F ownership and routing", () => {
 });
 
 describe("Sprint 34F human professional method gate", () => {
-  it("5. every 34F Blueprint carries visible USER_DEFINITION_REQUIRED method status", () => {
+  it("5. no 34F Blueprint remains USER_DEFINITION_REQUIRED method-pending", () => {
+    expect(STILL_METHOD_PENDING_34F_CODES).toHaveLength(0);
     for (const code of ALL_34F_CODES) {
-      const methodSection = sectionsFromRegistry(code)[0];
-      expect(methodSection.sectionCode).toBe("USER_DEFINITION_REQUIRED_METHOD");
-      expect(methodSection.instructions).toContain("USER_DEFINITION_REQUIRED");
-      expect(methodSection.minimumContentExpectation).toContain("USER_DEFINITION_REQUIRED");
+      expect(sectionsFromRegistry(code).map((section) => section.sectionCode)).not.toContain("USER_DEFINITION_REQUIRED_METHOD");
     }
   });
 
-  it("6. every 34F Blueprint requires human professional method approval", () => {
+  it("6. no 34F Blueprint requires human professional method approval", () => {
     for (const code of ALL_34F_CODES) {
-      expect(blueprintFromRegistry(code).requiredApprovals).toHaveProperty("human_professional_method_owner", true);
+      expect(blueprintFromRegistry(code).requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     }
   });
 
-  it("7. missing human method approval blocks completion", () => {
-    const result = validate("policy", { approvalStates: approvalsFor("policy", false) });
+  it("7. missing service-agreement domain approval blocks completion", () => {
+    const approvalStates = approvalsFor("service_agreement_review");
+    approvalStates.policy_governance_owner = false;
+    const result = validate("service_agreement_review", { approvalStates });
     expect(result.passed).toBe(false);
     expect(result.failures).toEqual(expect.arrayContaining([expect.objectContaining({ gate: "approval_required" })]));
   });
 
-  it("8. missing method section blocks completion", () => {
-    const result = validate("regulator_response_submission", {
-      contentMarkdown: "## REGULATOR_REQUEST_AND_DEADLINES\nRegulator request is populated, but the method gate is absent.",
+  it("8. missing service-agreement document authority section blocks completion", () => {
+    const result = validate("service_agreement_review", {
+      contentMarkdown: "## MATERIAL_TERMS_COMPLETENESS_GATE\nMaterial terms are populated, but the document authority section is absent.",
     });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(true);
@@ -265,19 +280,57 @@ describe("Sprint 34F human professional method gate", () => {
 describe("Sprint 34F evidence and currentness controls", () => {
   it("9. policy and governance work requires current controlled source evidence", () => {
     expect(blueprintFromRegistry("policy").evidenceContract).toMatchObject({
-      requiredEvidenceCategories: ["controlled_document"],
+      requiredEvidenceCategories: ["controlled_document", "current_authority", "organisation_context", "domain_owner_input"],
       missingEvidenceBehaviour: "block_completion",
       claimIntegrityRequired: true,
     });
     expect(blueprintFromRegistry("governance_framework").evidenceContract?.freshnessRules).toMatchObject({
       currentnessRequired: true,
       historicalInstrumentsRemainHistorical: true,
+      governanceDesignMustBeProportionateToSizeComplexityAndRisk: true,
+      delegationDoesNotRemoveUltimateAccountability: true,
+    });
+    expect(blueprintFromRegistry("governance_framework").evidenceContract?.requiredEvidenceCategories).toEqual(["governance_framework", "organisation_context", "authority_record", "current_authority"]);
+    expect(blueprintFromRegistry("governance_gap_analysis").evidenceContract?.requiredEvidenceCategories).toEqual(["current_authority", "governance_framework", "implementation_evidence", "assurance_record"]);
+    expect(blueprintFromRegistry("governance_gap_analysis").evidenceContract?.freshnessRules).toMatchObject({
+      requiredDoesNotEqualDesigned: true,
+      designedDoesNotEqualImplemented: true,
+      evidencedDoesNotEqualEffective: true,
+    });
+    expect(blueprintFromRegistry("delegation_framework").evidenceContract?.requiredEvidenceCategories).toEqual(["delegation_record", "authority_record", "governance_framework", "organisational_structure"]);
+    expect(blueprintFromRegistry("delegation_framework").evidenceContract?.freshnessRules).toMatchObject({
+      absenceOfAuthorityRecordDoesNotCreateAuthority: true,
+      managerialDelegationCannotCreateStatutoryOrProfessionalAuthority: true,
+      systemPermissionDoesNotEqualApprovedDelegation: true,
+    });
+    expect(blueprintFromRegistry("compliance_audit_readiness").evidenceContract?.requiredEvidenceCategories).toEqual(["audit_scope", "audit_criteria", "current_authority", "controlled_document", "implementation_evidence"]);
+    expect(blueprintFromRegistry("compliance_audit_readiness").evidenceContract?.freshnessRules).toMatchObject({
+      policyExistenceDoesNotProveImplementation: true,
+      evidenceMustBeRetrievableToBeVerified: true,
+      absenceOfContraryEvidenceDoesNotProveCompliance: true,
+      readinessIsRequirementSpecific: true,
     });
   });
 
   it("10. regulatory change and legislation reviews require authoritative regulatory source evidence", () => {
-    expect(blueprintFromRegistry("regulatory_change_impact_assessment").evidenceContract?.requiredEvidenceCategories).toEqual(["regulatory_source", "controlled_document"]);
-    expect(blueprintFromRegistry("legislation_regulatory_review").evidenceContract?.requiredEvidenceCategories).toEqual(["regulatory_source"]);
+    expect(blueprintFromRegistry("legislation_regulatory_review").evidenceContract?.requiredEvidenceCategories).toEqual(["current_authority", "regulatory_source", "organisation_structure", "legislative_register"]);
+    expect(blueprintFromRegistry("legislation_regulatory_review").evidenceContract?.freshnessRules).toMatchObject({
+      primaryAuthorityPreferredWhereAvailable: true,
+      oldRegisterCannotOverrideCurrentAuthority: true,
+      registerAbsenceDoesNotProveObligationAbsence: true,
+      sectorRelevanceDoesNotEqualApplicability: true,
+    });
+    expect(blueprintFromRegistry("regulatory_change_impact_assessment").evidenceContract?.requiredEvidenceCategories).toEqual(["current_regulatory_source", "organisational_context", "current_practice_evidence"]);
+    expect(blueprintFromRegistry("regulatory_change_impact_assessment").evidenceContract?.freshnessRules).toMatchObject({
+      announcedDoesNotEqualEffective: true,
+      regulatoryEffectiveDateDoesNotEqualInternalDueDate: true,
+      implementationVerifiedDoesNotEqualEffectivenessVerified: true,
+    });
+    expect(blueprintFromRegistry("regulatory_change_impact").evidenceContract).toBeNull();
+    expect(blueprintFromRegistry("regulatory_change_impact").validationRules.map((rule) => rule.rule)).toEqual(expect.arrayContaining([
+      "legacy_regulatory_change_impact_routes_to_canonical_assessment",
+      "no_independent_regulatory_change_impact_method",
+    ]));
   });
 
   it("11. memory-only evidence remains restricted", () => {
@@ -294,24 +347,32 @@ describe("Sprint 34F evidence and currentness controls", () => {
   });
 
   it("13. SCHADS analysis requires both award source and employment record evidence", () => {
-    expect(blueprintFromRegistry("schads_award_analysis").evidenceContract?.requiredEvidenceCategories).toEqual(["award_source", "employment_record"]);
-    const result = validate("schads_award_analysis", { evidencePack: evidencePack(["award_source"]) });
+    expect(blueprintFromRegistry("schads_award_analysis").evidenceContract?.requiredEvidenceCategories).toEqual(["current_award_source", "employment_record", "actual_work_record", "current_authority"]);
+    const result = validate("schads_award_analysis", { evidencePack: evidencePack(["current_award_source", "employment_record"]) });
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "missing_evidence")).toBe(true);
   });
 
-  it("14. service-agreement review requires current agreement and participant evidence", () => {
-    expect(blueprintFromRegistry("service_agreement_review").evidenceContract?.requiredEvidenceCategories).toEqual(["service_agreement", "participant_record"]);
+  it("14. service-agreement review requires agreement, material terms, participant, authority and funding evidence", () => {
+    expect(blueprintFromRegistry("service_agreement_review").evidenceContract?.requiredEvidenceCategories).toEqual(["service_agreement", "service_agreement_terms", "participant_record", "current_authority", "funding_record"]);
+    expect(blueprintFromRegistry("service_agreement_review").evidenceContract?.freshnessRules).toMatchObject({
+      termsNotConfiguredBlocksReadiness: true,
+      signedDoesNotProveInformedConsent: true,
+      currentAuthorityRequiredForPricingCancellationAndMaterialTerms: true,
+    });
   });
 });
 
 describe("Sprint 34F authority boundaries", () => {
   it("15. policy document cannot become legal opinion, publication or domain professional conclusion", () => {
     const blueprint = blueprintFromRegistry("policy");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(blueprint.deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "legal_opinion",
       "domain_professional_conclusion",
       "controlled_publication",
+      "policy_approval",
+      "implementation_execution",
     ]));
     expect(getRegistryEntry("policy")!.externalAuthorityRequiredFor).toContain("formal legal opinion");
   });
@@ -319,8 +380,11 @@ describe("Sprint 34F authority boundaries", () => {
   it("16. regulator response prepares package readiness but not external submission", () => {
     const blueprint = blueprintFromRegistry("regulator_response_submission");
     expect(blueprint.requiredApprovals).toHaveProperty("external_submission_owner", true);
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(blueprint.deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "external_submission",
+      "unsupported_admission",
+      "unsupported_denial",
       "legal_admission",
       "binding_regulatory_position",
     ]));
@@ -328,9 +392,13 @@ describe("Sprint 34F authority boundaries", () => {
 
   it("17. SCHADS analysis cannot become payroll calculation or legal entitlement decision", () => {
     const blueprint = blueprintFromRegistry("schads_award_analysis");
+    expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(blueprint.deliverableContract?.prohibitedDeliverables).toEqual(expect.arrayContaining([
       "legal_entitlement_determination",
       "payroll_calculation",
+      "complete_payslip",
+      "superannuation_reconciliation",
+      "long_service_leave_liability",
       "backpay_approval",
     ]));
     expect(blueprint.supportingSpecialists).toEqual(expect.arrayContaining([
@@ -359,13 +427,15 @@ describe("Sprint 34F authority boundaries", () => {
       "legal_advice",
       "unilateral_agreement_change",
       "service_commitment_approval",
+      "agreement_signature",
+      "participant_funding_change",
     ]));
   });
 });
 
 describe("Sprint 34F deliverable and completion gates", () => {
-  it("20. policy, governance framework and delegation framework require controlled DOCX artifacts", () => {
-    for (const code of ["policy", "governance_framework", "delegation_framework"] as const) {
+  it("20. policy, governance framework, delegation framework and service agreement review require controlled DOCX artifacts", () => {
+    for (const code of ["policy", "governance_framework", "delegation_framework", "service_agreement_review"] as const) {
       const blueprint = blueprintFromRegistry(code);
       expect(blueprint.templateRequired).toBe(true);
       expect(blueprint.deliverableContract).toMatchObject({

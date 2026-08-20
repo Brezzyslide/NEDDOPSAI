@@ -206,7 +206,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   // ── Compliance & Regulatory ───────────────────────────────────────────────
   "compliance.audit_readiness":    { family: "compliance", mode: "audit_readiness",    code: "compliance_audit_readiness",    isAction: false },
   "compliance.legislation_review": { family: "compliance", mode: "legislation_review", code: "legislation_regulatory_review", isAction: false },
-  "compliance.impact_assessment":  { family: "compliance", mode: "impact_assessment",  code: "regulatory_change_impact",      isAction: false },
+  "compliance.impact_assessment":  { family: "policy",     mode: "impact_assessment",  code: "regulatory_change_impact_assessment", isAction: false },
   "compliance.response":           { family: "compliance", mode: "response",           code: "regulator_response_submission", isAction: false },
 
   // ── Employment & SCHADS ───────────────────────────────────────────────────

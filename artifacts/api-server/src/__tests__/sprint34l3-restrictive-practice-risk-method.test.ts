@@ -208,13 +208,11 @@ describe("Sprint 34L.3 RP method gate and ownership", () => {
     expect(blueprint.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     expect(methodPendingCodes()).not.toContain(RP_CODE);
-    expect(methodPendingCodes()).toHaveLength(46);
+    expect(methodPendingCodes()).toHaveLength(0);
   });
 
-  it("2. leaves other RP Blueprints method-gated", () => {
-    expect(methodPendingCodes()).toEqual(expect.arrayContaining([
-      "unauthorised_restrictive_practice_review",
-    ]));
+  it("2. leaves unauthorised RP review out of the method gate", () => {
+    expect(methodPendingCodes()).not.toContain("unauthorised_restrictive_practice_review");
   });
 
   it("3. preserves APO ownership and KDS artifact-only support boundary", () => {

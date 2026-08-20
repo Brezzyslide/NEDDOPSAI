@@ -209,17 +209,21 @@ describe("Sprint 34L.1 ownership and USER_DEFINITION_REQUIRED removal", () => {
     expect(sectionsFromRegistry()[0].sectionCode).not.toBe("USER_DEFINITION_REQUIRED_METHOD");
     expect(funding.requiredApprovals).not.toHaveProperty("human_professional_method_owner");
     expect(methodPendingCodes()).not.toContain(FUNDING_CODE);
-    expect(methodPendingCodes()).toHaveLength(46);
+    expect(methodPendingCodes()).toHaveLength(0);
   });
 
   it("4. leaves still-unapproved method-gated Blueprints unchanged", () => {
+    expect(methodPendingCodes()).not.toContain("unauthorised_restrictive_practice_review");
+    expect(methodPendingCodes()).not.toContain("incident_investigation");
+    expect(methodPendingCodes()).not.toContain("incident_review_improvement");
+    expect(methodPendingCodes()).not.toContain("reportable_incident_assessment");
+    expect(methodPendingCodes()).not.toContain("safeguarding_assessment");
+    expect(methodPendingCodes()).not.toContain("rostering_fatigue_review");
+    expect(methodPendingCodes()).not.toContain("policy");
+    expect(methodPendingCodes()).not.toContain("governance_framework");
+    expect(methodPendingCodes()).not.toContain("regulatory_change_impact_assessment");
+    expect(methodPendingCodes()).not.toContain("governance_gap_analysis");
     expect(methodPendingCodes()).toEqual(expect.arrayContaining([
-      "unauthorised_restrictive_practice_review",
-      "incident_investigation",
-      "policy",
-      "rostering_fatigue_review",
-      "business_financial_analysis",
-      "business_continuity_plan",
     ]));
   });
 });
