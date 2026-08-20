@@ -250,21 +250,14 @@ describe("Approval-required auto-dispatch — workroom routing", () => {
     mockDbSelect.mockReturnValue(selectChain);
   });
 
-  it("posts the approval card to the WORKROOM, not the general conversation", async () => {
+  it("does not post a pending approval card before the approval gate is reached", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput("general-conv-1", "Care Plan"));
 
-    expect(mockPostApproval).toHaveBeenCalledWith(
-      "org-1",
-      "workroom-A",       // ← workroom, not "general-conv-1"
-      "task-A",
-      "approval-A",
-      expect.objectContaining({ requestingRole: "Chief of Staff" }),
-    );
-
-    expect(result.approvalId).toBe("approval-A");
+    expect(mockPostApproval).not.toHaveBeenCalled();
+    expect(result.approvalId).toBeUndefined();
     expect(result.workroomConversationId).toBe("workroom-A");
-    expect(result.dispatched).toBe(false);
+    expect(result.dispatched).toBe(true);
   });
 
   it("still posts the task_created card to the ORIGINAL general conversation", async () => {

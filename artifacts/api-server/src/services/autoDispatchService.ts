@@ -15,7 +15,7 @@ import * as taskService from "./taskService.js";
 import * as conversationService from "./conversationService.js";
 import * as auditService from "./auditService.js";
 import { dispatchWorkExecution } from "./executionCoordinatorService.js";
-import { db, approvalsTable, tasksTable } from "@workspace/db";
+import { db, tasksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 // Confidence threshold above which the CoS fires without user confirmation.
@@ -136,62 +136,24 @@ export async function autoCreateAndDispatch(
   // 4. Post the plan card into the WORKROOM (not the general chat).
   await conversationService.postPlanToConversation(organizationId, workroomConversationId, task.id, plan);
 
-  // 5. Dispatch or post approval request — both routed to the WORKROOM.
+  // 5. Dispatch into the WORKROOM.
   //
-  // Task-level dispatch gate: determined by the blueprint execution plan.
-  // This gate controls whether the task starts executing at all.
-  //
-  // Sprint 29M: laneContext.requiresApproval controls the COMPLETED-WORK approval
-  // lifecycle at the UEE level (via ExecutionRequest.laneContext → outputRequiresApproval
-  // override in UEE). Enforcing the same flag at the dispatch gate would require
-  // creating an approval record not produced by taskService.createTask(), which is
-  // outside this path. The safe minimum is: completed-work always requires approval
-  // for EVIDENCE_BEARING lanes (enforced in UEE), task dispatch follows blueprint plan.
-  let dispatched     = false;
-  let approvalId: string | undefined;
-
-  if (plan.requiresApproval) {
-    // Find the approval record created by createTask and post the approval card to workroom
-    const [approval] = await db
-      .select()
-      .from(approvalsTable)
-      .where(eq(approvalsTable.taskId, task.id))
-      .limit(1)
-      .catch(() => [undefined]);
-
-    if (approval) {
-      approvalId = approval.id;
-      await conversationService.postApprovalRequestToConversation(
-        organizationId,
-        workroomConversationId,   // ← workroom, not general chat
-        task.id,
-        approval.id,
-        {
-          requestedAction: `Execute: ${task.title}`,
-          requestingRole:  "Chief of Staff",
-          reason:          plan.reasoning,
-          riskLevel:       "medium",
-          approvalType:    plan.approvalType,
-        },
-      );
-    }
-  } else {
-    // No approval required — dispatch work execution immediately in the background.
-    // Sprint 29M: forward laneContext so UEE can apply the evidence/claim-integrity override.
-    // Execution progress, checkpoints, and completion output go into the workroom.
-    dispatchWorkExecution({
-      organizationId,
-      taskId:          task.id,
-      taskTitle:       task.title,
-      taskDescription: description,
-      requesterId,
-      conversationId:  workroomConversationId,   // ← workroom, not general chat
-      laneContext:     laneContext ?? undefined,
-    }).catch(err =>
-      console.warn("[AutoDispatch] Background dispatch failed (non-fatal):", err?.message),
-    );
-    dispatched = true;
-  }
+  // `plan.requiresApproval` is a future completion/release requirement, not an
+  // actionable pending approval. Execution starts, then taskService creates the
+  // canonical approval row only when the real gate is reached.
+  let dispatched = false;
+  dispatchWorkExecution({
+    organizationId,
+    taskId:          task.id,
+    taskTitle:       task.title,
+    taskDescription: description,
+    requesterId,
+    conversationId:  workroomConversationId,   // ← workroom, not general chat
+    laneContext:     laneContext ?? undefined,
+  }).catch(err =>
+    console.warn("[AutoDispatch] Background dispatch failed (non-fatal):", err?.message),
+  );
+  dispatched = true;
 
   // Sprint 29M: record the execution lane so downstream audit and pipeline
   // can confirm the correct path was taken (professional_work vs evidence_bearing_work)
@@ -219,7 +181,7 @@ export async function autoCreateAndDispatch(
 
   console.info(
     `[AutoDispatch] Task ${task.id} created — workroom ${workroomConversationId}` +
-    (dispatched ? " — execution dispatched" : " — awaiting approval"),
+    (dispatched ? " — execution dispatched" : ""),
   );
 
   return {
@@ -229,6 +191,5 @@ export async function autoCreateAndDispatch(
     workroomConversationId,
     dispatched,
     requiresApproval: plan.requiresApproval,
-    approvalId,
   };
 }

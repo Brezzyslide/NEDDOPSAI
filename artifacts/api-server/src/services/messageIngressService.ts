@@ -48,6 +48,7 @@ import {
   holdTaskFromConversation,
   isLikelyCheckpointAnswer,
   markConversationConfirmationResolved,
+  modifyTaskFromConversation,
   persistConversationFocus,
   persistConversationConfirmation,
   resolvePendingConfirmationAnswer,
@@ -586,6 +587,7 @@ async function maybeHandleDeterministicControl(input: {
     "RESUME_TASK",
     "APPROVE_ACTION",
     "REJECT_ACTION",
+    "MODIFY_TASK",
     "STATUS_QUERY",
     "SWITCH_TASK",
   ].includes(input.intent);
@@ -717,6 +719,21 @@ async function maybeHandleDeterministicControl(input: {
       response = result.state === "approved"
         ? "Approved. I have applied that approval to the specific pending action."
         : "Rejected. I have applied that decision to the specific pending action.";
+      break;
+    }
+    case "MODIFY_TASK": {
+      action = "revise";
+      mode = "task_followup";
+      const result = await modifyTaskFromConversation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: resolution.resolvedTaskId!,
+        actorUserId: input.userId,
+        changeRequest: input.content,
+      });
+      response = result.status === "modified"
+        ? `Updated the task specification for "${result.taskTitle ?? "that task"}" and moved it back into planning so the change is handled explicitly.`
+        : "That task is already complete or cancelled, so I did not rewrite it. Create a revision task if you want to change the completed record.";
       break;
     }
     case "STATUS_QUERY": {

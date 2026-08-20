@@ -234,40 +234,34 @@ describe("autoCreateAndDispatch — approval required", () => {
     mockDbSelect.mockReturnValue(selectChain);
   });
 
-  it("does NOT dispatch when approval is required", async () => {
+  it("dispatches even when future approval is required because pending approval is gate-created later", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
     await new Promise(r => setTimeout(r, 20));
-    expect(mockDispatch).not.toHaveBeenCalled();
-    expect(result.dispatched).toBe(false);
+    expect(mockDispatch).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: "task-1",
+      conversationId: "workroom-1",
+    }));
+    expect(result.dispatched).toBe(true);
     expect(result.requiresApproval).toBe(true);
   });
 
-  it("posts the approval request card to the WORKROOM (not the general chat)", async () => {
+  it("does not post a pending approval card before the approval gate is reached", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
-    expect(mockPostApproval).toHaveBeenCalledWith(
-      "org-1",
-      "workroom-1",   // ← workroom, not "conv-1"
-      "task-1",
-      "approval-1",
-      expect.objectContaining({
-        requestedAction: "Execute: Process quarterly reports",
-        requestingRole:  "Chief of Staff",
-      }),
-    );
-    expect(result.approvalId).toBe("approval-1");
+    expect(mockPostApproval).not.toHaveBeenCalled();
+    expect(result.approvalId).toBeUndefined();
   });
 
-  it("returns requiresApproval=true with the approvalId and workroomConversationId", async () => {
+  it("returns requiresApproval=true without a premature approvalId and with the workroomConversationId", async () => {
     const { autoCreateAndDispatch } = await import("../services/autoDispatchService.js");
     const result = await autoCreateAndDispatch(makeInput());
 
     expect(result.requiresApproval).toBe(true);
-    expect(result.approvalId).toBe("approval-1");
-    expect(result.dispatched).toBe(false);
+    expect(result.approvalId).toBeUndefined();
+    expect(result.dispatched).toBe(true);
     expect(result.workroomConversationId).toBe("workroom-1");
   });
 });

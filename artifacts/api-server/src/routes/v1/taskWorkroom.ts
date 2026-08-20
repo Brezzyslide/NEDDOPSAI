@@ -12,6 +12,7 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
+import { cancelTaskExecution } from "../../services/executionService.js";
 import * as auditService from "../../services/auditService.js";
 import { handleIncomingMessage } from "../../services/messageIngressService.js";
 import { db } from "@workspace/db";
@@ -339,11 +340,20 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
         break;
 
       case "cancel":
-        if (["completed", "cancelled"].includes(task.currentState)) {
-          res.status(422).json({ error: { code: "INVALID_TRANSITION", message: "Task is already completed or cancelled." } });
+        if (task.currentState === "completed") {
+          res.status(422).json({ error: { code: "INVALID_TRANSITION", message: "Completed tasks cannot be cancelled." } });
           return;
         }
-        newState = "cancelled";
+        if (task.currentState === "cancelled") {
+          responseContent = "The task was already cancelled.";
+          break;
+        }
+        await taskService.cancelTask(taskId, ctx.tenantId, {
+          cancelledBy: user.id,
+          source: "task_workroom_command",
+          conversationId: conv.id,
+        });
+        await cancelTaskExecution(taskId, ctx.tenantId).catch(() => {});
         responseContent = "The task has been cancelled.";
         break;
 
@@ -375,6 +385,16 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
         resourceType: "task",
         resourceId: taskId,
         metadata: { command, newState },
+        ...meta,
+      }).catch(() => {});
+    } else if (command === "cancel") {
+      await auditService.writeAuditEvent({
+        organizationId: ctx.tenantId,
+        actorUserId: user.id,
+        eventType: "task.command_completed",
+        resourceType: "task",
+        resourceId: taskId,
+        metadata: { command, newState: "cancelled" },
         ...meta,
       }).catch(() => {});
     }

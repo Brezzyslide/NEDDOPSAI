@@ -380,6 +380,12 @@ export default function WorkforceChatPage() {
     dispatched: boolean;
     requiresApproval: boolean;
   } | null>(null);
+  const [autoCreatedTasks, setAutoCreatedTasks] = useState<Array<{
+    taskId: string;
+    title: string;
+    dispatched: boolean;
+    requiresApproval: boolean;
+  }>>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -511,15 +517,19 @@ export default function WorkforceChatPage() {
               });
             }
             setStreamingText("");
-          } else if (evt.type === "task_auto_created") {
-            // CoS created and dispatched a task automatically — show a persistent card
-            const auto = evt as unknown as {
-              taskId: string; title: string;
-              dispatched: boolean; requiresApproval: boolean;
-            };
-            setAutoCreatedTask(auto);
-            // Track the linked task so proposal cards know a task already exists
-            setLinkedTaskId(auto.taskId);
+	          } else if (evt.type === "task_auto_created") {
+	            // CoS created and dispatched a task automatically — show a persistent card
+	            const auto = evt as unknown as {
+	              taskId: string; title: string;
+	              dispatched: boolean; requiresApproval: boolean;
+	            };
+	            setAutoCreatedTask(auto);
+	            setAutoCreatedTasks(prev => {
+	              if (prev.some(task => task.taskId === auto.taskId)) return prev;
+	              return [...prev, auto].slice(-5);
+	            });
+	            // Track the linked task so proposal cards know a task already exists
+	            setLinkedTaskId(auto.taskId);
           } else if (evt.type === "done") {
             setIsStreaming(false);
           } else if (evt.type === "error") {
@@ -675,30 +685,36 @@ export default function WorkforceChatPage() {
           )}
 
           {/* Task #27 — Auto-dispatch notification card */}
-          {autoCreatedTask && (
-            <div className="mx-auto max-w-[75%] mb-4">
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/20 px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <span className="text-emerald-400 text-lg mt-0.5">⚡</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-emerald-400 text-xs font-semibold mb-0.5">
-                      {autoCreatedTask.dispatched ? "Task created & execution started" : "Task created — awaiting approval"}
-                    </p>
-                    <p className="text-[#CBD5E1] text-sm font-medium truncate">{autoCreatedTask.title}</p>
-                    {autoCreatedTask.requiresApproval && (
-                      <p className="text-[#64748B] text-xs mt-0.5">
-                        Review the approval request above to start execution.
-                      </p>
-                    )}
-                    <a
-                      href={`/app/${slug}/tasks/${autoCreatedTask.taskId}`}
-                      className="inline-block mt-2 text-xs text-[#00D4FF] hover:underline"
-                    >
-                      View task →
-                    </a>
-                  </div>
-                  <button
-                    onClick={() => setAutoCreatedTask(null)}
+	          {(autoCreatedTasks.length > 0 || autoCreatedTask) && (
+	            <div className="mx-auto max-w-[75%] mb-4">
+	              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-900/20 px-4 py-3">
+	                <div className="flex items-start gap-3">
+	                  <span className="text-emerald-400 text-lg mt-0.5">⚡</span>
+	                  <div className="flex-1 min-w-0">
+	                    <p className="text-emerald-400 text-xs font-semibold mb-0.5">
+	                      {(autoCreatedTasks.length === 1 ? autoCreatedTasks[0] : autoCreatedTask)?.dispatched
+	                        ? autoCreatedTasks.length > 1 ? "Tasks created & execution started" : "Task created & execution started"
+	                        : autoCreatedTasks.length > 1 ? "Tasks created — awaiting approval where required" : "Task created — awaiting approval"}
+	                    </p>
+	                    {(autoCreatedTasks.length > 0 ? autoCreatedTasks : [autoCreatedTask!]).map(task => (
+	                      <div key={task.taskId} className="mt-2">
+	                        <p className="text-[#CBD5E1] text-sm font-medium truncate">{task.title}</p>
+	                        {task.requiresApproval && (
+	                          <p className="text-[#64748B] text-xs mt-0.5">
+	                            Review the approval request above to start execution.
+	                          </p>
+	                        )}
+	                        <a
+	                          href={`/app/${slug}/tasks/${task.taskId}`}
+	                          className="inline-block mt-1 text-xs text-[#00D4FF] hover:underline"
+	                        >
+	                          View task →
+	                        </a>
+	                      </div>
+	                    ))}
+	                  </div>
+	                  <button
+	                    onClick={() => { setAutoCreatedTask(null); setAutoCreatedTasks([]); }}
                     className="text-[#475569] hover:text-[#94A3B8] text-xs shrink-0"
                     aria-label="Dismiss"
                   >

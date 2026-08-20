@@ -16,9 +16,16 @@ import {
   tasksTable,
 } from "@workspace/db";
 import type { TaskState } from "@workspace/shared";
-import type { ActiveCheckpoint } from "./executionCheckpointService.js";
-import { resolveApproval } from "./approvalService.js";
-import { transitionTaskState } from "./taskService.js";
+import {
+  cancelCheckpoint,
+  getActiveCheckpointByConversation,
+  type ActiveCheckpoint,
+} from "./executionCheckpointService.js";
+import { resolveApprovalWithAuthority } from "./approvalService.js";
+import { cancelTask, getTaskById, recordTaskModification, transitionTaskState } from "./taskService.js";
+import { getMembershipForUser } from "./membershipService.js";
+import { dispatchWorkExecution } from "./executionCoordinatorService.js";
+import { cancelTaskExecution } from "./executionService.js";
 import { logOrgEvent } from "./auditService.js";
 
 export type CanonicalConversationAction =
@@ -584,14 +591,25 @@ export async function getOpenConversationTasks(input: {
     ...messageRows.map(r => r.taskId ?? undefined),
   ].filter(Boolean) as string[])];
 
-  if (taskIds.length === 0) return [];
-  const rows = await db
+  const conversationRows = taskIds.length > 0
+    ? await db
+      .select()
+      .from(tasksTable)
+      .where(and(eq(tasksTable.organizationId, input.organizationId), inArray(tasksTable.id, taskIds)))
+      .limit(50)
+    : [];
+
+  const orgRows = await db
     .select()
     .from(tasksTable)
-    .where(and(eq(tasksTable.organizationId, input.organizationId), inArray(tasksTable.id, taskIds)))
-    .limit(50);
+    .where(and(eq(tasksTable.organizationId, input.organizationId), inArray(tasksTable.currentState, [...OPEN_TASK_STATES] as unknown as string[])))
+    .orderBy(desc(tasksTable.updatedAt))
+    .limit(20);
 
-  return rows
+  const byId = new Map<string, typeof tasksTable.$inferSelect>();
+  for (const row of [...conversationRows, ...orgRows]) byId.set(row.id, row);
+
+  return [...byId.values()]
     .filter(row => OPEN_TASK_STATES.includes(row.currentState as TaskState))
     .map(row => ({
       id: row.id,
@@ -627,14 +645,20 @@ export async function cancelTaskFromConversation(input: {
   taskId: string;
   actorUserId: string;
 }): Promise<{ status: "cancelled" | "already_cancelled"; taskId: string }> {
-  const [task] = await db
-    .select({ currentState: tasksTable.currentState })
-    .from(tasksTable)
-    .where(and(eq(tasksTable.organizationId, input.organizationId), eq(tasksTable.id, input.taskId)))
-    .limit(1);
-  if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
-  if (task.currentState === "cancelled") return { status: "already_cancelled", taskId: input.taskId };
-  await transitionTaskState(input.taskId, input.organizationId, "cancelled" as TaskState);
+  const result = await cancelTask(input.taskId, input.organizationId, {
+    cancelledBy: input.actorUserId,
+    conversationId: input.conversationId,
+    source: "conversation_control",
+  });
+  if (result.status === "already_completed") {
+    throw Object.assign(new Error("Completed tasks cannot be cancelled."), { code: "VALIDATION_ERROR" });
+  }
+
+  const checkpoint = await getActiveCheckpointByConversation(input.conversationId).catch(() => null);
+  if (checkpoint && (!checkpoint.taskId || checkpoint.taskId === input.taskId)) {
+    await cancelCheckpoint(checkpoint.id).catch(() => {});
+  }
+  await cancelTaskExecution(input.taskId, input.organizationId).catch(() => {});
   await logOrgEvent({
     eventType: "conversation.task_cancelled",
     organizationId: input.organizationId,
@@ -644,7 +668,7 @@ export async function cancelTaskFromConversation(input: {
     resourceId: input.taskId,
     metadata: { conversationId: input.conversationId },
   }).catch(() => {});
-  return { status: "cancelled", taskId: input.taskId };
+  return { status: result.status === "already_cancelled" ? "already_cancelled" : "cancelled", taskId: input.taskId };
 }
 
 export async function holdTaskFromConversation(input: {
@@ -684,17 +708,71 @@ export async function holdTaskFromConversation(input: {
   return { status: input.hold ? "held" : "resumed", taskId: input.taskId };
 }
 
+export async function modifyTaskFromConversation(input: {
+  organizationId: string;
+  conversationId: string;
+  taskId: string;
+  actorUserId: string;
+  changeRequest: string;
+}): Promise<{ status: "modified" | "needs_revision_task"; taskId: string; taskTitle?: string }> {
+  const result = await recordTaskModification({
+    taskId: input.taskId,
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    conversationId: input.conversationId,
+    changeRequest: input.changeRequest,
+  });
+  await logOrgEvent({
+    eventType: "conversation.task_modified",
+    organizationId: input.organizationId,
+    actorType: "user",
+    actorUserId: input.actorUserId,
+    resourceType: "task",
+    resourceId: input.taskId,
+    metadata: {
+      conversationId: input.conversationId,
+      status: result.status,
+      changeRequest: input.changeRequest.slice(0, 500),
+    },
+  }).catch(() => {});
+  return { status: result.status, taskId: input.taskId, taskTitle: result.task.title };
+}
+
 export async function resolveSingleApproval(input: {
   organizationId: string;
   actorUserId: string;
   approvalId: string;
   action: "approved" | "rejected";
 }): Promise<{ approvalId: string; state: string; taskId: string }> {
-  const approval = await resolveApproval({
+  const membership = await getMembershipForUser(input.organizationId, input.actorUserId);
+  if (!membership?.role) {
+    throw Object.assign(new Error("Approval actor role could not be verified."), { code: "APPROVAL_ACTOR_ROLE_UNVERIFIED" });
+  }
+
+  const approval = await resolveApprovalWithAuthority({
     approvalId: input.approvalId,
     organizationId: input.organizationId,
     action: input.action,
     actorUserId: input.actorUserId,
+    actorRole: membership.role,
   });
+  if (approval.taskId) {
+    const nextTaskState: TaskState = input.action === "approved" ? "approved" : "failed";
+    await transitionTaskState(approval.taskId, input.organizationId, nextTaskState);
+    if (input.action === "approved") {
+      const task = await getTaskById(approval.taskId, input.organizationId);
+      if (task) {
+        dispatchWorkExecution({
+          organizationId: input.organizationId,
+          taskId: task.id,
+          taskTitle: task.title,
+          taskDescription: task.description ?? undefined,
+          requesterId: input.actorUserId,
+        }).catch(err =>
+          console.warn("[conversationControl] Post-approval dispatch failed (non-fatal):", err?.message),
+        );
+      }
+    }
+  }
   return { approvalId: approval.id, state: approval.state, taskId: approval.taskId };
 }

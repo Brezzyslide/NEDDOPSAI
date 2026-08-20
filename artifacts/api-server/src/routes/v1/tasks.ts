@@ -15,6 +15,7 @@ import { identifyCapabilities } from "../../services/capabilityIdentificationSer
 import { decideMixedCapabilityAccess } from "../../services/capabilityAccessDecisionService.js";
 // Sprint 27 — Execution dispatch
 import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
+import { cancelTaskExecution } from "../../services/executionService.js";
 import { randomUUID } from "crypto";
 
 const router = Router({ mergeParams: true });
@@ -218,7 +219,12 @@ router.delete("/:taskId", requireAuth, resolveTenantFromSlug, async (req, res, n
   try {
     const user = req.appUser!;
     const ctx = req.tenantContext!;
-    const updated = await taskService.transitionTaskState(req.params.taskId!, ctx.tenantId, "cancelled");
+    const result = await taskService.cancelTask(req.params.taskId!, ctx.tenantId, {
+      cancelledBy: user.id,
+      source: "tasks_route",
+    });
+    await cancelTaskExecution(req.params.taskId!, ctx.tenantId).catch(() => {});
+    const updated = result.task;
 
     const meta = auditService.getRequestMeta(req);
     await auditService.writeAuditEvent({
@@ -231,7 +237,7 @@ router.delete("/:taskId", requireAuth, resolveTenantFromSlug, async (req, res, n
       ...meta,
     }).catch(() => {});
 
-    res.json({ task: updated });
+    res.json({ task: updated, cancellationStatus: result.status });
   } catch (err) {
     next(err);
   }

@@ -57,6 +57,7 @@ import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
 import { createDraft, submitForApproval } from "./completedWorkService.js";
+import { isTaskCancelled } from "./taskService.js";
 import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
   validateClaimBatch,
@@ -229,6 +230,7 @@ export interface ExecuteWorkInput {
 
 export type ExecutionOutcome =
   | "completed"
+  | "cancelled"
   | "validation_failed"
   | "awaiting_clarification"
   | "no_blueprint"
@@ -395,6 +397,15 @@ function buildSpecialistNotReadyResult(
       `The Chief of Staff should re-plan this task with a production-ready specialist. ` +
       `No work was performed.`,
   };
+}
+
+async function isTaskCancelledForFinalization(taskId: string | undefined, organizationId: string): Promise<boolean> {
+  if (!taskId) return false;
+  try {
+    return await isTaskCancelled(taskId, organizationId);
+  } catch {
+    return false;
+  }
 }
 
 // ─── Unified Execution Engine ─────────────────────────────────────────────────
@@ -1504,8 +1515,26 @@ export class UnifiedExecutionEngine {
       };
     }
 
-    await progress("creating_completed_work");
-    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
+	    await progress("creating_completed_work");
+		    if (await isTaskCancelledForFinalization(request.taskId, organizationId)) {
+	      updateManifestObservability(manifest.id, {
+	        failureInfo: {
+	          state: "cancelled",
+	          failedStage: "pre_completed_work_cancellation_guard",
+	          rootCause: "Task was cancelled before Completed Work creation.",
+	          retryAvailable: false,
+	        },
+	      }).catch(() => {});
+	      taskSession = closeExecutionSession(taskSession);
+	      ctx.session = taskSession;
+	      return {
+	        outcome: "cancelled",
+	        manifestId: manifest.id,
+	        blueprintCode: blueprint?.code,
+	        message: "Task was cancelled before Completed Work creation. No Completed Work was created.",
+	      };
+	    }
+	    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
 
     const citationRefBySourceId = new Map<string, string>();
     if (evidencePack) {

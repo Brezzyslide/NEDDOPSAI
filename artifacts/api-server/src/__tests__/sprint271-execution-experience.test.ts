@@ -30,8 +30,9 @@ function makeSelectChain(rows: unknown[]) {
 }
 function makeUpdateChain() {
   const c: Record<string, unknown> = {};
-  c.set   = () => c;
-  c.where = () => Promise.resolve([]);
+  c.set       = () => c;
+  c.where     = () => c;
+  c.returning = () => Promise.resolve([]);
   return c;
 }
 
@@ -52,6 +53,7 @@ vi.mock("drizzle-orm", () => ({
   and: (...a: unknown[]) => a,
   lt:  () => "LT",
   or:  (...a: unknown[]) => a,
+  inArray: () => "IN",
   desc: () => "DESC",
 }));
 
@@ -324,7 +326,7 @@ describe("executionCoordinatorService — successful dispatch", () => {
 
     const { coordinateIntentApproval } = await import("../services/executionCoordinatorService.js");
     await coordinateIntentApproval(INTENT, ORG, USER);
-    await new Promise(r => setTimeout(r, 30));
+    await new Promise(r => setTimeout(r, 80));
 
     const completedEvents = mockEmitEvent.mock.calls.filter(
       ([, p]) => (p as { type: string }).type === "execution_completed",

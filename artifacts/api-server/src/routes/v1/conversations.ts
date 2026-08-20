@@ -32,6 +32,59 @@ import {
 
 const router = Router({ mergeParams: true });
 
+function describesSupportingAnalysis(primaryClause: string, candidateClause: string): boolean {
+  const primary = primaryClause.toLowerCase();
+  const candidate = candidateClause.toLowerCase();
+
+  if (/service agreement/.test(primary) && /\b(price|pricing|support item|support-item|code|codes|cancellation|schedule of supports)\b/.test(candidate)) {
+    return true;
+  }
+  if (/\b(investigate|investigation|incident)\b/.test(primary) && /\b(evidence|finding|findings|chronology|witness|issue)\b/.test(candidate)) {
+    return true;
+  }
+  if (/\bcomplaint/.test(primary) && /\b(issue|evidence|finding|remedy|outcome)\b/.test(candidate) && !/\b(separate|letter|response)\b/.test(candidate)) {
+    return true;
+  }
+  return false;
+}
+
+function requestsSeparateDeliverable(candidateClause: string): boolean {
+  return /\b(separate|letter|email|correspondence|response|outcome response|proposal|business case|report|policy|agreement|plan)\b/i.test(candidateClause)
+    && /\b(draft|prepare|create|write|produce|generate|assemble)\b/i.test(candidateClause);
+}
+
+export function splitIndependentTaskClauses(text: string): string[] {
+  const normalised = text
+    .replace(/\s+/g, " ")
+    .replace(/\bthen\b/gi, " and ")
+    .trim();
+  const rawParts = normalised
+    .split(/\s*(?:;|,\s+and\s+|\s+and\s+)\s*/i)
+    .map(part => part.trim())
+    .filter(Boolean);
+  const taskVerb = /\b(review|check|draft|prepare|create|audit|build|analyse|analyze|summarise|summarize|validate|compare)\b/i;
+  const parts = rawParts.filter((part, index) => {
+    if (!taskVerb.test(part)) return false;
+    if (index === 0) return true;
+    const primary = rawParts.find(p => taskVerb.test(p)) ?? "";
+    if (describesSupportingAnalysis(primary, part) && !requestsSeparateDeliverable(part)) return false;
+    return true;
+  });
+  return parts.length >= 2 ? parts.slice(0, 5) : [];
+}
+
+function clauseToTaskProposal(clause: string, fallbackPriority?: string) {
+  const title = clause
+    .replace(/^(please|also|now|next)\s+/i, "")
+    .replace(/[.?!]+$/g, "")
+    .trim();
+  return {
+    title: title.charAt(0).toUpperCase() + title.slice(1),
+    summary: clause,
+    priority: fallbackPriority,
+  };
+}
+
 // ─── List conversations ────────────────────────────────────────────────────────
 router.get("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
@@ -267,20 +320,32 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
         // the classification (professional_work vs evidence_bearing_work) and
         // downstream pipeline can confirm the correct path was taken.
         const cls = result.executionClassification;
-        const autoResult = await autoCreateAndDispatch({
-          organizationId: ctx.tenantId,
-          conversationId: conv.id,
-          requesterId:    user.id,
-          proposedTask:   result.understanding.proposedTask,
-          laneContext: cls ? {
-            executionClass:         cls.executionClass,
-            requiresCompletedWork:  cls.requiresCompletedWork,
-            requiresEvidence:       cls.requiresEvidence,
-            requiresClaimIntegrity: cls.requiresClaimIntegrity,
-            requiresApproval:       cls.requiresApproval,
-          } : undefined,
-        });
-        sendEvent({ type: "task_auto_created", ...autoResult });
+        const laneContext = cls ? {
+          executionClass:         cls.executionClass,
+          requiresCompletedWork:  cls.requiresCompletedWork,
+          requiresEvidence:       cls.requiresEvidence,
+          requiresClaimIntegrity: cls.requiresClaimIntegrity,
+          requiresApproval:       cls.requiresApproval,
+        } : undefined;
+        const splitClauses = splitIndependentTaskClauses(content);
+        const proposedTasks = splitClauses.length > 0
+          ? splitClauses.map(clause => clauseToTaskProposal(clause, result.understanding.proposedTask?.priority))
+          : [result.understanding.proposedTask];
+        const createdTasks = [];
+        for (const proposedTask of proposedTasks) {
+          const autoResult = await autoCreateAndDispatch({
+            organizationId: ctx.tenantId,
+            conversationId: conv.id,
+            requesterId:    user.id,
+            proposedTask,
+            laneContext,
+          });
+          createdTasks.push(autoResult);
+          sendEvent({ type: "task_auto_created", ...autoResult });
+        }
+        if (createdTasks.length > 1) {
+          sendEvent({ type: "task_auto_created_batch", tasks: createdTasks });
+        }
       } catch (err) {
         // Non-fatal — CoS response already delivered; don't surface task creation errors
         console.warn("[conversations] Auto-dispatch failed (non-fatal):", (err as Error)?.message);

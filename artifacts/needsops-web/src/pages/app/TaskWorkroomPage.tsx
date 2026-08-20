@@ -172,16 +172,19 @@ function ApprovalCard({
   onReject: () => void;
   approving: boolean;
 }) {
+  const requestedAction = data.requestedAction == null ? "" : String(data.requestedAction);
+  const reason = data.reason == null ? "" : String(data.reason);
+
   return (
     <div className="mt-3 bg-amber-950/20 border border-amber-500/30 rounded-xl p-4 space-y-3">
       <div className="flex items-center gap-2">
         <span className="text-amber-400 font-bold text-xs uppercase tracking-wider">⚠ Approval Required</span>
       </div>
-      {data.requestedAction && (
-        <p className="text-[#E2E8F0] text-sm font-medium">{String(data.requestedAction)}</p>
+      {requestedAction && (
+        <p className="text-[#E2E8F0] text-sm font-medium">{requestedAction}</p>
       )}
-      {data.reason && (
-        <p className="text-[#94A3B8] text-xs">{String(data.reason)}</p>
+      {reason && (
+        <p className="text-[#94A3B8] text-xs">{reason}</p>
       )}
       <div className="flex gap-2 pt-1">
         <button
@@ -208,6 +211,7 @@ function ApprovalCard({
 
 function PlanCard({ data }: { data: Record<string, unknown> }) {
   const steps = data.steps as PlanStep[] | undefined;
+  const estimatedTotalDuration = data.estimatedTotalDuration == null ? "" : String(data.estimatedTotalDuration);
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="mt-3 bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-4 space-y-3">
@@ -217,8 +221,8 @@ function PlanCard({ data }: { data: Record<string, unknown> }) {
           {expanded ? "Hide steps" : "Show steps"}
         </button>
       </div>
-      {data.estimatedTotalDuration && (
-        <p className="text-[#94A3B8] text-xs">Estimated: {String(data.estimatedTotalDuration)}</p>
+      {estimatedTotalDuration && (
+        <p className="text-[#94A3B8] text-xs">Estimated: {estimatedTotalDuration}</p>
       )}
       {expanded && steps && steps.length > 0 && (
         <div className="space-y-2">
@@ -243,36 +247,43 @@ function PlanCard({ data }: { data: Record<string, unknown> }) {
 }
 
 function ClarificationCard({ data }: { data: Record<string, unknown> }) {
+  const requestedBy = data.requestedBy == null ? "" : String(data.requestedBy);
+  const questions = Array.isArray(data.questions) ? data.questions.map(String) : [];
+
   return (
     <div className="mt-3 bg-blue-950/20 border border-blue-500/20 rounded-xl p-4 space-y-2">
       <span className="text-blue-400 text-xs font-bold uppercase tracking-wider">Clarification Required</span>
-      {Array.isArray(data.questions) && data.questions.map((q: string, i: number) => (
+      {questions.map((q, i) => (
         <p key={i} className="text-[#E2E8F0] text-sm">{i + 1}. {q}</p>
       ))}
-      {data.requestedBy && (
-        <p className="text-[#64748B] text-xs">Requested by: {String(data.requestedBy)}</p>
+      {requestedBy && (
+        <p className="text-[#64748B] text-xs">Requested by: {requestedBy}</p>
       )}
     </div>
   );
 }
 
 function ExecutionUpdateCard({ data }: { data: Record<string, unknown> }) {
-  const isTerminal = ["execution.completed", "execution.failed", "execution.cancelled"].includes(String(data.eventType));
-  const border = String(data.eventType).includes("failed") ? "border-red-900/30"
-    : String(data.eventType).includes("completed") ? "border-emerald-900/30"
+  const eventType = String(data.eventType ?? "");
+  const humanMessage = String(data.humanMessage ?? "");
+  const stepNumber = data.stepNumber == null ? null : Number(data.stepNumber);
+  const totalSteps = data.totalSteps == null ? null : Number(data.totalSteps);
+  const isTerminal = ["execution.completed", "execution.failed", "execution.cancelled"].includes(eventType);
+  const border = eventType.includes("failed") ? "border-red-900/30"
+    : eventType.includes("completed") ? "border-emerald-900/30"
     : "border-[#1E3A5F]";
   return (
     <div className={`mt-2 bg-[#0B1829] border ${border} rounded-lg px-3 py-2 flex items-start gap-2`}>
       <span className="text-base">{
-        String(data.eventType).includes("fail") ? "✕"
-        : String(data.eventType).includes("complete") ? "✅"
-        : String(data.eventType).includes("paused") ? "⏸"
+        eventType.includes("fail") ? "✕"
+        : eventType.includes("complete") ? "✅"
+        : eventType.includes("paused") ? "⏸"
         : "⚡"
       }</span>
       <div>
-        <p className="text-[#E2E8F0] text-xs font-medium">{String(data.humanMessage)}</p>
-        {data.stepNumber && data.totalSteps && (
-          <p className="text-[#64748B] text-xs mt-0.5">Step {Number(data.stepNumber)} of {Number(data.totalSteps)}</p>
+        <p className="text-[#E2E8F0] text-xs font-medium">{humanMessage}</p>
+        {stepNumber && totalSteps && (
+          <p className="text-[#64748B] text-xs mt-0.5">Step {stepNumber} of {totalSteps}</p>
         )}
       </div>
     </div>
@@ -668,7 +679,7 @@ export default function TaskWorkroomPage() {
     try {
       await apiFetch(`/v1/organisations/${slug}/approvals/${approvalId}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ decision: "approved", notes: "Approved via task workroom." }),
+        body: JSON.stringify({ action: "approved", notes: "Approved via task workroom." }),
       });
       await refetch();
     } catch { setError("Failed to approve."); }
@@ -681,7 +692,7 @@ export default function TaskWorkroomPage() {
     try {
       await apiFetch(`/v1/organisations/${slug}/approvals/${approvalId}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ decision: "rejected", notes: "Rejected via task workroom." }),
+        body: JSON.stringify({ action: "rejected", notes: "Rejected via task workroom." }),
       });
       await refetch();
     } catch { setError("Failed to reject."); }

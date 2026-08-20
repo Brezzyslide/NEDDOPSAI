@@ -45,6 +45,12 @@ import {
 import type { ActiveCheckpoint } from "./executionCheckpointService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
+import {
+  claimTaskForExecution,
+  isTaskCancelled,
+  reconcileTaskExecutionFailure,
+  reconcileTaskExecutionSuccess,
+} from "./taskService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -200,6 +206,42 @@ export async function dispatchWorkExecution(
       conversationId = workroom.id;
     } catch (err) {
       console.warn("[ExecutionCoordinator] Could not resolve workroom conversation (non-fatal):", (err as Error)?.message);
+    }
+  }
+
+  if (input.taskId) {
+    const claim = await claimTaskForExecution(input.taskId, input.organizationId, { correlationId });
+    if (!claim.claimed) {
+      if (claim.reason === "not_found") {
+        await logOrgEvent({
+          eventType: "execution_coordinator.dispatch_without_canonical_task",
+          organizationId: input.organizationId,
+          actorType: "system",
+          resourceType: "task",
+          resourceId: input.taskId,
+          metadata: { correlationId },
+        }).catch(() => {});
+      } else {
+        if (conversationId && claim.reason === "cancelled") {
+          emitExecutionEvent(conversationId, {
+            type: "execution_failed",
+            conversationId,
+            correlationId,
+            organizationId: input.organizationId,
+            humanLabel: "Work was not started because the task is cancelled.",
+            errorMessage: "Task is cancelled.",
+          });
+        }
+        await logOrgEvent({
+          eventType: "execution_coordinator.dispatch_skipped",
+          organizationId: input.organizationId,
+          actorType: "system",
+          resourceType: "task",
+          resourceId: input.taskId,
+          metadata: { correlationId, reason: claim.reason },
+        }).catch(() => {});
+        return;
+      }
     }
   }
 
@@ -468,11 +510,29 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", msg, correlationId)
           .catch(() => {});
       }
+      await reconcileTaskExecutionFailure({
+        taskId,
+        organizationId,
+        errorMessage: "Execution authority could not be verified.",
+        correlationId,
+      }).catch(() => {});
       return;
     }
   }
 
   try {
+    if (await isTaskCancelled(taskId, organizationId)) {
+      await logOrgEvent({
+        eventType: "execution_coordinator.cancelled_before_start",
+        organizationId,
+        actorType: "system",
+        resourceType: "task",
+        resourceId: taskId ?? "unknown",
+        metadata: { correlationId },
+      }).catch(() => {});
+      return;
+    }
+
     const result = await executeWork({
       organizationId,
       requesterId,
@@ -506,6 +566,18 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         }
       },
     });
+
+    if (await isTaskCancelled(taskId, organizationId)) {
+      await logOrgEvent({
+        eventType: "execution_coordinator.result_discarded_after_cancel",
+        organizationId,
+        actorType: "system",
+        resourceType: "task",
+        resourceId: taskId ?? "unknown",
+        metadata: { correlationId, outcome: result.outcome, completedWorkId: result.completedWorkId },
+      }).catch(() => {});
+      return;
+    }
 
     // ── Handle awaiting_clarification ─────────────────────────────────────────
     if (result.outcome === "awaiting_clarification" && result.clarificationQuestions?.length) {
@@ -567,7 +639,61 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       },
     }).catch(() => {});
 
-    if (result.outcome === "completed" && result.completedWorkId && conversationId) {
+    if (result.outcome === "completed" && result.completedWorkId) {
+      const reconciliation = await reconcileTaskExecutionSuccess({
+        taskId,
+        organizationId,
+        completedWorkId: result.completedWorkId,
+        completedWorkStatus: result.completedWorkStatus,
+        correlationId,
+        requestedByUserId: requesterId,
+      });
+      if (reconciliation.status === "cancelled") {
+        await logOrgEvent({
+          eventType: "execution_coordinator.completion_discarded_after_cancel",
+          organizationId,
+          actorType: "system",
+          resourceType: "task",
+          resourceId: taskId ?? "unknown",
+          metadata: { correlationId, completedWorkId: result.completedWorkId },
+        }).catch(() => {});
+        return;
+      }
+      if (reconciliation.status === "awaiting_approval") {
+        if (!conversationId) return;
+        const persistedTitle  = result.completedWorkTitle
+          ?? (userRequest.slice(0, 80) + (userRequest.length > 80 ? "…" : ""));
+        const persistedStatus = result.completedWorkStatus ?? "awaiting_approval";
+        emitExecutionEvent(conversationId, {
+          type: "approval_requested",
+          conversationId,
+          correlationId,
+          organizationId,
+          humanLabel: "Work completed and ready for authorised approval.",
+          completedWorkId: result.completedWorkId,
+        });
+        await postCompletedWorkCreatedToConversation(
+          organizationId,
+          conversationId,
+          taskId ?? "",
+          result.completedWorkId,
+          persistedTitle,
+          persistedStatus,
+          result.qualityScore ?? null,
+          correlationId,
+        ).catch(err => console.warn("[ExecutionCoordinator] Approval request message failed:", err?.message));
+        return;
+      }
+      if (!conversationId) {
+        if (input.intentId) {
+          await db
+            .update(executionIntentsTable)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(executionIntentsTable.id, input.intentId))
+            .catch(() => {});
+        }
+        return;
+      }
       // Use the persisted title and status from the engine result — never derive
       // these from the userRequest or assume a successful lifecycle transition.
       const persistedTitle  = result.completedWorkTitle
@@ -605,7 +731,14 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           .where(eq(executionIntentsTable.id, input.intentId))
           .catch(() => {});
       }
-    } else if (result.outcome !== "completed" && conversationId) {
+    } else if (result.outcome !== "completed") {
+      await reconcileTaskExecutionFailure({
+        taskId,
+        organizationId,
+        errorMessage: result.message,
+        correlationId,
+      }).catch(() => {});
+      if (!conversationId) return;
       const humanLabel = result.outcome === "execution_principal_missing"
         ? "Work could not start — execution authority could not be verified."
         : "There was a problem completing this work.";
@@ -628,6 +761,12 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "An unexpected error occurred during execution.";
+    await reconcileTaskExecutionFailure({
+      taskId,
+      organizationId,
+      errorMessage: message,
+      correlationId,
+    }).catch(() => {});
 
     await logOrgEvent({
       eventType: "execution_coordinator.error",

@@ -15,7 +15,8 @@ const STATE_TABS: { label: string; states: TaskState[] }[] = [
   { label: "Active", states: ["queued", "planning", "approved", "executing"] },
   { label: "Awaiting Approval", states: ["awaiting_approval"] },
   { label: "Completed", states: ["completed"] },
-  { label: "Cancelled", states: ["cancelled", "failed"] },
+  { label: "Cancelled", states: ["cancelled"] },
+  { label: "Failed", states: ["failed"] },
 ];
 
 const STATE_BADGE: Record<TaskState, { label: string; cls: string }> = {
@@ -213,8 +214,11 @@ export default function TaskCentrePage() {
                       )}
                       <p className="text-[#64748B] text-xs mt-1.5">
                         {new Date(task.createdAt).toLocaleString("en-AU")}
-                        {task.approvalState && task.approvalState !== "not_required" && (
-                          <span className="ml-3 text-amber-400/80">⚠ {task.approvalState.replace(/_/g, " ")}</span>
+                        {task.approvalState === "pending_approval" && (
+                          <span className="ml-3 text-amber-400/80">Pending approval</span>
+                        )}
+                        {task.approvalState === "required" && task.currentState !== "awaiting_approval" && (
+                          <span className="ml-3 text-slate-500">Approval gate later</span>
                         )}
                       </p>
                     </div>
