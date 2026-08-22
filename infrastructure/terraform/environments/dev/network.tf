@@ -182,11 +182,20 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   for_each = toset(var.allowed_https_cidrs)
 
   security_group_id = aws_security_group.alb.id
-  description       = "HTTPS from approved client networks"
+  description       = "Emergency direct HTTPS from approved client networks"
   ip_protocol       = "tcp"
   from_port         = 443
   to_port           = 443
   cidr_ipv4         = each.value
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_http_from_cloudfront" {
+  security_group_id = aws_security_group.alb.id
+  description       = "HTTP origin traffic from CloudFront only"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "alb_temporary_http" {

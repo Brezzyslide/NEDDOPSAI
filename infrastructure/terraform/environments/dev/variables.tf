@@ -35,8 +35,8 @@ variable "az_count" {
 
 variable "allowed_https_cidrs" {
   type        = list(string)
-  description = "CIDR blocks allowed to reach future HTTPS ALB ingress."
-  default     = ["0.0.0.0/0"]
+  description = "Emergency CIDR blocks allowed to reach direct HTTPS ALB ingress. Keep empty when CloudFront is the Dev front door."
+  default     = []
 }
 
 variable "api_container_port" {
@@ -160,4 +160,10 @@ variable "api_temporary_http_cidrs" {
   type        = list(string)
   description = "Temporary HTTP health-test CIDRs while DNS/ACM HTTPS is not ready. Keep empty for final HTTPS-only posture."
   default     = []
+}
+
+variable "web_bucket_force_destroy" {
+  type        = bool
+  description = "Allow Terraform destroy to remove the Dev web bucket and versioned objects. Keep false unless intentionally tearing down Dev."
+  default     = false
 }

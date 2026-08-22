@@ -98,8 +98,19 @@ output "api_runtime" {
     container_name      = local.api_container_name
     log_group_name      = aws_cloudwatch_log_group.api.name
     load_balancer_dns   = aws_lb.api.dns_name
+    cloudfront_domain   = aws_cloudfront_distribution.api_dev.domain_name
     target_group_arn    = aws_lb_target_group.api.arn
     temporary_http      = length(var.api_temporary_http_cidrs) > 0
   }
   description = "Permanent Dev API runtime metadata. Does not include secrets."
+}
+
+output "web_runtime" {
+  value = {
+    web_bucket_name   = aws_s3_bucket.web.id
+    cloudfront_domain = aws_cloudfront_distribution.api_dev.domain_name
+    default_origin    = local.web_cloudfront_origin_id
+    api_path_patterns = local.cloudfront_api_path_patterns
+  }
+  description = "NeedsOps Dev web hosting metadata. Does not include secrets."
 }

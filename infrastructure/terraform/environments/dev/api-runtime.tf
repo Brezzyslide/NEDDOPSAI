@@ -70,22 +70,46 @@ resource "aws_lb_target_group" "api" {
   })
 }
 
-resource "aws_lb_listener" "api_temporary_http" {
-  count = length(var.api_temporary_http_cidrs) > 0 ? 1 : 0
-
+resource "aws_lb_listener" "api_http_origin" {
   load_balancer_arn = aws_lb.api.arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "text/plain"
+      message_body = "Access denied"
+      status_code  = "403"
+    }
+  }
+
+  tags = merge(local.common_tags, {
+    Name      = "${local.name_prefix}-api-http-origin"
+    Component = "ApiRuntime"
+  })
+}
+
+resource "aws_lb_listener_rule" "api_from_cloudfront" {
+  listener_arn = aws_lb_listener.api_http_origin.arn
+  priority     = 100
+
+  action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api.arn
   }
 
+  condition {
+    http_header {
+      http_header_name = local.cloudfront_origin_header_name
+      values           = [random_password.cloudfront_origin_header.result]
+    }
+  }
+
   tags = merge(local.common_tags, {
-    Name      = "${local.name_prefix}-api-temporary-http"
+    Name      = "${local.name_prefix}-api-cloudfront-origin-rule"
     Component = "ApiRuntime"
-    Temporary = "true"
   })
 }
 
@@ -111,6 +135,7 @@ data "aws_iam_policy_document" "api_execution_secrets" {
     resources = [
       aws_db_instance.postgres.master_user_secret[0].secret_arn,
       aws_secretsmanager_secret.app["session"].arn,
+      aws_secretsmanager_secret.app["clerk"].arn,
     ]
   }
 }
@@ -286,6 +311,14 @@ resource "aws_ecs_task_definition" "api" {
           name      = "INTERNAL_DIAGNOSTICS_TOKEN"
           valueFrom = "${aws_secretsmanager_secret.app["session"].arn}:INTERNAL_DIAGNOSTICS_TOKEN::"
         },
+        {
+          name      = "CLERK_PUBLISHABLE_KEY"
+          valueFrom = "${aws_secretsmanager_secret.app["clerk"].arn}:CLERK_PUBLISHABLE_KEY::"
+        },
+        {
+          name      = "CLERK_SECRET_KEY"
+          valueFrom = "${aws_secretsmanager_secret.app["clerk"].arn}:CLERK_SECRET_KEY::"
+        },
       ]
 
       logConfiguration = {
@@ -328,7 +361,7 @@ resource "aws_ecs_service" "api" {
   }
 
   depends_on = [
-    aws_lb_listener.api_temporary_http,
+    aws_lb_listener_rule.api_from_cloudfront,
   ]
 
   tags = merge(local.common_tags, {
