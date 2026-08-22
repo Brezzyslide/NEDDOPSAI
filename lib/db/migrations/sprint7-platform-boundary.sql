@@ -108,6 +108,13 @@ END $rls_block$;
 
 -- ── 7. SECURITY DEFINER aggregate functions with fixed search_path ────────────
 
+-- Sprint 5 created these functions with different input parameter names.
+-- PostgreSQL does not allow CREATE OR REPLACE FUNCTION to rename input params,
+-- so drop the previous same-signature functions before recreating them.
+DROP FUNCTION IF EXISTS platform_get_org_task_count(TEXT);
+DROP FUNCTION IF EXISTS platform_get_org_approval_count(TEXT);
+DROP FUNCTION IF EXISTS platform_get_org_pending_approval_count(TEXT);
+
 CREATE OR REPLACE FUNCTION platform_get_org_task_count(org_id TEXT)
 RETURNS BIGINT
 LANGUAGE plpgsql

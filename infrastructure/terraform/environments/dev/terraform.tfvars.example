@@ -1,0 +1,8 @@
+aws_region = "ap-southeast-2"
+
+# Tighten this before application ingress is enabled.
+allowed_https_cidrs = ["0.0.0.0/0"]
+
+additional_tags = {
+  Owner = "TayeAjao"
+}

@@ -14,6 +14,7 @@ import {
   startInProcessWorker,
   stopInProcessWorker,
 } from "./workers/knowledgeIngestionWorker.js";
+import { getRuntimeIdentity } from "./lib/runtimeIdentity.js";
 
 const rawPort = process.env["PORT"];
 
@@ -29,6 +30,8 @@ if (Number.isNaN(port) || port <= 0) {
 // ── Startup sequence ──────────────────────────────────────────────────────────
 
 async function start(): Promise<void> {
+  logger.info({ identity: getRuntimeIdentity() }, "[startup] Runtime identity");
+
   // 1. Verify RLS policies and legacy write restrictions before accepting traffic.
   //    Throws RLSVerificationError or LegacyWriteError (exits with code 1).
   try {
@@ -49,24 +52,29 @@ async function start(): Promise<void> {
   startPoolReaper();
   logger.info("[startup] Organisation connection pool reaper started");
 
-  // 3. Start backup scheduler.
-  let backupProvider: BackupStorageProvider;
-  if (process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]) {
-    backupProvider = new ObjectStorageBackupProvider();
-    logger.info("[startup] Backup provider: Replit Object Storage (GCS)");
+  // 3. Start backup scheduler unless disabled for AWS ECS API runtime.
+  if (process.env["NEEDSOPS_BACKUP_SCHEDULER"] === "disabled") {
+    logger.info("[startup] Backup scheduler disabled by environment");
   } else {
-    backupProvider = new FilesystemBackupProvider();
-    logger.info("[startup] Backup provider: filesystem (.backup-store/) — set DEFAULT_OBJECT_STORAGE_BUCKET_ID for durable storage");
-  }
+    let backupProvider: BackupStorageProvider;
+    if (process.env["DEFAULT_OBJECT_STORAGE_BUCKET_ID"]) {
+      backupProvider = new ObjectStorageBackupProvider();
+      logger.info("[startup] Backup provider: Replit Object Storage (GCS)");
+    } else {
+      backupProvider = new FilesystemBackupProvider();
+      logger.info("[startup] Backup provider: filesystem (.backup-store/) — set DEFAULT_OBJECT_STORAGE_BUCKET_ID for durable storage");
+    }
 
-  startBackupScheduler({
-    provider: backupProvider,
-    intervalMs: 5 * 60 * 1000,
-  });
+    startBackupScheduler({
+      provider: backupProvider,
+      intervalMs: 5 * 60 * 1000,
+    });
+  }
 
   // 4. Start in-process knowledge ingestion worker (default for Replit/local dev)
   //    Set KNOWLEDGE_WORKER_MODE=external to disable (use a separate worker process instead).
-  const workerMode = (process.env.KNOWLEDGE_WORKER_MODE ?? "in-process").toLowerCase();
+  const defaultWorkerMode = process.env.NODE_ENV === "production" ? "external" : "in-process";
+  const workerMode = (process.env.KNOWLEDGE_WORKER_MODE ?? defaultWorkerMode).toLowerCase();
   if (workerMode === "in-process") {
     startInProcessWorker();
     logger.info("[startup] Knowledge ingestion worker started (in-process)");
@@ -74,22 +82,26 @@ async function start(): Promise<void> {
     logger.info(`[startup] Knowledge ingestion worker mode="${workerMode}" — not starting in-process`);
   }
 
-  // 4b. Seed built-in Work Blueprints (idempotent — safe to run on every startup)
-  try {
-    const { seedBuiltInBlueprints } = await import("./services/workBlueprintService.js");
-    await seedBuiltInBlueprints();
-    logger.info("[startup] Built-in Work Blueprints seeded");
-  } catch (err) {
-    logger.warn({ err }, "[startup] Built-in Work Blueprints seeding failed — continuing");
-  }
+  // 4b. Deployment bootstrap owns persistent catalogue/Blueprint reconciliation.
+  //     Local development can still opt in explicitly.
+  if (process.env["NEEDSOPS_RUN_STARTUP_SEEDS"] === "true") {
+    try {
+      const { seedBuiltInBlueprints } = await import("./services/workBlueprintService.js");
+      await seedBuiltInBlueprints();
+      logger.info("[startup] Built-in Work Blueprints seeded");
+    } catch (err) {
+      logger.warn({ err }, "[startup] Built-in Work Blueprints seeding failed — continuing");
+    }
 
-  // 4c. Seed specialist catalogue from registry (idempotent — safe to run on every startup)
-  try {
-    const { seedCatalogueFromRegistry } = await import("./services/specialistCatalogueService.js");
-    const { inserted, updated } = await seedCatalogueFromRegistry();
-    logger.info({ inserted, updated }, "[startup] Specialist catalogue seeded");
-  } catch (err) {
-    logger.warn({ err }, "[startup] Specialist catalogue seeding failed — continuing");
+    try {
+      const { seedCatalogueFromRegistry } = await import("./services/specialistCatalogueService.js");
+      const { inserted, updated } = await seedCatalogueFromRegistry();
+      logger.info({ inserted, updated }, "[startup] Specialist catalogue seeded");
+    } catch (err) {
+      logger.warn({ err }, "[startup] Specialist catalogue seeding failed — continuing");
+    }
+  } else {
+    logger.info("[startup] Startup seeds skipped; deployment bootstrap is authoritative");
   }
 
   // 4d. Recover stuck execution checkpoints (Sprint 27.2).

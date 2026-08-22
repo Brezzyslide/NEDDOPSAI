@@ -33,6 +33,13 @@
  */
 
 import { randomUUID, createHash } from "crypto";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { ObjectStorageService, objectStorageClient } from "../lib/objectStorage.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -144,6 +151,58 @@ class GCSStorageAdapter implements StorageAdapter {
   }
 }
 
+export class S3StorageAdapter implements StorageAdapter {
+  readonly providerName = "s3";
+  private readonly client: S3Client;
+  private readonly bucketName: string;
+  private readonly keyPrefix: string;
+
+  constructor(options: { bucketName?: string; keyPrefix?: string; region?: string; client?: S3Client } = {}) {
+    this.bucketName = options.bucketName ?? process.env["KNOWLEDGE_S3_BUCKET"] ?? process.env["APP_STORAGE_BUCKET"] ?? "";
+    if (!this.bucketName) {
+      throw new Error("APP_STORAGE_BUCKET or KNOWLEDGE_S3_BUCKET is required when KNOWLEDGE_STORAGE_PROVIDER=s3");
+    }
+
+    this.keyPrefix = normaliseS3Prefix(options.keyPrefix ?? process.env["KNOWLEDGE_S3_PREFIX"] ?? "knowledge");
+    this.client = options.client ?? new S3Client({
+      region: options.region ?? process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"] ?? "ap-southeast-2",
+    });
+  }
+
+  async uploadFile(storageKey: string, buffer: Buffer, mimeType: string): Promise<void> {
+    await this.client.send(new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: this.objectKey(storageKey),
+      Body: buffer,
+      ContentType: mimeType,
+      ServerSideEncryption: "AES256",
+    }));
+  }
+
+  async generateDownloadUrl(storageKey: string, expirySeconds = 3600): Promise<string> {
+    return getSignedUrl(
+      this.client,
+      new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: this.objectKey(storageKey),
+      }),
+      { expiresIn: expirySeconds },
+    );
+  }
+
+  async deleteObject(storageKey: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({
+      Bucket: this.bucketName,
+      Key: this.objectKey(storageKey),
+    }));
+  }
+
+  private objectKey(storageKey: string): string {
+    const cleanKey = normaliseTenantStorageKey(storageKey);
+    return this.keyPrefix ? `${this.keyPrefix}/${cleanKey}` : cleanKey;
+  }
+}
+
 function parseBucketPath(fullPath: string): { bucketName: string; objectName: string } {
   // Normalise: strip gs:// prefix and any leading slash so we always work
   // with "bucketName/objectName" regardless of whether PRIVATE_OBJECT_DIR was
@@ -157,8 +216,28 @@ function parseBucketPath(fullPath: string): { bucketName: string; objectName: st
   };
 }
 
-/** Singleton GCS adapter — replace for tests or S3 by injecting a custom adapter */
-export const defaultStorageAdapter: StorageAdapter = new GCSStorageAdapter();
+function normaliseS3Prefix(prefix: string): string {
+  return prefix.replace(/^\/+|\/+$/g, "");
+}
+
+export function normaliseTenantStorageKey(storageKey: string): string {
+  const cleanKey = storageKey.replace(/^\/+/, "");
+  if (!cleanKey || cleanKey.includes("..") || cleanKey.startsWith("/")) {
+    throw new Error("Invalid tenant storage key");
+  }
+  return cleanKey;
+}
+
+function createDefaultStorageAdapter(): StorageAdapter {
+  const provider = (process.env["KNOWLEDGE_STORAGE_PROVIDER"] ?? "").toLowerCase();
+  if (provider === "s3" || process.env["APP_STORAGE_BUCKET"] || process.env["KNOWLEDGE_S3_BUCKET"]) {
+    return new S3StorageAdapter();
+  }
+  return new GCSStorageAdapter();
+}
+
+/** Singleton storage adapter — selected by environment, overrideable in tests. */
+export const defaultStorageAdapter: StorageAdapter = createDefaultStorageAdapter();
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 

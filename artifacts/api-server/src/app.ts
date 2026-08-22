@@ -43,8 +43,14 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── 6. Clerk session middleware ───────────────────────────────────────────────
-// Reads CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY automatically from process.env
-app.use(clerkMiddleware());
+// Reads CLERK_PUBLISHABLE_KEY + CLERK_SECRET_KEY automatically from process.env.
+// Dev API health/readiness/diagnostics must be able to start before the web
+// auth gate provides Clerk keys; authenticated route guards still fail closed.
+if (process.env["CLERK_PUBLISHABLE_KEY"] && process.env["CLERK_SECRET_KEY"]) {
+  app.use(clerkMiddleware());
+} else {
+  logger.warn("[startup] Clerk middleware disabled because Clerk keys are not configured");
+}
 
 // ── 7. Routes ─────────────────────────────────────────────────────────────────
 // Sprint 0 public routes (kept for backwards compat during Sprint 1)

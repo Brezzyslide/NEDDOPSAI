@@ -5,9 +5,8 @@
  */
 
 import { db, featureFlagsTable, platformSettingsTable } from "@workspace/db";
-import { sql } from "drizzle-orm";
 
-async function main() {
+export async function seedPlatformDefaults() {
   console.log("Seeding platform defaults…");
 
   // ─── Feature Flags ───────────────────────────────────────────────────────────
@@ -53,7 +52,10 @@ async function main() {
   console.log(`  ✓ ${settings.length} platform settings`);
 
   console.log("Platform defaults seeded successfully.");
-  process.exit(0);
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+if (process.argv[1]?.endsWith("seed-platform-defaults.ts") || process.argv[1]?.endsWith("seed-platform-defaults.js")) {
+  seedPlatformDefaults()
+    .then(() => process.exit(0))
+    .catch(err => { console.error(err); process.exit(1); });
+}

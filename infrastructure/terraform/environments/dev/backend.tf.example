@@ -1,0 +1,9 @@
+terraform {
+  backend "s3" {
+    bucket       = "REPLACE_WITH_NEEDSOPS_DEV_TERRAFORM_STATE_BUCKET"
+    key          = "needsops/dev/foundation.tfstate"
+    region       = "ap-southeast-2"
+    encrypt      = true
+    use_lockfile = true
+  }
+}

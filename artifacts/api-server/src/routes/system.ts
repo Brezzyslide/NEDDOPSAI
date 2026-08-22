@@ -2,6 +2,10 @@ import { Router } from "express";
 import { sql } from "drizzle-orm";
 import { db, organizationsTable, usersTable, workforcePacksTable } from "@workspace/db";
 import { PLATFORM_VERSION } from "@workspace/shared";
+import {
+  isDiagnosticsAuthorized,
+  readRuntimeDiagnostics,
+} from "../services/runtimeDiagnosticsService.js";
 
 const router = Router();
 
@@ -56,6 +60,19 @@ router.get("/dashboard-summary", async (_req, res) => {
     platformVersion: PLATFORM_VERSION,
     lastUpdated: new Date().toISOString(),
   });
+});
+
+// GET /system/diagnostics
+router.get("/diagnostics", async (req, res) => {
+  const token = req.header("x-needsops-diagnostics-token");
+  if (!isDiagnosticsAuthorized(token)) {
+    res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
+    return;
+  }
+
+  const includeStorageRoundTrip = req.query["storageRoundTrip"] === "true";
+  const diagnostics = await readRuntimeDiagnostics({ runStorageRoundTrip: includeStorageRoundTrip });
+  res.json(diagnostics);
 });
 
 export default router;

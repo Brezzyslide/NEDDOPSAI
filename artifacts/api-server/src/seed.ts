@@ -458,7 +458,12 @@ async function seedSampleSubscriptions() {
 
 // ─── Run all ──────────────────────────────────────────────────────────────────
 
-export async function runSeed() {
+export interface RunSeedOptions {
+  includeSampleTenantData?: boolean;
+}
+
+export async function runSeed(options: RunSeedOptions = {}) {
+  const includeSampleTenantData = options.includeSampleTenantData ?? true;
   log("Starting NeedsOps AI+ Sprint 3 seed…");
   await seedPlans();
   await seedFeatures();
@@ -467,7 +472,11 @@ export async function runSeed() {
   await seedUsageDimensions();
   await seedPlanUsageAllowances();
   await seedWorkforcePackSpecialists();
-  await seedSampleSubscriptions();
+  if (includeSampleTenantData) {
+    await seedSampleSubscriptions();
+  } else {
+    log("Skipping sample tenant subscriptions/usage for clean environment bootstrap.");
+  }
   log("Sprint 3 seed complete. ✓");
 }
 
