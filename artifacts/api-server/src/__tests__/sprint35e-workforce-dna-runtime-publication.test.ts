@@ -59,4 +59,12 @@ describe("Sprint 35E workforce DNA runtime publication readiness", () => {
     expect(src).toContain("duplicateActive.length > 0");
     expect(src).toContain("Workforce runtime acceptance failed");
   });
+
+  it("execution access uses the Blueprint primary specialist, not the first CoS orchestration step", () => {
+    const src = source("services/executionService.ts");
+
+    expect(src).toContain("primarySpecialist?: string");
+    expect(src).toContain("planData.primarySpecialist ?? planData.assignedSpecialists?.[0]");
+    expect(src).not.toContain("const primaryRole = planData.assignedSpecialists?.[0] ?? \"chief_of_staff\"");
+  });
 });

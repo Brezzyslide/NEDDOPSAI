@@ -465,6 +465,7 @@ async function buildExecutionPackage(
   // Extract plan data from JSONB
   const planData = planRow.planData as {
     assignedSpecialists?: string[];
+    primarySpecialist?: string;
     steps?: Array<{
       specialist?: string;
       action?: string;
@@ -475,7 +476,7 @@ async function buildExecutionPackage(
     approvalType?: string;
   };
 
-  const primaryRole = planData.assignedSpecialists?.[0] ?? "chief_of_staff";
+  const primaryRole = planData.primarySpecialist ?? planData.assignedSpecialists?.[0] ?? "chief_of_staff";
 
   // Map plan steps into ExecutionPackage steps
   const steps: ExecutionPackage["steps"] =
@@ -641,8 +642,8 @@ export async function submitTaskExecution(
   //    Checks subscription state, feature entitlement, workforce pack,
   //    execution channels, and usage allowance — using NeedsOps internal
   //    tables only. No billing provider is consulted here.
-  const planData = planRow.planData as { assignedSpecialists?: string[] };
-  const primaryRole = planData.assignedSpecialists?.[0] ?? "chief_of_staff";
+  const planData = planRow.planData as { assignedSpecialists?: string[]; primarySpecialist?: string };
+  const primaryRole = planData.primarySpecialist ?? planData.assignedSpecialists?.[0] ?? "chief_of_staff";
 
   const access = await checkExecutionAccess(
     input.organizationId,
