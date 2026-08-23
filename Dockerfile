@@ -68,6 +68,11 @@ COPY --from=builder /app/artifacts/api-server/package.json ./artifacts/api-serve
 COPY --from=builder /app/artifacts/api-server/node_modules ./artifacts/api-server/node_modules
 COPY --from=builder /app/artifacts/api-server/dist ./artifacts/api-server/dist
 
+# The runtime container drops to the non-root node user. Normalize read
+# permissions for bundled source artifacts so bootstrap migrations and bundled
+# entrypoints remain readable even when local file modes are restrictive.
+RUN chmod -R a+rX /app/lib /app/artifacts/api-server/dist
+
 ENV NODE_ENV=production
 ENV PORT=5001
 ENV SOURCE_VERSION=${SOURCE_VERSION}
