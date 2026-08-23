@@ -687,9 +687,23 @@ describe("completed work — COMPLETED_WORK_STATUSES", () => {
     }
   });
 
-  it("has exactly 7 statuses", async () => {
+  it("has the current 13-status lifecycle inventory", async () => {
     const { COMPLETED_WORK_STATUSES } = await import("@workspace/db");
-    expect(COMPLETED_WORK_STATUSES).toHaveLength(7);
+    expect(COMPLETED_WORK_STATUSES).toEqual([
+      "draft",
+      "awaiting_approval",
+      "approved",
+      "rejected",
+      "archived",
+      "superseded",
+      "reopened",
+      "content_drafting",
+      "validation",
+      "awaiting_clarification",
+      "artifact_generation",
+      "artifact_generation_failed",
+      "completed",
+    ]);
   });
 });
 
@@ -1204,5 +1218,14 @@ describe("Sprint 22 — DB schema table exports", () => {
     expect(workPackageManifestsTable).toHaveProperty("modelVersion");
     expect(workPackageManifestsTable).toHaveProperty("promptVersion");
     expect(workPackageManifestsTable).toHaveProperty("assembledAt");
+  });
+
+  it("workPackageManifestsTable has nullable execution observability fields", async () => {
+    const { workPackageManifestsTable } = await import("@workspace/db");
+
+    expect(workPackageManifestsTable).toHaveProperty("selectionMetadata");
+    expect(workPackageManifestsTable).toHaveProperty("validationSnapshot");
+    expect(workPackageManifestsTable).toHaveProperty("performanceMetrics");
+    expect(workPackageManifestsTable).toHaveProperty("failureInfo");
   });
 });

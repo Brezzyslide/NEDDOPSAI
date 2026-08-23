@@ -84,7 +84,10 @@ describe("Schema contract — workPackageManifestsTable", () => {
   const cols = ["id", "organizationId", "completedWorkId", "executionId", "blueprintId",
                 "primarySpecialist", "cosMemories", "specialistMemories", "entityKnowledge",
                 "taskUploads", "organisationLibrarySources", "modelVersion",
-                "promptVersion", "assembledAt", "requesterId", "createdAt"];
+                "promptVersion", "assembledAt", "requesterId", "createdAt",
+                "canonicalIntent", "blueprintFamily", "blueprintMode", "templateId",
+                "templateVersion", "contractSnapshot", "selectionMetadata",
+                "validationSnapshot", "performanceMetrics", "failureInfo"];
   for (const col of cols) {
     it(`has .${col}`, () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

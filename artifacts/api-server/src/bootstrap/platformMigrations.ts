@@ -96,6 +96,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: false,
     notes: "Adds tenant_isolation policies for runtime, conversation, capability and completed-work evidence tables after fresh-bootstrap RLS validation exposed missing policies.",
   },
+  {
+    id: "0036-work-package-manifest-observability",
+    file: "0036_work_package_manifest_observability.sql",
+    transactional: true,
+    notes: "Adds nullable runtime observability JSONB columns expected by work_package_manifests insert/update paths.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

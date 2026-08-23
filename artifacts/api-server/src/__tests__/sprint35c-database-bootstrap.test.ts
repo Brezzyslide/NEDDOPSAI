@@ -4,6 +4,7 @@ import { join } from "path";
 import { describe, expect, it } from "vitest";
 import {
   migrationChecksum,
+  PLATFORM_MIGRATIONS,
   runPlatformMigrations,
   type MigrationDbClient,
   type PlatformMigration,
@@ -216,5 +217,32 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(source).toContain('process.env["NEEDSOPS_RUN_DRIZZLE_PUSH"] === "true"');
     expect(source).toContain("Skipping Drizzle schema push; ordered platform migrations are authoritative");
     expect(source).toContain("await runPlatformMigrations");
+  });
+
+  it("orders the manifest observability reconciliation after runtime conversation evidence RLS", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+
+    expect(migrationIds).toContain("0035-runtime-conversation-evidence-rls");
+    expect(migrationIds).toContain("0036-work-package-manifest-observability");
+    expect(migrationIds.indexOf("0036-work-package-manifest-observability")).toBe(
+      migrationIds.indexOf("0035-runtime-conversation-evidence-rls") + 1,
+    );
+  });
+
+  it("keeps the manifest observability migration additive and historical-record safe", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "../../lib/db/migrations/0036_work_package_manifest_observability.sql"),
+      "utf8",
+    );
+
+    for (const column of ["selection_metadata", "validation_snapshot", "performance_metrics", "failure_info"]) {
+      expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column} JSONB`);
+    }
+
+    expect(sql).not.toMatch(/\bDROP\b/i);
+    expect(sql).not.toMatch(/\bTRUNCATE\b/i);
+    expect(sql).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(sql).not.toMatch(/\bUPDATE\s+work_package_manifests\b/i);
+    expect(sql).not.toMatch(/\bNOT\s+NULL\b/i);
   });
 });
