@@ -536,7 +536,7 @@ export async function classifyMessageLLM(
         base.customerResponse = integrityResult.correctedResponse;
       }
     }
-    return { ...base, usedFallback: false };
+    return { ...base, usedFallback: true, fallbackReason: `AI_PROVIDER is "${provider}", not "openai"` };
   }
 
   try {

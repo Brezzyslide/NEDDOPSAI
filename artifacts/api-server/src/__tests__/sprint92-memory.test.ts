@@ -578,6 +578,57 @@ describe("ChiefOfStaffLLM — response parser", () => {
 
     expect(result.shouldCreateTask).toBe(false);
     expect(["general","task_intent","task_clarification"].includes(result.conversationMode as string)).toBe(true);
+    expect(result.usedFallback).toBe(true);
+    expect(result.fallbackReason).toContain("AI_PROVIDER");
+  });
+
+  it("uses the OpenAI gateway path with CoS system context when AI_PROVIDER=openai", async () => {
+    const { createAIGateway } = await import("@workspace/ai-gateway");
+    const processMock = vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        conversationMode: "general",
+        confidence: 0.91,
+        clarificationRequired: false,
+        clarificationQuestions: [],
+        shouldCreateTask: false,
+        shouldUpdateTask: false,
+        relatedWorkforceRoles: ["chief_of_staff"],
+        customerResponse: "I am the NeedsOps Chief of Staff. I coordinate the AI workforce and help route work to the right specialists.",
+        reasoning: "Identity question answered from Chief of Staff context.",
+      }),
+      usedFallback: false,
+      model: "gpt-4o-mini",
+    });
+    vi.mocked(createAIGateway).mockReturnValue({
+      process: processMock,
+      validateRetrievedFields: vi.fn(),
+    } as any);
+
+    process.env.AI_PROVIDER = "openai";
+    process.env.OPENAI_MODEL = "gpt-4o-mini";
+    mockDb._setMessages([]);
+    mockDb._setOrgMemory([]);
+    mockDb._setConversationMemory(null);
+    mockDb._setTasks([]);
+
+    const { classifyMessageLLM } = await import("../services/chiefOfStaffLLMService.js");
+    const result = await classifyMessageLLM(
+      "who are you and what is your role",
+      { organizationId: "org-1", conversationId: "conv-1" } as any,
+      { userId: "u1", organizationId: "org-1", role: "member", permissions: [] }
+    );
+
+    expect(processMock).toHaveBeenCalledTimes(1);
+    const request = processMock.mock.calls[0][0];
+    expect(request.outputMode).toBe("json");
+    expect(request.systemPrompt).toContain("Chief of Staff");
+    expect(request.userMessage).toContain("who are you and what is your role");
+    expect(result.usedFallback).toBe(false);
+    expect(result.customerResponse).toContain("NeedsOps Chief of Staff");
+    expect(result.customerResponse).not.toBe("Happy to help. You can describe a task, ask a question, or we can think through something together.");
+
+    delete process.env.AI_PROVIDER;
+    delete process.env.OPENAI_MODEL;
   });
 
   it("rejects invalid conversationMode from LLM", async () => {

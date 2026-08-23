@@ -136,6 +136,7 @@ data "aws_iam_policy_document" "api_execution_secrets" {
       aws_db_instance.postgres.master_user_secret[0].secret_arn,
       aws_secretsmanager_secret.app["session"].arn,
       aws_secretsmanager_secret.app["clerk"].arn,
+      aws_secretsmanager_secret.app["openai"].arn,
     ]
   }
 }
@@ -277,6 +278,14 @@ resource "aws_ecs_task_definition" "api" {
           value = "development"
         },
         {
+          name  = "AI_PROVIDER"
+          value = "openai"
+        },
+        {
+          name  = "OPENAI_MODEL"
+          value = "gpt-4o-mini"
+        },
+        {
           name  = "SOURCE_VERSION"
           value = local.api_source_sha
         },
@@ -318,6 +327,10 @@ resource "aws_ecs_task_definition" "api" {
         {
           name      = "CLERK_SECRET_KEY"
           valueFrom = "${aws_secretsmanager_secret.app["clerk"].arn}:CLERK_SECRET_KEY::"
+        },
+        {
+          name      = "OPENAI_API_KEY"
+          valueFrom = "${aws_secretsmanager_secret.app["openai"].arn}:OPENAI_API_KEY::"
         },
       ]
 
