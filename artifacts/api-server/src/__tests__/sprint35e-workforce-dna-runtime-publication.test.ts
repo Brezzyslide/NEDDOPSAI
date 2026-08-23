@@ -72,6 +72,36 @@ describe("Sprint 35E workforce DNA runtime publication readiness", () => {
     expect(src).not.toContain("const primaryRole = planData.assignedSpecialists?.[0] ?? \"chief_of_staff\"");
   });
 
+  it("AWS-native professional execution does not require the OpenClaw desktop broker", () => {
+    const src = source("services/executionService.ts");
+
+    expect(src).toContain("requiresOpenClawRuntime");
+    expect(src).toContain("aws_native_professional_work");
+    expect(src).toContain("executeWork({");
+    expect(src).toContain('runtimeName: "aws_native"');
+    expect(src).toContain("no browser, local file, or local application channel requested");
+    expect(src).toContain("requestedConnectorCategories currently represents the WorkerProfile's");
+  });
+
+  it("OpenClaw remains reserved for browser and local desktop execution channels", () => {
+    const src = source("services/executionService.ts");
+
+    expect(src).toContain('"browser"');
+    expect(src).toContain('"local_files"');
+    expect(src).toContain('"local_applications"');
+    expect(src).toContain("openclaw_required");
+    expect(src).toContain("Package requested browser, local file, or local application execution");
+  });
+
+  it("can resume an executing task that is parked on a pending runtime session", () => {
+    const src = source("services/executionService.ts");
+
+    expect(src).toContain("getTaskForExecutionSubmission");
+    expect(src).toContain("already 'executing' with a pending runtime session");
+    expect(src).toContain("resumedFromPendingBrokerSession");
+    expect(src).toContain("existingPendingSession?.currentStatus === \"pending\"");
+  });
+
   it("org provisioning creates the subscription gate required by execution entitlements", () => {
     const src = source("services/orgProvisioningService.ts");
 

@@ -38,6 +38,12 @@ import {
 } from "@workspace/openclaw";
 import { getActiveWorkerProfilesForRole, type WorkerProfile } from "../lib/workerProfileRegistry.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
+import { executeWork } from "./workExecutionPipelineService.js";
+import { getMembershipForUser } from "./membershipService.js";
+import {
+  reconcileTaskExecutionFailure,
+  reconcileTaskExecutionSuccess,
+} from "./taskService.js";
 import {
   resolveAndCompileManifest,
   buildManifestAuditRecord,
@@ -84,7 +90,7 @@ export interface ExecutionSubmitResult {
 
 // ─── Pre-submission checks ────────────────────────────────────────────────────
 
-async function getApprovedTask(taskId: string, organizationId: string) {
+async function getTaskForExecutionSubmission(taskId: string, organizationId: string) {
   const [task] = await db
     .select()
     .from(tasksTable)
@@ -95,16 +101,32 @@ async function getApprovedTask(taskId: string, organizationId: string) {
     throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
   }
 
-  if (task.currentState !== "approved") {
-    throw Object.assign(
-      new Error(
-        `Task must be in 'approved' state before submission. Current state: '${task.currentState}'`,
-      ),
-      { code: "VALIDATION_ERROR" },
-    );
+  if (task.currentState === "approved") {
+    return task;
   }
 
-  return task;
+  if (task.currentState === "executing") {
+    const [session] = await db
+      .select()
+      .from(executionSessionsTable)
+      .where(and(
+        eq(executionSessionsTable.taskId, taskId),
+        eq(executionSessionsTable.organizationId, organizationId),
+      ))
+      .orderBy(desc(executionSessionsTable.createdAt))
+      .limit(1);
+
+    if (session?.currentStatus === "pending") {
+      return task;
+    }
+  }
+
+  throw Object.assign(
+    new Error(
+      `Task must be in 'approved' state before submission, or already 'executing' with a pending runtime session. Current state: '${task.currentState}'`,
+    ),
+    { code: "VALIDATION_ERROR" },
+  );
 }
 
 async function getTaskPlan(taskId: string) {
@@ -624,6 +646,233 @@ async function buildExecutionPackage(
   return pkg;
 }
 
+function requiresOpenClawRuntime(pkg: ExecutionPackage): boolean {
+  const desktopChannels = new Set<ExecutionPackage["requestedChannels"][number]>([
+    "browser",
+    "local_files",
+    "local_applications",
+  ]);
+  // requestedConnectorCategories currently represents the WorkerProfile's
+  // permitted connector surface, not a task-specific connector requirement.
+  // Do not force AWS-native professional work through a desktop broker merely
+  // because a specialist may use document management in other tasks.
+  return pkg.requestedChannels.some(channel => desktopChannels.has(channel));
+}
+
+async function getLatestExecutionSession(taskId: string, organizationId: string) {
+  const [session] = await db
+    .select()
+    .from(executionSessionsTable)
+    .where(and(
+      eq(executionSessionsTable.taskId, taskId),
+      eq(executionSessionsTable.organizationId, organizationId),
+    ))
+    .orderBy(desc(executionSessionsTable.createdAt))
+    .limit(1);
+  return session ?? null;
+}
+
+async function persistExecutionEvent(input: {
+  executionSessionId: string;
+  organizationId: string;
+  eventType: string;
+  eventSource: string;
+  payload: Record<string, unknown>;
+}) {
+  await db.insert(executionEventsTable).values({
+    id: randomUUID(),
+    executionSessionId: input.executionSessionId,
+    organizationId: input.organizationId,
+    eventType: input.eventType,
+    eventSource: input.eventSource,
+    payload: input.payload,
+    occurredAt: new Date(),
+  }).catch(() => {});
+}
+
+async function startAwsNativeExecution(input: {
+  task: typeof tasksTable.$inferSelect;
+  pkg: ExecutionPackage & { dnaSource?: "database" | "static_fallback"; contextAudit?: ContextAudit };
+  requestedByUserId: string;
+  manifestAudit?: Record<string, unknown>;
+  resumeExistingSession?: boolean;
+}) {
+  const now = new Date();
+  const taskDescription = input.task.description ?? input.task.title;
+  const membership = await getMembershipForUser(input.task.organizationId, input.requestedByUserId);
+  const requesterRole = membership?.role;
+
+  await db.insert(executionSessionsTable).values({
+    id: input.pkg.executionId,
+    taskId: input.task.id,
+    organizationId: input.task.organizationId,
+    runtimeName: "aws_native",
+    currentStatus: "running",
+    executionPackage: input.pkg as unknown as Record<string, unknown>,
+    metadata: {
+      runtimeSelection: "aws_native_professional_work",
+      runtimeReason: "Package requires only AWS-internal API/model/database execution; no browser, local file, or local application channel requested.",
+      manifestAudit: input.manifestAudit ?? null,
+      resumedFromPendingBrokerSession: input.resumeExistingSession === true,
+    },
+    submittedAt: now,
+    startedAt: now,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: executionSessionsTable.id,
+    set: {
+      runtimeName: "aws_native",
+      currentStatus: "running",
+      metadata: {
+        runtimeSelection: "aws_native_professional_work",
+        runtimeReason: "Package requires only AWS-internal API/model/database execution; no browser, local file, or local application channel requested.",
+        manifestAudit: input.manifestAudit ?? null,
+        resumedFromPendingBrokerSession: input.resumeExistingSession === true,
+      },
+      submittedAt: now,
+      startedAt: now,
+      updatedAt: now,
+      errorMessage: null,
+    },
+  });
+
+  await persistExecutionEvent({
+    executionSessionId: input.pkg.executionId,
+    organizationId: input.task.organizationId,
+    eventType: "execution.started",
+    eventSource: "aws_native",
+    payload: {
+      taskId: input.task.id,
+      workforceRole: input.pkg.workforceRole,
+      blueprintCode: input.pkg.blueprintContract?.blueprintCode ?? null,
+    },
+  });
+
+  const run = async () => {
+    try {
+      const result = await executeWork({
+        organizationId: input.task.organizationId,
+        requesterId: input.requestedByUserId,
+        requesterRole,
+        userRequest: taskDescription,
+        blueprintCode: input.pkg.blueprintContract?.blueprintCode ?? undefined,
+        blueprintId: input.pkg.blueprintContract?.blueprintId ?? undefined,
+        canonicalIntent: input.pkg.blueprintContract?.blueprintCode ?? undefined,
+        title: input.task.title,
+        taskId: input.task.id,
+        outputRequiresApproval: true,
+      });
+
+      if (result.outcome === "completed") {
+        const reconciliation = await reconcileTaskExecutionSuccess({
+          taskId: input.task.id,
+          organizationId: input.task.organizationId,
+          completedWorkId: result.completedWorkId,
+          completedWorkStatus: result.completedWorkStatus,
+          correlationId: input.pkg.executionId,
+          requestedByUserId: input.requestedByUserId,
+        });
+        await db
+          .update(executionSessionsTable)
+          .set({
+            currentStatus: "completed",
+            completedAt: new Date(),
+            updatedAt: new Date(),
+            metadata: {
+              runtimeSelection: "aws_native_professional_work",
+              runtimeReason: "Package requires only AWS-internal API/model/database execution; no browser, local file, or local application channel requested.",
+              manifestAudit: input.manifestAudit ?? null,
+              resumedFromPendingBrokerSession: input.resumeExistingSession === true,
+              outcome: result.outcome,
+              completedWorkId: result.completedWorkId,
+              completedWorkStatus: result.completedWorkStatus,
+              taskReconciliation: reconciliation.status,
+              workPackageManifestId: result.manifestId,
+              blueprintCode: result.blueprintCode,
+            },
+          })
+          .where(eq(executionSessionsTable.id, input.pkg.executionId));
+        await persistExecutionEvent({
+          executionSessionId: input.pkg.executionId,
+          organizationId: input.task.organizationId,
+          eventType: "execution.completed",
+          eventSource: "aws_native",
+          payload: {
+            completedWorkId: result.completedWorkId,
+            completedWorkStatus: result.completedWorkStatus,
+            taskReconciliation: reconciliation.status,
+            manifestId: result.manifestId,
+          },
+        });
+        return;
+      }
+
+      const terminalStatus = result.outcome === "awaiting_clarification" ? "awaiting_approval" : "failed";
+      if (terminalStatus === "failed") {
+        await reconcileTaskExecutionFailure({
+          taskId: input.task.id,
+          organizationId: input.task.organizationId,
+          errorMessage: result.message,
+          correlationId: input.pkg.executionId,
+        });
+      }
+      await db
+        .update(executionSessionsTable)
+        .set({
+          currentStatus: terminalStatus,
+          completedAt: new Date(),
+          errorMessage: terminalStatus === "failed" ? result.message : null,
+          updatedAt: new Date(),
+          metadata: {
+            runtimeSelection: "aws_native_professional_work",
+            runtimeReason: "Package requires only AWS-internal API/model/database execution; no browser, local file, or local application channel requested.",
+            manifestAudit: input.manifestAudit ?? null,
+            resumedFromPendingBrokerSession: input.resumeExistingSession === true,
+            outcome: result.outcome,
+            message: result.message,
+            workPackageManifestId: result.manifestId,
+            blueprintCode: result.blueprintCode,
+          },
+        })
+        .where(eq(executionSessionsTable.id, input.pkg.executionId));
+      await persistExecutionEvent({
+        executionSessionId: input.pkg.executionId,
+        organizationId: input.task.organizationId,
+        eventType: terminalStatus === "failed" ? "execution.failed" : "execution.awaiting_approval",
+        eventSource: "aws_native",
+        payload: { outcome: result.outcome, message: result.message, manifestId: result.manifestId },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown AWS-native execution error";
+      await reconcileTaskExecutionFailure({
+        taskId: input.task.id,
+        organizationId: input.task.organizationId,
+        errorMessage: message,
+        correlationId: input.pkg.executionId,
+      }).catch(() => {});
+      await db
+        .update(executionSessionsTable)
+        .set({
+          currentStatus: "failed",
+          completedAt: new Date(),
+          errorMessage: message,
+          updatedAt: new Date(),
+        })
+        .where(eq(executionSessionsTable.id, input.pkg.executionId));
+      await persistExecutionEvent({
+        executionSessionId: input.pkg.executionId,
+        organizationId: input.task.organizationId,
+        eventType: "execution.failed",
+        eventSource: "aws_native",
+        payload: { error: message },
+      });
+    }
+  };
+
+  void run();
+}
+
 // ─── Submit execution ─────────────────────────────────────────────────────────
 
 export async function submitTaskExecution(
@@ -632,11 +881,42 @@ export async function submitTaskExecution(
   const engine = getEngine();
   const config = loadOpenClawConfig();
 
-  // 1. Verify task is approved and has a plan
+  // 1. Verify task is approved, or resume an already executing task whose
+  //    only session is still pending runtime connection.
   const [task, planRow] = await Promise.all([
-    getApprovedTask(input.taskId, input.organizationId),
+    getTaskForExecutionSubmission(input.taskId, input.organizationId),
     getTaskPlan(input.taskId),
   ]);
+
+  const existingPendingSession = task.currentState === "executing"
+    ? await getLatestExecutionSession(task.id, task.organizationId)
+    : null;
+
+  if (existingPendingSession?.currentStatus === "pending") {
+    const storedPackage = existingPendingSession.executionPackage as unknown as
+      (ExecutionPackage & { dnaSource?: "database" | "static_fallback"; contextAudit?: ContextAudit }) | null;
+    if (!storedPackage?.executionId) {
+      throw Object.assign(
+        new Error("Pending execution session does not contain a resumable execution package."),
+        { code: "VALIDATION_ERROR" },
+      );
+    }
+    if (!requiresOpenClawRuntime(storedPackage)) {
+      await startAwsNativeExecution({
+        task,
+        pkg: storedPackage,
+        requestedByUserId: input.requestedByUserId,
+        manifestAudit: (existingPendingSession.metadata as Record<string, unknown> | null)?.manifestAudit as Record<string, unknown> | undefined,
+        resumeExistingSession: true,
+      });
+      return {
+        executionId: storedPackage.executionId,
+        outcome: "accepted",
+        statusMessage: "AWS-native professional execution accepted.",
+        runtimeExecutionId: storedPackage.executionId,
+      };
+    }
+  }
 
   // 2. Provider-independent execution gate (Steps 4–8)
   //    Checks subscription state, feature entitlement, workforce pack,
@@ -713,7 +993,26 @@ export async function submitTaskExecution(
     .set({ currentState: "executing", updatedAt: new Date() })
     .where(eq(tasksTable.id, input.taskId));
 
-  // 5. Check if runtime is configured
+  // 5. AWS-native professional work does not require a desktop OpenClaw broker.
+  //    OpenClaw remains the runtime for browser/local-file/local-application
+  //    work and external connector operations.
+  if (!requiresOpenClawRuntime(pkg)) {
+    await startAwsNativeExecution({
+      task,
+      pkg,
+      requestedByUserId: input.requestedByUserId,
+      manifestAudit: auditRecord,
+    });
+
+    return {
+      executionId: pkg.executionId,
+      outcome: "accepted",
+      statusMessage: "AWS-native professional execution accepted.",
+      runtimeExecutionId: pkg.executionId,
+    };
+  }
+
+  // 6. Check if desktop/runtime broker is configured for broker-required work.
   if (!isOpenClawConfigured(config)) {
     // Runtime not configured — create a pending session for when it connects
     await db.insert(executionSessionsTable).values({
@@ -724,7 +1023,9 @@ export async function submitTaskExecution(
       currentStatus: "pending",
       executionPackage: pkg as unknown as Record<string, unknown>,
       metadata: {
-        note: "Runtime not configured. Session pending runtime connection.",
+        note: "OpenClaw runtime not configured. Session pending runtime connection for broker-required channels.",
+        runtimeSelection: "openclaw_required",
+        runtimeReason: "Package requested browser, local file, or local application execution that must not run AWS-native.",
         manifestAudit: auditRecord,
       },
       createdAt: new Date(),
@@ -739,7 +1040,7 @@ export async function submitTaskExecution(
     };
   }
 
-  // 6. Submit to engine
+  // 7. Submit broker-required work to OpenClaw.
   const result = await engine.submitExecution(pkg);
 
   return {
