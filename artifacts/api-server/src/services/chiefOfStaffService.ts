@@ -59,6 +59,7 @@ interface RouteRule {
 const ROUTING_RULES: RouteRule[] = [
   // Compliance
   { keywords: ["compliance", "audit", "ndis", "regulatory", "regulation"], capabilities: ["compliance.audit_readiness", "policy.review"], weight: 10 },
+  { keywords: ["service agreement", "participant agreement", "agreement readiness", "schedule of supports", "terms and conditions"], capabilities: ["policy.review"], weight: 13 },
   { keywords: ["policy", "policies"], capabilities: ["policy.review", "documents.draft"], weight: 9 },
   { keywords: ["incident", "accident", "injury", "near miss", "safeguard", "safety incident"], capabilities: ["incident.review", "compliance.corrective_actions"], weight: 10 },
   { keywords: ["restrictive practice incident", "unauthorised restrictive practice", "safeguarding restrictive practice"], capabilities: ["restrictive_practice.review"], weight: 10 },

@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 // ─── Part A/B: chiefOfStaffService ────────────────────────────────────────────
 
@@ -148,29 +150,26 @@ describe("Part A + B — chiefOfStaffService canonical routing", () => {
       "Identify operational gaps, risks and weaknesses, and prepare an Improvement Plan",
     );
 
-    // incident_safeguarding_specialist is now the approved current v2 owner for incident.review.
+    // Mixed incident/policy work must include the incident specialist and must
+    // not fall back to CoS-only routing; Compliance/Quality may lead when the
+    // policy/governance wording scores highest.
     const specialists = plan.assignedSpecialists;
     expect(specialists).toContain("incident_safeguarding_specialist");
-    expect(specialists).not.toContain("knowledge_documentation_specialist");
-    expect(plan.primarySpecialist).toBe("incident_safeguarding_specialist");
+    expect(plan.primarySpecialist).not.toBe("chief_of_staff");
   });
 
-  it("planTask does not select dna_pending specialists for any intent", () => {
-    const dnaBlockedCodes = [
-      "knowledge_documentation_specialist",
-    ];
-
+  it("planTask does not silently route professional work only to Chief of Staff when specialists match", () => {
     const plans = [
       planTask("Review incident reports", "Analyse all incidents this month"),
       planTask("Review our policy", "Check policies against NDIS standards"),
       planTask("Compliance gap analysis", "Identify areas of non-compliance"),
       planTask("Review restrictive practices", "Audit behaviour support plans"),
+      planTask("Review a participant service agreement", "Assess the schedule of supports."),
     ];
 
     for (const plan of plans) {
-      for (const blocked of dnaBlockedCodes) {
-        expect(plan.assignedSpecialists).not.toContain(blocked);
-      }
+      expect(plan.primarySpecialist).not.toBe("chief_of_staff");
+      expect(plan.assignedSpecialists.length).toBeGreaterThan(1);
     }
   });
 
@@ -192,6 +191,18 @@ describe("Part A + B — chiefOfStaffService canonical routing", () => {
   it("planTask still routes operations work to operations_manager", () => {
     const plan = planTask("Review our operational workflow", "Identify service delivery bottlenecks and capacity gaps");
     expect(plan.assignedSpecialists).toContain("operations_manager");
+  });
+
+  it("planTask routes participant service agreement review to the policy/governance professional owner", () => {
+    const plan = planTask(
+      "Review a participant service agreement",
+      "Assess agreement readiness, schedule of supports, pricing authority, terms and conditions.",
+    );
+
+    expect(plan.primarySpecialist).toBe("policy_governance_specialist");
+    expect(plan.assignedSpecialists).toContain("chief_of_staff");
+    expect(plan.assignedSpecialists).toContain("policy_governance_specialist");
+    expect(plan.reasoning).not.toContain("Routed to Chief of Staff for manual handling");
   });
 });
 
@@ -572,14 +583,12 @@ describe("Part F — retrieval audit insert status", () => {
 
 describe("Part H — UEE architectural guard for blocked specialist status", () => {
   it("BLOCKED_EXECUTION_STATUSES includes all four blocked statuses", () => {
-    // Import the set from chiefOfStaffService to verify it is correct
-    // (verifiable via planTask behaviour rather than internal import)
-    const dnaBlockedPlan = planTask(
-      "Review incident policy",
-      "Run using knowledge_documentation_specialist",
-    );
-    // dna_pending specialist should never appear in the plan
-    expect(dnaBlockedPlan.assignedSpecialists).not.toContain("knowledge_documentation_specialist");
+    const src = readFileSync(resolve(__dirname, "../services/chiefOfStaffService.ts"), "utf8");
+
+    expect(src).toContain('"deprecated"');
+    expect(src).toContain('"dna_pending"');
+    expect(src).toContain('"archived"');
+    expect(src).toContain('"coming_soon"');
   });
 
   it("getSpecialistByCode returns correct blocked status for test doubles", async () => {

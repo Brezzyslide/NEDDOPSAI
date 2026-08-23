@@ -121,6 +121,12 @@ async function main(): Promise<void> {
     { runSeed },
     { seedBuiltInBlueprints },
     { seedCatalogueFromRegistry },
+    {
+      reconcileWorkerProfilePublication,
+      reconcileWorkforceDnaPublication,
+      checkWorkforceRuntimeAcceptance,
+      assertWorkforceRuntimeAcceptance,
+    },
     { runRLSStartupCheck },
   ] = await Promise.all([
     import("../bootstrap/platformMigrations.js"),
@@ -129,6 +135,13 @@ async function main(): Promise<void> {
     import("../seed.js"),
     import("../services/workBlueprintService.js"),
     import("../services/specialistCatalogueService.js"),
+    Promise.all([
+      import("../services/workerProfilePublicationService.js"),
+      import("../services/dnaStorageService.js"),
+    ]).then(([workerProfiles, dnaStorage]) => ({
+      ...workerProfiles,
+      reconcileWorkforceDnaPublication: dnaStorage.reconcileWorkforceDnaPublication,
+    })),
     import("../startup/rlsStartupCheck.js"),
   ]);
 
@@ -179,8 +192,34 @@ async function main(): Promise<void> {
     console.log("[db:bootstrap] Seeding specialist catalogue");
     await seedCatalogueFromRegistry();
 
+    console.log("[db:bootstrap] Reconciling WorkerProfiles and role mappings");
+    const workerProfileResult = await reconcileWorkerProfilePublication();
+    console.log("[db:bootstrap] WorkerProfile reconciliation complete", workerProfileResult);
+
+    console.log("[db:bootstrap] Reconciling published Workforce DNA");
+    const dnaResult = await reconcileWorkforceDnaPublication({
+      apply: true,
+      publishedBy: "db_bootstrap",
+    });
+    console.log("[db:bootstrap] Workforce DNA reconciliation complete", {
+      applied: dnaResult.applied,
+      summary: dnaResult.summary,
+    });
+
     console.log("[db:bootstrap] Running RLS/startup security validation");
     await runRLSStartupCheck();
+
+    console.log("[db:bootstrap] Running Workforce runtime acceptance");
+    const workforceAcceptance = await checkWorkforceRuntimeAcceptance();
+    assertWorkforceRuntimeAcceptance(workforceAcceptance);
+    console.log("[db:bootstrap] Workforce runtime acceptance passed", {
+      expectedRoles: workforceAcceptance.expectedRoleCount,
+      workerProfiles: workforceAcceptance.workerProfilesPresent,
+      roleMappings: workforceAcceptance.roleMappingsPresent,
+      activePublishedDna: workforceAcceptance.activePublishedDnaCount,
+      missing: workforceAcceptance.missing.length,
+      duplicateActive: workforceAcceptance.duplicateActive.length,
+    });
 
     console.log("[db:bootstrap] Running Blueprint bootstrap acceptance");
     const acceptance = await checkBlueprintAcceptance(pool);
