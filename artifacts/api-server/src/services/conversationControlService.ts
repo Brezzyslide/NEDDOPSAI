@@ -140,7 +140,10 @@ const PAUSE_PATTERNS = [/\b(pause|hold|leave)\b.*\b(this|that|task|request|for n
 const RESUME_PATTERNS = [/\b(resume|continue|carry on|restart|go back to)\b/i];
 const APPROVE_PATTERNS = [/^(approved|approve|yes|yep|yeah|ok|okay|go ahead|send it|proceed|do it)\.?$/i];
 const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don'?t proceed|not approved)\.?$/i];
-const STATUS_PATTERNS = [/\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i];
+const STATUS_PATTERNS = [
+  /\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i,
+  /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i,
+];
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
 const NEW_TASK_PATTERNS = [/\b(also|now|next)\b.*\b(prepare|create|check|review|audit|draft|build)\b/i, /\bprepare\b.*\b(roster|report|policy|plan)\b/i];
@@ -252,6 +255,10 @@ function fuzzySelectionScore(text: string, title: string): number {
   return score;
 }
 
+function hasImmediateTaskReference(text: string): boolean {
+  return /\b(same|that|this|it|current|newly created|created task|linked task|same task|same service agreement|continue|cancel|hold|pause|status)\b/i.test(text);
+}
+
 export function resolveConversationReference(input: {
   text: string;
   intent?: CanonicalConversationAction;
@@ -267,7 +274,7 @@ export function resolveConversationReference(input: {
     const reasons: string[] = [];
     if (score > 0) reasons.push("title_match");
     if (input.focus?.taskId === task.id) {
-      score += /\b(that|this|it|current|continue|cancel|hold|pause|status)\b/i.test(input.text) ? 55 : 20;
+      score += hasImmediateTaskReference(input.text) ? 140 : 20;
       reasons.push("conversation_focus");
     }
     if (input.currentTaskId === task.id) {

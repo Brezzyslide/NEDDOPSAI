@@ -15,6 +15,7 @@ import * as taskService from "./taskService.js";
 import * as conversationService from "./conversationService.js";
 import * as auditService from "./auditService.js";
 import { dispatchWorkExecution } from "./executionCoordinatorService.js";
+import { persistConversationFocus } from "./conversationControlService.js";
 import { db, tasksTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -105,6 +106,14 @@ export async function autoCreateAndDispatch(
       task.id,
       requesterId,
     );
+    await persistConversationFocus({
+      organizationId,
+      conversationId,
+      taskId: task.id,
+      workType: task.title,
+      reason: "auto_dispatch_reused_existing",
+      source: "conversation",
+    }).catch(err => console.warn("[AutoDispatch] focus persist failed (non-fatal):", err?.message));
     return {
       taskId:                 task.id,
       title:                  task.title,
@@ -153,6 +162,15 @@ export async function autoCreateAndDispatch(
       data: { taskId: task.id, title: task.title, autoDispatched: true, workroomConversationId },
     },
   });
+
+  await persistConversationFocus({
+    organizationId,
+    conversationId,
+    taskId: task.id,
+    workType: task.title,
+    reason: "task_auto_created",
+    source: "conversation",
+  }).catch(err => console.warn("[AutoDispatch] focus persist failed (non-fatal):", err?.message));
 
   // 4. Post the plan card into the WORKROOM (not the general chat).
   await conversationService.postPlanToConversation(organizationId, workroomConversationId, task.id, plan);

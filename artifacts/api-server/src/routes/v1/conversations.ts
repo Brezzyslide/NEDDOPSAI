@@ -29,6 +29,7 @@ import {
   autoCreateAndDispatch,
   AUTO_EXECUTE_CONFIDENCE_THRESHOLD,
 } from "../../services/autoDispatchService.js";
+import { persistConversationFocus } from "../../services/conversationControlService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -495,6 +496,17 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       user.id,
     );
     const workroomConversationId = workroom.id;
+
+    await persistConversationFocus({
+      organizationId: ctx.tenantId,
+      conversationId: conv.id,
+      taskId: result.task.id,
+      workType: result.task.title,
+      reason: result.reusedExisting ? "manual_create_reused_existing" : "manual_create_task",
+      source: "conversation",
+    }).catch(err =>
+      console.warn("[conversations] focus persist failed (non-fatal):", err?.message),
+    );
 
     if (!result.reusedExisting) {
       // Post task_created message to the ORIGINAL conversation (user sees it in general chat)

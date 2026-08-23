@@ -141,6 +141,7 @@ const REJECTION_PATTERNS = [
 const STATUS_PATTERNS = [
   /\b(what('s| is) (happening|the status|going on|the progress|next)|where are we|how is it going|update me|any update|what are you waiting for|is it done|has it)\b/i,
   /\b(status|progress|update|what's next)\b/i,
+  /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i,
   /\b(why (is|was|are|has it|did it)|what (went wrong|failed|happened|caused))\b/i,
   /\b(did it|has it been|is it|was it) (complet|done|finish|approv|start|run|fail|cancel|reject|approv)/i,
   /\bwhat happened\b/i,

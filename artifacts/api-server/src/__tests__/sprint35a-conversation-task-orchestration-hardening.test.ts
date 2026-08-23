@@ -568,7 +568,22 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(conversationRoute).toContain('req.header("Idempotency-Key")');
     expect(conversationRoute).toContain("conversationId: conv.id");
     expect(conversationRoute).toContain("if (!autoResult.reusedExisting)");
+    expect(conversationRoute).toContain("persistConversationFocus");
+    expect(conversationRoute).toContain('"manual_create_reused_existing"');
     expect(autoDispatch).toContain("reusedExisting");
+    expect(autoDispatch).toContain("persistConversationFocus");
+    expect(autoDispatch).toContain('"task_auto_created"');
+    expect(autoDispatch).toContain('"auto_dispatch_reused_existing"');
+  });
+
+  it("newly created task focus beats stale same-title duplicates for immediate follow-ups", () => {
+    const src = source("services/conversationControlService.ts");
+
+    expect(src).toContain("function hasImmediateTaskReference");
+    expect(src).toContain("same service agreement");
+    expect(src).toContain("same task");
+    expect(src).toContain("newly created");
+    expect(src).toContain("score += hasImmediateTaskReference(input.text) ? 140 : 20");
   });
 
   it("manual create task UX disables retries and sends a stable idempotency key", () => {
@@ -604,11 +619,17 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   it("CoS and system-authored plan cards cannot invent operational completion ETAs", () => {
     const cosPrompt = source("services/chiefOfStaffLLMService.ts");
     const conversationService = source("services/conversationService.ts");
+    const controlService = source("services/conversationControlService.ts");
+    const intelligenceService = source("services/conversationIntelligenceService.ts");
 
     expect(cosPrompt).toContain("OPERATIONAL FACT GROUNDING");
     expect(cosPrompt).toContain("If the system context does not provide a runtime ETA");
     expect(cosPrompt).toContain("Do NOT invent phrases");
     expect(conversationService).toContain("Runtime completion estimate: not available until execution telemetry provides one.");
     expect(conversationService).not.toContain("Estimated duration: ${plan.estimatedTotalDuration}");
+    expect(controlService).toContain("how long");
+    expect(controlService).toContain("completion estimate");
+    expect(intelligenceService).toContain("how long");
+    expect(intelligenceService).toContain("completion estimate");
   });
 });
