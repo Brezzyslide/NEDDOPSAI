@@ -15,6 +15,7 @@ import { db, organizationsTable, orgProvisioningJobsTable } from "@workspace/db"
 import { eq, desc } from "drizzle-orm";
 import { createOrg } from "./orgService.js";
 import { provisionPacksForNewOrg } from "./packProvisioningService.js";
+import { ensureTrialSubscriptionForOrg } from "./subscriptionProvisioningService.js";
 import * as invitationService from "./invitationService.js";
 import type { MembershipRole } from "@workspace/shared";
 
@@ -151,6 +152,13 @@ export async function provisionOrganisation(
     await updateJob(jobId, { steps: stepsRunningPacks });
 
     try {
+      await ensureTrialSubscriptionForOrg({
+        organizationId: orgId,
+        changedBy: initiatorUserId,
+        planCode: (params.additionalPackCodes?.length ?? 0) > 0 ? "professional" : "foundation",
+        note: "Created during organisation provisioning so onboarding packs satisfy subscription entitlement gates.",
+      });
+
       await provisionPacksForNewOrg(
         orgId,
         initiatorUserId,

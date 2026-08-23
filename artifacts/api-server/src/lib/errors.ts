@@ -164,6 +164,25 @@ export function apiErrorHandler(
     });
     return;
   }
+
+  if (err instanceof Error) {
+    const coded = err as Error & { code?: string; status?: number; statusCode?: number };
+    const statusByCode: Record<string, number> = {
+      APPROVAL_ACTOR_ROLE_UNVERIFIED: 403,
+      EXECUTION_ACCESS_DENIED: 403,
+      RESOURCE_NOT_FOUND: 404,
+      SPECIALIST_DNA_UNAVAILABLE: 503,
+      VALIDATION_ERROR: 422,
+    };
+    const status = coded.status ?? coded.statusCode ?? (coded.code ? statusByCode[coded.code] : undefined);
+    if (coded.code && status) {
+      res.status(status).json({
+        error: { code: coded.code, message: err.message },
+      });
+      return;
+    }
+  }
+
   const isDev = process.env.NODE_ENV !== "production";
   res.status(500).json({
     error: {

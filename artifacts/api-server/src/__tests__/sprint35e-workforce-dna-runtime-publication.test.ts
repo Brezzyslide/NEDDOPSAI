@@ -40,15 +40,19 @@ describe("Sprint 35E workforce DNA runtime publication readiness", () => {
   it("bootstrap runs WorkerProfile, DNA and runtime acceptance before Blueprint acceptance", () => {
     const src = source("scripts/db-bootstrap.ts");
 
+    const subscriptions = src.indexOf("Reconciling onboarding trial subscriptions");
     const workerProfiles = src.indexOf("Reconciling WorkerProfiles and role mappings");
     const dna = src.indexOf("Reconciling published Workforce DNA");
     const acceptance = src.indexOf("Running Workforce runtime acceptance");
     const blueprints = src.indexOf("Running Blueprint bootstrap acceptance");
 
+    expect(subscriptions).toBeGreaterThan(0);
     expect(workerProfiles).toBeGreaterThan(0);
+    expect(workerProfiles).toBeGreaterThan(subscriptions);
     expect(dna).toBeGreaterThan(workerProfiles);
     expect(acceptance).toBeGreaterThan(dna);
     expect(blueprints).toBeGreaterThan(acceptance);
+    expect(src).toContain("reconcileMissingOnboardingTrialSubscriptions");
     expect(src).toContain("assertWorkforceRuntimeAcceptance");
   });
 
@@ -66,5 +70,31 @@ describe("Sprint 35E workforce DNA runtime publication readiness", () => {
     expect(src).toContain("primarySpecialist?: string");
     expect(src).toContain("planData.primarySpecialist ?? planData.assignedSpecialists?.[0]");
     expect(src).not.toContain("const primaryRole = planData.assignedSpecialists?.[0] ?? \"chief_of_staff\"");
+  });
+
+  it("org provisioning creates the subscription gate required by execution entitlements", () => {
+    const src = source("services/orgProvisioningService.ts");
+
+    expect(src).toContain("ensureTrialSubscriptionForOrg");
+    expect(src).toContain("Created during organisation provisioning so onboarding packs satisfy subscription entitlement gates.");
+    expect(src.indexOf("ensureTrialSubscriptionForOrg")).toBeLessThan(src.indexOf("provisionPacksForNewOrg("));
+  });
+
+  it("subscription reconciliation repairs onboarding pack grants that lack subscriptions", () => {
+    const src = source("services/subscriptionProvisioningService.ts");
+
+    expect(src).toContain("reconcileMissingOnboardingTrialSubscriptions");
+    expect(src).toContain("LEFT JOIN tenant_subscriptions");
+    expect(src).toContain("ts.id IS NULL");
+    expect(src).toContain("twp.source IN ('core_auto', 'onboarding_trial')");
+    expect(src).toContain("planCode: row.has_non_core_pack ? \"professional\" : \"foundation\"");
+  });
+
+  it("v1 error handler preserves coded execution-gate failures instead of masking them as 500", () => {
+    const src = source("lib/errors.ts");
+
+    expect(src).toContain("EXECUTION_ACCESS_DENIED: 403");
+    expect(src).toContain("SPECIALIST_DNA_UNAVAILABLE: 503");
+    expect(src).toContain("coded.code && status");
   });
 });

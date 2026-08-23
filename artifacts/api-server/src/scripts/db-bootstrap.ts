@@ -119,6 +119,7 @@ async function main(): Promise<void> {
     { assertBlueprintAcceptance, checkBlueprintAcceptance },
     { seedPlatformDefaults },
     { runSeed },
+    { reconcileMissingOnboardingTrialSubscriptions },
     { seedBuiltInBlueprints },
     { seedCatalogueFromRegistry },
     {
@@ -133,6 +134,7 @@ async function main(): Promise<void> {
     import("../bootstrap/blueprintAcceptance.js"),
     import("../seed-platform-defaults.js"),
     import("../seed.js"),
+    import("../services/subscriptionProvisioningService.js"),
     import("../services/workBlueprintService.js"),
     import("../services/specialistCatalogueService.js"),
     Promise.all([
@@ -185,6 +187,10 @@ async function main(): Promise<void> {
 
     console.log("[db:bootstrap] Seeding commercial/catalogue platform records without sample tenant data");
     await runSeed({ includeSampleTenantData: false });
+
+    console.log("[db:bootstrap] Reconciling onboarding trial subscriptions");
+    const subscriptionResult = await reconcileMissingOnboardingTrialSubscriptions();
+    console.log("[db:bootstrap] Onboarding trial subscription reconciliation complete", subscriptionResult);
 
     console.log("[db:bootstrap] Seeding built-in Blueprints and intent mappings");
     await seedBuiltInBlueprints();
