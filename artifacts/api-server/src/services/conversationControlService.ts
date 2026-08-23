@@ -138,11 +138,15 @@ const CANCEL_PATTERNS = [
 ];
 const PAUSE_PATTERNS = [/\b(pause|hold|leave)\b.*\b(this|that|task|request|for now)\b/i, /\bhold this for now\b/i];
 const RESUME_PATTERNS = [/\b(resume|continue|carry on|restart|go back to)\b/i];
-const APPROVE_PATTERNS = [/^(approved|approve|yes|yep|yeah|ok|okay|go ahead|send it|proceed|do it)\.?$/i];
+const APPROVE_PATTERNS = [
+  /^(approved|approve|yes|yep|yeah|ok|okay|go ahead|send it|proceed|do it)\.?$/i,
+  /^(approved|approve|go ahead|proceed)\b/i,
+];
 const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don'?t proceed|not approved)\.?$/i];
+const ETA_STATUS_PATTERN = /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i;
 const STATUS_PATTERNS = [
   /\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i,
-  /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i,
+  ETA_STATUS_PATTERN,
 ];
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
@@ -317,13 +321,26 @@ export function resolveConversationReference(input: {
         reason: "single_pending_approval",
       };
     }
+    if (approvals.length === 0) {
+      const best = candidates[0];
+      const second = candidates[1];
+      return {
+        intent,
+        resolvedTaskId: best && best.score >= 55 && (!second || best.score - second.score >= 20) ? best.taskId : undefined,
+        confidence: best ? 0.7 : 0.35,
+        ambiguity: "none",
+        candidateTasks: candidates,
+        requiresClarification: false,
+        reason: "no_concrete_pending_approval",
+      };
+    }
     return {
       intent,
-      confidence: approvals.length === 0 ? 0.2 : 0.45,
-      ambiguity: approvals.length > 1 ? "material" : "none",
+      confidence: 0.45,
+      ambiguity: "material",
       candidateTasks: candidates,
       requiresClarification: true,
-      reason: approvals.length > 1 ? "multiple_pending_approvals" : "no_pending_approval",
+      reason: "multiple_pending_approvals",
     };
   }
 

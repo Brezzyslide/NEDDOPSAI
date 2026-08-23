@@ -710,6 +710,13 @@ async function maybeHandleDeterministicControl(input: {
     case "REJECT_ACTION": {
       action = resolution.intent === "APPROVE_ACTION" ? "approve" : "reject";
       mode = "approval_response";
+      if (!resolution.resolvedApprovalId) {
+        const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
+        response = task
+          ? `There is no concrete pending approval request for "${task.title}" right now. Its approval requirements are recorded, and the task is currently ${task.currentState.replace(/_/g, " ")}.`
+          : "There is no concrete pending approval request to apply right now. I have not changed any task state.";
+        break;
+      }
       const result = await resolveSingleApproval({
         organizationId: input.organizationId,
         actorUserId: input.userId,
@@ -740,9 +747,13 @@ async function maybeHandleDeterministicControl(input: {
       action = "status";
       mode = "status_request";
       const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
-      response = task
-        ? `The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`
-        : "I could not resolve which task you want a status update on.";
+      if (task && /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i.test(input.content)) {
+        response = `I do not have a reliable completion estimate yet. The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`;
+      } else {
+        response = task
+          ? `The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`
+          : "I could not resolve which task you want a status update on.";
+      }
       break;
     }
     case "SWITCH_TASK": {

@@ -143,6 +143,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("getMembershipForUser");
     expect(src).toContain("resolveApprovalWithAuthority");
     expect(src).toContain("actorRole: membership.role");
+    expect(src).toContain("no_concrete_pending_approval");
   });
 
   it("approval route accepts one canonical action contract and tolerates legacy decision payloads", () => {
@@ -254,6 +255,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(src).toContain("approvals.length === 1");
     expect(src).toContain("multiple_pending_approvals");
+    expect(src).toContain("approvals.length === 0");
   });
 
   it("conversation approval transitions task state before dispatching execution", () => {
@@ -621,6 +623,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const conversationService = source("services/conversationService.ts");
     const controlService = source("services/conversationControlService.ts");
     const intelligenceService = source("services/conversationIntelligenceService.ts");
+    const ingressService = source("services/messageIngressService.ts");
 
     expect(cosPrompt).toContain("OPERATIONAL FACT GROUNDING");
     expect(cosPrompt).toContain("If the system context does not provide a runtime ETA");
@@ -631,5 +634,15 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(controlService).toContain("completion estimate");
     expect(intelligenceService).toContain("how long");
     expect(intelligenceService).toContain("completion estimate");
+    expect(ingressService).toContain("I do not have a reliable completion estimate yet.");
+  });
+
+  it("conversation approval replies cannot fabricate approval when no concrete approval exists", () => {
+    const controlService = source("services/conversationControlService.ts");
+    const ingressService = source("services/messageIngressService.ts");
+
+    expect(controlService).toContain("/^(approved|approve|go ahead|proceed)\\b/i");
+    expect(ingressService).toContain("There is no concrete pending approval request");
+    expect(ingressService).toContain("I have not changed any task state");
   });
 });
