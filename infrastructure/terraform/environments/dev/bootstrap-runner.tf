@@ -100,6 +100,7 @@ resource "aws_ecs_task_definition" "db_bootstrap" {
       name      = local.bootstrap_container_name
       image     = "${aws_ecr_repository.api.repository_url}:${var.bootstrap_image_tag}"
       essential = true
+      command   = ["node", "--enable-source-maps", "./dist/scripts/db-bootstrap.mjs"]
 
       environment = [
         {
