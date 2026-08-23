@@ -99,7 +99,7 @@ const ACTION_VERBS = [
   "send", "schedule", "audit", "analyse", "analyze", "investigate",
   "organise", "organize", "coordinate", "submit", "complete", "process",
   "assess", "evaluate", "report", "document", "implement", "resolve",
-  "remediate", "fix", "build", "develop", "establish", "set up",
+  "remediate", "fix", "build", "develop", "design", "establish", "set up",
   "remind", "notify", "open", "close", "approve", "request",
   "add", "remove", "assign", "change", "update", "modify",
 ];
@@ -251,6 +251,38 @@ function buildProposedTask(
  */
 const SPECIFIC_DOC_NAME_PATTERN = /\b[A-Za-z][A-Za-z\s]{2,50}\s+(policy|policies|procedure|procedures|sop|standard|standards|guideline|guidelines|protocol|protocols|manual|framework|assessment|plan|register|handbook)\b/i;
 
+const BROAD_PROFESSIONAL_SCOPE_PATTERNS = [
+  /\bstandard\b/i,
+  /\bcomprehensive\b/i,
+  /\ball\s+(relevant|areas?|clauses?|risks?|risk areas?|domains?)\b/i,
+  /\beverything\b/i,
+  /\bfull\s+(scope|template|assessment|review)\b/i,
+  /\byou\s+(can\s+)?(decide|determine|choose|come up with it)\b/i,
+  /\bwhatever\s+(is|would be)\s+(required|relevant|standard|appropriate)\b/i,
+];
+
+const PROFESSIONAL_SCOPE_WORK_PATTERNS = [
+  /\b(template|draft|develop|design|create|prepare|review|assessment|agreement|service agreement|risk assessment|policy|procedure)\b/i,
+];
+
+const PROFESSIONAL_SCOPE_QUESTION_PATTERNS = [
+  /\bwhich\s+(risk areas?|areas?|domains?|clauses?|sections?|topics?)\b/i,
+  /\bspecific\s+(risk areas?|areas?|domains?|clauses?|sections?|topics?)\b/i,
+  /\b(health|safety|financial|environmental|behavioural|behavioral|safeguarding|medication|mobility|community)\b/i,
+];
+
+function hasBroadProfessionalScopeInstruction(text: string): boolean {
+  return matchesAny(BROAD_PROFESSIONAL_SCOPE_PATTERNS, text);
+}
+
+function isProfessionalScopeWork(text: string): boolean {
+  return matchesAny(PROFESSIONAL_SCOPE_WORK_PATTERNS, text);
+}
+
+function isProfessionalScopeClarification(question: string): boolean {
+  return matchesAny(PROFESSIONAL_SCOPE_QUESTION_PATTERNS, question);
+}
+
 function buildClarificationQuestions(
   text: string,
   roles: string[],
@@ -285,7 +317,47 @@ function buildClarificationQuestions(
     questions.push("Which specific policies or procedures should be included?");
   }
 
+  if (hasBroadProfessionalScopeInstruction(text) && isProfessionalScopeWork(text)) {
+    return questions.filter((question) => !isProfessionalScopeClarification(question));
+  }
+
   return questions;
+}
+
+function normalizeClarificationForProfessionalScope(
+  text: string,
+  understanding: ConversationUnderstanding,
+): ConversationUnderstanding {
+  if (
+    !understanding.clarificationRequired ||
+    !hasBroadProfessionalScopeInstruction(text) ||
+    !isProfessionalScopeWork(text)
+  ) {
+    return understanding;
+  }
+
+  const remainingQuestions = understanding.clarificationQuestions
+    .filter((question) => !isProfessionalScopeClarification(question));
+  if (remainingQuestions.length > 0) {
+    return {
+      ...understanding,
+      clarificationRequired: true,
+      clarificationQuestions: remainingQuestions,
+      customerResponse: buildClarificationResponse(text, remainingQuestions),
+    };
+  }
+
+  return {
+    ...understanding,
+    conversationMode: "task_intent",
+    confidence: Math.max(understanding.confidence, 0.82),
+    proposedTask: understanding.proposedTask ?? buildProposedTask(text, understanding.relatedWorkforceRoles),
+    clarificationRequired: false,
+    clarificationQuestions: [],
+    shouldCreateTask: false,
+    shouldUpdateTask: false,
+    customerResponse: buildTaskProposalResponse(text, understanding.relatedWorkforceRoles),
+  };
 }
 
 // ─── Main classifier ──────────────────────────────────────────────────────────
@@ -472,7 +544,7 @@ export function classifyMessage(
 
     if (hasTask && taskState && !["completed", "cancelled", "failed"].includes(taskState)) {
       // Message is about an existing active task
-      return {
+      return normalizeClarificationForProfessionalScope(text, {
         conversationMode: "task_followup",
         confidence: 0.75,
         existingTaskId: ctx.currentTaskId,
@@ -483,7 +555,7 @@ export function classifyMessage(
         requestedTaskAction: "revise",
         relatedWorkforceRoles: roles,
         customerResponse: `I understand you want to refine the current task. ${clarQuestions.length > 0 ? clarQuestions[0] : "What changes would you like to make?"}`,
-      };
+      });
     }
 
     if (hasSufficientInfo) {
@@ -499,7 +571,7 @@ export function classifyMessage(
         customerResponse: buildTaskProposalResponse(text, roles),
       };
     } else {
-      return {
+      return normalizeClarificationForProfessionalScope(text, {
         conversationMode: "task_clarification",
         confidence,
         proposedTask: buildProposedTask(text, roles),
@@ -509,7 +581,7 @@ export function classifyMessage(
         shouldUpdateTask: false,
         relatedWorkforceRoles: roles,
         customerResponse: buildClarificationResponse(text, clarQuestions),
-      };
+      });
     }
   }
 

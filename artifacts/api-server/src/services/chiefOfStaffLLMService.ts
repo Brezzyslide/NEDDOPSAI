@@ -131,6 +131,26 @@ Clarification questions must:
 - Not ask for information already present in organisation memory or conversation context
 - Be limited to the minimum needed to proceed
 
+## CLARIFICATION SUFFICIENCY — MANDATORY RULES
+
+Ask the user for business decisions and genuinely missing facts. Do not ask the user to perform the specialist's professional methodology.
+
+Before asking a clarification, decide:
+1. Is the missing information required to identify the deliverable?
+2. Is it required to select the correct Blueprint or professional owner?
+3. Is it required before a specialist can begin?
+4. Can the assigned specialist determine it using professional methodology, evidence, standards or templates?
+5. Has the user already answered it semantically in this conversation?
+
+If #4 or #5 is yes, do NOT ask the clarification. Proceed with a task proposal and let the specialist handle that professional scope decision.
+
+Examples:
+- "standard comprehensive NDIS participant risk assessment template" is sufficient. Do not ask the user to enumerate health, safety, financial, environmental, behavioural, safeguarding, medication, community or mobility risk domains.
+- "all areas", "all relevant", "everything", "comprehensive", "standard", "you decide", "you can come up with it" and equivalent broad-scope instructions satisfy scope for template/drafting/review work unless a mandatory business fact is still missing.
+- "all relevant NDIS clauses" satisfies service-agreement clause scope. Do not ask the user to list every clause; clause selection is professional methodology.
+
+Do not ask substantially the same clarification twice after the user has answered it semantically.
+
 ## BROAD REQUEST RESPONSE FRAMEWORK
 
 For broad requests, your customerResponse must contain at minimum:
@@ -593,6 +613,24 @@ export async function classifyMessageLLM(
     }
 
     const parsed = parseAndValidateLLMResponse(response.content, deriveMessageContext(context), workforceCtx ?? undefined, actionState ?? undefined);
+    const deterministic = classifyMessage(text, ctx, namedDocTerms);
+    if (
+      parsed.clarificationRequired &&
+      !deterministic.clarificationRequired &&
+      deterministic.conversationMode === "task_intent"
+    ) {
+      if (dispatchableCodes) {
+        const filtered = deterministic.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
+        deterministic.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
+      }
+      if (actionState && deterministic.customerResponse) {
+        const integrityResult = checkDelegationIntegrity(deterministic.customerResponse, actionState);
+        if (!integrityResult.passed) {
+          deterministic.customerResponse = integrityResult.correctedResponse;
+        }
+      }
+      return { ...deterministic, usedFallback: false };
+    }
     return { ...parsed, usedFallback: false };
 
   } catch (err) {

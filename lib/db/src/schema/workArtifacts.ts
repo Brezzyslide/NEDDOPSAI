@@ -26,6 +26,10 @@ export const workArtifactsTable = pgTable("work_artifacts", {
   artifactType: text("artifact_type").notNull(),
   fileFormat: text("file_format").notNull(),
   storageReference: text("storage_reference"),
+  storageProvider: text("storage_provider"),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size"),
+  checksum: text("checksum"),
   version: integer("version").notNull().default(1),
   generationStatus: text("generation_status")
     .$type<WorkArtifactStatus>()

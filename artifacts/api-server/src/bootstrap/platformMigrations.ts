@@ -102,6 +102,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds nullable runtime observability JSONB columns expected by work_package_manifests insert/update paths.",
   },
+  {
+    id: "0037-work-artifact-output-metadata",
+    file: "0037_work_artifact_output_metadata.sql",
+    transactional: true,
+    notes: "Adds nullable generated-artifact metadata fields for Completed Work DOCX/PDF runtime proofs.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

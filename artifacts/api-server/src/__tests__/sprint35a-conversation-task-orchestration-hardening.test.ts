@@ -637,6 +637,19 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(ingressService).toContain("I do not have a reliable completion estimate yet.");
   });
 
+  it("CoS does not push professional methodology scope decisions back to the user", () => {
+    const cosPrompt = source("services/chiefOfStaffLLMService.ts");
+    const intelligenceService = source("services/conversationIntelligenceService.ts");
+
+    expect(cosPrompt).toContain("CLARIFICATION SUFFICIENCY");
+    expect(cosPrompt).toContain("Do not ask the user to perform the specialist's professional methodology");
+    expect(cosPrompt).toContain("all relevant NDIS clauses");
+    expect(cosPrompt).toContain("Do not ask substantially the same clarification twice");
+    expect(intelligenceService).toContain("BROAD_PROFESSIONAL_SCOPE_PATTERNS");
+    expect(intelligenceService).toContain("normalizeClarificationForProfessionalScope");
+    expect(intelligenceService).toContain("isProfessionalScopeClarification");
+  });
+
   it("conversation approval replies cannot fabricate approval when no concrete approval exists", () => {
     const controlService = source("services/conversationControlService.ts");
     const ingressService = source("services/messageIngressService.ts");

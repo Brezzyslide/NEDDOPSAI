@@ -41,6 +41,7 @@ export interface BlueprintRuntimeValidationInput {
   evidencePack?: EvidencePack | null;
   artifactId?: string | null;
   approvalStates?: Record<string, boolean> | null;
+  deferApprovalGate?: boolean;
 }
 
 export interface BlueprintRuntimeValidationResult {
@@ -93,17 +94,19 @@ export function validateBlueprintRuntimeCompletion(
     }
   }
 
-  const requiredApprovals = Object.keys(blueprint.requiredApprovals ?? {});
-  const missingApprovals = requiredApprovals.filter((approval) =>
-    input.approvalStates?.[approval] !== true,
-  );
-  if (missingApprovals.length > 0) {
-    failures.push({
-      gate: "approval_required",
-      state: "awaiting_clarification",
-      message: "Blueprint requires approval before completion.",
-      details: missingApprovals,
-    });
+  if (input.deferApprovalGate !== true) {
+    const requiredApprovals = Object.keys(blueprint.requiredApprovals ?? {});
+    const missingApprovals = requiredApprovals.filter((approval) =>
+      input.approvalStates?.[approval] !== true,
+    );
+    if (missingApprovals.length > 0) {
+      failures.push({
+        gate: "approval_required",
+        state: "awaiting_clarification",
+        message: "Blueprint requires approval before completion.",
+        details: missingApprovals,
+      });
+    }
   }
 
   if (evidenceContract) {

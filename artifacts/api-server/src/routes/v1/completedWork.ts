@@ -35,6 +35,10 @@ import {
   getVersions,
   getAssets,
 } from "../../services/completedWorkService.js";
+import {
+  getGeneratedArtifactDownloadUrl,
+  listCompletedWorkGeneratedArtifacts,
+} from "../../services/completedWorkArtifactService.js";
 import { completedWorkExportService, type ExportFormat } from "../../services/completedWorkExportService.js";
 import type { CompletedWorkStatus } from "@workspace/db";
 
@@ -103,7 +107,8 @@ router.get(
         getAssets(id, ctx.tenantId),
       ]);
       if (!item) { res.status(404).json({ error: "Completed work not found" }); return; }
-      res.json({ completedWork: item, assets });
+      const generatedArtifacts = await listCompletedWorkGeneratedArtifacts(id, ctx.tenantId);
+      res.json({ completedWork: item, assets, generatedArtifacts });
     } catch (err) {
       next(err);
     }
@@ -309,6 +314,40 @@ router.post(
 );
 
 // ─── Export (Sprint 25 Hardening) ─────────────────────────────────────────────
+
+router.get(
+  "/organisations/:slug/completed-work/:id/artifacts",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx    = req.tenantContext!;
+      const { id } = req.params as { id: string };
+      const item = await getCompletedWork(id, ctx.tenantId);
+      if (!item) { res.status(404).json({ error: "Completed work not found" }); return; }
+      const generatedArtifacts = await listCompletedWorkGeneratedArtifacts(id, ctx.tenantId);
+      res.json({ generatedArtifacts });
+    } catch (err) { next(err); }
+  }
+);
+
+router.get(
+  "/organisations/:slug/completed-work/:id/artifacts/:artifactId/download",
+  requireAuth,
+  resolveTenantFromSlug,
+  async (req, res, next) => {
+    try {
+      const ctx = req.tenantContext!;
+      const { id, artifactId } = req.params as { id: string; artifactId: string };
+      const { artifact, downloadUrl } = await getGeneratedArtifactDownloadUrl({
+        organizationId: ctx.tenantId,
+        completedWorkId: id,
+        artifactId,
+      });
+      res.json({ artifact, downloadUrl });
+    } catch (err) { next(err); }
+  }
+);
 
 router.get(
   "/organisations/:slug/completed-work/:id/export",

@@ -57,6 +57,7 @@ import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
 import { reviewDraft } from "./selfReviewService.js";
 import { createDraft, submitForApproval } from "./completedWorkService.js";
+import { generateCompletedWorkArtifacts } from "./completedWorkArtifactService.js";
 import { isTaskCancelled } from "./taskService.js";
 import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
@@ -1472,12 +1473,14 @@ export class UnifiedExecutionEngine {
     });
     tReviewMs = Date.now() - t6;
 
+    const artifactRequired = blueprint?.deliverableContract?.artifactRequired === true;
     const runtimeGate = validateBlueprintRuntimeCompletion({
       contract: blueprintContract,
       contentMarkdown: reviewResult.finalContent,
       rawClaims,
       evidencePack: evidencePack ?? null,
-      artifactId: null,
+      artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+      deferApprovalGate: true,
     });
     if (!runtimeGate.passed) {
       const blockingMessage = runtimeGate.failures
@@ -1515,26 +1518,26 @@ export class UnifiedExecutionEngine {
       };
     }
 
-	    await progress("creating_completed_work");
-		    if (await isTaskCancelledForFinalization(request.taskId, organizationId)) {
-	      updateManifestObservability(manifest.id, {
-	        failureInfo: {
-	          state: "cancelled",
-	          failedStage: "pre_completed_work_cancellation_guard",
-	          rootCause: "Task was cancelled before Completed Work creation.",
-	          retryAvailable: false,
-	        },
-	      }).catch(() => {});
-	      taskSession = closeExecutionSession(taskSession);
-	      ctx.session = taskSession;
-	      return {
-	        outcome: "cancelled",
-	        manifestId: manifest.id,
-	        blueprintCode: blueprint?.code,
-	        message: "Task was cancelled before Completed Work creation. No Completed Work was created.",
-	      };
-	    }
-	    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
+    await progress("creating_completed_work");
+    if (await isTaskCancelledForFinalization(request.taskId, organizationId)) {
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "cancelled",
+          failedStage: "pre_completed_work_cancellation_guard",
+          rootCause: "Task was cancelled before Completed Work creation.",
+          retryAvailable: false,
+        },
+      }).catch(() => {});
+      taskSession = closeExecutionSession(taskSession);
+      ctx.session = taskSession;
+      return {
+        outcome: "cancelled",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message: "Task was cancelled before Completed Work creation. No Completed Work was created.",
+      };
+    }
+    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
 
     const citationRefBySourceId = new Map<string, string>();
     if (evidencePack) {
@@ -1581,10 +1584,89 @@ export class UnifiedExecutionEngine {
       reviewResult,
       createdByUserId: requesterId,
       assetIds,
-      artifactRequired: blueprint?.deliverableContract?.artifactRequired === true,
-      artifactState: blueprint?.deliverableContract?.artifactRequired === true ? "content_drafting" : null,
+      artifactRequired,
+      artifactState: artifactRequired ? "content_drafting" : null,
       artifactId: null,
     });
+
+    let primaryArtifactId: string | null = null;
+    if (artifactRequired) {
+      try {
+        const artifacts = await generateCompletedWorkArtifacts({
+          organizationId,
+          organizationName: "Your Organisation",
+          completedWorkId: completedWork.id,
+          taskId: request.taskId ?? null,
+          conversationId: request.conversationId ?? null,
+          actorUserId: requesterId,
+          primaryFormat: "docx",
+          secondaryFormats: ["pdf"],
+        });
+        primaryArtifactId = artifacts.find((artifact) => artifact.fileFormat === "docx")?.id
+          ?? artifacts[0]?.id
+          ?? null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Unknown artifact generation error";
+        updateManifestObservability(manifest.id, {
+          failureInfo: {
+            state: "failed",
+            failedStage: "artifact_generation",
+            rootCause: message,
+            retryAvailable: true,
+          },
+        }).catch(() => {});
+        taskSession = markSessionError(taskSession, message);
+        ctx.session = taskSession;
+        return {
+          outcome: "validation_failed",
+          manifestId: manifest.id,
+          blueprintCode: blueprint?.code,
+          message: `Artifact generation failed: ${message}`,
+        };
+      }
+
+      const artifactGate = validateBlueprintRuntimeCompletion({
+        contract: blueprintContract,
+        contentMarkdown: reviewResult.finalContent,
+        rawClaims,
+        evidencePack: evidencePack ?? null,
+        artifactId: primaryArtifactId,
+        deferApprovalGate: true,
+      });
+      if (!artifactGate.passed) {
+        const blockingMessage = artifactGate.failures
+          .map((failure) => `${failure.gate}: ${failure.message}`)
+          .join("; ");
+        updateManifestObservability(manifest.id, {
+          failureInfo: {
+            state: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
+              ? "awaiting_clarification"
+              : "failed",
+            failedStage: "post_artifact_completion_gates",
+            rootCause: blockingMessage,
+            retryAvailable: true,
+            clarificationItems: artifactGate.failures
+              .filter((failure) => failure.state === "awaiting_clarification")
+              .map((failure) => ({ name: failure.gate, reason: failure.message })),
+          },
+        }).catch(() => {});
+        taskSession = artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
+          ? closeExecutionSession(taskSession)
+          : markSessionError(taskSession, blockingMessage);
+        ctx.session = taskSession;
+        return {
+          outcome: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
+            ? "awaiting_clarification"
+            : "validation_failed",
+          manifestId: manifest.id,
+          blueprintCode: blueprint?.code,
+          message: `Blueprint completion gates blocked this work after artifact generation: ${blockingMessage}`,
+          clarificationQuestions: artifactGate.failures
+            .filter((failure) => failure.state === "awaiting_clarification")
+            .map((failure) => failure.message),
+        };
+      }
+    }
 
     // ── Sprint 29K.3: Full provenance chain (evidence + claims) ──────────────
     // Sprint 29K.4: Evidence mode gate — skip claim provenance for non-evidence tasks

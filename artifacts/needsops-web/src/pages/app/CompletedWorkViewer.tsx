@@ -89,6 +89,16 @@ interface AssetRow {
   createdAt:   string;
 }
 
+interface GeneratedArtifactRow {
+  id:               string;
+  artifactType:     string;
+  fileFormat:       string;
+  mimeType:         string | null;
+  fileSize:         number | null;
+  generationStatus: string;
+  createdAt:        string;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<WorkStatus, { bg: string; text: string; label: string }> = {
@@ -158,6 +168,16 @@ function timeAgo(d: string) {
   if (ms < 3600000)  return `${Math.floor(ms/60000)}m ago`;
   if (ms < 86400000) return `${Math.floor(ms/3600000)}h ago`;
   return `${Math.floor(ms/86400000)}d ago`;
+}
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const idx = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, idx);
+  return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
+}
+function formatStatus(status: string) {
+  return status.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
 // ─── Approval Modal ───────────────────────────────────────────────────────────
@@ -396,6 +416,64 @@ function EvidenceTab({ assets }: { assets: AssetRow[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function GeneratedArtifactsPanel({
+  artifacts,
+  onDownload,
+  downloadingId,
+}: {
+  artifacts: GeneratedArtifactRow[];
+  onDownload: (artifact: GeneratedArtifactRow) => void;
+  downloadingId: string | null;
+}) {
+  if (artifacts.length === 0) return null;
+
+  const ordered = [...artifacts].sort((a, b) => {
+    const rank = (x: GeneratedArtifactRow) =>
+      x.artifactType === "primary_deliverable" ? 0 :
+      x.artifactType === "secondary_deliverable" ? 1 : 2;
+    return rank(a) - rank(b);
+  });
+
+  return (
+    <div className="mb-4 rounded-xl border border-[#1E3A5F] bg-[#0A1628] p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[#E2E8F0]">Generated artifacts</h2>
+          <p className="text-xs text-[#64748B] mt-0.5">Stored deliverables linked to this Completed Work record.</p>
+        </div>
+        <span className="text-xs text-[#64748B]">{ordered.length} file{ordered.length === 1 ? "" : "s"}</span>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {ordered.map(artifact => {
+          const format = artifact.fileFormat.toUpperCase();
+          const isPrimary = artifact.artifactType === "primary_deliverable";
+          return (
+            <button
+              key={artifact.id}
+              type="button"
+              onClick={() => onDownload(artifact)}
+              disabled={downloadingId === artifact.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-[#1E3A5F] bg-[#112033] px-3 py-3 text-left transition-colors hover:border-[#00D4FF]/40 disabled:opacity-60"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-[#E2E8F0] truncate">
+                  {isPrimary ? "Primary" : "Secondary"} {format}
+                </p>
+                <p className="text-xs text-[#64748B] mt-0.5">
+                  {artifact.fileSize != null ? formatBytes(artifact.fileSize) : "Size pending"} · {formatStatus(artifact.generationStatus)}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-[#00D4FF]">
+                {downloadingId === artifact.id ? "Preparing" : "Download"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1044,6 +1122,7 @@ export default function CompletedWorkViewer() {
   const [promoteModal, setPromoteModal] = useState(false);
   const [toast,        setToast]        = useState<string|null>(null);
   const [printMode,    setPrintMode]    = useState(false);
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -1072,6 +1151,7 @@ export default function CompletedWorkViewer() {
 
   const work     = workData?.completedWork as CompletedWorkItem | undefined;
   const assets   = (workData?.assets ?? []) as AssetRow[];
+  const generatedArtifacts = (workData?.generatedArtifacts ?? []) as GeneratedArtifactRow[];
   const versions = (versionsData?.versions ?? []) as CompletedWorkVersion[];
   const comments = (commentsData?.comments ?? []) as CommentRow[];
 
@@ -1198,6 +1278,36 @@ export default function CompletedWorkViewer() {
       showToast("Export failed — please try again");
     } finally {
       setExportingFmt(null);
+    }
+  }
+
+  async function downloadGeneratedArtifact(artifact: GeneratedArtifactRow) {
+    if (downloadingArtifactId || !work) return;
+    setDownloadingArtifactId(artifact.id);
+    try {
+      const resp = await apiFetch(
+        `/v1/organisations/${slug}/completed-work/${id}/artifacts/${artifact.id}/download`,
+      );
+      if (!resp.ok) {
+        showToast("Artifact download failed — please try again");
+        return;
+      }
+      const payload = await resp.json();
+      if (!payload?.downloadUrl) {
+        showToast("Artifact download is not ready yet");
+        return;
+      }
+      const filename = `${work.title.replace(/[^a-z0-9]/gi, "_")}.${artifact.fileFormat}`;
+      const a = document.createElement("a");
+      a.href = payload.downloadUrl;
+      a.download = filename;
+      a.rel = "noopener noreferrer";
+      a.click();
+      showToast(`Downloading ${artifact.fileFormat.toUpperCase()}`);
+    } catch {
+      showToast("Artifact download failed — please try again");
+    } finally {
+      setDownloadingArtifactId(null);
     }
   }
 
@@ -1373,6 +1483,13 @@ export default function CompletedWorkViewer() {
             <div className="flex-1 min-w-0 max-w-4xl">
               {tab === "work" && (
                 <div>
+                  {!hasBrokenPin && generatedArtifacts.length > 0 && (
+                    <GeneratedArtifactsPanel
+                      artifacts={generatedArtifacts}
+                      onDownload={downloadGeneratedArtifact}
+                      downloadingId={downloadingArtifactId}
+                    />
+                  )}
                   {/* Integrity error — broken modern pin: refuse to show unapproved content */}
                   {hasBrokenPin && (
                     <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/20 border border-red-700/40 text-sm flex items-start gap-2">

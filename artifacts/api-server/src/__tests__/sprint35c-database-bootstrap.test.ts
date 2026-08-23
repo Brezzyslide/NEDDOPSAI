@@ -224,8 +224,12 @@ describe("Sprint 35C database bootstrap foundation", () => {
 
     expect(migrationIds).toContain("0035-runtime-conversation-evidence-rls");
     expect(migrationIds).toContain("0036-work-package-manifest-observability");
+    expect(migrationIds).toContain("0037-work-artifact-output-metadata");
     expect(migrationIds.indexOf("0036-work-package-manifest-observability")).toBe(
       migrationIds.indexOf("0035-runtime-conversation-evidence-rls") + 1,
+    );
+    expect(migrationIds.indexOf("0037-work-artifact-output-metadata")).toBe(
+      migrationIds.indexOf("0036-work-package-manifest-observability") + 1,
     );
   });
 
@@ -243,6 +247,23 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(sql).not.toMatch(/\bTRUNCATE\b/i);
     expect(sql).not.toMatch(/\bDELETE\s+FROM\b/i);
     expect(sql).not.toMatch(/\bUPDATE\s+work_package_manifests\b/i);
+    expect(sql).not.toMatch(/\bNOT\s+NULL\b/i);
+  });
+
+  it("keeps generated artifact metadata migration additive and historical-record safe", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "../../lib/db/migrations/0037_work_artifact_output_metadata.sql"),
+      "utf8",
+    );
+
+    for (const column of ["storage_provider", "mime_type", "file_size", "checksum"]) {
+      expect(sql).toContain(`ADD COLUMN IF NOT EXISTS ${column}`);
+    }
+
+    expect(sql).not.toMatch(/\bDROP\b/i);
+    expect(sql).not.toMatch(/\bTRUNCATE\b/i);
+    expect(sql).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(sql).not.toMatch(/\bUPDATE\s+work_artifacts\b/i);
     expect(sql).not.toMatch(/\bNOT\s+NULL\b/i);
   });
 });
