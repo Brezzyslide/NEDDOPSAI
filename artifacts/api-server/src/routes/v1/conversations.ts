@@ -340,8 +340,10 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
             proposedTask,
             laneContext,
           });
-          createdTasks.push(autoResult);
-          sendEvent({ type: "task_auto_created", ...autoResult });
+          if (!autoResult.reusedExisting) {
+            createdTasks.push(autoResult);
+            sendEvent({ type: "task_auto_created", ...autoResult });
+          }
         }
         if (createdTasks.length > 1) {
           sendEvent({ type: "task_auto_created_batch", tasks: createdTasks });
@@ -437,11 +439,17 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
   try {
     const ctx = req.tenantContext!;
     const user = req.appUser!;
-    const { title, description, priority } = req.body as {
+    const { title, description, priority, idempotencyKey, allowDuplicate } = req.body as {
       title?: string;
       description?: string;
       priority?: string;
+      idempotencyKey?: string;
+      allowDuplicate?: boolean;
     };
+    const requestIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : req.header("Idempotency-Key") ?? req.header("X-Idempotency-Key") ?? undefined;
 
     if (!title || title.trim().length < 3) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "title must be at least 3 characters." } });
@@ -473,6 +481,9 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       description,
       priority: (priority as any) ?? "normal",
       originatingModule: "conversation",
+      conversationId: conv.id,
+      idempotencyKey: requestIdempotencyKey,
+      allowDuplicate: allowDuplicate === true,
     });
 
     // Create (or retrieve) the dedicated task_workroom.
@@ -485,25 +496,27 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
     );
     const workroomConversationId = workroom.id;
 
-    // Post task_created message to the ORIGINAL conversation (user sees it in general chat)
-    await conversationService.addMessage({
-      organizationId: ctx.tenantId,
-      conversationId: conv.id,
-      taskId: result.task.id,
-      senderType: "system",
-      messageType: "task_created",
-      content: `Task created: ${result.task.title}`,
-      structuredContent: {
-        type: "task_created",
-        data: { taskId: result.task.id, title: result.task.title, workroomConversationId },
-      },
-    });
+    if (!result.reusedExisting) {
+      // Post task_created message to the ORIGINAL conversation (user sees it in general chat)
+      await conversationService.addMessage({
+        organizationId: ctx.tenantId,
+        conversationId: conv.id,
+        taskId: result.task.id,
+        senderType: "system",
+        messageType: "task_created",
+        content: `Task created: ${result.task.title}`,
+        structuredContent: {
+          type: "task_created",
+          data: { taskId: result.task.id, title: result.task.title, workroomConversationId },
+        },
+      });
 
-    // Plan card and all subsequent execution messages go into the WORKROOM
-    await conversationService.postPlanToConversation(ctx.tenantId, workroomConversationId, result.task.id, result.plan);
+      // Plan card and all subsequent execution messages go into the WORKROOM
+      await conversationService.postPlanToConversation(ctx.tenantId, workroomConversationId, result.task.id, result.plan);
+    }
 
     // Post approval request card if required; otherwise dispatch work immediately
-    if (result.plan.requiresApproval) {
+    if (!result.reusedExisting && result.plan.requiresApproval) {
       const { db: wdb, approvalsTable: wAt } = await import("@workspace/db");
       const { eq: weq } = await import("drizzle-orm");
       const [approval] = await wdb
@@ -528,7 +541,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
           },
         );
       }
-    } else {
+    } else if (!result.reusedExisting) {
       // No approval required — dispatch work execution immediately in background.
       // Progress, checkpoints, and completion output go into the workroom.
       dispatchWorkExecution({
@@ -555,16 +568,20 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
         workroomConversationId,
         title: result.task.title,
         isGeneralWorkforce,
+        reusedExisting: result.reusedExisting === true,
+        dedupeReason: result.dedupeReason,
       },
       ...meta,
     }).catch(() => {});
 
-    res.status(201).json({
+    res.status(result.reusedExisting ? 200 : 201).json({
       task: result.task,
       plan: result.plan,
       specialists: result.specialists,
       conversationId: conv.id,
       workroomConversationId,
+      reusedExisting: result.reusedExisting === true,
+      dedupeReason: result.dedupeReason,
     });
   } catch (err) { next(err); }
 });

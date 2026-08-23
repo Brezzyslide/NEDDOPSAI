@@ -5,7 +5,7 @@
  * Execution is simulated — no actual AI calls.
  */
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import {
   db,
@@ -27,12 +27,17 @@ export interface CreateTaskInput {
   description?: string;
   priority?: TaskPriority;
   originatingModule?: string;
+  conversationId?: string;
+  idempotencyKey?: string;
+  allowDuplicate?: boolean;
 }
 
 export interface TaskWithPlan {
   task: typeof tasksTable.$inferSelect;
   plan: TaskPlan;
   specialists: (typeof taskSpecialistsTable.$inferSelect)[];
+  reusedExisting?: boolean;
+  dedupeReason?: "idempotency_key" | "conversation_work_intent";
 }
 
 // ─── Valid state transitions ───────────────────────────────────────────────────
@@ -64,6 +69,100 @@ function mergeTaskMetadata(
     ...((current as Record<string, unknown> | null) ?? {}),
     ...patch,
   };
+}
+
+const ACTIVE_TASK_CREATION_STATES: TaskState[] = [
+  "draft",
+  "queued",
+  "planning",
+  "awaiting_approval",
+  "approved",
+  "executing",
+  "failed",
+];
+
+function normaliseIntentText(value: string | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(a|an|the|for|me|please|to|and|with|all|relevant|standard|provider|providers|draft|develop|create|prepare|write|review)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function deriveWorkIntentKey(title: string, description?: string): string {
+  const combined = `${title} ${description ?? ""}`;
+  const normalised = normaliseIntentText(combined);
+  if (/\bndis\b/.test(normalised) && /\bservice agreement\b/.test(normalised)) {
+    return "ndis_service_agreement";
+  }
+  if (/\bservice agreement\b/.test(normalised)) {
+    return "service_agreement";
+  }
+  return createHash("sha256")
+    .update(normalised || title.trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function getCreationMetadata(task: typeof tasksTable.$inferSelect): Record<string, unknown> {
+  const metadata = (task.metadata as Record<string, unknown> | null) ?? {};
+  return (metadata.taskCreation as Record<string, unknown> | undefined) ?? {};
+}
+
+async function hydrateTaskWithPlan(
+  task: typeof tasksTable.$inferSelect,
+  dedupeReason?: TaskWithPlan["dedupeReason"],
+): Promise<TaskWithPlan> {
+  const [planRow, specialists] = await Promise.all([
+    getTaskPlan(task.id),
+    db
+      .select()
+      .from(taskSpecialistsTable)
+      .where(and(
+        eq(taskSpecialistsTable.taskId, task.id),
+        eq(taskSpecialistsTable.organizationId, task.organizationId),
+      )),
+  ]);
+  const plan = (planRow?.planData as TaskPlan | undefined) ?? planTask(task.title, task.description ?? undefined);
+  return { task, plan, specialists, reusedExisting: true, dedupeReason };
+}
+
+async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
+  task: typeof tasksTable.$inferSelect;
+  reason: TaskWithPlan["dedupeReason"];
+} | null> {
+  if (input.allowDuplicate) return null;
+  const idempotencyKey = input.idempotencyKey?.trim();
+  const workIntentKey = input.conversationId
+    ? deriveWorkIntentKey(input.title, input.description)
+    : null;
+  if (!idempotencyKey && !workIntentKey) return null;
+
+  const candidates = await db
+    .select()
+    .from(tasksTable)
+    .where(and(
+      eq(tasksTable.organizationId, input.organizationId),
+      inArray(tasksTable.currentState, ACTIVE_TASK_CREATION_STATES as unknown as string[]),
+    ))
+    .orderBy(desc(tasksTable.createdAt))
+    .limit(100);
+
+  for (const task of candidates) {
+    const creation = getCreationMetadata(task);
+    if (idempotencyKey && creation.idempotencyKey === idempotencyKey) {
+      return { task, reason: "idempotency_key" };
+    }
+    if (
+      workIntentKey &&
+      creation.conversationId === input.conversationId &&
+      creation.workIntentKey === workIntentKey
+    ) {
+      return { task, reason: "conversation_work_intent" };
+    }
+  }
+  return null;
 }
 
 function getApprovalRequirement(task: typeof tasksTable.$inferSelect): { required: boolean; approvalType?: ApprovalType } {
@@ -121,7 +220,20 @@ function mergeTaskSpecification(current: string, changeRequest: string): string 
 // ─── Service functions ────────────────────────────────────────────────────────
 
 export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> {
+  const existing = await findExistingTaskForCreation(input);
+  if (existing) {
+    return hydrateTaskWithPlan(existing.task, existing.reason);
+  }
+
   const taskId = randomUUID();
+  const taskCreation = {
+    idempotencyKey: input.idempotencyKey?.trim() || undefined,
+    conversationId: input.conversationId,
+    workIntentKey: input.conversationId ? deriveWorkIntentKey(input.title, input.description) : undefined,
+    source: input.originatingModule ?? "task_centre",
+    explicitSeparate: input.allowDuplicate === true,
+    createdAt: new Date().toISOString(),
+  };
 
   const taskRow: InsertTask = {
     id: taskId,
@@ -133,7 +245,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     currentState: "queued",
     priority: input.priority ?? "normal",
     approvalState: "not_required",
-    metadata: {},
+    metadata: { taskCreation },
   };
 
   const [task] = await db.insert(tasksTable).values(taskRow).returning();
@@ -150,7 +262,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     .set({
       currentState: "planning",
       approvalState,
-      metadata: buildApprovalRequirement(plan),
+      metadata: mergeTaskMetadata(task.metadata, buildApprovalRequirement(plan)),
       updatedAt: new Date(),
     })
     .where(eq(tasksTable.id, taskId));

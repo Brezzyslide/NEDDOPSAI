@@ -737,6 +737,11 @@ async function startAwsNativeExecution(input: {
     },
   });
 
+  await db
+    .update(tasksTable)
+    .set({ currentState: "executing", updatedAt: now })
+    .where(eq(tasksTable.id, input.task.id));
+
   await persistExecutionEvent({
     executionSessionId: input.pkg.executionId,
     organizationId: input.task.organizationId,
@@ -987,13 +992,7 @@ export async function submitTaskExecution(
     },
   );
 
-  // 4. Transition task to executing
-  await db
-    .update(tasksTable)
-    .set({ currentState: "executing", updatedAt: new Date() })
-    .where(eq(tasksTable.id, input.taskId));
-
-  // 5. AWS-native professional work does not require a desktop OpenClaw broker.
+  // 4. AWS-native professional work does not require a desktop OpenClaw broker.
   //    OpenClaw remains the runtime for browser/local-file/local-application
   //    work and external connector operations.
   if (!requiresOpenClawRuntime(pkg)) {
@@ -1012,7 +1011,7 @@ export async function submitTaskExecution(
     };
   }
 
-  // 6. Check if desktop/runtime broker is configured for broker-required work.
+  // 5. Check if desktop/runtime broker is configured for broker-required work.
   if (!isOpenClawConfigured(config)) {
     // Runtime not configured — create a pending session for when it connects
     await db.insert(executionSessionsTable).values({
@@ -1040,7 +1039,7 @@ export async function submitTaskExecution(
     };
   }
 
-  // 7. Submit broker-required work to OpenClaw.
+  // 6. Submit broker-required work to OpenClaw.
   const result = await engine.submitExecution(pkg);
 
   return {

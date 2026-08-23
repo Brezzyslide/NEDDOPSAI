@@ -62,6 +62,23 @@ function formatRoleName(role: string) {
   return role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
 
+function stableHash(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = Math.imul(31, hash) + value.charCodeAt(i) | 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function buildTaskCreateIdempotencyKey(conversationId: string, title: string, summary: string): string {
+  const normalised = `${title} ${summary}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `conversation-create:${conversationId}:${stableHash(normalised)}`;
+}
+
 function SenderLabel({ senderType, workforceRoleCode }: { senderType: MessageSenderType; workforceRoleCode?: string }) {
   if (senderType === "user") return null;
   const roleName = workforceRoleCode
@@ -564,7 +581,7 @@ export default function WorkforceChatPage() {
   };
 
   const handleCreateTask = async (title: string, summary: string) => {
-    if (!conversationId || !slug) return;
+    if (!conversationId || !slug || creatingTask) return;
 
     // If a task is already linked to this conversation, navigate there directly
     if (linkedTaskId) {
@@ -574,9 +591,14 @@ export default function WorkforceChatPage() {
 
     setCreatingTask(true);
     try {
+      const idempotencyKey = buildTaskCreateIdempotencyKey(conversationId, title, summary);
       const r = await apiFetch(
         `/v1/organisations/${slug}/conversations/${conversationId}/create-task`,
-        { method: "POST", body: JSON.stringify({ title, description: summary }) }
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotencyKey },
+          body: JSON.stringify({ title, description: summary, idempotencyKey }),
+        }
       );
       const d = await r.json();
       if (r.status === 409 && d?.error?.code === "DUPLICATE_TASK") {
@@ -693,15 +715,15 @@ export default function WorkforceChatPage() {
 	                  <div className="flex-1 min-w-0">
 	                    <p className="text-emerald-400 text-xs font-semibold mb-0.5">
 	                      {(autoCreatedTasks.length === 1 ? autoCreatedTasks[0] : autoCreatedTask)?.dispatched
-	                        ? autoCreatedTasks.length > 1 ? "Tasks created & execution started" : "Task created & execution started"
-	                        : autoCreatedTasks.length > 1 ? "Tasks created — awaiting approval where required" : "Task created — awaiting approval"}
+	                        ? autoCreatedTasks.length > 1 ? "Tasks created — queued for execution" : "Task created — queued for execution"
+	                        : autoCreatedTasks.length > 1 ? "Tasks created — readiness recorded" : "Task created — readiness recorded"}
 	                    </p>
 	                    {(autoCreatedTasks.length > 0 ? autoCreatedTasks : [autoCreatedTask!]).map(task => (
 	                      <div key={task.taskId} className="mt-2">
 	                        <p className="text-[#CBD5E1] text-sm font-medium truncate">{task.title}</p>
 	                        {task.requiresApproval && (
 	                          <p className="text-[#64748B] text-xs mt-0.5">
-	                            Review the approval request above to start execution.
+	                            Approval requirements are recorded; a concrete approval request appears only at the required gate.
 	                          </p>
 	                        )}
 	                        <a

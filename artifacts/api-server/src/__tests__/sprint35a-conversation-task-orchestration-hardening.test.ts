@@ -550,4 +550,65 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain(".limit(20)");
     expect(src).not.toContain("limit(1000)");
   });
+
+  it("task creation is protected by canonical idempotency and conversation work-intent matching", () => {
+    const taskService = source("services/taskService.ts");
+    const taskRoute = source("routes/v1/tasks.ts");
+    const conversationRoute = source("routes/v1/conversations.ts");
+    const autoDispatch = source("services/autoDispatchService.ts");
+
+    expect(taskService).toContain("findExistingTaskForCreation");
+    expect(taskService).toContain("deriveWorkIntentKey");
+    expect(taskService).toContain('"ndis_service_agreement"');
+    expect(taskService).toContain("idempotency_key");
+    expect(taskService).toContain("conversation_work_intent");
+    expect(taskService).toContain("allowDuplicate");
+    expect(taskRoute).toContain('req.header("Idempotency-Key")');
+    expect(taskRoute).toContain("reusedExisting");
+    expect(conversationRoute).toContain('req.header("Idempotency-Key")');
+    expect(conversationRoute).toContain("conversationId: conv.id");
+    expect(conversationRoute).toContain("if (!autoResult.reusedExisting)");
+    expect(autoDispatch).toContain("reusedExisting");
+  });
+
+  it("manual create task UX disables retries and sends a stable idempotency key", () => {
+    const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
+
+    expect(src).toContain("buildTaskCreateIdempotencyKey");
+    expect(src).toContain("if (!conversationId || !slug || creatingTask) return");
+    expect(src).toContain('headers: { "Idempotency-Key": idempotencyKey }');
+    expect(src).toContain("body: JSON.stringify({ title, description: summary, idempotencyKey })");
+  });
+
+  it("UI copy distinguishes queued/readiness from actual execution start and concrete approvals", () => {
+    const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
+
+    expect(src).toContain("Task created — queued for execution");
+    expect(src).toContain("Approval requirements are recorded; a concrete approval request appears only at the required gate.");
+    expect(src).not.toContain("Task created & execution started");
+    expect(src).not.toContain("Review the approval request above to start execution.");
+  });
+
+  it("execution submission does not mark broker-pending work as executing before runtime start", () => {
+    const src = source("services/executionService.ts");
+
+    const submitBody = src.slice(src.indexOf("export async function submitTaskExecution"), src.indexOf("// ─── Get execution status"));
+    expect(submitBody).not.toContain('.set({ currentState: "executing"');
+    expect(submitBody).toContain("if (!requiresOpenClawRuntime(pkg))");
+    const awsNativeBody = src.slice(src.indexOf("async function startAwsNativeExecution"), src.indexOf("// ─── Submit execution"));
+    expect(awsNativeBody).toContain('currentStatus: "running"');
+    expect(awsNativeBody).toContain('eventType: "execution.started"');
+    expect(awsNativeBody).toContain('currentState: "executing"');
+  });
+
+  it("CoS and system-authored plan cards cannot invent operational completion ETAs", () => {
+    const cosPrompt = source("services/chiefOfStaffLLMService.ts");
+    const conversationService = source("services/conversationService.ts");
+
+    expect(cosPrompt).toContain("OPERATIONAL FACT GROUNDING");
+    expect(cosPrompt).toContain("If the system context does not provide a runtime ETA");
+    expect(cosPrompt).toContain("Do NOT invent phrases");
+    expect(conversationService).toContain("Runtime completion estimate: not available until execution telemetry provides one.");
+    expect(conversationService).not.toContain("Estimated duration: ${plan.estimatedTotalDuration}");
+  });
 });

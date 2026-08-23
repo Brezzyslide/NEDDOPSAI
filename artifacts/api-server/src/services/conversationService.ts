@@ -774,7 +774,7 @@ export async function postPlanToConversation(
     senderType: "chief_of_staff",
     workforceRoleCode: "chief_of_staff",
     messageType: "plan_proposal",
-    content: `Task created. I am preparing the work plan now.\n\n**Plan: ${plan.taskTitle}**\n${plan.reasoning}\n\nEstimated duration: ${plan.estimatedTotalDuration}. ${plan.requiresApproval ? "This plan requires approval before execution." : "No approval is required."}`,
+    content: `Task created. I am preparing the work plan now.\n\n**Plan: ${plan.taskTitle}**\n${plan.reasoning}\n\nRuntime completion estimate: not available until execution telemetry provides one. ${plan.requiresApproval ? "Approval requirements are recorded; a concrete approval request will be created only at the required gate." : "No approval is required."}`,
     structuredContent: planCard,
   });
 }

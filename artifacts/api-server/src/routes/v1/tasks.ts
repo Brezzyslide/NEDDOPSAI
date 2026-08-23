@@ -38,12 +38,19 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
     const user = req.appUser!;
     const ctx = req.tenantContext!;
-    const { title, description, priority, originatingModule } = req.body as {
+    const { title, description, priority, originatingModule, conversationId, idempotencyKey, allowDuplicate } = req.body as {
       title?: string;
       description?: string;
       priority?: TaskPriority;
       originatingModule?: string;
+      conversationId?: string;
+      idempotencyKey?: string;
+      allowDuplicate?: boolean;
     };
+    const requestIdempotencyKey =
+      typeof idempotencyKey === "string" && idempotencyKey.trim()
+        ? idempotencyKey.trim()
+        : req.header("Idempotency-Key") ?? req.header("X-Idempotency-Key") ?? undefined;
 
     if (!title || typeof title !== "string" || title.trim().length < 3) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "title must be at least 3 characters." } });
@@ -116,13 +123,16 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       description,
       priority,
       originatingModule,
+      conversationId,
+      idempotencyKey: requestIdempotencyKey,
+      allowDuplicate: allowDuplicate === true,
     });
 
     const meta = auditService.getRequestMeta(req);
     await auditService.writeAuditEvent({
       organizationId: ctx.tenantId,
       actorUserId: user.id,
-      eventType: "task.created",
+      eventType: result.reusedExisting ? "task.create_reused_existing" : "task.created",
       resourceType: "task",
       resourceId: result.task.id,
       metadata: {
@@ -130,9 +140,22 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
         planId: result.plan.planId,
         assignedSpecialists: result.plan.assignedSpecialists,
         requiresApproval: result.plan.requiresApproval,
+        reusedExisting: result.reusedExisting === true,
+        dedupeReason: result.dedupeReason,
       },
       ...meta,
     }).catch(() => {});
+
+    if (result.reusedExisting) {
+      res.status(200).json({
+        task: result.task,
+        plan: result.plan,
+        specialists: result.specialists,
+        reusedExisting: true,
+        dedupeReason: result.dedupeReason,
+      });
+      return;
+    }
 
     if (result.plan.requiresApproval) {
       await auditService.writeAuditEvent({
@@ -161,7 +184,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       );
     }
 
-    res.status(201).json({ task: result.task, plan: result.plan, specialists: result.specialists });
+    res.status(201).json({ task: result.task, plan: result.plan, specialists: result.specialists, reusedExisting: false });
   } catch (err) {
     next(err);
   }

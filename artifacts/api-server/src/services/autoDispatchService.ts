@@ -61,6 +61,8 @@ export interface AutoDispatchResult {
   dispatched:       boolean;
   requiresApproval: boolean;
   approvalId?:      string;
+  reusedExisting?:  boolean;
+  dedupeReason?:    "idempotency_key" | "conversation_work_intent";
 }
 
 /**
@@ -92,9 +94,28 @@ export async function autoCreateAndDispatch(
     description,
     priority:          (proposedTask.priority as any) ?? "normal",
     originatingModule: "cos_auto_dispatch",
+    conversationId,
+    idempotencyKey:    `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
   });
 
   const { task, plan } = result;
+  if (result.reusedExisting) {
+    const workroom = await conversationService.getOrCreateWorkroom(
+      organizationId,
+      task.id,
+      requesterId,
+    );
+    return {
+      taskId:                 task.id,
+      title:                  task.title,
+      conversationId,
+      workroomConversationId: workroom.id,
+      dispatched:             false,
+      requiresApproval:       plan.requiresApproval,
+      reusedExisting:         true,
+      dedupeReason:           result.dedupeReason,
+    };
+  }
 
   // 1b. Sprint 29M: persist laneContext in task.metadata so the approval-delayed
   // dispatch path (approvalRoutes.ts) can retrieve it when the task eventually executes.
