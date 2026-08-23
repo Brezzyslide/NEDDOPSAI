@@ -37,6 +37,7 @@ async function buildAll() {
   await esbuild({
     entryPoints: [
       path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/scripts/db-bootstrap.ts"),
       path.resolve(artifactDir, "src/scripts/reconcile-workforce-dna-publication.ts"),
     ],
     platform: "node",
