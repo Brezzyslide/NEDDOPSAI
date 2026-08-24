@@ -108,6 +108,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds nullable generated-artifact metadata fields for Completed Work DOCX/PDF runtime proofs.",
   },
+  {
+    id: "0038-completed-work-approved-version-pin",
+    file: "0038_completed_work_approved_version_pin.sql",
+    transactional: true,
+    notes: "Adds nullable completed_work.approved_version_id expected by approval/export/version pinning paths.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

@@ -217,6 +217,8 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
 
   it("adds additive generated-artifact metadata columns through the platform migration ledger", () => {
     const migration = repoSource("lib/db/migrations/0037_work_artifact_output_metadata.sql");
+    const approvedVersionMigration = repoSource("lib/db/migrations/0038_completed_work_approved_version_pin.sql");
+    const completedWorkSchema = repoSource("lib/db/src/schema/completedWork.ts");
     const schema = repoSource("lib/db/src/schema/workArtifacts.ts");
     const registry = source("bootstrap/platformMigrations.ts");
 
@@ -228,6 +230,9 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(schema).toContain("fileSize");
     expect(schema).toContain("checksum");
     expect(registry).toContain("0037-work-artifact-output-metadata");
+    expect(approvedVersionMigration).toContain("ADD COLUMN IF NOT EXISTS approved_version_id TEXT");
+    expect(completedWorkSchema).toContain('approvedVersionId: text("approved_version_id")');
+    expect(registry).toContain("0038-completed-work-approved-version-pin");
   });
 
   it("treats customer examples as optional for standard comprehensive NDIS risk-assessment templates", () => {

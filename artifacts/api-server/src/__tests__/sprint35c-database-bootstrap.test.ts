@@ -225,11 +225,15 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0035-runtime-conversation-evidence-rls");
     expect(migrationIds).toContain("0036-work-package-manifest-observability");
     expect(migrationIds).toContain("0037-work-artifact-output-metadata");
+    expect(migrationIds).toContain("0038-completed-work-approved-version-pin");
     expect(migrationIds.indexOf("0036-work-package-manifest-observability")).toBe(
       migrationIds.indexOf("0035-runtime-conversation-evidence-rls") + 1,
     );
     expect(migrationIds.indexOf("0037-work-artifact-output-metadata")).toBe(
       migrationIds.indexOf("0036-work-package-manifest-observability") + 1,
+    );
+    expect(migrationIds.indexOf("0038-completed-work-approved-version-pin")).toBe(
+      migrationIds.indexOf("0037-work-artifact-output-metadata") + 1,
     );
   });
 
