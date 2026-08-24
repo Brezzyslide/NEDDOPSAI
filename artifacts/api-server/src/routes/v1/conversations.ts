@@ -29,7 +29,7 @@ import {
   autoCreateAndDispatch,
   AUTO_EXECUTE_CONFIDENCE_THRESHOLD,
 } from "../../services/autoDispatchService.js";
-import { persistConversationFocus } from "../../services/conversationControlService.js";
+import { persistConversationFocus, responseRequestsTaskConfirmation } from "../../services/conversationControlService.js";
 
 const router = Router({ mergeParams: true });
 
@@ -306,8 +306,10 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
     // Sprint 29M: three-lane classifier gates this path — TRANSIENT requests stay in
     // Chat and must NOT enter the work-product lifecycle regardless of CoS signals.
     const isTransientRequest = result.executionClassification?.executionClass === "transient";
+    const waitsForExplicitConfirmation = responseRequestsTaskConfirmation(result.understanding.customerResponse);
     if (
       !isTransientRequest &&
+      !waitsForExplicitConfirmation &&
       (result.understanding.shouldCreateTask || result.actionDecision?.action === "create_new_work") &&
       result.understanding.confidence >= AUTO_EXECUTE_CONFIDENCE_THRESHOLD &&
       result.understanding.proposedTask &&

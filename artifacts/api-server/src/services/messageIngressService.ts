@@ -51,6 +51,7 @@ import {
   modifyTaskFromConversation,
   persistConversationFocus,
   persistConversationConfirmation,
+  responseRequestsTaskConfirmation,
   resolvePendingConfirmationAnswer,
   resolveConversationReference,
   resolveSingleApproval,
@@ -286,8 +287,8 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey);
 
     if (
-      result.understanding.conversationMode === "task_intent" &&
-      result.understanding.proposedTask
+      result.understanding.proposedTask &&
+      responseRequestsTaskConfirmation(result.understanding.customerResponse)
     ) {
       await persistConversationConfirmation({
         organizationId,

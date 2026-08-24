@@ -658,4 +658,44 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(ingressService).toContain("There is no concrete pending approval request");
     expect(ingressService).toContain("I have not changed any task state");
   });
+
+  it("assistant confirmation copy creates a bound pending action and suppresses auto-dispatch", () => {
+    const ingressService = source("services/messageIngressService.ts");
+    const conversationRoute = source("routes/v1/conversations.ts");
+    const controlService = source("services/conversationControlService.ts");
+
+    expect(controlService).toContain("responseRequestsTaskConfirmation");
+    expect(ingressService).toContain("responseRequestsTaskConfirmation(result.understanding.customerResponse)");
+    expect(ingressService).toContain("persistConversationConfirmation({");
+    expect(conversationRoute).toContain("const waitsForExplicitConfirmation = responseRequestsTaskConfirmation(result.understanding.customerResponse)");
+    expect(conversationRoute).toContain("!waitsForExplicitConfirmation");
+  });
+
+  it("new pending confirmations supersede stale conversation actions instead of letting old tasks win", () => {
+    const controlService = source("services/conversationControlService.ts");
+
+    expect(controlService).toContain("PENDING_CONFIRMATION_MAX_AGE_MS");
+    expect(controlService).toContain("supersedePendingConversationConfirmations");
+    expect(controlService).toContain('status: "superseded"');
+    expect(controlService).toContain("newer_confirmation_in_same_conversation");
+  });
+
+  it("failed tasks are not reusable active work-intent dedupe targets for fresh task creation", () => {
+    const taskService = source("services/taskService.ts");
+    const creationStates = taskService.slice(
+      taskService.indexOf("const ACTIVE_TASK_CREATION_STATES"),
+      taskService.indexOf("function normaliseIntentText"),
+    );
+
+    expect(creationStates).not.toContain('"failed"');
+  });
+
+  it("action-state grounding queries persisted task state and exposes it to the CoS prompt", () => {
+    const actionState = source("services/conversationActionStateService.ts");
+
+    expect(actionState).toContain("tasksTable");
+    expect(actionState).toContain("currentState: tasksTable.currentState");
+    expect(actionState).toContain('if (s.taskState === "failed"');
+    expect(actionState).toContain("Authoritative task state");
+  });
 });

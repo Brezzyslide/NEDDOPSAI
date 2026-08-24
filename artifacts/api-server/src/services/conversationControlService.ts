@@ -130,6 +130,8 @@ const OPEN_TASK_STATES: TaskState[] = [
   "executing",
   "failed",
 ];
+const ORG_REFERENCE_TASK_STATES: TaskState[] = OPEN_TASK_STATES.filter(state => state !== "failed");
+const PENDING_CONFIRMATION_MAX_AGE_MS = 30 * 60 * 1000;
 
 const CANCEL_PATTERNS = [
   /\b(cancel|stop|abort|terminate|kill)\b.*\b(task|request|report|work|execution|job|that|this|it)\b/i,
@@ -146,6 +148,8 @@ const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don
 const ETA_STATUS_PATTERN = /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i;
 const STATUS_PATTERNS = [
   /\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i,
+  /\b(has|have).*(specialist|worker|team).*(started|begun|started working|actually started)\b/i,
+  /\b(actually started|started working|begun working)\b/i,
   ETA_STATUS_PATTERN,
 ];
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
@@ -156,6 +160,18 @@ const DECLINE_PATTERNS = [/^(no|nope|no[, ]+don'?t proceed|no[, ]+do not proceed
 
 function matches(patterns: RegExp[], text: string): boolean {
   return patterns.some(pattern => pattern.test(text));
+}
+
+export function responseRequestsTaskConfirmation(text: string | undefined): boolean {
+  if (!text) return false;
+  return /\b(please confirm|confirm to proceed|confirm and i'?ll|would you like me to create|shall i create|reply yes|confirm with yes)\b/i.test(text);
+}
+
+export function isPendingConfirmationActive(confirmation: PendingConversationConfirmation, now = Date.now()): boolean {
+  if (confirmation.status !== "pending") return false;
+  const created = Date.parse(confirmation.createdAt);
+  if (!Number.isFinite(created)) return false;
+  return now - created <= PENDING_CONFIRMATION_MAX_AGE_MS;
 }
 
 export function classifyCanonicalConversationAction(text: string): CanonicalConversationAction {
@@ -421,10 +437,49 @@ export async function getPendingConversationConfirmation(input: {
   for (const row of rows) {
     const sc = row.structuredContent as any;
     if (sc?.type === "conversation_pending_confirmation" && sc.data?.status === "pending") {
-      return { ...sc.data, id: sc.data.id ?? row.id } as PendingConversationConfirmation;
+      const confirmation = { ...sc.data, id: sc.data.id ?? row.id } as PendingConversationConfirmation;
+      if (isPendingConfirmationActive(confirmation)) return confirmation;
     }
   }
   return null;
+}
+
+async function supersedePendingConversationConfirmations(input: {
+  organizationId: string;
+  conversationId: string;
+  supersededById: string;
+  reason: string;
+}): Promise<void> {
+  const rows = await db
+    .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "system_notice"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(100);
+
+  await Promise.all(rows.map(async row => {
+    const sc = row.structuredContent as any;
+    if (sc?.type !== "conversation_pending_confirmation" || sc.data?.status !== "pending") return;
+    const data = {
+      ...(sc.data as Record<string, unknown>),
+      status: "superseded",
+      supersededAt: new Date().toISOString(),
+      supersededById: input.supersededById,
+      supersededReason: input.reason,
+    };
+    await db
+      .update(conversationMessagesTable)
+      .set({ structuredContent: { type: "conversation_pending_confirmation", data }, updatedAt: new Date() })
+      .where(and(
+        eq(conversationMessagesTable.organizationId, input.organizationId),
+        eq(conversationMessagesTable.conversationId, input.conversationId),
+        eq(conversationMessagesTable.id, row.id),
+      ));
+  }));
 }
 
 export async function persistConversationConfirmation(input: {
@@ -452,6 +507,13 @@ export async function persistConversationConfirmation(input: {
     expectedResponse: input.expectedResponse,
     reason: input.reason,
   };
+
+  await supersedePendingConversationConfirmations({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    supersededById: confirmation.id,
+    reason: "newer_confirmation_in_same_conversation",
+  }).catch(() => {});
 
   await db.insert(conversationMessagesTable).values({
     id: randomUUID(),
@@ -626,7 +688,7 @@ export async function getOpenConversationTasks(input: {
   const orgRows = await db
     .select()
     .from(tasksTable)
-    .where(and(eq(tasksTable.organizationId, input.organizationId), inArray(tasksTable.currentState, [...OPEN_TASK_STATES] as unknown as string[])))
+    .where(and(eq(tasksTable.organizationId, input.organizationId), inArray(tasksTable.currentState, [...ORG_REFERENCE_TASK_STATES] as unknown as string[])))
     .orderBy(desc(tasksTable.updatedAt))
     .limit(20);
 

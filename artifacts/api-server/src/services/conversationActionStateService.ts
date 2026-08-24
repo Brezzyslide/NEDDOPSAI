@@ -15,6 +15,7 @@
 
 import { db } from "@workspace/db";
 import {
+  tasksTable,
   taskSpecialistsTable,
   executionIntentsTable,
   completedWorkTable,
@@ -242,6 +243,25 @@ export async function resolveConversationActionState(input: {
   const proposalExists = !!proposalMsg;
 
   // 2. Specialist assignments (only if task exists)
+  let taskState: string | undefined;
+  if (taskId) {
+    try {
+      const [task] = await db
+        .select({ currentState: tasksTable.currentState })
+        .from(tasksTable)
+        .where(
+          and(
+            eq(tasksTable.id, taskId),
+            eq(tasksTable.organizationId, organisationId),
+          )
+        )
+        .limit(1);
+      taskState = task?.currentState;
+    } catch (e) {
+      console.warn("[ActionState] task query failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   let assignedSpecialists: string[] = [];
   if (taskId) {
     try {
@@ -346,18 +366,20 @@ export async function resolveConversationActionState(input: {
   const level = resolveLevel({
     proposalExists,
     taskId,
+    taskState,
     assignedSpecialists,
     executionIntentExists,
     executionStatus,
     // completedWorkId intentionally excluded from level resolution
   });
 
-  return makeState(level, proposalExists, taskId, !!taskId, undefined, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId, completedWork);
+  return makeState(level, proposalExists, taskId, !!taskId, taskState, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId, completedWork);
 }
 
 function resolveLevel(s: {
   proposalExists: boolean;
   taskId?: string;
+  taskState?: string;
   assignedSpecialists: string[];
   executionIntentExists: boolean;
   executionStatus?: string;
@@ -365,6 +387,9 @@ function resolveLevel(s: {
   // Sprint 29H.2: removed `if (s.completedWorkId) return "completed"`.
   // Historical completed work is shown as grounded context (Part D) but does
   // NOT override the active execution state level.
+
+  if (s.taskState === "failed" || s.taskState === "cancelled") return "failed";
+  if (s.taskState === "completed") return "completed";
 
   if (s.executionIntentExists && s.executionStatus) {
     const st = s.executionStatus;
@@ -376,6 +401,8 @@ function resolveLevel(s: {
   }
 
   if (s.taskId) {
+    if (s.taskState === "executing") return "execution_started";
+    if (s.taskState === "awaiting_approval") return "execution_dispatched";
     if (s.assignedSpecialists.length > 0) return "specialist_assigned";
     return "task_created";
   }
@@ -458,6 +485,9 @@ export function buildActionStateSection(state: ConversationActionState): string 
   }
   if (state.executionStatus) {
     lines.push(`Execution status: ${state.executionStatus}`);
+  }
+  if (state.taskState) {
+    lines.push(`Authoritative task state: ${state.taskState}`);
   }
 
   lines.push("", "Allowed claims:");

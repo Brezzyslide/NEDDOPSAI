@@ -78,7 +78,6 @@ const ACTIVE_TASK_CREATION_STATES: TaskState[] = [
   "awaiting_approval",
   "approved",
   "executing",
-  "failed",
 ];
 
 function normaliseIntentText(value: string | undefined): string {

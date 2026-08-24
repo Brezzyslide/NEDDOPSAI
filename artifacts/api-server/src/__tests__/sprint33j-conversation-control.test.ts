@@ -21,7 +21,9 @@ vi.mock("../services/auditService.js", () => ({
 
 import {
   classifyCanonicalConversationAction,
+  isPendingConfirmationActive,
   isLikelyCheckpointAnswer,
+  responseRequestsTaskConfirmation,
   resolvePendingConfirmationAnswer,
   resolveConversationReference,
   type PendingConversationConfirmation,
@@ -326,6 +328,52 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     );
 
     expect(answer.kind).toBe("confirm");
+  });
+
+  it("classifies specialist-start questions as status queries requiring authoritative task state", () => {
+    expect(classifyCanonicalConversationAction("Has the specialist actually started working on it?")).toBe("STATUS_QUERY");
+  });
+
+  it("detects assistant confirmation copy as requiring a bound pending action", () => {
+    expect(responseRequestsTaskConfirmation("Please confirm to proceed.")).toBe(true);
+    expect(responseRequestsTaskConfirmation("Would you like me to create the task and proceed?")).toBe(true);
+    expect(responseRequestsTaskConfirmation("Created. I have opened the work plan.")).toBe(false);
+  });
+
+  it("expires stale pending confirmations so old forensic tasks cannot consume a new bare confirm", () => {
+    const now = Date.parse("2026-08-24T02:34:17Z");
+    const fresh = pendingConfirmation({ createdAt: new Date(now - 5 * 60 * 1000).toISOString() });
+    const stale = pendingConfirmation({ createdAt: "2026-08-23T23:44:06.677Z" });
+
+    expect(isPendingConfirmationActive(fresh, now)).toBe(true);
+    expect(isPendingConfirmationActive(stale, now)).toBe(false);
+  });
+
+  it("live regression guard: bare confirm binds to the active service-agreement confirmation, not an older risk proposal", () => {
+    const serviceAgreement = pendingConfirmation({
+      id: "service-confirm",
+      action: "NEW_TASK",
+      proposedTask: {
+        title: "Draft Compliant NDIS Service Agreement",
+        summary: "Develop a standard compliant NDIS service agreement template.",
+        priority: "high",
+      },
+      createdAt: "2026-08-24T02:34:03.510Z",
+    });
+    const oldRisk = pendingConfirmation({
+      id: "risk-confirm",
+      action: "NEW_TASK",
+      proposedTask: {
+        title: "Design Standard Risk Assessment Template",
+        summary: "Create a standard risk assessment template.",
+        priority: "high",
+      },
+      createdAt: "2026-08-23T23:44:06.677Z",
+    });
+
+    expect(resolvePendingConfirmationAnswer("confirm", serviceAgreement).kind).toBe("confirm");
+    expect(isPendingConfirmationActive(serviceAgreement, Date.parse("2026-08-24T02:34:17Z"))).toBe(true);
+    expect(isPendingConfirmationActive(oldRisk, Date.parse("2026-08-24T02:34:17Z"))).toBe(false);
   });
 
   it("binds no to a pending task proposal without creating or approving anything else", () => {
