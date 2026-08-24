@@ -161,28 +161,26 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       await auditService.writeAuditEvent({
         organizationId: ctx.tenantId,
         actorUserId: user.id,
-        eventType: "approval.requested",
+        eventType: "approval.requirement_recorded",
         resourceType: "task",
         resourceId: result.task.id,
         metadata: { approvalType: result.plan.approvalType },
         ...meta,
       }).catch(() => {});
-    } else {
-      // Sprint 27: no approval required — dispatch execution immediately in background.
-      // No conversationId here (task created outside a conversation); the pipeline will
-      // still run and produce completed_work. If the user navigates to the task workroom,
-      // the resolved conversation will receive a completion message.
-      dispatchWorkExecution({
-        organizationId: ctx.tenantId,
-        taskId: result.task.id,
-        taskTitle: result.task.title,
-        taskDescription: description,
-        requesterId: user.id,
-        conversationId: undefined,
-      }).catch(err =>
-        console.warn("[tasks] Background dispatch failed (non-fatal):", err?.message),
-      );
     }
+
+    // Sprint 27+: dispatch execution immediately. Approval-required plans create
+    // concrete pending approvals only at the later actionable/completed-work gate.
+    dispatchWorkExecution({
+      organizationId: ctx.tenantId,
+      taskId: result.task.id,
+      taskTitle: result.task.title,
+      taskDescription: description,
+      requesterId: user.id,
+      conversationId: undefined,
+    }).catch(err =>
+      console.warn("[tasks] Background dispatch failed (non-fatal):", err?.message),
+    );
 
     res.status(201).json({ task: result.task, plan: result.plan, specialists: result.specialists, reusedExisting: false });
   } catch (err) {

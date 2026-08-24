@@ -12,6 +12,7 @@ import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
+import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
 import { cancelTaskExecution } from "../../services/executionService.js";
 import { listCompletedWork, getCompletedWork } from "../../services/completedWorkService.js";
 import { listCompletedWorkGeneratedArtifacts } from "../../services/completedWorkArtifactService.js";
@@ -355,6 +356,7 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
 
     let responseContent = "";
     let newState: TaskState | null = null;
+    let dispatchAfterCommand = false;
 
     switch (command) {
       case "approve_plan":
@@ -363,7 +365,29 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
           res.status(422).json({ error: { code: "INVALID_TRANSITION", message: `Cannot approve plan when task is in state: ${task.currentState}.` } });
           return;
         }
+        {
+          const [pendingApproval] = await db
+            .select({ id: approvalsTable.id })
+            .from(approvalsTable)
+            .where(and(
+              eq(approvalsTable.organizationId, ctx.tenantId),
+              eq(approvalsTable.taskId, taskId),
+              eq(approvalsTable.state, "pending"),
+            ))
+            .limit(1);
+          if (pendingApproval) {
+            res.status(409).json({
+              error: {
+                code: "PENDING_APPROVAL_REQUIRED",
+                message: "This task has a concrete pending approval request. Resolve that approval rather than using approve_plan.",
+                approvalId: pendingApproval.id,
+              },
+            });
+            return;
+          }
+        }
         newState = "approved";
+        dispatchAfterCommand = true;
         responseContent = "Plan approved. The task is now queued for execution.";
         break;
 
@@ -434,6 +458,19 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
         metadata: { command, newState: "cancelled" },
         ...meta,
       }).catch(() => {});
+    }
+
+    if (dispatchAfterCommand) {
+      dispatchWorkExecution({
+        organizationId: ctx.tenantId,
+        taskId,
+        taskTitle: task.title,
+        taskDescription: task.description ?? undefined,
+        requesterId: user.id,
+        conversationId: conv.id,
+      }).catch(err =>
+        console.warn("[taskWorkroom] Post-approval dispatch failed (non-fatal):", err?.message),
+      );
     }
 
     // Post result to conversation thread

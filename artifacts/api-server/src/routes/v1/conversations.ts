@@ -530,35 +530,10 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       await conversationService.postPlanToConversation(ctx.tenantId, workroomConversationId, result.task.id, result.plan);
     }
 
-    // Post approval request card if required; otherwise dispatch work immediately
-    if (!result.reusedExisting && result.plan.requiresApproval) {
-      const { db: wdb, approvalsTable: wAt } = await import("@workspace/db");
-      const { eq: weq } = await import("drizzle-orm");
-      const [approval] = await wdb
-        .select()
-        .from(wAt)
-        .where(weq(wAt.taskId, result.task.id))
-        .limit(1)
-        .catch(() => [undefined]);
-
-      if (approval) {
-        await conversationService.postApprovalRequestToConversation(
-          ctx.tenantId,
-          workroomConversationId,   // ← workroom, not general chat
-          result.task.id,
-          approval.id,
-          {
-            requestedAction: `Execute: ${result.task.title}`,
-            requestingRole: "Chief of Staff",
-            reason: result.plan.reasoning,
-            riskLevel: "medium",
-            approvalType: result.plan.approvalType,
-          },
-        );
-      }
-    } else if (!result.reusedExisting) {
-      // No approval required — dispatch work execution immediately in background.
-      // Progress, checkpoints, and completion output go into the workroom.
+    if (!result.reusedExisting) {
+      // Dispatch work execution immediately in background. `plan.requiresApproval`
+      // records future approval requirements; a concrete pending approval row is
+      // created only when an actual approval gate is reached.
       dispatchWorkExecution({
         organizationId: ctx.tenantId,
         taskId: result.task.id,

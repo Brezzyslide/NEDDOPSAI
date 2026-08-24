@@ -199,6 +199,48 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).not.toContain("approvalsTable");
   });
 
+  it("manual conversation create dispatches work even when future approval is required", () => {
+    const src = source("routes/v1/conversations.ts");
+    const handler = src.slice(
+      src.indexOf('router.post("/:conversationId/create-task"'),
+      src.indexOf('router.get("/:conversationId/execution-stream"'),
+    );
+
+    expect(handler).toContain("Dispatch work execution immediately in background");
+    expect(handler).toContain("plan.requiresApproval");
+    expect(handler).toContain("future approval requirements");
+    expect(handler).toContain("concrete pending approval row is");
+    expect(handler).toContain("dispatchWorkExecution({");
+    expect(handler).toContain("conversationId: workroomConversationId");
+    expect(handler).not.toContain("postApprovalRequestToConversation");
+    expect(handler).not.toContain("approvalsTable");
+  });
+
+  it("direct task creation records future approval requirements without blocking dispatch", () => {
+    const src = source("routes/v1/tasks.ts");
+    const handler = src.slice(src.indexOf('router.post("/",'), src.indexOf('router.get("/:taskId"'));
+
+    expect(handler).toContain('eventType: "approval.requirement_recorded"');
+    expect(handler).toContain("concrete pending approvals only at the later actionable/completed-work gate");
+    expect(handler).toContain("dispatchWorkExecution({");
+    expect(handler).not.toContain('eventType: "approval.requested"');
+    expect(handler).not.toContain("postApprovalRequestToConversation");
+  });
+
+  it("workroom approve_plan dispatches only when no concrete pending approval exists", () => {
+    const src = source("routes/v1/taskWorkroom.ts");
+    const handler = src.slice(src.indexOf('case "approve_plan"'), src.indexOf('case "reject_plan"'));
+    const dispatchIndex = src.indexOf("if (dispatchAfterCommand)");
+
+    expect(handler).toContain("approvalsTable");
+    expect(handler).toContain('eq(approvalsTable.state, "pending")');
+    expect(handler).toContain("PENDING_APPROVAL_REQUIRED");
+    expect(handler).toContain("Resolve that approval rather than using approve_plan");
+    expect(handler).toContain("dispatchAfterCommand = true");
+    expect(dispatchIndex).toBeGreaterThan(src.indexOf('case "approve_plan"'));
+    expect(src.slice(dispatchIndex)).toContain("dispatchWorkExecution({");
+  });
+
   it("workroom approval UI sends the backend's canonical action payload", () => {
     const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
 
