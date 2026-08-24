@@ -13,6 +13,8 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
 import { cancelTaskExecution } from "../../services/executionService.js";
+import { listCompletedWork, getCompletedWork } from "../../services/completedWorkService.js";
+import { listCompletedWorkGeneratedArtifacts } from "../../services/completedWorkArtifactService.js";
 import * as auditService from "../../services/auditService.js";
 import { handleIncomingMessage } from "../../services/messageIngressService.js";
 import { db } from "@workspace/db";
@@ -20,6 +22,7 @@ import {
   approvalsTable,
   taskExecutionPlansTable,
   conversationMessagesTable,
+  workArtifactsTable,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import type { TaskState } from "@workspace/shared";
@@ -43,6 +46,39 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
     const conv = await conversationService.getOrCreateWorkroom(ctx.tenantId, taskId, user.id);
     const messages = await conversationService.getMessages(ctx.tenantId, conv.id, { limit: 100 });
     const unreadCount = await conversationService.getUnreadCount(ctx.tenantId, conv.id, user.id);
+    const taskMetadata = (task.metadata as Record<string, unknown> | null) ?? {};
+    const completedWorkIds = new Set<string>();
+    const executionCompletion = taskMetadata.executionCompletion as Record<string, unknown> | undefined;
+    const approvalGate = taskMetadata.approvalGate as Record<string, unknown> | undefined;
+    if (typeof executionCompletion?.completedWorkId === "string") completedWorkIds.add(executionCompletion.completedWorkId);
+    if (typeof approvalGate?.completedWorkId === "string") completedWorkIds.add(approvalGate.completedWorkId);
+
+    const artifactLinks = await db
+      .select({ completedWorkId: workArtifactsTable.completedWorkId })
+      .from(workArtifactsTable)
+      .where(and(
+        eq(workArtifactsTable.organizationId, ctx.tenantId),
+        eq(workArtifactsTable.taskId, taskId),
+      ));
+    for (const link of artifactLinks) {
+      if (link.completedWorkId) completedWorkIds.add(link.completedWorkId);
+    }
+
+    const conversationWork = await listCompletedWork(ctx.tenantId, {
+      conversationId: conv.id,
+      limit: 20,
+    });
+    for (const item of conversationWork) completedWorkIds.add(item.id);
+
+    const completedWork = await Promise.all(
+      Array.from(completedWorkIds).map(async (completedWorkId) => {
+        const item = conversationWork.find(work => work.id === completedWorkId)
+          ?? await getCompletedWork(completedWorkId, ctx.tenantId);
+        if (!item) return null;
+        const generatedArtifacts = await listCompletedWorkGeneratedArtifacts(item.id, ctx.tenantId);
+        return { ...item, generatedArtifacts };
+      }),
+    );
 
     // Pending approval
     const [approval] = await db
@@ -58,6 +94,7 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
       messages,
       unreadCount,
       pendingApproval: approval ?? null,
+      completedWork: completedWork.filter(Boolean),
     });
   } catch (err) { next(err); }
 });

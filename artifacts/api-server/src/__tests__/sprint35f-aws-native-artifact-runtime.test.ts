@@ -189,6 +189,32 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(viewer).toContain("/artifacts/${artifact.id}/download");
   });
 
+  it("surfaces Completed Work and generated artifacts directly in the task workroom", () => {
+    const route = source("routes/v1/taskWorkroom.ts");
+    const page = repoSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+
+    expect(route).toContain("listCompletedWorkGeneratedArtifacts");
+    expect(route).toContain("workArtifactsTable.taskId");
+    expect(route).toContain("completedWork: completedWork.filter(Boolean)");
+    expect(page).toContain("Completed Work");
+    expect(page).toContain("handleDownloadArtifact");
+    expect(page).toContain("/artifacts/${artifact.id}/download");
+    expect(page).toContain("Word");
+    expect(page).toContain("PDF");
+  });
+
+  it("finalises the task when approved Completed Work matches the execution approval gate", () => {
+    const taskService = source("services/taskService.ts");
+    const route = source("routes/v1/completedWork.ts");
+
+    expect(taskService).toContain("export async function reconcileTaskCompletedWorkApproval");
+    expect(taskService).toContain("linkedCompletedWorkId !== input.completedWorkId");
+    expect(taskService).toContain('currentState: "completed"');
+    expect(taskService).toContain('approvalState: "approved"');
+    expect(route).toContain("reconcileTaskCompletedWorkApproval");
+    expect(route).toContain("listCompletedWorkGeneratedArtifacts(id, ctx.tenantId)");
+  });
+
   it("adds additive generated-artifact metadata columns through the platform migration ledger", () => {
     const migration = repoSource("lib/db/migrations/0037_work_artifact_output_metadata.sql");
     const schema = repoSource("lib/db/src/schema/workArtifacts.ts");

@@ -566,6 +566,61 @@ export async function reconcileTaskExecutionSuccess(input: {
   return { status: "completed", task: updated };
 }
 
+export async function reconcileTaskCompletedWorkApproval(input: {
+  taskId?: string | null;
+  organizationId: string;
+  completedWorkId: string;
+  completedWorkStatus: string;
+  approvedByUserId: string;
+}): Promise<{ status: "completed" | "cancelled" | "not_applicable" | "not_found" | "not_ready"; task?: typeof tasksTable.$inferSelect }> {
+  if (!input.taskId) return { status: "not_applicable" };
+  if (input.completedWorkStatus !== "approved") return { status: "not_ready" };
+
+  const task = await getTaskById(input.taskId, input.organizationId);
+  if (!task) return { status: "not_found" };
+  if (task.currentState === "cancelled") return { status: "cancelled", task };
+  if (task.currentState === "completed") return { status: "completed", task };
+
+  const metadata = (task.metadata as Record<string, unknown> | null) ?? {};
+  const approvalGate = metadata.approvalGate as Record<string, unknown> | undefined;
+  const executionCompletion = metadata.executionCompletion as Record<string, unknown> | undefined;
+  const linkedCompletedWorkId =
+    typeof approvalGate?.completedWorkId === "string" ? approvalGate.completedWorkId
+    : typeof executionCompletion?.completedWorkId === "string" ? executionCompletion.completedWorkId
+    : null;
+  if (linkedCompletedWorkId !== input.completedWorkId) return { status: "not_ready", task };
+
+  const now = new Date();
+  const [updated] = await db
+    .update(tasksTable)
+    .set({
+      currentState: "completed",
+      approvalState: "approved",
+      metadata: mergeTaskMetadata(task.metadata, {
+        completedWorkApproval: {
+          completedWorkId: input.completedWorkId,
+          approvedByUserId: input.approvedByUserId,
+          approvedAt: now.toISOString(),
+        },
+        executionCompletion: {
+          ...((executionCompletion as Record<string, unknown> | undefined) ?? {}),
+          completedWorkId: input.completedWorkId,
+          completedWorkStatus: input.completedWorkStatus,
+          completedAt: now.toISOString(),
+        },
+      }),
+      updatedAt: now,
+    })
+    .where(and(
+      eq(tasksTable.id, input.taskId),
+      eq(tasksTable.organizationId, input.organizationId),
+      inArray(tasksTable.currentState, ["awaiting_approval", "approved", "executing", "failed"]),
+    ))
+    .returning();
+
+  return updated ? { status: "completed", task: updated } : { status: "not_ready", task };
+}
+
 export async function reconcileTaskExecutionFailure(input: {
   taskId?: string;
   organizationId: string;

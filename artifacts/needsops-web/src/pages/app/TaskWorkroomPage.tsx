@@ -82,6 +82,28 @@ interface Approval {
   expiresAt?: string;
 }
 
+interface GeneratedArtifact {
+  id: string;
+  fileFormat: "docx" | "pdf";
+  artifactType: string;
+  mimeType: string;
+  fileSize: number;
+  generationStatus: string;
+  createdAt?: string;
+}
+
+interface CompletedWorkSummary {
+  id: string;
+  title: string;
+  status: string;
+  primarySpecialist: string;
+  artifactState: string | null;
+  artifactRequired: boolean;
+  approvedAt?: string | null;
+  updatedAt: string;
+  generatedArtifacts: GeneratedArtifact[];
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
 const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string }> = {
@@ -387,16 +409,22 @@ function TaskSidePanel({
   task,
   plan,
   pendingApproval,
+  completedWork,
   onCommand,
   commandLoading,
+  onDownloadArtifact,
+  downloadingArtifactId,
   orgSlug,
   taskId,
 }: {
   task: Task;
   plan: Plan | null;
   pendingApproval: Approval | null;
+  completedWork: CompletedWorkSummary[];
   onCommand: (cmd: string) => void;
   commandLoading: boolean;
+  onDownloadArtifact: (work: CompletedWorkSummary, artifact: GeneratedArtifact) => void;
+  downloadingArtifactId: string | null;
   orgSlug: string;
   taskId: string;
 }) {
@@ -510,6 +538,50 @@ function TaskSidePanel({
         </div>
       )}
 
+      {/* Completed Work */}
+      {completedWork.length > 0 && (
+        <div className="p-4 border-b border-[#1E3A5F]">
+          <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Completed Work</p>
+          <div className="space-y-3">
+            {completedWork.map(work => (
+              <div key={work.id} className="space-y-2">
+                <div>
+                  <p className="text-[#E2E8F0] text-xs font-semibold leading-snug">{work.title}</p>
+                  <p className="text-[#64748B] text-xs mt-1">
+                    {work.status.replace(/_/g, " ")}
+                    {work.primarySpecialist ? ` · ${work.primarySpecialist.replace(/_/g, " ")}` : ""}
+                  </p>
+                </div>
+                {work.generatedArtifacts.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {work.generatedArtifacts.map(artifact => (
+                      <button
+                        key={artifact.id}
+                        onClick={() => onDownloadArtifact(work, artifact)}
+                        disabled={artifact.generationStatus !== "stored" || downloadingArtifactId === artifact.id}
+                        className="text-left rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#CBD5E1] hover:border-[#00D4FF]/50 disabled:opacity-50 transition-colors"
+                        title={`${artifact.fileFormat.toUpperCase()} · ${Math.max(1, Math.round((artifact.fileSize ?? 0) / 1024))} KB`}
+                      >
+                        <span className="block text-[#00D4FF] font-semibold">
+                          {artifact.fileFormat === "docx" ? "Word" : "PDF"}
+                        </span>
+                        <span className="text-[#64748B]">
+                          {downloadingArtifactId === artifact.id
+                            ? "Preparing…"
+                            : `${Math.max(1, Math.round((artifact.fileSize ?? 0) / 1024))} KB`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[#64748B] text-xs">Artifacts are not ready yet.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sprint 9.5: Specialist Runs */}
       <div className="p-4">
         <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Specialist Runs</p>
@@ -534,6 +606,7 @@ export default function TaskWorkroomPage() {
   const [input, setInput] = useState("");
   const [approving, setApproving] = useState(false);
   const [commandLoading, setCommandLoading] = useState(false);
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -550,6 +623,7 @@ export default function TaskWorkroomPage() {
   const task: Task | undefined = data?.task;
   const plan: Plan | null = data?.plan ?? null;
   const pendingApproval: Approval | null = data?.pendingApproval ?? null;
+  const completedWork: CompletedWorkSummary[] = data?.completedWork ?? [];
 
   useEffect(() => {
     if (data?.messages) {
@@ -716,6 +790,31 @@ export default function TaskWorkroomPage() {
     finally { setCommandLoading(false); }
   };
 
+  const handleDownloadArtifact = async (work: CompletedWorkSummary, artifact: GeneratedArtifact) => {
+    if (!slug || downloadingArtifactId) return;
+    setDownloadingArtifactId(artifact.id);
+    try {
+      const resp = await apiFetch(
+        `/v1/organisations/${slug}/completed-work/${work.id}/artifacts/${artifact.id}/download`,
+      );
+      const payload = await resp.json();
+      if (!resp.ok || !payload?.downloadUrl) {
+        setError("Artifact download is not ready.");
+        return;
+      }
+      const filename = `${work.title.replace(/[^a-z0-9]/gi, "_")}.${artifact.fileFormat}`;
+      const a = document.createElement("a");
+      a.href = payload.downloadUrl;
+      a.download = filename;
+      a.rel = "noopener noreferrer";
+      a.click();
+    } catch {
+      setError("Artifact download failed.");
+    } finally {
+      setDownloadingArtifactId(null);
+    }
+  };
+
   if (isLoading) {
     return (
       <AppShell orgSlug={slug ?? ""}>
@@ -851,8 +950,11 @@ export default function TaskWorkroomPage() {
           task={task}
           plan={plan}
           pendingApproval={pendingApproval}
+          completedWork={completedWork}
           onCommand={handleCommand}
           commandLoading={commandLoading}
+          onDownloadArtifact={handleDownloadArtifact}
+          downloadingArtifactId={downloadingArtifactId}
           orgSlug={slug ?? ""}
           taskId={taskId ?? ""}
         />

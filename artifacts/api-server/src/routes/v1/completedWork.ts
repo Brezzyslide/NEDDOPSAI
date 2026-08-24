@@ -39,6 +39,7 @@ import {
   getGeneratedArtifactDownloadUrl,
   listCompletedWorkGeneratedArtifacts,
 } from "../../services/completedWorkArtifactService.js";
+import { reconcileTaskCompletedWorkApproval } from "../../services/taskService.js";
 import { completedWorkExportService, type ExportFormat } from "../../services/completedWorkExportService.js";
 import type { CompletedWorkStatus } from "@workspace/db";
 
@@ -181,6 +182,17 @@ router.post(
       const user   = req.appUser!;
       const { id } = req.params as { id: string };
       const item   = await approve(id, ctx.tenantId, user.id);
+      const artifacts = await listCompletedWorkGeneratedArtifacts(id, ctx.tenantId);
+      const taskIds = Array.from(new Set(artifacts.map(artifact => artifact.taskId).filter((value): value is string => typeof value === "string" && value.length > 0)));
+      await Promise.all(taskIds.map(taskId =>
+        reconcileTaskCompletedWorkApproval({
+          taskId,
+          organizationId: ctx.tenantId,
+          completedWorkId: id,
+          completedWorkStatus: item.status,
+          approvedByUserId: user.id,
+        }).catch(() => null),
+      ));
       res.json({ completedWork: item });
     } catch (err) { next(err); }
   }
