@@ -197,6 +197,32 @@ function docxDeliverable(
   };
 }
 
+function xlsxDeliverable(
+  primaryDeliverable: string,
+  namingConvention: string,
+  allowedInternalAnalysis: string[] = [],
+  prohibitedDeliverables: string[] = [],
+  secondaryFormats: string[] = [],
+) {
+  return {
+    primaryDeliverable,
+    secondaryDeliverables: secondaryFormats,
+    allowedInternalAnalysis,
+    prohibitedDeliverables,
+    artifactRequired: true,
+    primaryFormat: "xlsx",
+    secondaryFormats,
+    namingConvention,
+    templateRequired: false,
+    completionRequirements: [
+      "all_required_sections",
+      "material_evidence_reviewed",
+      "unresolved_gaps_flagged",
+      "artifact_generated",
+    ],
+  };
+}
+
 function structuredAnalysisDeliverable(
   primaryDeliverable: string,
   allowedInternalAnalysis: string[] = [],
@@ -7826,7 +7852,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     futureOwnerRoleCode: "financial_planning_reporting_manager",
     professionalAuthority: "needsops_ai",
     supportingSpecialists: ["finance_officer", "payroll_workforce_cost_officer", "operations_manager", "knowledge_documentation_specialist"],
-    deliverableContract: structuredAnalysisDeliverable("financial_planning_forecasting_management_reporting_review", ["forecast_review", "budget_variance_review", "management_reporting_review", "scenario_analysis", "cashflow_forecast_review", "financial_target_tracking"], ["budget_approval", "expenditure_approval", "investment_approval", "borrowing_approval", "hiring_approval", "service_expansion_approval", "marketing_spend_approval", "payment_execution", "accounting_system_mutation", "forecast_external_publication", "audit_certification", "tax_advice", "legal_advice"]),
+    deliverableContract: xlsxDeliverable("financial_planning_forecasting_management_reporting_workbook", "FINANCIAL_PLANNING_REPORTING_{scope}_{date}", ["forecast_review", "budget_variance_review", "management_reporting_review", "scenario_analysis", "cashflow_forecast_review", "financial_target_tracking"], ["budget_approval", "expenditure_approval", "investment_approval", "borrowing_approval", "hiring_approval", "service_expansion_approval", "marketing_spend_approval", "payment_execution", "accounting_system_mutation", "forecast_external_publication", "audit_certification", "tax_advice", "legal_advice"]),
     evidenceContract: financialPlanningReportingEvidence(["reconciled_actuals", "budget", "forecast", "assumption_register", "cashflow_forecast"], ["financial_record", "management_account", "profit_and_loss", "balance_sheet", "general_ledger", "trial_balance", "reconciliation_report", "revenue_record", "service_revenue_record", "operating_cost_record", "workforce_cost_record", "payroll_record", "cashflow_record", "bank_balance", "restricted_cash_record", "receivable_record", "accounts_payable", "payable_record", "statutory_obligation_record", "debt_record", "lease_record", "prior_forecast", "reforecast", "budget_or_forecast", "financial_target", "strategic_plan", "business_plan", "service_plan", "workforce_plan", "scenario_assumption", "pricing_assumption", "service_volume_assumption", "staffing_assumption", "contract_commitment", "supplier_cost_record", "growth_assumption", "timing_assumption", "participant_record", "customer_record", "utilisation_record", "service_capacity_record", "workforce_capacity_record", "market_source", "current_authority"], [], 5, "block_completion"),
     sections: FPR_SECTIONS,
     requiredLibraryKnowledge: ["budget_forecast_assumptions", "management_reporting_framework", "financial_reporting_framework", "current_authority_doctrine"],

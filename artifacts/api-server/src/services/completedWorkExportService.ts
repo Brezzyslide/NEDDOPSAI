@@ -11,6 +11,7 @@
  *         MarkdownExporter  → string (UTF-8 text)
  *         PdfExporter       → Buffer (via pdfkit)
  *         DocxExporter      → Buffer (via docx)
+ *         XlsxExporter      → Buffer (minimal OOXML workbook)
  *     → Logs export audit event
  *     → Returns { buffer, mimeType, filename }
  *
@@ -540,10 +541,261 @@ export class DocxExporter {
   }
 }
 
+// ─── XLSX Exporter ────────────────────────────────────────────────────────────
+
+export class XlsxExporter {
+  export(doc: IntermediateDocument): ExportResult {
+    const rows = documentToWorksheetRows(doc);
+    const worksheet = buildWorksheetXml(rows);
+    const workbook = zipStore({
+      "[Content_Types].xml": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`,
+        `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`,
+        `<Default Extension="xml" ContentType="application/xml"/>`,
+        `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`,
+        `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`,
+        `<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>`,
+        `<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>`,
+        `</Types>`,
+      ].join(""),
+      "_rels/.rels": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`,
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>`,
+        `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>`,
+        `<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>`,
+        `</Relationships>`,
+      ].join(""),
+      "xl/workbook.xml": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`,
+        `<sheets><sheet name="Completed Work" sheetId="1" r:id="rId1"/></sheets>`,
+        `</workbook>`,
+      ].join(""),
+      "xl/_rels/workbook.xml.rels": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`,
+        `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>`,
+        `</Relationships>`,
+      ].join(""),
+      "xl/worksheets/sheet1.xml": worksheet,
+      "docProps/core.xml": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">`,
+        `<dc:title>${xmlEscape(doc.title)}</dc:title>`,
+        `<dc:creator>${xmlEscape(doc.specialist)}</dc:creator>`,
+        `<cp:lastModifiedBy>NeedsOps AI+ Platform</cp:lastModifiedBy>`,
+        `<dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>`,
+        `<dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>`,
+        `</cp:coreProperties>`,
+      ].join(""),
+      "docProps/app.xml": [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">`,
+        `<Application>NeedsOps AI+</Application>`,
+        `</Properties>`,
+      ].join(""),
+    });
+
+    return {
+      buffer: workbook,
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      filename: sanitiseFilename(doc.title) + `-v${doc.version}.xlsx`,
+    };
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function sanitiseFilename(title: string): string {
   return title.replace(/[^a-z0-9\s-]/gi, "").replace(/\s+/g, "_").slice(0, 80) || "document";
+}
+
+function documentToWorksheetRows(doc: IntermediateDocument): string[][] {
+  const rows: string[][] = [
+    ["NeedsOps Completed Work"],
+    ["Title", doc.title],
+    ["Organisation", doc.organisation],
+    ["Generated", doc.generatedDate],
+    ["Specialist", doc.specialist],
+    ["Approval status", doc.approvalStatus],
+    [],
+  ];
+
+  for (const node of doc.nodes) {
+    appendNodeRows(rows, node);
+  }
+
+  return rows.length > 0 ? rows : [["No content available"]];
+}
+
+function appendNodeRows(rows: string[][], node: DocumentNode, prefix = ""): void {
+  switch (node.type) {
+    case "heading":
+      rows.push([]);
+      rows.push([node.content ?? ""]);
+      break;
+    case "paragraph":
+    case "blockquote":
+      if (node.content?.trim()) rows.push([prefix + node.content.trim()]);
+      break;
+    case "code":
+      for (const line of (node.content ?? "").split("\n")) {
+        if (line.trim()) rows.push([prefix + line.trim()]);
+      }
+      break;
+    case "list":
+      for (const child of node.children ?? []) appendNodeRows(rows, child, prefix);
+      break;
+    case "list_item":
+      rows.push([`${node.ordered ? "1." : "-"} ${node.content ?? ""}`.trim()]);
+      for (const child of node.children ?? []) appendNodeRows(rows, child, "  ");
+      break;
+    case "table":
+      for (const row of node.children ?? []) {
+        const cells = (row.children ?? []).map(cell => cell.content ?? "");
+        if (cells.length > 0) rows.push(cells);
+      }
+      rows.push([]);
+      break;
+    case "hr":
+      rows.push([]);
+      break;
+    default:
+      if (node.content?.trim()) rows.push([prefix + node.content.trim()]);
+      for (const child of node.children ?? []) appendNodeRows(rows, child, prefix);
+  }
+}
+
+function buildWorksheetXml(rows: string[][]): string {
+  const xmlRows = rows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 1;
+    const cells = row.map((cell, cellIndex) => {
+      const ref = `${columnName(cellIndex + 1)}${rowNumber}`;
+      return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(cell)}</t></is></c>`;
+    }).join("");
+    return `<row r="${rowNumber}">${cells}</row>`;
+  }).join("");
+
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`,
+    `<sheetData>${xmlRows}</sheetData>`,
+    `</worksheet>`,
+  ].join("");
+}
+
+function columnName(index: number): string {
+  let value = index;
+  let name = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    value = Math.floor((value - 1) / 26);
+  }
+  return name || "A";
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc = CRC_TABLE[(crc ^ byte) & 0xff]! ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function dosDateTime(date = new Date()): { dosDate: number; dosTime: number } {
+  const year = Math.max(1980, date.getFullYear());
+  const dosDate = ((year - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+  const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+  return { dosDate, dosTime };
+}
+
+function zipStore(files: Record<string, string>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  const offsets: Array<{ name: Buffer; offset: number; crc: number; size: number }> = [];
+  const { dosDate, dosTime } = dosDateTime();
+  let offset = 0;
+
+  for (const [path, content] of Object.entries(files)) {
+    const name = Buffer.from(path, "utf8");
+    const data = Buffer.from(content, "utf8");
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(dosTime, 10);
+    local.writeUInt16LE(dosDate, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    local.writeUInt16LE(0, 28);
+    localParts.push(local, name, data);
+    offsets.push({ name, offset, crc, size: data.length });
+    offset += local.length + name.length + data.length;
+  }
+
+  for (const entry of offsets) {
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(dosTime, 12);
+    central.writeUInt16LE(dosDate, 14);
+    central.writeUInt32LE(entry.crc, 16);
+    central.writeUInt32LE(entry.size, 20);
+    central.writeUInt32LE(entry.size, 24);
+    central.writeUInt16LE(entry.name.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(entry.offset, 42);
+    centralParts.push(central, entry.name);
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const localDirectory = Buffer.concat(localParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(offsets.length, 8);
+  end.writeUInt16LE(offsets.length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(localDirectory.length, 16);
+  end.writeUInt16LE(0, 20);
+
+  return Buffer.concat([localDirectory, centralDirectory, end]);
 }
 
 function formatApprovalStatus(status: string): string {
@@ -573,12 +825,13 @@ function formatSpecialist(slug: string): string {
 
 // ─── Export service ───────────────────────────────────────────────────────────
 
-export type ExportFormat = "md" | "pdf" | "docx";
+export type ExportFormat = "md" | "pdf" | "docx" | "xlsx";
 
 export class CompletedWorkExportService {
   private readonly mdExporter   = new MarkdownExporter();
   private readonly pdfExporter  = new PdfExporter();
   private readonly docxExporter = new DocxExporter();
+  private readonly xlsxExporter = new XlsxExporter();
 
   async export(params: {
     workId:         string;
@@ -590,7 +843,7 @@ export class CompletedWorkExportService {
     const { workId, organisationId, organisationName, format, actorUserId } = params;
 
     // Validate format before any DB access (fail fast)
-    if (!["md", "pdf", "docx"].includes(format)) {
+    if (!["md", "pdf", "docx", "xlsx"].includes(format)) {
       throw Object.assign(new Error(`Unsupported export format: ${format}`), { statusCode: 400 });
     }
 
@@ -642,6 +895,9 @@ export class CompletedWorkExportService {
         break;
       case "docx":
         result = await this.docxExporter.export(intermediateDoc);
+        break;
+      case "xlsx":
+        result = this.xlsxExporter.export(intermediateDoc);
         break;
       default:
         throw Object.assign(new Error(`Unsupported export format: ${format}`), { statusCode: 400 });

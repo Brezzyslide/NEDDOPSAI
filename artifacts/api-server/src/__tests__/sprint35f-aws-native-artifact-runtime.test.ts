@@ -136,9 +136,10 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
 
     expect(service).toContain("export async function generateCompletedWorkArtifacts");
-    expect(service).toContain('format: "docx"');
-    expect(service).toContain('secondaryFormats ?? ["pdf"]');
-    expect(uee).toContain('secondaryFormats: ["pdf"]');
+    expect(service).toContain('export type CompletedWorkArtifactFormat = "docx" | "pdf" | "xlsx"');
+    expect(service).toContain("primaryFormat ?? \"docx\"");
+    expect(uee).toContain("resolveArtifactFormats");
+    expect(uee).toContain('"xlsx"');
     expect(service).toContain("completedWorkExportService.export");
     expect(service).toContain("uploadFileToStorage");
     expect(service).toContain("workArtifactsTable");
@@ -151,6 +152,20 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("__artifact_generation_pending__");
     expect(uee).toContain("primaryArtifactId");
     expect(uee).toContain('failedStage: "artifact_generation"');
+  });
+
+  it("exports XLSX workbooks for spreadsheet deliverable contracts", () => {
+    const exportService = source("services/completedWorkExportService.ts");
+    const registry = source("services/blueprintRegistry.ts");
+    const blueprint = getRegistryEntry("financial_planning_reporting_review");
+
+    expect(exportService).toContain("export class XlsxExporter");
+    expect(exportService).toContain("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(exportService).toContain("zipStore");
+    expect(exportService).toContain("buildWorksheetXml");
+    expect(registry).toContain("function xlsxDeliverable");
+    expect(blueprint?.deliverableContract.artifactRequired).toBe(true);
+    expect(blueprint?.deliverableContract.primaryFormat).toBe("xlsx");
   });
 
   it("defers approval gates while preserving evidence, section, template and artifact gates", () => {
@@ -201,6 +216,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(page).toContain("/artifacts/${artifact.id}/download");
     expect(page).toContain("Word");
     expect(page).toContain("PDF");
+    expect(page).toContain("Excel");
   });
 
   it("finalises the task when approved Completed Work matches the execution approval gate", () => {
@@ -284,6 +300,34 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(false);
   });
 
+  it("treats internal review section headings as advisory for standard reusable service-agreement templates", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "This reusable template includes participant, provider, supports, payment, cancellation, rights, privacy, complaints, variation, termination and schedule placeholders for professional review.",
+      "## Parties and agreement details",
+      "Provider legal name, ABN, participant name, NDIS number, representative and plan details are placeholders because this is not a participant-specific agreement.",
+      "## Supports, pricing and payment",
+      "The support schedule, price, GST, payment method and cancellation terms are configurable placeholders that must be checked against current NDIS guidance before live use.",
+      "## Participant rights and provider responsibilities",
+      "The template includes clear-language obligations, consent, privacy, complaints and advocacy clauses grounded in current authority evidence.",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext(request),
+    });
+
+    expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(false);
+    expect(result.failures.some((failure) => failure.gate === "section_evidence")).toBe(false);
+    expect(result.failures.some((failure) => failure.gate === "missing_evidence")).toBe(false);
+  });
+
   it("still requires authoritative evidence for standard templates making compliance claims", () => {
     const request = "Create a standard compliant NDIS Service Agreement template";
     const result = validate("service_agreement_review", request);
@@ -292,5 +336,16 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
       failure.gate === "missing_evidence" &&
       failure.details?.includes("current_authority"),
     )).toBe(true);
+  });
+
+  it("adds bounded NDIS authority evidence for standard reusable service-agreement templates", () => {
+    const krs = source("services/knowledgeResolutionService.ts");
+
+    expect(krs).toContain("NDIS_STANDARD_TEMPLATE_AUTHORITY_SEEDS");
+    expect(krs).toContain("authority_registry_standard_template_seed");
+    expect(krs).toContain("ndis-service-agreement-how-to");
+    expect(krs).toContain("ndis-commission-practice-standards-provision-supports");
+    expect(krs).toContain("ar-au-002");
+    expect(krs).toContain("ar-au-003");
   });
 });

@@ -84,7 +84,7 @@ interface Approval {
 
 interface GeneratedArtifact {
   id: string;
-  fileFormat: "docx" | "pdf";
+  fileFormat: "docx" | "pdf" | "xlsx";
   artifactType: string;
   mimeType: string;
   fileSize: number;
@@ -117,6 +117,15 @@ const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string
   cancelled:         { label: "Cancelled",         cls: "bg-[#1E3A5F] text-[#64748B]",            icon: "✕" },
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400",              icon: "✕" },
 };
+
+function artifactFormatLabel(format: GeneratedArtifact["fileFormat"] | string): string {
+  switch (format) {
+    case "docx": return "Word";
+    case "pdf":  return "PDF";
+    case "xlsx": return "Excel";
+    default:     return format.toUpperCase();
+  }
+}
 
 // ─── Specialist role badge colours (C3) ──────────────────────────────────────
 
@@ -563,7 +572,7 @@ function TaskSidePanel({
                         title={`${artifact.fileFormat.toUpperCase()} · ${Math.max(1, Math.round((artifact.fileSize ?? 0) / 1024))} KB`}
                       >
                         <span className="block text-[#00D4FF] font-semibold">
-                          {artifact.fileFormat === "docx" ? "Word" : "PDF"}
+                          {artifactFormatLabel(artifact.fileFormat)}
                         </span>
                         <span className="text-[#64748B]">
                           {downloadingArtifactId === artifact.id

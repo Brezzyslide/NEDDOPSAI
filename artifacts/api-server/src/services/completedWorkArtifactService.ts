@@ -10,6 +10,8 @@ import { logOrgEvent } from "./auditService.js";
 import { completedWorkExportService, type ExportFormat } from "./completedWorkExportService.js";
 import { generateDownloadUrl, uploadFileToStorage } from "./knowledgeStorageService.js";
 
+export type CompletedWorkArtifactFormat = "docx" | "pdf" | "xlsx";
+
 export interface GeneratedWorkArtifact {
   id: string;
   organizationId: string;
@@ -17,7 +19,7 @@ export interface GeneratedWorkArtifact {
   completedWorkId: string;
   conversationId: string | null;
   artifactType: "primary_deliverable" | "secondary_deliverable";
-  fileFormat: "docx" | "pdf";
+  fileFormat: CompletedWorkArtifactFormat;
   storageReference: string;
   storageProvider: string;
   mimeType: string;
@@ -33,8 +35,8 @@ interface GenerateCompletedWorkArtifactsInput {
   taskId?: string | null;
   conversationId?: string | null;
   actorUserId: string;
-  primaryFormat?: "docx";
-  secondaryFormats?: Array<"pdf">;
+  primaryFormat?: CompletedWorkArtifactFormat;
+  secondaryFormats?: CompletedWorkArtifactFormat[];
 }
 
 interface DownloadWorkArtifactInput {
@@ -47,7 +49,7 @@ function artifactStorageKey(input: {
   organizationId: string;
   completedWorkId: string;
   artifactId: string;
-  format: "docx" | "pdf";
+  format: CompletedWorkArtifactFormat;
 }): string {
   return [
     "orgs",
@@ -68,7 +70,7 @@ function storageProviderName(): string {
 export async function generateCompletedWorkArtifacts(
   input: GenerateCompletedWorkArtifactsInput,
 ): Promise<GeneratedWorkArtifact[]> {
-  const formats: Array<"docx" | "pdf"> = [
+  const formats: CompletedWorkArtifactFormat[] = [
     input.primaryFormat ?? "docx",
     ...(input.secondaryFormats ?? ["pdf"]),
   ];
@@ -111,7 +113,9 @@ export async function generateCompletedWorkArtifacts(
         taskId: input.taskId ?? null,
         completedWorkId: input.completedWorkId,
         conversationId: input.conversationId ?? null,
-        artifactType: format === "docx" ? "primary_deliverable" : "secondary_deliverable",
+        artifactType: format === input.primaryFormat || (!input.primaryFormat && format === "docx")
+          ? "primary_deliverable"
+          : "secondary_deliverable",
         fileFormat: format,
         storageReference,
         storageProvider: storageProviderName(),
@@ -142,7 +146,7 @@ export async function generateCompletedWorkArtifacts(
       generated.push(artifact);
     }
 
-    const primary = generated.find((artifact) => artifact.fileFormat === "docx") ?? generated[0];
+    const primary = generated.find((artifact) => artifact.artifactType === "primary_deliverable") ?? generated[0];
     await db
       .update(completedWorkTable)
       .set({
@@ -200,7 +204,7 @@ export async function listCompletedWorkGeneratedArtifacts(
     completedWorkId: row.completedWorkId ?? completedWorkId,
     conversationId: row.conversationId ?? null,
     artifactType: row.artifactType === "primary_deliverable" ? "primary_deliverable" : "secondary_deliverable",
-    fileFormat: row.fileFormat === "docx" ? "docx" : "pdf",
+    fileFormat: normaliseArtifactFormat(row.fileFormat),
     storageReference: row.storageReference ?? "",
     storageProvider: row.storageProvider ?? "",
     mimeType: row.mimeType ?? "",
@@ -208,6 +212,10 @@ export async function listCompletedWorkGeneratedArtifacts(
     checksum: row.checksum ?? "",
     generationStatus: row.generationStatus,
   }));
+}
+
+function normaliseArtifactFormat(format: string | null | undefined): CompletedWorkArtifactFormat {
+  return format === "xlsx" || format === "pdf" || format === "docx" ? format : "pdf";
 }
 
 export async function getGeneratedArtifactDownloadUrl(

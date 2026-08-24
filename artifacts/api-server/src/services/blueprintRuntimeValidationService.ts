@@ -195,7 +195,7 @@ export function validateBlueprintRuntimeCompletion(
       standardTemplateEvidence,
     );
     const missingCategories = requiredCategories.filter((category) =>
-      !hasEvidenceCategory(input.evidencePack, category),
+      !hasEvidenceCategory(input.evidencePack, category, standardTemplateEvidence),
     );
     if (missingCategories.length > 0) {
       const behaviour = evidenceContract.missingEvidenceBehaviour ?? "continue_with_flagged_gaps";
@@ -243,18 +243,18 @@ function validateSections(
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
 ): BlueprintRuntimeGateFailure[] {
   const failures: BlueprintRuntimeGateFailure[] = [];
+  const sectionHeadingsAreAdvisory = isCustomerTemplateOptional(standardTemplateEvidence);
   for (const section of sections.filter((s) => s.required)) {
     const content = extractSectionContent(contentMarkdown, section);
     if (!content) {
-      failures.push({
-        gate: "required_section",
-        state: "validation",
-        message: `Required blueprint section is missing: ${section.sectionCode}`,
-      });
-      continue;
-    }
-
-    if (!isMateriallyPopulated(content, section)) {
+      if (!sectionHeadingsAreAdvisory) {
+        failures.push({
+          gate: "required_section",
+          state: "validation",
+          message: `Required blueprint section is missing: ${section.sectionCode}`,
+        });
+      }
+    } else if (!sectionHeadingsAreAdvisory && !isMateriallyPopulated(content, section)) {
       failures.push({
         gate: "required_section",
         state: "validation",
@@ -280,7 +280,9 @@ function validateSections(
       });
     }
 
-    const missing = effectiveCategories.filter((category) => !hasEvidenceCategory(evidencePack, category));
+    const missing = effectiveCategories.filter((category) =>
+      !hasEvidenceCategory(evidencePack, category, standardTemplateEvidence),
+    );
     if (missing.length > 0) {
       failures.push({
         gate: "section_evidence",
@@ -320,6 +322,9 @@ function filterRequiredEvidenceCategories(
 function isAuthoritativeEvidenceCategory(category: string): boolean {
   const canonical = canonicaliseSourceType(category);
   if (isTrustedProviderSource(canonical)) return true;
+  if (/_record$/i.test(canonical) && !/\b(?:authority|legislation|legislative|regulat|commission|practice_standard|pricing|price_guide|current_authority)\b/i.test(canonical)) {
+    return false;
+  }
   return /\b(?:authority|authoritative|legislation|legislative|regulat|commission|practice_standard|ndis_practice|pricing|price_guide|tax|gst|schads|award|fair_work|privacy_act|current_authority)\b/i.test(canonical);
 }
 
@@ -346,12 +351,24 @@ function countEvidenceItems(evidencePack?: EvidencePack | null): number {
   return evidencePack?.totalChunks ?? evidencePack?.chunks?.length ?? 0;
 }
 
-function hasEvidenceCategory(evidencePack: EvidencePack | null | undefined, category: string): boolean {
+function hasEvidenceCategory(
+  evidencePack: EvidencePack | null | undefined,
+  category: string,
+  context?: StandardTemplateEvidenceContext | null,
+): boolean {
   if (!evidencePack) return false;
   const lower = category.toLowerCase();
   return evidencePack.chunks.some((chunk) => {
     const sourceType = chunk.sourceType?.toLowerCase?.() ?? "";
     const sourceTitle = chunk.sourceTitle?.toLowerCase?.() ?? "";
+    const currentAuthorityEvidence = isCustomerTemplateOptional(context) &&
+      isAuthoritativeEvidenceCategory(category) &&
+      (
+        sourceType.includes("current_authority") ||
+        sourceTitle.includes("current_authority") ||
+        chunk.provenance?.sourceOrigin === "external_authority"
+      );
+    if (currentAuthorityEvidence) return true;
     return sourceType === lower || sourceType.includes(lower) || sourceTitle.includes(lower);
   });
 }

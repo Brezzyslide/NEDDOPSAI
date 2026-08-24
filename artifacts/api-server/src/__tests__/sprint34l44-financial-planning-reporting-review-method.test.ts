@@ -328,10 +328,10 @@ describe("Sprint 34L.44 financial planning reporting review method", () => {
     ]));
   });
 
-  it("40. remains structured analysis while dashboard presentation stays downstream", () => {
+  it("40. produces a contracted XLSX management-reporting workbook while dashboard presentation stays downstream", () => {
     expect(entry().deliverableContract).toMatchObject({
-      artifactRequired: false,
-      primaryFormat: "structured_analysis",
+      artifactRequired: true,
+      primaryFormat: "xlsx",
       templateRequired: false,
     });
   });

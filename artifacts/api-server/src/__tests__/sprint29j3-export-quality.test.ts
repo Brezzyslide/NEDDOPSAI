@@ -582,6 +582,19 @@ describe("Sprint 29J.3 — Export quality acceptance tests", () => {
     expect(result.mimeType).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   });
 
+  it("O22c. XLSX export returns a valid workbook MIME and ZIP container", async () => {
+    const ver = makeVersion("ver-xlsx", 1, TABLE_HEAVY_CONTENT);
+    setupMocks(makeWork({ status: "draft" as any, approvedVersionId: null }), [ver]);
+    const result = await exportService.export({
+      workId: WORK_ID, organisationId: ORG_A, organisationName: "Test Org",
+      format: "xlsx", actorUserId: ACTOR,
+    });
+    expect(result.mimeType).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(result.buffer.length).toBeGreaterThan(1000);
+    expect(result.buffer.subarray(0, 4).toString("hex")).toBe("504b0304");
+    expect(result.buffer.toString("utf8")).toContain("xl/worksheets/sheet1.xml");
+  });
+
   // O23 ─ Correct versioned filenames
   it("O23a. PDF filename contains versioned suffix -vN.pdf", async () => {
     const ver = makeVersion("ver-fn", 7, PLAIN_TEXT_CONTENT);
@@ -601,6 +614,16 @@ describe("Sprint 29J.3 — Export quality acceptance tests", () => {
       format: "docx", actorUserId: ACTOR,
     });
     expect(result.filename).toMatch(/-v7\.docx$/);
+  });
+
+  it("O23c. XLSX filename contains versioned suffix -vN.xlsx", async () => {
+    const ver = makeVersion("ver-fn-xlsx", 7, TABLE_HEAVY_CONTENT);
+    setupMocks(makeWork({ status: "draft" as any, approvedVersionId: null }), [ver]);
+    const result = await exportService.export({
+      workId: WORK_ID, organisationId: ORG_A, organisationName: "Test Org",
+      format: "xlsx", actorUserId: ACTOR,
+    });
+    expect(result.filename).toMatch(/-v7\.xlsx$/);
   });
 
   // O24 ─ No LLM call during export

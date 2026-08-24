@@ -139,6 +139,8 @@ import type {
 } from "../types/canonicalExecutionContext.js";
 import type { SessionChannel } from "../lib/resources/ExecutionSession.js";
 
+type ArtifactExportFormat = "docx" | "pdf" | "xlsx";
+
 // ─── Shared execution types ───────────────────────────────────────────────────
 // Defined here; re-exported from workExecutionPipelineService for backward compat.
 
@@ -1599,6 +1601,7 @@ export class UnifiedExecutionEngine {
     let primaryArtifactId: string | null = null;
     if (artifactRequired) {
       try {
+        const artifactFormats = resolveArtifactFormats(blueprint?.deliverableContract);
         const artifacts = await generateCompletedWorkArtifacts({
           organizationId,
           organizationName: "Your Organisation",
@@ -1606,10 +1609,10 @@ export class UnifiedExecutionEngine {
           taskId: request.taskId ?? null,
           conversationId: request.conversationId ?? null,
           actorUserId: requesterId,
-          primaryFormat: "docx",
-          secondaryFormats: ["pdf"],
+          primaryFormat: artifactFormats.primaryFormat,
+          secondaryFormats: artifactFormats.secondaryFormats,
         });
-        primaryArtifactId = artifacts.find((artifact) => artifact.fileFormat === "docx")?.id
+        primaryArtifactId = artifacts.find((artifact) => artifact.fileFormat === artifactFormats.primaryFormat)?.id
           ?? artifacts[0]?.id
           ?? null;
       } catch (err) {
@@ -2495,6 +2498,24 @@ ${sectionLines}
 6. The output must be suitable for human review and approval before use`;
 }
 
+function resolveArtifactFormats(
+  deliverableContract: WorkBlueprint["deliverableContract"] | null | undefined,
+): { primaryFormat: ArtifactExportFormat; secondaryFormats: ArtifactExportFormat[] } {
+  const supported = new Set<ArtifactExportFormat>(["docx", "pdf", "xlsx"]);
+  const requestedPrimary = String(deliverableContract?.primaryFormat ?? "docx").toLowerCase();
+  const primaryFormat = supported.has(requestedPrimary as ArtifactExportFormat)
+    ? requestedPrimary as ArtifactExportFormat
+    : "docx";
+  const secondaryFormats = Array.isArray(deliverableContract?.secondaryFormats)
+    ? deliverableContract.secondaryFormats
+        .map((format) => String(format).toLowerCase())
+        .filter((format): format is ArtifactExportFormat =>
+          supported.has(format as ArtifactExportFormat) && format !== primaryFormat,
+        )
+    : [];
+  return { primaryFormat, secondaryFormats };
+}
+
 function buildWorkPackagePrompt(
   userRequest: string,
   manifest: WorkPackageManifest,
@@ -2549,6 +2570,19 @@ function buildWorkPackagePrompt(
       `Family/mode: ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}\n` +
       `Output types: ${blueprint.outputTypes.join(", ")}\n` +
       `Mandatory citations: ${blueprint.mandatoryCitations.join(", ") || "none"}`
+    );
+  }
+
+  const standardTemplateContext = classifyStandardTemplateEvidenceContext(userRequest);
+  if (standardTemplateContext.customerExampleOptional) {
+    sections.push(
+      `=== STANDARD REUSABLE TEMPLATE MODE ===\n` +
+      `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
+      `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
+      `Use clear placeholders for participant, provider, ABN, plan, support schedule, price, GST, payment-route and other customer-specific fields where appropriate.\n` +
+      `Do not require a customer example/template unless the user explicitly asked to match an existing format.\n` +
+      `Compliance or regulatory statements still require the authoritative evidence provided in this prompt. If authority evidence is insufficient, flag the affected clause rather than inventing it.\n` +
+      `Produce the requested user-facing deliverable; do not expose internal Blueprint section codes as headings unless they are genuinely appropriate for the final artifact.`
     );
   }
 
