@@ -85,6 +85,19 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("post_artifact_completion_gates");
   });
 
+  it("does not report evidence or clarification blocks as approval-ready execution", () => {
+    const execution = source("services/executionService.ts");
+    const statusMessages = repoSource("lib/openclaw/src/executionPackageTranslator.ts");
+
+    expect(execution).toContain('const requiresClarification = result.outcome === "awaiting_clarification"');
+    expect(execution).toContain('const terminalStatus = requiresClarification ? "awaiting_clarification" : "failed"');
+    expect(execution).toContain('currentState: "planning"');
+    expect(execution).toContain("executionClarification");
+    expect(execution).toContain('"execution.awaiting_clarification"');
+    expect(execution).not.toContain('result.outcome === "awaiting_clarification" ? "awaiting_approval" : "failed"');
+    expect(statusMessages).toContain('awaiting_clarification: "Waiting for required information"');
+  });
+
   it("exposes generated artifacts through authenticated Completed Work routes", () => {
     const route = source("routes/v1/completedWork.ts");
     const viewer = repoSource("artifacts/needsops-web/src/pages/app/CompletedWorkViewer.tsx");

@@ -813,7 +813,8 @@ async function startAwsNativeExecution(input: {
         return;
       }
 
-      const terminalStatus = result.outcome === "awaiting_clarification" ? "awaiting_approval" : "failed";
+      const requiresClarification = result.outcome === "awaiting_clarification";
+      const terminalStatus = requiresClarification ? "awaiting_clarification" : "failed";
       if (terminalStatus === "failed") {
         await reconcileTaskExecutionFailure({
           taskId: input.task.id,
@@ -821,6 +822,29 @@ async function startAwsNativeExecution(input: {
           errorMessage: result.message,
           correlationId: input.pkg.executionId,
         });
+      } else {
+        await db
+          .update(tasksTable)
+          .set({
+            currentState: "planning",
+            metadata: {
+              ...((input.task.metadata as Record<string, unknown> | null) ?? {}),
+              executionClarification: {
+                requiredAt: new Date().toISOString(),
+                correlationId: input.pkg.executionId,
+                runtimeSelection: "aws_native_professional_work",
+                outcome: result.outcome,
+                message: result.message,
+                workPackageManifestId: result.manifestId,
+                blueprintCode: result.blueprintCode,
+              },
+            },
+            updatedAt: new Date(),
+          })
+          .where(and(
+            eq(tasksTable.id, input.task.id),
+            eq(tasksTable.organizationId, input.task.organizationId),
+          ));
       }
       await db
         .update(executionSessionsTable)
@@ -844,7 +868,7 @@ async function startAwsNativeExecution(input: {
       await persistExecutionEvent({
         executionSessionId: input.pkg.executionId,
         organizationId: input.task.organizationId,
-        eventType: terminalStatus === "failed" ? "execution.failed" : "execution.awaiting_approval",
+        eventType: terminalStatus === "failed" ? "execution.failed" : "execution.awaiting_clarification",
         eventSource: "aws_native",
         payload: { outcome: result.outcome, message: result.message, manifestId: result.manifestId },
       });

@@ -29,6 +29,7 @@ export const EXECUTION_STATUS_MESSAGES: Record<string, string> = {
   running: "Execution in progress",
   paused: "Execution paused",
   awaiting_approval: "Waiting for approval",
+  awaiting_clarification: "Waiting for required information",
   completed: "Execution completed",
   failed: "Execution failed",
   cancelled: "Execution cancelled",
