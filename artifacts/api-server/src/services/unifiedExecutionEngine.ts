@@ -45,7 +45,10 @@ import {
   getBlueprintExecutionContract,
 } from "./workBlueprintService.js";
 import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
-import { validateBlueprintRuntimeCompletion } from "./blueprintRuntimeValidationService.js";
+import {
+  classifyStandardTemplateEvidenceContext,
+  validateBlueprintRuntimeCompletion,
+} from "./blueprintRuntimeValidationService.js";
 import {
   assembleWorkPackage,
   updateManifestObservability,
@@ -866,6 +869,9 @@ export class UnifiedExecutionEngine {
     const userRequest = request.checkpointData
       ? `${request.userRequest}\n\nClarification provided: ${request.checkpointData.clarificationAnswer}`
       : request.userRequest;
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(
+      [request.title ?? "", userRequest].filter(Boolean).join("\n"),
+    );
 
     const progress = async (stage: ExecutionStage, detail?: string) => {
       if (!request.onProgress) return;
@@ -1481,6 +1487,7 @@ export class UnifiedExecutionEngine {
       evidencePack: evidencePack ?? null,
       artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
       deferApprovalGate: true,
+      standardTemplateEvidence,
     });
     if (!runtimeGate.passed) {
       const blockingMessage = runtimeGate.failures
@@ -1632,6 +1639,7 @@ export class UnifiedExecutionEngine {
         evidencePack: evidencePack ?? null,
         artifactId: primaryArtifactId,
         deferApprovalGate: true,
+        standardTemplateEvidence,
       });
       if (!artifactGate.passed) {
         const blockingMessage = artifactGate.failures

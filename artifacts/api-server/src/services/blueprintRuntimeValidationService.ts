@@ -11,6 +11,10 @@ import {
   parseDeliverableContract,
   parseEvidenceContract,
 } from "./blueprintContractService.js";
+import {
+  canonicaliseSourceType,
+  isTrustedProviderSource,
+} from "../utils/sourceTypeNormalisation.js";
 
 export type BlueprintRuntimeGateState =
   | "validation"
@@ -42,11 +46,61 @@ export interface BlueprintRuntimeValidationInput {
   artifactId?: string | null;
   approvalStates?: Record<string, boolean> | null;
   deferApprovalGate?: boolean;
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
 }
 
 export interface BlueprintRuntimeValidationResult {
   passed: boolean;
   failures: BlueprintRuntimeGateFailure[];
+}
+
+export interface StandardTemplateEvidenceContext {
+  /** A standard/reusable/template deliverable was requested, not a participant-specific completion. */
+  standardTemplateRequested: boolean;
+  /** The user asked to match an existing organisation/customer format or example. */
+  existingTemplateRequested: boolean;
+  /** The user asked NeedsOps to complete/review a named participant/client-specific matter. */
+  participantSpecificRequested: boolean;
+  /** The user asked for organisation-specific factual content or branding, not just a generic professional template. */
+  organisationSpecificRequested: boolean;
+  /** Customer examples/templates are optional for this request. */
+  customerExampleOptional: boolean;
+}
+
+export function classifyStandardTemplateEvidenceContext(
+  requestText: string,
+): StandardTemplateEvidenceContext {
+  const raw = requestText.trim();
+  const lower = raw.toLowerCase();
+
+  const templateIntent = /\b(template|form|checklist|framework|standard\s+(?:document|agreement|assessment)|reusable|generic|general|standard|comprehensive|all\s+(?:relevant|areas)|everything)\b/i.test(raw);
+  const creationIntent = /\b(create|design|develop|draft|build|prepare|make|generate)\b/i.test(raw);
+  const existingTemplateRequested = /\b(match|mirror|use|follow|based\s+on|same\s+as)\s+(?:our|my|existing|current|uploaded|attached|organisation(?:al)?|company|customer)\s+(?:template|format|example|document|agreement|style)\b/i.test(raw)
+    || /\b(existing|current|uploaded|attached)\s+(?:template|format|example|agreement|risk\s+assessment)\b/i.test(raw);
+
+  const specificParticipantReference = /\b(?:participant|client)\s+(?:[A-Z][A-Za-z0-9'_-]+|#[A-Za-z0-9_-]+|\d{2,})\b/.test(raw);
+  const participantCompletionIntent = /\b(?:complete|fill\s*(?:in|out)|assess|review|evaluate|finalise|update|revise)\s+(?:an?\s+)?(?:risk\s+assessment|service\s+agreement|agreement|assessment)\s+(?:for|about|regarding)\s+(?:participant|client)\b/i.test(raw);
+  const participantSpecificRequested = !templateIntent && (specificParticipantReference || participantCompletionIntent)
+    || (participantCompletionIntent && specificParticipantReference);
+
+  const organisationSpecificRequested = existingTemplateRequested
+    || /\b(?:for|using)\s+(?:our|my)\s+(?:organisation|organization|company|provider|business|service)\s+(?:details|branding|format|terms|rates|prices|policies|procedures)\b/i.test(lower);
+
+  const standardTemplateRequested = templateIntent
+    && creationIntent
+    && !participantSpecificRequested;
+
+  return {
+    standardTemplateRequested,
+    existingTemplateRequested,
+    participantSpecificRequested,
+    organisationSpecificRequested,
+    customerExampleOptional:
+      standardTemplateRequested &&
+      !existingTemplateRequested &&
+      !participantSpecificRequested &&
+      !organisationSpecificRequested,
+  };
 }
 
 export function validateBlueprintRuntimeCompletion(
@@ -60,7 +114,14 @@ export function validateBlueprintRuntimeCompletion(
   const evidenceContract = parseEvidenceContract(blueprint.evidenceContract as Record<string, unknown> | null);
   const deliverableContract = parseDeliverableContract(blueprint.deliverableContract as Record<string, unknown> | null);
 
-  failures.push(...validateSections(contract.sections, input.contentMarkdown, input.evidencePack));
+  const standardTemplateEvidence = input.standardTemplateEvidence ?? null;
+
+  failures.push(...validateSections(
+    contract.sections,
+    input.contentMarkdown,
+    input.evidencePack,
+    standardTemplateEvidence,
+  ));
 
   if (deliverableContract) {
     const prohibited = deliverableContract.prohibitedDeliverables ?? [];
@@ -78,11 +139,13 @@ export function validateBlueprintRuntimeCompletion(
 
     const templateRequired = blueprint.templateRequired || deliverableContract.templateRequired === true;
     if (templateRequired && !contract.template) {
-      failures.push({
-        gate: "template_required",
-        state: "awaiting_clarification",
-        message: "Blueprint requires a template, but no applicable platform or organisation template was resolved.",
-      });
+      if (!isCustomerTemplateOptional(standardTemplateEvidence)) {
+        failures.push({
+          gate: "template_required",
+          state: "awaiting_clarification",
+          message: "Blueprint requires a template, but no applicable platform or organisation template was resolved.",
+        });
+      }
     }
 
     if (deliverableContract.artifactRequired === true && !input.artifactId) {
@@ -110,7 +173,11 @@ export function validateBlueprintRuntimeCompletion(
   }
 
   if (evidenceContract) {
-    const minimumEvidenceCount = evidenceContract.minimumEvidenceCount ?? 0;
+    const minimumEvidenceCount = effectiveMinimumEvidenceCount(
+      evidenceContract.minimumEvidenceCount ?? 0,
+      evidenceContract.requiredEvidenceCategories ?? [],
+      standardTemplateEvidence,
+    );
     const evidenceCount = countEvidenceItems(input.evidencePack);
     if (minimumEvidenceCount > 0 && evidenceCount < minimumEvidenceCount) {
       failures.push({
@@ -123,7 +190,10 @@ export function validateBlueprintRuntimeCompletion(
       });
     }
 
-    const requiredCategories = evidenceContract.requiredEvidenceCategories ?? [];
+    const requiredCategories = filterRequiredEvidenceCategories(
+      evidenceContract.requiredEvidenceCategories ?? [],
+      standardTemplateEvidence,
+    );
     const missingCategories = requiredCategories.filter((category) =>
       !hasEvidenceCategory(input.evidencePack, category),
     );
@@ -170,6 +240,7 @@ function validateSections(
   sections: BlueprintSection[],
   contentMarkdown: string,
   evidencePack?: EvidencePack | null,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
 ): BlueprintRuntimeGateFailure[] {
   const failures: BlueprintRuntimeGateFailure[] = [];
   for (const section of sections.filter((s) => s.required)) {
@@ -192,7 +263,15 @@ function validateSections(
     }
 
     const requirements = section.evidenceRequirements ?? {};
-    const minimumEvidenceCount = Number(requirements.minimumEvidenceCount ?? 0);
+    const requiredCategories = Array.isArray(requirements.requiredEvidenceCategories)
+      ? requirements.requiredEvidenceCategories.map(String)
+      : [];
+    const effectiveCategories = filterRequiredEvidenceCategories(requiredCategories, standardTemplateEvidence);
+    const minimumEvidenceCount = effectiveMinimumEvidenceCount(
+      Number(requirements.minimumEvidenceCount ?? 0),
+      requiredCategories,
+      standardTemplateEvidence,
+    );
     if (minimumEvidenceCount > 0 && countEvidenceItems(evidencePack) < minimumEvidenceCount) {
       failures.push({
         gate: "section_evidence",
@@ -201,10 +280,7 @@ function validateSections(
       });
     }
 
-    const requiredCategories = Array.isArray(requirements.requiredEvidenceCategories)
-      ? requirements.requiredEvidenceCategories.map(String)
-      : [];
-    const missing = requiredCategories.filter((category) => !hasEvidenceCategory(evidencePack, category));
+    const missing = effectiveCategories.filter((category) => !hasEvidenceCategory(evidencePack, category));
     if (missing.length > 0) {
       failures.push({
         gate: "section_evidence",
@@ -215,6 +291,36 @@ function validateSections(
     }
   }
   return failures;
+}
+
+function isCustomerTemplateOptional(context?: StandardTemplateEvidenceContext | null): boolean {
+  return context?.customerExampleOptional === true;
+}
+
+function effectiveMinimumEvidenceCount(
+  minimumEvidenceCount: number,
+  requiredCategories: string[],
+  context?: StandardTemplateEvidenceContext | null,
+): number {
+  if (!isCustomerTemplateOptional(context)) return minimumEvidenceCount;
+  const authoritativeCategoryCount = requiredCategories.filter(isAuthoritativeEvidenceCategory).length;
+  return authoritativeCategoryCount > 0
+    ? Math.min(minimumEvidenceCount, authoritativeCategoryCount)
+    : 0;
+}
+
+function filterRequiredEvidenceCategories(
+  categories: string[],
+  context?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(context)) return categories;
+  return categories.filter(isAuthoritativeEvidenceCategory);
+}
+
+function isAuthoritativeEvidenceCategory(category: string): boolean {
+  const canonical = canonicaliseSourceType(category);
+  if (isTrustedProviderSource(canonical)) return true;
+  return /\b(?:authority|authoritative|legislation|legislative|regulat|commission|practice_standard|ndis_practice|pricing|price_guide|tax|gst|schads|award|fair_work|privacy_act|current_authority)\b/i.test(canonical);
 }
 
 function extractSectionContent(contentMarkdown: string, section: BlueprintSection): string | null {
