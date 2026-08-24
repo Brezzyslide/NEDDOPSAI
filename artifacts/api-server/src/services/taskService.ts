@@ -79,6 +79,7 @@ const ACTIVE_TASK_CREATION_STATES: TaskState[] = [
   "approved",
   "executing",
 ];
+const CONVERSATION_WORK_INTENT_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 
 function normaliseIntentText(value: string | undefined): string {
   return (value ?? "")
@@ -107,6 +108,12 @@ function deriveWorkIntentKey(title: string, description?: string): string {
 function getCreationMetadata(task: typeof tasksTable.$inferSelect): Record<string, unknown> {
   const metadata = (task.metadata as Record<string, unknown> | null) ?? {};
   return (metadata.taskCreation as Record<string, unknown> | undefined) ?? {};
+}
+
+function creationIsWithinWorkIntentDedupeWindow(creation: Record<string, unknown>, now = Date.now()): boolean {
+  const createdAt = typeof creation.createdAt === "string" ? Date.parse(creation.createdAt) : NaN;
+  if (!Number.isFinite(createdAt)) return false;
+  return now - createdAt <= CONVERSATION_WORK_INTENT_DEDUPE_WINDOW_MS;
 }
 
 async function hydrateTaskWithPlan(
@@ -156,7 +163,8 @@ async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
     if (
       workIntentKey &&
       creation.conversationId === input.conversationId &&
-      creation.workIntentKey === workIntentKey
+      creation.workIntentKey === workIntentKey &&
+      creationIsWithinWorkIntentDedupeWindow(creation)
     ) {
       return { task, reason: "conversation_work_intent" };
     }

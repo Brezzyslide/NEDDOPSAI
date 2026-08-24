@@ -335,11 +335,12 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
           ? splitClauses.map(clause => clauseToTaskProposal(clause, result.understanding.proposedTask?.priority))
           : [result.understanding.proposedTask];
         const createdTasks = [];
-        for (const proposedTask of proposedTasks) {
+        for (const [index, proposedTask] of proposedTasks.entries()) {
           const autoResult = await autoCreateAndDispatch({
             organizationId: ctx.tenantId,
             conversationId: conv.id,
             requesterId:    user.id,
+            idempotencyKey: `cos_auto_dispatch:${requestIdempotencyKey ?? result.userMessage.id}:${index}:${proposedTask.title.trim().toLowerCase()}`,
             proposedTask,
             laneContext,
           });

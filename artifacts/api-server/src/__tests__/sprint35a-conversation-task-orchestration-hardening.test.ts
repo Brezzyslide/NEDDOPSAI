@@ -569,10 +569,13 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(taskRoute).toContain("reusedExisting");
     expect(conversationRoute).toContain('req.header("Idempotency-Key")');
     expect(conversationRoute).toContain("conversationId: conv.id");
+    expect(conversationRoute).toContain("result.userMessage.id");
     expect(conversationRoute).toContain("if (!autoResult.reusedExisting)");
     expect(conversationRoute).toContain("persistConversationFocus");
     expect(conversationRoute).toContain('"manual_create_reused_existing"');
     expect(autoDispatch).toContain("reusedExisting");
+    expect(autoDispatch).toContain("idempotencyKey?: string");
+    expect(autoDispatch).toContain("input.idempotencyKey ??");
     expect(autoDispatch).toContain("persistConversationFocus");
     expect(autoDispatch).toContain('"task_auto_created"');
     expect(autoDispatch).toContain('"auto_dispatch_reused_existing"');
@@ -688,6 +691,25 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     );
 
     expect(creationStates).not.toContain('"failed"');
+  });
+
+  it("same-title auto-dispatch dedupe is message/confirmation scoped rather than title-global", () => {
+    const autoDispatch = source("services/autoDispatchService.ts");
+    const ingressService = source("services/messageIngressService.ts");
+    const conversationRoute = source("routes/v1/conversations.ts");
+
+    expect(autoDispatch).toContain("idempotencyKey?: string");
+    expect(ingressService).toContain("conversation_confirmation:${input.confirmation.id}");
+    expect(conversationRoute).toContain("requestIdempotencyKey ?? result.userMessage.id");
+    expect(conversationRoute).not.toContain("idempotencyKey:    `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`");
+  });
+
+  it("conversation work-intent dedupe is a short retry window, not a permanent historical lock", () => {
+    const taskService = source("services/taskService.ts");
+
+    expect(taskService).toContain("CONVERSATION_WORK_INTENT_DEDUPE_WINDOW_MS");
+    expect(taskService).toContain("creationIsWithinWorkIntentDedupeWindow");
+    expect(taskService).toContain("creationIsWithinWorkIntentDedupeWindow(creation)");
   });
 
   it("action-state grounding queries persisted task state and exposes it to the CoS prompt", () => {

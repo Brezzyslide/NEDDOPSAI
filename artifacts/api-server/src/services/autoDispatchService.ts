@@ -36,6 +36,7 @@ export interface AutoDispatchInput {
   organizationId: string;
   conversationId:  string;
   requesterId:     string;
+  idempotencyKey?: string;
   proposedTask: {
     title:               string;
     summary:             string;
@@ -96,7 +97,7 @@ export async function autoCreateAndDispatch(
     priority:          (proposedTask.priority as any) ?? "normal",
     originatingModule: "cos_auto_dispatch",
     conversationId,
-    idempotencyKey:    `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
+    idempotencyKey:    input.idempotencyKey ?? `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
   });
 
   const { task, plan } = result;

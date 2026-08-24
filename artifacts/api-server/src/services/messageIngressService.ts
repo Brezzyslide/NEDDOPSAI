@@ -531,6 +531,7 @@ async function maybeHandlePendingConfirmation(input: {
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       requesterId: input.userId,
+      idempotencyKey: `conversation_confirmation:${input.confirmation.id}`,
       proposedTask: input.confirmation.proposedTask,
     });
     await markConversationConfirmationResolved({
