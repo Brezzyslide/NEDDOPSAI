@@ -253,6 +253,13 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src.slice(dispatchIndex)).toContain("dispatchWorkExecution({");
   });
 
+  it("queued retry tasks are claimable for execution", () => {
+    const src = source("services/taskService.ts");
+
+    expect(src).toContain('queued: ["planning", "executing", "cancelled"]');
+    expect(src).toContain('const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const');
+  });
+
   it("workroom approval UI sends the backend's canonical action payload", () => {
     const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
 

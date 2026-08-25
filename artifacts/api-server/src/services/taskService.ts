@@ -44,7 +44,7 @@ export interface TaskWithPlan {
 
 const VALID_TRANSITIONS: Record<TaskState, TaskState[]> = {
   draft: ["queued", "cancelled"],
-  queued: ["planning", "cancelled"],
+  queued: ["planning", "executing", "cancelled"],
   planning: ["awaiting_approval", "approved", "cancelled"],
   awaiting_approval: ["approved", "cancelled", "failed"],
   approved: ["executing", "cancelled"],
@@ -59,7 +59,7 @@ export function isValidTransition(from: TaskState, to: TaskState): boolean {
 }
 
 const TERMINAL_TASK_STATES = new Set<TaskState>(["completed", "cancelled"]);
-const DISPATCHABLE_TASK_STATES = ["approved", "failed"] as const;
+const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const;
 
 function mergeTaskMetadata(
   current: unknown,
