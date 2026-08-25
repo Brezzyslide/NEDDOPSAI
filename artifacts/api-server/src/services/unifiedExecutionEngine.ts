@@ -2007,7 +2007,7 @@ export class UnifiedExecutionEngine {
       organizationId: input.authCtx.organizationId,
       role: input.authCtx.role,
       permissions: [],
-      purpose: "task_execution_final_synthesis",
+      purpose: "task_execution",
       correlationId: randomUUID(),
       provider: "openai",
       retentionClass: "operational",

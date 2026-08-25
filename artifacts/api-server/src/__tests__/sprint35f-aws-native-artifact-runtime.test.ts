@@ -537,7 +537,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     const synthesisIndex = uee.indexOf("shouldAttemptFinalDeliverableSynthesis(runtimeGate.failures");
     const createIndex = uee.indexOf("const completedWork = await createDraft");
 
-    expect(uee).toContain("task_execution_final_synthesis");
+    expect(uee).toContain('purpose: "task_execution"');
     expect(uee).toContain("buildFinalDeliverableSynthesisSystemPrompt");
     expect(uee).toContain("internal professional analysis, evidence, Blueprint completion and specialist conclusions");
     expect(uee).toContain("INTERNAL ONLY");
