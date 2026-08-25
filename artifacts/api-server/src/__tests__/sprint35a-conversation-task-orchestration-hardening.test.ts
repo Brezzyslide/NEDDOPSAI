@@ -241,6 +241,18 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src.slice(dispatchIndex)).toContain("dispatchWorkExecution({");
   });
 
+  it("workroom retry re-dispatches the same failed task instead of only queueing it", () => {
+    const src = source("routes/v1/taskWorkroom.ts");
+    const handler = src.slice(src.indexOf('case "retry"'), src.indexOf('case "status"'));
+    const dispatchIndex = src.indexOf("if (dispatchAfterCommand)");
+
+    expect(handler).toContain('task.currentState !== "failed"');
+    expect(handler).toContain('newState = "queued"');
+    expect(handler).toContain("dispatchAfterCommand = true");
+    expect(dispatchIndex).toBeGreaterThan(src.indexOf('case "retry"'));
+    expect(src.slice(dispatchIndex)).toContain("dispatchWorkExecution({");
+  });
+
   it("workroom approval UI sends the backend's canonical action payload", () => {
     const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
 

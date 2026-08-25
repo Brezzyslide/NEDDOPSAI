@@ -424,6 +424,7 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
           return;
         }
         newState = "queued";
+        dispatchAfterCommand = true;
         responseContent = "The task has been queued for retry.";
         break;
 
