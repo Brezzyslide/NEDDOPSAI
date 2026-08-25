@@ -234,7 +234,9 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
   it("adds additive generated-artifact metadata columns through the platform migration ledger", () => {
     const migration = repoSource("lib/db/migrations/0037_work_artifact_output_metadata.sql");
     const approvedVersionMigration = repoSource("lib/db/migrations/0038_completed_work_approved_version_pin.sql");
+    const provenanceMigration = repoSource("lib/db/migrations/0039_completed_work_version_provenance_status.sql");
     const completedWorkSchema = repoSource("lib/db/src/schema/completedWork.ts");
+    const completedWorkVersionsSchema = repoSource("lib/db/src/schema/completedWorkVersions.ts");
     const schema = repoSource("lib/db/src/schema/workArtifacts.ts");
     const registry = source("bootstrap/platformMigrations.ts");
 
@@ -249,6 +251,11 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(approvedVersionMigration).toContain("ADD COLUMN IF NOT EXISTS approved_version_id TEXT");
     expect(completedWorkSchema).toContain('approvedVersionId: text("approved_version_id")');
     expect(registry).toContain("0038-completed-work-approved-version-pin");
+    expect(provenanceMigration).toContain(
+      "ADD COLUMN IF NOT EXISTS provenance_status TEXT NOT NULL DEFAULT 'not_available_legacy'",
+    );
+    expect(completedWorkVersionsSchema).toContain('provenanceStatus: text("provenance_status")');
+    expect(registry).toContain("0039-completed-work-version-provenance-status");
   });
 
   it("treats customer examples as optional for standard comprehensive NDIS risk-assessment templates", () => {

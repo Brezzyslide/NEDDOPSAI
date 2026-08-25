@@ -114,6 +114,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds nullable completed_work.approved_version_id expected by approval/export/version pinning paths.",
   },
+  {
+    id: "0039-completed-work-version-provenance-status",
+    file: "0039_completed_work_version_provenance_status.sql",
+    transactional: true,
+    notes: "Adds completed_work_versions.provenance_status expected by claim persistence and Completed Work provenance lifecycle paths.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

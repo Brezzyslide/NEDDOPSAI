@@ -226,6 +226,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0036-work-package-manifest-observability");
     expect(migrationIds).toContain("0037-work-artifact-output-metadata");
     expect(migrationIds).toContain("0038-completed-work-approved-version-pin");
+    expect(migrationIds).toContain("0039-completed-work-version-provenance-status");
     expect(migrationIds.indexOf("0036-work-package-manifest-observability")).toBe(
       migrationIds.indexOf("0035-runtime-conversation-evidence-rls") + 1,
     );
@@ -234,6 +235,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0038-completed-work-approved-version-pin")).toBe(
       migrationIds.indexOf("0037-work-artifact-output-metadata") + 1,
+    );
+    expect(migrationIds.indexOf("0039-completed-work-version-provenance-status")).toBe(
+      migrationIds.indexOf("0038-completed-work-approved-version-pin") + 1,
     );
   });
 
@@ -269,5 +273,21 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(sql).not.toMatch(/\bDELETE\s+FROM\b/i);
     expect(sql).not.toMatch(/\bUPDATE\s+work_artifacts\b/i);
     expect(sql).not.toMatch(/\bNOT\s+NULL\b/i);
+  });
+
+  it("keeps completed work version provenance migration additive and schema-aligned", () => {
+    const sql = readFileSync(
+      join(process.cwd(), "../../lib/db/migrations/0039_completed_work_version_provenance_status.sql"),
+      "utf8",
+    );
+
+    expect(sql).toContain("ALTER TABLE completed_work_versions");
+    expect(sql).toContain(
+      "ADD COLUMN IF NOT EXISTS provenance_status TEXT NOT NULL DEFAULT 'not_available_legacy'",
+    );
+    expect(sql).not.toMatch(/\bDROP\b/i);
+    expect(sql).not.toMatch(/\bTRUNCATE\b/i);
+    expect(sql).not.toMatch(/\bDELETE\s+FROM\b/i);
+    expect(sql).not.toMatch(/\bUPDATE\s+completed_work_versions\b/i);
   });
 });
