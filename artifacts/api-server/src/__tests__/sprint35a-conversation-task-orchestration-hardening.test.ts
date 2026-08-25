@@ -616,6 +616,9 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
   it("task creation is protected by canonical idempotency and conversation work-intent matching", () => {
     const taskService = source("services/taskService.ts");
+    const platformMigrations = source("bootstrap/platformMigrations.ts");
+    const dbSchema = readFileSync(resolve(root, "../../../lib/db/src/schema/taskCreationIdempotency.ts"), "utf8");
+    const migration = readFileSync(resolve(root, "../../../lib/db/migrations/0040_task_creation_idempotency.sql"), "utf8");
     const taskRoute = source("routes/v1/tasks.ts");
     const conversationRoute = source("routes/v1/conversations.ts");
     const autoDispatch = source("services/autoDispatchService.ts");
@@ -626,6 +629,20 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(taskService).toContain("idempotency_key");
     expect(taskService).toContain("conversation_work_intent");
     expect(taskService).toContain("allowDuplicate");
+    expect(taskService).toContain("taskCreationIdempotencyTable");
+    expect(taskService).toContain("return db.transaction(async (tx) =>");
+    expect(taskService).toContain(".onConflictDoNothing({");
+    expect(taskService).toContain("taskCreationIdempotencyTable.organizationId");
+    expect(taskService).toContain("taskCreationIdempotencyTable.idempotencyKey");
+    expect(platformMigrations).toContain("0040-task-creation-idempotency");
+    expect(dbSchema).toContain('pgTable("task_creation_idempotency_keys"');
+    expect(dbSchema).toContain("primaryKey({");
+    expect(migration).toContain("PRIMARY KEY (organization_id, scope, idempotency_key)");
+    expect(migration).toContain("DEFERRABLE INITIALLY DEFERRED");
+    expect(migration).toContain("Existing duplicate task rows are preserved");
+    expect(migration).toContain("WITH canonical AS");
+    expect(migration).toContain("DISTINCT ON");
+    expect(migration).toContain("ALTER TABLE task_creation_idempotency_keys ENABLE ROW LEVEL SECURITY");
     expect(taskRoute).toContain('req.header("Idempotency-Key")');
     expect(taskRoute).toContain("reusedExisting");
     expect(conversationRoute).toContain('req.header("Idempotency-Key")');

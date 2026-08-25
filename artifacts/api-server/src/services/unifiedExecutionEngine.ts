@@ -48,6 +48,7 @@ import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintS
 import {
   classifyStandardTemplateEvidenceContext,
   validateBlueprintRuntimeCompletion,
+  type BlueprintRuntimeGateFailure,
 } from "./blueprintRuntimeValidationService.js";
 import {
   assembleWorkPackage,
@@ -1469,7 +1470,7 @@ export class UnifiedExecutionEngine {
 
     await progress("reviewing");
     const t6 = Date.now();
-    const reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
+    let reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
       organizationId,
       userId: requesterId,
       conversationId: request.conversationId,
@@ -1482,7 +1483,7 @@ export class UnifiedExecutionEngine {
     tReviewMs = Date.now() - t6;
 
     const artifactRequired = blueprint?.deliverableContract?.artifactRequired === true;
-    const runtimeGate = validateBlueprintRuntimeCompletion({
+    let runtimeGate = validateBlueprintRuntimeCompletion({
       contract: blueprintContract,
       contentMarkdown: reviewResult.finalContent,
       rawClaims,
@@ -1491,6 +1492,37 @@ export class UnifiedExecutionEngine {
       deferApprovalGate: true,
       standardTemplateEvidence,
     });
+    if (shouldAttemptFinalDeliverableSynthesis(runtimeGate.failures, standardTemplateEvidence)) {
+      const synthesisResult = await this.synthesizeFinalDeliverable({
+        userRequest,
+        manifest,
+        blueprint,
+        blueprintContract,
+        authCtx: { userId: requesterId, organizationId, role: request.requesterRole! },
+        evidencePack: evidencePack ?? null,
+        currentContent: reviewResult.finalContent,
+        currentClaims: rawClaims,
+        gateFailures: runtimeGate.failures,
+      });
+
+      draftContent = synthesisResult.content;
+      rawClaims = synthesisResult.claims;
+      reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
+        organizationId,
+        userId: requesterId,
+        conversationId: request.conversationId,
+        evidencePack: evidencePack ?? null,
+      });
+      runtimeGate = validateBlueprintRuntimeCompletion({
+        contract: blueprintContract,
+        contentMarkdown: reviewResult.finalContent,
+        rawClaims,
+        evidencePack: evidencePack ?? null,
+        artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+        deferApprovalGate: true,
+        standardTemplateEvidence,
+      });
+    }
     if (!runtimeGate.passed) {
       const blockingMessage = runtimeGate.failures
         .map((failure) => `${failure.gate}: ${failure.message}`)
@@ -1952,6 +1984,59 @@ export class UnifiedExecutionEngine {
     }
 
     return { content: parsed.content, claims: parsed.claims };
+  }
+
+  private async synthesizeFinalDeliverable(input: {
+    userRequest: string;
+    manifest: WorkPackageManifest;
+    blueprint: WorkBlueprint | null;
+    blueprintContract?: BlueprintExecutionContract | null;
+    authCtx: { userId: string; organizationId: string; role: string };
+    evidencePack?: EvidencePack | null;
+    currentContent: string;
+    currentClaims: RawClaim[];
+    gateFailures: BlueprintRuntimeGateFailure[];
+  }): Promise<{ content: string; claims: RawClaim[] }> {
+    const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
+    if (provider !== "openai") {
+      return { content: input.currentContent, claims: input.currentClaims };
+    }
+
+    const gatewayCtx: AIGatewayContext = {
+      userId: input.authCtx.userId,
+      organizationId: input.authCtx.organizationId,
+      role: input.authCtx.role,
+      permissions: [],
+      purpose: "task_execution_final_synthesis",
+      correlationId: randomUUID(),
+      provider: "openai",
+      retentionClass: "operational",
+      requiresHumanApproval: true,
+    };
+    const gateway = createAIGateway(gatewayCtx);
+    const response = await gateway.process({
+      systemPrompt: buildFinalDeliverableSynthesisSystemPrompt(input.blueprint, input.blueprintContract, input.evidencePack ?? null),
+      userMessage: buildFinalDeliverableSynthesisUserPrompt(input),
+      retrievedFields: [
+        "blueprint.objective",
+        "blueprint.sections",
+        "deliverableContract",
+        "evidencePack.chunks",
+        "failedDraft.content",
+        "gateFailures",
+      ],
+      maxTokens: 6000,
+      outputMode: "json",
+    });
+
+    if (response.usedFallback || !response.content) {
+      return { content: input.currentContent, claims: input.currentClaims };
+    }
+    const parsed = parseSpecialistJsonOutput(response.content);
+    return {
+      content: parsed.content || input.currentContent,
+      claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
+    };
   }
 }
 
@@ -2613,6 +2698,111 @@ function buildWorkPackagePrompt(
   }
 
   return sections.join("\n\n");
+}
+
+function shouldAttemptFinalDeliverableSynthesis(
+  failures: BlueprintRuntimeGateFailure[],
+  standardTemplateEvidence: ReturnType<typeof classifyStandardTemplateEvidenceContext>,
+): boolean {
+  if (!standardTemplateEvidence.customerExampleOptional) return false;
+  return failures.some((failure) =>
+    failure.gate === "professional_placeholder" ||
+    failure.gate === "methodology_leak",
+  );
+}
+
+function buildFinalDeliverableSynthesisSystemPrompt(
+  blueprint: WorkBlueprint | null,
+  contract?: BlueprintExecutionContract | null,
+  evidencePack?: EvidencePack | null,
+): string {
+  const blueprintName = blueprint?.title ?? "professional work";
+  const sections = contract?.sections.length
+    ? contract.sections.map((section) =>
+        `- ${section.sectionCode}: ${section.title}${section.required ? " (required internal check)" : ""}`,
+      ).join("\n")
+    : "- No structured Blueprint sections supplied.";
+  const evidenceSummary = evidencePack && evidencePack.totalChunks > 0
+    ? `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
+    : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
+
+  return `You are the final professional deliverable synthesiser for ${blueprintName}.
+
+You transform internal professional analysis, evidence, Blueprint completion and specialist conclusions into a user-facing deliverable.
+
+The audience will receive the completed document, not the internal working method.
+
+INTERNAL ONLY:
+- Blueprint section codes and methodology
+- review, validate, reconcile, identify, assess, quality check and authority-mapping instructions
+- control codes, gate names, execution diagnostics, chain-of-thought and prompt notes
+
+USER DELIVERABLE:
+- actual operative clauses and provisions
+- actual responsibilities, rights, cancellation, variation, privacy, complaints, payment and termination wording
+- clear reusable template structure suitable for human review
+
+Allowed placeholders are factual/user-specific data placeholders such as [PARTICIPANT_NAME], [PROVIDER_NAME], [PROVIDER_ABN], [NDIS_NUMBER], [AGREEMENT_PERIOD], [SUPPORT_SCHEDULE], [PRICE] and [SIGNATURE].
+
+Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [PROVIDER_OBLIGATIONS], [CANCELLATION_TERMS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [CONCLUSION], [INCOMPLETE: ...] or equivalent tokens.
+
+Do not expose chain-of-thought. Return ONLY JSON:
+{
+  "content": "<complete user-facing deliverable markdown>",
+  "claims": []
+}
+
+Blueprint sections are internal completeness checks, not customer-facing headings unless the requested document type naturally uses them:
+${sections}
+
+${evidenceSummary}`;
+}
+
+function buildFinalDeliverableSynthesisUserPrompt(input: {
+  userRequest: string;
+  manifest: WorkPackageManifest;
+  blueprint: WorkBlueprint | null;
+  blueprintContract?: BlueprintExecutionContract | null;
+  evidencePack?: EvidencePack | null;
+  currentContent: string;
+  currentClaims: RawClaim[];
+  gateFailures: BlueprintRuntimeGateFailure[];
+}): string {
+  const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
+    ? buildEvidenceSection(input.evidencePack)
+    : "";
+  const sectionChecks = input.blueprintContract?.sections.length
+    ? input.blueprintContract.sections.map((section) =>
+        [
+          `${section.sortOrder}. ${section.sectionCode} — ${section.title}`,
+          section.minimumContentExpectation ? `Minimum: ${section.minimumContentExpectation}` : "",
+          section.instructions ? `Internal instruction: ${section.instructions}` : "",
+        ].filter(Boolean).join("\n"),
+      ).join("\n\n")
+    : "No structured sections supplied.";
+  const gateDetails = input.gateFailures.map((failure) =>
+    [
+      `- ${failure.gate}: ${failure.message}`,
+      failure.details?.length ? `  Details: ${failure.details.join(", ")}` : "",
+    ].filter(Boolean).join("\n"),
+  ).join("\n");
+
+  return [
+    `## ORIGINAL REQUEST\n${input.userRequest}`,
+    input.blueprint
+      ? `## DOCUMENT TYPE\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}`
+      : `## DOCUMENT TYPE\nProfessional deliverable`,
+    `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\n${sectionChecks}`,
+    evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
+    `## FAILED DRAFT TO REPAIR\n${input.currentContent}`,
+    `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
+    `## FINAL SYNTHESIS INSTRUCTIONS
+Rewrite the failed draft into the final user-facing deliverable.
+Draft the professional clauses and provisions in full.
+Preserve only factual/user-specific data placeholders.
+Remove internal methodology headings, review instructions, control codes and professional placeholder tokens.
+If mandatory professional content cannot be completed from the request, evidence and Blueprint contract, return content that clearly asks for clarification rather than emitting placeholders.`,
+  ].filter(Boolean).join("\n\n---\n\n");
 }
 
 function deriveTitleFromRequest(userRequest: string, blueprint: WorkBlueprint | null): string {

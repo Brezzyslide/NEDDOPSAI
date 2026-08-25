@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { getRegistryEntry, resolveRegistryProfessionalOwner } from "../services/blueprintRegistry";
 import {
   classifyStandardTemplateEvidenceContext,
+  detectIncompleteProfessionalSections,
+  detectInstructionalProfessionalText,
   detectLeakedBlueprintMethodologyHeadings,
   detectUnresolvedProfessionalPlaceholders,
   validateBlueprintRuntimeCompletion,
@@ -463,6 +465,87 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
 
     expect(detectUnresolvedProfessionalPlaceholders(contentMarkdown, standardTemplateEvidence)).toEqual([]);
     expect(result.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
+  });
+
+  it("blocks instructional professional-method text where final clauses are required", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "This template is between [PARTICIPANT_NAME] and [PROVIDER_NAME].",
+      "## Provider Obligations",
+      "Review the provider obligations clause and validate whether delivery responsibilities have been mapped before use.",
+      "## Cancellation Terms",
+      "Assess cancellation terms and insert the correct cancellation provisions after professional review.",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "instructional_text:Assess cancellation terms and insert the correct cancellation provisions after professional review.",
+      "instructional_text:Review the provider obligations clause and validate whether delivery responsibilities have been mapped before use.",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.some((detail) => detail.startsWith("instructional_text:")),
+    )).toBe(true);
+  });
+
+  it("blocks placeholder-only or empty substantive professional sections", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "This reusable agreement contains factual placeholders only for customer-specific data.",
+      "## Termination Terms",
+      "[TERMINATION_TERMS]",
+      "## Conclusion",
+      "To be completed.",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectIncompleteProfessionalSections(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "incomplete_section:Conclusion",
+      "incomplete_section:Termination Terms",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.includes("incomplete_section:Termination Terms"),
+    )).toBe(true);
+  });
+
+  it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const reviewIndex = uee.indexOf("let runtimeGate = validateBlueprintRuntimeCompletion");
+    const synthesisIndex = uee.indexOf("shouldAttemptFinalDeliverableSynthesis(runtimeGate.failures");
+    const createIndex = uee.indexOf("const completedWork = await createDraft");
+
+    expect(uee).toContain("task_execution_final_synthesis");
+    expect(uee).toContain("buildFinalDeliverableSynthesisSystemPrompt");
+    expect(uee).toContain("internal professional analysis, evidence, Blueprint completion and specialist conclusions");
+    expect(uee).toContain("INTERNAL ONLY");
+    expect(uee).toContain("Allowed placeholders are factual/user-specific data placeholders");
+    expect(uee).toContain("Not allowed: unresolved professional-content placeholders");
+    expect(reviewIndex).toBeGreaterThan(-1);
+    expect(synthesisIndex).toBeGreaterThan(reviewIndex);
+    expect(createIndex).toBeGreaterThan(synthesisIndex);
   });
 
   it("still requires authoritative evidence for standard templates making compliance claims", () => {

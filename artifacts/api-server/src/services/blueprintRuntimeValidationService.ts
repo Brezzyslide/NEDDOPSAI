@@ -131,11 +131,15 @@ export function validateBlueprintRuntimeCompletion(
     });
   }
 
-  const leakedMethodologyHeadings = detectLeakedBlueprintMethodologyHeadings(
-    input.contentMarkdown,
-    contract.sections,
-    standardTemplateEvidence,
-  );
+  const leakedMethodologyHeadings = [
+    ...detectLeakedBlueprintMethodologyHeadings(
+      input.contentMarkdown,
+      contract.sections,
+      standardTemplateEvidence,
+    ),
+    ...detectInstructionalProfessionalText(input.contentMarkdown, standardTemplateEvidence),
+    ...detectIncompleteProfessionalSections(input.contentMarkdown, standardTemplateEvidence),
+  ].sort();
   if (leakedMethodologyHeadings.length > 0) {
     failures.push({
       gate: "methodology_leak",
@@ -415,6 +419,60 @@ export function detectLeakedBlueprintMethodologyHeadings(
   }
 
   return [...findings].sort();
+}
+
+export function detectInstructionalProfessionalText(
+  contentMarkdown: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
+
+  const findings = new Set<string>();
+  const paragraphs = contentMarkdown
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  for (const paragraph of paragraphs) {
+    const withoutHeading = paragraph.replace(/^#{1,6}\s+/, "");
+    if (
+      /\b(?:review|validate|assess|identify|map|check|determine|insert|draft|configure|complete)\b/i.test(withoutHeading) &&
+      /\b(?:clause|clauses|provision|provisions|obligation|obligations|responsibilit(?:y|ies)|right|rights|term|terms|cancellation|variation|termination|privacy|complaints?|payment|pricing|conclusion)\b/i.test(withoutHeading) &&
+      !/\b(?:must|will|agrees?|may|is responsible for|has the right to|is entitled to)\b/i.test(withoutHeading)
+    ) {
+      findings.add(`instructional_text:${withoutHeading.slice(0, 140)}`);
+    }
+  }
+
+  return [...findings].sort();
+}
+
+export function detectIncompleteProfessionalSections(
+  contentMarkdown: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
+
+  const findings = new Set<string>();
+  const matches = [...contentMarkdown.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$([\s\S]*?)(?=^#{1,6}\s+|$)/gim)];
+  for (const match of matches) {
+    const heading = (match[1] ?? "").trim();
+    const body = (match[2] ?? "").trim();
+    if (!isProfessionalSectionHeading(heading)) continue;
+    const bodyWithoutPlaceholders = body
+      .replace(INCOMPLETE_MARKER_PATTERN, "")
+      .replace(BRACKET_TOKEN_PATTERN, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (bodyWithoutPlaceholders.length < 80) {
+      findings.add(`incomplete_section:${heading}`);
+    }
+  }
+  return [...findings].sort();
+}
+
+function isProfessionalSectionHeading(heading: string): boolean {
+  return /\b(?:clause|clauses|obligations?|responsibilit(?:y|ies)|rights?|terms?|provisions?|privacy|confidentiality|complaints?|cancellation|variation|termination|payment|pricing|conclusion)\b/i.test(heading);
 }
 
 function normaliseHeadingLabel(value: string): string {

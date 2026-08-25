@@ -120,6 +120,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds completed_work_versions.provenance_status expected by claim persistence and Completed Work provenance lifecycle paths.",
   },
+  {
+    id: "0040-task-creation-idempotency",
+    file: "0040_task_creation_idempotency.sql",
+    transactional: true,
+    notes: "Adds durable task creation idempotency ledger and backfills canonical task mappings from existing creation metadata.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

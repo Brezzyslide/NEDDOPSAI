@@ -10,6 +10,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import {
   db,
   tasksTable,
+  taskCreationIdempotencyTable,
   taskSpecialistsTable,
   taskExecutionPlansTable,
   type InsertTask,
@@ -119,10 +120,11 @@ function creationIsWithinWorkIntentDedupeWindow(creation: Record<string, unknown
 async function hydrateTaskWithPlan(
   task: typeof tasksTable.$inferSelect,
   dedupeReason?: TaskWithPlan["dedupeReason"],
+  client: typeof db = db,
 ): Promise<TaskWithPlan> {
   const [planRow, specialists] = await Promise.all([
     getTaskPlan(task.id),
-    db
+    client
       .select()
       .from(taskSpecialistsTable)
       .where(and(
@@ -233,10 +235,12 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
   }
 
   const taskId = randomUUID();
+  const idempotencyKey = input.idempotencyKey?.trim() || undefined;
+  const workIntentKey = input.conversationId ? deriveWorkIntentKey(input.title, input.description) : undefined;
   const taskCreation = {
-    idempotencyKey: input.idempotencyKey?.trim() || undefined,
+    idempotencyKey,
     conversationId: input.conversationId,
-    workIntentKey: input.conversationId ? deriveWorkIntentKey(input.title, input.description) : undefined,
+    workIntentKey,
     source: input.originatingModule ?? "task_centre",
     explicitSeparate: input.allowDuplicate === true,
     createdAt: new Date().toISOString(),
@@ -255,61 +259,112 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     metadata: { taskCreation },
   };
 
-  const [task] = await db.insert(tasksTable).values(taskRow).returning();
-  if (!task) throw new Error("Failed to create task");
+  return db.transaction(async (tx) => {
+    if (!input.allowDuplicate && idempotencyKey) {
+      const [reserved] = await tx
+        .insert(taskCreationIdempotencyTable)
+        .values({
+          organizationId: input.organizationId,
+          scope: "idempotency_key",
+          idempotencyKey,
+          taskId,
+          conversationId: input.conversationId,
+          workIntentKey,
+          title: input.title,
+        })
+        .onConflictDoNothing({
+          target: [
+            taskCreationIdempotencyTable.organizationId,
+            taskCreationIdempotencyTable.scope,
+            taskCreationIdempotencyTable.idempotencyKey,
+          ],
+        })
+        .returning();
 
-  // Chief of Staff plans the task
-  const plan = planTask(input.title, input.description);
+      if (!reserved) {
+        const [existingReservation] = await tx
+          .select()
+          .from(taskCreationIdempotencyTable)
+          .where(and(
+            eq(taskCreationIdempotencyTable.organizationId, input.organizationId),
+            eq(taskCreationIdempotencyTable.scope, "idempotency_key"),
+            eq(taskCreationIdempotencyTable.idempotencyKey, idempotencyKey),
+          ))
+          .limit(1);
 
-  // Persist only approval requirements at planning time. A concrete pending
-  // approval row is created later when execution reaches an actionable gate.
-  const approvalState = plan.requiresApproval ? "required" : "not_required";
-  await db
-    .update(tasksTable)
-    .set({
-      currentState: "planning",
-      approvalState,
-      metadata: mergeTaskMetadata(task.metadata, buildApprovalRequirement(plan)),
-      updatedAt: new Date(),
-    })
-    .where(eq(tasksTable.id, taskId));
+        if (existingReservation) {
+          const [existingTask] = await tx
+            .select()
+            .from(tasksTable)
+            .where(and(
+              eq(tasksTable.id, existingReservation.taskId),
+              eq(tasksTable.organizationId, input.organizationId),
+            ))
+            .limit(1);
 
-  // Persist execution plan — Sprint 5: include organizationId for direct tenant ownership
-  await db.insert(taskExecutionPlansTable).values({
-    id: randomUUID(),
-    taskId,
-    organizationId: input.organizationId,
-    planData: plan as unknown as Record<string, unknown>,
-    version: "1",
-  });
+          if (existingTask) {
+            return hydrateTaskWithPlan(existingTask, "idempotency_key", tx as typeof db);
+          }
+        }
+      }
+    }
 
-  // Assign specialists — Sprint 5: include organizationId for direct tenant ownership
-  const specialistRows = plan.assignedSpecialists.map(code => ({
-    id: randomUUID(),
-    taskId,
-    organizationId: input.organizationId,
-    specialistId: `spec_${code}`,
-    role: code === "chief_of_staff" ? "lead" : "executor",
-  }));
+    const [task] = await tx.insert(tasksTable).values(taskRow).returning();
+    if (!task) throw new Error("Failed to create task");
 
-  let specialists: (typeof taskSpecialistsTable.$inferSelect)[] = [];
-  if (specialistRows.length > 0) {
-    specialists = await db
-      .insert(taskSpecialistsTable)
-      .values(specialistRows)
+    // Chief of Staff plans the task
+    const plan = planTask(input.title, input.description);
+
+    // Persist only approval requirements at planning time. A concrete pending
+    // approval row is created later when execution reaches an actionable gate.
+    const approvalState = plan.requiresApproval ? "required" : "not_required";
+    await tx
+      .update(tasksTable)
+      .set({
+        currentState: "planning",
+        approvalState,
+        metadata: mergeTaskMetadata(task.metadata, buildApprovalRequirement(plan)),
+        updatedAt: new Date(),
+      })
+      .where(eq(tasksTable.id, taskId));
+
+    // Persist execution plan — Sprint 5: include organizationId for direct tenant ownership
+    await tx.insert(taskExecutionPlansTable).values({
+      id: randomUUID(),
+      taskId,
+      organizationId: input.organizationId,
+      planData: plan as unknown as Record<string, unknown>,
+      version: "1",
+    });
+
+    // Assign specialists — Sprint 5: include organizationId for direct tenant ownership
+    const specialistRows = plan.assignedSpecialists.map(code => ({
+      id: randomUUID(),
+      taskId,
+      organizationId: input.organizationId,
+      specialistId: `spec_${code}`,
+      role: code === "chief_of_staff" ? "lead" : "executor",
+    }));
+
+    let specialists: (typeof taskSpecialistsTable.$inferSelect)[] = [];
+    if (specialistRows.length > 0) {
+      specialists = await tx
+        .insert(taskSpecialistsTable)
+        .values(specialistRows)
+        .returning();
+    }
+
+    // Approval-required tasks are still dispatchable until the actual approval
+    // gate is reached. `awaiting_approval` means a real pending approval exists.
+    const nextState: TaskState = "approved";
+    const [updatedTask] = await tx
+      .update(tasksTable)
+      .set({ currentState: nextState, updatedAt: new Date() })
+      .where(eq(tasksTable.id, taskId))
       .returning();
-  }
 
-  // Approval-required tasks are still dispatchable until the actual approval
-  // gate is reached. `awaiting_approval` means a real pending approval exists.
-  const nextState: TaskState = "approved";
-  const [updatedTask] = await db
-    .update(tasksTable)
-    .set({ currentState: nextState, updatedAt: new Date() })
-    .where(eq(tasksTable.id, taskId))
-    .returning();
-
-  return { task: updatedTask!, plan, specialists };
+    return { task: updatedTask!, plan, specialists };
+  });
 }
 
 export async function getTasksByOrg(
