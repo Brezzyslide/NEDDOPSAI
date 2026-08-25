@@ -227,6 +227,16 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "task.title",
     "task.description",
     "task.executionPlan",
+    // blueprint-scoped execution context for final deliverable synthesis.
+    // These fields describe the approved method and output contract only;
+    // hidden prompts, chain-of-thought, storage keys, and unrelated records
+    // remain excluded.
+    "blueprint.objective",
+    "blueprint.sections",
+    "deliverableContract",
+    "failedDraft.content",
+    "gateFailures",
+    "evidencePack.chunks",
     // specialist_identity
     "specialist.name",
     "specialist.capabilities",

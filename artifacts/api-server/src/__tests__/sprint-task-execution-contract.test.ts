@@ -372,6 +372,21 @@ describe("task_execution data-field contract — allowlist integrity", () => {
     expect(convInt.has("conversation.id")).toBe(true);
     expect(taskExec.has("conversation.id")).toBe(false);
   });
+
+  it("task_execution permits final deliverable synthesis context without broad storage access", () => {
+    const allowlist = PURPOSE_FIELD_ALLOWLIST["task_execution"];
+
+    expect(allowlist).toEqual(expect.arrayContaining([
+      "blueprint.objective",
+      "blueprint.sections",
+      "deliverableContract",
+      "failedDraft.content",
+      "gateFailures",
+      "evidencePack.chunks",
+    ]));
+    expect(allowlist.some(f => f.includes("storageKey"))).toBe(false);
+    expect(allowlist).not.toContain("conversation.id");
+  });
 });
 
 // ─── Part 5 — Regression: medication policy workflow ─────────────────────────
