@@ -26,6 +26,18 @@ CREATE INDEX IF NOT EXISTS idx_task_creation_idempotency_conversation_intent
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON task_creation_idempotency_keys TO needsops_app;
 
+ALTER TABLE task_creation_idempotency_keys ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tenant_isolation" ON task_creation_idempotency_keys;
+CREATE POLICY "tenant_isolation" ON task_creation_idempotency_keys
+  USING (organization_id = current_setting('app.current_organization_id', TRUE));
+
+DROP POLICY IF EXISTS "needsops_app_access" ON task_creation_idempotency_keys;
+CREATE POLICY "needsops_app_access" ON task_creation_idempotency_keys
+  TO needsops_app
+  USING (organization_id = current_setting('app.current_organization_id', TRUE))
+  WITH CHECK (organization_id = current_setting('app.current_organization_id', TRUE));
+
 WITH canonical AS (
   SELECT DISTINCT ON (
     organization_id,
@@ -71,15 +83,3 @@ SELECT
   NOW()
 FROM canonical
 ON CONFLICT DO NOTHING;
-
-ALTER TABLE task_creation_idempotency_keys ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "tenant_isolation" ON task_creation_idempotency_keys;
-CREATE POLICY "tenant_isolation" ON task_creation_idempotency_keys
-  USING (organization_id = current_setting('app.current_organization_id', TRUE));
-
-DROP POLICY IF EXISTS "needsops_app_access" ON task_creation_idempotency_keys;
-CREATE POLICY "needsops_app_access" ON task_creation_idempotency_keys
-  TO needsops_app
-  USING (organization_id = current_setting('app.current_organization_id', TRUE))
-  WITH CHECK (organization_id = current_setting('app.current_organization_id', TRUE));
