@@ -246,8 +246,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const handler = src.slice(src.indexOf('case "retry"'), src.indexOf('case "status"'));
     const dispatchIndex = src.indexOf("if (dispatchAfterCommand)");
 
-    expect(handler).toContain('task.currentState !== "failed"');
-    expect(handler).toContain('newState = "queued"');
+    expect(handler).toContain('["failed", "queued"].includes(task.currentState)');
+    expect(handler).toContain('newState = task.currentState === "queued" ? null : "queued"');
     expect(handler).toContain("dispatchAfterCommand = true");
     expect(dispatchIndex).toBeGreaterThan(src.indexOf('case "retry"'));
     expect(src.slice(dispatchIndex)).toContain("dispatchWorkExecution({");

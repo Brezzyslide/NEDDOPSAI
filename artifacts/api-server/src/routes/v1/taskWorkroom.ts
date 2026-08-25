@@ -419,11 +419,11 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
         break;
 
       case "retry":
-        if (task.currentState !== "failed") {
-          res.status(422).json({ error: { code: "INVALID_TRANSITION", message: "Only failed tasks can be retried." } });
+        if (!["failed", "queued"].includes(task.currentState)) {
+          res.status(422).json({ error: { code: "INVALID_TRANSITION", message: "Only failed or queued tasks can be retried." } });
           return;
         }
-        newState = "queued";
+        newState = task.currentState === "queued" ? null : "queued";
         dispatchAfterCommand = true;
         responseContent = "The task has been queued for retry.";
         break;
