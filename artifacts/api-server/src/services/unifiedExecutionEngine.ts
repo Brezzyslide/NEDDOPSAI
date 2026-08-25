@@ -2492,7 +2492,7 @@ ${sectionLines}
 **EXECUTION RULES:**
 1. Never invent facts, policy positions, or legislative requirements
 2. Use organisation-approved templates when provided — never substitute structure
-3. Mark sections as [INCOMPLETE: description] when required information is unavailable
+3. Do not emit unresolved professional placeholders or [INCOMPLETE: ...] markers as final Completed Work; if professional content cannot be completed, fail or request clarification before handoff
 4. Cite every policy or legislative reference used
 5. Use the organisation's approved terminology from memory
 6. The output must be suitable for human review and approval before use`;
@@ -2580,6 +2580,8 @@ function buildWorkPackagePrompt(
       `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
       `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
       `Use clear placeholders for participant, provider, ABN, plan, support schedule, price, GST, payment-route and other customer-specific fields where appropriate.\n` +
+      `You MUST draft the professional content itself: operative clauses, obligations, rights, complaints, privacy/confidentiality, payment/pricing framework, cancellation, variation, termination/exit, compliance and conclusion language.\n` +
+      `Do NOT leave professional placeholders such as [CLAUSE_1], [DELIVERY_OBLIGATIONS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [GST_CLAUSE], [CONCLUSION] or [INCOMPLETE: ...] in the final output.\n` +
       `Do not require a customer example/template unless the user explicitly asked to match an existing format.\n` +
       `Compliance or regulatory statements still require the authoritative evidence provided in this prompt. If authority evidence is insufficient, flag the affected clause rather than inventing it.\n` +
       `Produce the requested user-facing deliverable; do not expose internal Blueprint section codes as headings unless they are genuinely appropriate for the final artifact.`
@@ -2606,7 +2608,7 @@ function buildWorkPackagePrompt(
       `=== CITATION REQUIREMENTS ===\n` +
       `You MUST cite evidence from the AUTHORITATIVE EVIDENCE section above using the citation tags provided.\n` +
       `Do not cite sources not present in this prompt.\n` +
-      `If evidence is insufficient, mark the affected section as [INCOMPLETE: requires <source type>].`
+      `If evidence is insufficient for mandatory professional content, return a blocked/clarification result rather than emitting [INCOMPLETE] markers as Completed Work.`
     );
   }
 

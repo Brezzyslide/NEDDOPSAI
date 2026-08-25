@@ -91,6 +91,66 @@ export type IngressResult =
     }
   | { type: "error"; message: string; conversationId: string };
 
+function taskStateLabel(state: string | undefined): string {
+  return state ? state.replace(/_/g, " ") : "unknown";
+}
+
+function taskMetadataRecord(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  return metadata && typeof metadata === "object" ? metadata : {};
+}
+
+function metadataObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function hasExecutionStarted(task: { currentState: string; metadata?: Record<string, unknown> | null }): boolean {
+  const metadata = taskMetadataRecord(task.metadata);
+  return task.currentState === "executing"
+    || !!metadataObject(metadata.executionClaim)
+    || !!metadataObject(metadata.executionFailure)
+    || !!metadataObject(metadata.executionResult);
+}
+
+function extractFailureMessage(task: { metadata?: Record<string, unknown> | null }): string | null {
+  const failure = metadataObject(taskMetadataRecord(task.metadata).executionFailure);
+  const raw = failure?.error ?? failure?.message ?? failure?.reason;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+function isStartedStatusQuestion(text: string): boolean {
+  return /\b(has|have|did).*(specialist|worker|team|work).*(started|begun|started working|actually started)\b/i.test(text)
+    || /\b(actually started|started working|begun working)\b/i.test(text);
+}
+
+function isCurrentTaskQuestion(text: string): boolean {
+  return /\b(what|which) task (are we|am i|is this)\b/i.test(text)
+    || /\bwhat are we working on\b/i.test(text);
+}
+
+function formatStatusResponse(task: { title: string; currentState: string; metadata?: Record<string, unknown> | null }, text: string): string {
+  const label = taskStateLabel(task.currentState);
+  const failure = extractFailureMessage(task);
+  if (isStartedStatusQuestion(text)) {
+    if (hasExecutionStarted(task) && task.currentState === "failed") {
+      return `Yes. The specialist started work on "${task.title}", but it later failed${failure ? `: ${failure}` : "."}`;
+    }
+    if (task.currentState === "executing") {
+      return `Yes. The specialist has started work on "${task.title}", and it is currently executing.`;
+    }
+    if (hasExecutionStarted(task)) {
+      return `Yes. The specialist started work on "${task.title}". The task is currently ${label}.`;
+    }
+    return `No confirmed specialist execution has started for "${task.title}" yet. The task is currently ${label}.`;
+  }
+  if (isCurrentTaskQuestion(text)) {
+    return `We are focused on "${task.title}". The authoritative task state is ${label}${failure ? `, with the latest failure: ${failure}` : "."}`;
+  }
+  if (failure && task.currentState === "failed") {
+    return `The task "${task.title}" is failed. Latest failure: ${failure}`;
+  }
+  return `The task "${task.title}" is currently ${label}.`;
+}
+
 // ─── Main entry-point ─────────────────────────────────────────────────────────
 
 export async function handleIncomingMessage(input: IngressInput): Promise<IngressResult> {
@@ -750,10 +810,10 @@ async function maybeHandleDeterministicControl(input: {
       mode = "status_request";
       const task = openTasks.find(t => t.id === resolution.resolvedTaskId);
       if (task && /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i.test(input.content)) {
-        response = `I do not have a reliable completion estimate yet. The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`;
+        response = `I do not have a reliable completion estimate yet. ${formatStatusResponse(task, input.content)}`;
       } else {
         response = task
-          ? `The task "${task.title}" is currently ${task.currentState.replace(/_/g, " ")}.`
+          ? formatStatusResponse(task, input.content)
           : "I could not resolve which task you want a status update on.";
       }
       break;

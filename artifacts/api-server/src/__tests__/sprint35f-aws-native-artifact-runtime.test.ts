@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { getRegistryEntry, resolveRegistryProfessionalOwner } from "../services/blueprintRegistry";
 import {
   classifyStandardTemplateEvidenceContext,
+  detectLeakedBlueprintMethodologyHeadings,
+  detectUnresolvedProfessionalPlaceholders,
   validateBlueprintRuntimeCompletion,
   type BlueprintRuntimeValidationInput,
 } from "../services/blueprintRuntimeValidationService";
@@ -152,6 +154,20 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("__artifact_generation_pending__");
     expect(uee).toContain("primaryArtifactId");
     expect(uee).toContain('failedStage: "artifact_generation"');
+  });
+
+  it("packages PDFKit standard-font runtime data beside the bundled API output", () => {
+    const buildScript = repoSource("artifacts/api-server/build.mjs");
+    const smokeScript = source("pdf-runtime-smoke.ts");
+
+    expect(buildScript).toContain("copyPdfKitRuntimeAssets");
+    expect(buildScript).toContain('require.resolve("pdfkit"');
+    expect(buildScript).toContain('path.join(distDir, "data")');
+    expect(buildScript).toContain("src/pdf-runtime-smoke.ts");
+    expect(smokeScript).toContain('"Helvetica.afm"');
+    expect(smokeScript).toContain('"sRGB_IEC61966_2_1.icc"');
+    expect(smokeScript).toContain("new PdfExporter().export(doc)");
+    expect(smokeScript).toContain('result.buffer.slice(0, 4).toString("ascii") !== "%PDF"');
   });
 
   it("exports XLSX workbooks for spreadsheet deliverable contracts", () => {
@@ -333,6 +349,120 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(result.failures.some((failure) => failure.gate === "required_section")).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "section_evidence")).toBe(false);
     expect(result.failures.some((failure) => failure.gate === "missing_evidence")).toBe(false);
+  });
+
+  it("blocks professional-content placeholders before Completed Work/artifact finalisation", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "Parties: [PARTICIPANT_NAME] and [PROVIDER_NAME].",
+      "## Operative clauses",
+      "[CLAUSE_1]",
+      "[DELIVERY_OBLIGATIONS]",
+      "[PROVIDER_OBLIGATIONS]",
+      "[PARTICIPANT_RESPONSIBILITIES]",
+      "[CANCELLATION_TERMS]",
+      "[RIGHTS_CLAUSES]",
+      "[VARIATION_TERMS]",
+      "[TERMINATION_TERMS]",
+      "[GST_CLAUSE]",
+      "[CONCLUSION]",
+      "[INCOMPLETE: requires material terms configuration]",
+    ].join("\n\n");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectUnresolvedProfessionalPlaceholders(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "[CANCELLATION_TERMS]",
+      "[CLAUSE_1]",
+      "[CONCLUSION]",
+      "[DELIVERY_OBLIGATIONS]",
+      "[GST_CLAUSE]",
+      "[INCOMPLETE: requires material terms configuration]",
+      "[PARTICIPANT_RESPONSIBILITIES]",
+      "[PROVIDER_OBLIGATIONS]",
+      "[RIGHTS_CLAUSES]",
+      "[TERMINATION_TERMS]",
+      "[VARIATION_TERMS]",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "professional_placeholder" &&
+      failure.details?.includes("[CLAUSE_1]") &&
+      failure.details?.includes("[INCOMPLETE: requires material terms configuration]"),
+    )).toBe(true);
+  });
+
+  it("blocks internal Blueprint methodology headings from customer-facing standard templates", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "Parties: [PARTICIPANT_NAME] and [PROVIDER_NAME].",
+      "## Material Terms Extraction",
+      "A working-method section leaked into the output.",
+      "## Participant Safeguard Validation",
+      "Another internal validation heading leaked into the document.",
+      "## Governance Decision Trail",
+      "Internal governance trace text leaked into customer-facing content.",
+      "## Provider Responsibilities",
+      "The provider must deliver supports with due care, protect privacy, maintain complaints pathways and explain changes before varying the agreement.",
+    ].join("\n\n");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectLeakedBlueprintMethodologyHeadings(contentMarkdown, contract.sections, standardTemplateEvidence)).toEqual([
+      "Governance Decision Trail",
+      "Material Terms Extraction",
+      "Participant Safeguard Validation",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.includes("Material Terms Extraction") &&
+      failure.details?.includes("Governance Decision Trail"),
+    )).toBe(true);
+  });
+
+  it("allows user-data placeholders in standard reusable templates while requiring drafted professional content", () => {
+    const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
+    const contract = contractFor("service_agreement_review");
+    const contentMarkdown = [
+      "## Standard NDIS Service Agreement Template",
+      "This agreement is between [PARTICIPANT_NAME] and [PROVIDER_NAME] ([PROVIDER_ABN]) for participant [NDIS_NUMBER].",
+      "## Professional terms",
+      "The provider must deliver supports with due care and skill, respect participant choice and control, protect privacy, maintain complaint pathways, apply the agreed cancellation framework and give written notice before any variation or termination.",
+      "The participant must provide accurate plan and support information, communicate service changes promptly and meet agreed payment responsibilities for supports recorded in [SUPPORT_SCHEDULE].",
+      "Fees, GST treatment where applicable, agreement period [AGREEMENT_PERIOD], signatures and dates remain data-entry placeholders for the completed participant-specific agreement.",
+    ].join("\n\n");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-service-agreement",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectUnresolvedProfessionalPlaceholders(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+    expect(result.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
   });
 
   it("still requires authoritative evidence for standard templates making compliance claims", () => {

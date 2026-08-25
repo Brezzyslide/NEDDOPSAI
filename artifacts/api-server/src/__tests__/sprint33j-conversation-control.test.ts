@@ -332,6 +332,9 @@ describe("Sprint 33J.1 conversation control resolver", () => {
 
   it("classifies specialist-start questions as status queries requiring authoritative task state", () => {
     expect(classifyCanonicalConversationAction("Has the specialist actually started working on it?")).toBe("STATUS_QUERY");
+    expect(classifyCanonicalConversationAction("What is its current status?")).toBe("STATUS_QUERY");
+    expect(classifyCanonicalConversationAction("What task are we working on?")).toBe("STATUS_QUERY");
+    expect(classifyCanonicalConversationAction("Who is working on it?")).toBe("STATUS_QUERY");
   });
 
   it("detects assistant confirmation copy as requiring a bound pending action", () => {

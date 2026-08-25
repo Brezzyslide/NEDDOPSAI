@@ -140,6 +140,10 @@ const REJECTION_PATTERNS = [
 // Status request patterns
 const STATUS_PATTERNS = [
   /\b(what('s| is) (happening|the status|going on|the progress|next)|where are we|how is it going|update me|any update|what are you waiting for|is it done|has it)\b/i,
+  /\bwhat task are we working on\b/i,
+  /\bwhich task are we working on\b/i,
+  /\bwhat are we working on\b/i,
+  /\bwho('s| is)? working on (it|this|that|the task|this work)\b/i,
   /\b(status|progress|update|what's next)\b/i,
   /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i,
   /\b(why (is|was|are|has it|did it)|what (went wrong|failed|happened|caused))\b/i,

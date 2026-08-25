@@ -29,6 +29,8 @@ export interface BlueprintRuntimeGateFailure {
     | "section_evidence"
     | "missing_evidence"
     | "claim_integrity"
+    | "professional_placeholder"
+    | "methodology_leak"
     | "prohibited_deliverable"
     | "template_required"
     | "artifact_required"
@@ -115,6 +117,33 @@ export function validateBlueprintRuntimeCompletion(
   const deliverableContract = parseDeliverableContract(blueprint.deliverableContract as Record<string, unknown> | null);
 
   const standardTemplateEvidence = input.standardTemplateEvidence ?? null;
+
+  const unresolvedProfessionalPlaceholders = detectUnresolvedProfessionalPlaceholders(
+    input.contentMarkdown,
+    standardTemplateEvidence,
+  );
+  if (unresolvedProfessionalPlaceholders.length > 0) {
+    failures.push({
+      gate: "professional_placeholder",
+      state: "validation",
+      message: "Draft contains unresolved professional-content placeholders. User/organisation data placeholders may remain for reusable templates, but professional clauses, obligations, rights, terms, conclusions and incomplete markers must be drafted before Completed Work is created.",
+      details: unresolvedProfessionalPlaceholders,
+    });
+  }
+
+  const leakedMethodologyHeadings = detectLeakedBlueprintMethodologyHeadings(
+    input.contentMarkdown,
+    contract.sections,
+    standardTemplateEvidence,
+  );
+  if (leakedMethodologyHeadings.length > 0) {
+    failures.push({
+      gate: "methodology_leak",
+      state: "validation",
+      message: "Draft exposes internal Blueprint methodology headings in a customer-facing standard template. Blueprint sections must remain internal working method unless the final deliverable contract explicitly maps them into user-facing content.",
+      details: leakedMethodologyHeadings,
+    });
+  }
 
   failures.push(...validateSections(
     contract.sections,
@@ -234,6 +263,168 @@ export function validateBlueprintRuntimeCompletion(
   }
 
   return { passed: failures.length === 0, failures };
+}
+
+const INCOMPLETE_MARKER_PATTERN = /\[(?:INCOMPLETE|MISSING|TODO|UNKNOWN|REQUIRED)(?::[^\]]+)?\]/gi;
+const BRACKET_TOKEN_PATTERN = /\[([A-Z][A-Z0-9_ -]{2,})(?::[^\]]+)?\]/g;
+const MARKDOWN_HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*#*\s*$/gm;
+const INTERNAL_METHOD_HEADING_PATTERN =
+  /\b(?:extraction|validation|governance\s+decision\s+trail|decision\s+trail|evidence\s+doctrine|completeness\s+gate|authority\s+package|preservation\s+inventory|readiness\s+findings|change\s+history|professional\s+boundaries|handoffs|reconciliation)\b/i;
+const PROFESSIONAL_PLACEHOLDER_TERMS = [
+  "CLAUSE",
+  "CLAUSES",
+  "OBLIGATION",
+  "OBLIGATIONS",
+  "RESPONSIBILITY",
+  "RESPONSIBILITIES",
+  "RIGHT",
+  "RIGHTS",
+  "TERM",
+  "TERMS",
+  "CONDITION",
+  "CONDITIONS",
+  "PROVISION",
+  "PROVISIONS",
+  "FRAMEWORK",
+  "POLICY",
+  "PROCEDURE",
+  "PROCESS",
+  "COMPLAINT",
+  "COMPLAINTS",
+  "PRIVACY",
+  "CONFIDENTIALITY",
+  "CANCELLATION",
+  "VARIATION",
+  "CHANGE",
+  "TERMINATION",
+  "EXIT",
+  "DELIVERY",
+  "PROVIDER",
+  "PARTICIPANT",
+  "PAYMENT",
+  "PRICING",
+  "GST_CLAUSE",
+  "CONCLUSION",
+  "RECOMMENDATION",
+  "FINDING",
+  "ANALYSIS",
+  "ASSESSMENT",
+  "REVIEW",
+  "SUMMARY",
+] as const;
+
+const USER_DATA_PLACEHOLDER_TERMS = [
+  "NAME",
+  "ABN",
+  "ACN",
+  "NUMBER",
+  "ID",
+  "IDENTIFIER",
+  "DATE",
+  "ADDRESS",
+  "EMAIL",
+  "PHONE",
+  "CONTACT",
+  "SIGNATURE",
+  "INITIAL",
+  "PERIOD",
+  "PRICE",
+  "RATE",
+  "AMOUNT",
+  "TOTAL",
+  "SCHEDULE",
+  "PLAN",
+  "SUPPORT_ITEM",
+  "SUPPORT",
+  "DETAILS",
+  "ROLE",
+  "TITLE",
+  "REPRESENTATIVE",
+  "NOMINEE",
+  "GUARDIAN",
+  "PARTICIPANT_NAME",
+  "PROVIDER_NAME",
+  "PROVIDER_ABN",
+  "NDIS_NUMBER",
+] as const;
+
+export function detectUnresolvedProfessionalPlaceholders(
+  contentMarkdown: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  const findings = new Set<string>();
+  for (const marker of contentMarkdown.match(INCOMPLETE_MARKER_PATTERN) ?? []) {
+    findings.add(marker);
+  }
+
+  for (const match of contentMarkdown.matchAll(BRACKET_TOKEN_PATTERN)) {
+    const raw = match[0];
+    const token = normalisePlaceholderToken(match[1] ?? "");
+    if (!token) continue;
+    if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence)) continue;
+    if (isProfessionalPlaceholderToken(token)) findings.add(raw);
+  }
+  return [...findings].sort();
+}
+
+function normalisePlaceholderToken(token: string): string {
+  return token
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .replace(/__+/g, "_")
+    .toUpperCase();
+}
+
+function isAllowedUserDataPlaceholder(
+  token: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): boolean {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
+  return USER_DATA_PLACEHOLDER_TERMS.some(term =>
+    token === term || token.endsWith(`_${term}`) || token.includes(`_${term}_`),
+  );
+}
+
+function isProfessionalPlaceholderToken(token: string): boolean {
+  return PROFESSIONAL_PLACEHOLDER_TERMS.some(term =>
+    token === term || token.endsWith(`_${term}`) || token.includes(`${term}_`) || token.includes(`_${term}_`),
+  );
+}
+
+export function detectLeakedBlueprintMethodologyHeadings(
+  contentMarkdown: string,
+  sections: BlueprintSection[],
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
+
+  const sectionLabels = new Set(
+    sections.flatMap((section) => [section.sectionCode, section.title])
+      .filter(Boolean)
+      .map(normaliseHeadingLabel),
+  );
+  const findings = new Set<string>();
+
+  for (const match of contentMarkdown.matchAll(MARKDOWN_HEADING_PATTERN)) {
+    const rawHeading = (match[1] ?? "").trim();
+    if (!rawHeading) continue;
+    const normalised = normaliseHeadingLabel(rawHeading);
+    if (sectionLabels.has(normalised) || INTERNAL_METHOD_HEADING_PATTERN.test(rawHeading)) {
+      findings.add(rawHeading);
+    }
+  }
+
+  return [...findings].sort();
+}
+
+function normaliseHeadingLabel(value: string): string {
+  return value
+    .trim()
+    .replace(/[`*_~[\]()]/g, "")
+    .replace(/&/g, "and")
+    .replace(/[/_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 function validateSections(

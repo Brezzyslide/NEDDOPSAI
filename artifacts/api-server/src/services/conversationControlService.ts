@@ -117,7 +117,6 @@ export const CONSEQUENTIAL_ACTIONS: CanonicalConversationAction[] = [
   "APPROVE_ACTION",
   "REJECT_ACTION",
   "MODIFY_TASK",
-  "STATUS_QUERY",
   "SWITCH_TASK",
 ];
 
@@ -148,6 +147,10 @@ const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don
 const ETA_STATUS_PATTERN = /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i;
 const STATUS_PATTERNS = [
   /\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i,
+  /\bwhat task are we working on\b/i,
+  /\bwhich task are we working on\b/i,
+  /\bwhat are we working on\b/i,
+  /\bwho('s| is)? working on (it|this|that|the task|this work)\b/i,
   /\b(has|have).*(specialist|worker|team).*(started|begun|started working|actually started)\b/i,
   /\b(actually started|started working|begun working)\b/i,
   ETA_STATUS_PATTERN,
@@ -276,7 +279,7 @@ function fuzzySelectionScore(text: string, title: string): number {
 }
 
 function hasImmediateTaskReference(text: string): boolean {
-  return /\b(same|that|this|it|current|newly created|created task|linked task|same task|same service agreement|continue|cancel|hold|pause|status)\b/i.test(text);
+  return /\b(same|that|this|it|current|newly created|created task|linked task|same task|same service agreement|continue|cancel|hold|pause|status|working on|started|failed|completed)\b/i.test(text);
 }
 
 export function resolveConversationReference(input: {
@@ -387,12 +390,25 @@ export function resolveConversationReference(input: {
     };
   }
 
+  if (intent === "STATUS_QUERY" && candidates.length === 1) {
+    const only = candidates[0]!;
+    return {
+      intent,
+      resolvedTaskId: only.taskId,
+      confidence: 0.78,
+      ambiguity: "low",
+      candidateTasks: [only],
+      requiresClarification: false,
+      reason: "single_status_referent",
+    };
+  }
+
   return {
     intent,
     confidence: best ? 0.45 : 0.15,
     ambiguity: best ? "material" : "none",
     candidateTasks: candidates.slice(0, 5),
-    requiresClarification: CONSEQUENTIAL_ACTIONS.includes(intent),
+    requiresClarification: intent === "STATUS_QUERY" ? false : CONSEQUENTIAL_ACTIONS.includes(intent),
     reason: best ? "ambiguous_task_reference" : "no_task_reference",
   };
 }

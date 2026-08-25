@@ -242,7 +242,6 @@ function ApprovalCard({
 
 function PlanCard({ data }: { data: Record<string, unknown> }) {
   const steps = data.steps as PlanStep[] | undefined;
-  const estimatedTotalDuration = data.estimatedTotalDuration == null ? "" : String(data.estimatedTotalDuration);
   const [expanded, setExpanded] = useState(false);
   return (
     <div className="mt-3 bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-4 space-y-3">
@@ -252,9 +251,6 @@ function PlanCard({ data }: { data: Record<string, unknown> }) {
           {expanded ? "Hide steps" : "Show steps"}
         </button>
       </div>
-      {estimatedTotalDuration && (
-        <p className="text-[#94A3B8] text-xs">Estimated: {estimatedTotalDuration}</p>
-      )}
       {expanded && steps && steps.length > 0 && (
         <div className="space-y-2">
           {steps.map((step) => (
@@ -509,10 +505,6 @@ function TaskSidePanel({
         <div className="p-4 border-b border-[#1E3A5F]">
           <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Plan</p>
           <div className="space-y-1.5">
-            <div className="text-xs text-[#94A3B8] flex justify-between">
-              <span>Duration</span>
-              <span className="text-[#CBD5E1]">{plan.estimatedTotalDuration}</span>
-            </div>
             <div className="text-xs text-[#94A3B8] flex justify-between">
               <span>Steps</span>
               <span className="text-[#CBD5E1]">{plan.steps.length}</span>

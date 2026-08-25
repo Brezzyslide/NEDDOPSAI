@@ -688,6 +688,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const controlService = source("services/conversationControlService.ts");
     const intelligenceService = source("services/conversationIntelligenceService.ts");
     const ingressService = source("services/messageIngressService.ts");
+    const taskWorkroomPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
 
     expect(cosPrompt).toContain("OPERATIONAL FACT GROUNDING");
     expect(cosPrompt).toContain("If the system context does not provide a runtime ETA");
@@ -699,6 +700,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(intelligenceService).toContain("how long");
     expect(intelligenceService).toContain("completion estimate");
     expect(ingressService).toContain("I do not have a reliable completion estimate yet.");
+    expect(taskWorkroomPage).not.toContain("Estimated: {estimatedTotalDuration}");
+    expect(taskWorkroomPage).not.toContain("{plan.estimatedTotalDuration}");
   });
 
   it("CoS does not push professional methodology scope decisions back to the user", () => {
@@ -780,5 +783,54 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(actionState).toContain("currentState: tasksTable.currentState");
     expect(actionState).toContain('if (s.taskState === "failed"');
     expect(actionState).toContain("Authoritative task state");
+  });
+
+  it("read-only task status questions never create pending conversation confirmations", () => {
+    const controlService = source("services/conversationControlService.ts");
+    const ingressService = source("services/messageIngressService.ts");
+
+    const consequential = controlService.slice(
+      controlService.indexOf("export const CONSEQUENTIAL_ACTIONS"),
+      controlService.indexOf("const OPEN_TASK_STATES"),
+    );
+    expect(consequential).not.toContain('"STATUS_QUERY"');
+    expect(controlService).toContain('requiresClarification: intent === "STATUS_QUERY" ? false');
+
+    const clarificationBlock = ingressService.slice(
+      ingressService.indexOf("if (resolution.requiresClarification)"),
+      ingressService.indexOf("switch (resolution.intent)"),
+    );
+    expect(clarificationBlock).toContain("persistConversationConfirmation");
+    expect(controlService).toContain("what task are we working on");
+    expect(controlService).toContain("who('s| is)? working on");
+  });
+
+  it("current-task references resolve to focused task without asking user to select the same task", () => {
+    const controlService = source("services/conversationControlService.ts");
+
+    expect(controlService).toContain("single_status_referent");
+    expect(controlService).toContain("conversation_focus");
+    expect(controlService).toContain("working on|started|failed|completed");
+    expect(controlService).toContain("hasImmediateTaskReference(input.text) ? 140 : 20");
+  });
+
+  it("status answers preserve failed task state and execution history over stale plan state", () => {
+    const ingressService = source("services/messageIngressService.ts");
+    const actionState = source("services/conversationActionStateService.ts");
+
+    expect(ingressService).toContain("formatStatusResponse");
+    expect(ingressService).toContain("The authoritative task state is");
+    expect(ingressService).toContain("The task \"${task.title}\" is failed");
+    expect(actionState).toContain('if (s.taskState === "failed"');
+    expect(actionState).toContain("Disallowed claims");
+  });
+
+  it("specialist-start questions distinguish started-then-failed from currently executing", () => {
+    const ingressService = source("services/messageIngressService.ts");
+
+    expect(ingressService).toContain("hasExecutionStarted");
+    expect(ingressService).toContain("but it later failed");
+    expect(ingressService).toContain("it is currently executing");
+    expect(ingressService).toContain("No confirmed specialist execution has started");
   });
 });
