@@ -2914,8 +2914,10 @@ MANDATORY USER-FACING CONTENT:
 ${mandatoryContent}
 
 Allowed placeholders are factual/user-specific data placeholders such as [PARTICIPANT_NAME], [PROVIDER_NAME], [PROVIDER_ABN], [NDIS_NUMBER], [AGREEMENT_PERIOD], [SUPPORT_SCHEDULE], [PRICE] and [SIGNATURE].
+Factual placeholders may appear only inside otherwise drafted professional clauses, fields or template prompts. They must never be the whole answer for a mandatory professional section.
 
 Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [PROVIDER_OBLIGATIONS], [CANCELLATION_TERMS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [CONCLUSION], [INCOMPLETE: ...] or equivalent tokens.
+Also not allowed: sections that are only labels, questions, "review/update" instructions, or bracket variables without substantive professional wording.
 
 Do not expose chain-of-thought. Return ONLY JSON:
 {
@@ -3003,7 +3005,9 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     `## FINAL SYNTHESIS INSTRUCTIONS
 Rewrite the failed draft into the final user-facing deliverable.
 Draft the professional clauses and provisions in full.
-Preserve only factual/user-specific data placeholders.
+Preserve only factual/user-specific data placeholders, and embed them in drafted professional wording rather than using them as section content.
+Every mandatory user-facing section must contain substantive professional prose, operative provisions, responsibilities, review/sign-off wording or template guidance appropriate to that document type.
+No mandatory section may be placeholder-only, label-only, question-only, instruction-only or dominated by bracket fields.
 Remove internal methodology headings, review instructions, control codes and professional placeholder tokens.
 If mandatory professional content cannot be completed from the request, evidence and Blueprint contract, return content that clearly asks for clarification rather than emitting placeholders.`,
   ].filter(Boolean).join("\n\n---\n\n");

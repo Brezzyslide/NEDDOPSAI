@@ -7,6 +7,7 @@ import {
   detectIncompleteProfessionalSections,
   detectInstructionalProfessionalText,
   detectLeakedBlueprintMethodologyHeadings,
+  detectPlaceholderDominatedProfessionalSections,
   detectUnresolvedProfessionalPlaceholders,
   validateBlueprintRuntimeCompletion,
   type BlueprintRuntimeValidationInput,
@@ -531,6 +532,38 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(true);
   });
 
+  it("blocks professional sections dominated by factual placeholders and labels", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Standard NDIS Care Plan Template",
+      "This reusable template includes participant-specific factual placeholders where appropriate.",
+      "## Review, Updates, Consent, and Sign-Off Provisions",
+      "**Review Date:** [REVIEW_DATE]",
+      "**Monitoring Responsibilities:** [MONITORING_RESPONSIBILITIES]",
+      "**Consent Record:** [CONSENT_RECORD]",
+      "**Sign-Off:** [PARTICIPANT_NAME] / [PROVIDER_NAME]",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-care-plan",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectPlaceholderDominatedProfessionalSections(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "placeholder_dominated_section:Review, Updates, Consent, and Sign-Off Provisions",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.includes("placeholder_dominated_section:Review, Updates, Consent, and Sign-Off Provisions"),
+    )).toBe(true);
+  });
+
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
     const reviewIndex = uee.indexOf("let runtimeGate = validateBlueprintRuntimeCompletion");
@@ -548,6 +581,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("INTERNAL ONLY");
     expect(uee).toContain("Allowed placeholders are factual/user-specific data placeholders");
     expect(uee).toContain("Not allowed: unresolved professional-content placeholders");
+    expect(uee).toContain("No mandatory section may be placeholder-only, label-only, question-only, instruction-only or dominated by bracket fields");
     expect(reviewIndex).toBeGreaterThan(-1);
     expect(synthesisIndex).toBeGreaterThan(reviewIndex);
     expect(createIndex).toBeGreaterThan(synthesisIndex);

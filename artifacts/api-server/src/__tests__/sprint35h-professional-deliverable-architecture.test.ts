@@ -335,6 +335,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("Omitted from this standard reusable final synthesis");
     expect(src).toContain("Blueprint section titles and deliverableContract JSON are intentionally omitted");
     expect(src).toContain("do not reconstruct Blueprint section titles");
+    expect(src).toContain("Factual placeholders may appear only inside otherwise drafted professional clauses");
+    expect(src).toContain("Every mandatory user-facing section must contain substantive professional prose");
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {

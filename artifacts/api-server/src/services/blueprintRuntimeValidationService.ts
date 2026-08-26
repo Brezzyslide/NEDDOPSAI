@@ -140,6 +140,7 @@ export function validateBlueprintRuntimeCompletion(
     ),
     ...detectInstructionalProfessionalText(input.contentMarkdown, standardTemplateEvidence),
     ...detectIncompleteProfessionalSections(input.contentMarkdown, standardTemplateEvidence),
+    ...detectPlaceholderDominatedProfessionalSections(input.contentMarkdown, standardTemplateEvidence),
   ].sort();
   if (leakedMethodologyHeadings.length > 0) {
     failures.push({
@@ -455,10 +456,9 @@ export function detectIncompleteProfessionalSections(
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
 
   const findings = new Set<string>();
-  const matches = [...contentMarkdown.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$([\s\S]*?)(?=^#{1,6}\s+|$)/gim)];
-  for (const match of matches) {
-    const heading = (match[1] ?? "").trim();
-    const body = (match[2] ?? "").trim();
+  for (const section of extractMarkdownSections(contentMarkdown)) {
+    const heading = section.heading;
+    const body = section.body;
     if (!isProfessionalSectionHeading(heading)) continue;
     const bodyWithoutPlaceholders = body
       .replace(INCOMPLETE_MARKER_PATTERN, "")
@@ -472,8 +472,69 @@ export function detectIncompleteProfessionalSections(
   return [...findings].sort();
 }
 
+export function detectPlaceholderDominatedProfessionalSections(
+  contentMarkdown: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
+
+  const findings = new Set<string>();
+  for (const section of extractMarkdownSections(contentMarkdown)) {
+    const heading = section.heading;
+    const body = section.body;
+    if (!isProfessionalSectionHeading(heading)) continue;
+
+    const bracketTokens = [...body.matchAll(BRACKET_TOKEN_PATTERN)].length;
+    if (bracketTokens === 0) continue;
+
+    const substantiveLines = body
+      .split(/\n+/)
+      .map((line) => line
+        .replace(BRACKET_TOKEN_PATTERN, "")
+        .replace(/^[\s>*-]+/, "")
+        .replace(/\*\*/g, "")
+        .trim())
+      .filter(Boolean)
+      .filter((line) => !/^[A-Z][A-Za-z0-9 /&(),-]{2,64}:\s*$/.test(line))
+      .filter((line) => !/^[A-Z][A-Za-z0-9 /&(),-]{2,64}:\s*(?:TBC|TBD|N\/A)?$/i.test(line));
+
+    const substantiveText = substantiveLines.join(" ").replace(/\s+/g, " ").trim();
+    const substantiveWords = substantiveText
+      .split(/\s+/)
+      .filter((word) => /[A-Za-z]/.test(word)).length;
+    const hasOperativeProfessionalText =
+      /\b(?:must|will|should|agrees?|responsib(?:le|ility|ilities)|right|rights|consent|review(?:ed)?|escalat(?:e|ion)|monitor(?:ed|ing)|support(?:s|ed|ing)?|provide(?:r|s|d)?|record(?:s|ed)?|notify|protect|maintain|update(?:d)?)\b/i.test(substantiveText);
+
+    if (bracketTokens >= 2 && (substantiveWords < 45 || !hasOperativeProfessionalText)) {
+      findings.add(`placeholder_dominated_section:${heading}`);
+    }
+  }
+
+  return [...findings].sort();
+}
+
+function extractMarkdownSections(contentMarkdown: string): Array<{ heading: string; body: string }> {
+  const sections: Array<{ heading: string; body: string[] }> = [];
+  let current: { heading: string; body: string[] } | null = null;
+
+  for (const line of contentMarkdown.split(/\r?\n/)) {
+    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (heading) {
+      current = { heading: (heading[1] ?? "").trim(), body: [] };
+      sections.push(current);
+      continue;
+    }
+    current?.body.push(line);
+  }
+
+  return sections.map((section) => ({
+    heading: section.heading,
+    body: section.body.join("\n").trim(),
+  }));
+}
+
 function isProfessionalSectionHeading(heading: string): boolean {
-  return /\b(?:clause|clauses|obligations?|responsibilit(?:y|ies)|rights?|terms?|provisions?|privacy|confidentiality|complaints?|cancellation|variation|termination|payment|pricing|conclusion)\b/i.test(heading);
+  return /\b(?:clause|clauses|obligations?|responsibilit(?:y|ies)|rights?|terms?|provisions?|privacy|confidentiality|complaints?|cancellation|variation|termination|payment|pricing|conclusion|review|updates?|consent|sign[- ]off|support|care|goals?|preferences?|communication|health|medication|behaviour|restrictive[- ]practice|risk|safety|incident|escalation|community|participation|coordination)\b/i.test(heading);
 }
 
 function normaliseHeadingLabel(value: string): string {
