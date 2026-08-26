@@ -543,7 +543,8 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT");
     expect(uee).toContain("Use this as a private checklist only. Do not copy these headings");
     expect(uee).toContain("The draft below is defective. Do not preserve its internal headings");
-    expect(uee).toContain("internal professional analysis, evidence, Blueprint completion and specialist conclusions");
+    expect(uee).toContain("internal professional analysis, evidence, ${blueprintReference} method completion and specialist conclusions");
+    expect(uee).toContain("Canonical final synthesis response did not include deliverable.content");
     expect(uee).toContain("INTERNAL ONLY");
     expect(uee).toContain("Allowed placeholders are factual/user-specific data placeholders");
     expect(uee).toContain("Not allowed: unresolved professional-content placeholders");

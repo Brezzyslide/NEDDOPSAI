@@ -1531,23 +1531,34 @@ export class UnifiedExecutionEngine {
         professionalContext,
       });
 
-      draftContent = synthesisResult.content;
-      rawClaims = synthesisResult.claims;
-      reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
-        organizationId,
-        userId: requesterId,
-        conversationId: request.conversationId,
-        evidencePack: evidencePack ?? null,
-      });
-      runtimeGate = validateBlueprintRuntimeCompletion({
-        contract: blueprintContract,
-        contentMarkdown: reviewResult.finalContent,
-        rawClaims,
-        evidencePack: evidencePack ?? null,
-        artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
-        deferApprovalGate: true,
-        standardTemplateEvidence,
-      });
+      if (synthesisResult.failureMessage) {
+        runtimeGate = {
+          passed: false,
+          failures: [{
+            gate: "final_synthesis",
+            state: "validation",
+            message: synthesisResult.failureMessage,
+          }],
+        };
+      } else {
+        draftContent = synthesisResult.content;
+        rawClaims = synthesisResult.claims;
+        reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
+          organizationId,
+          userId: requesterId,
+          conversationId: request.conversationId,
+          evidencePack: evidencePack ?? null,
+        });
+        runtimeGate = validateBlueprintRuntimeCompletion({
+          contract: blueprintContract,
+          contentMarkdown: reviewResult.finalContent,
+          rawClaims,
+          evidencePack: evidencePack ?? null,
+          artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+          deferApprovalGate: true,
+          standardTemplateEvidence,
+        });
+      }
     }
     if (!runtimeGate.passed) {
       const blockingMessage = runtimeGate.failures
@@ -1561,9 +1572,7 @@ export class UnifiedExecutionEngine {
           failedStage: "completion_gates",
           rootCause: blockingMessage,
           retryAvailable: true,
-          clarificationItems: runtimeGate.failures
-            .filter((failure) => failure.state === "awaiting_clarification")
-            .map((failure) => ({ name: failure.gate, reason: failure.message })),
+          clarificationItems: buildRuntimeGateFailureItems(runtimeGate.failures),
         },
       }).catch(() => {});
 
@@ -2024,9 +2033,17 @@ export class UnifiedExecutionEngine {
     currentClaims: RawClaim[];
     gateFailures: BlueprintRuntimeGateFailure[];
     professionalContext: ProfessionalExecutionContext;
-  }): Promise<{ content: string; claims: RawClaim[] }> {
+  }): Promise<{ content: string; claims: RawClaim[]; failureMessage?: string }> {
+    const canonicalPayloadRequired = requiresCanonicalFinalDeliverablePayload(input.professionalContext);
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
     if (provider !== "openai") {
+      if (canonicalPayloadRequired) {
+        return {
+          content: input.currentContent,
+          claims: input.currentClaims,
+          failureMessage: `Canonical final synthesis is required for ${input.professionalContext.operation} ${input.professionalContext.deliverable.requestedDeliverableType}, but AI_PROVIDER is "${provider}".`,
+        };
+      }
       return { content: input.currentContent, claims: input.currentClaims };
     }
 
@@ -2058,11 +2075,28 @@ export class UnifiedExecutionEngine {
     });
 
     if (response.usedFallback || !response.content) {
+      if (canonicalPayloadRequired) {
+        return {
+          content: input.currentContent,
+          claims: input.currentClaims,
+          failureMessage: `Canonical final synthesis did not produce a deliverable payload${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`,
+        };
+      }
       return { content: input.currentContent, claims: input.currentClaims };
     }
     const parsed = parseSpecialistJsonOutput(response.content);
+    const deliverableContent = typeof parsed.deliverable?.content === "string"
+      ? parsed.deliverable.content.trim()
+      : "";
+    if (canonicalPayloadRequired && !deliverableContent) {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        failureMessage: "Canonical final synthesis response did not include deliverable.content, so the internal professional draft was not promoted to Completed Work.",
+      };
+    }
     return {
-      content: parsed.content || input.currentContent,
+      content: deliverableContent || parsed.content || input.currentContent,
       claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
     };
   }
@@ -2808,6 +2842,30 @@ function shouldOmitBlueprintSectionTitlesFromFinalSynthesis(
     ["CREATE", "TAILOR", "UPDATE", "COMPLETE"].includes(professionalContext.operation);
 }
 
+function requiresCanonicalFinalDeliverablePayload(
+  professionalContext?: ProfessionalExecutionContext,
+): boolean {
+  if (!professionalContext) return false;
+  return professionalContext.professionalMethodRole === "internal_method_only" &&
+    ["CREATE", "TAILOR", "UPDATE", "COMPLETE"].includes(professionalContext.operation);
+}
+
+function buildRuntimeGateFailureItems(
+  failures: BlueprintRuntimeGateFailure[],
+): Array<{ name: string; reason: string }> {
+  return failures.flatMap((failure) => {
+    if (failure.details?.length) {
+      return failure.details.slice(0, 12).map((detail) => ({
+        name: failure.gate,
+        reason: detail.slice(0, 240),
+      }));
+    }
+    return failure.state === "awaiting_clarification"
+      ? [{ name: failure.gate, reason: failure.message }]
+      : [];
+  });
+}
+
 function buildFinalDeliverableSynthesisSystemPrompt(
   blueprint: WorkBlueprint | null,
   contract?: BlueprintExecutionContract | null,
@@ -2831,10 +2889,13 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
     ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
     : "- The substantive professional content required by the requested deliverable.";
+  const blueprintReference = omitBlueprintSectionTitles
+    ? "the requested professional domain"
+    : blueprint?.title ?? "the requested professional domain";
 
   return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
-You transform internal professional analysis, evidence, Blueprint completion and specialist conclusions into a user-facing deliverable.
+You transform internal professional analysis, evidence, ${blueprintReference} method completion and specialist conclusions into a user-facing deliverable.
 ${contextBlock ? `\n${contextBlock}\n` : ""}
 
 The audience will receive the completed document, not the internal working method.
@@ -2919,14 +2980,17 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const failedDraftSection = shouldOmitDefectiveDraft
     ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, Blueprint professional method and authoritative evidence.`
     : `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`;
+  const blueprintMethodSection = omitBlueprintSectionTitles
+    ? `## BLUEPRINT PROFESSIONAL METHOD\nBlueprint code: ${input.professionalContext.blueprintCode ?? input.blueprint?.code ?? "unknown"}\nThe detailed Blueprint section titles and deliverableContract JSON are intentionally omitted because this is CREATE/TEMPLATE work and those fields are internal professional method authority, not customer-facing document structure. Use the mandatory user-facing content, authority hierarchy, evidence and requested deliverable contract above to draft the final artifact.`
+    : input.blueprint
+      ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
+      : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`;
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
     `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
-    input.blueprint
-      ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
-      : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`,
+    blueprintMethodSection,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",

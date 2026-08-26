@@ -153,6 +153,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS)");
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
+    expect(src).toContain("requiresCanonicalFinalDeliverablePayload");
+    expect(src).toContain("Canonical final synthesis response did not include deliverable.content");
     expect(src).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
     expect(src).toContain("professionalContext.deliverable.mandatoryProfessionalContent");
     expect(src).not.toContain("=== STRUCTURED BLUEPRINT SECTIONS ===");
@@ -331,6 +333,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("it is intentionally omitted from this synthesis prompt");
     expect(src).toContain("shouldOmitBlueprintSectionTitlesFromFinalSynthesis");
     expect(src).toContain("Omitted from this standard reusable final synthesis");
+    expect(src).toContain("Blueprint section titles and deliverableContract JSON are intentionally omitted");
     expect(src).toContain("do not reconstruct Blueprint section titles");
   });
 

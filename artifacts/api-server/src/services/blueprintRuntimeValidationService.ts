@@ -31,6 +31,7 @@ export interface BlueprintRuntimeGateFailure {
     | "claim_integrity"
     | "professional_placeholder"
     | "methodology_leak"
+    | "final_synthesis"
     | "prohibited_deliverable"
     | "template_required"
     | "artifact_required"
