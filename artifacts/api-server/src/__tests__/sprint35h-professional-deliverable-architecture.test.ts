@@ -329,6 +329,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work");
     expect(src).toContain("prior draft leaked internal Blueprint methodology");
     expect(src).toContain("it is intentionally omitted from this synthesis prompt");
+    expect(src).toContain("shouldOmitBlueprintSectionTitlesFromFinalSynthesis");
+    expect(src).toContain("Omitted from this standard reusable final synthesis");
+    expect(src).toContain("do not reconstruct Blueprint section titles");
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {

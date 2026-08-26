@@ -2799,6 +2799,15 @@ function shouldRunCanonicalFinalDeliverableSynthesis(
   return shouldAttemptFinalDeliverableSynthesis(failures, standardTemplateEvidence);
 }
 
+function shouldOmitBlueprintSectionTitlesFromFinalSynthesis(
+  professionalContext?: ProfessionalExecutionContext,
+): boolean {
+  if (!professionalContext) return false;
+  return professionalContext.professionalMethodRole === "internal_method_only" &&
+    professionalContext.deliverable.standardisation === "standard_reusable" &&
+    ["CREATE", "TAILOR", "UPDATE", "COMPLETE"].includes(professionalContext.operation);
+}
+
 function buildFinalDeliverableSynthesisSystemPrompt(
   blueprint: WorkBlueprint | null,
   contract?: BlueprintExecutionContract | null,
@@ -2806,7 +2815,10 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   const blueprintName = professionalContext?.deliverable.requestedDeliverableType ?? blueprint?.title ?? "professional work";
-  const sections = contract?.sections.length
+  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(professionalContext);
+  const sections = omitBlueprintSectionTitles
+    ? "- Omitted for this standard reusable deliverable. Use the requested deliverable contract and mandatory user-facing content instead of Blueprint section titles."
+    : contract?.sections.length
     ? contract.sections.map((section) =>
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required internal check)" : ""}`,
       ).join("\n")
@@ -2903,6 +2915,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const shouldOmitDefectiveDraft =
     input.professionalContext.deliverable.standardisation === "standard_reusable" &&
     input.gateFailures.some((failure) => failure.gate === "methodology_leak");
+  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(input.professionalContext);
   const failedDraftSection = shouldOmitDefectiveDraft
     ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, Blueprint professional method and authoritative evidence.`
     : `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`;
@@ -2917,7 +2930,9 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",
-    `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
+    omitBlueprintSectionTitles
+      ? `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nOmitted from this standard reusable final synthesis because previous output leaked methodology headings. Satisfy the professional method through the mandatory user-facing content and requested deliverable contract; do not reconstruct Blueprint section titles.`
+      : `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
     failedDraftSection,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
