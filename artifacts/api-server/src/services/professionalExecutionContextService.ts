@@ -77,6 +77,18 @@ const SERVICE_AGREEMENT_CONTENT = [
   "Signatures and acceptance",
 ];
 
+const CARE_PLAN_TEMPLATE_CONTENT = [
+  "Participant identity and factual placeholder framework",
+  "Participant goals, preferences and communication needs",
+  "Support domains and daily living support structure",
+  "Provider and worker responsibilities",
+  "Participant, representative and support-network responsibilities",
+  "Health, medication, behaviour support and restrictive-practice boundary prompts",
+  "Risk, safety, incident and escalation arrangements",
+  "Community participation and service-delivery coordination",
+  "Review, updates, consent and sign-off provisions",
+];
+
 export function deriveProfessionalOperation(userRequest: string, canonicalIntent?: string | null): ProfessionalOperation {
   const requestText = userRequest.toLowerCase();
   if (/\b(review|assess|audit|check|readiness|ready for use|compliant and ready)\b/.test(requestText)) return "REVIEW";
@@ -96,7 +108,10 @@ export function deriveProfessionalOperation(userRequest: string, canonicalIntent
 export function deriveProfessionalIntentKey(userRequest: string, canonicalIntent?: string | null): string | null {
   const operation = deriveProfessionalOperation(userRequest, canonicalIntent).toLowerCase();
   const text = userRequest.toLowerCase();
+  const mode = operation === "review" ? "review" : operation === "update" ? "revise" : "create";
   if (/\bservice agreement\b/.test(text)) return `agreements.${operation === "create" ? "create" : operation === "update" ? "revise" : operation}`;
+  if (/\b(care plan|care planning)\b/.test(text)) return `care_plan.${mode}`;
+  if (/\b(individual support plan|support plan|support planning)\b/.test(text)) return `support_plan.${mode}`;
   if (/\bpolic(?:y|ies)\b/.test(text)) return `policy.${operation === "create" ? "create" : operation === "update" ? "revise" : "review"}`;
   if (/\brisk\b/.test(text)) {
     if (operation === "complete") return "risk.assessment";
@@ -207,6 +222,14 @@ function deriveDeliverableType(userRequest: string, operation: ProfessionalOpera
   if (/\bservice agreement\b/.test(text) && operation === "REVIEW") {
     return "PARTICIPANT_SERVICE_AGREEMENT_CONTRACT_READINESS_ASSESSMENT";
   }
+  if (/\b(care plan|care planning)\b/.test(text) && isStandardReusableRequest(text)) {
+    return "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE";
+  }
+  if (/\b(care plan|care planning)\b/.test(text)) return "PARTICIPANT_NDIS_CARE_PLAN";
+  if (/\b(individual support plan|support plan|support planning)\b/.test(text) && isStandardReusableRequest(text)) {
+    return "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE";
+  }
+  if (/\b(individual support plan|support plan|support planning)\b/.test(text)) return "PARTICIPANT_NDIS_SUPPORT_PLAN";
   if (/\bpolic(?:y|ies)\b/.test(text) && operation === "CREATE") return "POLICY_DOCUMENT";
   if (/\bpolic(?:y|ies)\b/.test(text) && operation === "REVIEW") return "POLICY_REVIEW";
   if (/\brisk\b/.test(text) && /\btemplate\b/.test(text)) return "STANDARD_RISK_TEMPLATE";
@@ -223,6 +246,8 @@ function deriveMandatoryProfessionalContent(
   contract?: BlueprintExecutionContract | null,
 ): string[] {
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT") return SERVICE_AGREEMENT_CONTENT;
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE") return CARE_PLAN_TEMPLATE_CONTENT;
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") return CARE_PLAN_TEMPLATE_CONTENT;
   if (operation === "REVIEW" || operation === "INVESTIGATE") {
     return (contract?.sections ?? [])
       .filter((section) => section.required)
@@ -236,6 +261,8 @@ function deriveMandatoryProfessionalContent(
 
 function deriveAudience(userRequest: string, deliverableType: string, operation: ProfessionalOperation): string {
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT") return "NDIS provider and participant or participant representative";
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE") return "NDIS provider staff, participant and participant representative";
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") return "NDIS provider staff, participant and participant representative";
   if (operation === "REVIEW") return "Internal governance reviewer and authorised decision-maker";
   if (/\bparticipant\b/i.test(userRequest)) return "Provider staff and participant-specific stakeholders";
   return "Organisation users responsible for adopting the deliverable";
@@ -245,6 +272,12 @@ function deriveUserFacingPurpose(deliverableType: string, operation: Professiona
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT") {
     return "an actual reusable NDIS Service Agreement template containing drafted operative clauses";
   }
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE") {
+    return "an actual reusable NDIS Care Plan template containing drafted professional support-planning content";
+  }
+  if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") {
+    return "an actual reusable NDIS Support Plan template containing drafted service-delivery planning content";
+  }
   if (operation === "REVIEW") return "a professional review or readiness assessment";
   if (operation === "INVESTIGATE") return "an investigation report with findings and next actions";
   return "the requested professional deliverable";
@@ -252,10 +285,35 @@ function deriveUserFacingPurpose(deliverableType: string, operation: Professiona
 
 function classifyStandardisation(userRequest: string, operation: ProfessionalOperation): ProfessionalDeliverableContract["standardisation"] {
   const text = userRequest.toLowerCase();
-  if (/\b(participant-specific|for participant|for client|complete this|fill this)\b/.test(text)) return "participant_specific";
+  if (isStandardReusableRequest(text) && !isExplicitParticipantSpecificRequest(text)) return "standard_reusable";
+  if (isExplicitParticipantSpecificRequest(text)) return "participant_specific";
   if (/\b(our organisation|tailor|customise|customize|adapt|company|blaze)\b/.test(text) || operation === "TAILOR") return "organisation_tailored";
-  if (/\b(standard|template|reusable|generic)\b/.test(text)) return "standard_reusable";
+  if (isStandardReusableRequest(text)) return "standard_reusable";
   return "general";
+}
+
+export function deriveDeliverableStandardisation(
+  userRequest: string,
+  operation: ProfessionalOperation = deriveProfessionalOperation(userRequest),
+): ProfessionalDeliverableContract["standardisation"] {
+  return classifyStandardisation(userRequest, operation);
+}
+
+export function deriveRequestedDeliverableType(
+  userRequest: string,
+  operation: ProfessionalOperation = deriveProfessionalOperation(userRequest),
+  blueprint: WorkBlueprint | null = null,
+): string {
+  return deriveDeliverableType(userRequest, operation, blueprint);
+}
+
+function isStandardReusableRequest(text: string): boolean {
+  return /\b(standard|template|reusable|generic)\b/.test(text);
+}
+
+function isExplicitParticipantSpecificRequest(text: string): boolean {
+  return /\b(participant-specific|specific participant|participant x|client x|complete this|fill this|populate this)\b/.test(text) ||
+    /\b(for|about)\s+(participant|client)\s+[a-z0-9_-]+\b/.test(text);
 }
 
 function deriveContextSufficiency(input: {

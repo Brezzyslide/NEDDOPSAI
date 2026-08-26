@@ -182,6 +182,16 @@ export function validateWorkPackage(
 
   // ── Run blueprint validation rules ────────────────────────────────────────
   for (const rule of blueprint.validationRules) {
+    if (isParticipantSpecificEvidenceRule(rule.rule) && isStandardReusableTemplateManifest(manifest)) {
+      issues.push({
+        rule: rule.rule,
+        level: "info",
+        message: `${rule.description} Not required for a standard reusable template request.`,
+        details: ["Participant-specific evidence is required only for participant-specific completion/review work."],
+      });
+      continue;
+    }
+
     const evalResult = evaluateRule(
       rule.rule,
       retrievedHighConfTypes,
@@ -441,6 +451,19 @@ function evaluateRule(
       // Unknown rule — pass by default (don't block on unrecognised rules)
       return { passed: true };
   }
+}
+
+function isParticipantSpecificEvidenceRule(rule: string): boolean {
+  return [
+    "participant_context_present",
+    "current_support_requirements_present",
+    "current_support_basis_present",
+  ].includes(rule);
+}
+
+function isStandardReusableTemplateManifest(manifest: WorkPackageManifest): boolean {
+  return manifest.selectionMetadata?.deliverableStandardisation === "standard_reusable" ||
+    /^STANDARD_REUSABLE_/.test(String(manifest.selectionMetadata?.requestedDeliverableType ?? ""));
 }
 
 // ─── Clarification message builder ────────────────────────────────────────────

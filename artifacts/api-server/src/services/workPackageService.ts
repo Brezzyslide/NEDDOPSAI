@@ -147,6 +147,7 @@ export interface WorkPackageManifest {
   specialistMemories: ManifestMemoryRef[];
   entityKnowledge: Record<string, unknown>;
   taskUploads: ManifestLibrarySource[];
+  selectionMetadata?: BlueprintSelectionMetadata | null;
   modelVersion: string | null;
   promptVersion: string | null;
   assembledAt: Date;
@@ -347,12 +348,12 @@ export async function assembleWorkPackage(
     specialistMemories,
     entityKnowledge,
     taskUploads,
+    selectionMetadata: selectionMetadataWithExclusions ?? null,
     modelVersion,
     promptVersion: CURRENT_PROMPT_VERSION,
     assembledAt: now,
     requesterId,
     createdAt: now,
-    selectionMetadata: selectionMetadataWithExclusions ?? null,
   });
 
   const manifest: WorkPackageManifest = {
@@ -381,6 +382,7 @@ export async function assembleWorkPackage(
     specialistMemories,
     entityKnowledge,
     taskUploads,
+    selectionMetadata: selectionMetadataWithExclusions ?? null,
     modelVersion,
     promptVersion: CURRENT_PROMPT_VERSION,
     assembledAt: now,
@@ -541,6 +543,7 @@ export async function getManifest(
     specialistMemories: (row.specialistMemories as ManifestMemoryRef[]) ?? [],
     entityKnowledge: (row.entityKnowledge as Record<string, unknown>) ?? {},
     taskUploads: (row.taskUploads as ManifestLibrarySource[]) ?? [],
+    selectionMetadata: (row.selectionMetadata as BlueprintSelectionMetadata | null) ?? null,
     modelVersion: row.modelVersion ?? null,
     promptVersion: row.promptVersion ?? null,
     assembledAt: row.assembledAt,

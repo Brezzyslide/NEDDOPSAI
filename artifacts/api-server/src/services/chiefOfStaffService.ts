@@ -58,6 +58,11 @@ interface RouteRule {
 // are replaced with their canonical equivalents so selectSpecialists() can use
 // capabilityRegistry.eligibleRoles for eligibility-aware selection.
 const ROUTING_RULES: RouteRule[] = [
+  // Service delivery planning
+  { keywords: ["review care plan", "care plan review", "existing care plan"], capabilities: ["care_plan.review"], weight: 18 },
+  { keywords: ["care plan", "care planning"], capabilities: ["care_plan.create"], weight: 16 },
+  { keywords: ["review support plan", "support plan review", "existing support plan"], capabilities: ["support_plan.review"], weight: 17 },
+  { keywords: ["support plan", "individual support plan", "participant support plan", "support planning"], capabilities: ["support_plan.create"], weight: 15 },
   // Compliance
   { keywords: ["compliance", "audit", "ndis", "regulatory", "regulation"], capabilities: ["compliance.audit_readiness", "policy.review"], weight: 10 },
   { keywords: ["service agreement", "participant agreement", "agreement readiness", "schedule of supports", "terms and conditions"], capabilities: ["policy.review"], weight: 13 },
@@ -151,6 +156,15 @@ function classifyIntent(text: string): IntentScore[] {
       for (const cap of rule.capabilities) {
         scores.set(cap, (scores.get(cap) ?? 0) + rule.weight);
       }
+    }
+  }
+
+  const servicePlanningCodes = new Set(["care_plan.create", "care_plan.review", "support_plan.create", "support_plan.review"]);
+  const servicePlanningMatches = Array.from(scores.keys()).filter(code => servicePlanningCodes.has(code));
+  if (servicePlanningMatches.length > 0 &&
+      !/\b(audit|audit readiness|gap analysis|review readiness|compliance review)\b/.test(lower)) {
+    for (const code of Array.from(scores.keys())) {
+      if (!servicePlanningCodes.has(code)) scores.delete(code);
     }
   }
 

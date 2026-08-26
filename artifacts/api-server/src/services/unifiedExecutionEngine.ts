@@ -84,6 +84,9 @@ import {
 import {
   buildProfessionalExecutionContextBlock,
   compileProfessionalExecutionContext,
+  deriveProfessionalOperation,
+  deriveDeliverableStandardisation,
+  deriveRequestedDeliverableType,
   type ProfessionalExecutionContext,
 } from "./professionalExecutionContextService.js";
 // Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
@@ -1015,6 +1018,15 @@ export class UnifiedExecutionEngine {
       }
       tBlueprintMs = Date.now() - t1;
 
+      if (selectionMeta) {
+        const operation = deriveProfessionalOperation(
+          userRequest,
+          selectionMeta.canonicalIntent ?? request.canonicalIntent ?? request.blueprintCode ?? null,
+        );
+        selectionMeta.requestedDeliverableType = deriveRequestedDeliverableType(userRequest, operation, blueprint);
+        selectionMeta.deliverableStandardisation = deriveDeliverableStandardisation(userRequest, operation);
+      }
+
       // ─── Sprint 29I (D1/F): Direct blueprint execution readiness check ────────
       // When there is no taskId, this is genuine direct blueprint execution
       // (no CoS plan). Blueprint.primarySpecialist is the fallback candidate.
@@ -1395,7 +1407,7 @@ export class UnifiedExecutionEngine {
       );
       updateManifestObservability(manifest.id, {
         failureInfo: {
-          state: "awaiting_clarification",
+          state: "evidence_required",
           clarificationItems: missingItems
             .filter(m => m.required)
             .map(m => ({ name: m.displayLabel, reason: m.reason })),

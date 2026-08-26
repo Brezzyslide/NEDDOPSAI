@@ -372,7 +372,7 @@ export const SPECIALISTS: RegistrySpecialist[] = [
     description: "Coordinates approved support requirements into day-to-day service delivery, reviews planned versus actual delivery evidence, identifies service gaps and escalates specialist boundaries.",
     icon: "🚀",
     colour: "#00CED1",
-    capabilities: ["service_delivery_review", "create_workflow", "summarise"],
+    capabilities: ["care_plan.create", "care_plan.review", "support_plan.create", "support_plan.review", "service_delivery.review", "service_delivery_review", "create_workflow", "summarise"],
     requiredPermissions: ["operations:read"],
     requiredEntitlements: ["operations_workforce"],
     approvalRequirements: "no_approval",

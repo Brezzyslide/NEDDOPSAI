@@ -84,7 +84,7 @@ interface ExecutionInspection {
     hasFailure: boolean;
   };
   diagnostics: {
-    state: "running" | "awaiting_clarification" | "failed" | "completed";
+    state: "running" | "awaiting_clarification" | "evidence_required" | "failed" | "completed";
     clarificationItems: Array<{ name: string; reason: string }>;
     failedStage: string | null;
     rootCause: string | null;
@@ -146,6 +146,7 @@ const STATUS_COLORS: Record<string, string> = {
   reviewing:               "text-violet-300 bg-violet-900/40",
   failed:                  "text-red-300 bg-red-900/40",
   awaiting_clarification:  "text-amber-300 bg-amber-900/40",
+  evidence_required:       "text-amber-300 bg-amber-900/40",
   unknown:                 "text-[#64748B] bg-[#112033]",
 };
 
@@ -493,9 +494,11 @@ function DiagnosticsSection({ d }: { d: ExecutionInspection }) {
 
   return (
     <Section title="Failure Diagnostics" icon="🔍" defaultOpen={true}>
-      {diag.state === "awaiting_clarification" && (
+      {(diag.state === "awaiting_clarification" || diag.state === "evidence_required") && (
         <div className="bg-amber-900/20 border border-amber-700/40 rounded-lg p-3 mb-3">
-          <p className="text-amber-300 text-sm font-semibold mb-2">⏸ Awaiting Clarification</p>
+          <p className="text-amber-300 text-sm font-semibold mb-2">
+            ⏸ {diag.state === "evidence_required" ? "Evidence Required" : "Awaiting Clarification"}
+          </p>
           {diag.clarificationItems.map(item => (
             <div key={item.name} className="mb-2 last:mb-0">
               <p className="text-[#E2E8F0] text-xs font-medium">Missing: {item.name}</p>

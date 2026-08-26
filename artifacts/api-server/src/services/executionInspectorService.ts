@@ -150,7 +150,7 @@ export interface InspectorConnectorDiagnostics {
 }
 
 export interface InspectorDiagnostics {
-  state: "running" | "awaiting_clarification" | "failed" | "completed";
+  state: "running" | "awaiting_clarification" | "evidence_required" | "failed" | "completed";
   clarificationItems: Array<{ name: string; reason: string }>;
   failedStage: string | null;
   rootCause: string | null;
@@ -331,7 +331,7 @@ function deriveRuntimeStatus(
   timelineHasFailure: boolean,
   failureInfo: ManifestFailureInfo | null,
 ): ExecutionInspection["summary"]["runtimeStatus"] {
-  if (failureInfo?.state === "awaiting_clarification") return "awaiting_clarification";
+  if (failureInfo?.state === "awaiting_clarification" || failureInfo?.state === "evidence_required") return "awaiting_clarification";
   if (failureInfo?.state === "failed") return "failed";
   if (timelineHasFailure) return "failed";
   if (completedWorkStatus === "draft" && timelineIsComplete) return "reviewing";
@@ -572,7 +572,9 @@ async function _buildInspection(
 
   // ── 13. Diagnostics ──────────────────────────────────────────────────────────
   const diagnosticsState: InspectorDiagnostics["state"] =
-    failInfo?.state === "awaiting_clarification"
+    failInfo?.state === "evidence_required"
+      ? "evidence_required"
+      : failInfo?.state === "awaiting_clarification"
       ? "awaiting_clarification"
       : failInfo?.state === "failed"
       ? "failed"

@@ -49,6 +49,8 @@ export interface BlueprintSelectionMetadata {
   canonicalIntent?: string;
   blueprintFamily?: string;
   blueprintMode?: string;
+  requestedDeliverableType?: string;
+  deliverableStandardisation?: "standard_reusable" | "organisation_tailored" | "participant_specific" | "general";
 }
 
 /** Snapshot of prerequisite-validation outcome written after Step 3. */
@@ -71,7 +73,7 @@ export interface ManifestPerformanceMetrics {
 
 /** Written when execution pauses for clarification or encounters a hard failure. */
 export interface ManifestFailureInfo {
-  state: "awaiting_clarification" | "failed";
+  state: "awaiting_clarification" | "evidence_required" | "failed";
   failedStage?: string;
   rootCause?: string;
   retryAvailable?: boolean;

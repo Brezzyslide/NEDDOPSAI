@@ -5,6 +5,7 @@ import { getRegistryEntry } from "../services/blueprintRegistry";
 import { resolveIntent } from "../services/blueprintIntentMap";
 import {
   compileProfessionalExecutionContext,
+  deriveDeliverableStandardisation,
   deriveProfessionalIntentKey,
   deriveProfessionalOperation,
 } from "../services/professionalExecutionContextService";
@@ -12,6 +13,7 @@ import type { BlueprintExecutionContract } from "../services/workBlueprintServic
 import type { WorkPackageManifest } from "../services/workPackageService";
 import { parseSpecialistJsonOutput } from "../services/claimValidationService";
 import { planTask } from "../services/chiefOfStaffService";
+import { validateWorkPackage } from "../services/workValidationService";
 
 const root = resolve(__dirname, "..");
 
@@ -168,5 +170,94 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(deriveProfessionalIntentKey("Complete this participant risk assessment", "risk.review")).toBe("risk.assessment");
     expect(deriveProfessionalIntentKey("Create a medication policy", "policy.review")).toBe("policy.create");
     expect(deriveProfessionalIntentKey("Review this medication policy", "policy.create")).toBe("policy.review");
+  });
+
+  it("routes standard Care Plan template creation to service delivery, not compliance audit readiness", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const plan = planTask(request);
+
+    expect(deriveProfessionalOperation(request, "compliance.audit_readiness")).toBe("CREATE");
+    expect(deriveProfessionalIntentKey(request, "compliance.audit_readiness")).toBe("care_plan.create");
+    expect(deriveDeliverableStandardisation(request)).toBe("standard_reusable");
+    expect(plan.intent).toBe("care_plan.create");
+    expect(plan.primarySpecialist).toBe("service_delivery_coordinator");
+    expect(plan.assignedSpecialists).toContain("chief_of_staff");
+    expect(plan.assignedSpecialists).toContain("service_delivery_coordinator");
+    expect(plan.assignedSpecialists).not.toContain("compliance_quality_manager");
+    expect(plan.requiresApproval).toBe(false);
+    expect(resolveIntent("care_plan.create")).toMatchObject({
+      family: "care_plan",
+      mode: "create",
+      code: "care_plan",
+    });
+  });
+
+  it("does not require participant evidence for standard reusable Care Plan templates", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+
+    const result = validateWorkPackage(
+      manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+        supportingSpecialists: ["operations_manager", "compliance_quality_manager"],
+        selectionMetadata: {
+          method: "canonical",
+          confidence: 1,
+          matchedKeywords: [],
+          fallbackUsed: false,
+          canonicalIntent: "care_plan.create",
+          blueprintFamily: "care_plan",
+          blueprintMode: "create",
+          requestedDeliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+          deliverableStandardisation: "standard_reusable",
+        },
+      }),
+      blueprint as any,
+      { chunks: [], totalChunks: 0 } as any,
+    );
+
+    expect(result.passed).toBe(true);
+    expect(result.missingItems).not.toContain("Participant Document");
+    expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
+  });
+
+  it("still requires participant evidence for participant-specific Care Plan work", () => {
+    const request = "Create a Care Plan for Participant X.";
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+
+    expect(deriveProfessionalIntentKey(request, "compliance.audit_readiness")).toBe("care_plan.create");
+    expect(deriveDeliverableStandardisation(request)).toBe("participant_specific");
+
+    const result = validateWorkPackage(
+      manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+        selectionMetadata: {
+          method: "canonical",
+          confidence: 1,
+          matchedKeywords: [],
+          fallbackUsed: false,
+          canonicalIntent: "care_plan.create",
+          blueprintFamily: "care_plan",
+          blueprintMode: "create",
+          requestedDeliverableType: "PARTICIPANT_NDIS_CARE_PLAN",
+          deliverableStandardisation: "participant_specific",
+        },
+      }),
+      blueprint as any,
+      { chunks: [], totalChunks: 0 } as any,
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.missingItems).toContain("Participant Document");
+    expect(result.clarificationMessage).not.toMatch(/approval required/i);
   });
 });
