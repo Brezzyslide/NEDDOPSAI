@@ -431,16 +431,19 @@ export function detectInstructionalProfessionalText(
 
   const findings = new Set<string>();
   const paragraphs = contentMarkdown
+    .split(/\r?\n/)
+    .filter((line) => !/^#{1,6}\s+/.test(line.trim()))
+    .join("\n")
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
   for (const paragraph of paragraphs) {
-    const withoutHeading = paragraph.replace(/^#{1,6}\s+/, "");
+    const withoutHeading = paragraph;
     if (
       /\b(?:review|validate|assess|identify|map|check|determine|insert|draft|configure|complete)\b/i.test(withoutHeading) &&
       /\b(?:clause|clauses|provision|provisions|obligation|obligations|responsibilit(?:y|ies)|right|rights|term|terms|cancellation|variation|termination|privacy|complaints?|payment|pricing|conclusion)\b/i.test(withoutHeading) &&
-      !/\b(?:must|will|agrees?|may|is responsible for|has the right to|is entitled to)\b/i.test(withoutHeading)
+      !/\b(?:must|will|should|agrees?|may|is responsible for|has the right to|is entitled to|assist|document|record|support(?:ed|s|ing)?)\b/i.test(withoutHeading)
     ) {
       findings.add(`instructional_text:${withoutHeading.slice(0, 140)}`);
     }

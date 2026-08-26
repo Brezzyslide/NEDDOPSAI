@@ -500,6 +500,17 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(true);
   });
 
+  it("does not combine a professional heading with valid body prose as instructional text", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Participant, Representative, and Support-Network Responsibilities",
+      "This section defines the roles and responsibilities of the participant, representative and support network so the care plan can be completed consistently. The participant should be supported to express goals, communication preferences, consent preferences and support concerns. Representatives should assist with decision-making where authorised, and the provider should document agreed actions, escalation points and review responsibilities.",
+    ].join("\n");
+
+    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+  });
+
   it("blocks placeholder-only or empty substantive professional sections", () => {
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
     const contract = contractFor("service_agreement_review");
