@@ -11,6 +11,7 @@ import {
 import type { BlueprintExecutionContract } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
 import { parseSpecialistJsonOutput } from "../services/claimValidationService";
+import { planTask } from "../services/chiefOfStaffService";
 
 const root = resolve(__dirname, "..");
 
@@ -74,6 +75,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(deriveProfessionalOperation(request, "agreements.create")).toBe("CREATE");
     expect(deriveProfessionalIntentKey(request, "agreements.review")).toBe("agreements.create");
+    expect(planTask(request).intent).toBe("agreements.create");
     expect(resolveIntent("agreements.create")).toMatchObject({
       family: "agreements",
       mode: "create",
@@ -91,6 +93,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
 
     expect(context.operation).toBe("REVIEW");
+    expect(planTask(request).intent).toBe("agreements.review");
     expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_SERVICE_AGREEMENT_CONTRACT_READINESS_ASSESSMENT");
     expect(context.professionalMethodRole).toBe("requested_deliverable_structure");
   });
@@ -140,10 +143,22 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(contextService).toContain("PROFESSIONAL EXECUTION CONTEXT");
     expect(src).toContain("professional_work");
     expect(src).toContain("deliverable.content");
+    expect(src).toContain("deriveOutputTypeForProfessionalContext");
+    expect(src).toContain("deliverableType.toLowerCase()");
+    expect(contextService).toContain("STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT");
+    expect(src).toContain("completedWork.title");
     expect(src).toContain("INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS)");
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
     expect(src).not.toContain("=== STRUCTURED BLUEPRINT SECTIONS ===");
+  });
+
+  it("threads canonical operation intent from task planning into execution", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+
+    expect(coordinator).toContain("getTaskPlan");
+    expect(coordinator).toContain("deriveProfessionalIntentKey(userRequest, plan?.intent ?? null)");
+    expect(coordinator).toContain("canonicalIntent,");
   });
 
   it("proves generic operation separation beyond Service Agreements", () => {

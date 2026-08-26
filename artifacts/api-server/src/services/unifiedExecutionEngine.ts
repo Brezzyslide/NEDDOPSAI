@@ -1415,9 +1415,6 @@ export class UnifiedExecutionEngine {
     }
 
     await progress("retrieving_examples");
-    const outputType = blueprint?.outputTypes[0] ?? "general_output";
-    const examples = await retrieveApprovedExamples(organizationId, outputType);
-    const styleGuidance = await buildStyleGuidance(examples, organizationId);
     const professionalContext = compileProfessionalExecutionContext({
       userRequest,
       manifest,
@@ -1425,6 +1422,9 @@ export class UnifiedExecutionEngine {
       blueprintContract,
       evidencePack: evidencePack ?? null,
     });
+    const outputType = deriveOutputTypeForProfessionalContext(blueprint, professionalContext);
+    const examples = await retrieveApprovedExamples(organizationId, outputType);
+    const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
     await progress("executing");
     const t5 = Date.now();
@@ -1592,7 +1592,7 @@ export class UnifiedExecutionEngine {
         message: "Task was cancelled before Completed Work creation. No Completed Work was created.",
       };
     }
-    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint);
+    const title = request.title ?? deriveTitleFromRequest(userRequest, blueprint, professionalContext);
 
     const citationRefBySourceId = new Map<string, string>();
     if (evidencePack) {
@@ -1887,7 +1887,7 @@ export class UnifiedExecutionEngine {
       manifestId: manifest.id,
       blueprintCode: blueprint?.code,
       qualityScore: reviewResult.qualityScore,
-      message: buildCompletionMessage(finalWork.id, finalWork.status, blueprint, reviewResult),
+      message: buildCompletionMessage(finalWork.id, finalWork.status, completedWork.title, reviewResult),
     };
   }
 
@@ -2916,7 +2916,29 @@ function extractUserFacingClauseFamilies(
     .slice(0, 30);
 }
 
-function deriveTitleFromRequest(userRequest: string, blueprint: WorkBlueprint | null): string {
+function deriveOutputTypeForProfessionalContext(
+  blueprint: WorkBlueprint | null,
+  professionalContext: ProfessionalExecutionContext | null,
+): string {
+  const deliverableType = professionalContext?.deliverable.requestedDeliverableType;
+  if (deliverableType) {
+    return deliverableType.toLowerCase();
+  }
+  return blueprint?.outputTypes[0] ?? "general_output";
+}
+
+function deriveTitleFromRequest(
+  userRequest: string,
+  blueprint: WorkBlueprint | null,
+  professionalContext?: ProfessionalExecutionContext | null,
+): string {
+  if (professionalContext?.operation === "CREATE") {
+    const deliverableTitle = professionalContext.deliverable.requestedDeliverableType
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+    return deliverableTitle;
+  }
   if (blueprint) {
     const truncated = userRequest.slice(0, 60).trim();
     return `${blueprint.title} — ${truncated}${userRequest.length > 60 ? "..." : ""}`;
@@ -2927,12 +2949,12 @@ function deriveTitleFromRequest(userRequest: string, blueprint: WorkBlueprint | 
 function buildCompletionMessage(
   completedWorkId: string,
   completedWorkStatus: string,
-  blueprint: WorkBlueprint | null,
+  completedWorkTitle: string,
   reviewResult: Awaited<ReturnType<typeof reviewDraft>>,
 ): string {
   const score = reviewResult.qualityScore;
   const revised = reviewResult.revised;
-  const bpName = blueprint?.title ?? "work output";
+  const bpName = completedWorkTitle || "work output";
 
   let msg = `I've completed the ${bpName} (quality score: ${score}/100`;
   if (revised) msg += ", with one automatic revision applied";

@@ -47,10 +47,12 @@ import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import {
   claimTaskForExecution,
+  getTaskPlan,
   isTaskCancelled,
   reconcileTaskExecutionFailure,
   reconcileTaskExecutionSuccess,
 } from "./taskService.js";
+import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -459,6 +461,7 @@ interface BackgroundRunInput {
   conversationId?: string;
   correlationId: string;
   intentId?: string;
+  canonicalIntent?: string;
   checkpointData?: ExecutionCheckpointData;
   /** Sprint 29M: classifier lane context forwarded through the background runner to UEE */
   laneContext?: import("./unifiedExecutionEngine.js").ExecutionLaneContext;
@@ -533,11 +536,20 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       return;
     }
 
+    const plan = taskId
+      ? await getTaskPlan(taskId, organizationId).catch(() => null)
+      : null;
+    const canonicalIntent =
+      input.canonicalIntent ??
+      deriveProfessionalIntentKey(userRequest, plan?.intent ?? null) ??
+      undefined;
+
     const result = await executeWork({
       organizationId,
       requesterId,
       requesterRole,
       userRequest,
+      canonicalIntent,
       conversationId,
       correlationId,
       taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan

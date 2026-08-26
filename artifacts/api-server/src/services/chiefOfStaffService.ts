@@ -18,6 +18,7 @@ import {
 // Sprint 29H Part A: canonical capability registry for eligibility-aware routing
 import { getCapability } from "../lib/capabilityRegistry.js";
 import type { ApprovalType } from "@workspace/shared";
+import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -305,7 +306,8 @@ export function planTask(taskTitle: string, taskDescription?: string): TaskPlan 
     ? "Under 5 minutes"
     : `${totalMinutes}–${totalMinutes + 5} minutes`;
 
-  const topIntent = intentScores[0]?.capabilityCode ?? "general";
+  const topCapability = intentScores[0]?.capabilityCode ?? "general";
+  const topIntent = deriveProfessionalIntentKey(inputText, topCapability) ?? topCapability;
   const confidence = intentScores.length > 0
     ? Math.min(0.95, 0.5 + intentScores[0]!.score * 0.05)
     : 0.3;
