@@ -9,6 +9,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync }  from "fs";
 import { resolve }       from "path";
+import { BLUEPRINT_REGISTRY } from "../services/blueprintRegistry";
+import { projectUserFacingWorkStatus } from "../services/workStatusProjectionService";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -215,8 +217,44 @@ describe("Sprint 29N.10 Part E — Dashboard pending decisions includes all 7 so
 // ── Part F — Dashboard active work canonical status ─────────────────────────
 
 describe("Sprint 29N.10 Part F — Dashboard active work uses canonical active-executions", () => {
+  it("projects task, execution and Completed Work state through one shared user-facing contract", () => {
+    expect(projectUserFacingWorkStatus({ taskState: "executing", completedWorkStatus: "awaiting_approval" })).toMatchObject({
+      status: "executing",
+      label: "Executing",
+      belongsInActiveWork: true,
+      belongsInApprovalWork: false,
+    });
+
+    expect(projectUserFacingWorkStatus({ taskState: "evidence_required" })).toMatchObject({
+      status: "evidence_required",
+      label: "Evidence Required",
+      belongsInActiveWork: true,
+      belongsInApprovalWork: false,
+    });
+
+    expect(projectUserFacingWorkStatus({
+      taskState: "completed",
+      executionStatus: "running",
+      completedWorkStatus: "awaiting_approval",
+    })).toMatchObject({
+      status: "completed_output_awaiting_approval",
+      label: "Completed - Output Awaiting Approval",
+      isTerminalTask: true,
+      belongsInActiveWork: false,
+      belongsInApprovalWork: true,
+    });
+
+    expect(projectUserFacingWorkStatus({ taskState: "failed", executionStatus: "running" })).toMatchObject({
+      status: "failed",
+      label: "Failed",
+      isTerminalTask: true,
+      belongsInActiveWork: false,
+    });
+  });
+
   it("STATIC: ExecutiveDashboard uses active-executions with polling rather than stale local task filtering", () => {
     const src = readSource("artifacts/needsops-web/src/pages/app/ExecutiveDashboard.tsx");
+    const service = readSource("artifacts/api-server/src/services/activeExecutionsService.ts");
 
     expect(src).toContain('queryKey: ["active-executions-dashboard", slug]');
     expect(src).toContain("/active-executions");
@@ -225,12 +263,16 @@ describe("Sprint 29N.10 Part F — Dashboard active work uses canonical active-e
     expect(src).not.toContain('queryKey: ["tasks-dashboard", slug]');
     expect(src).toContain("evidence_required");
     expect(src).toContain("Evidence Required");
+    expect(service).toContain("projectUserFacingWorkStatus");
   });
 
-  it("STATIC: Active Work and task surfaces distinguish evidence_required from approval", () => {
+  it("STATIC: Active Work, Workroom, Inbox and Completed Work surfaces keep lifecycle states separate", () => {
     const activeWork = readSource("artifacts/needsops-web/src/pages/app/ActiveWorkPage.tsx");
     const taskCentre = readSource("artifacts/needsops-web/src/pages/app/TaskCentrePage.tsx");
     const workroom = readSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+    const inbox = readSource("artifacts/needsops-web/src/pages/app/ExecutiveInbox.tsx");
+    const completedWorkPortal = readSource("artifacts/needsops-web/src/pages/app/CompletedWorkPortal.tsx");
+    const completedWorkViewer = readSource("artifacts/needsops-web/src/pages/app/CompletedWorkViewer.tsx");
 
     expect(activeWork).toContain("evidence_required");
     expect(activeWork).toContain("Evidence Required");
@@ -239,6 +281,33 @@ describe("Sprint 29N.10 Part F — Dashboard active work uses canonical active-e
     expect(taskCentre).toContain('!["awaiting_approval", "evidence_required"].includes(task.currentState)');
     expect(workroom).toContain('"evidence_required"');
     expect(workroom).toContain("Provide the requested evidence");
+    expect(inbox).toContain('w.status === "awaiting_approval"');
+    expect(inbox).toContain('type: "work_delivered"');
+    expect(inbox).toContain("Completed work awaiting your approval");
+    expect(completedWorkPortal).toContain('awaiting_approval: { bg: "bg-amber-900/40"');
+    expect(completedWorkViewer).toContain('"awaiting_approval" && canApprove');
+  });
+
+  it("audits all 75 Blueprints against the shared lifecycle/status model", () => {
+    const failures: string[] = [];
+    for (const blueprint of BLUEPRINT_REGISTRY) {
+      const completionProjection = projectUserFacingWorkStatus({
+        taskState: "completed",
+        completedWorkStatus: blueprint.deliverableContract?.artifactRequired === false ? "approved" : "awaiting_approval",
+      });
+      const evidenceProjection = projectUserFacingWorkStatus({ taskState: "evidence_required" });
+      const failedProjection = projectUserFacingWorkStatus({ taskState: "failed", executionStatus: "running" });
+
+      if (completionProjection.status === "executing") failures.push(`${blueprint.code}:completed_as_executing`);
+      if (completionProjection.belongsInActiveWork) failures.push(`${blueprint.code}:completed_in_active_work`);
+      if (evidenceProjection.status !== "evidence_required") failures.push(`${blueprint.code}:evidence_not_distinct`);
+      if (failedProjection.status !== "failed") failures.push(`${blueprint.code}:failed_overridden_by_execution`);
+      if (!Array.isArray(blueprint.supportedModes) || blueprint.supportedModes.length === 0) failures.push(`${blueprint.code}:missing_modes`);
+      if (!blueprint.primaryDeliverable) failures.push(`${blueprint.code}:missing_deliverable`);
+    }
+
+    expect(BLUEPRINT_REGISTRY).toHaveLength(75);
+    expect(failures).toEqual([]);
   });
 });
 

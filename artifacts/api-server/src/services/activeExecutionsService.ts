@@ -13,6 +13,7 @@
 
 import { db, tasksTable, specialistRunsTable, executionIntentsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
+import { projectUserFacingWorkStatus } from "./workStatusProjectionService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,7 +115,7 @@ export async function getActiveExecutions(
       id:        t.id,
       kind:      "task" as const,
       title:     t.title,
-      status:    t.currentState as string,
+      status:    projectUserFacingWorkStatus({ taskState: t.currentState as string }).status,
       createdAt: t.createdAt?.toISOString() ?? new Date().toISOString(),
     })),
     ...runs.map(r => ({
