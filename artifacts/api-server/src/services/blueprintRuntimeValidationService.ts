@@ -414,6 +414,7 @@ export function detectLeakedBlueprintMethodologyHeadings(
   for (const match of contentMarkdown.matchAll(MARKDOWN_HEADING_PATTERN)) {
     const rawHeading = (match[1] ?? "").trim();
     if (!rawHeading) continue;
+    if (isAllowedUserFacingTemplateHeading(rawHeading, standardTemplateEvidence)) continue;
     const normalised = normaliseHeadingLabel(rawHeading);
     if (sectionLabels.has(normalised) || INTERNAL_METHOD_HEADING_PATTERN.test(rawHeading)) {
       findings.add(rawHeading);
@@ -421,6 +422,16 @@ export function detectLeakedBlueprintMethodologyHeadings(
   }
 
   return [...findings].sort();
+}
+
+function isAllowedUserFacingTemplateHeading(
+  heading: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): boolean {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
+  return /\b(?:purpose|scope|goals?|preferences?|communication|support requirements?|support schedule|responsibilit(?:y|ies)|rights?|privacy|confidentiality|complaints?|feedback|payment|pricing|cancellation|variation|termination|review|updates?|consent|sign[- ]off|risk|safety|incident|escalation|health|medication|behaviour|community participation|coordination)\b/i.test(heading) &&
+    !INTERNAL_METHOD_HEADING_PATTERN.test(heading) &&
+    !/\b(?:gate|inventory|authority package|readiness assessment|completeness review|validation review|methodology|checklist|control)\b/i.test(heading);
 }
 
 export function detectInstructionalProfessionalText(
@@ -443,7 +454,7 @@ export function detectInstructionalProfessionalText(
     if (
       /\b(?:review|validate|assess|identify|map|check|determine|insert|draft|configure|complete)\b/i.test(withoutHeading) &&
       /\b(?:clause|clauses|provision|provisions|obligation|obligations|responsibilit(?:y|ies)|right|rights|term|terms|cancellation|variation|termination|privacy|complaints?|payment|pricing|conclusion)\b/i.test(withoutHeading) &&
-      !/\b(?:must|will|should|agrees?|may|is responsible for|has the right to|is entitled to|assist|document|record|support(?:ed|s|ing)?)\b/i.test(withoutHeading)
+      !/\b(?:must|will|should|agrees?|may|is responsible for|has the right to|is entitled to|assist|document|record|support(?:ed|s|ing)?|ensure)\b/i.test(withoutHeading)
     ) {
       findings.add(`instructional_text:${withoutHeading.slice(0, 140)}`);
     }

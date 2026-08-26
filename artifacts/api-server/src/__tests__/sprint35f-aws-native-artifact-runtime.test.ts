@@ -511,6 +511,23 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([]);
   });
 
+  it("allows natural user-facing template headings even when a Blueprint uses the same label", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Purpose and Scope",
+      "This template explains how the care plan should be used, who it applies to, and how participant-specific details are completed without changing the professional structure.",
+      "## Goals and Preferences",
+      "The participant goals section should record what matters to the participant, their preferred communication approach, decision-making supports, cultural or personal preferences, and agreed ways workers should adapt support delivery.",
+      "## Support Requirements",
+      "Support requirements should describe the support domains, frequency, worker responsibilities, escalation points and review triggers that apply once participant-specific information is added.",
+    ].join("\n\n");
+
+    expect(detectLeakedBlueprintMethodologyHeadings(contentMarkdown, contract.sections, standardTemplateEvidence)).toEqual([]);
+    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+  });
+
   it("blocks placeholder-only or empty substantive professional sections", () => {
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
     const contract = contractFor("service_agreement_review");
