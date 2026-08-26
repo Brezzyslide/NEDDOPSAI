@@ -143,6 +143,7 @@ export function compileProfessionalExecutionContext(input: {
     completionStandard: [
       "The deliverable is user-facing and matches the requested operation.",
       "Internal methodology, control codes and Blueprint section titles are not copied as document structure unless the user requested a review/assessment.",
+      "Every applicable mandatory, conditional and factual-field deliverable requirement is represented in the final user-facing payload.",
       "Professional-content placeholders and incomplete markers are absent.",
       "Factual placeholders remain only for unknown customer-specific values.",
     ],
@@ -178,6 +179,7 @@ export function compileProfessionalExecutionContext(input: {
       "No leaked internal methodology headings in CREATE, TAILOR, UPDATE or COMPLETE deliverables.",
       "No empty substantive sections or instruction-only clauses.",
       "No mandatory user-facing section is placeholder-only or dominated by labels and factual variables.",
+      "Mandatory professional deliverable requirement coverage is 100% before Completed Work/artifacts are finalised.",
       "Completed Work/artifacts consume only the final deliverable payload.",
     ],
     canonicalIntent: input.manifest.canonicalIntent ?? null,

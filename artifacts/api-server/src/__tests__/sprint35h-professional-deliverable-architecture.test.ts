@@ -9,6 +9,12 @@ import {
   deriveProfessionalIntentKey,
   deriveProfessionalOperation,
 } from "../services/professionalExecutionContextService";
+import {
+  auditBlueprintRequirementCompatibility,
+  deriveDeliverableRequirementCoverageProfile,
+  validateDeliverableRequirementCoverage,
+} from "../services/deliverableRequirementCoverageService";
+import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService";
 import type { BlueprintExecutionContract } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
 import { parseSpecialistJsonOutput } from "../services/claimValidationService";
@@ -232,6 +238,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
   it("audits all canonical Blueprints for generic operation/deliverable/evidence compatibility", () => {
     const exceptions: Array<{ code: string; reason: string }> = [];
+    const coverageExceptions: Array<{ code: string; reason: string }> = [];
 
     for (const entry of BLUEPRINT_REGISTRY) {
       if (!entry.code) exceptions.push({ code: entry.code, reason: "missing_code" });
@@ -246,22 +253,164 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       if (getRegistryBlueprintReadinessState(entry) !== "professionally_authored") {
         exceptions.push({ code: entry.code, reason: "not_professionally_authored" });
       }
+
+      const audit = auditBlueprintRequirementCompatibility({
+        blueprint: entry as any,
+        sections: entry.sections as any,
+        template: null,
+        mode: entry.supportedModes[0] ?? "create",
+      });
+      if (!audit.compatible) {
+        coverageExceptions.push(...audit.exceptions.map((reason) => ({ code: entry.code, reason })));
+      }
+      expect(audit.classificationCounts.INTERNAL_METHODOLOGY +
+        audit.classificationCounts.EVIDENCE_REQUIREMENT +
+        audit.classificationCounts.QUALITY_CONTROL +
+        audit.classificationCounts.MUST_BE_REPRESENTED +
+        audit.classificationCounts.CONDITIONAL +
+        audit.classificationCounts.FACTUAL_FIELD +
+        audit.classificationCounts.OPTIONAL_ENRICHMENT).toBe(entry.sections.length);
     }
 
     const engine = source("services/professionalExecutionContextService.ts");
     const validator = source("services/workValidationService.ts");
     const runner = source("services/unifiedExecutionEngine.ts");
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
 
     expect(BLUEPRINT_REGISTRY).toHaveLength(75);
     expect(exceptions).toEqual([]);
+    expect(coverageExceptions).toEqual([]);
     expect(engine).toContain("deriveProfessionalOperation");
     expect(engine).toContain("deriveDeliverableStandardisation");
     expect(engine).toContain("requestedDeliverableType");
     expect(engine).toContain("mandatoryProfessionalContent");
+    expect(coverage).toContain("MANDATORY DELIVERABLE REQUIREMENT COVERAGE");
+    expect(coverage).toContain("MUST_BE_REPRESENTED");
+    expect(coverage).toContain("FACTUAL_FIELD");
+    expect(coverage).toContain("CONDITIONAL");
+    expect(source("services/blueprintRuntimeValidationService.ts")).toContain("mandatory_deliverable_coverage");
     expect(validator).toContain("isStandardReusableTemplate");
     expect(validator).toContain("participant_context_present");
     expect(runner).toContain("INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS)");
     expect(runner).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
+  });
+
+  it("blocks Service Agreement CREATE when Schedule of Supports substantive fields are omitted", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const weakAgreement = [
+      "# NDIS Service Agreement",
+      "## Parties",
+      "Provider and participant details will be recorded, including the provider identity, participant identity, representative authority where applicable, and the agreement period. These fields support a reusable agreement without inventing organisation or participant facts.",
+      "## NDIS Agreement Purpose",
+      "This agreement explains the purpose of the NDIS service relationship and records how the provider and participant agree to work together. It describes the supports at a high level and preserves participant choice and control.",
+      "## Support Schedule",
+      "The agreement includes a support schedule section for agreed supports, but this defective draft does not include the required professional schedule columns. This prose is intentionally long enough to prove the coverage gate catches the omission rather than the earlier incomplete-section guard.",
+      "## Payment and Pricing",
+      "Prices will be charged in line with the agreed terms and applicable pricing authority where relevant. The provider must explain pricing changes, GST or non-NDIS cost treatment, billing responsibilities and participant agreement requirements before changes take effect.",
+      "## Provider Responsibilities",
+      "The provider will deliver supports safely, respectfully and lawfully, keep appropriate records, explain billing, protect privacy, respond to feedback, notify interruptions and escalate critical risks according to the agreement and applicable obligations.",
+      "## Participant Responsibilities",
+      "The participant or representative will communicate relevant needs, preferences and changes, keep contact and plan information current, engage respectfully with workers, give reasonable notice for changes and pay agreed participant expenses where applicable.",
+      "## Privacy and Complaints",
+      "The agreement protects privacy and confidentiality, explains feedback and complaint pathways, preserves advocacy rights and explains how disputes can be raised and responded to without affecting participant choice and control.",
+      "## Cancellation and Changes",
+      "The agreement explains cancellation, no-show and rescheduling notice expectations, including emergency circumstances. It also explains how variations, funding changes, schedule changes and consent/signature controls are handled.",
+      "## Termination",
+      "Either party may end the agreement with notice according to the agreed terms. The agreement must preserve participant choice, transition support, final obligations, final invoices and secure handover where supports end.",
+      "## Continuity and Emergency",
+      "Continuity, emergency and disaster arrangements explain temporary service disruption, alternate support arrangements, communication responsibilities, escalation and review after the event where applicable.",
+      "## Signatures",
+      "Provider and participant or representative signature and acceptance fields are included so the reusable template can be completed once the factual details are known.",
+    ].join("\n\n");
+
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const failures = validateDeliverableRequirementCoverage(weakAgreement, profile);
+
+    expect(failures.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
+      "support-item-code-field",
+      "support-unit-basis-field",
+      "support-quantity-frequency-field",
+      "support-unit-price-field",
+      "support-service-period-field",
+      "support-total-field",
+    ]));
+
+    const gate = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: weakAgreement,
+      rawClaims: [],
+      evidencePack: null,
+      artifactId: "__artifact_generation_pending__",
+      deferApprovalGate: true,
+      standardTemplateEvidence: {
+        standardTemplateRequested: true,
+        existingTemplateRequested: false,
+        participantSpecificRequested: false,
+        organisationSpecificRequested: false,
+        customerExampleOptional: true,
+      },
+      professionalContext: context,
+    });
+
+    expect(gate.passed).toBe(false);
+    expect(gate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage")).toBe(true);
+    expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
+    expect(gate.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
+  });
+
+  it("accepts Service Agreement coverage when mandatory clauses and factual Schedule fields are represented", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const coveredAgreement = [
+      "# NDIS Service Agreement Template",
+      "## Agreement Parties and Period",
+      "Provider: [PROVIDER_NAME]. ABN: [PROVIDER_ABN]. Participant: [PARTICIPANT_NAME]. Representative authority: [REPRESENTATIVE_DETAILS]. Agreement period: [AGREEMENT_PERIOD].",
+      "## NDIS Agreement Purpose and Scope",
+      "This agreement records the NDIS supports the provider agrees to deliver and the participant agrees to receive. The scope explains included supports, exclusions and how agreed services relate to the participant's NDIS plan.",
+      "## Schedule of Supports",
+      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency/hours/weeks | Unit price/rate | Service period | Subtotal / estimated total | Agreement total amount |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [SERVICE_PERIOD] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+      "The provider and participant must review this schedule when supports, service periods, quantities or prices change.",
+      "## Delivery of Supports",
+      "The provider is responsible for delivering agreed supports safely, respectfully and within the provider's operational capability. The provider must notify the participant of material interruptions and coordinate replacement or alternative arrangements where appropriate.",
+      "## Provider Responsibilities",
+      "The provider will deliver supports with dignity and respect, keep appropriate records, explain billing, maintain privacy, respond to feedback and escalate critical risks.",
+      "## Participant and Representative Responsibilities",
+      "The participant or representative will share relevant needs and preferences, keep contact and plan information current, give reasonable notice of changes and pay any agreed non-NDIS expenses.",
+      "## Rights, Privacy, Complaints and Advocacy",
+      "The participant has rights to choice, control, privacy, confidentiality, complaints, feedback, disputes and advocacy. The provider must explain complaints pathways and protect participant information.",
+      "## Payment, Pricing, GST and Non-NDIS Costs",
+      "Payment and pricing will follow the agreed schedule, applicable pricing authority where relevant, GST or non-NDIS cost terms, and a clear price change notice and participant agreement process.",
+      "## Cancellation, No-show and Rescheduling",
+      "The agreement explains participant cancellation, provider cancellation, no-show and rescheduling notice expectations, including emergency circumstances.",
+      "## Variation and Change",
+      "Changes to services, prices, funding or the support schedule require notice, consent where required, an effective date and document-control records.",
+      "## Termination, Exit and Transition",
+      "Termination and exit provisions explain notice, transition support, participant choice, final invoices, records and continuity obligations.",
+      "## Continuity, Emergency and Disaster",
+      "Continuity, emergency and disaster arrangements explain temporary disruption, alternate support arrangements, communication and post-event review where applicable.",
+      "## Signatures and Acceptance",
+      "Provider signature: [SIGNATURE]. Participant/representative signature: [SIGNATURE]. Date: [DATE].",
+    ].join("\n\n");
+
+    const failures = validateDeliverableRequirementCoverage(
+      coveredAgreement,
+      deriveDeliverableRequirementCoverageProfile(context, contract),
+    );
+
+    expect(failures).toEqual([]);
   });
 
   it("does not require participant evidence for standard reusable Care Plan templates", () => {

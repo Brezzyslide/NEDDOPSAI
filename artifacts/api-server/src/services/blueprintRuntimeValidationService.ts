@@ -15,6 +15,11 @@ import {
   canonicaliseSourceType,
   isTrustedProviderSource,
 } from "../utils/sourceTypeNormalisation.js";
+import type { ProfessionalExecutionContext } from "./professionalExecutionContextService.js";
+import {
+  deriveDeliverableRequirementCoverageProfile,
+  validateDeliverableRequirementCoverage,
+} from "./deliverableRequirementCoverageService.js";
 
 export type BlueprintRuntimeGateState =
   | "validation"
@@ -31,6 +36,7 @@ export interface BlueprintRuntimeGateFailure {
     | "claim_integrity"
     | "professional_placeholder"
     | "methodology_leak"
+    | "mandatory_deliverable_coverage"
     | "final_synthesis"
     | "prohibited_deliverable"
     | "template_required"
@@ -50,6 +56,7 @@ export interface BlueprintRuntimeValidationInput {
   approvalStates?: Record<string, boolean> | null;
   deferApprovalGate?: boolean;
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
+  professionalContext?: ProfessionalExecutionContext | null;
 }
 
 export interface BlueprintRuntimeValidationResult {
@@ -149,6 +156,21 @@ export function validateBlueprintRuntimeCompletion(
       message: "Draft exposes internal Blueprint methodology headings in a customer-facing standard template. Blueprint sections must remain internal working method unless the final deliverable contract explicitly maps them into user-facing content.",
       details: leakedMethodologyHeadings,
     });
+  }
+
+  if (input.professionalContext) {
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, contract);
+    const coverageFailures = validateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile);
+    if (coverageFailures.length > 0) {
+      failures.push({
+        gate: "mandatory_deliverable_coverage",
+        state: "validation",
+        message: "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
+        details: coverageFailures.slice(0, 20).map((failure) =>
+          `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
+        ),
+      });
+    }
   }
 
   failures.push(...validateSections(

@@ -89,6 +89,10 @@ import {
   deriveRequestedDeliverableType,
   type ProfessionalExecutionContext,
 } from "./professionalExecutionContextService.js";
+import {
+  deriveDeliverableRequirementCoverageProfile,
+  formatRequirementCoveragePrompt,
+} from "./deliverableRequirementCoverageService.js";
 // Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
 import {
   evaluateEvidenceSufficiency,
@@ -1516,6 +1520,7 @@ export class UnifiedExecutionEngine {
       artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
       deferApprovalGate: true,
       standardTemplateEvidence,
+      professionalContext,
     });
     if (shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
@@ -1557,6 +1562,7 @@ export class UnifiedExecutionEngine {
           artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
           deferApprovalGate: true,
           standardTemplateEvidence,
+          professionalContext,
         });
       }
     }
@@ -1710,6 +1716,7 @@ export class UnifiedExecutionEngine {
         artifactId: primaryArtifactId,
         deferApprovalGate: true,
         standardTemplateEvidence,
+        professionalContext,
       });
       if (!artifactGate.passed) {
         const blockingMessage = artifactGate.failures
@@ -2646,6 +2653,9 @@ function buildWorkExecutionAddendum(
   const contextBlock = professionalContext
     ? `\n${buildProfessionalExecutionContextBlock(professionalContext)}\n`
     : "";
+  const coverageContract = professionalContext
+    ? `\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}\n`
+    : "";
   const sectionHeading = professionalContext?.professionalMethodRole === "requested_deliverable_structure"
     ? "Review/Assessment Sections"
     : "Internal Professional Method Checklist";
@@ -2662,6 +2672,7 @@ function buildWorkExecutionAddendum(
 You are executing professional work using the "${blueprint.title}" blueprint as professional method authority.
 ${contextBlock}
 ${methodBoundary}
+${coverageContract}
 
 **Objective:** ${blueprint.objective}
 
@@ -2720,6 +2731,7 @@ function buildWorkPackagePrompt(
   sections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
   if (professionalContext) {
     sections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext)}`);
+    sections.push(`=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}`);
   }
 
   if (evidencePack && evidencePack.totalChunks > 0) {
@@ -2886,6 +2898,9 @@ function buildFinalDeliverableSynthesisSystemPrompt(
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
 
   const contextBlock = professionalContext ? buildProfessionalExecutionContextBlock(professionalContext) : "";
+  const coverageContract = professionalContext
+    ? formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))
+    : "";
   const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
     ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
     : "- The substantive professional content required by the requested deliverable.";
@@ -2912,6 +2927,8 @@ USER DELIVERABLE:
 
 MANDATORY USER-FACING CONTENT:
 ${mandatoryContent}
+
+${coverageContract}
 
 Allowed placeholders are factual/user-specific data placeholders such as [PARTICIPANT_NAME], [PROVIDER_NAME], [PROVIDER_ABN], [NDIS_NUMBER], [AGREEMENT_PERIOD], [SUPPORT_SCHEDULE], [PRICE] and [SIGNATURE].
 Factual placeholders may appear only inside otherwise drafted professional clauses, fields or template prompts. They must never be the whole answer for a mandatory professional section.
@@ -2963,6 +2980,8 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     ? buildEvidenceSection(input.evidencePack)
     : "";
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
+  const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+  const coverageContract = formatRequirementCoveragePrompt(coverageProfile);
   const mandatoryContent = input.professionalContext.deliverable.mandatoryProfessionalContent.length
     ? input.professionalContext.deliverable.mandatoryProfessionalContent
     : ["Purpose", "Scope", "Responsibilities", "Review requirements", "Sign-off"];
@@ -2994,6 +3013,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     `## ORIGINAL REQUEST\n${input.userRequest}`,
     `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
+    coverageContract,
     blueprintMethodSection,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
