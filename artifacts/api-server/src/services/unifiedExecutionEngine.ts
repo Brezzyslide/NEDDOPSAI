@@ -2900,6 +2900,12 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
       failure.details?.length ? `  Details: ${failure.details.join(", ")}` : "",
     ].filter(Boolean).join("\n"),
   ).join("\n");
+  const shouldOmitDefectiveDraft =
+    input.professionalContext.deliverable.standardisation === "standard_reusable" &&
+    input.gateFailures.some((failure) => failure.gate === "methodology_leak");
+  const failedDraftSection = shouldOmitDefectiveDraft
+    ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, Blueprint professional method and authoritative evidence.`
+    : `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`;
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
@@ -2913,7 +2919,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
       : "",
     `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
-    `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`,
+    failedDraftSection,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
     `## FINAL SYNTHESIS INSTRUCTIONS
 Rewrite the failed draft into the final user-facing deliverable.

@@ -259,6 +259,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const src = source("services/unifiedExecutionEngine.ts");
     expect(src).toContain("Use these as the final document structure or merge them into equivalent user-facing headings");
     expect(src).toContain("Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work");
+    expect(src).toContain("prior draft leaked internal Blueprint methodology");
+    expect(src).toContain("it is intentionally omitted from this synthesis prompt");
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {
