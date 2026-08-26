@@ -629,8 +629,10 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(taskService).toContain("idempotency_key");
     expect(taskService).toContain("conversation_work_intent");
     expect(taskService).toContain("allowDuplicate");
+    expect(taskService).toContain("if (input.allowDuplicate && !idempotencyKey) return null");
     expect(taskService).toContain("taskCreationIdempotencyTable");
     expect(taskService).toContain("return db.transaction(async (tx) =>");
+    expect(taskService).toContain("if (idempotencyKey) {");
     expect(taskService).toContain(".onConflictDoNothing({");
     expect(taskService).toContain("taskCreationIdempotencyTable.organizationId");
     expect(taskService).toContain("taskCreationIdempotencyTable.idempotencyKey");

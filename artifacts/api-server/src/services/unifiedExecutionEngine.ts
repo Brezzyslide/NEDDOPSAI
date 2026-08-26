@@ -81,6 +81,11 @@ import {
   resolveConversationEvidence,
   type EvidencePack,
 } from "./knowledgeResolutionService.js";
+import {
+  buildProfessionalExecutionContextBlock,
+  compileProfessionalExecutionContext,
+  type ProfessionalExecutionContext,
+} from "./professionalExecutionContextService.js";
 // Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
 import {
   evaluateEvidenceSufficiency,
@@ -1413,6 +1418,13 @@ export class UnifiedExecutionEngine {
     const outputType = blueprint?.outputTypes[0] ?? "general_output";
     const examples = await retrieveApprovedExamples(organizationId, outputType);
     const styleGuidance = await buildStyleGuidance(examples, organizationId);
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest,
+      manifest,
+      blueprint,
+      blueprintContract,
+      evidencePack: evidencePack ?? null,
+    });
 
     await progress("executing");
     const t5 = Date.now();
@@ -1424,6 +1436,7 @@ export class UnifiedExecutionEngine {
         { userId: requesterId, organizationId, role: request.requesterRole! },
         evidencePack ?? undefined,
         blueprintContract,
+        professionalContext,
       );
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
@@ -1492,7 +1505,7 @@ export class UnifiedExecutionEngine {
       deferApprovalGate: true,
       standardTemplateEvidence,
     });
-    if (shouldAttemptFinalDeliverableSynthesis(runtimeGate.failures, standardTemplateEvidence)) {
+    if (shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
         userRequest,
         manifest,
@@ -1503,6 +1516,7 @@ export class UnifiedExecutionEngine {
         currentContent: reviewResult.finalContent,
         currentClaims: rawClaims,
         gateFailures: runtimeGate.failures,
+        professionalContext,
       });
 
       draftContent = synthesisResult.content;
@@ -1887,6 +1901,7 @@ export class UnifiedExecutionEngine {
     authCtx: { userId: string; organizationId: string; role: string },
     evidencePack?: EvidencePack,
     blueprintContract?: BlueprintExecutionContract | null,
+    professionalContext?: ProfessionalExecutionContext,
   ): Promise<{ content: string; claims: RawClaim[] }> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
@@ -1923,13 +1938,13 @@ export class UnifiedExecutionEngine {
     });
     let systemPrompt = systemPromptBase.systemPrompt;
 
-    systemPrompt += buildWorkExecutionAddendum(blueprint, blueprintContract);
+    systemPrompt += buildWorkExecutionAddendum(blueprint, blueprintContract, professionalContext);
     // Sprint 29K.3: add claim emission addendum — instructs the specialist to
     // return { content, claims } JSON rather than plain text. outputMode changes
     // to "json" below.  Claim JSON must NOT appear inside contentMarkdown.
-    systemPrompt += buildClaimEmissionAddendum(evidencePack);
+    systemPrompt += buildClaimEmissionAddendum(evidencePack, professionalContext);
 
-    const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract);
+    const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract, professionalContext);
 
     const retrievedFields: string[] = [
       "organisationLibrarySources.sourceId",
@@ -1996,6 +2011,7 @@ export class UnifiedExecutionEngine {
     currentContent: string;
     currentClaims: RawClaim[];
     gateFailures: BlueprintRuntimeGateFailure[];
+    professionalContext: ProfessionalExecutionContext;
   }): Promise<{ content: string; claims: RawClaim[] }> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
     if (provider !== "openai") {
@@ -2015,7 +2031,7 @@ export class UnifiedExecutionEngine {
     };
     const gateway = createAIGateway(gatewayCtx);
     const response = await gateway.process({
-      systemPrompt: buildFinalDeliverableSynthesisSystemPrompt(input.blueprint, input.blueprintContract, input.evidencePack ?? null),
+      systemPrompt: buildFinalDeliverableSynthesisSystemPrompt(input.blueprint, input.blueprintContract, input.evidencePack ?? null, input.professionalContext),
       userMessage: buildFinalDeliverableSynthesisUserPrompt(input),
       retrievedFields: [
         "blueprint.objective",
@@ -2448,7 +2464,35 @@ function buildDeterministicResult(
  * 5. supportingSpan must be a verbatim exact quotation from the chunk text.
  *    The server will reject spans that are not exact substrings.
  */
-function buildClaimEmissionAddendum(evidencePack?: EvidencePack): string {
+function buildClaimEmissionAddendum(evidencePack?: EvidencePack, professionalContext?: ProfessionalExecutionContext): string {
+  const professionalSchema = professionalContext ? `
+
+The professional response must structurally separate internal work from the final artifact payload:
+
+{
+  "professional_work": {
+    "summary": "<brief internal professional summary, no chain-of-thought>",
+    "blueprint_completion": ["<internal method checks completed>"],
+    "evidence_map": ["<short evidence/provenance notes>"],
+    "missing_information": ["<unknown factual variables, if any>"]
+  },
+  "deliverable": {
+    "type": "${professionalContext.deliverable.requestedDeliverableType}",
+    "audience": "${professionalContext.deliverable.audience}",
+    "content": "<complete user-facing deliverable markdown only>"
+  },
+  "completion": {
+    "operation": "${professionalContext.operation}",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
+  "claims": []
+}
+
+The artifact generator consumes ONLY "deliverable.content". Do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in deliverable.content.`
+    : "";
+
   if (!evidencePack || evidencePack.totalChunks === 0) {
     // No evidence available — still request dual JSON output for consistency
     return `
@@ -2458,13 +2502,14 @@ function buildClaimEmissionAddendum(evidencePack?: EvidencePack): string {
 ## RESPONSE FORMAT (REQUIRED — JSON)
 
 You must return valid JSON in this exact shape:
+${professionalSchema || `
 
 {
   "content": "<your complete professional work output as a string>",
   "claims": []
-}
+}`}
 
-The "content" field must contain the full human-readable Completed Work document.
+${professionalSchema ? "" : `The "content" field must contain the full human-readable Completed Work document.`}
 No claim JSON, no chunk IDs, and no provenance metadata may appear inside "content".
 Return an empty "claims" array when no evidence is available.`;
   }
@@ -2481,6 +2526,7 @@ Return an empty "claims" array when no evidence is available.`;
 ## RESPONSE FORMAT (REQUIRED — JSON)
 
 You must return valid JSON in this exact shape:
+${professionalSchema || `
 
 {
   "content": "<your complete professional work output as a string>",
@@ -2502,7 +2548,7 @@ You must return valid JSON in this exact shape:
       "relatedClaimIds": []
     }
   ]
-}
+}`}
 
 CLAIM TYPES (use exactly one):
   observation          — directly supported by evidence
@@ -2519,7 +2565,7 @@ RELATIONSHIP TYPES (use exactly one per evidence binding):
   searched_for_absence — chunk was retrieved when searching for absent content
 
 RULES:
-1. The "content" field must contain the complete human-readable report. No claim JSON inside it.
+1. ${professionalSchema ? `The "deliverable.content" field must contain the complete user-facing deliverable. No internal professional work or claim JSON inside it.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
 2. Only reference chunkIds from the list below. Do not invent chunk IDs.
 3. supportingSpan must be a verbatim exact quotation from the chunk text (not a paraphrase).
    The server verifies this as an exact substring — fabricated spans will be rejected.
@@ -2534,6 +2580,7 @@ ${chunkSummary}`;
 function buildWorkExecutionAddendum(
   blueprint: WorkBlueprint | null,
   contract?: BlueprintExecutionContract | null,
+  professionalContext?: ProfessionalExecutionContext,
 ): string {
   if (!blueprint) return "";
   const sectionLines = contract?.sections.length
@@ -2550,13 +2597,25 @@ function buildWorkExecutionAddendum(
   const evidenceContract = blueprint.evidenceContract
     ? JSON.stringify(blueprint.evidenceContract)
     : "No evidence contract configured.";
+  const contextBlock = professionalContext
+    ? `\n${buildProfessionalExecutionContextBlock(professionalContext)}\n`
+    : "";
+  const sectionHeading = professionalContext?.professionalMethodRole === "requested_deliverable_structure"
+    ? "Review/Assessment Sections"
+    : "Internal Professional Method Checklist";
+  const methodBoundary = professionalContext?.professionalMethodRole === "internal_method_only"
+    ? `The Blueprint governs HOW the specialist works. It does not define customer-facing document headings for this ${professionalContext.operation} operation unless a section is explicitly mapped into the requested deliverable.`
+    : `The requested operation is ${professionalContext?.operation ?? "REVIEW"}; Blueprint review sections may form the output structure when professionally appropriate.`;
+
   return `
 
 ---
 
 ## WORK EXECUTION CONTRACT
 
-You are executing professional work governed by the "${blueprint.title}" blueprint.
+You are executing professional work using the "${blueprint.title}" blueprint as professional method authority.
+${contextBlock}
+${methodBoundary}
 
 **Objective:** ${blueprint.objective}
 
@@ -2567,7 +2626,7 @@ ${blueprint.successCriteria.map(c => `- ${c}`).join("\n")}
 
 **Blueprint Family/Mode:** ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}
 
-**Structured Sections:**
+**${sectionHeading}:**
 ${sectionLines}
 
 **Deliverable Contract:** ${deliverableContract}
@@ -2608,10 +2667,14 @@ function buildWorkPackagePrompt(
   styleGuidanceBlock: string,
   evidencePack?: EvidencePack,
   contract?: BlueprintExecutionContract | null,
+  professionalContext?: ProfessionalExecutionContext,
 ): string {
   const sections: string[] = [];
 
   sections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
+  if (professionalContext) {
+    sections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext)}`);
+  }
 
   if (evidencePack && evidencePack.totalChunks > 0) {
     const evidenceSection = buildEvidenceSection(evidencePack);
@@ -2674,8 +2737,9 @@ function buildWorkPackagePrompt(
   }
 
   if (contract?.sections.length) {
+    const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
     sections.push(
-      `=== STRUCTURED BLUEPRINT SECTIONS ===\n` +
+      `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n` +
       contract.sections.map((section) =>
         [
           `${section.sortOrder}. ${section.sectionCode} — ${section.title}${section.required ? " [REQUIRED]" : ""}`,
@@ -2711,12 +2775,22 @@ function shouldAttemptFinalDeliverableSynthesis(
   );
 }
 
+function shouldRunCanonicalFinalDeliverableSynthesis(
+  professionalContext: ProfessionalExecutionContext,
+  failures: BlueprintRuntimeGateFailure[],
+  standardTemplateEvidence: ReturnType<typeof classifyStandardTemplateEvidenceContext>,
+): boolean {
+  if (professionalContext.operation === "CREATE" || professionalContext.operation === "TAILOR") return true;
+  return shouldAttemptFinalDeliverableSynthesis(failures, standardTemplateEvidence);
+}
+
 function buildFinalDeliverableSynthesisSystemPrompt(
   blueprint: WorkBlueprint | null,
   contract?: BlueprintExecutionContract | null,
   evidencePack?: EvidencePack | null,
+  professionalContext?: ProfessionalExecutionContext,
 ): string {
-  const blueprintName = blueprint?.title ?? "professional work";
+  const blueprintName = professionalContext?.deliverable.requestedDeliverableType ?? blueprint?.title ?? "professional work";
   const sections = contract?.sections.length
     ? contract.sections.map((section) =>
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required internal check)" : ""}`,
@@ -2726,9 +2800,12 @@ function buildFinalDeliverableSynthesisSystemPrompt(
     ? `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
 
-  return `You are the final professional deliverable synthesiser for ${blueprintName}.
+  const contextBlock = professionalContext ? buildProfessionalExecutionContextBlock(professionalContext) : "";
+
+  return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
 You transform internal professional analysis, evidence, Blueprint completion and specialist conclusions into a user-facing deliverable.
+${contextBlock ? `\n${contextBlock}\n` : ""}
 
 The audience will receive the completed document, not the internal working method.
 
@@ -2748,7 +2825,22 @@ Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [P
 
 Do not expose chain-of-thought. Return ONLY JSON:
 {
-  "content": "<complete user-facing deliverable markdown>",
+  "professional_work": {
+    "summary": "<brief internal professional summary, no chain-of-thought>",
+    "blueprint_completion": ["<internal checks used>"],
+    "missing_information": ["<unknown factual variables, if any>"]
+  },
+  "deliverable": {
+    "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
+    "audience": "${professionalContext?.deliverable.audience ?? "requested audience"}",
+    "content": "<complete user-facing deliverable markdown>"
+  },
+  "completion": {
+    "operation": "${professionalContext?.operation ?? "CREATE"}",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
   "claims": []
 }
 
@@ -2767,6 +2859,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   currentContent: string;
   currentClaims: RawClaim[];
   gateFailures: BlueprintRuntimeGateFailure[];
+  professionalContext: ProfessionalExecutionContext;
 }): string {
   const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
     ? buildEvidenceSection(input.evidencePack)
@@ -2786,9 +2879,10 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
+    `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     input.blueprint
-      ? `## DOCUMENT TYPE\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}`
-      : `## DOCUMENT TYPE\nProfessional deliverable`,
+      ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
+      : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",

@@ -140,8 +140,8 @@ async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
   task: typeof tasksTable.$inferSelect;
   reason: TaskWithPlan["dedupeReason"];
 } | null> {
-  if (input.allowDuplicate) return null;
   const idempotencyKey = input.idempotencyKey?.trim();
+  if (input.allowDuplicate && !idempotencyKey) return null;
   const workIntentKey = input.conversationId
     ? deriveWorkIntentKey(input.title, input.description)
     : null;
@@ -260,7 +260,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
   };
 
   return db.transaction(async (tx) => {
-    if (!input.allowDuplicate && idempotencyKey) {
+    if (idempotencyKey) {
       const [reserved] = await tx
         .insert(taskCreationIdempotencyTable)
         .values({

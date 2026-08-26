@@ -534,7 +534,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
     const reviewIndex = uee.indexOf("let runtimeGate = validateBlueprintRuntimeCompletion");
-    const synthesisIndex = uee.indexOf("shouldAttemptFinalDeliverableSynthesis(runtimeGate.failures");
+    const synthesisIndex = uee.indexOf("shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures");
     const createIndex = uee.indexOf("const completedWork = await createDraft");
 
     expect(uee).toContain('purpose: "task_execution"');

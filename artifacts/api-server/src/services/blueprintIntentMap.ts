@@ -309,6 +309,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "correspondence.review": { family: "correspondence", mode: "review", code: "formal_stakeholder_correspondence", isAction: false },
   "complaints.review":     { family: "complaints",     mode: "review",  code: "complaints_review_response",        isAction: false },
   "complaints.response":   { family: "complaints",     mode: "response",code: "complaints_review_response",        isAction: false },
+  "agreements.create":     { family: "agreements",     mode: "create",  code: "service_agreement_review",          isAction: false },
   "agreements.review":     { family: "agreements",     mode: "review",  code: "service_agreement_review",          isAction: false },
   "agreements.revise":     { family: "agreements",     mode: "revise",  code: "service_agreement_review",          isAction: false },
 

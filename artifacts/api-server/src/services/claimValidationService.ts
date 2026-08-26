@@ -545,6 +545,9 @@ export function validateClaimBatch(
 export interface SpecialistJsonOutput {
   content: string;
   claims: RawClaim[];
+  professionalWork?: Record<string, unknown>;
+  deliverable?: Record<string, unknown>;
+  completion?: Record<string, unknown>;
 }
 
 /**
@@ -560,14 +563,27 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       .trim();
     const parsed = JSON.parse(cleaned);
 
-    const content = typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim();
+    const deliverableContent = typeof parsed.deliverable?.content === "string"
+      ? parsed.deliverable.content.trim()
+      : "";
+    const content = deliverableContent || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
     const claims = Array.isArray(parsed.claims) ? (parsed.claims as RawClaim[]) : [];
 
-    return { content, claims };
+    return {
+      content,
+      claims,
+      professionalWork: isRecord(parsed.professional_work) ? parsed.professional_work : undefined,
+      deliverable: isRecord(parsed.deliverable) ? parsed.deliverable : undefined,
+      completion: isRecord(parsed.completion) ? parsed.completion : undefined,
+    };
   } catch {
     // Model produced plain text instead of JSON — treat as content with no claims
     return { content: rawContent.trim(), claims: [] };
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 // ─── Cross-tenant chunk guard ─────────────────────────────────────────────────

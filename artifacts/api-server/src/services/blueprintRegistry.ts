@@ -8397,7 +8397,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     title: "Participant Service Agreement Review & Contract Readiness Assessment",
     purpose: "Assess whether a participant Service Agreement is complete, current, internally consistent, participant-specific, evidence-backed, aligned with intended and deliverable services, funding and pricing authority, participant rights, current regulatory and organisational requirements, and ready for authorised agreement action.",
     category: "governance",
-    supportedModes: ["review", "revise"],
+    supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "Participant Service Agreement Review & Contract Readiness Assessment",
     maturityState: "production_ready",
     ownerType: "platform_owned",
