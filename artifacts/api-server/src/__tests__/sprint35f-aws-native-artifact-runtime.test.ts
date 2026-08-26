@@ -564,6 +564,37 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(true);
   });
 
+  it("does not treat the reusable template title as a substantive section", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Standard NDIS Care Plan Template",
+      "This reusable care plan template establishes a neutral professional structure for NDIS providers.",
+      "## Review, Updates, Consent, and Sign-Off Provisions",
+      "The care plan should be reviewed at planned intervals, after material support changes, and when the participant, representative or provider identifies changed goals, risks or consent requirements. The provider should record review dates, participants, decisions, follow-up actions and any escalation pathway before implementing material changes.",
+      "Review date: [REVIEW_DATE]",
+      "Participant or representative signature: [SIGNATURE]",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-care-plan",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectIncompleteProfessionalSections(contentMarkdown, standardTemplateEvidence)).not.toContain(
+      "incomplete_section:Standard NDIS Care Plan Template",
+    );
+    expect(detectPlaceholderDominatedProfessionalSections(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+    expect(result.failures.some((failure) =>
+      failure.details?.includes("incomplete_section:Standard NDIS Care Plan Template"),
+    )).toBe(false);
+  });
+
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
     const reviewIndex = uee.indexOf("let runtimeGate = validateBlueprintRuntimeCompletion");
@@ -582,6 +613,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("Allowed placeholders are factual/user-specific data placeholders");
     expect(uee).toContain("Not allowed: unresolved professional-content placeholders");
     expect(uee).toContain("No mandatory section may be placeholder-only, label-only, question-only, instruction-only or dominated by bracket fields");
+    expect(uee).toContain("For schedule, review, consent and sign-off sections");
     expect(reviewIndex).toBeGreaterThan(-1);
     expect(synthesisIndex).toBeGreaterThan(reviewIndex);
     expect(createIndex).toBeGreaterThan(synthesisIndex);

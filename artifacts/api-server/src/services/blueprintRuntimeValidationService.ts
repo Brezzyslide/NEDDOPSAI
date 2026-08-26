@@ -534,7 +534,10 @@ function extractMarkdownSections(contentMarkdown: string): Array<{ heading: stri
 }
 
 function isProfessionalSectionHeading(heading: string): boolean {
-  return /\b(?:clause|clauses|obligations?|responsibilit(?:y|ies)|rights?|terms?|provisions?|privacy|confidentiality|complaints?|cancellation|variation|termination|payment|pricing|conclusion|review|updates?|consent|sign[- ]off|support|care|goals?|preferences?|communication|health|medication|behaviour|restrictive[- ]practice|risk|safety|incident|escalation|community|participation|coordination)\b/i.test(heading);
+  if (/\b(?:template|document|agreement|plan)\s*$/i.test(heading) && !/\b(?:schedule|support|review|risk|responsibilit|provision|clause|term|consent|sign[- ]off)\b/i.test(heading)) {
+    return false;
+  }
+  return /\b(?:clause|clauses|obligations?|responsibilit(?:y|ies)|rights?|terms?|provisions?|privacy|confidentiality|complaints?|cancellation|variation|termination|payment|pricing|conclusion|review|updates?|consent|sign[- ]off|support|goals?|preferences?|communication|health|medication|behaviour|restrictive[- ]practice|risk|safety|incident|escalation|community|participation|coordination)\b/i.test(heading);
 }
 
 function normaliseHeadingLabel(value: string): string {

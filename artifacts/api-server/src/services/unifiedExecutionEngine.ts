@@ -2919,6 +2919,8 @@ Factual placeholders may appear only inside otherwise drafted professional claus
 Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [PROVIDER_OBLIGATIONS], [CANCELLATION_TERMS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [CONCLUSION], [INCOMPLETE: ...] or equivalent tokens.
 Also not allowed: sections that are only labels, questions, "review/update" instructions, or bracket variables without substantive professional wording.
 
+For standard reusable templates, every mandatory user-facing section must include reusable professional guidance or operative wording that can stand on its own before customer-specific fields are completed. Field lists, schedules and sign-off blocks may be included, but they must be supported by drafted expectations, responsibilities, review triggers, escalation rules or completion guidance appropriate to the document type.
+
 Do not expose chain-of-thought. Return ONLY JSON:
 {
   "professional_work": {
@@ -3008,6 +3010,7 @@ Draft the professional clauses and provisions in full.
 Preserve only factual/user-specific data placeholders, and embed them in drafted professional wording rather than using them as section content.
 Every mandatory user-facing section must contain substantive professional prose, operative provisions, responsibilities, review/sign-off wording or template guidance appropriate to that document type.
 No mandatory section may be placeholder-only, label-only, question-only, instruction-only or dominated by bracket fields.
+For schedule, review, consent and sign-off sections, include both the fillable fields and the reusable professional wording explaining how those fields are used, reviewed, escalated and approved.
 Remove internal methodology headings, review instructions, control codes and professional placeholder tokens.
 If mandatory professional content cannot be completed from the request, evidence and Blueprint contract, return content that clearly asks for clarification rather than emitting placeholders.`,
   ].filter(Boolean).join("\n\n---\n\n");
