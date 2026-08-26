@@ -152,6 +152,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS)");
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
+    expect(src).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
+    expect(src).toContain("professionalContext.deliverable.mandatoryProfessionalContent");
     expect(src).not.toContain("=== STRUCTURED BLUEPRINT SECTIONS ===");
   });
 
@@ -223,6 +225,40 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.passed).toBe(true);
     expect(result.missingItems).not.toContain("Participant Document");
     expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
+  });
+
+  it("gives Care Plan CREATE final synthesis a user-facing structure independent of Blueprint section titles", () => {
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: getRegistryEntry("care_plan") as any,
+      blueprintContract: {
+        blueprint: getRegistryEntry("care_plan") as any,
+        sections: (getRegistryEntry("care_plan") as any)?.sections ?? [],
+        template: null,
+        mode: "create",
+      },
+    });
+
+    expect(context.operation).toBe("CREATE");
+    expect(context.deliverable.requestedDeliverableType).toBe("STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE");
+    expect(context.professionalMethodRole).toBe("internal_method_only");
+    expect(context.deliverable.mandatoryProfessionalContent).toEqual(expect.arrayContaining([
+      "Participant goals, preferences and communication needs",
+      "Support domains and daily living support structure",
+      "Risk, safety, incident and escalation arrangements",
+      "Review, updates, consent and sign-off provisions",
+    ]));
+
+    const src = source("services/unifiedExecutionEngine.ts");
+    expect(src).toContain("Use these as the final document structure or merge them into equivalent user-facing headings");
+    expect(src).toContain("Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work");
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {

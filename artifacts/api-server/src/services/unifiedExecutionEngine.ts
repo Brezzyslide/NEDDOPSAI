@@ -2735,12 +2735,15 @@ function buildWorkPackagePrompt(
 
   const standardTemplateContext = classifyStandardTemplateEvidenceContext(userRequest);
   if (standardTemplateContext.customerExampleOptional) {
+    const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
+      ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
+      : "- Purpose\n- Scope\n- Responsibilities\n- Review requirements\n- Sign-off";
     sections.push(
       `=== STANDARD REUSABLE TEMPLATE MODE ===\n` +
       `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
       `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
-      `Use clear placeholders for participant, provider, ABN, plan, support schedule, price, GST, payment-route and other customer-specific fields where appropriate.\n` +
-      `You MUST draft the professional content itself: operative clauses, obligations, rights, complaints, privacy/confidentiality, payment/pricing framework, cancellation, variation, termination/exit, compliance and conclusion language.\n` +
+      `Use clear factual placeholders for participant, provider, plan, support schedule, price, dates, signatures and other customer-specific fields where appropriate.\n` +
+      `You MUST draft the professional content itself. The requested deliverable must cover:\n${mandatoryContent}\n` +
       `Do NOT leave professional placeholders such as [CLAUSE_1], [DELIVERY_OBLIGATIONS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [GST_CLAUSE], [CONCLUSION] or [INCOMPLETE: ...] in the final output.\n` +
       `Do not require a customer example/template unless the user explicitly asked to match an existing format.\n` +
       `Compliance or regulatory statements still require the authoritative evidence provided in this prompt. If authority evidence is insufficient, flag the affected clause rather than inventing it.\n` +
@@ -2813,6 +2816,9 @@ function buildFinalDeliverableSynthesisSystemPrompt(
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
 
   const contextBlock = professionalContext ? buildProfessionalExecutionContextBlock(professionalContext) : "";
+  const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
+    ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
+    : "- The substantive professional content required by the requested deliverable.";
 
   return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
@@ -2827,9 +2833,12 @@ INTERNAL ONLY:
 - control codes, gate names, execution diagnostics, chain-of-thought and prompt notes
 
 USER DELIVERABLE:
-- actual operative clauses and provisions
-- actual responsibilities, rights, cancellation, variation, privacy, complaints, payment and termination wording
+- actual user-facing professional content for the requested document type
+- substantive provisions, instructions, responsibilities, prompts, review/sign-off fields and boundaries required for that document
 - clear reusable template structure suitable for human review
+
+MANDATORY USER-FACING CONTENT:
+${mandatoryContent}
 
 Allowed placeholders are factual/user-specific data placeholders such as [PARTICIPANT_NAME], [PROVIDER_NAME], [PROVIDER_ABN], [NDIS_NUMBER], [AGREEMENT_PERIOD], [SUPPORT_SCHEDULE], [PRICE] and [SIGNATURE].
 
@@ -2877,6 +2886,9 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     ? buildEvidenceSection(input.evidencePack)
     : "";
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
+  const mandatoryContent = input.professionalContext.deliverable.mandatoryProfessionalContent.length
+    ? input.professionalContext.deliverable.mandatoryProfessionalContent
+    : ["Purpose", "Scope", "Responsibilities", "Review requirements", "Sign-off"];
   const sectionChecks = input.blueprintContract?.sections.length
     ? input.blueprintContract.sections.map((section) =>
         `- ${section.title}: ${section.minimumContentExpectation}`,
@@ -2892,6 +2904,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
     `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
+    `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
     input.blueprint
       ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
       : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`,
