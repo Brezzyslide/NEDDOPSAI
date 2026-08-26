@@ -58,6 +58,10 @@ export interface ManifestValidationSnapshot {
   passed: boolean;
   missingItems: string[];
   summary: string;
+  professionalContext?: Record<string, unknown>;
+  requirementPlan?: Record<string, unknown>[];
+  coverageProfile?: Record<string, unknown>;
+  evidenceProvenance?: Record<string, unknown>;
 }
 
 /** Per-stage timing written after execution completes (or fails). */

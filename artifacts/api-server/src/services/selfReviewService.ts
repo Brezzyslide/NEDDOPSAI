@@ -191,11 +191,17 @@ export async function reviewDraft(
     // requested, revisionLimitReached is set true and execution stops.
     const revised_ = await attemptRevision(content, improvementFeedback, manifest, ctx);
     if (revised_ !== content) {
-      revised = true;
-      finalContent = revised_;
-      finalDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx.evidencePack);
-      finalScore = computeWeightedScore(finalDimensions, blueprint);
-      autoRevisionNote = `Auto-revised from score ${qualityScore} → ${finalScore}`;
+      const candidateDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx.evidencePack);
+      const candidateScore = computeWeightedScore(candidateDimensions, blueprint);
+      if (candidateScore >= qualityScore) {
+        revised = true;
+        finalContent = revised_;
+        finalDimensions = candidateDimensions;
+        finalScore = candidateScore;
+        autoRevisionNote = `Auto-revised from score ${qualityScore} → ${candidateScore}`;
+      } else {
+        autoRevisionNote = `Auto-revision rejected because score would fall from ${qualityScore} → ${candidateScore}; retained prior draft.`;
+      }
     }
     // Revision limit is always reached after one attempt (no further attempts).
     revisionLimitReached = true;

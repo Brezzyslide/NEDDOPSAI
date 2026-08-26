@@ -35,7 +35,7 @@ import {
   type ExecutionConstraints,
   type ExecutionStep,
 } from "@workspace/agent-runtime";
-import { db, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
+import { db, executionEventsTable, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import {
@@ -90,7 +90,9 @@ import {
   type ProfessionalExecutionContext,
 } from "./professionalExecutionContextService.js";
 import {
+  buildRequirementToDeliverablePlan,
   deriveDeliverableRequirementCoverageProfile,
+  evaluateDeliverableRequirementCoverage,
   formatRequirementCoveragePrompt,
 } from "./deliverableRequirementCoverageService.js";
 // Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
@@ -289,6 +291,16 @@ export interface ExecuteWorkResult {
   validationResult?: ValidationResult;
   message: string;
   clarificationQuestions?: string[];
+}
+
+interface GeneratedProfessionalDraft {
+  content: string;
+  claims: RawClaim[];
+  professionalWork?: Record<string, unknown>;
+  requirementCoverage?: Record<string, unknown>;
+  deliverable?: Record<string, unknown>;
+  completion?: Record<string, unknown>;
+  modelTelemetry: Record<string, unknown>;
 }
 
 export interface ExecutionCheckpointData {
@@ -1438,14 +1450,52 @@ export class UnifiedExecutionEngine {
       blueprintContract,
       evidencePack: evidencePack ?? null,
     });
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract);
+    const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile);
+    updateManifestObservability(manifest.id, {
+      validationSnapshot: {
+        passed: validationResult.passed,
+        missingItems: validationResult.missingItems,
+        summary: validationResult.summary,
+        professionalContext: {
+          userRequest: professionalContext.userRequest,
+          professionalDomain: professionalContext.professionalDomain,
+          operation: professionalContext.operation,
+          deliverableType: professionalContext.deliverable.requestedDeliverableType,
+          specificity: professionalContext.specificity,
+          audience: professionalContext.deliverable.audience,
+          primarySpecialist: professionalContext.primarySpecialist,
+          supportingSpecialists: professionalContext.supportingSpecialists,
+          contextSufficiency: professionalContext.contextSufficiency,
+          authorityHierarchy: professionalContext.authorityHierarchy,
+          outputDepth: professionalContext.outputDepth,
+          telemetry: professionalContext.telemetry,
+        },
+        requirementPlan: requirementPlan as unknown as Record<string, unknown>[],
+        coverageProfile: {
+          deliverableType: coverageProfile.deliverableType,
+          operation: coverageProfile.operation,
+          standardisation: coverageProfile.standardisation,
+          requirementCount: coverageProfile.requirements.length,
+          mandatoryRequirementCount: requirementPlan.filter((item) => item.applicability === "applicable").length,
+        },
+        evidenceProvenance: {
+          totalChunks: evidencePack?.totalChunks ?? 0,
+          sourceIds: evidencePack?.sourceIds ?? [],
+          citationsByType: evidencePack?.citationsByType ?? {},
+        },
+      },
+    }).catch(() => {});
     const outputType = deriveOutputTypeForProfessionalContext(blueprint, professionalContext);
     const examples = await retrieveApprovedExamples(organizationId, outputType);
     const styleGuidance = await buildStyleGuidance(examples, organizationId);
 
     await progress("executing");
     const t5 = Date.now();
+    let snapshotSequence = 1;
     let draftContent: string;
     let rawClaims: RawClaim[] = [];
+    let latestModelTelemetry: Record<string, unknown> | null = null;
     try {
       const draftResult = await this.generateTaskDraft(
         userRequest, manifest, blueprint, styleGuidance.guidanceBlock,
@@ -1456,6 +1506,26 @@ export class UnifiedExecutionEngine {
       );
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
+      latestModelTelemetry = draftResult.modelTelemetry;
+      await recordProfessionalSnapshot({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        blueprint,
+        stage: "primary_draft",
+        sequence: snapshotSequence++,
+        contentMarkdown: draftContent,
+        structuredOutput: {
+          professionalWork: draftResult.professionalWork ?? null,
+          requirementCoverage: draftResult.requirementCoverage ?? null,
+          deliverable: draftResult.deliverable ?? null,
+          completion: draftResult.completion ?? null,
+          requirementPlan,
+        },
+        coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+        modelTelemetry: latestModelTelemetry,
+      });
       tLlmMs = Date.now() - t5;
     } catch (err) {
       const isFallback = err instanceof FallbackDraftError;
@@ -1509,6 +1579,20 @@ export class UnifiedExecutionEngine {
       // No second retrieval is triggered — the same object reference is reused.
       evidencePack: evidencePack ?? null,
     });
+    await recordProfessionalSnapshot({
+      organizationId,
+      taskId: request.taskId,
+      manifest,
+      professionalContext,
+      blueprint,
+      stage: "self_review_selected",
+      sequence: snapshotSequence++,
+      contentMarkdown: reviewResult.finalContent,
+      structuredOutput: { requirementPlan },
+      reviewSnapshot: buildReviewSnapshot(reviewResult),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+      modelTelemetry: latestModelTelemetry,
+    });
     tReviewMs = Date.now() - t6;
 
     const artifactRequired = blueprint?.deliverableContract?.artifactRequired === true;
@@ -1548,11 +1632,45 @@ export class UnifiedExecutionEngine {
       } else {
         draftContent = synthesisResult.content;
         rawClaims = synthesisResult.claims;
+        latestModelTelemetry = synthesisResult.modelTelemetry;
+        await recordProfessionalSnapshot({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          blueprint,
+          stage: "final_synthesis_candidate",
+          sequence: snapshotSequence++,
+          contentMarkdown: draftContent,
+          structuredOutput: {
+            professionalWork: synthesisResult.professionalWork ?? null,
+            requirementCoverage: synthesisResult.requirementCoverage ?? null,
+            deliverable: synthesisResult.deliverable ?? null,
+            completion: synthesisResult.completion ?? null,
+            requirementPlan,
+          },
+          coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+          modelTelemetry: latestModelTelemetry,
+        });
         reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
           organizationId,
           userId: requesterId,
           conversationId: request.conversationId,
           evidencePack: evidencePack ?? null,
+        });
+        await recordProfessionalSnapshot({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          blueprint,
+          stage: "self_review_selected",
+          sequence: snapshotSequence++,
+          contentMarkdown: reviewResult.finalContent,
+          structuredOutput: { requirementPlan, afterFinalSynthesis: true },
+          reviewSnapshot: buildReviewSnapshot(reviewResult),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+          modelTelemetry: latestModelTelemetry,
         });
         runtimeGate = validateBlueprintRuntimeCompletion({
           contract: blueprintContract,
@@ -1581,6 +1699,21 @@ export class UnifiedExecutionEngine {
           clarificationItems: buildRuntimeGateFailureItems(runtimeGate.failures),
         },
       }).catch(() => {});
+      await recordProfessionalSnapshot({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        blueprint,
+        stage: "gate_failure",
+        sequence: snapshotSequence++,
+        contentMarkdown: reviewResult.finalContent,
+        structuredOutput: { requirementPlan },
+        reviewSnapshot: buildReviewSnapshot(reviewResult),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+        gateSnapshot: { passed: false, failures: runtimeGate.failures },
+        modelTelemetry: latestModelTelemetry,
+      });
 
       taskSession = runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
         ? closeExecutionSession(taskSession)
@@ -1601,6 +1734,21 @@ export class UnifiedExecutionEngine {
     }
 
     await progress("creating_completed_work");
+    await recordProfessionalSnapshot({
+      organizationId,
+      taskId: request.taskId,
+      manifest,
+      professionalContext,
+      blueprint,
+      stage: "final_validated",
+      sequence: snapshotSequence++,
+      contentMarkdown: reviewResult.finalContent,
+      structuredOutput: { requirementPlan },
+      reviewSnapshot: buildReviewSnapshot(reviewResult),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+      gateSnapshot: { passed: true, failures: [] },
+      modelTelemetry: latestModelTelemetry,
+    });
     if (await isTaskCancelledForFinalization(request.taskId, organizationId)) {
       updateManifestObservability(manifest.id, {
         failureInfo: {
@@ -1930,7 +2078,7 @@ export class UnifiedExecutionEngine {
     evidencePack?: EvidencePack,
     blueprintContract?: BlueprintExecutionContract | null,
     professionalContext?: ProfessionalExecutionContext,
-  ): Promise<{ content: string; claims: RawClaim[] }> {
+  ): Promise<GeneratedProfessionalDraft> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
     if (provider !== "openai") {
@@ -1973,6 +2121,7 @@ export class UnifiedExecutionEngine {
     systemPrompt += buildClaimEmissionAddendum(evidencePack, professionalContext);
 
     const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract, professionalContext);
+    const outputBudget = professionalContext?.outputDepth.configuredOutputBudget ?? 4000;
 
     const retrievedFields: string[] = [
       "organisationLibrarySources.sourceId",
@@ -2004,7 +2153,7 @@ export class UnifiedExecutionEngine {
       systemPrompt,
       userMessage,
       retrievedFields,
-      maxTokens: 4000,
+      maxTokens: outputBudget,
       outputMode: "json",
     });
 
@@ -2026,7 +2175,28 @@ export class UnifiedExecutionEngine {
       );
     }
 
-    return { content: parsed.content, claims: parsed.claims };
+    return {
+      content: parsed.content,
+      claims: parsed.claims,
+      professionalWork: parsed.professionalWork,
+      requirementCoverage: parsed.requirementCoverage,
+      deliverable: parsed.deliverable,
+      completion: parsed.completion,
+      modelTelemetry: {
+        stage: "primary_specialist",
+        configuredOutputBudget: outputBudget,
+        actualInputTokens: response.usage?.inputTokens ?? null,
+        actualOutputTokens: response.usage?.outputTokens ?? null,
+        actualTotalTokens: response.usage?.totalTokens ?? null,
+        outputMode: response.outputMode,
+        responseFormat: response.responseFormat,
+        finishReason: response.finishReason ?? null,
+        model: response.model ?? null,
+        latencyMs: response.latencyMs,
+        usedFallback: response.usedFallback,
+        deliverableLength: parsed.content.length,
+      },
+    };
   }
 
   private async synthesizeFinalDeliverable(input: {
@@ -2040,7 +2210,7 @@ export class UnifiedExecutionEngine {
     currentClaims: RawClaim[];
     gateFailures: BlueprintRuntimeGateFailure[];
     professionalContext: ProfessionalExecutionContext;
-  }): Promise<{ content: string; claims: RawClaim[]; failureMessage?: string }> {
+  }): Promise<GeneratedProfessionalDraft & { failureMessage?: string }> {
     const canonicalPayloadRequired = requiresCanonicalFinalDeliverablePayload(input.professionalContext);
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
     if (provider !== "openai") {
@@ -2048,10 +2218,15 @@ export class UnifiedExecutionEngine {
         return {
           content: input.currentContent,
           claims: input.currentClaims,
+          modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
           failureMessage: `Canonical final synthesis is required for ${input.professionalContext.operation} ${input.professionalContext.deliverable.requestedDeliverableType}, but AI_PROVIDER is "${provider}".`,
         };
       }
-      return { content: input.currentContent, claims: input.currentClaims };
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
+      };
     }
 
     const gatewayCtx: AIGatewayContext = {
@@ -2086,10 +2261,15 @@ export class UnifiedExecutionEngine {
         return {
           content: input.currentContent,
           claims: input.currentClaims,
+          modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
           failureMessage: `Canonical final synthesis did not produce a deliverable payload${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`,
         };
       }
-      return { content: input.currentContent, claims: input.currentClaims };
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
+      };
     }
     const parsed = parseSpecialistJsonOutput(response.content);
     const deliverableContent = typeof parsed.deliverable?.content === "string"
@@ -2099,13 +2279,32 @@ export class UnifiedExecutionEngine {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
         failureMessage: "Canonical final synthesis response did not include deliverable.content, so the internal professional draft was not promoted to Completed Work.",
       };
     }
-    return {
-      content: deliverableContent || parsed.content || input.currentContent,
-      claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
-    };
+      return {
+        content: deliverableContent || parsed.content || input.currentContent,
+        claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
+        professionalWork: parsed.professionalWork,
+        requirementCoverage: parsed.requirementCoverage,
+        deliverable: parsed.deliverable,
+        completion: parsed.completion,
+        modelTelemetry: {
+          stage: "final_synthesis",
+          configuredOutputBudget: 6000,
+          actualInputTokens: response.usage?.inputTokens ?? null,
+          actualOutputTokens: response.usage?.outputTokens ?? null,
+          actualTotalTokens: response.usage?.totalTokens ?? null,
+          outputMode: response.outputMode,
+          responseFormat: response.responseFormat,
+          finishReason: response.finishReason ?? null,
+          model: response.model ?? null,
+          latencyMs: response.latencyMs,
+          usedFallback: response.usedFallback,
+          deliverableLength: (deliverableContent || parsed.content || input.currentContent).length,
+        },
+      };
   }
 }
 
@@ -2526,8 +2725,13 @@ The professional response must structurally separate internal work from the fina
   "professional_work": {
     "summary": "<brief internal professional summary, no chain-of-thought>",
     "blueprint_completion": ["<internal method checks completed>"],
+    "requirement_to_deliverable_plan": ["<requirement ID mapped to final deliverable section/table/field>"],
     "evidence_map": ["<short evidence/provenance notes>"],
     "missing_information": ["<unknown factual variables, if any>"]
+  },
+  "requirement_coverage": {
+    "satisfied": ["<requirement IDs represented in deliverable.content>"],
+    "missing": ["<requirement IDs not yet represented>"]
   },
   "deliverable": {
     "type": "${professionalContext.deliverable.requestedDeliverableType}",
@@ -2943,7 +3147,12 @@ Do not expose chain-of-thought. Return ONLY JSON:
   "professional_work": {
     "summary": "<brief internal professional summary, no chain-of-thought>",
     "blueprint_completion": ["<internal checks used>"],
+    "requirement_to_deliverable_plan": ["<requirement ID mapped to final deliverable section/table/field>"],
     "missing_information": ["<unknown factual variables, if any>"]
+  },
+  "requirement_coverage": {
+    "satisfied": ["<requirement IDs represented in deliverable.content>"],
+    "missing": ["<requirement IDs not yet represented>"]
   },
   "deliverable": {
     "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
@@ -2982,6 +3191,12 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const coverageContract = formatRequirementCoveragePrompt(coverageProfile);
+  const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile)
+    .filter((item) => item.applicability === "applicable")
+    .map((item) =>
+      `- ${item.requirementId}: ${item.expectedUserFacingRepresentation} → ${item.targetDeliverableLocation}`,
+    )
+    .join("\n");
   const mandatoryContent = input.professionalContext.deliverable.mandatoryProfessionalContent.length
     ? input.professionalContext.deliverable.mandatoryProfessionalContent
     : ["Purpose", "Scope", "Responsibilities", "Review requirements", "Sign-off"];
@@ -3014,6 +3229,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
     coverageContract,
+    `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
     blueprintMethodSection,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
@@ -3081,6 +3297,114 @@ function deriveTitleFromRequest(
     return `${blueprint.title} — ${truncated}${userRequest.length > 60 ? "..." : ""}`;
   }
   return userRequest.slice(0, 100).trim() + (userRequest.length > 100 ? "..." : "");
+}
+
+function buildSyntheticModelTelemetry(stage: string, content: string, configuredOutputBudget: number): Record<string, unknown> {
+  return {
+    stage,
+    configuredOutputBudget,
+    actualInputTokens: null,
+    actualOutputTokens: null,
+    actualTotalTokens: null,
+    outputMode: "json",
+    responseFormat: null,
+    finishReason: null,
+    model: null,
+    latencyMs: null,
+    usedFallback: false,
+    deliverableLength: content.length,
+  };
+}
+
+function buildCoverageSnapshot(
+  contentMarkdown: string,
+  professionalContext: ProfessionalExecutionContext,
+  contract?: BlueprintExecutionContract | null,
+): Record<string, unknown> {
+  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile);
+  return {
+    deliverableType: report.deliverableType,
+    operation: report.operation,
+    totalApplicableRequirements: report.totalApplicableRequirements,
+    mandatoryRequirementCount: report.mandatoryRequirementCount,
+    satisfiedCount: report.satisfiedCount,
+    missingCount: report.missingCount,
+    coveragePercentage: report.coveragePercentage,
+    classificationCounts: report.classificationCounts,
+    missing: report.missing,
+    plan: report.plan,
+  };
+}
+
+function buildReviewSnapshot(reviewResult: Awaited<ReturnType<typeof reviewDraft>>): Record<string, unknown> {
+  return {
+    qualityScore: reviewResult.qualityScore,
+    passed: reviewResult.passed,
+    revised: reviewResult.revised,
+    autoRevisionNote: reviewResult.autoRevisionNote ?? null,
+    revisionLimitReached: reviewResult.revisionLimitReached,
+    evidenceSummaryHash: reviewResult.evidenceSummaryHash,
+    dimensions: reviewResult.dimensions.map((dimension) => ({
+      dimension: dimension.dimension,
+      score: dimension.score,
+      passed: dimension.passed,
+      feedback: dimension.feedback,
+      improvementSuggestions: dimension.improvementSuggestions,
+    })),
+  };
+}
+
+async function recordProfessionalSnapshot(input: {
+  organizationId: string;
+  taskId?: string;
+  manifest: WorkPackageManifest;
+  professionalContext: ProfessionalExecutionContext;
+  blueprint: WorkBlueprint | null;
+  stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "final_validated" | "gate_failure";
+  sequence: number;
+  contentMarkdown?: string | null;
+  structuredOutput?: Record<string, unknown> | null;
+  reviewSnapshot?: Record<string, unknown> | null;
+  coverageSnapshot?: Record<string, unknown> | null;
+  gateSnapshot?: Record<string, unknown> | null;
+  modelTelemetry?: Record<string, unknown> | null;
+}): Promise<void> {
+  if (!input.taskId) return;
+  const content = input.contentMarkdown ?? "";
+  try {
+    await db.insert(executionEventsTable).values({
+      id: randomUUID(),
+      executionSessionId: input.manifest.executionId,
+      organizationId: input.organizationId,
+      eventType: `professional.${input.stage}`,
+      eventSource: "platform",
+      payload: {
+        taskId: input.taskId,
+        manifestId: input.manifest.id,
+        executionId: input.manifest.executionId,
+        sequence: input.sequence,
+        blueprintCode: input.professionalContext.blueprintCode ?? input.blueprint?.code ?? null,
+        operation: input.professionalContext.operation,
+        deliverableType: input.professionalContext.deliverable.requestedDeliverableType,
+        specificity: input.professionalContext.specificity,
+        primarySpecialist: input.manifest.primarySpecialist,
+        contentHash: createHash("sha256").update(content).digest("hex"),
+        contentMarkdown: content || null,
+        structuredOutput: input.structuredOutput ?? null,
+        reviewSnapshot: input.reviewSnapshot ?? null,
+        coverageSnapshot: input.coverageSnapshot ?? null,
+        gateSnapshot: input.gateSnapshot ?? null,
+        modelTelemetry: input.modelTelemetry ?? null,
+      },
+      occurredAt: new Date(),
+    });
+  } catch (err) {
+    console.warn(
+      "[UnifiedExecutionEngine] professional execution event persistence failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 function buildCompletionMessage(

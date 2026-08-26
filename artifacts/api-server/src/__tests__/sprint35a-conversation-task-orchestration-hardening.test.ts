@@ -592,9 +592,19 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   it("Task Centre renders completed cancelled and failed from backend canonical states", () => {
     const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskCentrePage.tsx"), "utf8");
 
+    expect(src).toContain('{ label: "Needs Attention", states: ["awaiting_approval", "evidence_required", "failed"] }');
     expect(src).toContain('completed:         { label: "Completed"');
     expect(src).toContain('cancelled:         { label: "Cancelled"');
     expect(src).toContain('failed:            { label: "Failed"');
+    expect(src).toContain("task.metadata?.executionFailure?.errorMessage");
+  });
+
+  it("task listing filters by requested states before applying the page limit", () => {
+    const src = source("services/taskService.ts");
+    const fn = src.slice(src.indexOf("export async function getTasksByOrg"), src.indexOf("export async function getTaskById"));
+
+    expect(fn).toContain("conditions.push(inArray(tasksTable.currentState");
+    expect(fn.indexOf("conditions.push(inArray(tasksTable.currentState")).toBeLessThan(fn.indexOf(".limit(limit)"));
   });
 
   it("workroom approval UI uses the same action schema for approval and rejection", () => {

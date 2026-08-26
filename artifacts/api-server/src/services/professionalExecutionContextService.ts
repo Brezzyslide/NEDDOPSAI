@@ -46,6 +46,14 @@ export interface ProfessionalExecutionContext {
   qualityContract: string[];
   canonicalIntent: string | null;
   blueprintCode: string | null;
+  professionalDomain: string;
+  specificity: "STANDARD_NON_PARTICIPANT_SPECIFIC" | "ORGANISATION_SPECIFIC" | "PARTICIPANT_SPECIFIC" | "GENERAL";
+  outputDepth: {
+    configuredOutputBudget: number;
+    expectedMinimumSections: number;
+    expectedDepth: "concise" | "standard" | "comprehensive";
+    depthInstruction: string;
+  };
   telemetry: PromptTokenBudgetTelemetry;
 }
 
@@ -184,6 +192,9 @@ export function compileProfessionalExecutionContext(input: {
     ],
     canonicalIntent: input.manifest.canonicalIntent ?? null,
     blueprintCode: input.blueprint?.code ?? null,
+    professionalDomain: input.blueprint?.blueprintFamily ?? deriveProfessionalDomain(input.userRequest, requestedDeliverableType),
+    specificity: deriveSpecificity(standardisation),
+    outputDepth: deriveOutputDepth(requestedDeliverableType, operation, mandatoryProfessionalContent),
     telemetry: estimateProfessionalContextTokens(input),
   };
 }
@@ -194,6 +205,8 @@ export function buildProfessionalExecutionContextBlock(context: ProfessionalExec
     `USER_REQUEST: ${context.userRequest}`,
     `OPERATION: ${context.operation}`,
     `DELIVERABLE_TYPE: ${context.deliverable.requestedDeliverableType}`,
+    `PROFESSIONAL_DOMAIN: ${context.professionalDomain}`,
+    `SPECIFICITY: ${context.specificity}`,
     `AUDIENCE: ${context.deliverable.audience}`,
     `CONTEXT_SUFFICIENCY: ${context.contextSufficiency}`,
     `PRIMARY_SPECIALIST: ${context.primarySpecialist}`,
@@ -211,6 +224,8 @@ export function buildProfessionalExecutionContextBlock(context: ProfessionalExec
     "",
     "OUTPUT_CONTRACT:",
     `Produce ${context.deliverable.userFacingPurpose}. Internal professional work is not the artifact payload.`,
+    `OUTPUT_DEPTH: ${context.outputDepth.expectedDepth}; minimum sections: ${context.outputDepth.expectedMinimumSections}; configured output budget: ${context.outputDepth.configuredOutputBudget}.`,
+    context.outputDepth.depthInstruction,
     "",
     "QUALITY_CONTRACT:",
     context.qualityContract.map((item) => `- ${item}`).join("\n"),
@@ -269,6 +284,43 @@ function deriveAudience(userRequest: string, deliverableType: string, operation:
   if (operation === "REVIEW") return "Internal governance reviewer and authorised decision-maker";
   if (/\bparticipant\b/i.test(userRequest)) return "Provider staff and participant-specific stakeholders";
   return "Organisation users responsible for adopting the deliverable";
+}
+
+function deriveProfessionalDomain(userRequest: string, deliverableType: string): string {
+  const text = `${userRequest} ${deliverableType}`.toLowerCase();
+  if (/\bservice agreement|agreement\b/.test(text)) return "NDIS Service Agreements";
+  if (/\bcare plan|support plan\b/.test(text)) return "NDIS care and support planning";
+  if (/\brisk\b/.test(text)) return "Risk management";
+  if (/\bincident\b/.test(text)) return "Incident management";
+  if (/\bpolicy|procedure|sop\b/.test(text)) return "Policy and governance";
+  return "Professional operations";
+}
+
+function deriveSpecificity(
+  standardisation: ProfessionalDeliverableContract["standardisation"],
+): ProfessionalExecutionContext["specificity"] {
+  if (standardisation === "standard_reusable") return "STANDARD_NON_PARTICIPANT_SPECIFIC";
+  if (standardisation === "organisation_tailored") return "ORGANISATION_SPECIFIC";
+  if (standardisation === "participant_specific") return "PARTICIPANT_SPECIFIC";
+  return "GENERAL";
+}
+
+function deriveOutputDepth(
+  deliverableType: string,
+  operation: ProfessionalOperation,
+  mandatoryContent: string[],
+): ProfessionalExecutionContext["outputDepth"] {
+  const comprehensive = operation === "CREATE" &&
+    /(?:AGREEMENT|POLICY|PROCEDURE|FRAMEWORK|PLAN|ASSESSMENT|INVESTIGATION)/.test(deliverableType);
+  const expectedDepth = comprehensive ? "comprehensive" : mandatoryContent.length > 6 ? "standard" : "concise";
+  return {
+    configuredOutputBudget: comprehensive ? 6000 : 4000,
+    expectedMinimumSections: Math.max(4, Math.min(24, mandatoryContent.length)),
+    expectedDepth,
+    depthInstruction: comprehensive
+      ? "Draft substantive clauses/fields for every mandatory requirement; do not compress a full professional document into a short outline."
+      : "Use enough detail to satisfy all mandatory requirements without adding irrelevant filler.",
+  };
 }
 
 function deriveUserFacingPurpose(deliverableType: string, operation: ProfessionalOperation): string {

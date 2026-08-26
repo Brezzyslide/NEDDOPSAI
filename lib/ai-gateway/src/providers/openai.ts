@@ -34,6 +34,7 @@ export interface OpenAICompletionResult {
   retries: number;
   /** Sprint 28.7: the response_format value sent, or null when text mode */
   responseFormat: string | null;
+  finishReason: string | null;
 }
 
 export type OpenAIErrorKind =
@@ -133,6 +134,7 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         latencyMs: Date.now() - startMs,
         retries,
         responseFormat,
+        finishReason: choice?.finish_reason ?? null,
       };
     } catch (err) {
       lastError = err;

@@ -50,6 +50,7 @@ interface Task {
   currentState: TaskState;
   priority: string;
   approvalState: string;
+  metadata?: Record<string, any> | null;
   createdAt: string;
 }
 
@@ -437,6 +438,9 @@ function TaskSidePanel({
 }) {
   const state = STATE_CONFIG[task.currentState];
   const assignedRoles = plan?.assignedSpecialists ?? [];
+  const failureReason = task.currentState === "failed"
+    ? task.metadata?.executionFailure?.errorMessage
+    : null;
 
   return (
     <div className="w-80 shrink-0 border-l border-[#1E3A5F] overflow-y-auto bg-[#0A1628] flex flex-col">
@@ -457,10 +461,16 @@ function TaskSidePanel({
           <p className="text-[#64748B] text-xs mt-2 line-clamp-3">{task.description}</p>
         )}
         <p className="text-[#475569] text-xs mt-2">{new Date(task.createdAt).toLocaleDateString("en-AU")}</p>
+        {failureReason && (
+          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-950/20 p-3">
+            <p className="text-red-300 text-xs font-semibold mb-1">Needs attention</p>
+            <p className="text-red-200/80 text-xs leading-relaxed">{failureReason}</p>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
-      {!["completed", "cancelled", "failed"].includes(task.currentState) && (
+      {!["completed", "cancelled"].includes(task.currentState) && (
         <div className="p-4 border-b border-[#1E3A5F]">
           <p className="text-[#64748B] text-xs uppercase tracking-wider mb-2">Actions</p>
           <div className="space-y-1.5">

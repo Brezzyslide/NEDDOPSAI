@@ -42,6 +42,39 @@ export interface DeliverableRequirementCoverageFailure {
   reason: string;
 }
 
+export type RequirementCoverageStatus =
+  | "satisfied"
+  | "missing"
+  | "internal_only"
+  | "evidence_only"
+  | "quality_control"
+  | "optional";
+
+export interface RequirementToDeliverablePlanItem {
+  requirementId: string;
+  professionalRequirement: string;
+  sourceBlueprintSection?: string;
+  classification: DeliverableRequirementClassification;
+  authority: string[];
+  applicability: "applicable" | "internal_only" | "evidence_only" | "quality_control" | "optional";
+  expectedUserFacingRepresentation: string;
+  targetDeliverableLocation: string;
+  status: RequirementCoverageStatus;
+}
+
+export interface DeliverableRequirementCoverageReport {
+  deliverableType: string;
+  operation: DeliverableRequirementCoverageProfile["operation"];
+  totalApplicableRequirements: number;
+  mandatoryRequirementCount: number;
+  satisfiedCount: number;
+  missingCount: number;
+  coveragePercentage: number;
+  classificationCounts: Record<DeliverableRequirementClassification, number>;
+  plan: RequirementToDeliverablePlanItem[];
+  missing: DeliverableRequirementCoverageFailure[];
+}
+
 export interface BlueprintRequirementClassificationSummary {
   blueprintCode: string;
   professionalDomain: string;
@@ -91,15 +124,54 @@ export function validateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
 ): DeliverableRequirementCoverageFailure[] {
+  return evaluateDeliverableRequirementCoverage(contentMarkdown, profile).missing;
+}
+
+export function buildRequirementToDeliverablePlan(
+  profile: DeliverableRequirementCoverageProfile,
+): RequirementToDeliverablePlanItem[] {
+  return profile.requirements.map((requirement) => {
+    const applicability = requirementApplicability(requirement.classification);
+    return {
+      requirementId: requirement.id,
+      professionalRequirement: requirement.description,
+      sourceBlueprintSection: requirement.sourceBlueprintSection,
+      classification: requirement.classification,
+      authority: requirement.evidenceAuthority.length > 0
+        ? requirement.evidenceAuthority
+        : ["Blueprint professional method", "Professional deliverable contract"],
+      applicability,
+      expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
+      targetDeliverableLocation: inferTargetDeliverableLocation(requirement),
+      status: isBlockingRequirement(requirement.classification) ? "missing" : nonBlockingStatus(requirement.classification),
+    };
+  });
+}
+
+export function evaluateDeliverableRequirementCoverage(
+  contentMarkdown: string,
+  profile: DeliverableRequirementCoverageProfile,
+): DeliverableRequirementCoverageReport {
   const failures: DeliverableRequirementCoverageFailure[] = [];
   const normalisedContent = normaliseContent(contentMarkdown);
+  const plan = buildRequirementToDeliverablePlan(profile);
+  const classificationCounts = Object.fromEntries(
+    COVERAGE_CLASSIFICATIONS.map((classification) => [classification, 0]),
+  ) as Record<DeliverableRequirementClassification, number>;
+  let satisfiedCount = 0;
 
   for (const requirement of profile.requirements) {
+    classificationCounts[requirement.classification] += 1;
+    const planItem = plan.find((item) => item.requirementId === requirement.id);
     if (!isBlockingRequirement(requirement.classification)) continue;
     const passed = requirement.coverageRules.length > 0
       ? requirement.coverageRules.some((rule) => coverageRuleMatches(normalisedContent, rule))
       : coverageRuleMatches(normalisedContent, { allOf: keywordCandidates(requirement.description) });
-    if (passed) continue;
+    if (passed) {
+      satisfiedCount += 1;
+      if (planItem) planItem.status = "satisfied";
+      continue;
+    }
 
     failures.push({
       requirementId: requirement.id,
@@ -111,22 +183,44 @@ export function validateDeliverableRequirementCoverage(
     });
   }
 
-  return failures;
+  const mandatoryRequirementCount = profile.requirements.filter((requirement) =>
+    isBlockingRequirement(requirement.classification),
+  ).length;
+  return {
+    deliverableType: profile.deliverableType,
+    operation: profile.operation,
+    totalApplicableRequirements: profile.requirements.filter((requirement) =>
+      requirementApplicability(requirement.classification) === "applicable",
+    ).length,
+    mandatoryRequirementCount,
+    satisfiedCount,
+    missingCount: failures.length,
+    coveragePercentage: mandatoryRequirementCount === 0
+      ? 100
+      : Math.round((satisfiedCount / mandatoryRequirementCount) * 1000) / 10,
+    classificationCounts,
+    plan,
+    missing: failures,
+  };
 }
 
 export function formatRequirementCoveragePrompt(profile: DeliverableRequirementCoverageProfile): string {
-  const lines = profile.requirements
+  const plan = buildRequirementToDeliverablePlan(profile);
+  const lines = plan
+    .filter((requirement) => requirement.applicability === "applicable")
     .filter((requirement) => isBlockingRequirement(requirement.classification))
     .map((requirement) => [
-      `- ${requirement.id} [${requirement.classification}]`,
-      `  Requirement: ${requirement.description}`,
+      `- ${requirement.requirementId} [${requirement.classification}]`,
+      `  Requirement: ${requirement.professionalRequirement}`,
       requirement.sourceBlueprintSection ? `  Source Blueprint section: ${requirement.sourceBlueprintSection}` : "",
-      `  Final deliverable representation: ${requirement.requiredDeliverableRepresentation}`,
+      `  Final deliverable representation: ${requirement.expectedUserFacingRepresentation}`,
+      `  Target location: ${requirement.targetDeliverableLocation}`,
     ].filter(Boolean).join("\n"));
 
   return [
     "## MANDATORY DELIVERABLE REQUIREMENT COVERAGE",
     "Every MUST_BE_REPRESENTED, CONDITIONAL when applicable, and FACTUAL_FIELD requirement below must be represented in the final user-facing deliverable. Do not expose the internal requirement IDs or Blueprint section names as customer-facing headings unless the deliverable naturally requires that exact term.",
+    "Build an internal requirement-to-deliverable plan before drafting. The plan is professional work product and must not be exposed as the final document.",
     ...lines,
   ].join("\n");
 }
@@ -266,6 +360,34 @@ function isBlockingRequirement(classification: DeliverableRequirementClassificat
   return classification === "MUST_BE_REPRESENTED" ||
     classification === "CONDITIONAL" ||
     classification === "FACTUAL_FIELD";
+}
+
+function requirementApplicability(
+  classification: DeliverableRequirementClassification,
+): RequirementToDeliverablePlanItem["applicability"] {
+  if (classification === "INTERNAL_METHODOLOGY") return "internal_only";
+  if (classification === "EVIDENCE_REQUIREMENT") return "evidence_only";
+  if (classification === "QUALITY_CONTROL") return "quality_control";
+  if (classification === "OPTIONAL_ENRICHMENT") return "optional";
+  return "applicable";
+}
+
+function nonBlockingStatus(classification: DeliverableRequirementClassification): RequirementCoverageStatus {
+  if (classification === "INTERNAL_METHODOLOGY") return "internal_only";
+  if (classification === "EVIDENCE_REQUIREMENT") return "evidence_only";
+  if (classification === "QUALITY_CONTROL") return "quality_control";
+  return "optional";
+}
+
+function inferTargetDeliverableLocation(requirement: DeliverableRequirement): string {
+  const representation = requirement.requiredDeliverableRepresentation.toLowerCase();
+  if (representation.includes("schedule")) return "Schedule of Supports table/fields";
+  if (representation.includes("signature") || representation.includes("acceptance")) return "Execution/sign-off block";
+  if (representation.includes("payment") || representation.includes("pricing")) return "Payment and pricing clauses";
+  if (representation.includes("termination") || representation.includes("exit")) return "Termination and transition clauses";
+  if (representation.includes("rights") || representation.includes("privacy") || representation.includes("complaints")) return "Rights, privacy, complaints and advocacy clauses";
+  if (representation.includes("responsibilities")) return "Responsibilities clauses";
+  return requirement.requiredDeliverableRepresentation;
 }
 
 function coverageRuleMatches(normalisedContent: string, rule: DeliverableCoverageRule): boolean {

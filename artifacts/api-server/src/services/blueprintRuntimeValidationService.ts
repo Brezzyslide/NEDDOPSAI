@@ -18,7 +18,7 @@ import {
 import type { ProfessionalExecutionContext } from "./professionalExecutionContextService.js";
 import {
   deriveDeliverableRequirementCoverageProfile,
-  validateDeliverableRequirementCoverage,
+  evaluateDeliverableRequirementCoverage,
 } from "./deliverableRequirementCoverageService.js";
 
 export type BlueprintRuntimeGateState =
@@ -160,15 +160,18 @@ export function validateBlueprintRuntimeCompletion(
 
   if (input.professionalContext) {
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, contract);
-    const coverageFailures = validateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile);
-    if (coverageFailures.length > 0) {
+    const coverageReport = evaluateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile);
+    if (coverageReport.missing.length > 0) {
       failures.push({
         gate: "mandatory_deliverable_coverage",
         state: "validation",
         message: "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
-        details: coverageFailures.slice(0, 20).map((failure) =>
-          `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
-        ),
+        details: [
+          `coverage=${coverageReport.satisfiedCount}/${coverageReport.mandatoryRequirementCount} (${coverageReport.coveragePercentage}%)`,
+          ...coverageReport.missing.slice(0, 20).map((failure) =>
+            `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
+          ),
+        ],
       });
     }
   }

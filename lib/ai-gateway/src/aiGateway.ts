@@ -131,13 +131,14 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   const responseId = randomUUID();
   const requestAuditId = randomUUID();
   const startMs = Date.now();
+  const retrievedFields = request.retrievedFields ?? [];
 
   // Validate retrieved fields against purpose allowlist.
   // On denial: write a structured audit event (with denied field paths) THEN re-throw.
   // The customer-facing message is constructed by the caller from the correlationId.
-  if (request.retrievedFields.length > 0) {
+  if (retrievedFields.length > 0) {
     try {
-      validateFields(ctx.purpose, request.retrievedFields);
+      validateFields(ctx.purpose, retrievedFields);
     } catch (err) {
       if (err instanceof AIGatewayDataError) {
         await writeGatewayDenialAuditEvent(ctx, err.deniedFields);
@@ -160,7 +161,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     eventType: "ai_gateway.request_initiated",
     phase: "request",
     responseId,
-    retrievedFields: request.retrievedFields ?? [],
+    retrievedFields,
     outputMode: request.outputMode,
   });
 
@@ -185,6 +186,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   let outputTokens = 0;
   let actualModel: string | undefined;
   let actualResponseFormat: string | null = null;
+  let actualFinishReason: string | null = null;
 
   if (ctx.provider === "internal" || configuredProvider === "internal") {
     // Internal deterministic routing — no external call
@@ -198,6 +200,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
       outputTokens = result.outputTokens;
       actualModel = result.model;
       actualResponseFormat = result.responseFormat;
+      actualFinishReason = result.finishReason;
       recordSuccess({
         organizationId: ctx.organizationId,
         inputTokens: result.inputTokens,
@@ -245,6 +248,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens } : undefined,
     outputMode,
     responseFormat: actualResponseFormat,
+    finishReason: actualFinishReason,
   };
 
   // ── Post-response audit event ──────────────────────────────────────────────
@@ -254,7 +258,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     eventType: "ai_gateway.response_delivered",
     phase: "response",
     responseId,
-    retrievedFields: request.retrievedFields ?? [],
+    retrievedFields,
     requiresHumanApproval: ctx.requiresHumanApproval,
     usedFallback,
     fallbackReason,
@@ -264,6 +268,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     outputMode,
     modelUsed: actualModel,
     responseFormat: actualResponseFormat,
+    finishReason: actualFinishReason,
   });
 
   return response;
@@ -309,6 +314,7 @@ interface GatewayAuditParams {
   outputMode?: GatewayOutputMode;
   modelUsed?: string;
   responseFormat?: string | null;
+  finishReason?: string | null;
 }
 
 /**
@@ -376,6 +382,7 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
       outputMode: params.outputMode ?? null,
       modelUsed: params.modelUsed ?? null,
       responseFormat: params.responseFormat ?? null,
+      finishReason: params.finishReason ?? null,
     },
     occurredAt: new Date(),
   }).catch(() => {

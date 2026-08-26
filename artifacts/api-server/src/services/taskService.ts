@@ -376,19 +376,16 @@ export async function getTasksByOrg(
   limit = 50,
 ): Promise<(typeof tasksTable.$inferSelect)[]> {
   const conditions = [eq(tasksTable.organizationId, organizationId)];
+  if (states && states.length > 0) {
+    conditions.push(inArray(tasksTable.currentState, states as unknown as string[]));
+  }
 
-  // If specific states requested, filter (simplified — full `inArray` available if needed)
-  const rows = await db
+  return await db
     .select()
     .from(tasksTable)
     .where(and(...conditions))
     .orderBy(desc(tasksTable.createdAt))
     .limit(limit);
-
-  if (states && states.length > 0) {
-    return rows.filter(r => states.includes(r.currentState as TaskState));
-  }
-  return rows;
 }
 
 export async function getTaskById(

@@ -12,6 +12,7 @@ import { useAuthFetch } from "@/lib/api";
 type TaskState = "draft" | "queued" | "planning" | "awaiting_approval" | "evidence_required" | "approved" | "executing" | "completed" | "cancelled" | "failed";
 
 const STATE_TABS: { label: string; states: TaskState[] }[] = [
+  { label: "Needs Attention", states: ["awaiting_approval", "evidence_required", "failed"] },
   { label: "Active", states: ["queued", "planning", "approved", "executing"] },
   { label: "Awaiting Input", states: ["awaiting_approval", "evidence_required"] },
   { label: "Completed", states: ["completed"] },
@@ -179,7 +180,7 @@ export default function TaskCentrePage() {
         ) : tasks.length === 0 ? (
           <div className="bg-[#112033] border border-[#1E3A5F] rounded-xl p-10 text-center">
             <p className="text-[#64748B] text-sm">No tasks in this category</p>
-            {activeTab === 0 && (
+            {currentTab.label === "Active" && (
               <button
                 onClick={() => setShowCreate(true)}
                 className="mt-3 text-[#00D4FF] text-sm hover:underline"
@@ -193,6 +194,9 @@ export default function TaskCentrePage() {
             {tasks.map((task: any) => {
               const badge = STATE_BADGE[task.currentState as TaskState];
               const priorityCls = PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.normal!;
+              const failureReason = task.currentState === "failed"
+                ? task.metadata?.executionFailure?.errorMessage
+                : null;
               return (
                 <div
                   key={task.id}
@@ -212,6 +216,9 @@ export default function TaskCentrePage() {
                       </div>
                       {task.description && (
                         <p className="text-[#64748B] text-xs line-clamp-1">{task.description}</p>
+                      )}
+                      {failureReason && (
+                        <p className="text-red-300/80 text-xs line-clamp-2 mt-1">{failureReason}</p>
                       )}
                       <p className="text-[#64748B] text-xs mt-1.5">
                         {new Date(task.createdAt).toLocaleString("en-AU")}

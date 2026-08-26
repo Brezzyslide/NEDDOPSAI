@@ -168,6 +168,8 @@ export interface AIResponse {
   outputMode: GatewayOutputMode;
   /** Sprint 28.7: response_format value sent to the provider, or null for text mode */
   responseFormat: string | null;
+  /** Provider completion finish reason when available. */
+  finishReason?: string | null;
 }
 
 // ─── Token usage ──────────────────────────────────────────────────────────────

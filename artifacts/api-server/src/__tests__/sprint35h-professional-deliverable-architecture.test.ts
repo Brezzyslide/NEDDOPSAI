@@ -11,7 +11,9 @@ import {
 } from "../services/professionalExecutionContextService";
 import {
   auditBlueprintRequirementCompatibility,
+  buildRequirementToDeliverablePlan,
   deriveDeliverableRequirementCoverageProfile,
+  evaluateDeliverableRequirementCoverage,
   validateDeliverableRequirementCoverage,
 } from "../services/deliverableRequirementCoverageService";
 import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService";
@@ -117,6 +119,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(context.operation).toBe("CREATE");
     expect(context.deliverable.requestedDeliverableType).toBe("STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT");
+    expect(context.professionalDomain).toBe("agreements");
+    expect(context.specificity).toBe("STANDARD_NON_PARTICIPANT_SPECIFIC");
+    expect(context.outputDepth.expectedDepth).toBe("comprehensive");
     expect(context.deliverable.audience).toContain("NDIS provider");
     expect(context.deliverable.allowedFactualPlaceholders).toContain("[PARTICIPANT_NAME]");
     expect(context.deliverable.mandatoryProfessionalContent).toEqual(expect.arrayContaining([
@@ -143,6 +148,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(parsed.content).not.toContain("Provider Responsibilities Review");
     expect(parsed.professionalWork).toBeTruthy();
     expect(parsed.deliverable).toBeTruthy();
+  });
+
+  it("parses model-supplied requirement coverage as structured professional output", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      professional_work: { summary: "Professional findings completed." },
+      requirement_coverage: {
+        satisfied: ["service-agreement-parties"],
+        missing: [],
+      },
+      deliverable: { content: "# Agreement\n\nDrafted content." },
+      completion: { readyForCompletedWork: true },
+      claims: [],
+    }));
+
+    expect(parsed.requirementCoverage).toEqual({
+      satisfied: ["service-agreement-parties"],
+      missing: [],
+    });
   });
 
   it("makes Blueprint sections internal method checks for CREATE prompts", () => {
@@ -285,6 +308,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain("requestedDeliverableType");
     expect(engine).toContain("mandatoryProfessionalContent");
     expect(coverage).toContain("MANDATORY DELIVERABLE REQUIREMENT COVERAGE");
+    expect(coverage).toContain("buildRequirementToDeliverablePlan");
+    expect(coverage).toContain("evaluateDeliverableRequirementCoverage");
     expect(coverage).toContain("MUST_BE_REPRESENTED");
     expect(coverage).toContain("FACTUAL_FIELD");
     expect(coverage).toContain("CONDITIONAL");
@@ -331,6 +356,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
     const failures = validateDeliverableRequirementCoverage(weakAgreement, profile);
+    const report = evaluateDeliverableRequirementCoverage(weakAgreement, profile);
 
     expect(failures.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
       "support-item-code-field",
@@ -340,6 +366,20 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "support-service-period-field",
       "support-total-field",
     ]));
+    expect(report.mandatoryRequirementCount).toBe(20);
+    expect(report.satisfiedCount).toBe(14);
+    expect(report.missingCount).toBe(6);
+    expect(report.coveragePercentage).toBe(70);
+    expect(report.missing.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
+      "support-item-code-field",
+      "support-unit-basis-field",
+      "support-quantity-frequency-field",
+      "support-unit-price-field",
+      "support-service-period-field",
+      "support-total-field",
+    ]));
+    expect(report.missing.find((failure) => failure.requirementId === "support-item-code-field")?.requiredDeliverableRepresentation)
+      .toBe("Schedule column for NDIS support item/code");
 
     const gate = validateBlueprintRuntimeCompletion({
       contract,
@@ -362,6 +402,52 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(gate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage")).toBe(true);
     expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
     expect(gate.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
+  });
+
+  it("builds an internal requirement-to-deliverable plan rather than exposing Blueprint methodology", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const plan = buildRequirementToDeliverablePlan(profile);
+
+    expect(plan).toHaveLength(20);
+    expect(plan.find((item) => item.requirementId === "support-item-code-field")).toMatchObject({
+      classification: "FACTUAL_FIELD",
+      expectedUserFacingRepresentation: "Schedule column for NDIS support item/code",
+      targetDeliverableLocation: "Schedule of Supports table/fields",
+      applicability: "applicable",
+    });
+  });
+
+  it("persists professional provenance through existing execution events and manifest observability", () => {
+    const runner = source("services/unifiedExecutionEngine.ts");
+    const manifestSchema = source("../../../lib/db/src/schema/workPackageManifests.ts");
+
+    expect(runner).toContain("executionEventsTable");
+    expect(runner).toContain("eventType: `professional.${input.stage}`");
+    expect(runner).toContain('"primary_draft"');
+    expect(runner).toContain('"final_synthesis_candidate"');
+    expect(runner).toContain('"gate_failure"');
+    expect(runner).toContain("contentHash");
+    expect(runner).toContain("coverageSnapshot");
+    expect(runner).toContain("modelTelemetry");
+    expect(runner).toContain("finishReason");
+    expect(manifestSchema).toContain("professionalContext?");
+    expect(manifestSchema).toContain("requirementPlan?");
+    expect(runner).not.toContain("professionalWorkSnapshots");
+  });
+
+  it("self-review rejects a worse automatic revision candidate", () => {
+    const review = source("services/selfReviewService.ts");
+
+    expect(review).toContain("candidateScore >= qualityScore");
+    expect(review).toContain("Auto-revision rejected because score would fall");
+    expect(review).toContain("retained prior draft");
   });
 
   it("accepts Service Agreement coverage when mandatory clauses and factual Schedule fields are represented", () => {

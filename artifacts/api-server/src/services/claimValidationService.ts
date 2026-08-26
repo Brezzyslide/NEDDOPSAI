@@ -546,6 +546,7 @@ export interface SpecialistJsonOutput {
   content: string;
   claims: RawClaim[];
   professionalWork?: Record<string, unknown>;
+  requirementCoverage?: Record<string, unknown>;
   deliverable?: Record<string, unknown>;
   completion?: Record<string, unknown>;
 }
@@ -573,6 +574,7 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       content,
       claims,
       professionalWork: isRecord(parsed.professional_work) ? parsed.professional_work : undefined,
+      requirementCoverage: isRecord(parsed.requirement_coverage) ? parsed.requirement_coverage : undefined,
       deliverable: isRecord(parsed.deliverable) ? parsed.deliverable : undefined,
       completion: isRecord(parsed.completion) ? parsed.completion : undefined,
     };
