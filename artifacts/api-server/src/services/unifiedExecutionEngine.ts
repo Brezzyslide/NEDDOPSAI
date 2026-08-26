@@ -2771,14 +2771,11 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
     ? buildEvidenceSection(input.evidencePack)
     : "";
+  const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const sectionChecks = input.blueprintContract?.sections.length
     ? input.blueprintContract.sections.map((section) =>
-        [
-          `${section.sortOrder}. ${section.sectionCode} — ${section.title}`,
-          section.minimumContentExpectation ? `Minimum: ${section.minimumContentExpectation}` : "",
-          section.instructions ? `Internal instruction: ${section.instructions}` : "",
-        ].filter(Boolean).join("\n"),
-      ).join("\n\n")
+        `- ${section.title}: ${section.minimumContentExpectation}`,
+      ).join("\n")
     : "No structured sections supplied.";
   const gateDetails = input.gateFailures.map((failure) =>
     [
@@ -2792,9 +2789,12 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     input.blueprint
       ? `## DOCUMENT TYPE\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}`
       : `## DOCUMENT TYPE\nProfessional deliverable`,
-    `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\n${sectionChecks}`,
+    clauseFamilies.length
+      ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
+      : "",
+    `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
-    `## FAILED DRAFT TO REPAIR\n${input.currentContent}`,
+    `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
     `## FINAL SYNTHESIS INSTRUCTIONS
 Rewrite the failed draft into the final user-facing deliverable.
@@ -2803,6 +2803,23 @@ Preserve only factual/user-specific data placeholders.
 Remove internal methodology headings, review instructions, control codes and professional placeholder tokens.
 If mandatory professional content cannot be completed from the request, evidence and Blueprint contract, return content that clearly asks for clarification rather than emitting placeholders.`,
   ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function extractUserFacingClauseFamilies(
+  contract?: BlueprintExecutionContract | null,
+): string[] {
+  if (!contract?.sections.length) return [];
+
+  const numberedClauseText = contract.sections
+    .map((section) => `${section.title}. ${section.minimumContentExpectation ?? ""}`)
+    .find((text) => /(?:^|[\s:;])1\s+[A-Z][^;]+;\s*2\s+[A-Z]/.test(text));
+
+  if (!numberedClauseText) return [];
+
+  return [...numberedClauseText.matchAll(/(?:^|[;:])\s*\d+\s+([^;]+?)(?=\s*;\s*\d+\s+|$)/g)]
+    .map((match) => match[1]?.trim())
+    .filter((clause): clause is string => Boolean(clause))
+    .slice(0, 30);
 }
 
 function deriveTitleFromRequest(userRequest: string, blueprint: WorkBlueprint | null): string {
