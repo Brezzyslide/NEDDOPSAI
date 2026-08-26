@@ -19,6 +19,8 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /app
 
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/aws-rds-global-bundle.pem
+ENV PNPM_CONFIG_FETCH_TIMEOUT=600000
+ENV PNPM_CONFIG_NETWORK_TIMEOUT=600000
 
 # ── Stage 2: deps ──────────────────────────────────────────────────────────────
 FROM base AS deps
