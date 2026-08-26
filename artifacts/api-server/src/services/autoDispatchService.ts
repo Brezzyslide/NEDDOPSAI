@@ -43,6 +43,7 @@ export interface AutoDispatchInput {
     priority?:           string;
     requestedOutcome?:   string;
     knownConstraints?:   string[];
+    sourceUserRequest?:  string;
   };
   /**
    * Sprint 29M: classification flags from executionClassifierService.
@@ -98,6 +99,7 @@ export async function autoCreateAndDispatch(
     originatingModule: "cos_auto_dispatch",
     conversationId,
     idempotencyKey:    input.idempotencyKey ?? `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
+    sourceUserRequest: proposedTask.sourceUserRequest,
   });
 
   const { task, plan } = result;

@@ -39,6 +39,7 @@ export interface ConversationUnderstanding {
     priority: "low" | "normal" | "high" | "urgent";
     requestedOutcome: string;
     knownConstraints: string[];
+    sourceUserRequest?: string;
   };
   clarificationRequired: boolean;
   clarificationQuestions: string[];
@@ -244,6 +245,7 @@ function buildProposedTask(
     priority: "normal",
     requestedOutcome: `Complete: ${title}`,
     knownConstraints: [],
+    sourceUserRequest: text,
   };
 }
 

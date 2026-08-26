@@ -576,6 +576,9 @@ export async function processUserMessage(
     role:        "member",   // conservative default — gateway enforces allowlist
     permissions: [],
   });
+  if (understanding.proposedTask) {
+    understanding.proposedTask.sourceUserRequest = text;
+  }
 
   // 3b. Sprint 29M — Three-lane execution classifier.
   // Runs immediately after CoS classification, using only already-computed signals.
@@ -706,7 +709,7 @@ export async function processUserMessage(
     // Override the CoS response text
     understanding.customerResponse = capabilityGateOverride.text;
   } else if (understanding.conversationMode === "task_intent" && understanding.proposedTask) {
-    const authoritativeProposal = buildAuthoritativeTaskProposalPresentation(understanding);
+    const authoritativeProposal = buildAuthoritativeTaskProposalPresentation(understanding, text);
     if (authoritativeProposal) {
       understanding.relatedWorkforceRoles = authoritativeProposal.workforce.assignedSpecialists;
       understanding.customerResponse = authoritativeProposal.response;

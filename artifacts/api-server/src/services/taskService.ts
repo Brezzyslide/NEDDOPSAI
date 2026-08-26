@@ -26,6 +26,7 @@ export interface CreateTaskInput {
   originatingUserId: string;
   title: string;
   description?: string;
+  sourceUserRequest?: string;
   priority?: TaskPriority;
   originatingModule?: string;
   conversationId?: string;
@@ -241,6 +242,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     idempotencyKey,
     conversationId: input.conversationId,
     workIntentKey,
+    sourceUserRequest: input.sourceUserRequest,
     source: input.originatingModule ?? "task_centre",
     explicitSeparate: input.allowDuplicate === true,
     createdAt: new Date().toISOString(),
@@ -313,7 +315,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     if (!task) throw new Error("Failed to create task");
 
     // Chief of Staff plans the task
-    const plan = planTask(input.title, input.description);
+    const plan = planTask(input.title, input.description, input.sourceUserRequest);
 
     // Persist only approval requirements at planning time. A concrete pending
     // approval row is created later when execution reaches an actionable gate.

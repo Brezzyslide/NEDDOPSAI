@@ -875,6 +875,7 @@ function parseAndValidateLLMResponse(
         knownConstraints: Array.isArray(pt.knownConstraints)
           ? (pt.knownConstraints as unknown[]).filter(c => typeof c === "string").slice(0, 10) as string[]
           : [],
+        sourceUserRequest: undefined,
       };
     }
   }

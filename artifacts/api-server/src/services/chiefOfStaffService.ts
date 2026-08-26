@@ -255,8 +255,9 @@ function determineApprovalType(specialists: RegistrySpecialist[]): ApprovalType 
 
 // ─── Plan builder ─────────────────────────────────────────────────────────────
 
-export function planTask(taskTitle: string, taskDescription?: string): TaskPlan {
+export function planTask(taskTitle: string, taskDescription?: string, sourceUserRequest?: string): TaskPlan {
   const inputText = `${taskTitle} ${taskDescription ?? ""}`;
+  const operationText = sourceUserRequest?.trim() || inputText;
   const intentScores = classifyIntent(inputText);
   const selectedSpecialists = selectSpecialists(intentScores);
 
@@ -321,7 +322,9 @@ export function planTask(taskTitle: string, taskDescription?: string): TaskPlan 
     : `${totalMinutes}–${totalMinutes + 5} minutes`;
 
   const topCapability = intentScores[0]?.capabilityCode ?? "general";
-  const topIntent = deriveProfessionalIntentKey(inputText, topCapability) ?? topCapability;
+  const topIntent = deriveProfessionalIntentKey(operationText, topCapability)
+    ?? deriveProfessionalIntentKey(inputText, topCapability)
+    ?? topCapability;
   const confidence = intentScores.length > 0
     ? Math.min(0.95, 0.5 + intentScores[0]!.score * 0.05)
     : 0.3;

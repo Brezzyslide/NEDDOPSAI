@@ -87,6 +87,7 @@ export interface PendingConversationConfirmation {
     priority?: string;
     requestedOutcome?: string;
     knownConstraints?: string[];
+    sourceUserRequest?: string;
   };
   candidateTasks: TaskReferenceCandidate[];
   createdAt: string;

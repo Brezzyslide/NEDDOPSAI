@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { describe, expect, it } from "vitest";
-import { getRegistryEntry } from "../services/blueprintRegistry";
+import { BLUEPRINT_REGISTRY, getRegistryEntry, getRegistryBlueprintReadinessState } from "../services/blueprintRegistry";
 import { resolveIntent } from "../services/blueprintIntentMap";
 import {
   compileProfessionalExecutionContext,
@@ -13,6 +13,7 @@ import type { BlueprintExecutionContract } from "../services/workBlueprintServic
 import type { WorkPackageManifest } from "../services/workPackageService";
 import { parseSpecialistJsonOutput } from "../services/claimValidationService";
 import { planTask } from "../services/chiefOfStaffService";
+import { buildAuthoritativeTaskProposalPresentation } from "../services/taskProposalWorkforcePresentationService";
 import { validateWorkPackage } from "../services/workValidationService";
 
 const root = resolve(__dirname, "..");
@@ -192,6 +193,73 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       mode: "create",
       code: "care_plan",
     });
+  });
+
+  it("preserves the original CREATE operation when CoS paraphrases the outcome as ready for use", () => {
+    const sourceUserRequest = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const paraphrasedDescription = [
+      "Develop a comprehensive NDIS care plan template for standard use.",
+      "Requested outcome: A standard care plan template ready for use in NDIS service delivery.",
+    ].join("\n\n");
+
+    expect(planTask("Create Standard Comprehensive NDIS Care Plan Template", paraphrasedDescription).intent).toBe("care_plan.review");
+    expect(planTask("Create Standard Comprehensive NDIS Care Plan Template", paraphrasedDescription, sourceUserRequest).intent).toBe("care_plan.create");
+
+    const proposal = buildAuthoritativeTaskProposalPresentation({
+      conversationMode: "task_intent",
+      confidence: 0.94,
+      proposedTask: {
+        title: "Create Standard Comprehensive NDIS Care Plan Template",
+        summary: "Develop a comprehensive NDIS care plan template for standard use.",
+        priority: "normal",
+        requestedOutcome: "A standard care plan template ready for use in NDIS service delivery.",
+        knownConstraints: [],
+        sourceUserRequest,
+      },
+      clarificationRequired: false,
+      clarificationQuestions: [],
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: [],
+      customerResponse: "",
+    }, sourceUserRequest);
+
+    expect(proposal?.workforce.intent).toBe("care_plan.create");
+    expect(proposal?.workforce.primaryProfessionalOwner).toBe("service_delivery_coordinator");
+  });
+
+  it("audits all canonical Blueprints for generic operation/deliverable/evidence compatibility", () => {
+    const exceptions: Array<{ code: string; reason: string }> = [];
+
+    for (const entry of BLUEPRINT_REGISTRY) {
+      if (!entry.code) exceptions.push({ code: entry.code, reason: "missing_code" });
+      if (!entry.blueprintFamily) exceptions.push({ code: entry.code, reason: "missing_professional_domain" });
+      if (!entry.futureOwnerRoleCode) exceptions.push({ code: entry.code, reason: "missing_primary_specialist" });
+      if (!Array.isArray(entry.outputTypes) || entry.outputTypes.length === 0) {
+        exceptions.push({ code: entry.code, reason: "missing_deliverable_contract" });
+      }
+      if (!Array.isArray(entry.sections) || entry.sections.length === 0) {
+        exceptions.push({ code: entry.code, reason: "missing_professional_method" });
+      }
+      if (getRegistryBlueprintReadinessState(entry) !== "professionally_authored") {
+        exceptions.push({ code: entry.code, reason: "not_professionally_authored" });
+      }
+    }
+
+    const engine = source("services/professionalExecutionContextService.ts");
+    const validator = source("services/workValidationService.ts");
+    const runner = source("services/unifiedExecutionEngine.ts");
+
+    expect(BLUEPRINT_REGISTRY).toHaveLength(75);
+    expect(exceptions).toEqual([]);
+    expect(engine).toContain("deriveProfessionalOperation");
+    expect(engine).toContain("deriveDeliverableStandardisation");
+    expect(engine).toContain("requestedDeliverableType");
+    expect(engine).toContain("mandatoryProfessionalContent");
+    expect(validator).toContain("isStandardReusableTemplate");
+    expect(validator).toContain("participant_context_present");
+    expect(runner).toContain("INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS)");
+    expect(runner).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
   });
 
   it("does not require participant evidence for standard reusable Care Plan templates", () => {

@@ -93,12 +93,14 @@ function buildAuthoritativeResponse(input: {
 
 export function buildAuthoritativeTaskProposalPresentation(
   understanding: ConversationUnderstanding,
+  sourceUserRequest?: string,
 ): AuthoritativeTaskProposalPresentation | null {
   if (!understanding.proposedTask) return null;
 
   const plan = planTask(
     understanding.proposedTask.title,
     buildTaskDescription(understanding.proposedTask),
+    sourceUserRequest ?? understanding.proposedTask.sourceUserRequest,
   );
   const workforce = buildWorkforceFromPlan(plan);
   const roles = workforce.assignedSpecialists.length > 0
