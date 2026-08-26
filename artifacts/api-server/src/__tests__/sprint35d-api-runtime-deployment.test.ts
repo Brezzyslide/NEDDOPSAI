@@ -63,10 +63,16 @@ describe("Sprint 35D API runtime deployment", () => {
 
   it("lets Dev health diagnostics start before the web gate provides Clerk keys", () => {
     const appSource = readFileSync(join(process.cwd(), "src/app.ts"), "utf8");
+    const clerkProxySource = readFileSync(join(process.cwd(), "src/middlewares/clerkProxyMiddleware.ts"), "utf8");
+    const apiRuntimeTerraform = readFileSync(join(process.cwd(), "../../infrastructure/terraform/environments/dev/api-runtime.tf"), "utf8");
 
     expect(appSource).toContain('process.env["CLERK_PUBLISHABLE_KEY"] && process.env["CLERK_SECRET_KEY"]');
     expect(appSource).toContain("Clerk middleware disabled because Clerk keys are not configured");
     expect(appSource).toContain("app.use(clerkMiddleware())");
+    expect(clerkProxySource).toContain("normaliseOrigin(process.env.NEEDSOPS_PUBLIC_ORIGIN)");
+    expect(clerkProxySource).toContain("configuredOrigin");
+    expect(apiRuntimeTerraform).toContain("NEEDSOPS_PUBLIC_ORIGIN");
+    expect(apiRuntimeTerraform).toContain("https://${aws_cloudfront_distribution.api_dev.domain_name}");
   });
 
   it("production Docker image carries runtime identity and runs as non-root", () => {

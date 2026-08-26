@@ -52,6 +52,18 @@ export function getClerkProxyHost(req: {
   return firstHop || req.headers.host?.trim() || undefined;
 }
 
+function normaliseOrigin(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function clerkProxyMiddleware(): RequestHandler {
   // Only run proxy in production — Clerk proxying doesn't work for dev instances
   if (process.env.NODE_ENV !== 'production') {
@@ -73,9 +85,15 @@ export function clerkProxyMiddleware(): RequestHandler {
       path.replace(new RegExp(`^${CLERK_PROXY_PATH}`), ''),
     on: {
       proxyReq: (proxyReq: ClientRequest, req: IncomingMessage) => {
-        const protocol = req.headers['x-forwarded-proto'] || 'https';
+        const configuredOrigin = normaliseOrigin(process.env.NEEDSOPS_PUBLIC_ORIGIN);
+        const forwardedProto = Array.isArray(req.headers['x-forwarded-proto'])
+          ? req.headers['x-forwarded-proto'][0]
+          : req.headers['x-forwarded-proto'];
+        const protocol = forwardedProto?.split(',')[0]?.trim() || 'https';
         const host = getClerkProxyHost(req) || '';
-        const proxyUrl = `${protocol}://${host}${CLERK_PROXY_PATH}`;
+        const proxyUrl = configuredOrigin
+          ? `${configuredOrigin}${CLERK_PROXY_PATH}`
+          : `${protocol}://${host}${CLERK_PROXY_PATH}`;
 
         proxyReq.setHeader('Clerk-Proxy-Url', proxyUrl);
         proxyReq.setHeader('Clerk-Secret-Key', secretKey);

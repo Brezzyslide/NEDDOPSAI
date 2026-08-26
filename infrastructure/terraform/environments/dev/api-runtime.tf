@@ -301,6 +301,10 @@ resource "aws_ecs_task_definition" "api" {
           name  = "API_VERSION"
           value = var.api_version
         },
+        {
+          name  = "NEEDSOPS_PUBLIC_ORIGIN"
+          value = "https://${aws_cloudfront_distribution.api_dev.domain_name}"
+        },
       ]
 
       secrets = [
