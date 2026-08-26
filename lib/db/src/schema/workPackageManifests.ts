@@ -60,6 +60,7 @@ export interface ManifestValidationSnapshot {
   summary: string;
   professionalContext?: Record<string, unknown>;
   requirementPlan?: Record<string, unknown>[];
+  deliverableOutputSchema?: Record<string, unknown>;
   coverageProfile?: Record<string, unknown>;
   evidenceProvenance?: Record<string, unknown>;
 }

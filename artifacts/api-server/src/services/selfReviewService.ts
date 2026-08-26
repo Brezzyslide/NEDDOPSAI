@@ -161,6 +161,8 @@ export interface ReviewContext {
    * by provenance, and claims with weak evidence are marked uncertain.
    */
   evidencePack?: EvidencePack | null;
+  /** When true, score the draft but do not ask the LLM to rewrite it. */
+  disableAutoRevision?: boolean;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -185,7 +187,7 @@ export async function reviewDraft(
   let finalDimensions = dimensions;
   let finalScore = qualityScore;
 
-  if (!passed && improvementFeedback.length > 0) {
+  if (!ctx.disableAutoRevision && !passed && improvementFeedback.length > 0) {
     // ── Enforce MAX_AUTO_REVISIONS = 1 ────────────────────────────────────
     // Attempt exactly one automatic revision. If a second revision were
     // requested, revisionLimitReached is set true and execution stops.

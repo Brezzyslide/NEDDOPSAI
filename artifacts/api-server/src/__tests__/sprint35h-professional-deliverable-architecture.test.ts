@@ -11,6 +11,7 @@ import {
 } from "../services/professionalExecutionContextService";
 import {
   auditBlueprintRequirementCompatibility,
+  buildDeliverableOutputSchema,
   buildRequirementToDeliverablePlan,
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
@@ -424,14 +425,166 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
   });
 
+  it("derives an explicit output schema for every mandatory Service Agreement requirement", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const schema = buildDeliverableOutputSchema(profile);
+    const schemaIds = schema.groups.flatMap((group) => group.fields.map((field) => field.requirementId));
+
+    expect(schemaIds).toHaveLength(20);
+    expect(new Set(schemaIds).size).toBe(20);
+    expect(schema.groups.find((group) => group.targetSection === "Schedule of Supports table/fields")?.fields)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          requirementId: "support-service-period-field",
+          classification: "FACTUAL_FIELD",
+          fieldLabel: "Service Period",
+          requiredRepresentation: "Schedule column for service period",
+        }),
+      ]));
+  });
+
+  it("treats an omitted FACTUAL_FIELD as missing even when every other Service Agreement requirement is present", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const agreementMissingOneField = [
+      "# NDIS Service Agreement Template",
+      "Provider, participant, representative authority and agreement period are recorded as factual fields.",
+      "This NDIS agreement describes the purpose and scope of supports and the service relationship.",
+      "## Schedule of Supports",
+      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+      "Delivery obligations, provider responsibilities, participant responsibilities, rights, privacy, complaints and advocacy are drafted.",
+      "Payment, pricing, GST, price change, cancellation, no-show, notice, variation, consent, termination, exit, transition, continuity, emergency and disaster clauses are included.",
+      "Signature and acceptance fields are present.",
+    ].join("\n\n");
+
+    const report = evaluateDeliverableRequirementCoverage(
+      agreementMissingOneField,
+      deriveDeliverableRequirementCoverageProfile(context, contract),
+    );
+
+    expect(report.mandatoryRequirementCount).toBe(20);
+    expect(report.satisfiedCount).toBe(19);
+    expect(report.missingCount).toBe(1);
+    expect(report.coveragePercentage).toBe(95);
+    expect(report.missing).toEqual([
+      expect.objectContaining({
+        requirementId: "support-service-period-field",
+        classification: "FACTUAL_FIELD",
+        requiredDeliverableRepresentation: "Schedule column for service period",
+      }),
+    ]);
+  });
+
+  it("moves coverage from 19/20 to 20/20 when targeted repair adds only the missing factual field", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const missingServicePeriod = [
+      "# NDIS Service Agreement Template",
+      "Provider, participant, representative authority and agreement period are recorded as factual fields.",
+      "This NDIS agreement describes the purpose and scope of supports and the service relationship.",
+      "## Schedule of Supports",
+      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+      "Delivery obligations, provider responsibilities, participant responsibilities, rights, privacy, complaints and advocacy are drafted.",
+      "Payment, pricing, GST, price change, cancellation, no-show, notice, variation, consent, termination, exit, transition, continuity, emergency and disaster clauses are included.",
+      "Signature and acceptance fields are present.",
+    ].join("\n\n");
+    const repaired = missingServicePeriod
+      .replace(
+        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
+        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Service period | Subtotal / estimated total | Agreement total amount |",
+      )
+      .replace(
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      )
+      .replace(
+        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [SERVICE_PERIOD] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+      );
+
+    const before = evaluateDeliverableRequirementCoverage(missingServicePeriod, profile);
+    const after = evaluateDeliverableRequirementCoverage(repaired, profile);
+
+    expect(before.missing.map((failure) => failure.requirementId)).toEqual(["support-service-period-field"]);
+    expect(after.missing).toEqual([]);
+    expect(after.satisfiedCount).toBe(20);
+    expect(repaired).toContain("Provider, participant, representative authority and agreement period");
+    expect((repaired.match(/Service period/g) ?? [])).toHaveLength(1);
+  });
+
+  it("uses the same coverage schema mechanism for non-document structured deliverables", () => {
+    const profile = {
+      deliverableType: "XLSX_RISK_REGISTER",
+      operation: "CREATE" as const,
+      standardisation: "standard_reusable" as const,
+      requirements: [
+        {
+          id: "risk-id-column",
+          description: "Risk register contains risk ID column.",
+          classification: "FACTUAL_FIELD" as const,
+          professionalRationale: "Structured outputs must preserve required fields.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Worksheet column for risk ID",
+          coverageRules: [{ allOf: ["risk id"] }],
+        },
+        {
+          id: "risk-rating-column",
+          description: "Risk register contains risk rating column.",
+          classification: "FACTUAL_FIELD" as const,
+          professionalRationale: "Structured outputs must preserve required fields.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Worksheet column for risk rating",
+          coverageRules: [{ allOf: ["risk rating"] }],
+        },
+      ],
+    };
+
+    const schema = buildDeliverableOutputSchema(profile);
+    const before = evaluateDeliverableRequirementCoverage("| Risk ID | Risk description |", profile);
+    const after = evaluateDeliverableRequirementCoverage("| Risk ID | Risk description | Risk rating |", profile);
+
+    expect(schema.groups.flatMap((group) => group.fields.map((field) => field.requirementId))).toEqual([
+      "risk-id-column",
+      "risk-rating-column",
+    ]);
+    expect(before.missing.map((failure) => failure.requirementId)).toEqual(["risk-rating-column"]);
+    expect(after.missing).toEqual([]);
+  });
+
   it("persists professional provenance through existing execution events and manifest observability", () => {
     const runner = source("services/unifiedExecutionEngine.ts");
     const manifestSchema = source("../../../lib/db/src/schema/workPackageManifests.ts");
 
     expect(runner).toContain("executionEventsTable");
+    expect(runner).toContain("executionSessionsTable");
+    expect(runner).toContain("persistInlineExecutionSession");
+    expect(runner).toContain('runtimeName: "aws_native"');
     expect(runner).toContain("eventType: `professional.${input.stage}`");
     expect(runner).toContain('"primary_draft"');
     expect(runner).toContain('"final_synthesis_candidate"');
+    expect(runner).toContain('"targeted_repair_candidate"');
     expect(runner).toContain('"gate_failure"');
     expect(runner).toContain("contentHash");
     expect(runner).toContain("coverageSnapshot");
@@ -439,7 +592,20 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(runner).toContain("finishReason");
     expect(manifestSchema).toContain("professionalContext?");
     expect(manifestSchema).toContain("requirementPlan?");
+    expect(manifestSchema).toContain("deliverableOutputSchema?");
     expect(runner).not.toContain("professionalWorkSnapshots");
+  });
+
+  it("keeps targeted coverage repair separate from broad self-review", () => {
+    const runner = source("services/unifiedExecutionEngine.ts");
+    const review = source("services/selfReviewService.ts");
+
+    expect(runner).toContain("repairMissingDeliverableRequirements");
+    expect(runner).toContain("repairedRequirementIds");
+    expect(runner).toContain("disableAutoRevision: true");
+    expect(runner).toContain("Targeted requirement repair");
+    expect(runner).toContain("Repair only the missing requirement IDs listed above");
+    expect(review).toContain("disableAutoRevision");
   });
 
   it("self-review rejects a worse automatic revision candidate", () => {

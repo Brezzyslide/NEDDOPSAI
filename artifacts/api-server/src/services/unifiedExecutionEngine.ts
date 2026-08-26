@@ -35,7 +35,7 @@ import {
   type ExecutionConstraints,
   type ExecutionStep,
 } from "@workspace/agent-runtime";
-import { db, executionEventsTable, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
+import { db, executionEventsTable, executionSessionsTable, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import {
@@ -91,9 +91,11 @@ import {
 } from "./professionalExecutionContextService.js";
 import {
   buildRequirementToDeliverablePlan,
+  buildDeliverableOutputSchema,
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
   formatRequirementCoveragePrompt,
+  type DeliverableRequirementCoverageFailure,
 } from "./deliverableRequirementCoverageService.js";
 // Sprint 29N.11: Evidence sufficiency evaluation (used on merged pack)
 import {
@@ -1452,11 +1454,15 @@ export class UnifiedExecutionEngine {
     });
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract);
     const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile);
+    const deliverableOutputSchema = buildDeliverableOutputSchema(coverageProfile);
+    const schemaCheck = validateDeliverableOutputSchemaCompleteness(coverageProfile, deliverableOutputSchema);
     updateManifestObservability(manifest.id, {
       validationSnapshot: {
-        passed: validationResult.passed,
-        missingItems: validationResult.missingItems,
-        summary: validationResult.summary,
+        passed: validationResult.passed && schemaCheck.passed,
+        missingItems: [...validationResult.missingItems, ...schemaCheck.missingRequirementIds],
+        summary: schemaCheck.passed
+          ? validationResult.summary
+          : `${validationResult.summary} Output schema missing mandatory requirement mappings: ${schemaCheck.missingRequirementIds.join(", ")}`,
         professionalContext: {
           userRequest: professionalContext.userRequest,
           professionalDomain: professionalContext.professionalDomain,
@@ -1472,6 +1478,7 @@ export class UnifiedExecutionEngine {
           telemetry: professionalContext.telemetry,
         },
         requirementPlan: requirementPlan as unknown as Record<string, unknown>[],
+        deliverableOutputSchema: deliverableOutputSchema as unknown as Record<string, unknown>,
         coverageProfile: {
           deliverableType: coverageProfile.deliverableType,
           operation: coverageProfile.operation,
@@ -1486,6 +1493,45 @@ export class UnifiedExecutionEngine {
         },
       },
     }).catch(() => {});
+    if (!schemaCheck.passed) {
+      const message = `Deliverable output schema is incomplete before synthesis: ${schemaCheck.missingRequirementIds.join(", ")}`;
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "failed",
+        errorMessage: message,
+        metadata: { failedStage: "pre_synthesis_output_schema" },
+      });
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "failed",
+          failedStage: "pre_synthesis_output_schema",
+          rootCause: message,
+          retryAvailable: true,
+        },
+      }).catch(() => {});
+      return {
+        outcome: "validation_failed",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message,
+      };
+    }
+    await persistInlineExecutionSession({
+      organizationId,
+      taskId: request.taskId,
+      manifest,
+      professionalContext,
+      requesterId,
+      status: "running",
+      metadata: {
+        requirementCount: coverageProfile.requirements.length,
+        mandatoryRequirementCount: requirementPlan.filter((item) => item.applicability === "applicable").length,
+      },
+    });
     const outputType = deriveOutputTypeForProfessionalContext(blueprint, professionalContext);
     const examples = await retrieveApprovedExamples(organizationId, outputType);
     const styleGuidance = await buildStyleGuidance(examples, organizationId);
@@ -1550,6 +1596,16 @@ export class UnifiedExecutionEngine {
       if (isFallback) {
         taskSession = closeExecutionSession(taskSession);
         ctx.session = taskSession;
+        await persistInlineExecutionSession({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          requesterId,
+          status: "failed",
+          errorMessage: (err as Error).message,
+          metadata: { failedStage: "executing", configurationFailure: true },
+        });
         return {
           outcome: "configuration_failure",
           manifestId: manifest.id,
@@ -1559,6 +1615,16 @@ export class UnifiedExecutionEngine {
       }
       taskSession = markSessionError(taskSession, err instanceof Error ? err.message : "Unknown error");
       ctx.session = taskSession;
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "failed",
+        errorMessage: err instanceof Error ? err.message : "Unknown error",
+        metadata: { failedStage: "executing" },
+      });
       return {
         outcome: "execution_failed",
         manifestId: manifest.id,
@@ -1685,6 +1751,99 @@ export class UnifiedExecutionEngine {
       }
     }
     if (!runtimeGate.passed) {
+      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile);
+      const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
+      if (hasCoverageFailure && coverageReport.missing.length > 0) {
+        const repairResult = await this.repairMissingDeliverableRequirements({
+          userRequest,
+          manifest,
+          blueprint,
+          blueprintContract,
+          authCtx: { userId: requesterId, organizationId, role: request.requesterRole! },
+          evidencePack: evidencePack ?? null,
+          currentContent: reviewResult.finalContent,
+          currentClaims: rawClaims,
+          professionalContext,
+          missingRequirements: coverageReport.missing,
+        });
+
+        if (!repairResult.failureMessage) {
+          draftContent = repairResult.content;
+          rawClaims = repairResult.claims;
+          latestModelTelemetry = repairResult.modelTelemetry;
+          await recordProfessionalSnapshot({
+            organizationId,
+            taskId: request.taskId,
+            manifest,
+            professionalContext,
+            blueprint,
+            stage: "targeted_repair_candidate",
+            sequence: snapshotSequence++,
+            contentMarkdown: draftContent,
+            structuredOutput: {
+              professionalWork: repairResult.professionalWork ?? null,
+              requirementCoverage: repairResult.requirementCoverage ?? null,
+              deliverable: repairResult.deliverable ?? null,
+              completion: repairResult.completion ?? null,
+              repairedRequirementIds: coverageReport.missing.map((failure) => failure.requirementId),
+              requirementPlan,
+            },
+            coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+            modelTelemetry: latestModelTelemetry,
+          });
+          reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
+            organizationId,
+            userId: requesterId,
+            conversationId: request.conversationId,
+            evidencePack: evidencePack ?? null,
+            disableAutoRevision: true,
+          });
+          await recordProfessionalSnapshot({
+            organizationId,
+            taskId: request.taskId,
+            manifest,
+            professionalContext,
+            blueprint,
+            stage: "self_review_selected",
+            sequence: snapshotSequence++,
+            contentMarkdown: reviewResult.finalContent,
+            structuredOutput: {
+              requirementPlan,
+              afterTargetedRequirementRepair: true,
+            },
+            reviewSnapshot: buildReviewSnapshot(reviewResult),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+            modelTelemetry: latestModelTelemetry,
+          });
+          runtimeGate = validateBlueprintRuntimeCompletion({
+            contract: blueprintContract,
+            contentMarkdown: reviewResult.finalContent,
+            rawClaims,
+            evidencePack: evidencePack ?? null,
+            artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+            deferApprovalGate: true,
+            standardTemplateEvidence,
+            professionalContext,
+          });
+        } else {
+          runtimeGate = {
+            passed: false,
+            failures: [
+              ...runtimeGate.failures,
+              {
+                gate: "mandatory_deliverable_coverage",
+                state: "validation",
+                message: repairResult.failureMessage,
+                details: coverageReport.missing.map((failure) =>
+                  `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
+                ),
+              },
+            ],
+          };
+        }
+      }
+    }
+    if (!runtimeGate.passed) {
       const blockingMessage = runtimeGate.failures
         .map((failure) => `${failure.gate}: ${failure.message}`)
         .join("; ");
@@ -1719,6 +1878,22 @@ export class UnifiedExecutionEngine {
         ? closeExecutionSession(taskSession)
         : markSessionError(taskSession, blockingMessage);
       ctx.session = taskSession;
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "failed",
+        errorMessage: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+          ? null
+          : blockingMessage,
+        metadata: {
+          failedStage: "completion_gates",
+          gateFailures: runtimeGate.failures,
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+        },
+      });
 
       return {
         outcome: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
@@ -1760,6 +1935,16 @@ export class UnifiedExecutionEngine {
       }).catch(() => {});
       taskSession = closeExecutionSession(taskSession);
       ctx.session = taskSession;
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "cancelled",
+        errorMessage: "Task was cancelled before Completed Work creation.",
+        metadata: { failedStage: "pre_completed_work_cancellation_guard" },
+      });
       return {
         outcome: "cancelled",
         manifestId: manifest.id,
@@ -1848,6 +2033,16 @@ export class UnifiedExecutionEngine {
         }).catch(() => {});
         taskSession = markSessionError(taskSession, message);
         ctx.session = taskSession;
+        await persistInlineExecutionSession({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          requesterId,
+          status: "failed",
+          errorMessage: message,
+          metadata: { failedStage: "artifact_generation" },
+        });
         return {
           outcome: "validation_failed",
           manifestId: manifest.id,
@@ -1887,6 +2082,20 @@ export class UnifiedExecutionEngine {
           ? closeExecutionSession(taskSession)
           : markSessionError(taskSession, blockingMessage);
         ctx.session = taskSession;
+        await persistInlineExecutionSession({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          requesterId,
+          status: "failed",
+          errorMessage: blockingMessage,
+          metadata: {
+            failedStage: "post_artifact_completion_gates",
+            gateFailures: artifactGate.failures,
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+          },
+        });
         return {
           outcome: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
             ? "awaiting_clarification"
@@ -2054,6 +2263,20 @@ export class UnifiedExecutionEngine {
 
     taskSession = closeExecutionSession(taskSession);
     ctx.session = taskSession;
+    await persistInlineExecutionSession({
+      organizationId,
+      taskId: request.taskId,
+      manifest,
+      professionalContext,
+      requesterId,
+      status: "completed",
+      metadata: {
+        completedWorkId: finalWork.id,
+        completedWorkStatus: finalWork.status,
+        qualityScore: reviewResult.qualityScore,
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+      },
+    });
 
     return {
       outcome: "completed",
@@ -2305,6 +2528,100 @@ export class UnifiedExecutionEngine {
           deliverableLength: (deliverableContent || parsed.content || input.currentContent).length,
         },
       };
+  }
+
+  private async repairMissingDeliverableRequirements(input: {
+    userRequest: string;
+    manifest: WorkPackageManifest;
+    blueprint: WorkBlueprint | null;
+    blueprintContract?: BlueprintExecutionContract | null;
+    authCtx: { userId: string; organizationId: string; role: string };
+    evidencePack?: EvidencePack | null;
+    currentContent: string;
+    currentClaims: RawClaim[];
+    professionalContext: ProfessionalExecutionContext;
+    missingRequirements: DeliverableRequirementCoverageFailure[];
+  }): Promise<GeneratedProfessionalDraft & { failureMessage?: string }> {
+    const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
+    if (provider !== "openai") {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        failureMessage: `Targeted requirement repair is required, but AI_PROVIDER is "${provider}".`,
+      };
+    }
+
+    const gatewayCtx: AIGatewayContext = {
+      userId: input.authCtx.userId,
+      organizationId: input.authCtx.organizationId,
+      role: input.authCtx.role,
+      permissions: [],
+      purpose: "task_execution",
+      correlationId: randomUUID(),
+      provider: "openai",
+      retentionClass: "operational",
+      requiresHumanApproval: true,
+    };
+    const gateway = createAIGateway(gatewayCtx);
+    const response = await gateway.process({
+      systemPrompt: buildTargetedRequirementRepairSystemPrompt(input.professionalContext, input.blueprintContract),
+      userMessage: buildTargetedRequirementRepairUserPrompt(input),
+      retrievedFields: [
+        "deliverableRequirementCoverage.missing",
+        "deliverableOutputSchema",
+        "currentDeliverable.content",
+        "evidencePack.chunks",
+      ],
+      maxTokens: 2500,
+      outputMode: "json",
+    });
+
+    if (response.usedFallback || !response.content) {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        failureMessage: `Targeted requirement repair did not produce a deliverable payload${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`,
+      };
+    }
+
+    const parsed = parseSpecialistJsonOutput(response.content);
+    const deliverableContent = typeof parsed.deliverable?.content === "string"
+      ? parsed.deliverable.content.trim()
+      : "";
+    if (!deliverableContent && !parsed.content) {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        failureMessage: "Targeted requirement repair response did not include deliverable.content.",
+      };
+    }
+
+    const content = deliverableContent || parsed.content || input.currentContent;
+    return {
+      content,
+      claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
+      professionalWork: parsed.professionalWork,
+      requirementCoverage: parsed.requirementCoverage,
+      deliverable: parsed.deliverable,
+      completion: parsed.completion,
+      modelTelemetry: {
+        stage: "targeted_requirement_repair",
+        configuredOutputBudget: 2500,
+        actualInputTokens: response.usage?.inputTokens ?? null,
+        actualOutputTokens: response.usage?.outputTokens ?? null,
+        actualTotalTokens: response.usage?.totalTokens ?? null,
+        outputMode: response.outputMode,
+        responseFormat: response.responseFormat,
+        finishReason: response.finishReason ?? null,
+        model: response.model ?? null,
+        latencyMs: response.latencyMs,
+        usedFallback: response.usedFallback,
+        deliverableLength: content.length,
+      },
+    };
   }
 }
 
@@ -3252,6 +3569,102 @@ If mandatory professional content cannot be completed from the request, evidence
   ].filter(Boolean).join("\n\n---\n\n");
 }
 
+function buildTargetedRequirementRepairSystemPrompt(
+  professionalContext: ProfessionalExecutionContext,
+  contract?: BlueprintExecutionContract | null,
+): string {
+  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  const schema = buildDeliverableOutputSchema(profile);
+  return `You are performing deterministic professional coverage repair.
+
+This is NOT a broad rewrite and NOT a general self-review.
+Your job is to modify the current user-facing deliverable only enough to satisfy exact missing mandatory requirement IDs.
+
+Rules:
+- Preserve all already-satisfied content unless a small local edit is required.
+- Add missing FACTUAL_FIELD structures as fields/placeholders when values are unknown.
+- FACTUAL_FIELD means the field itself must exist in reusable templates; unknown value does not excuse omission.
+- Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
+- Do not remove existing clauses or schedules that already satisfy requirements.
+- Return JSON only.
+
+Machine-readable output schema derived from the requirement plan:
+${JSON.stringify(schema, null, 2)}
+
+Return ONLY JSON:
+{
+  "professional_work": {
+    "summary": "<brief repair summary>",
+    "requirement_to_deliverable_plan": ["<missing requirement ID repaired at target location>"],
+    "missing_information": ["<unknown factual values left as fields/placeholders>"]
+  },
+  "requirement_coverage": {
+    "satisfied": ["<requirement IDs now represented>"],
+    "missing": []
+  },
+  "deliverable": {
+    "type": "${professionalContext.deliverable.requestedDeliverableType}",
+    "audience": "${professionalContext.deliverable.audience}",
+    "content": "<complete repaired user-facing deliverable markdown>"
+  },
+  "completion": {
+    "operation": "${professionalContext.operation}",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
+  "claims": []
+}`;
+}
+
+function buildTargetedRequirementRepairUserPrompt(input: {
+  userRequest: string;
+  manifest: WorkPackageManifest;
+  blueprint: WorkBlueprint | null;
+  blueprintContract?: BlueprintExecutionContract | null;
+  evidencePack?: EvidencePack | null;
+  currentContent: string;
+  currentClaims: RawClaim[];
+  professionalContext: ProfessionalExecutionContext;
+  missingRequirements: DeliverableRequirementCoverageFailure[];
+}): string {
+  const profile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+  const schema = buildDeliverableOutputSchema(profile);
+  const missing = input.missingRequirements.map((requirement) => ({
+    requirement_id: requirement.requirementId,
+    classification: requirement.classification,
+    required_representation: requirement.requiredDeliverableRepresentation,
+    target_section_or_table: inferSchemaTarget(schema, requirement.requirementId),
+    source_blueprint_section: requirement.sourceBlueprintSection ?? null,
+    professional_requirement: requirement.requirement,
+  }));
+  const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
+    ? buildEvidenceSection(input.evidencePack)
+    : "";
+
+  return [
+    `## ORIGINAL REQUEST\n${input.userRequest}`,
+    `## CURRENT DELIVERABLE TO REPAIR\n${input.currentContent}`,
+    `## EXACT MISSING REQUIREMENTS\n${JSON.stringify(missing, null, 2)}`,
+    `## COMPLETE OUTPUT SCHEMA\n${JSON.stringify(schema, null, 2)}`,
+    evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
+    `## REPAIR INSTRUCTIONS
+Repair only the missing requirement IDs listed above.
+For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
+If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
+Preserve existing satisfied clauses and wording as much as possible.
+Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
+  ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function inferSchemaTarget(schema: ReturnType<typeof buildDeliverableOutputSchema>, requirementId: string): string {
+  for (const group of schema.groups) {
+    const field = group.fields.find((candidate) => candidate.requirementId === requirementId);
+    if (field) return `${group.targetSection} / ${field.fieldLabel}`;
+  }
+  return "Requested deliverable";
+}
+
 function extractUserFacingClauseFamilies(
   contract?: BlueprintExecutionContract | null,
 ): string[] {
@@ -3337,6 +3750,28 @@ function buildCoverageSnapshot(
   };
 }
 
+function validateDeliverableOutputSchemaCompleteness(
+  profile: ReturnType<typeof deriveDeliverableRequirementCoverageProfile>,
+  schema: ReturnType<typeof buildDeliverableOutputSchema>,
+): { passed: boolean; missingRequirementIds: string[] } {
+  const schemaRequirementIds = new Set(
+    schema.groups.flatMap((group) => group.fields.map((field) => field.requirementId)),
+  );
+  const requiredIds = buildRequirementToDeliverablePlan(profile)
+    .filter((item) => item.applicability === "applicable")
+    .filter((item) =>
+      item.classification === "MUST_BE_REPRESENTED" ||
+      item.classification === "CONDITIONAL" ||
+      item.classification === "FACTUAL_FIELD",
+    )
+    .map((item) => item.requirementId);
+  const missingRequirementIds = requiredIds.filter((id) => !schemaRequirementIds.has(id));
+  return {
+    passed: missingRequirementIds.length === 0,
+    missingRequirementIds,
+  };
+}
+
 function buildReviewSnapshot(reviewResult: Awaited<ReturnType<typeof reviewDraft>>): Record<string, unknown> {
   return {
     qualityScore: reviewResult.qualityScore,
@@ -3361,7 +3796,7 @@ async function recordProfessionalSnapshot(input: {
   manifest: WorkPackageManifest;
   professionalContext: ProfessionalExecutionContext;
   blueprint: WorkBlueprint | null;
-  stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "final_validated" | "gate_failure";
+  stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "targeted_repair_candidate" | "final_validated" | "gate_failure";
   sequence: number;
   contentMarkdown?: string | null;
   structuredOutput?: Record<string, unknown> | null;
@@ -3405,6 +3840,75 @@ async function recordProfessionalSnapshot(input: {
       err instanceof Error ? err.message : err,
     );
   }
+}
+
+async function persistInlineExecutionSession(input: {
+  organizationId: string;
+  taskId?: string;
+  manifest: WorkPackageManifest;
+  professionalContext: ProfessionalExecutionContext;
+  requesterId: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  if (!input.taskId) return;
+  const now = new Date();
+  const terminalAt = ["completed", "failed", "cancelled"].includes(input.status) ? now : null;
+  const metadata = {
+    runtimeSelection: "aws_native_inline_uee",
+    blueprintId: input.manifest.blueprintId ?? null,
+    blueprintVersion: input.manifest.blueprintVersion ?? null,
+    canonicalIntent: input.manifest.canonicalIntent ?? null,
+    blueprintFamily: input.manifest.blueprintFamily ?? null,
+    blueprintMode: input.manifest.blueprintMode ?? null,
+    manifestId: input.manifest.id,
+    operation: input.professionalContext.operation,
+    deliverableType: input.professionalContext.deliverable.requestedDeliverableType,
+    specificity: input.professionalContext.specificity,
+    primarySpecialist: input.manifest.primarySpecialist,
+    supportingSpecialists: input.manifest.supportingSpecialists,
+    ...input.metadata,
+  };
+
+  await db.insert(executionSessionsTable).values({
+    id: input.manifest.executionId,
+    taskId: input.taskId,
+    organizationId: input.organizationId,
+    runtimeName: "aws_native",
+    runtimeExecutionId: input.manifest.executionId,
+    currentStatus: input.status,
+    executionPackage: {
+      source: "unified_execution_engine",
+      manifestId: input.manifest.id,
+      operation: input.professionalContext.operation,
+      deliverableType: input.professionalContext.deliverable.requestedDeliverableType,
+      primarySpecialist: input.manifest.primarySpecialist,
+    },
+    submittedAt: now,
+    startedAt: now,
+    completedAt: terminalAt,
+    errorMessage: input.errorMessage ?? null,
+    metadata,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: executionSessionsTable.id,
+    set: {
+      runtimeName: "aws_native",
+      runtimeExecutionId: input.manifest.executionId,
+      currentStatus: input.status,
+      completedAt: terminalAt,
+      errorMessage: input.errorMessage ?? null,
+      metadata,
+      updatedAt: now,
+    },
+  }).catch((err) => {
+    console.warn(
+      "[UnifiedExecutionEngine] inline execution session persistence failed:",
+      err instanceof Error ? err.message : err,
+    );
+  });
 }
 
 function buildCompletionMessage(

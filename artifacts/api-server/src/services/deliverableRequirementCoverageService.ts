@@ -62,6 +62,25 @@ export interface RequirementToDeliverablePlanItem {
   status: RequirementCoverageStatus;
 }
 
+export interface DeliverableOutputSchemaField {
+  requirementId: string;
+  classification: DeliverableRequirementClassification;
+  requiredRepresentation: string;
+  targetSection: string;
+  fieldLabel: string;
+}
+
+export interface DeliverableOutputSchemaGroup {
+  targetSection: string;
+  fields: DeliverableOutputSchemaField[];
+}
+
+export interface DeliverableOutputSchema {
+  deliverableType: string;
+  operation: DeliverableRequirementCoverageProfile["operation"];
+  groups: DeliverableOutputSchemaGroup[];
+}
+
 export interface DeliverableRequirementCoverageReport {
   deliverableType: string;
   operation: DeliverableRequirementCoverageProfile["operation"];
@@ -148,6 +167,37 @@ export function buildRequirementToDeliverablePlan(
   });
 }
 
+export function buildDeliverableOutputSchema(
+  profile: DeliverableRequirementCoverageProfile,
+): DeliverableOutputSchema {
+  const fields = buildRequirementToDeliverablePlan(profile)
+    .filter((item) => item.applicability === "applicable")
+    .filter((item) => isBlockingRequirement(item.classification))
+    .map((item): DeliverableOutputSchemaField => ({
+      requirementId: item.requirementId,
+      classification: item.classification,
+      requiredRepresentation: item.expectedUserFacingRepresentation,
+      targetSection: item.targetDeliverableLocation,
+      fieldLabel: deriveFieldLabel(item),
+    }));
+
+  const groups = new Map<string, DeliverableOutputSchemaField[]>();
+  for (const field of fields) {
+    const existing = groups.get(field.targetSection) ?? [];
+    existing.push(field);
+    groups.set(field.targetSection, existing);
+  }
+
+  return {
+    deliverableType: profile.deliverableType,
+    operation: profile.operation,
+    groups: Array.from(groups.entries()).map(([targetSection, groupedFields]) => ({
+      targetSection,
+      fields: groupedFields,
+    })),
+  };
+}
+
 export function evaluateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
@@ -206,6 +256,7 @@ export function evaluateDeliverableRequirementCoverage(
 
 export function formatRequirementCoveragePrompt(profile: DeliverableRequirementCoverageProfile): string {
   const plan = buildRequirementToDeliverablePlan(profile);
+  const schema = buildDeliverableOutputSchema(profile);
   const lines = plan
     .filter((requirement) => requirement.applicability === "applicable")
     .filter((requirement) => isBlockingRequirement(requirement.classification))
@@ -220,8 +271,12 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
   return [
     "## MANDATORY DELIVERABLE REQUIREMENT COVERAGE",
     "Every MUST_BE_REPRESENTED, CONDITIONAL when applicable, and FACTUAL_FIELD requirement below must be represented in the final user-facing deliverable. Do not expose the internal requirement IDs or Blueprint section names as customer-facing headings unless the deliverable naturally requires that exact term.",
+    "FACTUAL_FIELD means the field/structure itself must exist in reusable templates even when the value is unknown. Unknown values should become clear factual placeholders or fillable fields; omitting the field is a professional completion failure.",
     "Build an internal requirement-to-deliverable plan before drafting. The plan is professional work product and must not be exposed as the final document.",
     ...lines,
+    "",
+    "Machine-readable output schema derived from the requirement plan. The final deliverable must account for every requirement_id below:",
+    JSON.stringify(schema, null, 2),
   ].join("\n");
 }
 
@@ -388,6 +443,24 @@ function inferTargetDeliverableLocation(requirement: DeliverableRequirement): st
   if (representation.includes("rights") || representation.includes("privacy") || representation.includes("complaints")) return "Rights, privacy, complaints and advocacy clauses";
   if (representation.includes("responsibilities")) return "Responsibilities clauses";
   return requirement.requiredDeliverableRepresentation;
+}
+
+function deriveFieldLabel(requirement: RequirementToDeliverablePlanItem): string {
+  const representation = requirement.expectedUserFacingRepresentation
+    .replace(/^Schedule column for\s+/i, "")
+    .replace(/\s+field$/i, "")
+    .replace(/\s+clause$/i, "")
+    .trim();
+  if (representation && representation.length <= 80) return titleCase(representation);
+  return titleCase(requirement.requirementId.replace(/-/g, " "));
+}
+
+function titleCase(value: string): string {
+  return value
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function coverageRuleMatches(normalisedContent: string, rule: DeliverableCoverageRule): boolean {
