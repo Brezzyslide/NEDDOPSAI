@@ -126,6 +126,7 @@ const OPEN_TASK_STATES: TaskState[] = [
   "queued",
   "planning",
   "awaiting_approval",
+  "evidence_required",
   "approved",
   "executing",
   "failed",

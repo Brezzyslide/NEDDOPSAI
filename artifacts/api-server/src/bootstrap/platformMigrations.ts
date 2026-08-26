@@ -126,6 +126,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds durable task creation idempotency ledger and backfills canonical task mappings from existing creation metadata.",
   },
+  {
+    id: "0041-task-evidence-required-state",
+    file: "0041_task_evidence_required_state.sql",
+    transactional: false,
+    notes: "Adds first-class task_state evidence_required so evidence gaps are not shown as approval-required or executing.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

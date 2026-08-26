@@ -18,6 +18,7 @@ import SpecialistRunsPanel from "@/components/workroom/SpecialistRunsPanel";
 
 type TaskState =
   | "draft" | "queued" | "planning" | "awaiting_approval"
+  | "evidence_required"
   | "approved" | "executing" | "completed" | "cancelled" | "failed";
 
 type MessageSenderType = "user" | "chief_of_staff" | "workforce_role" | "runtime" | "system";
@@ -111,6 +112,7 @@ const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string
   queued:            { label: "Queued",            cls: "bg-blue-900/30 text-blue-400",            icon: "⏳" },
   planning:          { label: "Planning",          cls: "bg-purple-900/30 text-purple-400",        icon: "🧠" },
   awaiting_approval: { label: "Awaiting Approval", cls: "bg-amber-900/30 text-amber-400",          icon: "⚠️" },
+  evidence_required: { label: "Evidence Required", cls: "bg-orange-900/30 text-orange-400",        icon: "📎" },
   approved:          { label: "Approved",          cls: "bg-cyan-900/30 text-cyan-400",            icon: "✓" },
   executing:         { label: "Executing",         cls: "bg-indigo-900/30 text-indigo-400",        icon: "⚡" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400",      icon: "✅" },
@@ -913,6 +915,8 @@ export default function TaskWorkroomPage() {
                 placeholder={
                   task.currentState === "awaiting_approval"
                     ? "Approve, reject, or ask a question…"
+                    : task.currentState === "evidence_required"
+                    ? "Provide the requested evidence or ask a question…"
                     : task.currentState === "executing"
                     ? "Ask the workforce a question or request a status update…"
                     : "Ask a question, request changes, or give instructions…"

@@ -36,6 +36,7 @@ const TASK_STATUS: Record<string, { label: string; cls: string }> = {
   queued:            { label: "Queued",            cls: "bg-blue-900/30 text-blue-400" },
   planning:          { label: "Planning",          cls: "bg-purple-900/30 text-purple-400" },
   awaiting_approval: { label: "Awaiting Approval", cls: "bg-amber-900/30 text-amber-400" },
+  evidence_required: { label: "Evidence Required", cls: "bg-orange-900/30 text-orange-400" },
   executing:         { label: "Executing",         cls: "bg-cyan-900/30 text-cyan-400" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400" },
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400" },
@@ -175,11 +176,12 @@ export default function ExecutiveDashboard() {
     staleTime: 60_000,
   });
 
-  const { data: tasksData } = useQuery({
-    queryKey: ["tasks-dashboard", slug],
-    queryFn: () => apiFetch(`/v1/organisations/${slug}/tasks`).then(r => r.json()),
+  const { data: activeExecutionsData } = useQuery({
+    queryKey: ["active-executions-dashboard", slug],
+    queryFn: () => apiFetch(`/v1/organisations/${slug}/active-executions`).then(r => r.json()),
     enabled: !!slug,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
   });
 
   const { data: approvalsData } = useQuery({
@@ -248,9 +250,9 @@ export default function ExecutiveDashboard() {
   const awaitingApproval= allWork.filter((w: any) => w.status === "awaiting_approval");
   const recentCompleted = allWork.filter((w: any) => w.status === "approved").slice(0, 4);
 
-  const activeTasks: any[] = (tasksData?.tasks ?? []).filter(
-    (t: any) => ["executing", "planning", "queued"].includes(t.currentState ?? t.state),
-  ).slice(0, 4);
+  const activeTasks: any[] = (activeExecutionsData?.activeExecutions ?? [])
+    .filter((item: any) => item.kind === "task")
+    .slice(0, 4);
 
   const pendingApprovals: any[] = approvalsData?.approvals ?? [];
 
@@ -382,7 +384,7 @@ export default function ExecutiveDashboard() {
                           <p className="text-[#E2E8F0] text-sm font-medium truncate">{t.title ?? "Untitled task"}</p>
                           <p className="text-[#64748B] text-xs mt-0.5">Task · {timeAgo(t.createdAt)}</p>
                         </div>
-                        <StatusBadge status={t.currentState ?? t.state ?? "queued"} map={TASK_STATUS} />
+                        <StatusBadge status={t.status ?? t.currentState ?? t.state ?? "queued"} map={TASK_STATUS} />
                       </div>
                     ))}
                   </div>

@@ -51,7 +51,7 @@ export function createOrgSchema(schemaName: string) {
   const schema = pgSchema(schemaName);
 
   // ── Enums (must be created per schema) ─────────────────────────────────────
-  const taskStateEnum      = schema.enum("task_state", ["draft","queued","planning","awaiting_approval","approved","executing","completed","cancelled","failed"]);
+  const taskStateEnum      = schema.enum("task_state", ["draft","queued","planning","awaiting_approval","evidence_required","approved","executing","completed","cancelled","failed"]);
   const taskPriorityEnum   = schema.enum("task_priority", ["low","normal","high","urgent"]);
   const approvalTypeEnum   = schema.enum("approval_type", ["no_approval","manager_approval","administrator_approval","owner_approval","dual_approval","compliance_approval","platform_approval"]);
   const membershipRoleEnum = schema.enum("membership_role", ["owner","administrator","manager","member","viewer"]);

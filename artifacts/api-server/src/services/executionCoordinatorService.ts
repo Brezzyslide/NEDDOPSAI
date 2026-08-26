@@ -51,6 +51,7 @@ import {
   isTaskCancelled,
   reconcileTaskExecutionFailure,
   reconcileTaskExecutionSuccess,
+  transitionTaskState,
 } from "./taskService.js";
 import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 
@@ -620,6 +621,12 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           humanLabel: "I need a little more information…",
           clarificationQuestions: result.clarificationQuestions,
         });
+
+        if (taskId) {
+          await transitionTaskState(taskId, organizationId, "evidence_required").catch(err =>
+            console.warn("[ExecutionCoordinator] Failed to mark task evidence_required:", err?.message),
+          );
+        }
 
         await postClarificationRequestToConversation(
           organizationId,

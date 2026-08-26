@@ -3,7 +3,7 @@
  *
  * Aggregates in-flight execution activity for an organisation across three
  * sources:
- *   1. tasks          — currentState in (queued|planning|awaiting_approval|executing)
+ *   1. tasks          — currentState in (queued|planning|awaiting_approval|evidence_required|executing)
  *   2. specialist_runs — status in (created|claimed|running|waiting_for_runtime)
  *   3. execution_intents — status = "dispatched"
  *
@@ -45,6 +45,7 @@ const ACTIVE_TASK_STATES = [
   "queued",
   "planning",
   "awaiting_approval",
+  "evidence_required",
   "approved",
   "executing",
 ] as const;

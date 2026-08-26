@@ -12,7 +12,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   it("keeps the existing task state machine as the canonical lifecycle", () => {
     const src = source("services/taskService.ts");
 
-    for (const state of ["draft", "queued", "planning", "awaiting_approval", "approved", "executing", "completed", "cancelled", "failed"]) {
+    for (const state of ["draft", "queued", "planning", "awaiting_approval", "evidence_required", "approved", "executing", "completed", "cancelled", "failed"]) {
       expect(src).toContain(`${state}:`);
     }
     expect(src).not.toContain('"rejected" as unknown as TaskState');
@@ -258,6 +258,25 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(src).toContain('queued: ["planning", "executing", "cancelled"]');
     expect(src).toContain('const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const');
+  });
+
+  it("evidence gaps pause execution in evidence_required rather than approval or executing", () => {
+    const taskService = source("services/taskService.ts");
+    const coordinator = source("services/executionCoordinatorService.ts");
+    const activeExecutions = source("services/activeExecutionsService.ts");
+    const shared = readFileSync(resolve(root, "../../../lib/shared/src/index.ts"), "utf8");
+    const dbSchema = readFileSync(resolve(root, "../../../lib/db/src/schema/tasks.ts"), "utf8");
+    const migration = readFileSync(resolve(root, "../../../lib/db/migrations/0041_task_evidence_required_state.sql"), "utf8");
+    const platformMigrations = source("bootstrap/platformMigrations.ts");
+
+    expect(shared).toContain('"evidence_required"');
+    expect(dbSchema).toContain('"evidence_required"');
+    expect(taskService).toContain('executing: ["completed", "evidence_required", "failed", "cancelled"]');
+    expect(taskService).toContain('evidence_required: ["queued", "cancelled", "failed"]');
+    expect(coordinator).toContain('transitionTaskState(taskId, organizationId, "evidence_required")');
+    expect(activeExecutions).toContain('"evidence_required"');
+    expect(migration).toContain("ALTER TYPE task_state ADD VALUE IF NOT EXISTS 'evidence_required'");
+    expect(platformMigrations).toContain("0041-task-evidence-required-state");
   });
 
   it("workroom approval UI sends the backend's canonical action payload", () => {

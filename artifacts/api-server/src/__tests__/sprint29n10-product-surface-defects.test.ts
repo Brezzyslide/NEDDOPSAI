@@ -212,6 +212,36 @@ describe("Sprint 29N.10 Part E — Dashboard pending decisions includes all 7 so
   });
 });
 
+// ── Part F — Dashboard active work canonical status ─────────────────────────
+
+describe("Sprint 29N.10 Part F — Dashboard active work uses canonical active-executions", () => {
+  it("STATIC: ExecutiveDashboard uses active-executions with polling rather than stale local task filtering", () => {
+    const src = readSource("artifacts/needsops-web/src/pages/app/ExecutiveDashboard.tsx");
+
+    expect(src).toContain('queryKey: ["active-executions-dashboard", slug]');
+    expect(src).toContain("/active-executions");
+    expect(src).toContain("refetchInterval: 30_000");
+    expect(src).toContain('item.kind === "task"');
+    expect(src).not.toContain('queryKey: ["tasks-dashboard", slug]');
+    expect(src).toContain("evidence_required");
+    expect(src).toContain("Evidence Required");
+  });
+
+  it("STATIC: Active Work and task surfaces distinguish evidence_required from approval", () => {
+    const activeWork = readSource("artifacts/needsops-web/src/pages/app/ActiveWorkPage.tsx");
+    const taskCentre = readSource("artifacts/needsops-web/src/pages/app/TaskCentrePage.tsx");
+    const workroom = readSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+
+    expect(activeWork).toContain("evidence_required");
+    expect(activeWork).toContain("Evidence Required");
+    expect(taskCentre).toContain('"evidence_required"');
+    expect(taskCentre).toContain('"Awaiting Input"');
+    expect(taskCentre).toContain('!["awaiting_approval", "evidence_required"].includes(task.currentState)');
+    expect(workroom).toContain('"evidence_required"');
+    expect(workroom).toContain("Provide the requested evidence");
+  });
+});
+
 // ── Part F — Role-aware UI controls ──────────────────────────────────────────
 
 describe("Sprint 29N.10 Part F — Role-aware UI controls", () => {

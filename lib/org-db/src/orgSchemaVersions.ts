@@ -69,7 +69,7 @@ async function applySprintSixFoundation(db: NodePgDatabase<any>, s: string): Pro
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'org_task_state' AND n.nspname = '${s}') THEN
-        CREATE TYPE "${s}".org_task_state AS ENUM ('draft','queued','planning','awaiting_approval','approved','executing','completed','cancelled','failed');
+        CREATE TYPE "${s}".org_task_state AS ENUM ('draft','queued','planning','awaiting_approval','evidence_required','approved','executing','completed','cancelled','failed');
       END IF;
       IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'org_task_priority' AND n.nspname = '${s}') THEN
         CREATE TYPE "${s}".org_task_priority AS ENUM ('low','normal','high','urgent');

@@ -9,11 +9,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import AppShell from "@/components/layout/AppShell";
 import { useAuthFetch } from "@/lib/api";
 
-type TaskState = "draft" | "queued" | "planning" | "awaiting_approval" | "approved" | "executing" | "completed" | "cancelled" | "failed";
+type TaskState = "draft" | "queued" | "planning" | "awaiting_approval" | "evidence_required" | "approved" | "executing" | "completed" | "cancelled" | "failed";
 
 const STATE_TABS: { label: string; states: TaskState[] }[] = [
   { label: "Active", states: ["queued", "planning", "approved", "executing"] },
-  { label: "Awaiting Approval", states: ["awaiting_approval"] },
+  { label: "Awaiting Input", states: ["awaiting_approval", "evidence_required"] },
   { label: "Completed", states: ["completed"] },
   { label: "Cancelled", states: ["cancelled"] },
   { label: "Failed", states: ["failed"] },
@@ -24,6 +24,7 @@ const STATE_BADGE: Record<TaskState, { label: string; cls: string }> = {
   queued:            { label: "Queued",            cls: "bg-blue-900/30 text-blue-400" },
   planning:          { label: "Planning",          cls: "bg-purple-900/30 text-purple-400" },
   awaiting_approval: { label: "Awaiting Approval", cls: "bg-amber-900/30 text-amber-400" },
+  evidence_required: { label: "Evidence Required", cls: "bg-orange-900/30 text-orange-400" },
   approved:          { label: "Approved",          cls: "bg-cyan-900/30 text-cyan-400" },
   executing:         { label: "Executing",         cls: "bg-indigo-900/30 text-indigo-400" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400" },
@@ -217,7 +218,7 @@ export default function TaskCentrePage() {
                         {task.approvalState === "pending_approval" && (
                           <span className="ml-3 text-amber-400/80">Pending approval</span>
                         )}
-                        {task.approvalState === "required" && task.currentState !== "awaiting_approval" && (
+                        {task.approvalState === "required" && !["awaiting_approval", "evidence_required"].includes(task.currentState) && (
                           <span className="ml-3 text-slate-500">Approval gate later</span>
                         )}
                       </p>
