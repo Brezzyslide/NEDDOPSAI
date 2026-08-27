@@ -9,7 +9,7 @@
  */
 
 import OpenAI from "openai";
-import type { AIRequest } from "../types.js";
+import type { AIRequest, AIRuntimeProfile } from "../types.js";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +22,13 @@ function getConfig() {
   };
 }
 
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface OpenAICompletionResult {
@@ -32,9 +39,21 @@ export interface OpenAICompletionResult {
   model: string;
   latencyMs: number;
   retries: number;
+  attempts: number;
+  runtimeProfile: AIRuntimeProfile;
+  configuredTimeoutMs: number;
   /** Sprint 28.7: the response_format value sent, or null when text mode */
   responseFormat: string | null;
   finishReason: string | null;
+}
+
+export interface OpenAIRuntimePolicy {
+  runtimeProfile: AIRuntimeProfile;
+  timeoutMs: number;
+  maxRetries: number;
+  retryOnTimeout: boolean;
+  retryOnRateLimit: boolean;
+  retryOnServerError: boolean;
 }
 
 export type OpenAIErrorKind =
@@ -46,18 +65,100 @@ export type OpenAIErrorKind =
 
 export class OpenAIProviderError extends Error {
   public readonly kind: OpenAIErrorKind;
-  constructor(message: string, kind: OpenAIErrorKind) {
+  public readonly runtimeProfile?: AIRuntimeProfile;
+  public readonly timeoutMs?: number;
+  public readonly retries?: number;
+  public readonly attempts?: number;
+  public readonly elapsedMs?: number;
+  constructor(
+    message: string,
+    kind: OpenAIErrorKind,
+    details: {
+      runtimeProfile?: AIRuntimeProfile;
+      timeoutMs?: number;
+      retries?: number;
+      attempts?: number;
+      elapsedMs?: number;
+    } = {},
+  ) {
     super(message);
     this.name = "OpenAIProviderError";
     this.kind = kind;
+    this.runtimeProfile = details.runtimeProfile;
+    this.timeoutMs = details.timeoutMs;
+    this.retries = details.retries;
+    this.attempts = details.attempts;
+    this.elapsedMs = details.elapsedMs;
+  }
+}
+
+export function resolveOpenAIRuntimePolicy(request: Pick<AIRequest, "runtimeProfile">): OpenAIRuntimePolicy {
+  const cfg = getConfig();
+  const runtimeProfile = request.runtimeProfile ?? "default";
+  switch (runtimeProfile) {
+    case "conversation_intelligence":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_CONVERSATION_TIMEOUT_MS", cfg.timeoutMs),
+        maxRetries: envInt("AI_CONVERSATION_MAX_RETRIES", 0),
+        retryOnTimeout: false,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
+    case "professional_execution":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_PROFESSIONAL_TIMEOUT_MS", 120_000),
+        maxRetries: envInt("AI_PROFESSIONAL_MAX_RETRIES", 1),
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
+    case "final_synthesis":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_FINAL_SYNTHESIS_TIMEOUT_MS", envInt("AI_PROFESSIONAL_TIMEOUT_MS", 120_000)),
+        maxRetries: envInt("AI_FINAL_SYNTHESIS_MAX_RETRIES", envInt("AI_PROFESSIONAL_MAX_RETRIES", 1)),
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
+    case "targeted_repair":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_TARGETED_REPAIR_TIMEOUT_MS", 90_000),
+        maxRetries: envInt("AI_TARGETED_REPAIR_MAX_RETRIES", 1),
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
+    case "self_review":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_SELF_REVIEW_TIMEOUT_MS", 75_000),
+        maxRetries: envInt("AI_SELF_REVIEW_MAX_RETRIES", 1),
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
+    case "default":
+    default:
+      return {
+        runtimeProfile: "default",
+        timeoutMs: cfg.timeoutMs,
+        maxRetries: cfg.maxRetries,
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
   }
 }
 
 // ─── Client factory ───────────────────────────────────────────────────────────
 
-let _client: OpenAI | null = null;
+const clientsByTimeout = new Map<number, OpenAI>();
 
-function getClient(): OpenAI {
+function getClient(timeoutMs: number): OpenAI {
   const cfg = getConfig();
   if (!cfg.apiKey) {
     throw new OpenAIProviderError(
@@ -65,15 +166,17 @@ function getClient(): OpenAI {
       "not_configured",
     );
   }
-  // Reuse client across requests (connection pool)
-  if (!_client) {
-    _client = new OpenAI({
-      apiKey: cfg.apiKey,
-      timeout: cfg.timeoutMs,
-      maxRetries: 0, // We handle retries ourselves for better observability
-    });
-  }
-  return _client;
+  // Reuse clients by timeout so long-running professional calls do not inherit
+  // the shorter interactive client timeout from an earlier conversation request.
+  const existing = clientsByTimeout.get(timeoutMs);
+  if (existing) return existing;
+  const client = new OpenAI({
+    apiKey: cfg.apiKey,
+    timeout: timeoutMs,
+    maxRetries: 0, // We handle retries ourselves for better observability
+  });
+  clientsByTimeout.set(timeoutMs, client);
+  return client;
 }
 
 // ─── Main call ────────────────────────────────────────────────────────────────
@@ -86,7 +189,8 @@ function getClient(): OpenAI {
  */
 export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionResult> {
   const cfg = getConfig();
-  const client = getClient();
+  const policy = resolveOpenAIRuntimePolicy(request);
+  const client = getClient(policy.timeoutMs);
   const startMs = Date.now();
 
   // Sprint 28.7 — Output mode determines whether response_format is sent.
@@ -107,8 +211,10 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
 
   let lastError: unknown = null;
   let retries = 0;
+  let attempts = 0;
 
-  while (retries <= cfg.maxRetries) {
+  while (attempts <= policy.maxRetries) {
+    attempts++;
     try {
       const completion = await client.chat.completions.create({
         model: request.model ?? cfg.model,
@@ -133,6 +239,9 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         model: completion.model ?? (request.model ?? cfg.model),
         latencyMs: Date.now() - startMs,
         retries,
+        attempts,
+        runtimeProfile: policy.runtimeProfile,
+        configuredTimeoutMs: policy.timeoutMs,
         responseFormat,
         finishReason: choice?.finish_reason ?? null,
       };
@@ -142,31 +251,50 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
       if (err instanceof OpenAI.APIError) {
         // 429 rate limit — retry with exponential backoff
         if (err.status === 429) {
-          if (retries < cfg.maxRetries) {
+          if (policy.retryOnRateLimit && retries < policy.maxRetries) {
             await sleep(1000 * Math.pow(2, retries));
             retries++;
             continue;
           }
-          throw new OpenAIProviderError(`Rate limited by OpenAI after ${retries} retries`, "rate_limit");
+          throw new OpenAIProviderError(`Rate limited by OpenAI after ${retries} retries`, "rate_limit", {
+            runtimeProfile: policy.runtimeProfile,
+            timeoutMs: policy.timeoutMs,
+            retries,
+            attempts,
+            elapsedMs: Date.now() - startMs,
+          });
         }
         // 5xx server errors — retry
-        if (err.status !== undefined && err.status >= 500 && retries < cfg.maxRetries) {
+        if (err.status !== undefined && err.status >= 500 && policy.retryOnServerError && retries < policy.maxRetries) {
           await sleep(500 * Math.pow(2, retries));
           retries++;
           continue;
         }
-        throw new OpenAIProviderError(`OpenAI API error (${err.status}): ${err.message}`, "api_error");
+        throw new OpenAIProviderError(`OpenAI API error (${err.status}): ${err.message}`, "api_error", {
+          runtimeProfile: policy.runtimeProfile,
+          timeoutMs: policy.timeoutMs,
+          retries,
+          attempts,
+          elapsedMs: Date.now() - startMs,
+        });
       }
 
       // Network timeout
       if (isTimeoutError(err)) {
-        if (retries < cfg.maxRetries) {
+        if (policy.retryOnTimeout && retries < policy.maxRetries) {
           retries++;
           continue;
         }
         throw new OpenAIProviderError(
-          `OpenAI request timed out after ${cfg.timeoutMs}ms (${retries} retries)`,
+          `OpenAI request timed out after ${policy.timeoutMs}ms (${retries} retries)`,
           "timeout",
+          {
+            runtimeProfile: policy.runtimeProfile,
+            timeoutMs: policy.timeoutMs,
+            retries,
+            attempts,
+            elapsedMs: Date.now() - startMs,
+          },
         );
       }
 
@@ -174,6 +302,13 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
       throw new OpenAIProviderError(
         `Unexpected OpenAI provider error: ${String(err)}`,
         "api_error",
+        {
+          runtimeProfile: policy.runtimeProfile,
+          timeoutMs: policy.timeoutMs,
+          retries,
+          attempts,
+          elapsedMs: Date.now() - startMs,
+        },
       );
     }
   }
@@ -181,6 +316,13 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
   throw new OpenAIProviderError(
     `OpenAI request failed after ${retries} retries: ${String(lastError)}`,
     "api_error",
+    {
+      runtimeProfile: policy.runtimeProfile,
+      timeoutMs: policy.timeoutMs,
+      retries,
+      attempts,
+      elapsedMs: Date.now() - startMs,
+    },
   );
 }
 
@@ -233,7 +375,7 @@ export async function callOpenAIEmbeddings(
   texts: string[],
   model = EMBEDDING_MODEL,
 ): Promise<OpenAIEmbeddingResult> {
-  const client = getClient(); // reuses the shared client
+  const client = getClient(EMBEDDING_TIMEOUT); // reuses the shared client
   const allEmbeddings: number[][] = [];
   let totalTokens = 0;
 

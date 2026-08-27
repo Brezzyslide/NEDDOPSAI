@@ -41,6 +41,7 @@ export {
   type AITokenUsage,
   type AIProviderHealth,
   type GatewayOutputMode,
+  type AIRuntimeProfile,
 } from "./types.js";
 
 export {
@@ -58,9 +59,11 @@ export {
 export {
   isOpenAIConfigured,
   getOpenAIModel,
+  resolveOpenAIRuntimePolicy,
   // Knowledge Hub embedding support (Task #16)
   callOpenAIEmbeddings,
   getEmbeddingDimensions,
   OpenAIProviderError,
   type OpenAIEmbeddingResult,
+  type OpenAIRuntimePolicy,
 } from "./providers/openai.js";

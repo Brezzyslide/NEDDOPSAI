@@ -28,6 +28,24 @@
  */
 export type GatewayOutputMode = "text" | "json" | "structured";
 
+// ─── Runtime profile ─────────────────────────────────────────────────────────
+
+/**
+ * More specific runtime intent for provider behavior that cannot be safely
+ * inferred from the broad privacy purpose alone.
+ *
+ * Example: both short CoS classification and long-form professional drafting
+ * flow through the same gateway, but they need different timeout/retry/fallback
+ * behavior.
+ */
+export type AIRuntimeProfile =
+  | "conversation_intelligence"
+  | "professional_execution"
+  | "final_synthesis"
+  | "targeted_repair"
+  | "self_review"
+  | "default";
+
 // ─── Purpose classification ───────────────────────────────────────────────────
 
 /**
@@ -135,6 +153,18 @@ export interface AIRequest {
   /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
+  /**
+   * Purpose-specific provider runtime profile.
+   * Does not change data access permissions; it controls timeout/retry/fallback
+   * policy for the already-authorised gateway request.
+   */
+  runtimeProfile?: AIRuntimeProfile;
+  /**
+   * External provider failures may use deterministic fallback for low-risk
+   * planning/classification, but professional work generation must fail clearly
+   * rather than manufacture content.
+   */
+  allowProviderFallback?: boolean;
 }
 
 export interface AIResponse {
@@ -164,6 +194,14 @@ export interface AIResponse {
   fallbackReason?: string;
   /** Sprint 9.1: time from request to response in ms */
   latencyMs?: number;
+  /** Provider timeout configured for this request. */
+  configuredTimeoutMs?: number;
+  /** Provider retry attempts consumed before success/failure. */
+  retryCount?: number;
+  /** Runtime profile used to choose provider timeout/retry policy. */
+  runtimeProfile?: AIRuntimeProfile;
+  /** Machine-readable provider failure kind when fallback or failure occurs. */
+  providerFailureKind?: string;
   /** Sprint 28.7: output mode declared by the caller */
   outputMode: GatewayOutputMode;
   /** Sprint 28.7: response_format value sent to the provider, or null for text mode */

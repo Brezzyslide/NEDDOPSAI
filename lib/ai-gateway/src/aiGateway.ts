@@ -33,6 +33,7 @@ import {
   type ApprovedProvider,
   type AIProviderHealth,
   type GatewayOutputMode,
+  type AIRuntimeProfile,
 } from "./types.js";
 import {
   callOpenAI,
@@ -132,6 +133,20 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   const requestAuditId = randomUUID();
   const startMs = Date.now();
   const retrievedFields = request.retrievedFields ?? [];
+  const runtimeProfile = resolveRuntimeProfile(ctx, request);
+  const fallbackAllowed = resolveProviderFallbackAllowed(request, runtimeProfile);
+
+  // ── Output mode — resolve with backward-compat default ───────────────────
+  // Sprint 28.7: callers must declare outputMode explicitly.
+  // The legacy default is "json" (historic behavior was always json_object).
+  const outputMode: GatewayOutputMode = request.outputMode ?? (() => {
+    console.warn(
+      `[AI Gateway] WARN: outputMode not declared by caller — defaulting to "json". ` +
+      `correlationId=${ctx.correlationId} purpose=${ctx.purpose}. ` +
+      `Set outputMode explicitly on every gateway.process() call.`,
+    );
+    return "json" as GatewayOutputMode;
+  })();
 
   // Validate retrieved fields against purpose allowlist.
   // On denial: write a structured audit event (with denied field paths) THEN re-throw.
@@ -162,20 +177,10 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     phase: "request",
     responseId,
     retrievedFields,
-    outputMode: request.outputMode,
+    outputMode,
+    runtimeProfile,
+    fallbackAllowed,
   });
-
-  // ── Output mode — resolve with backward-compat default ───────────────────
-  // Sprint 28.7: callers must declare outputMode explicitly.
-  // The legacy default is "json" (historic behavior was always json_object).
-  const outputMode: GatewayOutputMode = request.outputMode ?? (() => {
-    console.warn(
-      `[AI Gateway] WARN: outputMode not declared by caller — defaulting to "json". ` +
-      `correlationId=${ctx.correlationId} purpose=${ctx.purpose}. ` +
-      `Set outputMode explicitly on every gateway.process() call.`,
-    );
-    return "json" as GatewayOutputMode;
-  })();
 
   // ── Provider routing ───────────────────────────────────────────────────────
   const configuredProvider = getConfiguredProvider();
@@ -187,20 +192,25 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   let actualModel: string | undefined;
   let actualResponseFormat: string | null = null;
   let actualFinishReason: string | null = null;
+  let configuredTimeoutMs: number | undefined;
+  let retryCount: number | undefined;
+  let providerFailureKind: string | undefined;
 
   if (ctx.provider === "internal" || configuredProvider === "internal") {
     // Internal deterministic routing — no external call
     content = buildInternalResponse(ctx);
   } else if (configuredProvider === "openai") {
-    // OpenAI provider — with automatic fallback to internal on failure
+    // OpenAI provider — fallback only when the caller's runtime profile permits it.
     try {
-      const result = await callOpenAI({ ...request, outputMode });
+      const result = await callOpenAI({ ...request, outputMode, runtimeProfile });
       content = result.content;
       inputTokens = result.inputTokens;
       outputTokens = result.outputTokens;
       actualModel = result.model;
       actualResponseFormat = result.responseFormat;
       actualFinishReason = result.finishReason;
+      configuredTimeoutMs = result.configuredTimeoutMs;
+      retryCount = result.retries;
       recordSuccess({
         organizationId: ctx.organizationId,
         inputTokens: result.inputTokens,
@@ -211,14 +221,51 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
       // Log and fall back to internal
       const errorMsg = err instanceof Error ? err.message : String(err);
       const errorKind = err instanceof OpenAIProviderError ? err.kind : "api_error";
+      providerFailureKind = errorKind;
+      configuredTimeoutMs = err instanceof OpenAIProviderError ? err.timeoutMs : undefined;
+      retryCount = err instanceof OpenAIProviderError ? err.retries : undefined;
       fallbackReason = `OpenAI ${errorKind}: ${errorMsg}`;
-      usedFallback = true;
       recordFailure(ctx.organizationId);
+      if (!fallbackAllowed) {
+        const latencyMs = Date.now() - startMs;
+        await writeGatewayAuditEvent({
+          auditId: randomUUID(),
+          ctx,
+          eventType: "ai_gateway.provider_failure",
+          phase: "response",
+          responseId,
+          retrievedFields,
+          requiresHumanApproval: ctx.requiresHumanApproval,
+          usedFallback: false,
+          fallbackReason,
+          inputTokens,
+          outputTokens,
+          latencyMs,
+          outputMode,
+          runtimeProfile,
+          fallbackAllowed,
+          configuredTimeoutMs,
+          retryCount,
+          providerFailureKind,
+        });
+        console.warn(
+          `[AI Gateway] WARN: OpenAI provider failed — deterministic fallback disabled. ` +
+          `correlationId=${ctx.correlationId} runtimeProfile=${runtimeProfile} ` +
+          `outputMode=${outputMode} reason="${fallbackReason}"`,
+        );
+        const providerFailureCode = errorKind === "timeout" ? "PROVIDER_TIMEOUT" : "PROVIDER_RUNTIME_FAILURE";
+        throw new AIGatewayError(
+          `AI provider ${errorKind} for ${runtimeProfile}: ${fallbackReason}`,
+          providerFailureCode,
+        );
+      }
+      usedFallback = true;
       recordFallback(ctx.organizationId);
       content = buildInternalResponse(ctx);
       console.warn(
         `[AI Gateway] WARN: OpenAI provider failed — using deterministic fallback. ` +
-        `correlationId=${ctx.correlationId} outputMode=${outputMode} reason="${fallbackReason}"`,
+        `correlationId=${ctx.correlationId} runtimeProfile=${runtimeProfile} ` +
+        `outputMode=${outputMode} reason="${fallbackReason}"`,
       );
     }
   } else {
@@ -245,6 +292,10 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     model: actualModel,
     usedFallback,
     fallbackReason,
+    configuredTimeoutMs,
+    retryCount,
+    runtimeProfile,
+    providerFailureKind,
     usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens } : undefined,
     outputMode,
     responseFormat: actualResponseFormat,
@@ -266,9 +317,14 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     outputTokens,
     latencyMs,
     outputMode,
+    runtimeProfile,
+    fallbackAllowed,
     modelUsed: actualModel,
     responseFormat: actualResponseFormat,
     finishReason: actualFinishReason,
+    configuredTimeoutMs,
+    retryCount,
+    providerFailureKind,
   });
 
   return response;
@@ -283,6 +339,24 @@ function buildInternalResponse(ctx: AIGatewayContext): string {
     purpose: ctx.purpose,
     correlationId: ctx.correlationId,
   });
+}
+
+function resolveRuntimeProfile(ctx: AIGatewayContext, request: AIRequest): AIRuntimeProfile {
+  if (request.runtimeProfile) return request.runtimeProfile;
+  if (ctx.purpose === "conversation_intelligence") return "conversation_intelligence";
+  if (ctx.purpose === "work_self_review_revision") return "self_review";
+  return "default";
+}
+
+function resolveProviderFallbackAllowed(request: AIRequest, runtimeProfile: AIRuntimeProfile): boolean {
+  if (typeof request.allowProviderFallback === "boolean") {
+    return request.allowProviderFallback;
+  }
+  return !(
+    runtimeProfile === "professional_execution" ||
+    runtimeProfile === "final_synthesis" ||
+    runtimeProfile === "targeted_repair"
+  );
 }
 
 // ─── Provider config ──────────────────────────────────────────────────────────
@@ -312,9 +386,14 @@ interface GatewayAuditParams {
   latencyMs?: number;
   /** Sprint 28.7 diagnostics */
   outputMode?: GatewayOutputMode;
+  runtimeProfile?: AIRuntimeProfile;
+  fallbackAllowed?: boolean;
   modelUsed?: string;
   responseFormat?: string | null;
   finishReason?: string | null;
+  configuredTimeoutMs?: number;
+  retryCount?: number;
+  providerFailureKind?: string;
 }
 
 /**
@@ -380,9 +459,14 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
       outputTokens: params.outputTokens ?? 0,
       latencyMs: params.latencyMs ?? null,
       outputMode: params.outputMode ?? null,
+      runtimeProfile: params.runtimeProfile ?? null,
+      fallbackAllowed: params.fallbackAllowed ?? null,
       modelUsed: params.modelUsed ?? null,
       responseFormat: params.responseFormat ?? null,
       finishReason: params.finishReason ?? null,
+      configuredTimeoutMs: params.configuredTimeoutMs ?? null,
+      retryCount: params.retryCount ?? null,
+      providerFailureKind: params.providerFailureKind ?? null,
     },
     occurredAt: new Date(),
   }).catch(() => {

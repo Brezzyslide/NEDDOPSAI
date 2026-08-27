@@ -2378,6 +2378,8 @@ export class UnifiedExecutionEngine {
       retrievedFields,
       maxTokens: outputBudget,
       outputMode: "json",
+      runtimeProfile: "professional_execution",
+      allowProviderFallback: false,
     });
 
     if (response.usedFallback || !response.content) {
@@ -2417,6 +2419,10 @@ export class UnifiedExecutionEngine {
         model: response.model ?? null,
         latencyMs: response.latencyMs,
         usedFallback: response.usedFallback,
+        runtimeProfile: response.runtimeProfile ?? null,
+        configuredTimeoutMs: response.configuredTimeoutMs ?? null,
+        retryCount: response.retryCount ?? null,
+        providerFailureKind: response.providerFailureKind ?? null,
         deliverableLength: parsed.content.length,
       },
     };
@@ -2477,6 +2483,8 @@ export class UnifiedExecutionEngine {
       ],
       maxTokens: 6000,
       outputMode: "json",
+      runtimeProfile: "final_synthesis",
+      allowProviderFallback: false,
     });
 
     if (response.usedFallback || !response.content) {
@@ -2525,6 +2533,10 @@ export class UnifiedExecutionEngine {
           model: response.model ?? null,
           latencyMs: response.latencyMs,
           usedFallback: response.usedFallback,
+          runtimeProfile: response.runtimeProfile ?? null,
+          configuredTimeoutMs: response.configuredTimeoutMs ?? null,
+          retryCount: response.retryCount ?? null,
+          providerFailureKind: response.providerFailureKind ?? null,
           deliverableLength: (deliverableContent || parsed.content || input.currentContent).length,
         },
       };
@@ -2575,6 +2587,8 @@ export class UnifiedExecutionEngine {
       ],
       maxTokens: 2500,
       outputMode: "json",
+      runtimeProfile: "targeted_repair",
+      allowProviderFallback: false,
     });
 
     if (response.usedFallback || !response.content) {
@@ -2619,6 +2633,10 @@ export class UnifiedExecutionEngine {
         model: response.model ?? null,
         latencyMs: response.latencyMs,
         usedFallback: response.usedFallback,
+        runtimeProfile: response.runtimeProfile ?? null,
+        configuredTimeoutMs: response.configuredTimeoutMs ?? null,
+        retryCount: response.retryCount ?? null,
+        providerFailureKind: response.providerFailureKind ?? null,
         deliverableLength: content.length,
       },
     };
