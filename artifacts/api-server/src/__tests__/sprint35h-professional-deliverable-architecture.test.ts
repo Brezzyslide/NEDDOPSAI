@@ -81,6 +81,101 @@ function serviceAgreementContract(): BlueprintExecutionContract {
   };
 }
 
+function keywordCandidatesForTest(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9/& -]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 3)
+    .filter((word) => !["contains", "template", "provisions", "professional"].includes(word));
+}
+
+function coveredServiceAgreementMarkdown(options: {
+  omitServicePeriod?: boolean;
+  totalMode?: "line_and_agreement" | "line_only";
+  shallowClauses?: boolean;
+  selfAssertionOnly?: boolean;
+} = {}): string {
+  const headers = [
+    "Support/service",
+    "NDIS support item/code",
+    "Description",
+    "Unit/basis",
+    "Quantity/frequency/hours/weeks",
+    "Unit price/rate",
+    ...(options.omitServicePeriod ? [] : ["Service period"]),
+    options.totalMode === "line_only" ? "Total/Subtotal" : "Subtotal / line total",
+    ...(options.totalMode === "line_only" ? [] : ["Agreement period total amount"]),
+  ];
+  const row = [
+    "[SUPPORT_NAME]",
+    "[SUPPORT_ITEM_CODE]",
+    "[SUPPORT_DESCRIPTION]",
+    "[UNIT_BASIS]",
+    "[QUANTITY_FREQUENCY]",
+    "[UNIT_PRICE]",
+    ...(options.omitServicePeriod ? [] : ["[SERVICE_PERIOD]"]),
+    "[LINE_TOTAL]",
+    ...(options.totalMode === "line_only" ? [] : ["[AGREEMENT_PERIOD_TOTAL]"]),
+  ];
+  const shallow = [
+    "## Delivery of Supports",
+    "Delivery of supports is covered.",
+    "## Provider Responsibilities",
+    "Provider responsibilities are addressed.",
+    "## Participant and Representative Responsibilities",
+    "Participant responsibilities are included.",
+    "## Rights, Privacy, Complaints and Advocacy",
+    options.selfAssertionOnly ? "All rights, privacy, complaints and advocacy clauses are covered." : "Privacy is addressed.",
+    "## Payment, Pricing, GST and Non-NDIS Costs",
+    "Pricing and changes are represented.",
+    "## Cancellation, No-show and Rescheduling",
+    "Cancellation is included.",
+    "## Variation and Change",
+    "Variation is covered.",
+    "## Termination, Exit and Transition",
+    "Termination is addressed.",
+    "## Continuity, Emergency and Disaster",
+    "Continuity and emergency arrangements are represented.",
+  ];
+  const substantive = [
+    "## Delivery of Supports",
+    "The provider must deliver the agreed supports safely, respectfully and within its stated operational capability. The provider will notify the participant of material interruptions, coordinate alternate arrangements where reasonable, and record escalations when delivery risks affect continuity.",
+    "## Provider Responsibilities",
+    "The provider is responsible for safe service delivery, accurate records, clear billing explanations, privacy protection, complaints handling, continuity planning and escalation of critical risks. The provider must not promise supports outside its capability or the agreed Schedule of Supports.",
+    "## Participant and Representative Responsibilities",
+    "The participant or authorised representative must communicate relevant needs, preferences and changes, keep contact and NDIS plan information current, give reasonable notice for cancellations or changes, engage respectfully with workers, and pay agreed non-NDIS expenses where applicable.",
+    "## Rights, Privacy, Complaints and Advocacy",
+    "The participant retains choice, control, privacy, confidentiality and advocacy rights. The provider must explain how feedback, complaints and disputes can be raised, how the provider will respond or escalate the pathway, and that advocacy or complaints will not reduce participant choice.",
+    "## Payment, Pricing, GST and Non-NDIS Costs",
+    "Payment and pricing must follow the agreed schedule and applicable pricing authority where relevant. The clause explains billing, GST or non-NDIS cost treatment, price change notice, participant agreement requirements and how changed prices take effect.",
+    "## Cancellation, No-show and Rescheduling",
+    "The agreement must explain participant cancellation, provider cancellation, no-show and rescheduling notice expectations. It must also describe emergency circumstances, late-notice treatment and how cancelled or changed supports affect billing and scheduling.",
+    "## Variation and Change",
+    "Changes to services, prices, funding, the support schedule or agreement terms require notice, consent where required, an effective date and document-control records. Material variations should be confirmed by signature or equivalent written acceptance.",
+    "## Termination, Exit and Transition",
+    "Termination and exit provisions must explain notice, participant choice, transition support, final invoices, records, handover and final obligations. The provider should support continuity during transition and avoid abrupt exit except where safety or authority requires it.",
+    "## Continuity, Emergency and Disaster",
+    "Continuity, emergency and disaster arrangements must explain temporary disruption, alternate support arrangements, communication responsibilities, escalation steps and post-event review where applicable. The template should make clear which arrangements are activated by the provider and participant.",
+  ];
+
+  return [
+    "# NDIS Service Agreement Template",
+    "## Agreement Parties and Period",
+    "Provider: [PROVIDER_NAME]. ABN: [PROVIDER_ABN]. Participant: [PARTICIPANT_NAME]. Representative authority: [REPRESENTATIVE_AUTHORITY]. Agreement period: [AGREEMENT_PERIOD].",
+    "## NDIS Agreement Purpose and Scope",
+    "This NDIS agreement records the supports the provider agrees to deliver and the participant agrees to receive. The purpose and scope clauses explain included supports, exclusions, service relationship expectations and how the agreement supports participant choice and control.",
+    "## Schedule of Supports",
+    `| ${headers.join(" | ")} |`,
+    `| ${headers.map(() => "---").join(" | ")} |`,
+    `| ${row.join(" | ")} |`,
+    "The provider and participant must review the Schedule of Supports when support items, service periods, quantities, rates or agreement-period totals change.",
+    ...(options.shallowClauses ? shallow : substantive),
+    "## Signatures and Acceptance",
+    "Provider signature: [PROVIDER_SIGNATURE]. Participant/representative signature: [PARTICIPANT_SIGNATURE]. Acceptance date: [DATE].",
+  ].join("\n\n");
+}
+
 describe("Sprint 35H professional operation and deliverable architecture", () => {
   it("resolves standard NDIS Service Agreement creation as CREATE, not REVIEW", () => {
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.";
@@ -329,31 +424,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       blueprint: contract.blueprint,
       blueprintContract: contract,
     });
-    const weakAgreement = [
-      "# NDIS Service Agreement",
-      "## Parties",
-      "Provider and participant details will be recorded, including the provider identity, participant identity, representative authority where applicable, and the agreement period. These fields support a reusable agreement without inventing organisation or participant facts.",
-      "## NDIS Agreement Purpose",
-      "This agreement explains the purpose of the NDIS service relationship and records how the provider and participant agree to work together. It describes the supports at a high level and preserves participant choice and control.",
-      "## Support Schedule",
-      "The agreement includes a support schedule section for agreed supports, but this defective draft does not include the required professional schedule columns. This prose is intentionally long enough to prove the coverage gate catches the omission rather than the earlier incomplete-section guard.",
-      "## Payment and Pricing",
-      "Prices will be charged in line with the agreed terms and applicable pricing authority where relevant. The provider must explain pricing changes, GST or non-NDIS cost treatment, billing responsibilities and participant agreement requirements before changes take effect.",
-      "## Provider Responsibilities",
-      "The provider will deliver supports safely, respectfully and lawfully, keep appropriate records, explain billing, protect privacy, respond to feedback, notify interruptions and escalate critical risks according to the agreement and applicable obligations.",
-      "## Participant Responsibilities",
-      "The participant or representative will communicate relevant needs, preferences and changes, keep contact and plan information current, engage respectfully with workers, give reasonable notice for changes and pay agreed participant expenses where applicable.",
-      "## Privacy and Complaints",
-      "The agreement protects privacy and confidentiality, explains feedback and complaint pathways, preserves advocacy rights and explains how disputes can be raised and responded to without affecting participant choice and control.",
-      "## Cancellation and Changes",
-      "The agreement explains cancellation, no-show and rescheduling notice expectations, including emergency circumstances. It also explains how variations, funding changes, schedule changes and consent/signature controls are handled.",
-      "## Termination",
-      "Either party may end the agreement with notice according to the agreed terms. The agreement must preserve participant choice, transition support, final obligations, final invoices and secure handover where supports end.",
-      "## Continuity and Emergency",
-      "Continuity, emergency and disaster arrangements explain temporary service disruption, alternate support arrangements, communication responsibilities, escalation and review after the event where applicable.",
-      "## Signatures",
-      "Provider and participant or representative signature and acceptance fields are included so the reusable template can be completed once the factual details are known.",
-    ].join("\n\n");
+    const weakAgreement = coveredServiceAgreementMarkdown({ omitServicePeriod: true, totalMode: "line_only" })
+      .replace(/\n\n\| Support\/service \| NDIS support item\/code \| Description \| Unit\/basis \| Quantity\/frequency\/hours\/weeks \| Unit price\/rate \| Total\/Subtotal \|\n\n\| --- \| --- \| --- \| --- \| --- \| --- \| --- \|\n\n\| \[SUPPORT_NAME\] \| \[SUPPORT_ITEM_CODE\] \| \[SUPPORT_DESCRIPTION\] \| \[UNIT_BASIS\] \| \[QUANTITY_FREQUENCY\] \| \[UNIT_PRICE\] \| \[LINE_TOTAL\] \|/m, "\n\nThe agreement includes a support schedule section for agreed supports, but this defective draft does not include the required professional schedule columns. This prose is intentionally long enough to prove the coverage gate catches the omission rather than the earlier incomplete-section guard.");
 
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
     const failures = validateDeliverableRequirementCoverage(weakAgreement, profile);
@@ -368,9 +440,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "support-total-field",
     ]));
     expect(report.mandatoryRequirementCount).toBe(20);
-    expect(report.satisfiedCount).toBe(14);
-    expect(report.missingCount).toBe(6);
-    expect(report.coveragePercentage).toBe(70);
+    expect(report.satisfiedCount).toBe(12);
+    expect(report.missingCount).toBe(8);
+    expect(report.coveragePercentage).toBe(60);
     expect(report.missing.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
       "support-item-code-field",
       "support-unit-basis-field",
@@ -458,18 +530,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       blueprint: contract.blueprint,
       blueprintContract: contract,
     });
-    const agreementMissingOneField = [
-      "# NDIS Service Agreement Template",
-      "Provider, participant, representative authority and agreement period are recorded as factual fields.",
-      "This NDIS agreement describes the purpose and scope of supports and the service relationship.",
-      "## Schedule of Supports",
-      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
-      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
-      "Delivery obligations, provider responsibilities, participant responsibilities, rights, privacy, complaints and advocacy are drafted.",
-      "Payment, pricing, GST, price change, cancellation, no-show, notice, variation, consent, termination, exit, transition, continuity, emergency and disaster clauses are included.",
-      "Signature and acceptance fields are present.",
-    ].join("\n\n");
+    const agreementMissingOneField = coveredServiceAgreementMarkdown({ omitServicePeriod: true });
 
     const report = evaluateDeliverableRequirementCoverage(
       agreementMissingOneField,
@@ -498,30 +559,19 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       blueprintContract: contract,
     });
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
-    const missingServicePeriod = [
-      "# NDIS Service Agreement Template",
-      "Provider, participant, representative authority and agreement period are recorded as factual fields.",
-      "This NDIS agreement describes the purpose and scope of supports and the service relationship.",
-      "## Schedule of Supports",
-      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
-      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
-      "Delivery obligations, provider responsibilities, participant responsibilities, rights, privacy, complaints and advocacy are drafted.",
-      "Payment, pricing, GST, price change, cancellation, no-show, notice, variation, consent, termination, exit, transition, continuity, emergency and disaster clauses are included.",
-      "Signature and acceptance fields are present.",
-    ].join("\n\n");
+    const missingServicePeriod = coveredServiceAgreementMarkdown({ omitServicePeriod: true });
     const repaired = missingServicePeriod
       .replace(
-        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Subtotal / estimated total | Agreement total amount |",
-        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency | Unit price/rate | Service period | Subtotal / estimated total | Agreement total amount |",
+        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency/hours/weeks | Unit price/rate | Subtotal / line total | Agreement period total amount |",
+        "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency/hours/weeks | Unit price/rate | Service period | Subtotal / line total | Agreement period total amount |",
       )
       .replace(
         "| --- | --- | --- | --- | --- | --- | --- | --- |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
       )
       .replace(
-        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
-        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [SERVICE_PERIOD] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
+        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [LINE_TOTAL] | [AGREEMENT_PERIOD_TOTAL] |",
+        "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [SERVICE_PERIOD] | [LINE_TOTAL] | [AGREEMENT_PERIOD_TOTAL] |",
       );
 
     const before = evaluateDeliverableRequirementCoverage(missingServicePeriod, profile);
@@ -530,7 +580,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(before.missing.map((failure) => failure.requirementId)).toEqual(["support-service-period-field"]);
     expect(after.missing).toEqual([]);
     expect(after.satisfiedCount).toBe(20);
-    expect(repaired).toContain("Provider, participant, representative authority and agreement period");
+    expect(repaired).toContain("Provider: [PROVIDER_NAME]");
+    expect(repaired).toContain("Participant: [PARTICIPANT_NAME]");
     expect((repaired.match(/Service period/g) ?? [])).toHaveLength(1);
   });
 
@@ -604,6 +655,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(runner).toContain("repairedRequirementIds");
     expect(runner).toContain("disableAutoRevision: true");
     expect(runner).toContain("Targeted requirement repair");
+    expect(runner).toContain("actual_location");
+    expect(runner).toContain("structural_result");
+    expect(runner).toContain("substantive_result");
+    expect(runner).toContain("failure_reason");
     expect(runner).toContain("Repair only the missing requirement IDs listed above");
     expect(review).toContain("disableAutoRevision");
   });
@@ -624,38 +679,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       blueprint: contract.blueprint,
       blueprintContract: contract,
     });
-    const coveredAgreement = [
-      "# NDIS Service Agreement Template",
-      "## Agreement Parties and Period",
-      "Provider: [PROVIDER_NAME]. ABN: [PROVIDER_ABN]. Participant: [PARTICIPANT_NAME]. Representative authority: [REPRESENTATIVE_DETAILS]. Agreement period: [AGREEMENT_PERIOD].",
-      "## NDIS Agreement Purpose and Scope",
-      "This agreement records the NDIS supports the provider agrees to deliver and the participant agrees to receive. The scope explains included supports, exclusions and how agreed services relate to the participant's NDIS plan.",
-      "## Schedule of Supports",
-      "| Support/service | NDIS support item/code | Description | Unit/basis | Quantity/frequency/hours/weeks | Unit price/rate | Service period | Subtotal / estimated total | Agreement total amount |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
-      "| [SUPPORT_NAME] | [SUPPORT_ITEM_CODE] | [SUPPORT_DESCRIPTION] | [UNIT_BASIS] | [QUANTITY_FREQUENCY] | [UNIT_PRICE] | [SERVICE_PERIOD] | [ESTIMATED_TOTAL] | [AGREEMENT_TOTAL] |",
-      "The provider and participant must review this schedule when supports, service periods, quantities or prices change.",
-      "## Delivery of Supports",
-      "The provider is responsible for delivering agreed supports safely, respectfully and within the provider's operational capability. The provider must notify the participant of material interruptions and coordinate replacement or alternative arrangements where appropriate.",
-      "## Provider Responsibilities",
-      "The provider will deliver supports with dignity and respect, keep appropriate records, explain billing, maintain privacy, respond to feedback and escalate critical risks.",
-      "## Participant and Representative Responsibilities",
-      "The participant or representative will share relevant needs and preferences, keep contact and plan information current, give reasonable notice of changes and pay any agreed non-NDIS expenses.",
-      "## Rights, Privacy, Complaints and Advocacy",
-      "The participant has rights to choice, control, privacy, confidentiality, complaints, feedback, disputes and advocacy. The provider must explain complaints pathways and protect participant information.",
-      "## Payment, Pricing, GST and Non-NDIS Costs",
-      "Payment and pricing will follow the agreed schedule, applicable pricing authority where relevant, GST or non-NDIS cost terms, and a clear price change notice and participant agreement process.",
-      "## Cancellation, No-show and Rescheduling",
-      "The agreement explains participant cancellation, provider cancellation, no-show and rescheduling notice expectations, including emergency circumstances.",
-      "## Variation and Change",
-      "Changes to services, prices, funding or the support schedule require notice, consent where required, an effective date and document-control records.",
-      "## Termination, Exit and Transition",
-      "Termination and exit provisions explain notice, transition support, participant choice, final invoices, records and continuity obligations.",
-      "## Continuity, Emergency and Disaster",
-      "Continuity, emergency and disaster arrangements explain temporary disruption, alternate support arrangements, communication and post-event review where applicable.",
-      "## Signatures and Acceptance",
-      "Provider signature: [SIGNATURE]. Participant/representative signature: [SIGNATURE]. Date: [DATE].",
-    ].join("\n\n");
+    const coveredAgreement = coveredServiceAgreementMarkdown();
 
     const failures = validateDeliverableRequirementCoverage(
       coveredAgreement,
@@ -663,6 +687,158 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     );
 
     expect(failures).toEqual([]);
+  });
+
+  it("rejects keyword-only factual fields, collapsed totals and self-asserted clause coverage", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const report = evaluateDeliverableRequirementCoverage(coveredServiceAgreementMarkdown({
+      totalMode: "line_only",
+      shallowClauses: true,
+      selfAssertionOnly: true,
+    }), profile);
+    const byId = new Map(report.requirementResults.map((item) => [item.requirementId, item]));
+
+    expect(byId.get("support-unit-price-field")).toMatchObject({
+      structuralResult: "STRUCTURE_PASS",
+      finalResult: "SATISFIED",
+      actualLocation: expect.stringContaining("Unit price/rate"),
+    });
+    expect(byId.get("support-total-field")).toMatchObject({
+      structuralResult: "STRUCTURE_PARTIAL",
+      finalResult: "PARTIAL",
+      failureReason: expect.stringContaining("line subtotal from agreement-period"),
+    });
+    expect(byId.get("rights-privacy-complaints-advocacy")).toMatchObject({
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "SUBSTANTIVE_FAIL",
+      finalResult: "PARTIAL",
+    });
+    expect(report.missing.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
+      "support-total-field",
+      "rights-privacy-complaints-advocacy",
+      "provider-responsibilities",
+    ]));
+  });
+
+  it("does not let pricing prose satisfy a required Unit Price / Rate structure", () => {
+    const profile = {
+      deliverableType: "XLSX_PRICING_TEMPLATE",
+      operation: "CREATE" as const,
+      standardisation: "standard_reusable" as const,
+      requirements: [
+        {
+          id: "unit-price-column",
+          description: "Template contains a unit price/rate field.",
+          classification: "FACTUAL_FIELD" as const,
+          professionalRationale: "Structured outputs must preserve pricing fields.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Worksheet column for Unit Price / Rate",
+          coverageRules: [{ allOf: ["unit", "price"] }, { allOf: ["rate"] }],
+        },
+      ],
+    };
+
+    const proseOnly = evaluateDeliverableRequirementCoverage(
+      "## Pricing\n\nPricing will be reviewed before each service starts.",
+      profile,
+    );
+    const structured = evaluateDeliverableRequirementCoverage(
+      "| Support | Unit Price / Rate |\n| --- | --- |\n| [SUPPORT] | [PRICE] |",
+      profile,
+    );
+
+    expect(proseOnly.missing[0]).toMatchObject({
+      requirementId: "unit-price-column",
+      structuralResult: "STRUCTURE_FAIL",
+      finalResult: "NOT_SATISFIED",
+    });
+    expect(structured.missing).toEqual([]);
+  });
+
+  it("applies structural and substantive coverage rules across representative professional outputs", () => {
+    const cases = [
+      {
+        name: "Care Plan",
+        requirement: "Care plan contains participant goals, support domains and review/sign-off provisions.",
+        representation: "Substantive care plan goals, support domains and review provisions",
+        good: "## Care Plan Goals and Supports\n\nThe participant goals, support domains, daily living preferences and communication needs must be recorded with provider responsibilities, escalation pathways, review dates, consent and sign-off provisions so the plan can be used safely.",
+        bad: "## Care Plan Goals and Supports\n\nAll care plan areas are covered.",
+        rules: ["participant", "goals", "support"],
+      },
+      {
+        name: "Risk Assessment",
+        requirement: "Risk assessment contains hazard, likelihood, consequence, controls and residual rating columns.",
+        representation: "Risk matrix table with required risk fields",
+        good: "| Hazard | Likelihood | Consequence | Controls | Residual rating |\n| --- | --- | --- | --- | --- |\n| [HAZARD] | [LIKELIHOOD] | [CONSEQUENCE] | [CONTROLS] | [RATING] |",
+        bad: "## Risk Assessment\n\nLikelihood and consequence are addressed in the risk approach.",
+        factual: true,
+        columns: ["hazard", "likelihood", "consequence", "controls", "residual rating"],
+      },
+      {
+        name: "Restrictive Practice",
+        requirement: "Restrictive practice template contains authorisation, consent, monitoring and reduction provisions.",
+        representation: "Substantive restrictive practice authorisation and monitoring provisions",
+        good: "## Restrictive Practice Authorisation and Monitoring\n\nThe template must record authorisation status, consent, monitoring responsibilities, review dates, reporting expectations and reduction or elimination actions. The provider must escalate expired or missing authority before implementation.",
+        bad: "## Restrictive Practice\n\nAuthorisation and monitoring are included.",
+        rules: ["authorisation", "monitoring", "consent"],
+      },
+      {
+        name: "Incident Investigation",
+        requirement: "Incident investigation contains incident details, chronology, immediate response, findings and corrective actions.",
+        representation: "Substantive incident investigation report provisions",
+        good: "## Incident Investigation Findings and Actions\n\nThe report must record incident details, chronology, immediate response, evidence reviewed, findings, participant impact, corrective actions, action owners, due dates and escalation or notification requirements where applicable.",
+        bad: "## Incident Investigation\n\nFindings and actions are covered.",
+        rules: ["incident", "findings", "actions"],
+      },
+      {
+        name: "Policy",
+        requirement: "Policy contains purpose, scope, responsibilities, procedure, review and approval controls.",
+        representation: "Substantive policy clauses and governance controls",
+        good: "## Policy Purpose, Scope and Controls\n\nThe policy must define purpose, scope, provider responsibilities, participant safeguards, operating procedure, exceptions, records, review cycle and approval controls so staff know what must happen and when escalation is required.",
+        bad: "## Policy\n\nPurpose, scope and responsibilities are addressed.",
+        rules: ["purpose", "scope", "responsibilities"],
+      },
+      {
+        name: "XLSX",
+        requirement: "Workbook contains action owner, due date and status columns.",
+        representation: "Worksheet columns for action owner, due date and status",
+        good: "| Action owner | Due date | Status |\n| --- | --- | --- |\n| [OWNER] | [DATE] | [STATUS] |",
+        bad: "## Workbook\n\nAction owners, due dates and status are discussed.",
+        factual: true,
+        columns: ["action owner", "due date", "status"],
+      },
+    ];
+
+    for (const entry of cases) {
+      const profile = {
+        deliverableType: entry.name.toUpperCase().replace(/\s+/g, "_"),
+        operation: "CREATE" as const,
+        standardisation: "standard_reusable" as const,
+        requirements: [
+          {
+            id: `${entry.name.toLowerCase().replace(/\s+/g, "-")}-requirement`,
+            description: entry.requirement,
+            classification: entry.factual ? "FACTUAL_FIELD" as const : "MUST_BE_REPRESENTED" as const,
+            professionalRationale: "Representative generic professional output must be validated by requirement type.",
+            evidenceAuthority: [],
+            requiredDeliverableRepresentation: entry.representation,
+            coverageRules: [{ allOf: entry.columns ?? entry.rules ?? keywordCandidatesForTest(entry.requirement).slice(0, 3) }],
+          },
+        ],
+      };
+
+      expect(evaluateDeliverableRequirementCoverage(entry.good, profile).missing).toEqual([]);
+      expect(evaluateDeliverableRequirementCoverage(entry.bad, profile).missing[0]).toMatchObject({
+        finalResult: expect.stringMatching(/PARTIAL|NOT_SATISFIED/),
+      });
+    }
   });
 
   it("does not require participant evidence for standard reusable Care Plan templates", () => {

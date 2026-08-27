@@ -337,6 +337,34 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(classifyCanonicalConversationAction("Who is working on it?")).toBe("STATUS_QUERY");
   });
 
+  it("routes update-style follow-ups to authoritative task status instead of proposal creation", () => {
+    const updatePhrases = [
+      "update",
+      "give me an update",
+      "what's happening",
+      "where are we up to",
+      "progress",
+      "latest",
+      "how is it going",
+      "what's the current position",
+      "where is this work at",
+    ];
+
+    for (const phrase of updatePhrases) {
+      const intent = classifyCanonicalConversationAction(phrase);
+      const resolved = resolveConversationReference({
+        text: phrase,
+        intent,
+        focus: focus(serviceDeliveryTask.id),
+        activeTasks: [serviceDeliveryTask],
+      });
+
+      expect(intent).toBe("STATUS_QUERY");
+      expect(resolved.resolvedTaskId).toBe(serviceDeliveryTask.id);
+      expect(resolved.requiresClarification).toBe(false);
+    }
+  });
+
   it("detects assistant confirmation copy as requiring a bound pending action", () => {
     expect(responseRequestsTaskConfirmation("Please confirm to proceed.")).toBe(true);
     expect(responseRequestsTaskConfirmation("Would you like me to create the task and proceed?")).toBe(true);
@@ -527,7 +555,7 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     const src = readFileSync(resolve(process.cwd(), "src/services/conversationService.ts"), "utf8");
     const canonicalIdx = src.indexOf("resolveCanonicalConversationRoles");
     const assignIdx = src.indexOf("understanding.relatedWorkforceRoles = canonicalRoles.roles");
-    const authoritativeIdx = src.indexOf("buildAuthoritativeTaskProposalPresentation(understanding)");
+    const authoritativeIdx = src.indexOf("buildAuthoritativeTaskProposalPresentation(understanding, text)");
     const cardIdx = src.indexOf("structuredContent = buildTaskProposalCard(understanding)");
 
     expect(canonicalIdx).toBeGreaterThan(0);

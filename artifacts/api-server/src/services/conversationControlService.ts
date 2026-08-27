@@ -148,7 +148,9 @@ const APPROVE_PATTERNS = [
 const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don'?t proceed|not approved)\.?$/i];
 const ETA_STATUS_PATTERN = /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i;
 const STATUS_PATTERNS = [
-  /\b(where are we|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me)\b/i,
+  /\b(where are we|where are we up to|where is this work at|where is it up to|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me|give me an update|any update|latest)\b/i,
+  /^(update|progress|latest)$/i,
+  /\b(what'?s happening|what is happening|what'?s happening with this task|how is it going|what'?s the current position|what is the current position)\b/i,
   /\bwhat task are we working on\b/i,
   /\bwhich task are we working on\b/i,
   /\bwhat are we working on\b/i,

@@ -39,7 +39,43 @@ export interface DeliverableRequirementCoverageFailure {
   classification: DeliverableRequirementClassification;
   sourceBlueprintSection?: string;
   requiredDeliverableRepresentation: string;
+  expectedRepresentation?: string;
+  actualLocation?: string | null;
+  structuralResult?: RequirementStructuralResult;
+  substantiveResult?: RequirementSubstantiveResult;
+  finalResult?: RequirementFinalResult;
   reason: string;
+}
+
+export type RequirementStructuralResult =
+  | "STRUCTURE_PASS"
+  | "STRUCTURE_PARTIAL"
+  | "STRUCTURE_FAIL"
+  | "NOT_APPLICABLE";
+
+export type RequirementSubstantiveResult =
+  | "SUBSTANTIVE_PASS"
+  | "SUBSTANTIVE_PARTIAL"
+  | "SUBSTANTIVE_FAIL"
+  | "NOT_APPLICABLE";
+
+export type RequirementFinalResult =
+  | "SATISFIED"
+  | "PARTIAL"
+  | "NOT_SATISFIED"
+  | "NOT_APPLICABLE";
+
+export interface DeliverableRequirementCoverageItem {
+  requirementId: string;
+  requirement: string;
+  classification: DeliverableRequirementClassification;
+  sourceBlueprintSection?: string;
+  expectedRepresentation: string;
+  actualLocation: string | null;
+  structuralResult: RequirementStructuralResult;
+  substantiveResult: RequirementSubstantiveResult;
+  finalResult: RequirementFinalResult;
+  failureReason: string | null;
 }
 
 export type RequirementCoverageStatus =
@@ -91,6 +127,7 @@ export interface DeliverableRequirementCoverageReport {
   coveragePercentage: number;
   classificationCounts: Record<DeliverableRequirementClassification, number>;
   plan: RequirementToDeliverablePlanItem[];
+  requirementResults: DeliverableRequirementCoverageItem[];
   missing: DeliverableRequirementCoverageFailure[];
 }
 
@@ -204,32 +241,45 @@ export function evaluateDeliverableRequirementCoverage(
 ): DeliverableRequirementCoverageReport {
   const failures: DeliverableRequirementCoverageFailure[] = [];
   const normalisedContent = normaliseContent(contentMarkdown);
+  const structure = parseMarkdownStructure(contentMarkdown);
   const plan = buildRequirementToDeliverablePlan(profile);
+  const schema = buildDeliverableOutputSchema(profile);
   const classificationCounts = Object.fromEntries(
     COVERAGE_CLASSIFICATIONS.map((classification) => [classification, 0]),
   ) as Record<DeliverableRequirementClassification, number>;
+  const requirementResults: DeliverableRequirementCoverageItem[] = [];
   let satisfiedCount = 0;
 
   for (const requirement of profile.requirements) {
     classificationCounts[requirement.classification] += 1;
     const planItem = plan.find((item) => item.requirementId === requirement.id);
     if (!isBlockingRequirement(requirement.classification)) continue;
-    const passed = requirement.coverageRules.length > 0
-      ? requirement.coverageRules.some((rule) => coverageRuleMatches(normalisedContent, rule))
-      : coverageRuleMatches(normalisedContent, { allOf: keywordCandidates(requirement.description) });
-    if (passed) {
+    const result = validateRequirementAgainstContent({
+      requirement,
+      normalisedContent,
+      structure,
+      schema,
+    });
+    requirementResults.push(result);
+    if (result.finalResult === "SATISFIED") {
       satisfiedCount += 1;
       if (planItem) planItem.status = "satisfied";
       continue;
     }
 
+    if (planItem) planItem.status = "missing";
     failures.push({
       requirementId: requirement.id,
       requirement: requirement.description,
       classification: requirement.classification,
       sourceBlueprintSection: requirement.sourceBlueprintSection,
       requiredDeliverableRepresentation: requirement.requiredDeliverableRepresentation,
-      reason: "Required professional substance is not represented in the user-facing deliverable.",
+      expectedRepresentation: result.expectedRepresentation,
+      actualLocation: result.actualLocation,
+      structuralResult: result.structuralResult,
+      substantiveResult: result.substantiveResult,
+      finalResult: result.finalResult,
+      reason: result.failureReason ?? "Required professional substance is not represented in the user-facing deliverable.",
     });
   }
 
@@ -250,6 +300,7 @@ export function evaluateDeliverableRequirementCoverage(
       : Math.round((satisfiedCount / mandatoryRequirementCount) * 1000) / 10,
     classificationCounts,
     plan,
+    requirementResults,
     missing: failures,
   };
 }
@@ -342,7 +393,7 @@ function serviceAgreementRequirements(contract?: BlueprintExecutionContract | nu
     req("support-quantity-frequency-field", "Schedule of Supports contains quantity, hours, weeks or frequency.", "FACTUAL_FIELD", section("SCHEDULE_OF_SUPPORTS_RECONCILIATION"), "Schedule column for quantity/frequency", [["quantity"], ["frequency"], ["hours"], ["weeks"]]),
     req("support-unit-price-field", "Schedule of Supports contains unit price or rate.", "FACTUAL_FIELD", section("PRICING_AND_ADJUSTMENTS_REVIEW"), "Schedule column for unit price/rate", [["unit", "price"], ["rate"]]),
     req("support-service-period-field", "Schedule of Supports contains applicable service period.", "FACTUAL_FIELD", section("HISTORICAL_PRICING_AND_EFFECTIVE_PERIOD"), "Schedule column for service period", [["service period"]]),
-    req("support-total-field", "Schedule of Supports contains subtotal, estimated total or agreement-period total structure.", "FACTUAL_FIELD", section("SCHEDULE_OF_SUPPORTS_RECONCILIATION"), "Schedule total/subtotal field", [["subtotal"], ["estimated", "total"], ["agreement", "total"], ["total", "amount"]]),
+    req("support-total-field", "Schedule of Supports contains line subtotal and distinct agreement-period total structure.", "FACTUAL_FIELD", section("SCHEDULE_OF_SUPPORTS_RECONCILIATION"), "Schedule line total/subtotal and agreement-period total fields", [["subtotal"], ["estimated", "total"], ["agreement", "total"], ["total", "amount"]]),
     req("delivery-obligations", "Delivery obligations and operational responsibilities are drafted without overpromising unsupported services.", "MUST_BE_REPRESENTED", section("DELIVERY_OF_SUPPORTS_AND_OPERATIONAL_CAPABILITY"), "Delivery of supports clause", [["delivery", "support"], ["provider", "responsib"]]),
     req("provider-responsibilities", "Provider responsibilities are drafted across service delivery, privacy, records, billing, complaints, continuity and escalation.", "MUST_BE_REPRESENTED", section("PROVIDER_RESPONSIBILITIES_REVIEW"), "Provider responsibilities clause", [["provider", "responsib"]]),
     req("participant-responsibilities", "Participant or representative responsibilities are drafted without transferring provider obligations.", "MUST_BE_REPRESENTED", section("PARTICIPANT_REPRESENTATIVE_RESPONSIBILITIES_REVIEW"), "Participant/representative responsibilities clause", [["participant", "responsib"], ["representative"]]),
@@ -455,6 +506,617 @@ function deriveFieldLabel(requirement: RequirementToDeliverablePlanItem): string
   return titleCase(requirement.requirementId.replace(/-/g, " "));
 }
 
+interface MarkdownSection {
+  title: string;
+  normalisedTitle: string;
+  content: string;
+  startLine: number;
+}
+
+interface MarkdownTable {
+  sectionTitle: string | null;
+  headers: string[];
+  normalisedHeaders: string[];
+  startLine: number;
+}
+
+interface MarkdownStructure {
+  sections: MarkdownSection[];
+  tables: MarkdownTable[];
+  labelledLines: Array<{ label: string; normalisedLabel: string; line: number }>;
+}
+
+function validateRequirementAgainstContent(input: {
+  requirement: DeliverableRequirement;
+  normalisedContent: string;
+  structure: MarkdownStructure;
+  schema: DeliverableOutputSchema;
+}): DeliverableRequirementCoverageItem {
+  const { requirement } = input;
+  if (requirement.classification === "FACTUAL_FIELD") {
+    return validateFactualFieldRequirement(input);
+  }
+  if (requirement.classification === "MUST_BE_REPRESENTED" || requirement.classification === "CONDITIONAL") {
+    return validateRepresentedRequirement(input);
+  }
+
+  return coverageItem(requirement, {
+    actualLocation: null,
+    structuralResult: "NOT_APPLICABLE",
+    substantiveResult: "NOT_APPLICABLE",
+    finalResult: "NOT_APPLICABLE",
+    failureReason: null,
+  });
+}
+
+function validateFactualFieldRequirement(input: {
+  requirement: DeliverableRequirement;
+  normalisedContent: string;
+  structure: MarkdownStructure;
+  schema: DeliverableOutputSchema;
+}): DeliverableRequirementCoverageItem {
+  const { requirement, structure, schema } = input;
+  const schemaField = findSchemaField(schema, requirement.id);
+  const expected = requirement.requiredDeliverableRepresentation;
+
+  if (requirement.id === "service-agreement-parties") {
+    const labels = ["provider", "participant", "representative authority", "agreement period"];
+    const missing = labels.filter((label) => !hasLabelledField(structure, label));
+    return coverageItem(requirement, missing.length === 0
+      ? {
+          actualLocation: `labelled fields: ${labels.join(", ")}`,
+          structuralResult: "STRUCTURE_PASS",
+          substantiveResult: "NOT_APPLICABLE",
+          finalResult: "SATISFIED",
+          failureReason: null,
+        }
+      : {
+          actualLocation: null,
+          structuralResult: missing.length < labels.length ? "STRUCTURE_PARTIAL" : "STRUCTURE_FAIL",
+          substantiveResult: "NOT_APPLICABLE",
+          finalResult: missing.length < labels.length ? "PARTIAL" : "NOT_SATISFIED",
+          failureReason: `Missing structured agreement party field(s): ${missing.join(", ")}.`,
+        });
+  }
+
+  if (requirement.id === "support-total-field") {
+    const table = findScheduleTable(structure);
+    const lineTotal = table ? table.normalisedHeaders.some((header) =>
+      /\b(subtotal|line total|line item total|item total)\b/.test(header),
+    ) : false;
+    const agreementTotal = table ? table.normalisedHeaders.some((header) =>
+      /\b(agreement period total|agreement total|estimated total cost|total estimated cost|total amount)\b/.test(header),
+    ) : false;
+    if (lineTotal && agreementTotal && table) {
+      return coverageItem(requirement, {
+        actualLocation: tableLocation(table, "line total/subtotal + agreement-period total"),
+        structuralResult: "STRUCTURE_PASS",
+        substantiveResult: "NOT_APPLICABLE",
+        finalResult: "SATISFIED",
+        failureReason: null,
+      });
+    }
+    return coverageItem(requirement, {
+      actualLocation: table ? tableLocation(table, "partial total fields") : null,
+      structuralResult: lineTotal || agreementTotal ? "STRUCTURE_PARTIAL" : "STRUCTURE_FAIL",
+      substantiveResult: "NOT_APPLICABLE",
+      finalResult: lineTotal || agreementTotal ? "PARTIAL" : "NOT_SATISFIED",
+      failureReason: "Schedule total structure must distinguish line subtotal from agreement-period or estimated agreement total.",
+    });
+  }
+
+  if (isTableOrColumnRequirement(requirement)) {
+    const table = expected.toLowerCase().includes("schedule")
+      ? findScheduleTable(structure)
+      : isPluralColumnRequirement(requirement)
+        ? structure.tables[0] ?? null
+      : findTableWithHeader(structure, requirement);
+    if (table && isPluralColumnRequirement(requirement)) {
+      const missing = requiredColumnTerms(requirement).filter((term) =>
+        !table.normalisedHeaders.some((header) => header.includes(normaliseContent(term))),
+      );
+      return coverageItem(requirement, missing.length === 0
+        ? {
+            actualLocation: tableLocation(table, `columns: ${table.headers.join(", ")}`),
+            structuralResult: "STRUCTURE_PASS",
+            substantiveResult: "NOT_APPLICABLE",
+            finalResult: "SATISFIED",
+            failureReason: null,
+          }
+        : {
+            actualLocation: tableLocation(table, `missing columns: ${missing.join(", ")}`),
+            structuralResult: missing.length < requiredColumnTerms(requirement).length ? "STRUCTURE_PARTIAL" : "STRUCTURE_FAIL",
+            substantiveResult: "NOT_APPLICABLE",
+            finalResult: missing.length < requiredColumnTerms(requirement).length ? "PARTIAL" : "NOT_SATISFIED",
+            failureReason: `Required structured column(s) are missing: ${missing.join(", ")}.`,
+          });
+    }
+    const header = table ? findMatchingHeader(table, requirement, schemaField?.fieldLabel) : null;
+    if (table && header) {
+      return coverageItem(requirement, {
+        actualLocation: tableLocation(table, header),
+        structuralResult: "STRUCTURE_PASS",
+        substantiveResult: "NOT_APPLICABLE",
+        finalResult: "SATISFIED",
+        failureReason: null,
+      });
+    }
+    return coverageItem(requirement, {
+      actualLocation: table ? tableLocation(table, "table present, required column missing") : null,
+      structuralResult: table ? "STRUCTURE_PARTIAL" : "STRUCTURE_FAIL",
+      substantiveResult: "NOT_APPLICABLE",
+      finalResult: table ? "PARTIAL" : "NOT_SATISFIED",
+      failureReason: table
+        ? `Required structured column is missing from the target table: ${schemaField?.fieldLabel ?? expected}.`
+        : `Required target table or structured field is missing: ${expected}.`,
+    });
+  }
+
+  const label = findLabelledField(structure, requirement, schemaField?.fieldLabel);
+  if (label) {
+    return coverageItem(requirement, {
+      actualLocation: `label "${label.label}" on line ${label.line}`,
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "NOT_APPLICABLE",
+      finalResult: "SATISFIED",
+      failureReason: null,
+    });
+  }
+
+  return coverageItem(requirement, {
+    actualLocation: null,
+    structuralResult: "STRUCTURE_FAIL",
+    substantiveResult: "NOT_APPLICABLE",
+    finalResult: "NOT_SATISFIED",
+    failureReason: `Required factual field is not present as a table column, labelled field or equivalent structure: ${expected}.`,
+  });
+}
+
+function validateRepresentedRequirement(input: {
+  requirement: DeliverableRequirement;
+  normalisedContent: string;
+  structure: MarkdownStructure;
+  schema: DeliverableOutputSchema;
+}): DeliverableRequirementCoverageItem {
+  const { requirement, normalisedContent, structure } = input;
+  if (requirement.id === "support-schedule-table") {
+    const table = findScheduleTable(structure);
+    return coverageItem(requirement, table
+      ? {
+          actualLocation: tableLocation(table, "Schedule of Supports"),
+          structuralResult: "STRUCTURE_PASS",
+          substantiveResult: "SUBSTANTIVE_PASS",
+          finalResult: "SATISFIED",
+          failureReason: null,
+        }
+      : {
+          actualLocation: null,
+          structuralResult: "STRUCTURE_FAIL",
+          substantiveResult: "SUBSTANTIVE_FAIL",
+          finalResult: "NOT_SATISFIED",
+          failureReason: "Schedule of Supports is not present as a table or equivalent structured schedule.",
+        });
+  }
+
+  const relevant = findRelevantSectionContent(structure, requirement);
+  const keywordMatch = requirement.coverageRules.length > 0
+    ? requirement.coverageRules.some((rule) => coverageRuleMatches(normalisedContent, rule))
+    : coverageRuleMatches(normalisedContent, { allOf: keywordCandidates(requirement.description) });
+  if (!relevant) {
+    return coverageItem(requirement, {
+      actualLocation: null,
+      structuralResult: "STRUCTURE_FAIL",
+      substantiveResult: "SUBSTANTIVE_FAIL",
+      finalResult: "NOT_SATISFIED",
+      failureReason: "No relevant user-facing section or representation was found for the requirement.",
+    });
+  }
+
+  const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content);
+  const finalResult = substantive.passed && keywordMatch
+    ? "SATISFIED"
+    : substantive.partial || keywordMatch
+      ? "PARTIAL"
+      : "NOT_SATISFIED";
+
+  return coverageItem(requirement, {
+    actualLocation: relevant.location,
+    structuralResult: "STRUCTURE_PASS",
+    substantiveResult: substantive.passed
+      ? "SUBSTANTIVE_PASS"
+      : substantive.partial
+        ? "SUBSTANTIVE_PARTIAL"
+        : "SUBSTANTIVE_FAIL",
+    finalResult,
+    failureReason: finalResult === "SATISFIED"
+      ? null
+      : substantive.reason ?? "Relevant section exists but does not materially address the professional requirement.",
+  });
+}
+
+function coverageItem(
+  requirement: DeliverableRequirement,
+  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "sourceBlueprintSection" | "expectedRepresentation">,
+): DeliverableRequirementCoverageItem {
+  return {
+    requirementId: requirement.id,
+    requirement: requirement.description,
+    classification: requirement.classification,
+    sourceBlueprintSection: requirement.sourceBlueprintSection,
+    expectedRepresentation: requirement.requiredDeliverableRepresentation,
+    ...result,
+  };
+}
+
+function parseMarkdownStructure(markdown: string): MarkdownStructure {
+  const lines = markdown.split(/\r?\n/);
+  const sections: MarkdownSection[] = [];
+  const tables: MarkdownTable[] = [];
+  const labelledLines: MarkdownStructure["labelledLines"] = [];
+  let current: MarkdownSection = {
+    title: "Document",
+    normalisedTitle: "document",
+    content: "",
+    startLine: 1,
+  };
+
+  const commitSection = () => {
+    if (current.content.trim() || current.title !== "Document") {
+      sections.push({ ...current, content: current.content.trim() });
+    }
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      commitSection();
+      current = {
+        title: heading[2]!.trim(),
+        normalisedTitle: normaliseContent(heading[2]!.trim()),
+        content: "",
+        startLine: index + 1,
+      };
+      continue;
+    }
+
+    current.content += `${line}\n`;
+
+    if (line.includes("|") && !isMarkdownSeparatorLine(line)) {
+      const nextNonBlank = lines.slice(index + 1, index + 4).find((candidate) => candidate.trim().length > 0) ?? "";
+      const headers = parseTableCells(line);
+      const hasSeparator = isMarkdownSeparatorLine(nextNonBlank);
+      if (headers.length > 1 && (hasSeparator || looksLikeSchemaHeader(headers))) {
+        tables.push({
+          sectionTitle: current.title === "Document" ? null : current.title,
+          headers,
+          normalisedHeaders: headers.map(normaliseContent),
+          startLine: index + 1,
+        });
+      }
+    }
+
+    const labelMatch = /^\s*(?:[-*]\s*)?([A-Za-z][A-Za-z0-9 /&()_-]{1,80})\s*[:[]/.exec(line);
+    if (labelMatch) {
+      const label = labelMatch[1]!.trim();
+      labelledLines.push({ label, normalisedLabel: normaliseContent(label), line: index + 1 });
+    }
+    for (const match of line.matchAll(/(?:^|[.|]\s+|\s{2,})([A-Za-z][A-Za-z0-9 /&()_-]{1,80})\s*:/g)) {
+      const label = match[1]?.trim();
+      if (!label) continue;
+      const normalisedLabel = normaliseContent(label);
+      if (labelledLines.some((existing) => existing.line === index + 1 && existing.normalisedLabel === normalisedLabel)) continue;
+      labelledLines.push({ label, normalisedLabel, line: index + 1 });
+    }
+  }
+  commitSection();
+  return { sections, tables, labelledLines };
+}
+
+function isMarkdownSeparatorLine(line: string): boolean {
+  return /^\s*\|?[\s:-]+\|[\s|:-]*$/.test(line);
+}
+
+function looksLikeSchemaHeader(headers: string[]): boolean {
+  if (headers.length < 2) return false;
+  return headers.some((header) => /\b(id|code|name|description|unit|price|rate|quantity|frequency|period|total|status|rating|date|owner|action)\b/i.test(header));
+}
+
+function parseTableCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+}
+
+function findScheduleTable(structure: MarkdownStructure): MarkdownTable | null {
+  const scheduleTables = structure.tables
+    .map((table) => ({
+      table,
+      score: [
+        table.sectionTitle && /schedule.*support|support.*schedule/i.test(table.sectionTitle) ? 4 : 0,
+        table.normalisedHeaders.some((header) => /\bsupport\b/.test(header)) ? 2 : 0,
+        table.normalisedHeaders.some((header) => /\bitem\b|\bcode\b/.test(header)) ? 2 : 0,
+        table.normalisedHeaders.some((header) => /\bquantity\b|\bfrequency\b|\bhours\b|\bweeks\b/.test(header)) ? 2 : 0,
+        table.normalisedHeaders.some((header) => /\bunit\b|\bprice\b|\brate\b/.test(header)) ? 2 : 0,
+      ].reduce((sum, value) => sum + value, 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return scheduleTables[0]?.score && scheduleTables[0].score >= 4 ? scheduleTables[0].table : null;
+}
+
+function findTableWithHeader(structure: MarkdownStructure, requirement: DeliverableRequirement): MarkdownTable | null {
+  return structure.tables.find((table) => !!findMatchingHeader(table, requirement)) ?? null;
+}
+
+function findMatchingHeader(
+  table: MarkdownTable,
+  requirement: DeliverableRequirement,
+  fieldLabel?: string,
+): string | null {
+  const preferred = preferredHeaderRules(requirement.id);
+  if (preferred.length > 0) {
+    for (let index = 0; index < table.normalisedHeaders.length; index += 1) {
+      const header = table.normalisedHeaders[index]!;
+      if (preferred.some((rule) => ruleTermsMatchSameStructure(header, { allOf: rule }))) {
+        return table.headers[index]!;
+      }
+    }
+    return null;
+  }
+
+  const candidates = [
+    ...(fieldLabel ? [fieldLabel] : []),
+    ...requirement.coverageRules.flatMap((rule) => [rule.allOf?.join(" "), ...(rule.anyOf ?? [])].filter((value): value is string => Boolean(value))),
+    requirement.requiredDeliverableRepresentation.replace(/^Schedule column for\s+/i, ""),
+  ].map(normaliseContent).filter(Boolean);
+
+  for (let index = 0; index < table.normalisedHeaders.length; index += 1) {
+    const header = table.normalisedHeaders[index]!;
+    if (candidates.some((candidate) => header.includes(candidate) || candidate.includes(header))) {
+      return table.headers[index]!;
+    }
+    if (requirement.coverageRules.some((rule) => ruleTermsMatchSameStructure(header, rule))) {
+      return table.headers[index]!;
+    }
+  }
+  return null;
+}
+
+function preferredHeaderRules(requirementId: string): string[][] {
+  const rules: Record<string, string[][]> = {
+    "support-item-code-field": [["support", "item", "code"], ["ndis", "code"], ["item", "code"]],
+    "support-description-field": [["description"]],
+    "support-unit-basis-field": [["unit", "basis"], ["unit"], ["basis"]],
+    "support-quantity-frequency-field": [["quantity", "frequency"], ["quantity"], ["frequency"], ["hours"], ["weeks"]],
+    "support-unit-price-field": [["unit", "price"], ["unit", "rate"], ["price"], ["rate"]],
+    "support-service-period-field": [["service", "period"]],
+  };
+  return rules[requirementId] ?? [];
+}
+
+function findSchemaField(schema: DeliverableOutputSchema, requirementId: string): DeliverableOutputSchemaField | null {
+  for (const group of schema.groups) {
+    const field = group.fields.find((candidate) => candidate.requirementId === requirementId);
+    if (field) return field;
+  }
+  return null;
+}
+
+function isTableOrColumnRequirement(requirement: DeliverableRequirement): boolean {
+  const representation = requirement.requiredDeliverableRepresentation.toLowerCase();
+  return /\b(table|column|worksheet|spreadsheet|schedule)\b/.test(representation);
+}
+
+function isPluralColumnRequirement(requirement: DeliverableRequirement): boolean {
+  return /\b(columns|fields)\b/i.test(requirement.requiredDeliverableRepresentation)
+    && requiredColumnTerms(requirement).length > 1;
+}
+
+function requiredColumnTerms(requirement: DeliverableRequirement): string[] {
+  const ruleTerms = requirement.coverageRules.flatMap((rule) => rule.allOf ?? []);
+  if (ruleTerms.length > 1) return ruleTerms;
+  return keywordCandidates(requirement.description);
+}
+
+function hasLabelledField(structure: MarkdownStructure, label: string): boolean {
+  const normalisedLabel = normaliseContent(label);
+  return structure.labelledLines.some((line) =>
+    line.normalisedLabel.includes(normalisedLabel) || normalisedLabel.includes(line.normalisedLabel),
+  );
+}
+
+function findLabelledField(
+  structure: MarkdownStructure,
+  requirement: DeliverableRequirement,
+  fieldLabel?: string,
+): MarkdownStructure["labelledLines"][number] | null {
+  const candidates = [
+    fieldLabel,
+    requirement.requiredDeliverableRepresentation.replace(/\b(field|block|column|worksheet|schedule)\b/gi, ""),
+    ...requirement.coverageRules.flatMap((rule) => [rule.allOf?.join(" "), ...(rule.anyOf ?? [])]),
+  ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map(normaliseContent);
+
+  return structure.labelledLines.find((line) =>
+    candidates.some((candidate) => line.normalisedLabel.includes(candidate) || candidate.includes(line.normalisedLabel)),
+  ) ?? null;
+}
+
+function tableLocation(table: MarkdownTable, detail: string): string {
+  return `${table.sectionTitle ?? "table"} line ${table.startLine}: ${detail}`;
+}
+
+function findRelevantSectionContent(
+  structure: MarkdownStructure,
+  requirement: DeliverableRequirement,
+): { content: string; location: string } | null {
+  const candidates = [
+    requirement.requiredDeliverableRepresentation,
+    requirement.description,
+    ...requirement.coverageRules.flatMap((rule) => [...(rule.allOf ?? []), ...(rule.anyOf ?? [])]),
+  ].flatMap((value) => keywordCandidates(value).concat([normaliseContent(value)]))
+    .map(normaliseContent)
+    .filter((value) => value.length > 0);
+
+  const scored = structure.sections
+    .map((section) => {
+      const normalisedBody = normaliseContent(section.content);
+      const titleScore = candidates.filter((candidate) =>
+        section.normalisedTitle.includes(candidate) || candidate.includes(section.normalisedTitle),
+      ).length * 5;
+      const bodyScore = candidates.filter((candidate) => normalisedBody.includes(candidate)).length;
+      return { section, score: titleScore + bodyScore };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0]?.section;
+  if (!best) return null;
+  return {
+    content: best.content,
+    location: `${best.title} section line ${best.startLine}`,
+  };
+}
+
+function evaluateSubstantiveClauseContent(
+  requirement: DeliverableRequirement,
+  content: string,
+): { passed: boolean; partial: boolean; reason: string | null } {
+  const cleaned = stripSelfAssertionCoverage(content);
+  const words = normaliseContent(cleaned).split(/\s+/).filter(Boolean);
+  if (words.length < 18) {
+    return {
+      passed: false,
+      partial: words.length >= 8,
+      reason: "Relevant section is too thin to prove substantive professional coverage.",
+    };
+  }
+
+  const normalised = normaliseContent(cleaned);
+  const operativeCount = [
+    "must",
+    "will",
+    "may",
+    "responsible",
+    "notice",
+    "consent",
+    "review",
+    "record",
+    "respond",
+    "escalat",
+    "process",
+    "pathway",
+    "participant",
+    "provider",
+    "require",
+  ].filter((term) => normalised.includes(term)).length;
+  const domain = domainSufficiency(requirement.id, normalised);
+  const keywordRulesPass = requirement.coverageRules.length === 0
+    ? true
+    : requirement.coverageRules.some((rule) => coverageRuleMatches(normalised, rule));
+
+  if (keywordRulesPass && operativeCount >= 2 && domain.passed) {
+    return { passed: true, partial: false, reason: null };
+  }
+  return {
+    passed: false,
+    partial: keywordRulesPass || domain.partial || operativeCount >= 2,
+    reason: domain.reason ?? "Section exists but lacks enough operative professional content for the requirement.",
+  };
+}
+
+function domainSufficiency(requirementId: string, normalised: string): { passed: boolean; partial: boolean; reason: string | null } {
+  const includesAny = (terms: string[]) => terms.some((term) => normalised.includes(normaliseContent(term)));
+  const countTerms = (terms: string[]) => terms.filter((term) => normalised.includes(normaliseContent(term))).length;
+  const checks: Record<string, { core: string[]; support: string[]; minSupport: number; reason: string }> = {
+    "service-agreement-basis": {
+      core: ["ndis", "agreement"],
+      support: ["purpose", "scope", "supports", "service relationship", "participant choice"],
+      minSupport: 2,
+      reason: "Agreement basis must explain NDIS purpose, scope and service relationship, not only name the agreement.",
+    },
+    "delivery-obligations": {
+      core: ["deliver", "support"],
+      support: ["safe", "respect", "operational capability", "interruption", "alternate", "notify"],
+      minSupport: 2,
+      reason: "Delivery clause must state operational delivery duties and interruption handling.",
+    },
+    "provider-responsibilities": {
+      core: ["provider", "responsib"],
+      support: ["records", "billing", "privacy", "complaint", "continuity", "escalat", "safe"],
+      minSupport: 3,
+      reason: "Provider responsibilities must cover multiple concrete duty areas.",
+    },
+    "participant-responsibilities": {
+      core: ["participant"],
+      support: ["representative", "notice", "communicate", "pay", "expenses", "information", "changes"],
+      minSupport: 3,
+      reason: "Participant responsibilities must state concrete participant or representative duties.",
+    },
+    "rights-privacy-complaints-advocacy": {
+      core: ["privacy", "complaint"],
+      support: ["rights", "confidentiality", "advocacy", "dispute", "pathway", "respond", "choice"],
+      minSupport: 4,
+      reason: "Rights/privacy/complaints clause must include usable complaint, dispute or advocacy treatment.",
+    },
+    "pricing-payment-adjustments": {
+      core: ["payment", "pricing"],
+      support: ["gst", "non ndis", "price change", "notice", "billing", "agreement", "authority"],
+      minSupport: 3,
+      reason: "Pricing clause must cover payment, changes and cost treatment.",
+    },
+    "cancellation-no-show": {
+      core: ["cancellation", "notice"],
+      support: ["no show", "rescheduling", "emergency", "provider cancellation", "participant cancellation"],
+      minSupport: 2,
+      reason: "Cancellation clause must cover notice plus no-show/rescheduling or emergency treatment.",
+    },
+    "variation-amendment": {
+      core: ["variation", "change"],
+      support: ["consent", "signature", "effective date", "notice", "record"],
+      minSupport: 2,
+      reason: "Variation clause must cover controlled change, consent and record/signature handling.",
+    },
+    "termination-transition": {
+      core: ["termination", "transition"],
+      support: ["exit", "notice", "participant choice", "final invoice", "handover", "records"],
+      minSupport: 3,
+      reason: "Termination clause must cover exit, transition and final obligations.",
+    },
+    "continuity-emergency-disaster": {
+      core: ["continuity", "emergency"],
+      support: ["disaster", "temporary disruption", "alternate", "communication", "review", "escalation"],
+      minSupport: 2,
+      reason: "Continuity clause must cover disruption, alternate arrangements and communication/escalation.",
+    },
+  };
+  const check = checks[requirementId];
+  if (!check) return { passed: true, partial: false, reason: null };
+  const corePass = check.core.every((term) => normalised.includes(normaliseContent(term)));
+  const supportCount = countTerms(check.support);
+  return {
+    passed: corePass && supportCount >= check.minSupport,
+    partial: includesAny(check.core) || supportCount > 0,
+    reason: corePass && supportCount >= check.minSupport ? null : check.reason,
+  };
+}
+
+function stripSelfAssertionCoverage(content: string): string {
+  return content
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => {
+      const normalised = normaliseContent(sentence);
+      if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) return false;
+      if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && normalised.split(/\s+/).length <= 14) return false;
+      if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && normalised.split(/\s+/).length <= 12) return false;
+      return true;
+    })
+    .join(" ");
+}
+
 function titleCase(value: string): string {
   return value
     .replace(/[_-]+/g, " ")
@@ -468,6 +1130,14 @@ function coverageRuleMatches(normalisedContent: string, rule: DeliverableCoverag
   const anyOf = rule.anyOf ?? [];
   const allPassed = allOf.every((term) => normalisedContent.includes(normaliseContent(term)));
   const anyPassed = anyOf.length === 0 || anyOf.some((term) => normalisedContent.includes(normaliseContent(term)));
+  return allPassed && anyPassed;
+}
+
+function ruleTermsMatchSameStructure(normalisedStructure: string, rule: DeliverableCoverageRule): boolean {
+  const allOf = rule.allOf ?? [];
+  const anyOf = rule.anyOf ?? [];
+  const allPassed = allOf.every((term) => normalisedStructure.includes(normaliseContent(term)));
+  const anyPassed = anyOf.length === 0 || anyOf.some((term) => normalisedStructure.includes(normaliseContent(term)));
   return allPassed && anyPassed;
 }
 

@@ -130,6 +130,26 @@ function isCurrentTaskQuestion(text: string): boolean {
 function formatStatusResponse(task: { title: string; currentState: string; metadata?: Record<string, unknown> | null }, text: string): string {
   const label = taskStateLabel(task.currentState);
   const failure = extractFailureMessage(task);
+  const metadata = taskMetadataRecord(task.metadata);
+  const approvalGate = metadataObject(metadata.approvalGate);
+  const executionCompletion = metadataObject(metadata.executionCompletion);
+  const completedWorkId = typeof approvalGate?.completedWorkId === "string"
+    ? approvalGate.completedWorkId
+    : typeof executionCompletion?.completedWorkId === "string"
+      ? executionCompletion.completedWorkId
+      : null;
+  const completedWorkStatus = typeof approvalGate?.completedWorkStatus === "string"
+    ? approvalGate.completedWorkStatus
+    : typeof executionCompletion?.completedWorkStatus === "string"
+      ? executionCompletion.completedWorkStatus
+      : null;
+  if (task.currentState === "awaiting_approval" && completedWorkId) {
+    const approvalSurface = "Open the Workroom, Approvals or Completed Work portal to review and approve it.";
+    if (completedWorkStatus === "awaiting_approval" || completedWorkStatus === null) {
+      return `The work for "${task.title}" has been completed and is awaiting approval. ${approvalSurface}`;
+    }
+    return `The task "${task.title}" is awaiting approval. The linked Completed Work is currently ${taskStateLabel(completedWorkStatus)}. ${approvalSurface}`;
+  }
   if (isStartedStatusQuestion(text)) {
     if (hasExecutionStarted(task) && task.currentState === "failed") {
       return `Yes. The specialist started work on "${task.title}", but it later failed${failure ? `: ${failure}` : "."}`;

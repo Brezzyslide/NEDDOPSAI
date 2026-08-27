@@ -140,12 +140,13 @@ const REJECTION_PATTERNS = [
 
 // Status request patterns
 const STATUS_PATTERNS = [
-  /\b(what('s| is) (happening|the status|going on|the progress|next)|where are we|how is it going|update me|any update|what are you waiting for|is it done|has it)\b/i,
+  /\b(what('s| is) (happening|the status|going on|the progress|next)|where are we|where are we up to|where is this work at|how is it going|update me|give me an update|any update|what are you waiting for|is it done|has it|latest|current position)\b/i,
   /\bwhat task are we working on\b/i,
   /\bwhich task are we working on\b/i,
   /\bwhat are we working on\b/i,
   /\bwho('s| is)? working on (it|this|that|the task|this work)\b/i,
-  /\b(status|progress|update|what's next)\b/i,
+  /^(status|progress|update|latest)$/i,
+  /\b(status|progress|what's next)\b/i,
   /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i,
   /\b(why (is|was|are|has it|did it)|what (went wrong|failed|happened|caused))\b/i,
   /\b(did it|has it been|is it|was it) (complet|done|finish|approv|start|run|fail|cancel|reject|approv)/i,
@@ -618,7 +619,7 @@ function buildStatusResponse(ctx: MessageContext): string {
     draft: `The task "${currentTaskTitle}" has been drafted. The Chief of Staff is reviewing the scope.`,
     queued: `The task "${currentTaskTitle}" is queued and will begin shortly.`,
     planning: `I am currently preparing the work plan for "${currentTaskTitle}".`,
-    awaiting_approval: `The task "${currentTaskTitle}" is waiting for your approval before the workforce can proceed.`,
+    awaiting_approval: `The work for "${currentTaskTitle}" is awaiting approval. Review the Workroom, Approvals or Completed Work surface for the concrete approval action.`,
     approved: `The task "${currentTaskTitle}" has been approved and is ready to begin execution.`,
     executing: `The task "${currentTaskTitle}" is currently being worked on by your AI workforce.`,
     completed: `The task "${currentTaskTitle}" has been completed. You can review the outputs above.`,
