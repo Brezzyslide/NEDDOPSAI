@@ -399,6 +399,7 @@ function classifyStandardisation(userRequest: string, operation: ProfessionalOpe
   if (isStandardReusableRequest(text) && !isExplicitParticipantSpecificRequest(text)) return "standard_reusable";
   if (isExplicitParticipantSpecificRequest(text)) return "participant_specific";
   if (/\b(our organisation|tailor|customise|customize|adapt|company|blaze)\b/.test(text) || operation === "TAILOR") return "organisation_tailored";
+  if (operation === "CREATE" && isReusableWorkProductRequest(text)) return "standard_reusable";
   if (isStandardReusableRequest(text)) return "standard_reusable";
   return "general";
 }
@@ -420,6 +421,11 @@ export function deriveRequestedDeliverableType(
 
 function isStandardReusableRequest(text: string): boolean {
   return /\b(standard|template|reusable|generic)\b/.test(text);
+}
+
+function isReusableWorkProductRequest(text: string): boolean {
+  return /\b(checklist|template|form|policy|procedure|plan|assessment|report|framework|agreement)\b/.test(text) &&
+    !/\b(this|the|our|existing|current|uploaded|attached)\s+(checklist|template|form|policy|procedure|plan|assessment|report|framework|agreement)\b/.test(text);
 }
 
 function isExplicitParticipantSpecificRequest(text: string): boolean {

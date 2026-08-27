@@ -29,6 +29,7 @@ import {
 import type { EvidencePack } from "./knowledgeResolutionService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
+import type { StandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,10 @@ export interface ValidationResult {
   clarificationMessage: string;
 }
 
+export interface WorkPackageValidationOptions {
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
@@ -112,6 +117,7 @@ export function validateWorkPackage(
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
   evidencePack?: EvidencePack | null,
+  options: WorkPackageValidationOptions = {},
 ): ValidationResult {
   const evidenceSearched = evidencePack != null;
 
@@ -182,12 +188,12 @@ export function validateWorkPackage(
 
   // ── Run blueprint validation rules ────────────────────────────────────────
   for (const rule of blueprint.validationRules) {
-    if (isParticipantSpecificEvidenceRule(rule.rule) && isStandardReusableTemplateManifest(manifest)) {
+    if (isStandardReusableTemplateRule(rule.rule, manifest, options.standardTemplateEvidence)) {
       issues.push({
         rule: rule.rule,
         level: "info",
-        message: `${rule.description} Not required for a standard reusable template request.`,
-        details: ["Participant-specific evidence is required only for participant-specific completion/review work."],
+        message: `${rule.description} Not required for a standard reusable professional deliverable request.`,
+        details: ["Organisation/person-specific evidence changes tailoring, but is not the sole authority for standard reusable professional work."],
       });
       continue;
     }
@@ -464,6 +470,20 @@ function isParticipantSpecificEvidenceRule(rule: string): boolean {
 function isStandardReusableTemplateManifest(manifest: WorkPackageManifest): boolean {
   return manifest.selectionMetadata?.deliverableStandardisation === "standard_reusable" ||
     /^STANDARD_REUSABLE_/.test(String(manifest.selectionMetadata?.requestedDeliverableType ?? ""));
+}
+
+function isStandardReusableTemplateRule(
+  rule: string,
+  manifest: WorkPackageManifest,
+  context?: StandardTemplateEvidenceContext | null,
+): boolean {
+  if (!(context?.customerExampleOptional === true || isStandardReusableTemplateManifest(manifest))) return false;
+  return isParticipantSpecificEvidenceRule(rule) || [
+    "template_present",
+    "staff_context_present",
+    "related_policy_present",
+    "policy_present",
+  ].includes(rule);
 }
 
 // ─── Clarification message builder ────────────────────────────────────────────

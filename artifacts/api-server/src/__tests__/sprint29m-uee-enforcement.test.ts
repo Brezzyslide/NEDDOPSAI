@@ -28,6 +28,7 @@ import { randomUUID } from "crypto";
 const {
   mockDbSelect,
   mockDbInsert,
+  mockMakeDbInsertChain,
   mockSelectBlueprint,
   mockAssembleWorkPackage,
   mockValidateWorkPackage,
@@ -52,11 +53,19 @@ const {
   mockLoadSpecialistContext,
 } = vi.hoisted(() => {
   const mockDbSelect = vi.fn();
-  const mockDbInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+  const insertResult = () => {
+    const valuesResult = Object.assign(Promise.resolve(undefined), {
+      onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+      onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+    });
+    return { values: vi.fn().mockReturnValue(valuesResult) };
+  };
+  const mockDbInsert = vi.fn().mockReturnValue(insertResult());
 
   return {
     mockDbSelect,
     mockDbInsert,
+    mockMakeDbInsertChain:          insertResult,
     mockSelectBlueprint:           vi.fn(),
     mockAssembleWorkPackage:       vi.fn(),
     mockValidateWorkPackage:       vi.fn(),
@@ -101,6 +110,13 @@ vi.mock("@workspace/db", () => {
       update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
     },
     specialistRunsTable:             { id: "id", organizationId: "organization_id", createdAt: "created_at" },
+    executionSessionsTable:          { id: "id", taskId: "task_id", organizationId: "organization_id" },
+    executionEventsTable:            { id: "id", taskId: "task_id", organizationId: "organization_id" },
+    completedWorkVersionsTable:      { id: "id", completedWorkId: "completed_work_id", organizationId: "organization_id" },
+    completedWorkEvidenceSnapshotsTable: {
+      id: "id", completedWorkId: "completed_work_id", organizationId: "organization_id",
+    },
+    completedWorkEvidenceLinksTable: { id: "id", completedWorkId: "completed_work_id", organizationId: "organization_id" },
     taskExecutionPlansTable:         { taskId: "task_id", organizationId: "organization_id", createdAt: "created_at" },
     workPackageManifestsTable:       { id: "id", taskId: "task_id", organizationId: "organization_id" },
     knowledgeChunksTable:            { id: "id", organizationId: "organization_id" },
@@ -144,7 +160,12 @@ vi.mock("../lib/workforceRegistry.js", () => ({
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint:  mockSelectBlueprint,
   resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
-  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({ blueprint, sections: [], template: null, mode: null })),
+  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({
+    blueprint,
+    sections: blueprint?.sections ?? [],
+    template: null,
+    mode: null,
+  })),
   getBlueprintById: vi.fn(),
 }));
 
@@ -250,7 +271,7 @@ function makePlan(primarySpecialist = "operations_manager") {
     createdAt:      new Date(),
     planData: {
       primarySpecialist,
-      intent:        "review_policy",
+      intent:        "policy.create",
       confidence:    0.92,
       blueprintCode: "policy_review",
       steps:         ["Analyse", "Report"],
@@ -263,9 +284,14 @@ function makeManifest(primarySpecialist = "operations_manager") {
     id:                         randomUUID(),
     manifestId:                 randomUUID(),
     executionId:                EXEC_ID,
+    canonicalIntent:            "policy.create",
+    blueprintFamily:            "policy_governance",
+    blueprintMode:              "create",
+    blueprintId:                "policy_review",
+    blueprintVersion:           "1.0",
     primarySpecialist,
     workforceRoleCode:          primarySpecialist,
-    systemInstruction:          "Review the policy.",
+    systemInstruction:          "Create the policy.",
     outputSpec:                 { format: "report" },
     cosMemories:                [],
     organisationLibrarySources: [],
@@ -273,8 +299,8 @@ function makeManifest(primarySpecialist = "operations_manager") {
     librarySource:              [],
     memories:                   [],
     entityKnowledge:            {},
-    title:                      "Policy Review",
-    userRequest:                "Review the leave policy for compliance gaps.",
+    title:                      "Staff Leave Policy",
+    userRequest:                "Create a staff leave policy.",
     outputTypes:                ["report"],
     requiredLibraryKnowledge:   [],
     mandatoryCitations:         [],
@@ -448,7 +474,7 @@ function makeRequest(overrides: Record<string, unknown> = {}) {
     organisationId: ORG_ID,
     requesterId:    USER_ID,
     requesterRole:  "administrator",
-    userRequest:    "Review our leave policy for compliance gaps.",
+    userRequest:    "Create a staff leave policy.",
     taskId:         TASK_ID,
     correlationId:  randomUUID(),
     ...overrides,
@@ -492,6 +518,24 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
       outputTypes:              blueprintEvidenceMode === "required" ? ["incident_report"] : ["report"],
       requiredLibraryKnowledge: [],
       mandatoryCitations:       blueprintEvidenceMode === "required" ? ["NDIS Practice Standards"] : [],
+      sections:                 [{
+        id: "section-policy-review",
+        blueprintId: "blueprint-policy-review",
+        sectionCode: "COMPLIANCE_REVIEW_FINDINGS",
+        title: "Compliance Review Findings",
+        description: "Compliance evidence, gaps, risk, recommendations, responsibilities and approval actions.",
+        instructions: "Summarise compliance evidence, risks, recommendations and responsibilities.",
+        required: false,
+        minimumContentExpectation: "A substantive policy review finding must be present.",
+        evidenceRequirements: {},
+        allowedSourceTypes: [],
+        prohibitedAssumptions: [],
+        validationRules: [],
+        qualityCriteria: [],
+        sortOrder: 10,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }],
       successCriteria:          [],
       status:                   "active" as const,
       organizationId:           null,
@@ -505,6 +549,28 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
 
   mockAssembleWorkPackage.mockResolvedValue({ manifest: makeManifest("operations_manager") });
   mockValidateWorkPackage.mockReturnValue({ passed: true, missingItems: [], issues: [], summary: "OK" });
+  const policyContent = [
+    "# Staff Leave Policy",
+    "",
+    "## Purpose",
+    "The purpose of this policy is to explain how staff leave is requested, assessed, recorded and approved. It will give employees and managers a clear process, require consistent records, and support escalation where leave issues affect service delivery.",
+    "",
+    "## Scope",
+    "The scope of this policy applies to employees, managers and people leaders involved in leave planning, leave requests, leave records and return-to-work coordination. It will define who is responsible for each step and when matters require escalation.",
+    "",
+    "## Policy Statement",
+    "The policy statement is that the organisation will manage leave fairly, consistently and in line with applicable workplace obligations, operational requirements and approved employment records. Managers must respond to requests, record decisions, and review impacts before approval is finalised.",
+    "",
+    "## Responsibilities",
+    "Responsibilities are shared. Employees are responsible for submitting timely leave requests and providing required information. Managers are responsible for reviewing requests, recording decisions, notifying payroll or rostering where required, and escalating unusual issues through the agreed process.",
+    "",
+    "## Procedure or Implementation Requirements",
+    "Procedure and implementation requirements must record the leave type, dates, approval status, operational impact, payroll handoff and any follow-up actions before the leave period starts where practicable. The responsible manager must review the record, notify affected teams, and escalate unresolved conflicts.",
+    "",
+    "## Review and Approval",
+    "The policy owner will review this policy periodically, document changes, communicate updates and retain approval records. Any change must identify the responsible approver, the effective date, the records to update, and the process for notifying staff.",
+  ].join("\n");
+
   mockGatewayProcess.mockResolvedValue({
     content: JSON.stringify({
       summary: "Policy reviewed.",
@@ -515,6 +581,10 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
       unresolvedQuestions: [],
       requestedExternalActions: [],
       expectedOutputs: [],
+      deliverable: {
+        content: policyContent,
+        requirementCoverage: [],
+      },
       confidence: 0.9,
       completedAt: new Date().toISOString(),
     }),
@@ -522,7 +592,7 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
   });
   mockReviewDraft.mockResolvedValue({
     passed: true, overallScore: 83, dimensions: [], qualityScore: 83,
-    finalContent: "# Policy Review\n\nContent here.",
+    finalContent: policyContent,
   });
   mockCreateDraft.mockResolvedValue({
     id: DRAFT_ID,
@@ -538,7 +608,7 @@ describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_PROVIDER = "openai";
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(mockMakeDbInsertChain());
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     // Reset session mocks to return an object (not undefined)
     mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
@@ -625,7 +695,7 @@ describe("B — UEE approval override (laneContext.requiresApproval=true blocks 
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_PROVIDER = "openai";
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(mockMakeDbInsertChain());
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
     mockCloseSession.mockReturnValue({ sessionId: "sess-001" });
@@ -693,7 +763,7 @@ describe("C — PROFESSIONAL_WORK lane: evidence gate does not fire (best-effort
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.AI_PROVIDER = "openai";
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(mockMakeDbInsertChain());
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
     mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
     mockCloseSession.mockReturnValue({ sessionId: "sess-001" });

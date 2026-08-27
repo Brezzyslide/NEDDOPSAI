@@ -1295,6 +1295,7 @@ export class UnifiedExecutionEngine {
         blueprint,
         requiredExternalAuthorityTypes: [],
         minimumRequiredAuthorityLevel:  undefined,
+        standardTemplateEvidence,
       });
 
       discoveryObservability.initialSufficiencyStatus = sufficiency.status;
@@ -1409,7 +1410,9 @@ export class UnifiedExecutionEngine {
 
     await progress("validating");
     const t4 = Date.now();
-    const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined);
+    const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined, {
+      standardTemplateEvidence,
+    });
     tValidationMs = Date.now() - t4;
 
     updateManifestObservability(manifest.id, {

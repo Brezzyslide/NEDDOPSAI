@@ -91,6 +91,8 @@ export interface SufficiencyEvaluationInput {
    * Defaults to "supporting" (any level is acceptable).
    */
   minimumRequiredAuthorityLevel?: "mandatory" | "primary" | "supporting" | "reference";
+  /** Standard reusable work may proceed without organisation-specific Library context. */
+  standardTemplateEvidence?: { customerExampleOptional?: boolean } | null;
 }
 
 // ─── Thresholds ───────────────────────────────────────────────────────────────
@@ -180,6 +182,7 @@ function isReferenceResolved(
  */
 const EXTERNAL_AUTHORITY_SIGNALS: ReadonlyArray<{ pattern: RegExp; authorityType: string }> = [
   { pattern: /\b(?:legislation|statutory\s+(?:duty|requirement|obligation)|legal\s+requirement|act\s+of\s+parliament|acts?\s+of\s+parliament)\b/i, authorityType: "legislation" },
+  { pattern: /\b(?:employment|workplace|privacy|safety|health\s+and\s+safety|disability|ndis)\s+law\b/i, authorityType: "legislation" },
   { pattern: /\bregulation[s]?\b/i, authorityType: "regulation" },
   { pattern: /\bregulat(?:ory|or)\s+requirement[s]?\b/i, authorityType: "regulation" },
   { pattern: /\b(?:fca|financial\s+conduct\s+authority)\b/i, authorityType: "regulator" },
@@ -291,8 +294,24 @@ export function evaluateEvidenceSufficiency(
   const unresolvedReferences: UnresolvedReference[] = [];
   const missingAuthorityTypes: string[] = [];
 
+  const signalledAuthorityTypes = detectExternalAuthorityRequirements(userRequest, blueprint);
+  const allRequiredExternalTypes = [...new Set([...signalledAuthorityTypes, ...requiredExternalAuthorityTypes])];
+
   // ── 1. Empty pack ──────────────────────────────────────────────────────────
   if (evidencePack.totalChunks === 0) {
+    if (input.standardTemplateEvidence?.customerExampleOptional === true && allRequiredExternalTypes.length === 0) {
+      return {
+        status: "SUFFICIENT",
+        reasons: [{
+          code: "STANDARD_REUSABLE_NO_ORG_CONTEXT",
+          detail: "No organisation-specific evidence was retrieved, but customer examples/templates are optional for this standard reusable professional deliverable.",
+        }],
+        unresolvedReferences: [],
+        missingAuthorityTypes: [],
+        coverageScore: 0.25,
+        isEscalationRecommended: false,
+      };
+    }
     return {
       status: "SOURCE_NOT_AVAILABLE",
       reasons: [{ code: "NO_CHUNKS", detail: "No evidence chunks were retrieved from the Library." }],
@@ -332,8 +351,6 @@ export function evaluateEvidenceSufficiency(
   }
 
   // ── 3. External authority requirement ─────────────────────────────────────
-  const signalledAuthorityTypes = detectExternalAuthorityRequirements(userRequest, blueprint);
-  const allRequiredExternalTypes = [...new Set([...signalledAuthorityTypes, ...requiredExternalAuthorityTypes])];
   const presentExternalTypes = getExternalAuthorityTypesInPack(evidencePack.chunks);
 
   for (const required of allRequiredExternalTypes) {

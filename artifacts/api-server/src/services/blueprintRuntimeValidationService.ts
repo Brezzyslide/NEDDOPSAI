@@ -84,7 +84,7 @@ export function classifyStandardTemplateEvidenceContext(
   const lower = raw.toLowerCase();
 
   const templateIntent = /\b(template|form|checklist|framework|standard\s+(?:document|agreement|assessment)|reusable|generic|general|standard|comprehensive|all\s+(?:relevant|areas)|everything)\b/i.test(raw);
-  const creationIntent = /\b(create|design|develop|draft|build|prepare|make|generate)\b/i.test(raw);
+  const creationIntent = /\b(create|design|develop|draft|build|prepare|make|generate|produce|provide|give\s+me|i\s+need|can\s+you\s+give\s+me)\b/i.test(raw);
   const existingTemplateRequested = /\b(match|mirror|use|follow|based\s+on|same\s+as)\s+(?:our|my|existing|current|uploaded|attached|organisation(?:al)?|company|customer)\s+(?:template|format|example|document|agreement|style)\b/i.test(raw)
     || /\b(existing|current|uploaded|attached)\s+(?:template|format|example|agreement|risk\s+assessment)\b/i.test(raw);
 
