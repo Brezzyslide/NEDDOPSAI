@@ -111,13 +111,13 @@ function scoreDeterministically(msgLower: string): RequestedCapability[] {
     let analysisSignal = false;
 
     for (const kw of pattern.keywords) {
-      if (msgLower.includes(kw)) score += kw.split(" ").length >= 2 ? 4 : 2;
+      if (phraseMatches(msgLower, kw)) score += kw.split(" ").length >= 2 ? 4 : 2;
     }
     for (const phrase of pattern.executionPhrases) {
-      if (msgLower.includes(phrase)) { score += 6; executionSignal = true; }
+      if (phraseMatches(msgLower, phrase)) { score += 6; executionSignal = true; }
     }
     for (const phrase of pattern.analysisPhrases) {
-      if (msgLower.includes(phrase)) { score += 4; analysisSignal = true; }
+      if (phraseMatches(msgLower, phrase)) { score += 4; analysisSignal = true; }
     }
 
     if (score > 0) scores.set(pattern.capabilityCode, { score, executionSignal, analysisSignal });
@@ -152,6 +152,16 @@ function scoreDeterministically(msgLower: string): RequestedCapability[] {
   return results
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, 5); // cap at 5 capabilities per request
+}
+
+function phraseMatches(haystack: string, phrase: string): boolean {
+  const trimmed = phrase.toLowerCase().trim();
+  const escaped = trimmed
+    .toLowerCase()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  const suffix = /^[a-z0-9]+$/.test(trimmed) ? "(?:s|es|ing)?" : "";
+  return new RegExp(`(^|[^a-z0-9])${escaped}${suffix}([^a-z0-9]|$)`, "i").test(haystack);
 }
 
 // ─── Level adjustment for intent signals ─────────────────────────────────────
@@ -307,7 +317,7 @@ async function identifyWithLLM(
   const normalised = withRegistryNormalisation.map(c => {
     if (c.requestedLevel !== "execution") return c;
     const pattern = CAPABILITY_KEYWORD_PATTERNS.find(p => p.capabilityCode === c.capabilityCode);
-    const hasDetExecPhrase = pattern?.executionPhrases.some(ep => msgLowerCheck.includes(ep)) ?? false;
+    const hasDetExecPhrase = pattern?.executionPhrases.some(ep => phraseMatches(msgLowerCheck, ep)) ?? false;
     if (!hasDetExecPhrase) {
       console.info(
         `[CapabilityIdentification] Sprint 29H.6: LLM returned "execution" for "${c.capabilityCode}" ` +

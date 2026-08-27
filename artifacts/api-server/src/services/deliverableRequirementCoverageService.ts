@@ -135,6 +135,7 @@ export type DeliverableRepresentationKind =
 export interface DeliverableRequirementCoverageReport {
   deliverableType: string;
   operation: DeliverableRequirementCoverageProfile["operation"];
+  requirementPlanStatus: "RESOLVED" | "UNRESOLVED";
   totalApplicableRequirements: number;
   mandatoryRequirementCount: number;
   satisfiedCount: number;
@@ -329,6 +330,7 @@ export function evaluateDeliverableRequirementCoverage(
   return {
     deliverableType: profile.deliverableType,
     operation: profile.operation,
+    requirementPlanStatus: mandatoryRequirementCount === 0 ? "UNRESOLVED" : "RESOLVED",
     totalApplicableRequirements: profile.requirements.filter((requirement) =>
       requirementApplicability(requirement.classification) === "applicable",
     ).length,
@@ -336,7 +338,7 @@ export function evaluateDeliverableRequirementCoverage(
     satisfiedCount,
     missingCount: failures.length,
     coveragePercentage: mandatoryRequirementCount === 0
-      ? 100
+      ? 0
       : Math.round((satisfiedCount / mandatoryRequirementCount) * 1000) / 10,
     classificationCounts,
     plan,

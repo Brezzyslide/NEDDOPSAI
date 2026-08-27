@@ -138,6 +138,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "people.grievance_review": { family: "people_culture", mode: "grievance_review", code: "people_management_review", isAction: false },
   "people.conduct_review": { family: "people_culture", mode: "conduct_review", code: "people_management_review", isAction: false },
   "people.recruitment_support": { family: "people_culture", mode: "recruitment_support", code: "people_management_review", isAction: false },
+  "hr.onboarding": { family: "people_culture", mode: "onboarding", code: "people_management_review", isAction: false },
   "people.onboarding": { family: "people_culture", mode: "onboarding", code: "people_management_review", isAction: false },
   "people.workplace_adjustment": { family: "people_culture", mode: "workplace_adjustment", code: "people_management_review", isAction: false },
   "people.supervision_framework": { family: "people_culture", mode: "supervision_framework", code: "people_management_review", isAction: false },

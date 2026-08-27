@@ -57,7 +57,7 @@ export interface ProfessionalExecutionContext {
   telemetry: PromptTokenBudgetTelemetry;
 }
 
-const FACTUAL_PLACEHOLDERS = [
+const SERVICE_AGREEMENT_FACTUAL_PLACEHOLDERS = [
   "[PARTICIPANT_NAME]",
   "[PROVIDER_NAME]",
   "[PROVIDER_ABN]",
@@ -66,6 +66,30 @@ const FACTUAL_PLACEHOLDERS = [
   "[SUPPORT_SCHEDULE]",
   "[PRICE]",
   "[SIGNATURE]",
+];
+
+const WORKFORCE_ONBOARDING_FACTUAL_PLACEHOLDERS = [
+  "[STAFF_NAME]",
+  "[ROLE]",
+  "[START_DATE]",
+  "[MANAGER]",
+  "[EMPLOYMENT_TYPE]",
+  "[REQUIRED_CLEARANCES]",
+  "[INDUCTION_DATE]",
+  "[SIGN_OFF]",
+];
+
+const POLICY_FACTUAL_PLACEHOLDERS = [
+  "[ORGANISATION_NAME]",
+  "[POLICY_OWNER]",
+  "[APPROVAL_DATE]",
+  "[REVIEW_DATE]",
+];
+
+const GENERIC_FACTUAL_PLACEHOLDERS = [
+  "[ORGANISATION_NAME]",
+  "[DATE]",
+  "[RESPONSIBLE_ROLE]",
 ];
 
 const SERVICE_AGREEMENT_CONTENT = [
@@ -99,17 +123,19 @@ const CARE_PLAN_TEMPLATE_CONTENT = [
 
 export function deriveProfessionalOperation(userRequest: string, canonicalIntent?: string | null): ProfessionalOperation {
   const requestText = userRequest.toLowerCase();
-  if (/\b(review|assess|audit|check|readiness|ready for use|compliant and ready)\b/.test(requestText)) return "REVIEW";
+  if (/\b(update|revise|amend|refresh|change)\b/.test(requestText)) return "UPDATE";
+  if (/\b(complete|fill|populate|finish)\b/.test(requestText)) return "COMPLETE";
+  if (isReviewWorkProductRequest(requestText)) return "REVIEW";
   if (/\b(compare|contrast|difference|versus|vs)\b/.test(requestText)) return "COMPARE";
   if (/\b(investigate|investigation|root cause|incident investigation)\b/.test(requestText)) return "INVESTIGATE";
   if (/\b(tailor|customise|customize|adapt|personalise|personalize)\b/.test(requestText)) return "TAILOR";
-  if (/\b(update|revise|amend|refresh|change)\b/.test(requestText)) return "UPDATE";
-  if (/\b(complete|fill|populate|finish)\b/.test(requestText)) return "COMPLETE";
+  if (isCreateWorkProductRequest(requestText)) return "CREATE";
   if (/\b(create|draft|write|develop|design|prepare|build|template|standard)\b/.test(requestText)) return "CREATE";
   const intentMode = canonicalIntent?.split(".").pop()?.toLowerCase();
-  if (intentMode === "create") return "CREATE";
   if (intentMode === "review") return "REVIEW";
-  if (intentMode === "revise") return "UPDATE";
+  if (intentMode === "revise" || intentMode === "update") return "UPDATE";
+  if (intentMode === "investigation") return "INVESTIGATE";
+  if (intentMode === "create") return "CREATE";
   return "CREATE";
 }
 
@@ -126,6 +152,7 @@ export function deriveProfessionalIntentKey(userRequest: string, canonicalIntent
     return `risk.${operation === "create" ? "create" : "review"}`;
   }
   if (/\bincident\b/.test(text)) return operation === "investigate" ? "incident.investigation" : "incident.review";
+  if (/\b(onboard|onboarding|induction|new staff|new employee|staff checklist|employee checklist)\b/.test(text)) return "people.onboarding";
   return canonicalIntent ?? null;
 }
 
@@ -140,13 +167,14 @@ export function compileProfessionalExecutionContext(input: {
   const standardisation = classifyStandardisation(input.userRequest, operation);
   const requestedDeliverableType = deriveDeliverableType(input.userRequest, operation, input.blueprint);
   const mandatoryProfessionalContent = deriveMandatoryProfessionalContent(input.userRequest, requestedDeliverableType, operation, input.blueprintContract);
+  const allowedFactualPlaceholders = deriveAllowedFactualPlaceholders(input.userRequest, requestedDeliverableType, operation, input.blueprint);
   const deliverable: ProfessionalDeliverableContract = {
     requestedDeliverableType,
     audience: deriveAudience(input.userRequest, requestedDeliverableType, operation),
     standardisation,
     outputFormat: String(input.blueprint?.deliverableContract?.primaryFormat ?? "docx"),
     userFacingPurpose: deriveUserFacingPurpose(requestedDeliverableType, operation),
-    allowedFactualPlaceholders: FACTUAL_PLACEHOLDERS,
+    allowedFactualPlaceholders,
     mandatoryProfessionalContent,
     completionStandard: [
       "The deliverable is user-facing and matches the requested operation.",
@@ -195,8 +223,18 @@ export function compileProfessionalExecutionContext(input: {
     professionalDomain: input.blueprint?.blueprintFamily ?? deriveProfessionalDomain(input.userRequest, requestedDeliverableType),
     specificity: deriveSpecificity(standardisation),
     outputDepth: deriveOutputDepth(requestedDeliverableType, operation, mandatoryProfessionalContent),
-    telemetry: estimateProfessionalContextTokens(input),
+    telemetry: estimateProfessionalContextTokens(input, mandatoryProfessionalContent, allowedFactualPlaceholders),
   };
+}
+
+function isCreateWorkProductRequest(requestText: string): boolean {
+  return /\b(create|draft|write|develop|design|prepare|build|generate|produce|make|give me|provide)\b[\s\S]{0,80}\b(checklist|template|form|policy|procedure|plan|assessment|report|framework|agreement)\b/.test(requestText) ||
+    /\b(checklist|template|form|policy|procedure|plan|assessment|report|framework|agreement)\b[\s\S]{0,50}\b(for|covering|about)\b/.test(requestText);
+}
+
+function isReviewWorkProductRequest(requestText: string): boolean {
+  return /\b(review|assess|audit|check|validate|evaluate)\b\s+(this|the|our|existing|current|uploaded|attached)\b/.test(requestText) ||
+    /\b(readiness|ready for use|compliant and ready|compliance check)\b/.test(requestText);
 }
 
 export function buildProfessionalExecutionContextBlock(context: ProfessionalExecutionContext): string {
@@ -248,6 +286,9 @@ function deriveDeliverableType(userRequest: string, operation: ProfessionalOpera
     return "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE";
   }
   if (/\b(individual support plan|support plan|support planning)\b/.test(text)) return "PARTICIPANT_NDIS_SUPPORT_PLAN";
+  if (/\b(onboard|onboarding|induction|new staff|new employee|staff checklist|employee checklist)\b/.test(text) && /\b(checklist|template|induction|onboarding)\b/.test(text)) {
+    return "WORKFORCE_ONBOARDING_CHECKLIST";
+  }
   if (/\bpolic(?:y|ies)\b/.test(text) && operation === "CREATE") return "POLICY_DOCUMENT";
   if (/\bpolic(?:y|ies)\b/.test(text) && operation === "REVIEW") return "POLICY_REVIEW";
   if (/\brisk\b/.test(text) && /\btemplate\b/.test(text)) return "STANDARD_RISK_TEMPLATE";
@@ -266,6 +307,16 @@ function deriveMandatoryProfessionalContent(
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT") return SERVICE_AGREEMENT_CONTENT;
   if (deliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE") return CARE_PLAN_TEMPLATE_CONTENT;
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") return CARE_PLAN_TEMPLATE_CONTENT;
+  if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") {
+    return [
+      "Role, employment and start-date details",
+      "Pre-start employment documentation and onboarding responsibilities",
+      "Required screening, clearances, credentials and role prerequisites",
+      "System, equipment, workplace access and supervision handover",
+      "Induction, mandatory learning and role-specific training checklist",
+      "Manager, buddy or supervisor check-ins and completion sign-off",
+    ];
+  }
   if (operation === "REVIEW" || operation === "INVESTIGATE") {
     return (contract?.sections ?? [])
       .filter((section) => section.required)
@@ -281,6 +332,7 @@ function deriveAudience(userRequest: string, deliverableType: string, operation:
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT") return "NDIS provider and participant or participant representative";
   if (deliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE") return "NDIS provider staff, participant and participant representative";
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") return "NDIS provider staff, participant and participant representative";
+  if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") return "People & Culture, hiring manager, supervisor and onboarding coordinator";
   if (operation === "REVIEW") return "Internal governance reviewer and authorised decision-maker";
   if (/\bparticipant\b/i.test(userRequest)) return "Provider staff and participant-specific stakeholders";
   return "Organisation users responsible for adopting the deliverable";
@@ -290,6 +342,7 @@ function deriveProfessionalDomain(userRequest: string, deliverableType: string):
   const text = `${userRequest} ${deliverableType}`.toLowerCase();
   if (/\bservice agreement|agreement\b/.test(text)) return "NDIS Service Agreements";
   if (/\bcare plan|support plan\b/.test(text)) return "NDIS care and support planning";
+  if (/\bonboard|onboarding|induction|new staff|new employee|staff checklist|employee checklist\b/.test(text)) return "Workforce onboarding";
   if (/\brisk\b/.test(text)) return "Risk management";
   if (/\bincident\b/.test(text)) return "Incident management";
   if (/\bpolicy|procedure|sop\b/.test(text)) return "Policy and governance";
@@ -333,6 +386,9 @@ function deriveUserFacingPurpose(deliverableType: string, operation: Professiona
   if (deliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE") {
     return "an actual reusable NDIS Support Plan template containing drafted service-delivery planning content";
   }
+  if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") {
+    return "an actual staff onboarding checklist containing workforce-domain sections, fields and sign-off controls";
+  }
   if (operation === "REVIEW") return "a professional review or readiness assessment";
   if (operation === "INVESTIGATE") return "an investigation report with findings and next actions";
   return "the requested professional deliverable";
@@ -371,6 +427,35 @@ function isExplicitParticipantSpecificRequest(text: string): boolean {
     /\b(for|about)\s+(participant|client)\s+[a-z0-9_-]+\b/.test(text);
 }
 
+function deriveAllowedFactualPlaceholders(
+  userRequest: string,
+  deliverableType: string,
+  operation: ProfessionalOperation,
+  blueprint: WorkBlueprint | null,
+): string[] {
+  const domainText = `${userRequest} ${deliverableType} ${blueprint?.blueprintFamily ?? ""} ${blueprint?.code ?? ""}`.toLowerCase();
+  if (deliverableType.includes("SERVICE_AGREEMENT") || /\bservice agreement\b/.test(domainText)) {
+    return SERVICE_AGREEMENT_FACTUAL_PLACEHOLDERS;
+  }
+  if (deliverableType.includes("CARE_PLAN") || deliverableType.includes("SUPPORT_PLAN")) {
+    return [
+      "[PARTICIPANT_NAME]",
+      "[GOALS]",
+      "[SUPPORT_NEEDS]",
+      "[PREFERENCES]",
+      "[REVIEW_DATE]",
+      "[SIGN_OFF]",
+    ];
+  }
+  if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST" || /\b(onboard|onboarding|induction|new staff|new employee|people_culture|talent_learning|workforce_compliance)\b/.test(domainText)) {
+    return WORKFORCE_ONBOARDING_FACTUAL_PLACEHOLDERS;
+  }
+  if (/\b(policy|procedure|governance|sop)\b/.test(domainText) || operation === "REVIEW") {
+    return POLICY_FACTUAL_PLACEHOLDERS;
+  }
+  return GENERIC_FACTUAL_PLACEHOLDERS;
+}
+
 function deriveContextSufficiency(input: {
   manifest: WorkPackageManifest;
   evidencePack?: EvidencePack | null;
@@ -388,7 +473,7 @@ function estimateProfessionalContextTokens(input: {
   blueprint: WorkBlueprint | null;
   blueprintContract?: BlueprintExecutionContract | null;
   evidencePack?: EvidencePack | null;
-}): PromptTokenBudgetTelemetry {
+}, mandatoryProfessionalContent: string[], allowedFactualPlaceholders: string[]): PromptTokenBudgetTelemetry {
   const userRequestTokens = estimateTokens(input.userRequest);
   const blueprintTokens = estimateTokens([
     input.blueprint?.title,
@@ -403,7 +488,7 @@ function estimateProfessionalContextTokens(input: {
     JSON.stringify(input.manifest.entityKnowledge ?? {}),
     input.manifest.organisationLibrarySources.map((source) => source.title).join("\n"),
   ].join("\n"));
-  const deliverableContractTokens = estimateTokens(SERVICE_AGREEMENT_CONTENT.join("\n") + FACTUAL_PLACEHOLDERS.join(", "));
+  const deliverableContractTokens = estimateTokens(mandatoryProfessionalContent.join("\n") + allowedFactualPlaceholders.join(", "));
   const runnerTokens = 900;
 
   return {

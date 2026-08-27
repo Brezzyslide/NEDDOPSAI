@@ -103,6 +103,8 @@ const ROUTING_RULES: RouteRule[] = [
   { keywords: ["credential expiry", "credential expiring", "expired credential", "upcoming expiries", "expiry report"], capabilities: ["staff_compliance.expiry_monitoring"], weight: 12 },
   { keywords: ["compliance exception", "deployment restriction", "restricted worker", "mandatory evidence missing"], capabilities: ["staff_compliance.exception_review"], weight: 12 },
   { keywords: ["onboarding compliance", "onboarding readiness", "ready for deployment"], capabilities: ["staff_compliance.onboarding_readiness"], weight: 11 },
+  { keywords: ["staff onboarding checklist", "new staff onboarding", "new employee onboarding", "employee onboarding checklist", "onboarding a new staff", "onboarding a new employee", "staff induction checklist", "new staff checklist", "new employee checklist"], capabilities: ["people.onboarding", "learning.induction"], weight: 13 },
+  { keywords: ["onboarding", "onboard", "induction", "new staff", "new employee", "support worker onboarding"], capabilities: ["people.onboarding"], weight: 10 },
   { keywords: ["training", "learning", "development", "certification", "cpd"], capabilities: ["learning.training_gap_analysis"], weight: 8 },
   { keywords: ["training compliance", "competency compliance", "mandatory competency", "competency evidence"], capabilities: ["staff_compliance.training_competency_review"], weight: 11 },
   { keywords: ["hr policy", "leave", "workplace", "employee relations"], capabilities: ["policy.review"], weight: 7 },
@@ -151,7 +153,7 @@ function classifyIntent(text: string): IntentScore[] {
   const scores = new Map<string, number>();
 
   for (const rule of ROUTING_RULES) {
-    const matched = rule.keywords.some(kw => lower.includes(kw));
+    const matched = rule.keywords.some(kw => phraseMatches(lower, kw));
     if (matched) {
       for (const cap of rule.capabilities) {
         scores.set(cap, (scores.get(cap) ?? 0) + rule.weight);
@@ -171,6 +173,16 @@ function classifyIntent(text: string): IntentScore[] {
   return Array.from(scores.entries())
     .map(([capabilityCode, score]) => ({ capabilityCode, score }))
     .sort((a, b) => b.score - a.score);
+}
+
+function phraseMatches(haystack: string, phrase: string): boolean {
+  const trimmed = phrase.toLowerCase().trim();
+  const escaped = trimmed
+    .toLowerCase()
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "\\s+");
+  const suffix = /^[a-z0-9]+$/.test(trimmed) ? "(?:s|es|ing)?" : "";
+  return new RegExp(`(^|[^a-z0-9])${escaped}${suffix}([^a-z0-9]|$)`, "i").test(haystack);
 }
 
 // Sprint 29H Part A: statuses that are permanently blocked from dispatch.
@@ -331,7 +343,7 @@ export function planTask(taskTitle: string, taskDescription?: string, sourceUser
 
   const reasoning = hasSpecialists
     ? `Matched intent '${topIntent}' to ${selectedSpecialists.length} specialist(s): ${selectedSpecialists.map(s => s.displayName).join(", ")}.`
-    : "No specific capability match found. Routed to Chief of Staff for manual handling.";
+    : "No specific professional capability match found. Chief of Staff can coordinate clarification, but professional execution must not proceed until a legitimate capability and professional owner are resolved.";
 
   return {
     planId: randomUUID(),

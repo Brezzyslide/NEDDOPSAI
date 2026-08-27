@@ -71,6 +71,17 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   }
 });
 
+// ─── GET /v1/organisations/:slug/approvals/metrics (Sprint 29) ───────────────
+router.get("/metrics", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const metrics = await computeGovernanceMetrics(ctx.tenantId);
+    res.json({ metrics });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /v1/organisations/:slug/approvals/:approvalId
 router.get("/:approvalId", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
@@ -273,17 +284,6 @@ router.post("/bulk", requireAuth, resolveTenantFromSlug, requireOrgRole("owner",
     }
 
     res.json(outcome);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ─── GET /v1/organisations/:slug/governance/metrics (Sprint 29) ───────────────
-router.get("/metrics", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
-  try {
-    const ctx = req.tenantContext!;
-    const metrics = await computeGovernanceMetrics(ctx.tenantId);
-    res.json({ metrics });
   } catch (err) {
     next(err);
   }

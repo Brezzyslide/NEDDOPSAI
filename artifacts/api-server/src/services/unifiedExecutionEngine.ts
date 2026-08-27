@@ -89,6 +89,7 @@ import {
   deriveRequestedDeliverableType,
   type ProfessionalExecutionContext,
 } from "./professionalExecutionContextService.js";
+import { validateProfessionalExecutionPreflight } from "./professionalExecutionPreflightService.js";
 import {
   buildRequirementToDeliverablePlan,
   buildDeliverableOutputSchema,
@@ -1457,13 +1458,25 @@ export class UnifiedExecutionEngine {
     const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile);
     const deliverableOutputSchema = buildDeliverableOutputSchema(coverageProfile);
     const schemaCheck = validateDeliverableOutputSchemaCompleteness(coverageProfile, deliverableOutputSchema);
+    const preflightCheck = validateProfessionalExecutionPreflight({
+      blueprint,
+      manifest,
+      professionalContext,
+      coverageProfile,
+      requirementPlan,
+      schemaCheck,
+    });
     updateManifestObservability(manifest.id, {
       validationSnapshot: {
-        passed: validationResult.passed && schemaCheck.passed,
-        missingItems: [...validationResult.missingItems, ...schemaCheck.missingRequirementIds],
-        summary: schemaCheck.passed
+        passed: validationResult.passed && schemaCheck.passed && preflightCheck.passed,
+        missingItems: [...validationResult.missingItems, ...schemaCheck.missingRequirementIds, ...preflightCheck.failedChecks],
+        summary: schemaCheck.passed && preflightCheck.passed
           ? validationResult.summary
-          : `${validationResult.summary} Output schema missing mandatory requirement mappings: ${schemaCheck.missingRequirementIds.join(", ")}`,
+          : `${validationResult.summary} ${[
+              schemaCheck.passed ? null : `Output schema missing mandatory requirement mappings: ${schemaCheck.missingRequirementIds.join(", ")}`,
+              preflightCheck.passed ? null : `Professional execution pre-flight failed: ${preflightCheck.failedChecks.join(", ")}`,
+            ].filter(Boolean).join(" ")}`,
+        professionalPreflight: preflightCheck,
         professionalContext: {
           userRequest: professionalContext.userRequest,
           professionalDomain: professionalContext.professionalDomain,
@@ -1512,6 +1525,39 @@ export class UnifiedExecutionEngine {
           failedStage: "pre_synthesis_output_schema",
           rootCause: message,
           retryAvailable: true,
+        },
+      }).catch(() => {});
+      return {
+        outcome: "validation_failed",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message,
+      };
+    }
+    if (!preflightCheck.passed) {
+      const message = `Professional execution contract is unresolved before synthesis: ${preflightCheck.failedChecks.join(", ")}`;
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "failed",
+        errorMessage: message,
+        metadata: {
+          failedStage: "professional_execution_preflight",
+          failedChecks: preflightCheck.failedChecks,
+          requirementPlanStatus: preflightCheck.requirementPlanStatus,
+        },
+      });
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "failed",
+          failedStage: "professional_execution_preflight",
+          rootCause: message,
+          retryAvailable: false,
+          failedChecks: preflightCheck.failedChecks,
+          requirementPlanStatus: preflightCheck.requirementPlanStatus,
         },
       }).catch(() => {});
       return {
@@ -3814,6 +3860,7 @@ function buildCoverageSnapshot(
   return {
     deliverableType: report.deliverableType,
     operation: report.operation,
+    requirementPlanStatus: report.requirementPlanStatus,
     totalApplicableRequirements: report.totalApplicableRequirements,
     mandatoryRequirementCount: report.mandatoryRequirementCount,
     satisfiedCount: report.satisfiedCount,
