@@ -50,7 +50,7 @@ export interface BlueprintRuntimeGateFailure {
 export interface BlueprintRuntimeValidationInput {
   contract: BlueprintExecutionContract | null;
   contentMarkdown: string;
-  rawClaims: RawClaim[];
+  rawClaims?: RawClaim[];
   evidencePack?: EvidencePack | null;
   artifactId?: string | null;
   approvalStates?: Record<string, boolean> | null;
@@ -269,7 +269,8 @@ export function validateBlueprintRuntimeCompletion(
       }
     }
 
-    if (evidenceContract.claimIntegrityRequired === true && input.rawClaims.length > 0) {
+    const rawClaims = input.rawClaims ?? [];
+    if (evidenceContract.claimIntegrityRequired === true && rawClaims.length > 0) {
       if (!input.evidencePack) {
         failures.push({
           gate: "claim_integrity",
@@ -277,7 +278,7 @@ export function validateBlueprintRuntimeCompletion(
           message: "Blueprint requires claim integrity, but no evidence pack is available for claim validation.",
         });
       } else {
-        const validation = validateClaimBatch(input.rawClaims, input.evidencePack);
+        const validation = validateClaimBatch(rawClaims, input.evidencePack);
         const unsupported = validation.claims.filter((claim) =>
           claim.provenanceStatus !== "grounded",
         );
@@ -342,6 +343,22 @@ const PROFESSIONAL_PLACEHOLDER_TERMS = [
   "ASSESSMENT",
   "REVIEW",
   "SUMMARY",
+  "REQUIREMENT",
+  "REQUIREMENTS",
+  "SCREENING",
+  "CLEARANCE",
+  "CLEARANCES",
+  "CREDENTIAL",
+  "CREDENTIALS",
+  "TRAINING",
+  "INDUCTION",
+  "ONBOARDING",
+  "ACKNOWLEDGEMENT",
+  "ACKNOWLEDGEMENTS",
+  "HANDOVER",
+  "EQUIPMENT",
+  "ACCESS",
+  "SUPERVISION",
 ] as const;
 
 const USER_DATA_PLACEHOLDER_TERMS = [

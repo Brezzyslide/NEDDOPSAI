@@ -453,6 +453,10 @@ function genericDeliverableRequirements(
   context: ProfessionalExecutionContext,
   contract?: BlueprintExecutionContract | null,
 ): DeliverableRequirement[] {
+  if (context.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") {
+    return workforceOnboardingChecklistRequirements(context, contract);
+  }
+
   const userFacing = context.deliverable.mandatoryProfessionalContent.map((item, index) =>
     req(
       `mandatory-${index + 1}`,
@@ -482,6 +486,128 @@ function genericDeliverableRequirements(
     });
 
   return [...userFacing, ...blueprintDerived];
+}
+
+function workforceOnboardingChecklistRequirements(
+  context: ProfessionalExecutionContext,
+  contract?: BlueprintExecutionContract | null,
+): DeliverableRequirement[] {
+  const section = (patterns: RegExp[]): string | undefined => {
+    const match = (contract?.sections ?? []).find((candidate) => {
+      const text = `${candidate.sectionCode} ${candidate.title} ${candidate.description} ${candidate.instructions}`.toLowerCase();
+      return patterns.some((pattern) => pattern.test(text));
+    });
+    return match?.sectionCode;
+  };
+
+  const requirements: DeliverableRequirement[] = [
+    req(
+      "onboarding-staff-details-fields",
+      "The checklist contains reusable staff onboarding identification fields for staff member, role, start date, manager/supervisor and employment type where applicable.",
+      "FACTUAL_FIELD",
+      section([/\bstaff\b|\bemployee\b|\bworker\b/, /\brole\b/, /\bmanager\b|\bsupervisor\b/]),
+      "Onboarding intake fields for staff name, role, start date, manager/supervisor and employment type",
+      [["staff name", "role", "start date", "manager"], ["employee name", "role", "commencement date", "supervisor"]],
+    ),
+    req(
+      "onboarding-checklist-tracking-fields",
+      "The checklist provides structured completion tracking for each onboarding item, including responsible owner, timing/due date, evidence or completion record and status/sign-off.",
+      "FACTUAL_FIELD",
+      section([/\bsign[- ]?off\b|\bcompletion\b|\bapproval\b|\brecord\b/]),
+      "Checklist table columns for item/action, owner, timing/due date, evidence/completion record, status and sign-off",
+      [["item", "owner", "due", "evidence", "status", "sign off"], ["action", "responsible", "timing", "completion", "status", "sign off"]],
+    ),
+    req(
+      "onboarding-employment-documentation",
+      "Pre-start employment documentation, role details and onboarding responsibilities are represented as concrete checklist items.",
+      "MUST_BE_REPRESENTED",
+      section([/\bemployment\b|\bpre[- ]?start\b|\bdocumentation\b|\bcontract\b/]),
+      "Pre-start employment documentation checklist items",
+      [["employment", "documentation"], ["contract", "role"], ["pre start", "responsib"]],
+    ),
+    req(
+      "onboarding-screening-clearances-credentials",
+      "Required screening, clearances, credentials and role prerequisites are represented as professional checklist items without inventing staff-specific results.",
+      "MUST_BE_REPRESENTED",
+      section([/\bscreening\b|\bclearance\b|\bcredential\b|\bqualification\b|\bprerequisite\b/]),
+      "Screening, clearance, credential and prerequisite checklist items",
+      [["screening", "clearance"], ["credential", "qualification"], ["prerequisite"]],
+    ),
+    req(
+      "onboarding-access-equipment-systems",
+      "System access, equipment, workplace access and operational handover requirements are represented as checklist items.",
+      "MUST_BE_REPRESENTED",
+      section([/\bsystem\b|\baccess\b|\bequipment\b|\bworkplace\b|\bhandover\b/]),
+      "Systems, equipment, workplace access and handover checklist items",
+      [["system", "access"], ["equipment"], ["handover"]],
+    ),
+    req(
+      "onboarding-induction-training-learning",
+      "Induction, mandatory learning, role-specific training and evidence of learning completion are represented as structured checklist items.",
+      "MUST_BE_REPRESENTED",
+      section([/\binduction\b|\btraining\b|\blearning\b|\bcapability\b/]),
+      "Induction, mandatory learning and role-specific training checklist items",
+      [["induction", "training"], ["learning", "completion"], ["role specific", "training"]],
+    ),
+    req(
+      "onboarding-supervision-checkins-support",
+      "Manager, buddy or supervisor support, early check-ins, feedback and escalation points are represented.",
+      "MUST_BE_REPRESENTED",
+      section([/\bsupervision\b|\bmanager\b|\bbuddy\b|\bcheck[- ]?in\b|\bfeedback\b|\bescalation\b/]),
+      "Manager/supervisor check-ins, support and escalation checklist items",
+      [["manager", "check"], ["supervisor", "feedback"], ["support", "escalation"]],
+    ),
+    req(
+      "onboarding-policy-acknowledgement",
+      "Relevant policy, procedure and code-of-conduct acknowledgements are represented as checklist items without using unresolved policy placeholders as the content.",
+      "MUST_BE_REPRESENTED",
+      section([/\bpolicy\b|\bprocedure\b|\bcode of conduct\b|\backnowledg/]),
+      "Policy/procedure acknowledgement checklist items",
+      [["policy", "acknowledg"], ["procedure", "acknowledg"], ["code", "conduct"]],
+    ),
+    req(
+      "onboarding-ndis-workforce-orientation",
+      "Where the organisation operates in an NDIS/disability-services context, the checklist includes configurable NDIS/workforce orientation and safe-practice onboarding items.",
+      "CONDITIONAL",
+      section([/\bndis\b|\bdisability\b|\bsafe practice\b|\bworker orientation\b/]),
+      "Configurable NDIS/disability workforce orientation checklist section",
+      [["ndis", "orientation"], ["disability", "safe"], ["worker", "orientation"]],
+    ),
+    req(
+      "onboarding-final-review-signoff",
+      "The checklist includes final review, completion sign-off and accountable approval/record-keeping controls.",
+      "FACTUAL_FIELD",
+      section([/\bfinal\b|\breview\b|\bsign[- ]?off\b|\bapproval\b|\brecord[- ]?keeping\b/]),
+      "Final review and sign-off fields for staff member, manager/supervisor, date and completion status",
+      [["staff", "manager", "date", "completion"], ["supervisor", "sign off", "date", "status"]],
+    ),
+  ];
+
+  const blueprintDerived = (contract?.sections ?? [])
+    .filter((section) => section.required)
+    .filter(isChecklistRelevantBlueprintSection)
+    .slice(0, 8)
+    .map((section) =>
+      req(
+        `blueprint-${section.sectionCode.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        section.description || section.title,
+        "CONDITIONAL",
+        section.sectionCode,
+        `Professionally appropriate onboarding checklist item(s) derived from ${section.title}`,
+        [keywordCandidates(section.description || section.title).slice(0, 4)],
+      ),
+    );
+
+  const existingIds = new Set(requirements.map((requirement) => requirement.id));
+  return [
+    ...requirements,
+    ...blueprintDerived.filter((requirement) => !existingIds.has(requirement.id)),
+  ];
+}
+
+function isChecklistRelevantBlueprintSection(section: BlueprintSection): boolean {
+  const text = `${section.sectionCode} ${section.title} ${section.description} ${section.instructions}`.toLowerCase();
+  return /\b(onboard|onboarding|induction|new starter|new staff|new employee|employee onboarding|staff onboarding|worker screening|screening clearance|clearance check|credential verification|qualification check|mandatory training|role[- ]specific training|learning pathway|policy acknowledgement|procedure acknowledgement|system access setup|equipment setup|onboarding checklist)\b/.test(text);
 }
 
 function req(
@@ -529,6 +655,10 @@ function nonBlockingStatus(classification: DeliverableRequirementClassification)
 
 function inferTargetDeliverableLocation(requirement: DeliverableRequirement): string {
   const representation = requirement.requiredDeliverableRepresentation.toLowerCase();
+  if (representation.includes("onboarding") || representation.includes("checklist")) return "Onboarding checklist table/sections";
+  if (representation.includes("screening") || representation.includes("clearance") || representation.includes("credential")) return "Screening, clearances and prerequisites checklist section";
+  if (representation.includes("induction") || representation.includes("training") || representation.includes("learning")) return "Induction, training and learning checklist section";
+  if (representation.includes("manager") || representation.includes("supervisor") || representation.includes("sign-off") || representation.includes("sign off")) return "Supervision, check-in and sign-off checklist section";
   if (representation.includes("schedule")) return "Schedule of Supports table/fields";
   if (representation.includes("signature") || representation.includes("acceptance")) return "Execution/sign-off block";
   if (representation.includes("payment") || representation.includes("pricing")) return "Payment and pricing clauses";
@@ -562,6 +692,16 @@ function inferRepresentationKind(item: RequirementToDeliverablePlanItem): Delive
 
 function inferSchemaGroupKey(field: Pick<DeliverableOutputSchemaField, "targetSection" | "requiredRepresentation" | "requirementId" | "representationKind">): string {
   const text = normaliseContent(`${field.targetSection} ${field.requiredRepresentation} ${field.requirementId}`);
+  if (field.requirementId === "onboarding-staff-details-fields" || field.requirementId === "onboarding-checklist-tracking-fields") return "onboarding-intake-and-tracking";
+  if (field.requirementId === "onboarding-final-review-signoff") return "supervision-checkins-and-signoff";
+  if (/\bpre start\b|\bemployment documentation\b|\bcontract\b|\brole details\b/.test(text)) return "pre-start-employment-documentation";
+  if (/\bscreening\b|\bclearance\b|\bcredential\b|\bqualification\b|\bprerequisite\b/.test(text)) return "screening-clearances-and-prerequisites";
+  if (/\bsystem\b|\baccess\b|\bequipment\b|\bworkplace\b|\bhandover\b/.test(text)) return "systems-equipment-and-handover";
+  if (/\binduction\b|\btraining\b|\blearning\b|\bcapability\b/.test(text)) return "induction-training-and-learning";
+  if (/\bmanager\b|\bsupervisor\b|\bbuddy\b|\bcheck in\b|\bfeedback\b|\bescalation\b|\bsign off\b/.test(text)) return "supervision-checkins-and-signoff";
+  if (/\bpolicy\b|\bprocedure\b|\bcode of conduct\b|\backnowledg/.test(text)) return "policy-procedure-acknowledgement";
+  if (/\bndis\b|\bdisability\b|\bsafe practice\b|\bworker orientation\b/.test(text)) return "ndis-workforce-orientation";
+  if (/\bonboarding\b|\bstaff details\b|\bemployee details\b|\bstart date\b|\bemployment type\b|\bchecklist tracking\b/.test(text)) return "onboarding-intake-and-tracking";
   if (/\bschedule\b|\bsupport item\b|\bunit price\b|\bquantity\b|\bfrequency\b|\bservice period\b|\bsubtotal\b|\bagreement period total\b/.test(text)) return "support-schedule-and-pricing";
   if (/\bprovider responsib|\bparticipant responsib|\brepresentative responsib|\bdelivery obligation|\boperational responsib/.test(text)) return "responsibilities-and-delivery";
   if (/\bparties\b|\bprovider details\b|\bparticipant details\b|\brepresentative\b|\bagreement period\b/.test(text)) return "parties-and-agreement-details";
@@ -580,6 +720,14 @@ function inferSchemaGroupKey(field: Pick<DeliverableOutputSchemaField, "targetSe
 
 function inferGroupTitle(groupKey: string, field: DeliverableOutputSchemaField): string {
   const titles: Record<string, string> = {
+    "onboarding-intake-and-tracking": "Onboarding Details and Checklist Tracking",
+    "pre-start-employment-documentation": "Pre-Start Employment Documentation",
+    "screening-clearances-and-prerequisites": "Screening, Clearances and Prerequisites",
+    "systems-equipment-and-handover": "Systems, Equipment, Workplace Access and Handover",
+    "induction-training-and-learning": "Induction, Training and Learning",
+    "supervision-checkins-and-signoff": "Supervision, Check-ins and Sign-off",
+    "policy-procedure-acknowledgement": "Policy, Procedure and Conduct Acknowledgements",
+    "ndis-workforce-orientation": "NDIS and Disability Workforce Orientation",
     "support-schedule-and-pricing": "Schedule of Supports and Pricing Structure",
     "parties-and-agreement-details": "Parties and Agreement Details",
     "responsibilities-and-delivery": "Delivery, Provider and Participant Responsibilities",
@@ -612,6 +760,7 @@ function buildGroupGenerationInstruction(targetSection: string, fields: Delivera
 function deriveMinimumSubstance(item: RequirementToDeliverablePlanItem): string[] {
   const text = normaliseContent(`${item.requirementId} ${item.professionalRequirement} ${item.expectedUserFacingRepresentation}`);
   if (item.classification === "FACTUAL_FIELD") {
+    if (/\bonboarding|checklist|staff|employee|owner|due|status|sign off|completion/.test(text)) return ["provide a checklist table or labelled fields for owner, timing, evidence/completion status and sign-off", "leave unknown staff-specific values as fillable fields, not invented facts"];
     if (/\btotal\b/.test(text)) return ["provide distinct line subtotal and agreement-period or estimated total structures", "leave unknown values as fillable fields, not invented numbers"];
     if (/\bsignature\b|\bacceptance\b/.test(text)) return ["provide provider, participant and representative signature/date fields where applicable", "state that signing records acceptance of the agreement terms"];
     return ["provide a labelled fillable field, table column or equivalent structured input location", "do not rely on prose mentions alone"];
@@ -625,6 +774,13 @@ function deriveMinimumSubstance(item: RequirementToDeliverablePlanItem): string[
   if (/\btermination|\bexit|\btransition/.test(text)) return ["cover notice, final obligations, participant choice and transition support"];
   if (/\bcontinuity|\bemergency|\bdisaster/.test(text)) return ["provide a configurable continuity/emergency/disaster section with communication and safe support-continuity expectations"];
   if (/\bdelivery\b|\bsupport\b/.test(text)) return ["describe support delivery obligations, operational boundaries and escalation where delivery cannot occur"];
+  if (/\bonboarding|pre start|employment documentation/.test(text)) return ["include concrete pre-start checklist actions, responsible owner and completion evidence expectations"];
+  if (/\bscreening|clearance|credential|qualification|prerequisite/.test(text)) return ["include verification items for screening, clearances, credentials and role prerequisites without inventing results"];
+  if (/\bsystem|access|equipment|workplace|handover/.test(text)) return ["include access, equipment, workspace and operational handover actions with owner and completion record"];
+  if (/\binduction|training|learning|capability/.test(text)) return ["include mandatory induction, role-specific learning and evidence-of-completion checklist items"];
+  if (/\bmanager|supervisor|buddy|check in|feedback|escalation/.test(text)) return ["include early check-ins, support/escalation pathways and accountable manager/supervisor sign-off"];
+  if (/\bpolicy|procedure|code of conduct|acknowledg/.test(text)) return ["include policy/procedure acknowledgement items as actual checklist actions, not unresolved policy placeholders"];
+  if (/\bndis|disability|safe practice|worker orientation/.test(text)) return ["include configurable NDIS/disability workforce orientation items where relevant to the provider context"];
   return ["draft substantive reusable clause wording that materially addresses the requirement", "avoid heading-only, keyword-only or self-assertion coverage"];
 }
 
@@ -727,6 +883,38 @@ function validateFactualFieldRequirement(input: {
     });
   }
 
+  if (requirement.id === "onboarding-staff-details-fields") {
+    const groups = [
+      ["staff", "employee"],
+      ["role", "position"],
+      ["start", "commencement"],
+      ["manager", "supervisor"],
+    ];
+    return validateStructuredFieldGroups(requirement, structure, groups, "staff onboarding details");
+  }
+
+  if (requirement.id === "onboarding-checklist-tracking-fields") {
+    const groups = [
+      ["item", "action", "task"],
+      ["owner", "responsible"],
+      ["due", "timing", "date"],
+      ["evidence", "completion", "record"],
+      ["status"],
+      ["sign off", "signoff", "approval"],
+    ];
+    return validateStructuredFieldGroups(requirement, structure, groups, "checklist tracking");
+  }
+
+  if (requirement.id === "onboarding-final-review-signoff") {
+    const groups = [
+      ["staff", "employee"],
+      ["manager", "supervisor"],
+      ["date"],
+      ["completion", "status", "sign off", "signoff"],
+    ];
+    return validateStructuredFieldGroups(requirement, structure, groups, "final review/sign-off");
+  }
+
   if (isTableOrColumnRequirement(requirement)) {
     const table = expected.toLowerCase().includes("schedule")
       ? findScheduleTable(structure)
@@ -791,6 +979,48 @@ function validateFactualFieldRequirement(input: {
     substantiveResult: "NOT_APPLICABLE",
     finalResult: "NOT_SATISFIED",
     failureReason: `Required factual field is not present as a table column, labelled field or equivalent structure: ${expected}.`,
+  });
+}
+
+function validateStructuredFieldGroups(
+  requirement: DeliverableRequirement,
+  structure: MarkdownStructure,
+  groups: string[][],
+  label: string,
+): DeliverableRequirementCoverageItem {
+  const table = structure.tables.find((candidate) =>
+    groups.filter((group) => candidate.normalisedHeaders.some((header) =>
+      group.some((term) => header.includes(normaliseContent(term))),
+    )).length >= Math.min(groups.length, 4),
+  ) ?? null;
+  const hasInLabels = (group: string[]) => structure.labelledLines.some((line) =>
+    group.some((term) => line.normalisedLabel.includes(normaliseContent(term))),
+  );
+  const missing = groups.filter((group) => {
+    const inTable = table?.normalisedHeaders.some((header) =>
+      group.some((term) => header.includes(normaliseContent(term))),
+    ) ?? false;
+    return !inTable && !hasInLabels(group);
+  });
+
+  if (missing.length === 0) {
+    return coverageItem(requirement, {
+      actualLocation: table
+        ? tableLocation(table, `${label} structured fields`)
+        : `labelled fields for ${label}`,
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "NOT_APPLICABLE",
+      finalResult: "SATISFIED",
+      failureReason: null,
+    });
+  }
+
+  return coverageItem(requirement, {
+    actualLocation: table ? tableLocation(table, `${label} partial fields`) : null,
+    structuralResult: missing.length < groups.length ? "STRUCTURE_PARTIAL" : "STRUCTURE_FAIL",
+    substantiveResult: "NOT_APPLICABLE",
+    finalResult: missing.length < groups.length ? "PARTIAL" : "NOT_SATISFIED",
+    failureReason: `Required ${label} structured field group(s) are missing: ${missing.map((group) => group.join("/")).join(", ")}.`,
   });
 }
 
@@ -1213,6 +1443,48 @@ function domainSufficiency(requirementId: string, normalised: string): { passed:
       support: ["disaster", "temporary disruption", "alternate", "communication", "review", "escalation"],
       minSupport: 2,
       reason: "Continuity clause must cover disruption, alternate arrangements and communication/escalation.",
+    },
+    "onboarding-employment-documentation": {
+      core: ["employment", "documentation"],
+      support: ["contract", "role", "start", "responsible", "record", "completion"],
+      minSupport: 2,
+      reason: "Employment documentation coverage must include concrete pre-start actions, ownership or completion evidence.",
+    },
+    "onboarding-screening-clearances-credentials": {
+      core: ["screening", "clearance"],
+      support: ["credential", "qualification", "prerequisite", "verify", "record", "before start"],
+      minSupport: 2,
+      reason: "Screening coverage must include verification of clearances, credentials or prerequisites.",
+    },
+    "onboarding-access-equipment-systems": {
+      core: ["access"],
+      support: ["system", "equipment", "workplace", "handover", "responsible", "record"],
+      minSupport: 3,
+      reason: "Access/equipment coverage must include systems, equipment or handover actions with accountability.",
+    },
+    "onboarding-induction-training-learning": {
+      core: ["induction", "training"],
+      support: ["learning", "role specific", "mandatory", "completion", "evidence", "record"],
+      minSupport: 2,
+      reason: "Induction coverage must include learning/training actions and completion evidence.",
+    },
+    "onboarding-supervision-checkins-support": {
+      core: ["manager", "supervisor"],
+      support: ["check in", "buddy", "feedback", "support", "escalation", "review"],
+      minSupport: 2,
+      reason: "Supervision coverage must include check-ins, support/feedback or escalation.",
+    },
+    "onboarding-policy-acknowledgement": {
+      core: ["policy", "acknowledg"],
+      support: ["procedure", "code of conduct", "read", "understand", "record", "sign"],
+      minSupport: 2,
+      reason: "Policy acknowledgement must be a concrete checklist action, not a placeholder for policy content.",
+    },
+    "onboarding-ndis-workforce-orientation": {
+      core: ["ndis"],
+      support: ["disability", "safe", "worker", "orientation", "incident", "rights", "participant"],
+      minSupport: 2,
+      reason: "NDIS workforce orientation must include configurable disability-provider safe-practice onboarding items when applicable.",
     },
   };
   const check = checks[requirementId];

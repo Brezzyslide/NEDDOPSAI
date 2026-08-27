@@ -3396,11 +3396,14 @@ function buildWorkPackagePrompt(
     const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
       ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
       : "- Purpose\n- Scope\n- Responsibilities\n- Review requirements\n- Sign-off";
+    const allowedPlaceholders = professionalContext
+      ? formatAllowedFactualPlaceholderInstruction(professionalContext)
+      : "Use clear factual placeholders for unknown customer-specific fields where appropriate.";
     sections.push(
       `=== STANDARD REUSABLE TEMPLATE MODE ===\n` +
       `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
       `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
-      `Use clear factual placeholders for participant, provider, plan, support schedule, price, dates, signatures and other customer-specific fields where appropriate.\n` +
+      `${allowedPlaceholders}\n` +
       `You MUST draft the professional content itself. The requested deliverable must cover:\n${mandatoryContent}\n` +
       `Do NOT leave professional placeholders such as [CLAUSE_1], [DELIVERY_OBLIGATIONS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [GST_CLAUSE], [CONCLUSION] or [INCOMPLETE: ...] in the final output.\n` +
       `Do not require a customer example/template unless the user explicitly asked to match an existing format.\n` +
@@ -3542,7 +3545,7 @@ ${mandatoryContent}
 
 ${coverageContract}
 
-Allowed placeholders are factual/user-specific data placeholders such as [PARTICIPANT_NAME], [PROVIDER_NAME], [PROVIDER_ABN], [NDIS_NUMBER], [AGREEMENT_PERIOD], [SUPPORT_SCHEDULE], [PRICE] and [SIGNATURE].
+${professionalContext ? formatAllowedFactualPlaceholderInstruction(professionalContext) : "Allowed placeholders are factual/user-specific data placeholders only."}
 Factual placeholders may appear only inside otherwise drafted professional clauses, fields or template prompts. They must never be the whole answer for a mandatory professional section.
 
 Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [PROVIDER_OBLIGATIONS], [CANCELLATION_TERMS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [CONCLUSION], [INCOMPLETE: ...] or equivalent tokens.
@@ -3580,6 +3583,16 @@ Blueprint sections are internal completeness checks, not customer-facing heading
 ${sections}
 
 ${evidenceSummary}`;
+}
+
+function formatAllowedFactualPlaceholderInstruction(professionalContext: ProfessionalExecutionContext): string {
+  const placeholders = professionalContext.deliverable.allowedFactualPlaceholders.length
+    ? professionalContext.deliverable.allowedFactualPlaceholders.join(", ")
+    : "none";
+  const checklistNote = professionalContext.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST"
+    ? " For onboarding checklists, use factual placeholders only for staff-specific values such as staff name, role, start date, manager/supervisor, employment type, required clearances, induction date and sign-off. Do not use placeholders for professional onboarding content, required training domains, screening requirements, policy acknowledgements or checklist actions."
+    : "";
+  return `Allowed factual placeholders for this deliverable: ${placeholders}.${checklistNote}`;
 }
 
 function buildFinalDeliverableSynthesisUserPrompt(input: {
@@ -3633,6 +3646,13 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     : input.blueprint
       ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
       : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`;
+  const structuredDeliverableInstruction = input.professionalContext.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST"
+    ? `## CHECKLIST STRUCTURE CONTRACT
+This deliverable is a structured onboarding checklist, not a narrative review.
+Represent mandatory requirements as checklist sections and checklist items.
+Each checklist item should identify the action, responsible owner, timing/due point, evidence/completion record and status/sign-off where applicable.
+Unknown staff-specific values may remain as allowed factual fields, but professional onboarding content must be drafted as concrete checklist actions.`
+    : "";
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
@@ -3640,6 +3660,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
     coverageContract,
     `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each section must account for every listed requirement ID in the internal JSON requirement_to_deliverable_plan and in deliverable.content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
+    structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
     blueprintMethodSection,
     clauseFamilies.length

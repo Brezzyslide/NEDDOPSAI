@@ -310,6 +310,127 @@ describe("Sprint 37 professional generation evidence sufficiency", () => {
     expect(schemaText).not.toContain("NDIS_NUMBER");
   });
 
+  it("maps onboarding requirements into structured checklist fields, items and sign-off controls", () => {
+    const blueprint = getRegistryEntry("people_management_review");
+    if (!blueprint) throw new Error("missing people_management_review blueprint");
+
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Can you give me a checklist for onboarding a new staff",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract(blueprint));
+    const schema = buildDeliverableOutputSchema(profile);
+    const ids = schema.groups.flatMap((group) => group.fields.map((field) => field.requirementId));
+
+    expect(ids).toEqual(expect.arrayContaining([
+      "onboarding-staff-details-fields",
+      "onboarding-checklist-tracking-fields",
+      "onboarding-screening-clearances-credentials",
+      "onboarding-induction-training-learning",
+      "onboarding-final-review-signoff",
+    ]));
+    expect(schema.groups.map((group) => group.groupKey)).toEqual(expect.arrayContaining([
+      "onboarding-intake-and-tracking",
+      "screening-clearances-and-prerequisites",
+      "induction-training-and-learning",
+      "supervision-checkins-and-signoff",
+    ]));
+  });
+
+  it("accepts a substantive structured onboarding checklist without methodology leakage or professional placeholders", () => {
+    const blueprint = getRegistryEntry("people_management_review");
+    if (!blueprint) throw new Error("missing people_management_review blueprint");
+
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Can you give me a checklist for onboarding a new staff",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract(blueprint));
+    const checklist = [
+      "# Staff Onboarding Checklist",
+      "",
+      "Staff Name: [STAFF_NAME]",
+      "Role: [ROLE]",
+      "Start Date: [START_DATE]",
+      "Manager/Supervisor: [MANAGER]",
+      "Employment Type: [EMPLOYMENT_TYPE]",
+      "",
+      "## Onboarding Checklist",
+      "| Item/Action | Responsible Owner | Timing/Due Date | Evidence/Completion Record | Status | Sign-off |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| Issue and record employment documentation, role details, position expectations and pre-start responsibilities. | People & Culture | Before start date | Employment documentation and role record saved | Not started / In progress / Complete | Manager sign-off |",
+      "| Verify required worker screening, clearances, credentials, qualifications and role prerequisites before the staff member starts unsupervised work. | People & Culture / Manager | Before rostered duties | Screening, clearance and credential evidence recorded | Not started / In progress / Complete | Manager sign-off |",
+      "| Set up system access, workplace access, equipment, communication tools and operational handover so the staff member can work safely. | Manager / Systems Owner | Before or on first shift | Access and equipment checklist completed | Not started / In progress / Complete | Manager sign-off |",
+      "| Complete induction, mandatory learning and role-specific training, and retain evidence of learning completion. | Talent & Learning / Manager | During induction period | Training completion record saved | Not started / In progress / Complete | Manager sign-off |",
+      "| Confirm relevant policy, procedure and code-of-conduct acknowledgements have been read, understood and recorded. | People & Culture / Manager | During induction period | Signed acknowledgement record | Not started / In progress / Complete | Staff and manager sign-off |",
+      "| Provide NDIS and disability workforce orientation where applicable, including participant rights, safe practice, incident escalation and worker conduct expectations. | Manager / Talent & Learning | During induction period | Orientation completion record | Not started / In progress / Complete | Manager sign-off |",
+      "| Schedule manager or supervisor check-ins, buddy support, feedback points and escalation pathways during the early employment period. | Manager/Supervisor | First week and first month | Check-in notes and support actions recorded | Not started / In progress / Complete | Supervisor sign-off |",
+      "",
+      "## Final Review and Sign-off",
+      "Staff member: [STAFF_NAME]",
+      "Manager/Supervisor: [MANAGER]",
+      "Completion date: [INDUCTION_DATE]",
+      "Completion status: Not started / In progress / Complete",
+      "The manager or supervisor should confirm that required onboarding actions are complete, evidence has been recorded, unresolved items are escalated, and the staff member has received the required support before final sign-off. If any mandatory item remains incomplete, the manager should record the reason, assign an owner and due date, and review the staff member's readiness before allowing unsupervised duties.",
+    ].join("\n");
+
+    const report = evaluateDeliverableRequirementCoverage(checklist, profile);
+    const gate = validateBlueprintRuntimeCompletion({
+      contract: contract(blueprint),
+      contentMarkdown: checklist,
+      evidencePack: emptyEvidencePack(),
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Can you give me a checklist for onboarding a new staff"),
+      deferApprovalGate: true,
+    });
+
+    expect(report.requirementPlanStatus).toBe("RESOLVED");
+    expect(report.missing).toEqual([]);
+    expect(report.coveragePercentage).toBe(100);
+    expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
+    expect(gate.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
+  });
+
+  it("blocks onboarding keyword-only or placeholder-only checklist coverage", () => {
+    const blueprint = getRegistryEntry("people_management_review");
+    if (!blueprint) throw new Error("missing people_management_review blueprint");
+
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Can you give me a checklist for onboarding a new staff",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract(blueprint));
+    const shallow = [
+      "# Staff Onboarding Checklist",
+      "",
+      "## Screening",
+      "[SCREENING_REQUIREMENTS]",
+      "",
+      "## Induction",
+      "All induction and onboarding requirements are covered.",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(shallow, profile);
+    const gate = validateBlueprintRuntimeCompletion({
+      contract: contract(blueprint),
+      contentMarkdown: shallow,
+      evidencePack: emptyEvidencePack(),
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Can you give me a checklist for onboarding a new staff"),
+      deferApprovalGate: true,
+    });
+
+    expect(report.coveragePercentage).toBeLessThan(100);
+    expect(report.missing.map((failure) => failure.requirementId)).toEqual(expect.arrayContaining([
+      "onboarding-screening-clearances-credentials",
+      "onboarding-induction-training-learning",
+    ]));
+    expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(true);
+  });
+
   it("groups deficient onboarding requirements for targeted repair while preserving accepted content", () => {
     const blueprint = getRegistryEntry("people_management_review");
     if (!blueprint) throw new Error("missing people_management_review blueprint");
