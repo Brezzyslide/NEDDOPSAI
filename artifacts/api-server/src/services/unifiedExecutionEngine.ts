@@ -92,6 +92,7 @@ import {
 import {
   buildRequirementToDeliverablePlan,
   buildDeliverableOutputSchema,
+  groupRequirementFailuresForRepair,
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
   formatRequirementCoveragePrompt,
@@ -1754,20 +1755,34 @@ export class UnifiedExecutionEngine {
       const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile);
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
       if (hasCoverageFailure && coverageReport.missing.length > 0) {
-        const repairResult = await this.repairMissingDeliverableRequirements({
-          userRequest,
-          manifest,
-          blueprint,
-          blueprintContract,
-          authCtx: { userId: requesterId, organizationId, role: request.requesterRole! },
-          evidencePack: evidencePack ?? null,
-          currentContent: reviewResult.finalContent,
-          currentClaims: rawClaims,
-          professionalContext,
-          missingRequirements: coverageReport.missing,
-        });
+        const repairGroups = groupRequirementFailuresForRepair(coverageProfile, coverageReport.missing).slice(0, 8);
+        let repairFailureMessage: string | null = null;
+        for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
+          const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile);
+          if (currentCoverage.missing.length === 0) break;
+          const groupIds = new Set(repairGroups[repairIndex]!.map((failure) => failure.requirementId));
+          const currentGroupMissing = currentCoverage.missing.filter((failure) => groupIds.has(failure.requirementId));
+          if (currentGroupMissing.length === 0) continue;
+          const repairResult = await this.repairMissingDeliverableRequirements({
+            userRequest,
+            manifest,
+            blueprint,
+            blueprintContract,
+            authCtx: { userId: requesterId, organizationId, role: request.requesterRole! },
+            evidencePack: evidencePack ?? null,
+            currentContent: reviewResult.finalContent,
+            currentClaims: rawClaims,
+            professionalContext,
+            missingRequirements: currentGroupMissing,
+            repairGroupIndex: repairIndex + 1,
+            repairGroupCount: repairGroups.length,
+          });
 
-        if (!repairResult.failureMessage) {
+          if (repairResult.failureMessage) {
+            repairFailureMessage = repairResult.failureMessage;
+            break;
+          }
+
           draftContent = repairResult.content;
           rawClaims = repairResult.claims;
           latestModelTelemetry = repairResult.modelTelemetry;
@@ -1785,7 +1800,9 @@ export class UnifiedExecutionEngine {
               requirementCoverage: repairResult.requirementCoverage ?? null,
               deliverable: repairResult.deliverable ?? null,
               completion: repairResult.completion ?? null,
-              repairedRequirementIds: coverageReport.missing.map((failure) => failure.requirementId),
+              repairedRequirementIds: currentGroupMissing.map((failure) => failure.requirementId),
+              repairGroupIndex: repairIndex + 1,
+              repairGroupCount: repairGroups.length,
               requirementPlan,
             },
             coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
@@ -1810,6 +1827,8 @@ export class UnifiedExecutionEngine {
             structuredOutput: {
               requirementPlan,
               afterTargetedRequirementRepair: true,
+              repairGroupIndex: repairIndex + 1,
+              repairGroupCount: repairGroups.length,
             },
             reviewSnapshot: buildReviewSnapshot(reviewResult),
             coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
@@ -1825,7 +1844,10 @@ export class UnifiedExecutionEngine {
             standardTemplateEvidence,
             professionalContext,
           });
-        } else {
+          if (runtimeGate.passed) break;
+        }
+
+        if (!runtimeGate.passed && repairFailureMessage) {
           runtimeGate = {
             passed: false,
             failures: [
@@ -1833,7 +1855,7 @@ export class UnifiedExecutionEngine {
               {
                 gate: "mandatory_deliverable_coverage",
                 state: "validation",
-                message: repairResult.failureMessage,
+                message: repairFailureMessage,
                 details: coverageReport.missing.map((failure) =>
                   `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
                 ),
@@ -2553,13 +2575,15 @@ export class UnifiedExecutionEngine {
     currentClaims: RawClaim[];
     professionalContext: ProfessionalExecutionContext;
     missingRequirements: DeliverableRequirementCoverageFailure[];
+    repairGroupIndex?: number;
+    repairGroupCount?: number;
   }): Promise<GeneratedProfessionalDraft & { failureMessage?: string }> {
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
     if (provider !== "openai") {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
-        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
         failureMessage: `Targeted requirement repair is required, but AI_PROVIDER is "${provider}".`,
       };
     }
@@ -2585,7 +2609,7 @@ export class UnifiedExecutionEngine {
         "currentDeliverable.content",
         "evidencePack.chunks",
       ],
-      maxTokens: 2500,
+      maxTokens: 5000,
       outputMode: "json",
       runtimeProfile: "targeted_repair",
       allowProviderFallback: false,
@@ -2595,7 +2619,7 @@ export class UnifiedExecutionEngine {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
-        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
         failureMessage: `Targeted requirement repair did not produce a deliverable payload${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`,
       };
     }
@@ -2608,7 +2632,7 @@ export class UnifiedExecutionEngine {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
-        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 2500),
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
         failureMessage: "Targeted requirement repair response did not include deliverable.content.",
       };
     }
@@ -2623,7 +2647,7 @@ export class UnifiedExecutionEngine {
       completion: parsed.completion,
       modelTelemetry: {
         stage: "targeted_requirement_repair",
-        configuredOutputBudget: 2500,
+        configuredOutputBudget: 5000,
         actualInputTokens: response.usage?.inputTokens ?? null,
         actualOutputTokens: response.usage?.outputTokens ?? null,
         actualTotalTokens: response.usage?.totalTokens ?? null,
@@ -3526,6 +3550,8 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const coverageContract = formatRequirementCoveragePrompt(coverageProfile);
+  const deliverableSchema = buildDeliverableOutputSchema(coverageProfile);
+  const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(deliverableSchema);
   const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile)
     .filter((item) => item.applicability === "applicable")
     .map((item) =>
@@ -3564,6 +3590,7 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
     coverageContract,
+    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each section must account for every listed requirement ID in the internal JSON requirement_to_deliverable_plan and in deliverable.content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
     blueprintMethodSection,
     clauseFamilies.length
@@ -3645,9 +3672,12 @@ function buildTargetedRequirementRepairUserPrompt(input: {
   currentClaims: RawClaim[];
   professionalContext: ProfessionalExecutionContext;
   missingRequirements: DeliverableRequirementCoverageFailure[];
+  repairGroupIndex?: number;
+  repairGroupCount?: number;
 }): string {
   const profile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const schema = buildDeliverableOutputSchema(profile);
+  const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(schema);
   const missing = input.missingRequirements.map((requirement) => ({
     requirement_id: requirement.requirementId,
     classification: requirement.classification,
@@ -3667,17 +3697,39 @@ function buildTargetedRequirementRepairUserPrompt(input: {
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
+    `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return the full deliverable with accepted content preserved.` : "Repair the listed logical section."}`,
     `## CURRENT DELIVERABLE TO REPAIR\n${input.currentContent}`,
     `## EXACT MISSING REQUIREMENTS\n${JSON.stringify(missing, null, 2)}`,
     `## COMPLETE OUTPUT SCHEMA\n${JSON.stringify(schema, null, 2)}`,
+    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\n${sectionGenerationPlan}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
+For MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
 Preserve existing satisfied clauses and wording as much as possible.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
   ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function formatDeliverableSectionGenerationPlan(schema: ReturnType<typeof buildDeliverableOutputSchema>): string {
+  if (schema.groups.length === 0) return "- No mandatory user-facing schema groups supplied.";
+  return schema.groups.map((group, index) => {
+    const fields = group.fields.map((field) =>
+      [
+        `  - ${field.requirementId} [${field.classification}/${field.representationKind}]`,
+        `    Required representation: ${field.requiredRepresentation}`,
+        `    Expected location/field: ${field.fieldLabel}`,
+        field.minimumSubstance.length ? `    Minimum substance: ${field.minimumSubstance.join("; ")}` : "",
+      ].filter(Boolean).join("\n"),
+    ).join("\n");
+    return [
+      `${index + 1}. ${group.targetSection} (${group.sectionType})`,
+      `   Instruction: ${group.generationInstruction}`,
+      fields,
+    ].join("\n");
+  }).join("\n");
 }
 
 function inferSchemaTarget(schema: ReturnType<typeof buildDeliverableOutputSchema>, requirementId: string): string {

@@ -15,6 +15,7 @@ import {
   buildRequirementToDeliverablePlan,
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
+  groupRequirementFailuresForRepair,
   validateDeliverableRequirementCoverage,
 } from "../services/deliverableRequirementCoverageService";
 import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService";
@@ -511,15 +512,63 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(schemaIds).toHaveLength(20);
     expect(new Set(schemaIds).size).toBe(20);
-    expect(schema.groups.find((group) => group.targetSection === "Schedule of Supports table/fields")?.fields)
+    const supportScheduleGroup = schema.groups.find((group) => group.groupKey === "support-schedule-and-pricing");
+    expect(supportScheduleGroup).toMatchObject({
+      targetSection: "Schedule of Supports and Pricing Structure",
+      sectionType: "table",
+      generationInstruction: expect.stringContaining("support-service-period-field"),
+    });
+    expect(supportScheduleGroup?.fields)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({
           requirementId: "support-service-period-field",
           classification: "FACTUAL_FIELD",
+          representationKind: "table_column",
           fieldLabel: "Service Period",
           requiredRepresentation: "Schedule column for service period",
+          minimumSubstance: expect.arrayContaining([
+            expect.stringContaining("labelled fillable field"),
+          ]),
+        }),
+        expect.objectContaining({
+          requirementId: "support-total-field",
+          representationKind: "calculation_total",
+          minimumSubstance: expect.arrayContaining([
+            expect.stringContaining("distinct line subtotal"),
+          ]),
         }),
       ]));
+  });
+
+  it("groups broad Service Agreement misses into logical repair sections instead of one vague repair batch", () => {
+    const contract = serviceAgreementContract();
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.",
+      manifest: manifest(),
+      blueprint: contract.blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const report = evaluateDeliverableRequirementCoverage(
+      "## NDIS Service Agreement\n\n## Schedule of Supports\n| Support | Unit Price / Rate |\n| --- | --- |\n| [SUPPORT] | [PRICE] |\n\n## Complaints\nParticipants can complain.",
+      profile,
+    );
+    const groups = groupRequirementFailuresForRepair(profile, report.missing);
+    const groupedIds = groups.map((group) => group.map((failure) => failure.requirementId));
+
+    expect(report.missingCount).toBeGreaterThan(5);
+    expect(groupedIds).toContainEqual(expect.arrayContaining([
+      "support-total-field",
+      "support-service-period-field",
+    ]));
+    expect(groupedIds).toContainEqual(expect.arrayContaining([
+      "provider-responsibilities",
+      "participant-responsibilities",
+    ]));
+    expect(groupedIds).toContainEqual(expect.arrayContaining([
+      "rights-privacy-complaints-advocacy",
+    ]));
+    expect(groups.length).toBeGreaterThan(1);
   });
 
   it("treats an omitted FACTUAL_FIELD as missing even when every other Service Agreement requirement is present", () => {

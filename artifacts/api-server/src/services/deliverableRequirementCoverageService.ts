@@ -104,10 +104,15 @@ export interface DeliverableOutputSchemaField {
   requiredRepresentation: string;
   targetSection: string;
   fieldLabel: string;
+  representationKind: DeliverableRepresentationKind;
+  minimumSubstance: string[];
 }
 
 export interface DeliverableOutputSchemaGroup {
+  groupKey: string;
   targetSection: string;
+  sectionType: DeliverableRepresentationKind;
+  generationInstruction: string;
   fields: DeliverableOutputSchemaField[];
 }
 
@@ -116,6 +121,16 @@ export interface DeliverableOutputSchema {
   operation: DeliverableRequirementCoverageProfile["operation"];
   groups: DeliverableOutputSchemaGroup[];
 }
+
+export type DeliverableRepresentationKind =
+  | "document_section"
+  | "clause"
+  | "table"
+  | "table_column"
+  | "field"
+  | "calculation_total"
+  | "signature_block"
+  | "conditional_section";
 
 export interface DeliverableRequirementCoverageReport {
   deliverableType: string;
@@ -216,23 +231,48 @@ export function buildDeliverableOutputSchema(
       requiredRepresentation: item.expectedUserFacingRepresentation,
       targetSection: item.targetDeliverableLocation,
       fieldLabel: deriveFieldLabel(item),
+      representationKind: inferRepresentationKind(item),
+      minimumSubstance: deriveMinimumSubstance(item),
     }));
 
-  const groups = new Map<string, DeliverableOutputSchemaField[]>();
+  const groups = new Map<string, { targetSection: string; fields: DeliverableOutputSchemaField[] }>();
   for (const field of fields) {
-    const existing = groups.get(field.targetSection) ?? [];
-    existing.push(field);
-    groups.set(field.targetSection, existing);
+    const groupKey = inferSchemaGroupKey(field);
+    const existing = groups.get(groupKey) ?? { targetSection: inferGroupTitle(groupKey, field), fields: [] };
+    existing.fields.push(field);
+    groups.set(groupKey, existing);
   }
 
   return {
     deliverableType: profile.deliverableType,
     operation: profile.operation,
-    groups: Array.from(groups.entries()).map(([targetSection, groupedFields]) => ({
-      targetSection,
-      fields: groupedFields,
+    groups: Array.from(groups.entries()).map(([groupKey, grouped]) => ({
+      groupKey,
+      targetSection: grouped.targetSection,
+      sectionType: inferGroupSectionType(grouped.fields),
+      generationInstruction: buildGroupGenerationInstruction(grouped.targetSection, grouped.fields),
+      fields: grouped.fields,
     })),
   };
+}
+
+export function groupRequirementFailuresForRepair(
+  profile: DeliverableRequirementCoverageProfile,
+  failures: DeliverableRequirementCoverageFailure[],
+): DeliverableRequirementCoverageFailure[][] {
+  const schema = buildDeliverableOutputSchema(profile);
+  const groupOrder = new Map(schema.groups.map((group, index) => [group.groupKey, index]));
+  const grouped = new Map<string, DeliverableRequirementCoverageFailure[]>();
+  for (const failure of failures) {
+    const field = findSchemaField(schema, failure.requirementId);
+    const key = field ? inferSchemaGroupKey(field) : normaliseContent(failure.requiredDeliverableRepresentation).replace(/[^a-z0-9]+/g, "-");
+    const existing = grouped.get(key) ?? [];
+    existing.push(failure);
+    grouped.set(key, existing);
+  }
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => (groupOrder.get(left) ?? 999) - (groupOrder.get(right) ?? 999))
+    .map(([, items]) => items);
 }
 
 export function evaluateDeliverableRequirementCoverage(
@@ -504,6 +544,86 @@ function deriveFieldLabel(requirement: RequirementToDeliverablePlanItem): string
     .trim();
   if (representation && representation.length <= 80) return titleCase(representation);
   return titleCase(requirement.requirementId.replace(/-/g, " "));
+}
+
+function inferRepresentationKind(item: RequirementToDeliverablePlanItem): DeliverableRepresentationKind {
+  const text = normaliseContent(`${item.expectedUserFacingRepresentation} ${item.professionalRequirement} ${item.targetDeliverableLocation}`);
+  if (/\bsignature\b|\bacceptance\b|\bsign off\b/.test(text)) return "signature_block";
+  if (/\bagreement period total\b|\bestimated total\b|\bsubtotal\b|\btotal amount\b/.test(text)) return "calculation_total";
+  if (/\btable\b|\bschedule\b|\bworksheet\b|\bspreadsheet\b/.test(text)) {
+    return /\bcolumn\b|\bfield\b/.test(text) ? "table_column" : "table";
+  }
+  if (item.classification === "FACTUAL_FIELD") return "field";
+  if (item.classification === "CONDITIONAL") return "conditional_section";
+  return "clause";
+}
+
+function inferSchemaGroupKey(field: Pick<DeliverableOutputSchemaField, "targetSection" | "requiredRepresentation" | "requirementId" | "representationKind">): string {
+  const text = normaliseContent(`${field.targetSection} ${field.requiredRepresentation} ${field.requirementId}`);
+  if (/\bschedule\b|\bsupport item\b|\bunit price\b|\bquantity\b|\bfrequency\b|\bservice period\b|\bsubtotal\b|\bagreement period total\b/.test(text)) return "support-schedule-and-pricing";
+  if (/\bprovider responsib|\bparticipant responsib|\brepresentative responsib|\bdelivery obligation|\boperational responsib/.test(text)) return "responsibilities-and-delivery";
+  if (/\bparties\b|\bprovider details\b|\bparticipant details\b|\brepresentative\b|\bagreement period\b/.test(text)) return "parties-and-agreement-details";
+  if (/\bright|\bprivacy|\bconfidential|\bcomplaint|\bdispute|\badvocacy/.test(text)) return "rights-privacy-complaints";
+  if (/\bpayment|\bpricing|\bgst|\bnon ndis|\bprice change|\badjustment/.test(text)) return "payment-pricing-and-adjustments";
+  if (/\bcancellation|\bno show|\breschedul|\bnotice/.test(text)) return "cancellation-and-no-show";
+  if (/\bvariation|\bamendment|\bchange|\bconsent/.test(text)) return "variation-amendment-and-review";
+  if (/\btermination|\bexit|\btransition/.test(text)) return "termination-exit-and-transition";
+  if (/\bcontinuity|\bemergency|\bdisaster/.test(text)) return "continuity-emergency-and-disaster";
+  if (/\bsignature|\bacceptance|\bsign off/.test(text)) return "signatures-and-acceptance";
+  return normaliseContent(field.targetSection || field.requiredRepresentation || field.requirementId)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || field.requirementId;
+}
+
+function inferGroupTitle(groupKey: string, field: DeliverableOutputSchemaField): string {
+  const titles: Record<string, string> = {
+    "support-schedule-and-pricing": "Schedule of Supports and Pricing Structure",
+    "parties-and-agreement-details": "Parties and Agreement Details",
+    "responsibilities-and-delivery": "Delivery, Provider and Participant Responsibilities",
+    "rights-privacy-complaints": "Rights, Privacy, Complaints, Disputes and Advocacy",
+    "payment-pricing-and-adjustments": "Payment, Pricing, GST and Adjustments",
+    "cancellation-and-no-show": "Cancellation, No-Show and Rescheduling",
+    "variation-amendment-and-review": "Variation, Amendment and Agreement Review",
+    "termination-exit-and-transition": "Termination, Exit and Transition",
+    "continuity-emergency-and-disaster": "Continuity, Emergency and Disaster Arrangements",
+    "signatures-and-acceptance": "Signatures and Acceptance",
+  };
+  return titles[groupKey] ?? field.targetSection;
+}
+
+function inferGroupSectionType(fields: DeliverableOutputSchemaField[]): DeliverableRepresentationKind {
+  if (fields.some((field) => field.representationKind === "table" || field.representationKind === "table_column")) return "table";
+  if (fields.some((field) => field.representationKind === "signature_block")) return "signature_block";
+  if (fields.some((field) => field.representationKind === "calculation_total")) return "calculation_total";
+  if (fields.every((field) => field.representationKind === "field")) return "field";
+  if (fields.some((field) => field.representationKind === "conditional_section")) return "conditional_section";
+  return "clause";
+}
+
+function buildGroupGenerationInstruction(targetSection: string, fields: DeliverableOutputSchemaField[]): string {
+  const ids = fields.map((field) => `${field.requirementId} [${field.classification}/${field.representationKind}]`).join(", ");
+  const substance = Array.from(new Set(fields.flatMap((field) => field.minimumSubstance))).join("; ");
+  return `Draft ${targetSection} so it explicitly satisfies: ${ids}. Minimum professional substance: ${substance || "clear reusable professional wording plus any required fields."}`;
+}
+
+function deriveMinimumSubstance(item: RequirementToDeliverablePlanItem): string[] {
+  const text = normaliseContent(`${item.requirementId} ${item.professionalRequirement} ${item.expectedUserFacingRepresentation}`);
+  if (item.classification === "FACTUAL_FIELD") {
+    if (/\btotal\b/.test(text)) return ["provide distinct line subtotal and agreement-period or estimated total structures", "leave unknown values as fillable fields, not invented numbers"];
+    if (/\bsignature\b|\bacceptance\b/.test(text)) return ["provide provider, participant and representative signature/date fields where applicable", "state that signing records acceptance of the agreement terms"];
+    return ["provide a labelled fillable field, table column or equivalent structured input location", "do not rely on prose mentions alone"];
+  }
+  if (/\bprovider responsib/.test(text)) return ["state provider delivery, safety, privacy, records, billing, complaints, continuity and escalation obligations"];
+  if (/\bparticipant responsib|\brepresentative responsib/.test(text)) return ["state participant/representative communication, attendance, information, payment or plan-management cooperation without transferring provider obligations"];
+  if (/\bright|\bprivacy|\bcomplaint|\badvocacy|\bdispute/.test(text)) return ["include rights, privacy/confidentiality, complaint/dispute pathway, escalation and advocacy support"];
+  if (/\bpayment|\bpricing|\bgst|\bprice change|\badjustment/.test(text)) return ["explain pricing source, payment process, GST/non-NDIS cost treatment, price changes and current-pricing qualification"];
+  if (/\bcancellation|\bno show|\breschedul|\bnotice/.test(text)) return ["cover cancellation notice, no-show treatment, rescheduling and communication responsibilities"];
+  if (/\bvariation|\bamendment|\bchange|\bconsent/.test(text)) return ["cover documented variations, notification, consent/signature control and review triggers"];
+  if (/\btermination|\bexit|\btransition/.test(text)) return ["cover notice, final obligations, participant choice and transition support"];
+  if (/\bcontinuity|\bemergency|\bdisaster/.test(text)) return ["provide a configurable continuity/emergency/disaster section with communication and safe support-continuity expectations"];
+  if (/\bdelivery\b|\bsupport\b/.test(text)) return ["describe support delivery obligations, operational boundaries and escalation where delivery cannot occur"];
+  return ["draft substantive reusable clause wording that materially addresses the requirement", "avoid heading-only, keyword-only or self-assertion coverage"];
 }
 
 interface MarkdownSection {
