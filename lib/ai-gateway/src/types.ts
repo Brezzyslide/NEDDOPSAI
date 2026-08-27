@@ -242,6 +242,7 @@ export interface AIProviderHealth {
  *   approved_organisation_memory   — cosMemories.* (title reference only, no raw content)
  *   task_scoped_uploads        — taskUploads.* (no storageKey, no authorityLevel)
  *   entity_scoped_knowledge    — entityKnowledge.* (clearance-checked, task-scoped)
+ *   targeted_repair_context    — coverage misses, output schema, current draft
  *
  * Purpose separation:
  *   conversation_intelligence  — library presence metadata only; NO evidence chunks
@@ -277,6 +278,12 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "failedDraft.content",
     "gateFailures",
     "evidencePack.chunks",
+    // targeted_repair_context
+    // Allows the existing repair path to see only the deterministic missing
+    // requirements, approved output schema, and current draft being repaired.
+    "deliverableRequirementCoverage.missing",
+    "deliverableOutputSchema",
+    "currentDeliverable.content",
     // specialist_identity
     "specialist.name",
     "specialist.capabilities",

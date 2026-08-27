@@ -1,6 +1,7 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { describe, expect, it, afterEach } from "vitest";
+import { PURPOSE_FIELD_ALLOWLIST } from "../../../../lib/ai-gateway/src/types";
 import { resolveOpenAIRuntimePolicy } from "../../../../lib/ai-gateway/src/providers/openai";
 
 const root = resolve(__dirname, "..");
@@ -95,5 +96,15 @@ describe("Sprint 35J professional AI gateway timeout hardening", () => {
     expect(ueeSrc).toContain("configuredTimeoutMs: response.configuredTimeoutMs");
     expect(ueeSrc).toContain("retryCount: response.retryCount");
     expect(ueeSrc).toContain("providerFailureKind: response.providerFailureKind");
+  });
+
+  it("permits only the approved targeted-repair context through task_execution", () => {
+    expect(PURPOSE_FIELD_ALLOWLIST.task_execution).toEqual(expect.arrayContaining([
+      "deliverableRequirementCoverage.missing",
+      "deliverableOutputSchema",
+      "currentDeliverable.content",
+    ]));
+    expect(PURPOSE_FIELD_ALLOWLIST.task_execution).not.toContain("internal.chainOfThought");
+    expect(PURPOSE_FIELD_ALLOWLIST.task_execution).not.toContain("organisationLibrarySources.storageKey");
   });
 });
