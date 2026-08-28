@@ -1,0 +1,33 @@
+{
+  "professional_work": {
+    "summary": "The NDIS care plan template has been enhanced to include comprehensive risk, safety, incident, and escalation arrangements, ensuring all mandatory requirements are met.",
+    "blueprint_completion": [],
+    "requirement_to_deliverable_plan": [],
+    "evidence_map": [],
+    "missing_information": []
+  },
+  "requirement_coverage": {
+    "satisfied": [],
+    "missing": [
+      "mandatory-7"
+    ]
+  },
+  "deliverable": {
+    "type": "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+    "audience": "NDIS provider staff, participant and participant representative",
+    "sections": [
+      {
+        "requirementId": "mandatory-7",
+        "heading": "Risk, Safety, Incident and Escalation Arrangements",
+        "content": "Risk Management:\n- Identify potential risks and mitigation strategies.\n- Emergency contact procedures and escalation pathways.\n\nFACTUAL_FIELD: Participant Name\nFACTUAL_FIELD: Emergency Contact Details\nFACTUAL_FIELD: Incident Reporting Procedures\nFACTUAL_FIELD: Risk Assessment Review Date\nFACTUAL_FIELD: Responsible Staff Member"
+      }
+    ]
+  },
+  "completion": {
+    "operation": "CREATE",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
+  "claims": []
+}

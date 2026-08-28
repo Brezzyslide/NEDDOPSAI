@@ -1,0 +1,153 @@
+{
+  "status": "completed_revalidated",
+  "stage1": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "finishReason": "stop",
+    "latencyMs": 17848,
+    "usage": {
+      "inputTokens": 8239,
+      "outputTokens": 1603,
+      "totalTokens": 9842,
+      "cachedInputTokens": 0
+    },
+    "sectionCount": 9,
+    "documentWords": 271,
+    "missingOrThinRequirements": [
+      "mandatory-7"
+    ]
+  },
+  "repair": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "finishReason": "stop",
+    "latencyMs": 3065,
+    "usage": {
+      "inputTokens": 1029,
+      "outputTokens": 225,
+      "totalTokens": 1254,
+      "cachedInputTokens": 0
+    },
+    "returnedDeltaSectionCount": 1,
+    "mergedSectionCount": 9,
+    "failureMessage": null
+  },
+  "finalDeliverable": {
+    "sectionCount": 9,
+    "requiredRequirementCount": 9,
+    "allRequirementIdsPresent": true,
+    "assembledMarkdownChars": 2334,
+    "assembledMarkdownWords": 291
+  },
+  "gateResults": {
+    "structuredOutput": true,
+    "deliverableSectionsPopulatedPerRequirement": true,
+    "fallbackHeuristicPassCount": 9,
+    "fallbackHeuristicFailCount": 0,
+    "adequacyCriteriaValidatedCount": 0,
+    "fallbackHeuristicValidatedCount": 9,
+    "missingOrThinRequirements": [],
+    "readyForCompletedWorkSelfReport": true,
+    "methodologyLeakageSelfReport": false
+  },
+  "requirementValidation": [
+    {
+      "id": "mandatory-1",
+      "text": "Participant identity and factual placeholder framework",
+      "target": "User-facing representation of Participant identity and factual placeholder framework",
+      "present": true,
+      "heading": "Participant Identity",
+      "wordCount": 25,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-2",
+      "text": "Participant goals, preferences and communication needs",
+      "target": "User-facing representation of Participant goals, preferences and communication needs",
+      "present": true,
+      "heading": "Goals and Preferences",
+      "wordCount": 23,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-3",
+      "text": "Support domains and daily living support structure",
+      "target": "User-facing representation of Support domains and daily living support structure",
+      "present": true,
+      "heading": "Support Domains and Daily Living Support Structure",
+      "wordCount": 32,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-4",
+      "text": "Provider and worker responsibilities",
+      "target": "Responsibilities clauses",
+      "present": true,
+      "heading": "Provider and Worker Responsibilities",
+      "wordCount": 24,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-5",
+      "text": "Participant, representative and support-network responsibilities",
+      "target": "Responsibilities clauses",
+      "present": true,
+      "heading": "Participant, Representative and Support-Network Responsibilities",
+      "wordCount": 24,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-6",
+      "text": "Health, medication, behaviour support and restrictive-practice boundaries",
+      "target": "User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
+      "present": true,
+      "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
+      "wordCount": 22,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-7",
+      "text": "Risk, safety, incident and escalation arrangements",
+      "target": "User-facing representation of Risk, safety, incident and escalation arrangements",
+      "present": true,
+      "heading": "Risk, Safety, Incident and Escalation Arrangements",
+      "wordCount": 36,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-8",
+      "text": "Community participation and service-delivery coordination",
+      "target": "User-facing representation of Community participation and service-delivery coordination",
+      "present": true,
+      "heading": "Community Participation and Service-Delivery Coordination",
+      "wordCount": 22,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-9",
+      "text": "Review, updates, consent and sign-off provisions",
+      "target": "Supervision, check-in and sign-off checklist section",
+      "present": true,
+      "heading": "Review, Updates, Consent and Sign-off Provisions",
+      "wordCount": 29,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    }
+  ],
+  "cost": {
+    "stage1Actual": 0.0021976499999999998,
+    "repairActual": 0.00028935,
+    "totalActual": 0.0024869999999999996,
+    "totalAtStage1CacheHitApprox": 0.001892775,
+    "stage1CacheableTokensApprox": 7923,
+    "stage1CacheablePercent": 96.2,
+    "stage1AtCacheHitApprox": 0.001603425,
+    "projectedCacheHitSavings": 0.0005942249999999997
+  }
+}
