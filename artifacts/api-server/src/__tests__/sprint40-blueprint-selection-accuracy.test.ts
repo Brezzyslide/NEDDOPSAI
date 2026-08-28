@@ -229,10 +229,18 @@ describe("Sprint 40 registry-driven blueprint selection", () => {
     const { buildRegistryClassifierOptions } = await import("../services/workBlueprintService.js");
     const options = buildRegistryClassifierOptions();
 
-    expect(options.length).toBeGreaterThanOrEqual(75);
+    expect(options).toHaveLength(74);
     expect(options.every((option) => option.code && option.name && option.domain && option.purpose)).toBe(true);
+    expect(options.every((option) => option.authority_boundary)).toBe(true);
+    expect(options.every((option) => Array.isArray(option.choose_when))).toBe(true);
+    expect(options.every((option) => Array.isArray(option.do_not_choose_when))).toBe(true);
+    expect(options.every((option) => Array.isArray(option.commonly_confused_with))).toBe(true);
+    expect(options.every((option) => Array.isArray(option.operations))).toBe(true);
+    expect(options.every((option) => Array.isArray(option.scopes))).toBe(true);
     expect(options.every((option) => Array.isArray(option.supportedOperations))).toBe(true);
     expect(options.some((option) => option.code === "service_agreement_review")).toBe(true);
+    expect(options.some((option) => option.code === "regulatory_change_impact")).toBe(false);
+    expect(options.some((option) => option.code === "regulatory_change_impact_assessment")).toBe(true);
     expect(options.some((option) => option.code === "care_plan_synthetic_architecture")).toBe(false);
   });
 
@@ -317,26 +325,29 @@ describe("Sprint 40 registry-driven blueprint selection", () => {
     expect(dbMocks.select).not.toHaveBeenCalled();
   });
 
-  it("fails closed below the confidence threshold", async () => {
+  it("records self-reported confidence as telemetry instead of using it as a gate", async () => {
     gatewayMocks.process.mockResolvedValueOnce({
       content: JSON.stringify({
         blueprintCode: "service_agreement_review",
         operation: "CREATE",
-        confidence: 0.98,
-        reasoning: "Close but ambiguous.",
+        confidence: 0.12,
+        reasoning: "Low confidence is telemetry, not a calibrated safety gate.",
       }),
       usedFallback: false,
       model: "gpt-4o-mini-2024-07-18",
       latencyMs: 120,
     });
+    dbMocks.select
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([makeBlueprintRow("service_agreement_review")]));
 
     const { REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD, selectBlueprint } = await import("../services/workBlueprintService.js");
     const result = await selectBlueprint("fresh agreement maybe contract thing", ORG_ID);
 
-    expect(REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD).toBe(0.99);
-    expect(result.blueprint).toBeNull();
-    expect(result.confidence).toBe(0.98);
-    expect(dbMocks.select).not.toHaveBeenCalled();
+    expect(REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD).toBe(0);
+    expect(result.blueprint?.code).toBe("service_agreement_review");
+    expect(result.confidence).toBe(0.12);
+    expect(dbMocks.select).toHaveBeenCalled();
   });
 
   it("does not fall back to keyword matching when the classifier is unavailable", async () => {

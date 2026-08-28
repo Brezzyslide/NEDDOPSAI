@@ -1,0 +1,2821 @@
+{
+  "generatedAt": "2026-08-28T13:45:48.248Z",
+  "registryCount": 75,
+  "classifierOptionCount": 74,
+  "domainCounts": {
+    "agreements_correspondence": 2,
+    "participant_support": 9,
+    "clinical_mealtime": 7,
+    "behaviour_restrictive_practice": 6,
+    "incidents_safeguarding": 5,
+    "risk_emergency": 9,
+    "governance_policy": 10,
+    "compliance_regulatory": 4,
+    "workforce": 9,
+    "finance": 4,
+    "operations_strategy": 10
+  },
+  "operationScopeReport": [
+    {
+      "code": "care_plan",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "individual_support_plan",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "sil_support_plan",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "service_delivery_review",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "participant_transition_plan",
+      "originalSupportedModes": [
+        "create",
+        "review"
+      ],
+      "operations": [
+        "create",
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "participant_goals_review",
+      "originalSupportedModes": [
+        "review",
+        "update"
+      ],
+      "operations": [
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "update",
+          "mappedTo": "revise",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "participant_periodic_summary",
+      "originalSupportedModes": [
+        "weekly",
+        "periodic"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "periodic",
+        "weekly"
+      ],
+      "mapping": [
+        {
+          "original": "weekly",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "periodic",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "support_strategy_analysis",
+      "originalSupportedModes": [
+        "proactive",
+        "reactive",
+        "protective",
+        "combined"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "combined",
+        "proactive",
+        "protective",
+        "reactive"
+      ],
+      "mapping": [
+        {
+          "original": "proactive",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "reactive",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "protective",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "combined",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "funding_utilisation_review",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "mealtime_risk_assessment",
+      "originalSupportedModes": [
+        "risk_assessment"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "risk_assessment"
+      ],
+      "mapping": [
+        {
+          "original": "risk_assessment",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "mealtime_management_plan_review",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "dysphagia_mealtime_safety_review",
+      "originalSupportedModes": [
+        "dysphagia"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "dysphagia"
+      ],
+      "mapping": [
+        {
+          "original": "dysphagia",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "mealtime_support_strategy",
+      "originalSupportedModes": [
+        "strategy"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "strategy"
+      ],
+      "mapping": [
+        {
+          "original": "strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "medication_management_review",
+      "originalSupportedModes": [
+        "medication_management"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "medication_management"
+      ],
+      "mapping": [
+        {
+          "original": "medication_management",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "health_support_plan",
+      "originalSupportedModes": [
+        "health_support"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "health_support"
+      ],
+      "mapping": [
+        {
+          "original": "health_support",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "health_clinical_escalation_plan",
+      "originalSupportedModes": [
+        "escalation"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "escalation"
+      ],
+      "mapping": [
+        {
+          "original": "escalation",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "participant_risk_assessment",
+      "originalSupportedModes": [
+        "general",
+        "health",
+        "behavioural",
+        "home"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "behavioural",
+        "general",
+        "health",
+        "home"
+      ],
+      "mapping": [
+        {
+          "original": "general",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "health",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "behavioural",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "home",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "community_access_risk_assessment",
+      "originalSupportedModes": [
+        "community_access"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "community_access"
+      ],
+      "mapping": [
+        {
+          "original": "community_access",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "site_environmental_risk_assessment",
+      "originalSupportedModes": [
+        "site",
+        "environmental"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "environmental",
+        "site"
+      ],
+      "mapping": [
+        {
+          "original": "site",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "environmental",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "fire_risk_assessment",
+      "originalSupportedModes": [
+        "fire"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "fire"
+      ],
+      "mapping": [
+        {
+          "original": "fire",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "evacuation_emergency_assessment",
+      "originalSupportedModes": [
+        "evacuation"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "evacuation"
+      ],
+      "mapping": [
+        {
+          "original": "evacuation",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "participant_disaster_risk_assessment",
+      "originalSupportedModes": [
+        "participant"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "participant"
+      ],
+      "mapping": [
+        {
+          "original": "participant",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "disaster_emergency_management_plan",
+      "originalSupportedModes": [
+        "organisational"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "organisational"
+      ],
+      "mapping": [
+        {
+          "original": "organisational",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "business_continuity_plan",
+      "originalSupportedModes": [
+        "business_continuity"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "business_continuity"
+      ],
+      "mapping": [
+        {
+          "original": "business_continuity",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "individual_emergency_preparedness_plan",
+      "originalSupportedModes": [
+        "participant"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "participant"
+      ],
+      "mapping": [
+        {
+          "original": "participant",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "behaviour_support_plan_review",
+      "originalSupportedModes": [
+        "review",
+        "revise",
+        "implementation"
+      ],
+      "operations": [
+        "review",
+        "revise"
+      ],
+      "scopes": [
+        "implementation"
+      ],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        },
+        {
+          "original": "implementation",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "behaviour_trigger_analysis",
+      "originalSupportedModes": [
+        "analysis"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "restrictive_practice_risk_assessment",
+      "originalSupportedModes": [
+        "risk_assessment"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "risk_assessment"
+      ],
+      "mapping": [
+        {
+          "original": "risk_assessment",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "restrictive_practice_comparison",
+      "originalSupportedModes": [
+        "comparison"
+      ],
+      "operations": [
+        "compare"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "comparison",
+          "mappedTo": "compare",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "restrictive_practice_authorisation",
+      "originalSupportedModes": [
+        "authorisation",
+        "governance",
+        "monthly_reporting"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "authorisation",
+        "governance",
+        "monthly_reporting"
+      ],
+      "mapping": [
+        {
+          "original": "authorisation",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "governance",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "monthly_reporting",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "unauthorised_restrictive_practice_review",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "incident_investigation",
+      "originalSupportedModes": [
+        "investigation"
+      ],
+      "operations": [
+        "investigate"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "investigation",
+          "mappedTo": "investigate",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "incident_review_improvement",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "reportable_incident_assessment",
+      "originalSupportedModes": [
+        "reportable"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "reportable"
+      ],
+      "mapping": [
+        {
+          "original": "reportable",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "safeguarding_assessment",
+      "originalSupportedModes": [
+        "assessment"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "assessment",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "corrective_action_improvement",
+      "originalSupportedModes": [
+        "corrective_action"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "corrective_action"
+      ],
+      "mapping": [
+        {
+          "original": "corrective_action",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "clinical_governance_review",
+      "originalSupportedModes": [
+        "clinical"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "clinical"
+      ],
+      "mapping": [
+        {
+          "original": "clinical",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "governance_executive_review",
+      "originalSupportedModes": [
+        "executive"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "executive"
+      ],
+      "mapping": [
+        {
+          "original": "executive",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "rostering_fatigue_review",
+      "originalSupportedModes": [
+        "fatigue_review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "fatigue_review"
+      ],
+      "mapping": [
+        {
+          "original": "fatigue_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "roster_planning",
+      "originalSupportedModes": [
+        "planning"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "planning"
+      ],
+      "mapping": [
+        {
+          "original": "planning",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "workforce_performance_review",
+      "originalSupportedModes": [
+        "performance_review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "performance_review"
+      ],
+      "mapping": [
+        {
+          "original": "performance_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "people_management_review",
+      "originalSupportedModes": [
+        "performance_management",
+        "probation_review",
+        "employee_relations",
+        "grievance_review",
+        "conduct_review",
+        "recruitment_support",
+        "onboarding",
+        "workplace_adjustment",
+        "supervision_framework"
+      ],
+      "operations": [
+        "create",
+        "review"
+      ],
+      "scopes": [
+        "conduct_review",
+        "employee_relations",
+        "grievance_review",
+        "onboarding",
+        "performance_management",
+        "probation_review",
+        "recruitment_support",
+        "supervision_framework",
+        "workplace_adjustment"
+      ],
+      "mapping": [
+        {
+          "original": "performance_management",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "probation_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "employee_relations",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "grievance_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "conduct_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "recruitment_support",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "onboarding",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "workplace_adjustment",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "supervision_framework",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "learning_capability_development_plan",
+      "originalSupportedModes": [
+        "needs_analysis",
+        "competency_gap_analysis",
+        "training_gap_analysis",
+        "induction",
+        "onboarding",
+        "mandatory_training",
+        "refresher_training",
+        "development_plan",
+        "training_plan",
+        "effectiveness_review",
+        "capability_review",
+        "remediation",
+        "professional_development"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "capability_review",
+        "competency_gap_analysis",
+        "development_plan",
+        "effectiveness_review",
+        "induction",
+        "mandatory_training",
+        "needs_analysis",
+        "onboarding",
+        "professional_development",
+        "refresher_training",
+        "remediation",
+        "training_gap_analysis",
+        "training_plan"
+      ],
+      "mapping": [
+        {
+          "original": "needs_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "competency_gap_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "training_gap_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "induction",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "onboarding",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "mandatory_training",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "refresher_training",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "development_plan",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "training_plan",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "effectiveness_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "capability_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "remediation",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "professional_development",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "workforce_compliance_assessment",
+      "originalSupportedModes": [
+        "eligibility_review",
+        "credential_review",
+        "expiry_monitoring",
+        "exception_review",
+        "onboarding_readiness"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "credential_review",
+        "eligibility_review",
+        "exception_review",
+        "expiry_monitoring",
+        "onboarding_readiness"
+      ],
+      "mapping": [
+        {
+          "original": "eligibility_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "credential_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "expiry_monitoring",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "exception_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "onboarding_readiness",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "payroll_workforce_cost_review",
+      "originalSupportedModes": [
+        "payroll_review",
+        "reconciliation",
+        "exception_review",
+        "cost_review",
+        "cost_calculation",
+        "award_pay_review",
+        "classification_pay_review",
+        "allowance_review",
+        "overtime_review",
+        "penalty_rate_review",
+        "historical_reconstruction"
+      ],
+      "operations": [
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "allowance_review",
+        "award_pay_review",
+        "classification_pay_review",
+        "cost_calculation",
+        "cost_review",
+        "exception_review",
+        "historical_reconstruction",
+        "overtime_review",
+        "payroll_review",
+        "penalty_rate_review",
+        "reconciliation"
+      ],
+      "mapping": [
+        {
+          "original": "payroll_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "reconciliation",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "exception_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "cost_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "cost_calculation",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "award_pay_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "classification_pay_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "allowance_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "overtime_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "penalty_rate_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "historical_reconstruction",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "operational_readiness_assessment",
+      "originalSupportedModes": [
+        "readiness"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "readiness"
+      ],
+      "mapping": [
+        {
+          "original": "readiness",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "standard_operating_procedure",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise",
+        "work_instruction"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [
+        "work_instruction"
+      ],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        },
+        {
+          "original": "work_instruction",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "business_process_analysis",
+      "originalSupportedModes": [
+        "process_analysis",
+        "map",
+        "review",
+        "improvement",
+        "workflow",
+        "control_review",
+        "handoff_review"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "control_review",
+        "handoff_review",
+        "improvement",
+        "map",
+        "process_analysis",
+        "workflow"
+      ],
+      "mapping": [
+        {
+          "original": "process_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "map",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "improvement",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "workflow",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "control_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "handoff_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "asset_lifecycle_review",
+      "originalSupportedModes": [
+        "register_review",
+        "lifecycle_review",
+        "maintenance_review",
+        "inspection_review",
+        "condition_review",
+        "exception_review",
+        "replacement_review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "condition_review",
+        "exception_review",
+        "inspection_review",
+        "lifecycle_review",
+        "maintenance_review",
+        "register_review",
+        "replacement_review"
+      ],
+      "mapping": [
+        {
+          "original": "register_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "lifecycle_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "maintenance_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "inspection_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "condition_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "exception_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "replacement_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "document_control_review",
+      "originalSupportedModes": [
+        "control_review",
+        "lifecycle_review",
+        "version_review",
+        "metadata_review",
+        "review_due",
+        "archive_review",
+        "register_reconciliation",
+        "circulation_review"
+      ],
+      "operations": [
+        "review",
+        "revise",
+        "assess"
+      ],
+      "scopes": [
+        "archive_review",
+        "circulation_review",
+        "control_review",
+        "lifecycle_review",
+        "metadata_review",
+        "register_reconciliation",
+        "review_due",
+        "version_review"
+      ],
+      "mapping": [
+        {
+          "original": "control_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "lifecycle_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "version_review",
+          "mappedTo": "revise",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "metadata_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "review_due",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "archive_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "register_reconciliation",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "circulation_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "knowledge_base_review",
+      "originalSupportedModes": [
+        "knowledge_base_review",
+        "knowledge_environment_review",
+        "taxonomy",
+        "retrieval_quality",
+        "duplication_review",
+        "gap_review",
+        "metadata_quality",
+        "ai_retrieval_readiness"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "ai_retrieval_readiness",
+        "duplication_review",
+        "gap_review",
+        "knowledge_base_review",
+        "knowledge_environment_review",
+        "metadata_quality",
+        "retrieval_quality",
+        "taxonomy"
+      ],
+      "mapping": [
+        {
+          "original": "knowledge_base_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "knowledge_environment_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "taxonomy",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "retrieval_quality",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "duplication_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "gap_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "metadata_quality",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "ai_retrieval_readiness",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "controlled_document_assembly",
+      "originalSupportedModes": [
+        "assembly",
+        "template_application",
+        "artifact_packaging",
+        "docx_pdf_package",
+        "controlled_publication_package"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "artifact_packaging",
+        "assembly",
+        "controlled_publication_package",
+        "docx_pdf_package",
+        "template_application"
+      ],
+      "mapping": [
+        {
+          "original": "assembly",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "template_application",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "artifact_packaging",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "docx_pdf_package",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "controlled_publication_package",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "policy",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise",
+        "policy_development",
+        "policy_amendment",
+        "policy_consolidation",
+        "policy_gap_review"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [
+        "policy_amendment",
+        "policy_consolidation",
+        "policy_development",
+        "policy_gap_review"
+      ],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        },
+        {
+          "original": "policy_development",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "policy_amendment",
+          "mappedTo": "revise",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "policy_consolidation",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "policy_gap_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "governance_framework",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise",
+        "domain_framework",
+        "whole_organisation_framework"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [
+        "domain_framework",
+        "whole_organisation_framework"
+      ],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        },
+        {
+          "original": "domain_framework",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "whole_organisation_framework",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "regulatory_change_impact_assessment",
+      "originalSupportedModes": [
+        "impact_assessment",
+        "review"
+      ],
+      "operations": [
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "impact_assessment"
+      ],
+      "mapping": [
+        {
+          "original": "impact_assessment",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "governance_gap_analysis",
+      "originalSupportedModes": [
+        "gap_analysis",
+        "review"
+      ],
+      "operations": [
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "gap_analysis"
+      ],
+      "mapping": [
+        {
+          "original": "gap_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "delegation_framework",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "compliance_audit_readiness",
+      "originalSupportedModes": [
+        "audit_readiness"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "audit_readiness"
+      ],
+      "mapping": [
+        {
+          "original": "audit_readiness",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "legislation_regulatory_review",
+      "originalSupportedModes": [
+        "legislation_review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "legislation_review"
+      ],
+      "mapping": [
+        {
+          "original": "legislation_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "regulatory_change_impact",
+      "originalSupportedModes": [
+        "impact_assessment"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "impact_assessment"
+      ],
+      "mapping": [
+        {
+          "original": "impact_assessment",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "regulator_response_submission",
+      "originalSupportedModes": [
+        "response"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "response"
+      ],
+      "mapping": [
+        {
+          "original": "response",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "schads_award_analysis",
+      "originalSupportedModes": [
+        "schads_analysis"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "schads_analysis"
+      ],
+      "mapping": [
+        {
+          "original": "schads_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "employment_compliance_review",
+      "originalSupportedModes": [
+        "review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "business_financial_analysis",
+      "originalSupportedModes": [
+        "analysis"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "financial_planning_reporting_review",
+      "originalSupportedModes": [
+        "budget",
+        "forecast",
+        "cashflow",
+        "scenario",
+        "sensitivity",
+        "management_reporting",
+        "variance",
+        "performance",
+        "profitability",
+        "business_case"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "budget",
+        "business_case",
+        "cashflow",
+        "forecast",
+        "management_reporting",
+        "performance",
+        "profitability",
+        "scenario",
+        "sensitivity",
+        "variance"
+      ],
+      "mapping": [
+        {
+          "original": "budget",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "forecast",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "cashflow",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "scenario",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "sensitivity",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "management_reporting",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "variance",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "performance",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "profitability",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "business_case",
+          "mappedTo": "scope",
+          "status": "scope"
+        }
+      ]
+    },
+    {
+      "code": "tax_financial_obligation_review",
+      "originalSupportedModes": [
+        "tax_review"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "tax_review"
+      ],
+      "mapping": [
+        {
+          "original": "tax_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "operational_finance_reconciliation_review",
+      "originalSupportedModes": [
+        "reconciliation",
+        "bank_reconciliation",
+        "accounts_payable",
+        "accounts_receivable",
+        "invoice_review",
+        "payment_review",
+        "receipt_review",
+        "expense_review",
+        "transaction_review",
+        "exception_review"
+      ],
+      "operations": [
+        "review",
+        "assess"
+      ],
+      "scopes": [
+        "accounts_payable",
+        "accounts_receivable",
+        "bank_reconciliation",
+        "exception_review",
+        "expense_review",
+        "invoice_review",
+        "payment_review",
+        "receipt_review",
+        "reconciliation",
+        "transaction_review"
+      ],
+      "mapping": [
+        {
+          "original": "reconciliation",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "bank_reconciliation",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "accounts_payable",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "accounts_receivable",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "invoice_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "payment_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "receipt_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "expense_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "transaction_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "exception_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "business_growth_analysis",
+      "originalSupportedModes": [
+        "growth_analysis"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "growth_analysis"
+      ],
+      "mapping": [
+        {
+          "original": "growth_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "ndis_marketing_strategy",
+      "originalSupportedModes": [
+        "marketing",
+        "growth_strategy",
+        "referral_strategy",
+        "authority_strategy",
+        "content_strategy",
+        "channel_strategy",
+        "campaign_planning"
+      ],
+      "operations": [
+        "create"
+      ],
+      "scopes": [
+        "authority_strategy",
+        "campaign_planning",
+        "channel_strategy",
+        "content_strategy",
+        "growth_strategy",
+        "marketing",
+        "referral_strategy"
+      ],
+      "mapping": [
+        {
+          "original": "marketing",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "growth_strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "referral_strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "authority_strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "content_strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "channel_strategy",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "campaign_planning",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "marketing_communications_review",
+      "originalSupportedModes": [
+        "communications_review",
+        "claims_review",
+        "website_content",
+        "public_content",
+        "brochure_review",
+        "social_media",
+        "email_campaign",
+        "stakeholder_communication",
+        "participant_information",
+        "service_description",
+        "vacancy_communication",
+        "thought_leadership",
+        "accessibility_review",
+        "publication_readiness"
+      ],
+      "operations": [
+        "review"
+      ],
+      "scopes": [
+        "accessibility_review",
+        "brochure_review",
+        "claims_review",
+        "communications_review",
+        "email_campaign",
+        "participant_information",
+        "public_content",
+        "publication_readiness",
+        "service_description",
+        "social_media",
+        "stakeholder_communication",
+        "thought_leadership",
+        "vacancy_communication",
+        "website_content"
+      ],
+      "mapping": [
+        {
+          "original": "communications_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "claims_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "website_content",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "public_content",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "brochure_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "social_media",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "email_campaign",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "stakeholder_communication",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "participant_information",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "service_description",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "vacancy_communication",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "thought_leadership",
+          "mappedTo": "scope",
+          "status": "scope"
+        },
+        {
+          "original": "accessibility_review",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        },
+        {
+          "original": "publication_readiness",
+          "mappedTo": "review",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "ndis_market_analysis",
+      "originalSupportedModes": [
+        "market_analysis"
+      ],
+      "operations": [
+        "assess"
+      ],
+      "scopes": [
+        "market_analysis"
+      ],
+      "mapping": [
+        {
+          "original": "market_analysis",
+          "mappedTo": "assess",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "business_proposal",
+      "originalSupportedModes": [
+        "create",
+        "review"
+      ],
+      "operations": [
+        "create",
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "formal_stakeholder_correspondence",
+      "originalSupportedModes": [
+        "create",
+        "review"
+      ],
+      "operations": [
+        "create",
+        "review"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        }
+      ]
+    },
+    {
+      "code": "complaints_review_response",
+      "originalSupportedModes": [
+        "review",
+        "response"
+      ],
+      "operations": [
+        "create",
+        "review"
+      ],
+      "scopes": [
+        "response"
+      ],
+      "mapping": [
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "response",
+          "mappedTo": "create",
+          "status": "operation_synonym"
+        }
+      ]
+    },
+    {
+      "code": "service_agreement_review",
+      "originalSupportedModes": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "operations": [
+        "create",
+        "review",
+        "revise"
+      ],
+      "scopes": [],
+      "mapping": [
+        {
+          "original": "create",
+          "mappedTo": "create",
+          "status": "true_operation"
+        },
+        {
+          "original": "review",
+          "mappedTo": "review",
+          "status": "true_operation"
+        },
+        {
+          "original": "revise",
+          "mappedTo": "revise",
+          "status": "true_operation"
+        }
+      ]
+    }
+  ],
+  "clausePreservation": [
+    {
+      "code": "care_plan",
+      "clause": "Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "individual_support_plan",
+      "clause": "Clinical, BSP, RP, legal or practitioner-level judgements require the relevant professional authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "sil_support_plan",
+      "clause": "Roster construction, clinical decisions, BSP strategy and RP governance remain outside this work-product authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "behaviour_support_plan_review",
+      "clause": "Formal BSP authorship, amendment and practitioner-level strategy decisions require Behaviour Support Practitioner authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "behaviour_trigger_analysis",
+      "clause": "Practitioner-level functional behaviour assessment remains external or credentialed authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "restrictive_practice_risk_assessment",
+      "clause": "Prepare restrictive-practice governance/risk information for APO and credentialed review.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "restrictive_practice_risk_assessment",
+      "clause": "Clinical suitability, prescribing and formal authorisation remain outside normal AI authority.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "restrictive_practice_authorisation",
+      "clause": "Prepare restrictive-practice governance, authority/consent checking, usage reconciliation and monthly reporting evidence for internal approval workflow.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "restrictive_practice_authorisation",
+      "clause": "This does not grant authorisation or replace external/credentialed approval.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "reportable_incident_assessment",
+      "clause": "Participant-specific assessment of whether an established or suspected incident potentially meets current external reporting requirements, what category/pathway/timeframe applies, what evidence supports the determination, what remains missing and what authorised action must happen next.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "corrective_action_improvement",
+      "clause": "Convert an identified problem, non-conformance, control failure, adverse pattern or material improvement issue into an evidence-grounded CAPA process covering containment, correction, cause, corrective/preventive action, implementation evidence, effectiveness review, sustainability and closure approval.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "clinical_governance_review",
+      "clause": "Participant-specific operationalisation of authoritative clinical, behavioural, allied-health and professional recommendations into clear, practical, consistent support strategies for frontline service delivery without changing the underlying professional recommendation.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "business_process_analysis",
+      "clause": "Analyse how an organisational process actually operates, where work moves between people, systems and decisions, where it fails or creates unnecessary effort or risk, and what evidence-based future-state process would improve performance without weakening professional, regulatory, safeguarding or governance controls.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "document_control_review",
+      "clause": "Determine whether controlled organisational documents are properly identified, registered, owned, approved, version controlled, current, traceable, securely stored, accessible to authorised users, protected from unauthorised change, correctly circulated and safely superseded or archived without deciding the substantive professional correctness of their content.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "controlled_document_assembly",
+      "clause": "Assemble already-authorised professional content into a complete controlled organisational work product using an authoritative template and document-control standard, without changing professional meaning, ownership, authority, approval state, release state or downstream artifact-rendering responsibility.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "policy",
+      "clause": "Develop or materially review an organisational policy by establishing the policy subject, need, external authority, organisational context, risks, domain-owner inputs, governance decisions, policy position, controls, responsibilities, implementation impacts, monitoring, review triggers and approval readiness before producing controlled policy content.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "regulator_response_submission",
+      "clause": "Prepare an evidence-governed response to a regulator request, notice, finding, proposed action or submission requirement, with issue-by-issue authority, evidence, position, gaps, attachments and approval readiness.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "operational_finance_reconciliation_review",
+      "clause": "Review what financial transactions should exist for the scope, what actually exists across source, invoice, claim, payment, bank and accounting records, whether the underlying transactions are valid and correctly classified, whether records reconcile through their lifecycle, what explains each variance and what unresolved financial exceptions require correction, approval, investigation or specialist escalation.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "ndis_marketing_strategy",
+      "clause": "Develop an evidence-backed NDIS market, referral, positioning, authority and sustainable-growth strategy that identifies defensible demand, qualified referral segments, credible value propositions, safe channel strategy, marketing economics and capacity-constrained growth without making unsupported claims, exploiting participants, publishing content, launching campaigns, contacting referral partners or spending advertising money.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "marketing_communications_review",
+      "clause": "Review proposed or existing public communications for factual support, currentness, audience fit, accessibility, organisational capability, participant rights, privacy, safeguarding, claim safety, approved positioning and publication readiness without publishing content or becoming marketing strategy, market analysis, correspondence, policy, regulator response or professional interpretation.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "business_proposal",
+      "clause": "Assess whether the proposed initiative and available strategic, market, financial, operational, workforce, regulatory and risk evidence form a complete and defensible business case for an authorised decision-maker, including the recommended option, assumptions, unresolved dependencies and exact approval requested.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    },
+    {
+      "code": "complaints_review_response",
+      "clause": "Review a participant or stakeholder complaint issue-by-issue, assess immediate risk and parallel pathways, reconcile complaint-register evidence, consume investigation outputs where required, determine defensible complaint outcomes, identify proportionate remedies and prepare an approval-gated complaint response.",
+      "status": "PRESERVED VERBATIM",
+      "targetLocation": "authority_boundary"
+    }
+  ],
+  "stubsRequiringFounderReview": [
+    {
+      "code": "service_delivery_review",
+      "name": "Service Delivery Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "participant_transition_plan",
+      "name": "Participant Transition & Onboarding Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "participant_goals_review",
+      "name": "Participant Goals & Outcomes Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "participant_periodic_summary",
+      "name": "Participant Periodic / Weekly Summary",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "support_strategy_analysis",
+      "name": "Support Strategy Analysis",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "funding_utilisation_review",
+      "name": "Funding / Support Utilisation Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "mealtime_risk_assessment",
+      "name": "Mealtime Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "mealtime_management_plan_review",
+      "name": "Mealtime Management Plan Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "dysphagia_mealtime_safety_review",
+      "name": "Dysphagia & Mealtime Safety Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "mealtime_support_strategy",
+      "name": "Mealtime Support Strategy",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "medication_management_review",
+      "name": "Medication Management Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "health_support_plan",
+      "name": "Health Support Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "health_clinical_escalation_plan",
+      "name": "Health / Clinical Escalation Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "participant_risk_assessment",
+      "name": "Participant Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "community_access_risk_assessment",
+      "name": "Community Access Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "site_environmental_risk_assessment",
+      "name": "Site & Environmental Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "fire_risk_assessment",
+      "name": "Fire Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "evacuation_emergency_assessment",
+      "name": "Evacuation & Emergency Readiness Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "participant_disaster_risk_assessment",
+      "name": "Participant Disaster & Emergency Risk Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "disaster_emergency_management_plan",
+      "name": "Disaster & Emergency Management Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "business_continuity_plan",
+      "name": "Business Continuity Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "individual_emergency_preparedness_plan",
+      "name": "Individual Emergency Preparedness Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "restrictive_practice_comparison",
+      "name": "Restrictive Practice Comparison / Least Restrictive Alternatives",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "unauthorised_restrictive_practice_review",
+      "name": "Unauthorised Restrictive Practice Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "incident_investigation",
+      "name": "Participant Incident Investigation Report",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "incident_review_improvement",
+      "name": "Participant Incident Review & Improvement Report",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "safeguarding_assessment",
+      "name": "Participant Safeguarding Assessment & Protection Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "governance_executive_review",
+      "name": "Executive Governance Review & Action Brief",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "rostering_fatigue_review",
+      "name": "Workforce Rostering & Fatigue Risk Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "roster_planning",
+      "name": "Participant & Workforce Roster Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "workforce_performance_review",
+      "name": "Workforce Performance & Development Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "people_management_review",
+      "name": "People Management Case Review & Resolution Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "learning_capability_development_plan",
+      "name": "Workforce Learning, Competency & Capability Development Plan",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "workforce_compliance_assessment",
+      "name": "Worker Compliance, Credential & Deployment Eligibility Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "payroll_workforce_cost_review",
+      "name": "Payroll & Workforce Cost Reconciliation Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "operational_readiness_assessment",
+      "name": "Operational Readiness Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "standard_operating_procedure",
+      "name": "Standard Operating Procedure",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "asset_lifecycle_review",
+      "name": "Asset Lifecycle & Control Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "knowledge_base_review",
+      "name": "Knowledge Environment, Retrieval & Usability Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "governance_framework",
+      "name": "Governance Architecture Framework",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "regulatory_change_impact_assessment",
+      "name": "Regulatory Change Impact & Readiness Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "governance_gap_analysis",
+      "name": "Governance Gap Analysis & Assurance Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "delegation_framework",
+      "name": "Delegation of Authority & Decision Rights Framework",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "compliance_audit_readiness",
+      "name": "Compliance Audit Readiness & Evidence Assurance Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "legislation_regulatory_review",
+      "name": "Legislative & Regulatory Obligations Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "regulatory_change_impact",
+      "name": "Regulatory Change Impact Assessment (Legacy Compatibility Route)",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "schads_award_analysis",
+      "name": "SCHADS Award Coverage, Classification & Entitlement Analysis",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "employment_compliance_review",
+      "name": "Employment Compliance & Workforce Obligations Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "business_financial_analysis",
+      "name": "Business Financial Performance & Sustainability Analysis",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "financial_planning_reporting_review",
+      "name": "Financial Planning, Forecasting & Management Reporting Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "tax_financial_obligation_review",
+      "name": "Tax & Statutory Financial Obligations Compliance Review",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "business_growth_analysis",
+      "name": "Business Growth & Service Expansion Viability Analysis",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "ndis_market_analysis",
+      "name": "NDIS Market Intelligence, Demand & Competitive Analysis",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "formal_stakeholder_correspondence",
+      "name": "Formal Stakeholder Correspondence & Organisational Position Communication",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    },
+    {
+      "code": "service_agreement_review",
+      "name": "Participant Service Agreement Review & Contract Readiness Assessment",
+      "boundary": "[AUTHORED — REVIEW REQUIRED] This Blueprint does not decide matters outside its stated professional scope; escalate legal, clinical, credentialed, external-authority or approval decisions to the appropriate authorised owner."
+    }
+  ]
+}
