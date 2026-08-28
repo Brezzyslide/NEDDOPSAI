@@ -3303,12 +3303,6 @@ function buildWorkExecutionAddendum(
   const evidenceContract = blueprint.evidenceContract
     ? JSON.stringify(blueprint.evidenceContract)
     : "No evidence contract configured.";
-  const contextBlock = professionalContext
-    ? `\n${buildProfessionalExecutionContextBlock(professionalContext)}\n`
-    : "";
-  const coverageContract = professionalContext
-    ? `\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}\n`
-    : "";
   const sectionHeading = professionalContext?.professionalMethodRole === "requested_deliverable_structure"
     ? "Review/Assessment Sections"
     : "Internal Professional Method Checklist";
@@ -3323,9 +3317,7 @@ function buildWorkExecutionAddendum(
 ## WORK EXECUTION CONTRACT
 
 You are executing professional work using the "${blueprint.title}" blueprint as professional method authority.
-${contextBlock}
 ${methodBoundary}
-${coverageContract}
 
 **Objective:** ${blueprint.objective}
 
@@ -3652,7 +3644,6 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     : "";
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
-  const coverageContract = formatRequirementCoveragePrompt(coverageProfile);
   const deliverableSchema = buildDeliverableOutputSchema(coverageProfile);
   const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(deliverableSchema);
   const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile)
@@ -3697,9 +3688,7 @@ Unknown staff-specific values may remain as allowed factual fields, but professi
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
-    `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
-    coverageContract,
     `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each section must account for every listed requirement ID in the internal JSON requirement_to_deliverable_plan and in deliverable.content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
