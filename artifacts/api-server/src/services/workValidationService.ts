@@ -188,16 +188,7 @@ export function validateWorkPackage(
 
   // ── Run blueprint validation rules ────────────────────────────────────────
   for (const rule of blueprint.validationRules) {
-    if (isStandardReusableTemplateRule(rule.rule, manifest, options.standardTemplateEvidence)) {
-      issues.push({
-        rule: rule.rule,
-        level: "info",
-        message: `${rule.description} Not required for a standard reusable professional deliverable request.`,
-        details: ["Organisation/person-specific evidence changes tailoring, but is not the sole authority for standard reusable professional work."],
-      });
-      continue;
-    }
-
+    const standardReusableRelaxed = isStandardReusableTemplateRule(rule.rule, manifest, options.standardTemplateEvidence);
     const evalResult = evaluateRule(
       rule.rule,
       retrievedHighConfTypes,
@@ -205,6 +196,27 @@ export function validateWorkPackage(
       memoryTypes,
       manifest,
     );
+
+    if (standardReusableRelaxed) {
+      issues.push({
+        rule: rule.rule,
+        level: "info",
+        message: `${rule.description} Not required for a standard reusable professional deliverable request.`,
+        details: ["Organisation/person-specific evidence changes tailoring, but is not the sole authority for standard reusable professional work."],
+      });
+      if (!evalResult.passed && evalResult.missingCanonicalType) {
+        upsertMissing({
+          canonicalType: evalResult.missingCanonicalType,
+          displayLabel: sourceTypeDisplayLabel(evalResult.missingCanonicalType),
+          required: false,
+          reason: `${rule.description} Not blocking for standard reusable professional work.`,
+          searched: evidenceSearched,
+          searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+          suggestedAction: "proceed_without",
+        });
+      }
+      continue;
+    }
 
     if (!evalResult.passed) {
       const canonicalMissing = evalResult.missingCanonicalType;
@@ -307,6 +319,32 @@ export function validateWorkPackage(
     }
   }
 
+  // ── Check required memories ──────────────────────────────────────────────
+  // Memory requirements are reported truthfully even when they are non-blocking
+  // for standard reusable work. This prevents empty memory context being
+  // misreported as "all requirements met".
+  for (const rawType of blueprint.requiredMemories ?? []) {
+    const canonical = canonicaliseMemoryType(rawType);
+    if (!memoryTypes.has(rawType) && !memoryTypes.has(canonical)) {
+      issues.push({
+        rule: "required_memory",
+        level: "warning",
+        message: `No approved ${memoryTypeDisplayLabel(rawType)} memory found for this work.`,
+        details: [memoryTypeDisplayLabel(rawType)],
+      });
+
+      upsertMissing({
+        canonicalType: `memory:${canonical}`,
+        displayLabel: memoryTypeDisplayLabel(rawType),
+        required: false,
+        reason: `Blueprint recommends approved ${memoryTypeDisplayLabel(rawType)} memory for this type of work`,
+        searched: true,
+        searchOutcome: "not_found",
+        suggestedAction: "proceed_without",
+      });
+    }
+  }
+
   // ── Check mandatory citations (informational only) ────────────────────────
   for (const rawType of blueprint.mandatoryCitations) {
     const canonical = canonicaliseSourceType(rawType);
@@ -332,7 +370,11 @@ export function validateWorkPackage(
     recommendedAction = "request_information";
   } else if (conflictingItems.length > 0) {
     recommendedAction = "flag_for_human_review";
-  } else if (hasWarnings && missingByType.size > 2) {
+  } else if (
+    hasWarnings &&
+    missingByType.size > 2 &&
+    !isCustomerExampleOptional(options.standardTemplateEvidence)
+  ) {
     recommendedAction = "retrieve_additional_documents";
   }
 
@@ -341,10 +383,10 @@ export function validateWorkPackage(
   // ── Produce deduped missingEvidenceItems ─────────────────────────────────
   const missingEvidenceItems = Array.from(missingByType.values());
 
-  // missingItems (for backward-compat) — display labels of required blockers only
-  const missingItems = missingEvidenceItems
-    .filter(m => m.required)
-    .map(m => m.displayLabel);
+  // missingItems is the compact human-readable summary used by Inspector/UI.
+  // It must include every unmet declared evidence/context requirement, even
+  // where specificity rules let the work proceed.
+  const missingItems = missingEvidenceItems.map(m => m.displayLabel);
 
   const summary = buildSummary(passed, issues, missingItems, conflictingItems);
   const clarificationMessage = passed
@@ -486,6 +528,10 @@ function isStandardReusableTemplateRule(
   ].includes(rule);
 }
 
+function isCustomerExampleOptional(context?: StandardTemplateEvidenceContext | null): boolean {
+  return context?.customerExampleOptional === true;
+}
+
 // ─── Clarification message builder ────────────────────────────────────────────
 
 /**
@@ -593,6 +639,9 @@ function buildSummary(
   if (passed && missingItems.length === 0) {
     return "Work package validated — proceeding with available evidence.";
   }
+  if (passed && missingItems.length > 0) {
+    return `Work package proceeding with unmet evidence/context requirements: ${missingItems.slice(0, 4).join(", ")}.`;
+  }
 
   const parts: string[] = [];
   const errors   = issues.filter(i => i.level === "error");
@@ -609,4 +658,16 @@ function buildSummary(
   }
 
   return parts.join(". ") + ".";
+}
+
+function canonicaliseMemoryType(value: string): string {
+  return value.trim().replace(/[\s-]+/g, "_").toLowerCase();
+}
+
+function memoryTypeDisplayLabel(value: string): string {
+  return canonicaliseMemoryType(value)
+    .split("_")
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ") || "Required Memory";
 }

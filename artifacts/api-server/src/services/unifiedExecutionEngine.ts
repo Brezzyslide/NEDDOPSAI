@@ -1625,7 +1625,7 @@ export class UnifiedExecutionEngine {
       tLlmMs = Date.now() - t5;
     } catch (err) {
       const isFallback = err instanceof FallbackDraftError;
-      updateManifestObservability(manifest.id, {
+      await updateManifestObservability(manifest.id, {
         failureInfo: {
           state: "failed",
           failedStage: "executing",
@@ -1641,7 +1641,7 @@ export class UnifiedExecutionEngine {
           totalMs: Date.now() - t0,
           evidenceCacheHit: false,
         },
-      }).catch(() => {});
+      });
 
       if (isFallback) {
         taskSession = closeExecutionSession(taskSession);
@@ -1918,7 +1918,7 @@ export class UnifiedExecutionEngine {
       const blockingMessage = runtimeGate.failures
         .map((failure) => `${failure.gate}: ${failure.message}`)
         .join("; ");
-      updateManifestObservability(manifest.id, {
+      await updateManifestObservability(manifest.id, {
         failureInfo: {
           state: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
             ? "awaiting_clarification"
@@ -1927,8 +1927,9 @@ export class UnifiedExecutionEngine {
           rootCause: blockingMessage,
           retryAvailable: true,
           clarificationItems: buildRuntimeGateFailureItems(runtimeGate.failures),
+          gateFailures: runtimeGate.failures,
         },
-      }).catch(() => {});
+      });
       await recordProfessionalSnapshot({
         organizationId,
         taskId: request.taskId,
@@ -2094,14 +2095,14 @@ export class UnifiedExecutionEngine {
           ?? null;
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown artifact generation error";
-        updateManifestObservability(manifest.id, {
+        await updateManifestObservability(manifest.id, {
           failureInfo: {
             state: "failed",
             failedStage: "artifact_generation",
             rootCause: message,
             retryAvailable: true,
           },
-        }).catch(() => {});
+        });
         taskSession = markSessionError(taskSession, message);
         ctx.session = taskSession;
         await persistInlineExecutionSession({
@@ -2136,7 +2137,7 @@ export class UnifiedExecutionEngine {
         const blockingMessage = artifactGate.failures
           .map((failure) => `${failure.gate}: ${failure.message}`)
           .join("; ");
-        updateManifestObservability(manifest.id, {
+        await updateManifestObservability(manifest.id, {
           failureInfo: {
             state: artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
               ? "awaiting_clarification"
@@ -2144,11 +2145,10 @@ export class UnifiedExecutionEngine {
             failedStage: "post_artifact_completion_gates",
             rootCause: blockingMessage,
             retryAvailable: true,
-            clarificationItems: artifactGate.failures
-              .filter((failure) => failure.state === "awaiting_clarification")
-              .map((failure) => ({ name: failure.gate, reason: failure.message })),
+            clarificationItems: buildRuntimeGateFailureItems(artifactGate.failures),
+            gateFailures: artifactGate.failures,
           },
-        }).catch(() => {});
+        });
         taskSession = artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
           ? closeExecutionSession(taskSession)
           : markSessionError(taskSession, blockingMessage);
@@ -2296,12 +2296,29 @@ export class UnifiedExecutionEngine {
     // of outputRequiresApproval, so EVIDENCE_BEARING tasks can never skip the
     // approval gate even when routed through a no-approval blueprint.
     const laneRequiresApproval = request.laneContext?.requiresApproval === true;
-    const requiresApproval = laneRequiresApproval || request.outputRequiresApproval !== false;
+    const qualityGatePassed = reviewResult.passed;
+    const requiresApproval = qualityGatePassed && (laneRequiresApproval || request.outputRequiresApproval !== false);
     if (laneRequiresApproval && request.outputRequiresApproval === false) {
       console.info(
         "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresApproval=true overrides " +
         `outputRequiresApproval=false — approval enforced (correlationId=${request.correlationId ?? "unknown"})`,
       );
+    }
+    if (!qualityGatePassed) {
+      await updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "failed",
+          failedStage: "quality_review",
+          rootCause: `Quality score ${reviewResult.qualityScore}/100 is below the required threshold of 70. Draft is saved but cannot move to awaiting approval.`,
+          retryAvailable: true,
+          clarificationItems: reviewResult.dimensions
+            .filter((dimension) => !dimension.passed)
+            .map((dimension) => ({
+              name: dimension.dimension,
+              reason: dimension.feedback.slice(0, 240),
+            })),
+        },
+      });
     }
     let finalWork = completedWork;
 
@@ -3985,6 +4002,7 @@ async function recordProfessionalSnapshot(input: {
       "[UnifiedExecutionEngine] professional execution event persistence failed:",
       err instanceof Error ? err.message : err,
     );
+    throw err;
   }
 }
 
@@ -4054,6 +4072,7 @@ async function persistInlineExecutionSession(input: {
       "[UnifiedExecutionEngine] inline execution session persistence failed:",
       err instanceof Error ? err.message : err,
     );
+    throw err;
   });
 }
 
