@@ -728,10 +728,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(runner).toContain("repairedRequirementIds");
     expect(runner).toContain("disableAutoRevision: true");
     expect(runner).toContain("Targeted requirement repair");
-    expect(runner).toContain("actual_location");
-    expect(runner).toContain("structural_result");
-    expect(runner).toContain("substantive_result");
+    expect(runner).toContain("## DEFICIENT DELIVERABLE SECTION(S)");
+    expect(runner).toContain("currentDeliverable.deficientSections");
+    expect(runner).toContain("evidencePack.relevantChunks");
+    expect(runner).toContain("buildRelevantRepairEvidenceSection");
     expect(runner).toContain("failure_reason");
+    expect(runner).not.toContain("actual_location");
+    expect(runner).not.toContain("structural_result");
+    expect(runner).not.toContain("substantive_result");
     expect(runner).toContain("Repair only the missing requirement IDs listed above");
     expect(review).toContain("disableAutoRevision");
   });

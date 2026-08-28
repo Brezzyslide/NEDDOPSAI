@@ -101,8 +101,8 @@ describe("Sprint 35J professional AI gateway timeout hardening", () => {
   it("permits only the approved targeted-repair context through task_execution", () => {
     expect(PURPOSE_FIELD_ALLOWLIST.task_execution).toEqual(expect.arrayContaining([
       "deliverableRequirementCoverage.missing",
-      "deliverableOutputSchema",
-      "currentDeliverable.content",
+      "currentDeliverable.deficientSections",
+      "evidencePack.relevantChunks",
     ]));
     expect(PURPOSE_FIELD_ALLOWLIST.task_execution).not.toContain("internal.chainOfThought");
     expect(PURPOSE_FIELD_ALLOWLIST.task_execution).not.toContain("organisationLibrarySources.storageKey");

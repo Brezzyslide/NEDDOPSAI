@@ -292,10 +292,10 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "evidencePack.chunks",
     // targeted_repair_context
     // Allows the existing repair path to see only the deterministic missing
-    // requirements, approved output schema, and current draft being repaired.
+    // requirements, deficient deliverable sections, and relevant evidence.
     "deliverableRequirementCoverage.missing",
-    "deliverableOutputSchema",
-    "currentDeliverable.content",
+    "currentDeliverable.deficientSections",
+    "evidencePack.relevantChunks",
     // specialist_identity
     "specialist.name",
     "specialist.capabilities",

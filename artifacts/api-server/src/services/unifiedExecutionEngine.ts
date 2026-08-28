@@ -1864,6 +1864,7 @@ export class UnifiedExecutionEngine {
             evidencePack: evidencePack ?? null,
             currentContent: reviewResult.finalContent,
             currentClaims: rawClaims,
+            deliverableSections,
             professionalContext,
             missingRequirements: currentGroupMissing,
             repairGroupIndex: repairIndex + 1,
@@ -2690,6 +2691,7 @@ export class UnifiedExecutionEngine {
     evidencePack?: EvidencePack | null;
     currentContent: string;
     currentClaims: RawClaim[];
+    deliverableSections?: ParsedDeliverableSection[];
     professionalContext: ProfessionalExecutionContext;
     missingRequirements: DeliverableRequirementCoverageFailure[];
     repairGroupIndex?: number;
@@ -2722,9 +2724,8 @@ export class UnifiedExecutionEngine {
       userMessage: buildTargetedRequirementRepairUserPrompt(input),
       retrievedFields: [
         "deliverableRequirementCoverage.missing",
-        "deliverableOutputSchema",
-        "currentDeliverable.content",
-        "evidencePack.chunks",
+        "currentDeliverable.deficientSections",
+        "evidencePack.relevantChunks",
       ],
       maxTokens: 5000,
       outputMode: "json",
@@ -3848,10 +3849,7 @@ If mandatory professional content cannot be completed from the request, evidence
 
 function buildTargetedRequirementRepairSystemPrompt(
   professionalContext: ProfessionalExecutionContext,
-  contract?: BlueprintExecutionContract | null,
 ): string {
-  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  const schema = buildDeliverableOutputSchema(profile);
   return `You are performing deterministic professional coverage repair.
 
 This is NOT a broad rewrite and NOT a general self-review.
@@ -3864,9 +3862,6 @@ Rules:
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
 - Return JSON only.
-
-Machine-readable output schema derived from the requirement plan:
-${JSON.stringify(schema, null, 2)}
 
 Return ONLY JSON:
 {
@@ -3905,32 +3900,28 @@ function buildTargetedRequirementRepairUserPrompt(input: {
 }): string {
   const profile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const schema = buildDeliverableOutputSchema(profile);
-  const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(schema);
   const missing = input.missingRequirements.map((requirement) => ({
     requirement_id: requirement.requirementId,
+    requirement: requirement.requirement,
     classification: requirement.classification,
     required_representation: requirement.requiredDeliverableRepresentation,
-    actual_location: requirement.actualLocation ?? null,
-    structural_result: requirement.structuralResult ?? null,
-    substantive_result: requirement.substantiveResult ?? null,
-    final_result: requirement.finalResult ?? "NOT_SATISFIED",
+    target_location: inferSchemaTarget(schema, requirement.requirementId),
+    adequacy_criteria: requirement.adequacyCriteria,
     failure_reason: requirement.reason,
-    target_section_or_table: inferSchemaTarget(schema, requirement.requirementId),
-    source_blueprint_section: requirement.sourceBlueprintSection ?? null,
-    professional_requirement: requirement.requirement,
   }));
-  const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
-    ? buildEvidenceSection(input.evidencePack)
-    : "";
+  const deficientSections = formatDeficientDeliverableSections(
+    input.currentContent,
+    input.deliverableSections,
+    input.missingRequirements,
+  );
+  const evidenceSection = buildRelevantRepairEvidenceSection(input.evidencePack ?? null, input.missingRequirements);
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
     `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return the full deliverable with accepted content preserved.` : "Repair the listed logical section."}`,
-    `## CURRENT DELIVERABLE TO REPAIR\n${input.currentContent}`,
-    `## EXACT MISSING REQUIREMENTS\n${JSON.stringify(missing, null, 2)}`,
-    `## COMPLETE OUTPUT SCHEMA\n${JSON.stringify(schema, null, 2)}`,
-    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\n${sectionGenerationPlan}`,
-    evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
+    `## DEFICIENT DELIVERABLE SECTION(S)\n${deficientSections}`,
+    `## EXACT REQUIREMENTS TO REPAIR\n${JSON.stringify(missing, null, 2)}`,
+    evidenceSection,
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
@@ -3939,6 +3930,79 @@ For MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or key
 Preserve existing satisfied clauses and wording as much as possible.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
   ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function formatDeficientDeliverableSections(
+  currentContent: string,
+  sections: ParsedDeliverableSection[] | undefined,
+  missingRequirements: DeliverableRequirementCoverageFailure[],
+): string {
+  const missingIds = new Set(missingRequirements.map((requirement) => requirement.requirementId));
+  const matchingSections = (sections ?? [])
+    .filter((section) => missingIds.has(section.requirementId))
+    .map((section) => [
+      `requirementId: ${section.requirementId}`,
+      `heading: ${section.heading}`,
+      `content:\n${section.content}`,
+    ].join("\n"));
+
+  if (matchingSections.length > 0) {
+    return matchingSections.join("\n\n");
+  }
+
+  const headings = missingRequirements
+    .map((requirement) => requirement.actualLocation)
+    .filter((heading): heading is string => Boolean(heading));
+  if (headings.length > 0) {
+    const snippets = headings
+      .map((heading) => extractSectionSnippet(currentContent, heading))
+      .filter(Boolean);
+    if (snippets.length > 0) return snippets.join("\n\n");
+  }
+
+  return currentContent.slice(0, 1800);
+}
+
+function extractSectionSnippet(content: string, heading: string): string {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`(^|\\n)(#{1,4}\\s*)?${escapedHeading}[^\\n]*(?:\\n[\\s\\S]*?)(?=\\n#{1,4}\\s|$)`, "i"));
+  return match?.[0]?.trim().slice(0, 1800) ?? "";
+}
+
+function buildRelevantRepairEvidenceSection(
+  evidencePack: EvidencePack | null,
+  missingRequirements: DeliverableRequirementCoverageFailure[],
+): string {
+  if (!evidencePack || evidencePack.totalChunks === 0) return "";
+  const terms = new Set(
+    missingRequirements.flatMap((requirement) =>
+      [
+        requirement.requirement,
+        requirement.requiredDeliverableRepresentation,
+        requirement.sourceBlueprintSection ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((term) => term.length > 4),
+    ),
+  );
+  const ranked = evidencePack.chunks
+    .map((chunk) => {
+      const text = `${chunk.sourceTitle} ${chunk.sectionTitle ?? ""} ${chunk.text}`.toLowerCase();
+      const hits = [...terms].filter((term) => text.includes(term)).length;
+      return { chunk, hits };
+    })
+    .filter(({ hits }) => hits > 0)
+    .sort((a, b) => b.hits - a.hits || b.chunk.confidence - a.chunk.confidence)
+    .slice(0, 3)
+    .map(({ chunk }) => {
+      const locParts = [chunk.sectionTitle, chunk.pageNumber != null ? `p.${chunk.pageNumber}` : null].filter(Boolean);
+      const locLine = locParts.length > 0 ? ` (${locParts.join(", ")})` : "";
+      return `[${chunk.citation}]${locLine}\n${chunk.text.slice(0, 1200)}`;
+    });
+  if (ranked.length === 0) return "";
+  return `## RELEVANT AUTHORITATIVE EVIDENCE\n${ranked.join("\n\n")}`;
 }
 
 function formatDeliverableSectionGenerationPlan(schema: ReturnType<typeof buildDeliverableOutputSchema>): string {
