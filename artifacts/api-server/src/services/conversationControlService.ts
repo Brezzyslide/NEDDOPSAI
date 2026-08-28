@@ -162,7 +162,10 @@ const STATUS_PATTERNS = [
 const SWITCH_PATTERNS = [/\b(back to|return to|go back to|switch to)\b/i];
 const MODIFY_PATTERNS = [/\b(add|include|change|modify|update|revise)\b.*\b(that|this|report|task|draft|it)\b/i];
 const NEW_TASK_PATTERNS = [/\b(also|now|next)\b.*\b(prepare|create|check|review|audit|draft|build)\b/i, /\bprepare\b.*\b(roster|report|policy|plan)\b/i];
-const CONFIRM_PATTERNS = [/^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|procced|procceed|please proceed|please procced|please procceed|do it|cancel it|cancel that|okay proceed|ok proceed)\.?$/i];
+const CONFIRM_PATTERNS = [
+  /^(yes|yep|yeah|confirm|confirmed|go ahead|proceed|procced|procceed|please proceed|please procced|please procceed|do it|cancel it|cancel that|okay proceed|ok proceed)\.?$/i,
+  /^(confirm|confirmed|yes|yep|yeah|ok|okay)[, ]+(please )?(go ahead|proceed|create|do it)\.?$/i,
+];
 const DECLINE_PATTERNS = [/^(no|nope|no[, ]+don'?t proceed|no[, ]+do not proceed|don't|do not|don'?t cancel|keep it|leave it|not anymore|do not proceed)\.?$/i];
 
 function matches(patterns: RegExp[], text: string): boolean {

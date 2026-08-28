@@ -97,7 +97,7 @@ export interface StructuredContent {
 // High-confidence action verbs that signal an actionable task request
 const ACTION_VERBS = [
   "review", "prepare", "check", "create", "update", "write", "draft",
-  "send", "schedule", "audit", "analyse", "analyze", "investigate",
+  "give", "provide", "send", "schedule", "audit", "analyse", "analyze", "investigate",
   "organise", "organize", "coordinate", "submit", "complete", "process",
   "assess", "evaluate", "report", "document", "implement", "resolve",
   "remediate", "fix", "build", "develop", "design", "establish", "set up",

@@ -324,6 +324,57 @@ describe("messageIngressService", () => {
     expect(((await import("@workspace/db")) as any).db.insert).toHaveBeenCalled();
   });
 
+  it("production path: authoritative proposal cards create a bound confirmation even when understanding.proposedTask is absent", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockProcessUserMessage.mockResolvedValue({
+      userMessage:  { id: "um-1", content: "Create a standard NDIS Service Agreement", senderType: "user" },
+      agentMessage: {
+        id: "am-1",
+        content: "Would you like me to create the task and prepare the work plan?",
+        senderType: "chief_of_staff",
+        structuredContent: null,
+      },
+      understanding: {
+        conversationMode:      "task_intent",
+        confidence:            0.9,
+        shouldCreateTask:      false,
+        clarificationRequired: false,
+        clarificationQuestions: [],
+        requestedTaskAction:   "create",
+        proposedTask:          null,
+        relatedWorkforceRoles: ["policy_governance_specialist", "chief_of_staff"],
+        customerResponse:      "Would you like me to create the task and prepare the work plan?",
+      },
+      structuredContent: {
+        type: "task_proposal",
+        data: {
+          title: "Create Standard NDIS Service Agreement Template",
+          summary: "Create a standard NDIS Service Agreement template.",
+          priority: "normal",
+          requestedOutcome: "Standard reusable Service Agreement template",
+          knownConstraints: [],
+          primaryProfessionalOwner: "policy_governance_specialist",
+          authoritativeWorkforce: {
+            intent: "agreements.create",
+            primaryProfessionalOwner: "policy_governance_specialist",
+          },
+        },
+      },
+    });
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "Create a standard NDIS Service Agreement",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+    });
+
+    expect(result.type).toBe("normal");
+    const insertCalls = ((await import("@workspace/db")) as any).db.insert.mock.results;
+    expect(insertCalls.length).toBeGreaterThan(0);
+  });
+
   it("production path: bound task confirmation consumes typoed proceed without replanning", async () => {
     mockGetActiveCheckpoint.mockResolvedValue(null);
     mockDbSelect.mockImplementation(() => makeSelectChain([{
@@ -341,7 +392,7 @@ describe("messageIngressService", () => {
             knownConstraints: [],
           },
           candidateTasks: [],
-          createdAt: new Date("2026-08-16T00:00:00Z").toISOString(),
+          createdAt: new Date().toISOString(),
           status: "pending",
           expectedResponse: "yes_no",
           reason: "task_proposal_confirmation",
@@ -368,6 +419,60 @@ describe("messageIngressService", () => {
       requesterId: "user-1",
       proposedTask: expect.objectContaining({ title: "Service Delivery Review for Michael" }),
     }));
+    expect((result as any).result.agentMessage.content).toMatch(/Created/);
+  });
+
+  it("production path: explicit confirmation recovers from an unbound latest proposal card and creates the task once", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([{
+        id: "proposal-message-1",
+        createdAt: new Date().toISOString(),
+        structuredContent: {
+          type: "task_proposal",
+          data: {
+            title: "Create Standard NDIS Service Agreement Template",
+            summary: "Create a standard NDIS Service Agreement template.",
+            priority: "normal",
+            requestedOutcome: "Standard reusable Service Agreement template",
+            knownConstraints: [],
+            primaryProfessionalOwner: "policy_governance_specialist",
+            authoritativeWorkforce: {
+              intent: "agreements.create",
+              primaryProfessionalOwner: "policy_governance_specialist",
+            },
+          },
+        },
+      }]))
+      .mockImplementation(() => makeSelectChain([]));
+    mockAddMessage
+      .mockResolvedValueOnce({ id: "um-confirm", senderType: "user", content: "Confirm, please proceed." })
+      .mockResolvedValueOnce({ id: "am-created", senderType: "chief_of_staff", content: "Created." });
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "Confirm, please proceed.",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+      idempotencyKey: "confirm-service-agreement-once",
+    });
+
+    expect(result.type).toBe("normal");
+    expect(mockProcessUserMessage).not.toHaveBeenCalled();
+    expect(mockAutoCreateAndDispatch).toHaveBeenCalledTimes(1);
+    expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      requesterId: "user-1",
+      proposedTask: expect.objectContaining({
+        title: "Create Standard NDIS Service Agreement Template",
+        sourceUserRequest: "Create a standard NDIS Service Agreement template.",
+      }),
+    }));
+    expect((result as any).result.understanding.conversationMode).toBe("task_confirmation");
     expect((result as any).result.agentMessage.content).toMatch(/Created/);
   });
 

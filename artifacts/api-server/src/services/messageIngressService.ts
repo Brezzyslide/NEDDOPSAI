@@ -22,7 +22,7 @@
 import { randomUUID } from "crypto";
 import type { ConversationMessage } from "@workspace/db";
 import { db, conversationMessagesTable } from "@workspace/db";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   addMessage,
   getOrCreateWorkroom,
@@ -46,6 +46,7 @@ import {
   getPendingConversationConfirmation,
   getPendingApprovalsForConversation,
   holdTaskFromConversation,
+  isPendingConfirmationActive,
   isLikelyCheckpointAnswer,
   markConversationConfirmationResolved,
   modifyTaskFromConversation,
@@ -115,6 +116,106 @@ function extractFailureMessage(task: { metadata?: Record<string, unknown> | null
   const failure = metadataObject(taskMetadataRecord(task.metadata).executionFailure);
   const raw = failure?.error ?? failure?.message ?? failure?.reason;
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function readPriority(value: unknown): "low" | "normal" | "high" | "urgent" | undefined {
+  return value === "low" || value === "normal" || value === "high" || value === "urgent"
+    ? value
+    : undefined;
+}
+
+function extractProposedTaskFromStructuredContent(
+  structuredContent: StructuredContent | Record<string, unknown> | null | undefined,
+  sourceUserRequest: string,
+): PendingConversationConfirmation["proposedTask"] | undefined {
+  if (!structuredContent || typeof structuredContent !== "object") return undefined;
+  const record = structuredContent as Record<string, unknown>;
+  if (record.type !== "task_proposal" || !record.data || typeof record.data !== "object") return undefined;
+  const data = record.data as Record<string, unknown>;
+  const title = readString(data.title);
+  if (!title) return undefined;
+  const sourceRequest = readString(data.sourceUserRequest)
+    ?? readString(data.summary)
+    ?? sourceUserRequest;
+  return {
+    title,
+    summary: readString(data.summary) ?? sourceRequest,
+    priority: readPriority(data.priority),
+    requestedOutcome: readString(data.requestedOutcome),
+    knownConstraints: readStringArray(data.knownConstraints),
+    sourceUserRequest: sourceRequest,
+  };
+}
+
+function extractProposedTaskForConfirmation(
+  result: Awaited<ReturnType<typeof processUserMessage>>,
+  sourceUserRequest: string,
+): PendingConversationConfirmation["proposedTask"] | undefined {
+  if (result.understanding.proposedTask) {
+    return {
+      ...result.understanding.proposedTask,
+      sourceUserRequest: result.understanding.proposedTask.sourceUserRequest ?? sourceUserRequest,
+    };
+  }
+  return extractProposedTaskFromStructuredContent(result.structuredContent, sourceUserRequest)
+    ?? extractProposedTaskFromStructuredContent(
+      (result.agentMessage as ConversationMessage | undefined)?.structuredContent as StructuredContent | undefined,
+      sourceUserRequest,
+    );
+}
+
+async function getLatestTaskProposalConfirmation(input: {
+  organizationId: string;
+  conversationId: string;
+  sourceUserRequest: string;
+}): Promise<PendingConversationConfirmation | null> {
+  const rows = await db
+    .select({
+      id: conversationMessagesTable.id,
+      structuredContent: conversationMessagesTable.structuredContent,
+      createdAt: conversationMessagesTable.createdAt,
+    })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "task_proposal"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(10);
+
+  for (const row of rows) {
+    const proposedTask = extractProposedTaskFromStructuredContent(
+      row.structuredContent as StructuredContent | undefined,
+      input.sourceUserRequest,
+    );
+    if (!proposedTask) continue;
+    const createdAt = row.createdAt instanceof Date
+      ? row.createdAt.toISOString()
+      : typeof row.createdAt === "string"
+        ? row.createdAt
+        : new Date().toISOString();
+    const confirmation: PendingConversationConfirmation = {
+      id: `proposal:${row.id}`,
+      action: "NEW_TASK",
+      proposedTask,
+      candidateTasks: [],
+      createdAt,
+      status: "pending",
+      expectedResponse: "yes_no",
+      reason: "task_proposal_message_recovery",
+    };
+    if (isPendingConfirmationActive(confirmation)) return confirmation;
+  }
+  return null;
 }
 
 function isStartedStatusQuestion(text: string): boolean {
@@ -227,6 +328,10 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   const pendingConfirmation = await getPendingConversationConfirmation({
     organizationId,
     conversationId,
+  }).catch(() => null) ?? await getLatestTaskProposalConfirmation({
+    organizationId,
+    conversationId,
+    sourceUserRequest: content,
   }).catch(() => null);
   if (pendingConfirmation) {
     const confirmationResult = await maybeHandlePendingConfirmation({
@@ -366,15 +471,13 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   try {
     const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey);
 
-    if (
-      result.understanding.proposedTask &&
-      responseRequestsTaskConfirmation(result.understanding.customerResponse)
-    ) {
+    const proposedTaskForConfirmation = extractProposedTaskForConfirmation(result, content);
+    if (proposedTaskForConfirmation && responseRequestsTaskConfirmation(result.understanding.customerResponse)) {
       await persistConversationConfirmation({
         organizationId,
         conversationId,
         action: "NEW_TASK",
-        proposedTask: result.understanding.proposedTask,
+        proposedTask: proposedTaskForConfirmation,
         expectedResponse: "yes_no",
         reason: "task_proposal_confirmation",
       }).catch(() => {});

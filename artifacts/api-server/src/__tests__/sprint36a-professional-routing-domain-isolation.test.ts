@@ -16,6 +16,7 @@ import {
   type DeliverableRequirementCoverageProfile,
 } from "../services/deliverableRequirementCoverageService";
 import { validateProfessionalExecutionPreflight } from "../services/professionalExecutionPreflightService";
+import { classifyMessage } from "../services/conversationIntelligenceService";
 import type { BlueprintExecutionContract, WorkBlueprint } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
 
@@ -90,6 +91,15 @@ describe("Sprint 36A professional routing and domain isolation", () => {
     expect(plan.assignedSpecialists).toContain("chief_of_staff");
     expect(plan.reasoning).not.toContain("Routed to Chief of Staff for manual handling");
     expect(deriveProfessionalIntentKey(request, plan.intent)).toBe("people.onboarding");
+  });
+
+  it("treats 'give me a checklist' onboarding language as task intent, not optional role clarification", () => {
+    const request = "Can you give me a checklist for onboarding a new staff";
+    const understanding = classifyMessage(request, { conversationId: "conv-sprint36a", organizationId: "org-sprint36a" });
+
+    expect(understanding.conversationMode).toBe("task_intent");
+    expect(understanding.clarificationRequired).toBe(false);
+    expect(understanding.proposedTask?.sourceUserRequest).toBe(request);
   });
 
   it.each([
