@@ -1,0 +1,124 @@
+{
+  "status": "completed_revalidated",
+  "model": "gpt-4o-mini-2024-07-18",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 8246,
+    "outputTokens": 1327,
+    "totalTokens": 9573,
+    "cachedInputTokens": 0
+  },
+  "deliverable": {
+    "assembledMarkdownChars": 1931,
+    "assembledMarkdownWords": 250,
+    "sectionCount": 9,
+    "requiredRequirementCount": 9,
+    "allRequirementIdsPresent": true
+  },
+  "gateResults": {
+    "structuredOutput": true,
+    "deliverableSectionsPopulatedPerRequirement": true,
+    "fallbackHeuristicPassCount": 7,
+    "fallbackHeuristicFailCount": 2,
+    "adequacyCriteriaValidatedCount": 0,
+    "fallbackHeuristicValidatedCount": 9,
+    "missingOrThinRequirements": [
+      "mandatory-1",
+      "mandatory-2"
+    ],
+    "readyForCompletedWorkSelfReport": true,
+    "methodologyLeakageSelfReport": false
+  },
+  "requirementValidation": [
+    {
+      "id": "mandatory-1",
+      "text": "Participant identity and factual placeholder framework",
+      "target": "User-facing representation of Participant identity and factual placeholder framework",
+      "present": true,
+      "heading": "Participant Identity",
+      "wordCount": 12,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-2",
+      "text": "Participant goals, preferences and communication needs",
+      "target": "User-facing representation of Participant goals, preferences and communication needs",
+      "present": true,
+      "heading": "Goals and Preferences",
+      "wordCount": 7,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-3",
+      "text": "Support domains and daily living support structure",
+      "target": "User-facing representation of Support domains and daily living support structure",
+      "present": true,
+      "heading": "Support Domains and Daily Living Support Structure",
+      "wordCount": 18,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-4",
+      "text": "Provider and worker responsibilities",
+      "target": "Responsibilities clauses",
+      "present": true,
+      "heading": "Provider and Worker Responsibilities",
+      "wordCount": 37,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-5",
+      "text": "Participant, representative and support-network responsibilities",
+      "target": "Responsibilities clauses",
+      "present": true,
+      "heading": "Participant, Representative and Support-Network Responsibilities",
+      "wordCount": 24,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-6",
+      "text": "Health, medication, behaviour support and restrictive-practice boundaries",
+      "target": "User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
+      "present": true,
+      "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
+      "wordCount": 22,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-7",
+      "text": "Risk, safety, incident and escalation arrangements",
+      "target": "User-facing representation of Risk, safety, incident and escalation arrangements",
+      "present": true,
+      "heading": "Risk, Safety, Incident and Escalation Arrangements",
+      "wordCount": 23,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-8",
+      "text": "Community participation and service-delivery coordination",
+      "target": "User-facing representation of Community participation and service-delivery coordination",
+      "present": true,
+      "heading": "Community Participation and Service-Delivery Coordination",
+      "wordCount": 26,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-9",
+      "text": "Review, updates, consent and sign-off provisions",
+      "target": "Supervision, check-in and sign-off checklist section",
+      "present": true,
+      "heading": "Review, Updates, Consent and Sign-off Provisions",
+      "wordCount": 22,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    }
+  ]
+}

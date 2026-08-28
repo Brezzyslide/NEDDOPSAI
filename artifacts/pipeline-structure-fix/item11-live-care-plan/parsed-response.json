@@ -1,0 +1,103 @@
+{
+  "professional_work": {
+    "summary": "This document serves as a standard reusable NDIS care plan template designed for use by NDIS provider staff, participants, and their representatives. It includes comprehensive sections addressing participant identity, goals, support needs, responsibilities, risk management, community participation, and review processes.",
+    "blueprint_completion": [
+      "participant_context",
+      "purpose_and_scope",
+      "goals_and_preferences",
+      "support_requirements",
+      "risks_safeguards_escalation",
+      "monitoring_review_gaps"
+    ],
+    "requirement_to_deliverable_plan": [
+      "Draft User-facing representation of Participant identity and factual placeholder framework.",
+      "Draft User-facing representation of Participant goals, preferences and communication needs.",
+      "Draft User-facing representation of Support domains and daily living support structure.",
+      "Draft Responsibilities clauses for Provider and worker responsibilities.",
+      "Draft Responsibilities clauses for Participant, representative and support-network responsibilities.",
+      "Draft User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries.",
+      "Draft User-facing representation of Risk, safety, incident and escalation arrangements.",
+      "Draft User-facing representation of Community participation and service-delivery coordination.",
+      "Draft Supervision, Check-ins and Sign-off provisions."
+    ],
+    "evidence_map": [
+      "NDIS provider guidance, retrieved 2026-08-28",
+      "NDIS Practice Standards, retrieved 2026-08-28",
+      "NeedsOps standard template authority, retrieved 2026-08-28"
+    ],
+    "missing_information": []
+  },
+  "requirement_coverage": {
+    "satisfied": [
+      "User-facing representation of Participant identity and factual placeholder framework",
+      "User-facing representation of Participant goals, preferences and communication needs",
+      "User-facing representation of Support domains and daily living support structure",
+      "User-facing representation of Provider and worker responsibilities",
+      "User-facing representation of Participant, representative and support-network responsibilities",
+      "User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
+      "User-facing representation of Risk, safety, incident and escalation arrangements",
+      "User-facing representation of Community participation and service-delivery coordination",
+      "User-facing representation of Review, updates, consent and sign-off provisions"
+    ],
+    "missing": []
+  },
+  "deliverable": {
+    "type": "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+    "audience": "NDIS provider staff, participant and participant representative",
+    "sections": [
+      {
+        "requirementId": "mandatory-1",
+        "heading": "Participant Identity",
+        "content": "Participant Name: [PARTICIPANT_NAME]\nDate of Birth: [DOB]\nNDIS Number: [NDIS_NUMBER]\nAddress: [ADDRESS]"
+      },
+      {
+        "requirementId": "mandatory-2",
+        "heading": "Goals and Preferences",
+        "content": "Goals: [GOALS]\nPreferences: [PREFERENCES]\nCommunication Needs: [COMMUNICATION_NEEDS]"
+      },
+      {
+        "requirementId": "mandatory-3",
+        "heading": "Support Domains and Daily Living Support Structure",
+        "content": "Support Domains: \n1. Daily Living Skills\n2. Community Participation\n3. Health and Wellbeing\nDaily Living Support Structure: [SUPPORT_NEEDS]"
+      },
+      {
+        "requirementId": "mandatory-4",
+        "heading": "Provider and Worker Responsibilities",
+        "content": "The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner, consistent with the participant's goals and preferences. Workers must adhere to the service delivery plan and report any issues promptly."
+      },
+      {
+        "requirementId": "mandatory-5",
+        "heading": "Participant, Representative and Support-Network Responsibilities",
+        "content": "The participant and their representatives are responsible for communicating their needs and preferences clearly. They must also engage in the planning and review processes."
+      },
+      {
+        "requirementId": "mandatory-6",
+        "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
+        "content": "All health and medication management must be conducted by qualified professionals. Behaviour support strategies must comply with the approved behaviour support plan."
+      },
+      {
+        "requirementId": "mandatory-7",
+        "heading": "Risk, Safety, Incident and Escalation Arrangements",
+        "content": "Risk management strategies must be in place to ensure the safety of the participant. Any incidents must be reported to the appropriate authorities."
+      },
+      {
+        "requirementId": "mandatory-8",
+        "heading": "Community Participation and Service-Delivery Coordination",
+        "content": "The participant will be supported to engage in community activities that align with their goals. Coordination of services will be managed by the designated support coordinator."
+      },
+      {
+        "requirementId": "mandatory-9",
+        "heading": "Review, Updates, Consent and Sign-off Provisions",
+        "content": "This plan will be reviewed on [REVIEW_DATE]. All changes must be documented and agreed upon by the participant and provider. Sign-off: [SIGN_OFF]"
+      }
+    ],
+    "assembledMarkdown": "# NDIS Care Plan Template\n\n## Participant Identity\n**Participant Name:** [PARTICIPANT_NAME]  \n**Date of Birth:** [DOB]  \n**NDIS Number:** [NDIS_NUMBER]  \n**Address:** [ADDRESS]  \n\n## Goals and Preferences\n**Goals:** [GOALS]  \n**Preferences:** [PREFERENCES]  \n**Communication Needs:** [COMMUNICATION_NEEDS]  \n\n## Support Domains and Daily Living Support Structure\n**Support Domains:**  \n1. Daily Living Skills  \n2. Community Participation  \n3. Health and Wellbeing  \n**Daily Living Support Structure:** [SUPPORT_NEEDS]  \n\n## Provider and Worker Responsibilities\nThe provider is responsible for ensuring that all supports are delivered in a safe and respectful manner, consistent with the participant's goals and preferences. Workers must adhere to the service delivery plan and report any issues promptly.\n\n## Participant, Representative and Support-Network Responsibilities\nThe participant and their representatives are responsible for communicating their needs and preferences clearly. They must also engage in the planning and review processes.\n\n## Health, Medication, Behaviour Support and Restrictive-Practice Boundaries\nAll health and medication management must be conducted by qualified professionals. Behaviour support strategies must comply with the approved behaviour support plan.\n\n## Risk, Safety, Incident and Escalation Arrangements\nRisk management strategies must be in place to ensure the safety of the participant. Any incidents must be reported to the appropriate authorities.\n\n## Community Participation and Service-Delivery Coordination\nThe participant will be supported to engage in community activities that align with their goals. Coordination of services will be managed by the designated support coordinator.\n\n## Review, Updates, Consent and Sign-off Provisions\nThis plan will be reviewed on [REVIEW_DATE]. All changes must be documented and agreed upon by the participant and provider. Sign-off: [SIGN_OFF]"
+  },
+  "completion": {
+    "operation": "CREATE",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
+  "claims": []
+}
