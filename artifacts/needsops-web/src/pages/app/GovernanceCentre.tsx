@@ -25,33 +25,34 @@ interface GovernanceMetrics {
   approvalAgingBuckets:    { under24h: number; h24to48: number; over48h: number };
   approvedMemoryCount:     number;
   pendingMemoryCount:      number;
-  memoryHealthScore:       number;
+  memoryHealthScore:       number | null;
   completedWorkPending:    number;
   executionSuccessRate:    number | null;
   publishedBlueprintCount: number;
   draftBlueprintCount:     number;
   blueprintCoverage:       number;
-  governanceScore:         number;
+  governanceScore:         number | null;
   governanceEventsLast30Days: number;
   topGovernanceActors:     { actorUserId: string | null; count: number }[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function scoreColour(score: number) {
+function scoreColour(score: number | null) {
+  if (score === null) return { text: "text-[#94A3B8]", bg: "bg-slate-400", ring: "ring-slate-400/30" };
   if (score >= 80) return { text: "text-emerald-400", bg: "bg-emerald-400", ring: "ring-emerald-400/30" };
   if (score >= 60) return { text: "text-amber-400",   bg: "bg-amber-400",   ring: "ring-amber-400/30" };
   return               { text: "text-red-400",        bg: "bg-red-400",     ring: "ring-red-400/30" };
 }
 
-function HealthMeter({ score }: { score: number }) {
+function HealthMeter({ score }: { score: number | null }) {
   const c   = scoreColour(score);
-  const deg = Math.round((score / 100) * 360);
+  const deg = score === null ? 0 : Math.round((score / 100) * 360);
   return (
     <div className={`relative h-28 w-28 rounded-full ring-4 ${c.ring} flex items-center justify-center`}
          style={{ background: `conic-gradient(${c.bg.replace("bg-","").includes("emerald") ? "#34D399" : c.bg.includes("amber") ? "#FBBF24" : "#F87171"} ${deg}deg, #1E3A5F ${deg}deg)` }}>
       <div className="h-20 w-20 rounded-full bg-[#0B1829] flex flex-col items-center justify-center">
-        <span className={`text-2xl font-bold ${c.text}`}>{score}</span>
+        <span className={`text-2xl font-bold ${c.text}`}>{score === null ? "-" : score}</span>
         <span className="text-[#64748B] text-xs">/ 100</span>
       </div>
     </div>
@@ -277,9 +278,10 @@ export default function GovernanceCentre() {
                 </div>
                 <div className="flex flex-col items-end">
                   <span className={`text-4xl font-bold tabular-nums ${
+                    metrics.governanceScore === null ? "text-[#94A3B8]" :
                     metrics.governanceScore >= 80 ? "text-emerald-400" :
                     metrics.governanceScore >= 60 ? "text-amber-400" : "text-red-400"
-                  }`}>{Math.round(metrics.governanceScore)}</span>
+                  }`}>{metrics.governanceScore === null ? "-" : Math.round(metrics.governanceScore)}</span>
                   <span className="text-[#64748B] text-xs">/ 100</span>
                 </div>
               </div>
@@ -305,9 +307,10 @@ export default function GovernanceCentre() {
                 <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
                   <p className="text-[#64748B] text-xs mb-1">Memory health</p>
                   <p className={`text-xl font-bold ${
+                    metrics.memoryHealthScore === null ? "text-[#94A3B8]" :
                     metrics.memoryHealthScore >= 80 ? "text-emerald-400" :
                     metrics.memoryHealthScore >= 60 ? "text-amber-400" : "text-red-400"
-                  }`}>{Math.round(metrics.memoryHealthScore)}%</p>
+                  }`}>{metrics.memoryHealthScore === null ? "Not enough data" : `${Math.round(metrics.memoryHealthScore)}%`}</p>
                   <p className="text-[#64748B] text-xs mt-0.5">{metrics.approvedMemoryCount} approved entries</p>
                 </div>
                 {/* Blueprint coverage */}
