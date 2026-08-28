@@ -129,6 +129,7 @@ export function validateBlueprintRuntimeCompletion(
   const unresolvedProfessionalPlaceholders = detectUnresolvedProfessionalPlaceholders(
     input.contentMarkdown,
     standardTemplateEvidence,
+    input.professionalContext,
   );
   if (unresolvedProfessionalPlaceholders.length > 0) {
     failures.push({
@@ -298,8 +299,10 @@ export function validateBlueprintRuntimeCompletion(
 }
 
 const INCOMPLETE_MARKER_PATTERN = /\[(?:INCOMPLETE|MISSING|TODO|UNKNOWN|REQUIRED)(?::[^\]]+)?\]/gi;
-const BRACKET_TOKEN_PATTERN = /\[([A-Z][A-Z0-9_ -]{2,})(?::[^\]]+)?\]/g;
+const BRACKET_TOKEN_PATTERN = /\[([^\]\r\n]{2,160})\](?!\()/g;
 const MARKDOWN_HEADING_PATTERN = /^#{1,6}\s+(.+?)\s*#*\s*$/gm;
+const INSTRUCTIONAL_PLACEHOLDER_PATTERN =
+  /^(?:INSERT|ADD|DESCRIBE|TBD|TODO|COMPLETE|SPECIFY|DETAIL)\b/;
 const INTERNAL_METHOD_HEADING_PATTERN =
   /\b(?:extraction|validation|governance\s+decision\s+trail|decision\s+trail|evidence\s+doctrine|completeness\s+gate|authority\s+package|preservation\s+inventory|readiness\s+findings|change\s+history|professional\s+boundaries|handoffs|reconciliation)\b/i;
 const PROFESSIONAL_PLACEHOLDER_TERMS = [
@@ -394,11 +397,29 @@ const USER_DATA_PLACEHOLDER_TERMS = [
   "PROVIDER_NAME",
   "PROVIDER_ABN",
   "NDIS_NUMBER",
+  "AGREEMENT_PERIOD",
+  "SUPPORT_SCHEDULE",
+  "STAFF_NAME",
+  "START_DATE",
+  "MANAGER",
+  "EMPLOYMENT_TYPE",
+  "REQUIRED_CLEARANCES",
+  "INDUCTION_DATE",
+  "SIGN_OFF",
+  "GOALS",
+  "SUPPORT_NEEDS",
+  "PREFERENCES",
+  "REVIEW_DATE",
+  "ORGANISATION_NAME",
+  "POLICY_OWNER",
+  "APPROVAL_DATE",
+  "RESPONSIBLE_ROLE",
 ] as const;
 
 export function detectUnresolvedProfessionalPlaceholders(
   contentMarkdown: string,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+  professionalContext?: ProfessionalExecutionContext | null,
 ): string[] {
   const findings = new Set<string>();
   for (const marker of contentMarkdown.match(INCOMPLETE_MARKER_PATTERN) ?? []) {
@@ -407,12 +428,35 @@ export function detectUnresolvedProfessionalPlaceholders(
 
   for (const match of contentMarkdown.matchAll(BRACKET_TOKEN_PATTERN)) {
     const raw = match[0];
-    const token = normalisePlaceholderToken(match[1] ?? "");
-    if (!token) continue;
-    if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence)) continue;
-    if (isProfessionalPlaceholderToken(token)) findings.add(raw);
+    const classification = classifyBracketedPlaceholderToken(
+      match[1] ?? "",
+      standardTemplateEvidence,
+      professionalContext,
+    );
+    if (classification === "unresolved_professional_content") findings.add(raw);
   }
   return [...findings].sort();
+}
+
+export type BracketedPlaceholderClassification =
+  | "legitimate_factual_field"
+  | "unresolved_professional_content"
+  | "ignored";
+
+export function classifyBracketedPlaceholderToken(
+  rawToken: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+  professionalContext?: ProfessionalExecutionContext | null,
+): BracketedPlaceholderClassification {
+  const token = normalisePlaceholderToken(rawToken);
+  if (!token || isIgnorableBracketToken(rawToken, token)) return "ignored";
+  if (INSTRUCTIONAL_PLACEHOLDER_PATTERN.test(token)) return "unresolved_professional_content";
+  if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence, professionalContext)) {
+    return "legitimate_factual_field";
+  }
+  if (isProfessionalPlaceholderToken(token)) return "unresolved_professional_content";
+  if (looksLikeUndeclaredPlaceholderToken(token)) return "unresolved_professional_content";
+  return "ignored";
 }
 
 function normalisePlaceholderToken(token: string): string {
@@ -426,17 +470,46 @@ function normalisePlaceholderToken(token: string): string {
 function isAllowedUserDataPlaceholder(
   token: string,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+  professionalContext?: ProfessionalExecutionContext | null,
 ): boolean {
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
-  return USER_DATA_PLACEHOLDER_TERMS.some(term =>
-    token === term || token.endsWith(`_${term}`) || token.includes(`_${term}_`),
-  );
+  const declared = normalisedDeclaredFactualPlaceholders(professionalContext);
+  if (declared.size > 0) return declared.has(token);
+  return USER_DATA_PLACEHOLDER_TERMS.some(term => token === term);
 }
 
 function isProfessionalPlaceholderToken(token: string): boolean {
   return PROFESSIONAL_PLACEHOLDER_TERMS.some(term =>
     token === term || token.endsWith(`_${term}`) || token.includes(`${term}_`) || token.includes(`_${term}_`),
   );
+}
+
+function normalisedDeclaredFactualPlaceholders(
+  professionalContext?: ProfessionalExecutionContext | null,
+): Set<string> {
+  return new Set(
+    (professionalContext?.deliverable.allowedFactualPlaceholders ?? [])
+      .map((placeholder) => placeholder.replace(/^\[/, "").replace(/\]$/, ""))
+      .map(normalisePlaceholderToken)
+      .filter(Boolean),
+  );
+}
+
+function isIgnorableBracketToken(rawToken: string, token: string): boolean {
+  const trimmed = rawToken.trim();
+  if (trimmed === "" || trimmed === " " || /^[xX]$/.test(trimmed)) return true;
+  if (/^\d{1,3}$/.test(trimmed)) return true;
+  if (/^(?:https?|mailto):/i.test(trimmed)) return true;
+  if (token.length < 3) return true;
+  return false;
+}
+
+function looksLikeUndeclaredPlaceholderToken(token: string): boolean {
+  if (token.includes("_")) return true;
+  if (/\b(?:DESCRIPTION|REQUIREMENTS?|OBLIGATIONS?|RISKS?|SAFEGUARDS?|PATHWAYS?|PREFERENCES?|STRENGTHS?|SUPPORTS?|ACTIVITIES|RESPONSIBILITIES?|CONTENT|SECTION|TEXT|DETAILS)\b/.test(token)) {
+    return true;
+  }
+  return false;
 }
 
 export function detectLeakedBlueprintMethodologyHeadings(

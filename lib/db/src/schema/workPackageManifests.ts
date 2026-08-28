@@ -83,6 +83,12 @@ export interface ManifestFailureInfo {
   rootCause?: string;
   retryAvailable?: boolean;
   clarificationItems?: Array<{ name: string; reason: string }>;
+  gateFailures?: Array<{
+    gate: string;
+    state: string;
+    message: string;
+    details?: string[];
+  }>;
 }
 
 export const workPackageManifestsTable = pgTable("work_package_manifests", {

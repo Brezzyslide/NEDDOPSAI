@@ -474,7 +474,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(gate.passed).toBe(false);
     expect(gate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage")).toBe(true);
-    expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
+    expect(gate.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(true);
     expect(gate.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
   });
 
@@ -919,7 +919,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     );
 
     expect(result.passed).toBe(true);
-    expect(result.missingItems).not.toContain("Participant Document");
+    expect(result.missingItems).toContain("Participant Document");
+    expect(result.missingEvidenceItems.find((item) => item.displayLabel === "Participant Document")?.required)
+      .toBe(false);
     expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
   });
 

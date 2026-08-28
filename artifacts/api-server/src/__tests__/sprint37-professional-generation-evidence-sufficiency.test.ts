@@ -190,8 +190,15 @@ describe("Sprint 37 professional generation evidence sufficiency", () => {
     );
 
     expect(result.passed).toBe(true);
-    expect(result.recommendedAction).not.toBe("request_information");
-    expect(result.missingItems).toEqual([]);
+    expect(result.recommendedAction).toBe("proceed");
+    expect(result.missingItems).toEqual(expect.arrayContaining([
+      "Organisation Template",
+      "Participant Document",
+      "Organisation Policy",
+      "Onboarding Template",
+      "Workforce Policy",
+    ]));
+    expect(result.missingEvidenceItems.every((item) => item.required === false)).toBe(true);
     expect(result.issues.filter((issue) => issue.level === "error")).toEqual([]);
     expect(result.issues.filter((issue) => issue.level === "info").map((issue) => issue.rule))
       .toEqual(expect.arrayContaining(["template_present", "staff_context_present", "related_policy_present"]));
