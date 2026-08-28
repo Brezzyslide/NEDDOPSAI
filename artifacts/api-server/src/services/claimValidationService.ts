@@ -548,7 +548,14 @@ export interface SpecialistJsonOutput {
   professionalWork?: Record<string, unknown>;
   requirementCoverage?: Record<string, unknown>;
   deliverable?: Record<string, unknown>;
+  deliverableSections?: ParsedDeliverableSection[];
   completion?: Record<string, unknown>;
+}
+
+export interface ParsedDeliverableSection {
+  requirementId: string;
+  heading: string;
+  content: string;
 }
 
 /**
@@ -564,10 +571,17 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       .trim();
     const parsed = JSON.parse(cleaned);
 
-    const deliverableContent = typeof parsed.deliverable?.content === "string"
+    const deliverableSections = parseDeliverableSections(parsed.deliverable);
+    const assembledMarkdown = typeof parsed.deliverable?.assembledMarkdown === "string"
+      ? parsed.deliverable.assembledMarkdown.trim()
+      : "";
+    const legacyDeliverableContent = typeof parsed.deliverable?.content === "string"
       ? parsed.deliverable.content.trim()
       : "";
-    const content = deliverableContent || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
+    const sectionMarkdown = deliverableSections.length > 0
+      ? deliverableSections.map((section) => `## ${section.heading}\n\n${section.content}`).join("\n\n")
+      : "";
+    const content = assembledMarkdown || legacyDeliverableContent || sectionMarkdown || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
     const claims = Array.isArray(parsed.claims) ? (parsed.claims as RawClaim[]) : [];
 
     return {
@@ -576,6 +590,7 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       professionalWork: isRecord(parsed.professional_work) ? parsed.professional_work : undefined,
       requirementCoverage: isRecord(parsed.requirement_coverage) ? parsed.requirement_coverage : undefined,
       deliverable: isRecord(parsed.deliverable) ? parsed.deliverable : undefined,
+      deliverableSections: deliverableSections.length > 0 ? deliverableSections : undefined,
       completion: isRecord(parsed.completion) ? parsed.completion : undefined,
     };
   } catch {
@@ -586,6 +601,18 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseDeliverableSections(deliverable: unknown): ParsedDeliverableSection[] {
+  if (!isRecord(deliverable) || !Array.isArray(deliverable.sections)) return [];
+  return deliverable.sections.flatMap((raw) => {
+    if (!isRecord(raw)) return [];
+    const requirementId = typeof raw.requirementId === "string" ? raw.requirementId.trim() : "";
+    const heading = typeof raw.heading === "string" ? raw.heading.trim() : "";
+    const content = typeof raw.content === "string" ? raw.content.trim() : "";
+    if (!requirementId || !heading || !content) return [];
+    return [{ requirementId, heading, content }];
+  });
 }
 
 // ─── Cross-tenant chunk guard ─────────────────────────────────────────────────

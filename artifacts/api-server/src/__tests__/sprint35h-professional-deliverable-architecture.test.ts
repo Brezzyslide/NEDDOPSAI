@@ -240,7 +240,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       professional_work: { blueprint_completion: ["Provider Responsibilities Review"] },
       deliverable: {
         type: "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT",
-        content: "# NDIS Service Agreement\n\nProvider responsibilities are fully drafted.",
+        sections: [
+          {
+            requirementId: "provider-responsibilities",
+            heading: "Provider Responsibilities",
+            content: "Provider responsibilities are fully drafted.",
+          },
+        ],
+        assembledMarkdown: "# NDIS Service Agreement\n\n## Provider Responsibilities\n\nProvider responsibilities are fully drafted.",
       },
       completion: { unresolvedProfessionalContent: 0, methodologyLeakage: false, readyForCompletedWork: true },
       claims: [],
@@ -250,6 +257,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(parsed.content).not.toContain("Provider Responsibilities Review");
     expect(parsed.professionalWork).toBeTruthy();
     expect(parsed.deliverable).toBeTruthy();
+    expect(parsed.deliverableSections).toEqual([
+      {
+        requirementId: "provider-responsibilities",
+        heading: "Provider Responsibilities",
+        content: "Provider responsibilities are fully drafted.",
+      },
+    ]);
   });
 
   it("parses model-supplied requirement coverage as structured professional output", () => {
@@ -276,7 +290,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(contextService).toContain("PROFESSIONAL EXECUTION CONTEXT");
     expect(src).toContain("professional_work");
-    expect(src).toContain("deliverable.content");
+    expect(src).toContain("deliverable.sections[]");
+    expect(src).toContain("deliverable.assembledMarkdown");
     expect(src).toContain("deriveOutputTypeForProfessionalContext");
     expect(src).toContain("deliverableType.toLowerCase()");
     expect(contextService).toContain("STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT");
@@ -285,7 +300,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
     expect(src).toContain("requiresCanonicalFinalDeliverablePayload");
-    expect(src).toContain("Canonical final synthesis response did not include deliverable.content");
+    expect(src).toContain("Canonical final synthesis response did not include deliverable.sections[] or deliverable.assembledMarkdown");
     expect(src).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
     expect(src).toContain("professionalContext.deliverable.mandatoryProfessionalContent");
     expect(src).not.toContain("=== STRUCTURED BLUEPRINT SECTIONS ===");
@@ -1058,6 +1073,28 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const substantiveReport = evaluateDeliverableRequirementCoverage(substantive, profile);
     expect(substantiveReport.missing).toHaveLength(0);
     expect(substantiveReport.requirementResults[0]?.substantiveValidationMode).toBe("ADEQUACY_CRITERIA");
+
+    const structuredReport = evaluateDeliverableRequirementCoverage("This assembled document is intentionally not scanned for the requirement.", profile, {
+      deliverableSections: [
+        {
+          requirementId: "authored-worker-responsibilities",
+          heading: "Worker Responsibilities",
+          content: "The responsible worker role is the support worker. The action the worker must complete is personal support. The escalation trigger is a changed support need. The evidence record that must be completed is the participant support note.",
+        },
+      ],
+    });
+    expect(structuredReport.missing).toHaveLength(0);
+
+    const missingStructuredEntry = evaluateDeliverableRequirementCoverage(substantive, profile, {
+      deliverableSections: [
+        {
+          requirementId: "wrong-requirement-id",
+          heading: "Worker Responsibilities",
+          content: "The responsible worker role is the support worker. The action the worker must complete is personal support. The escalation trigger is a changed support need. The evidence record that must be completed is the participant support note.",
+        },
+      ],
+    });
+    expect(missingStructuredEntry.missing[0]?.reason).toContain('deliverable.sections is missing an entry for required requirementId "authored-worker-responsibilities"');
   });
 
   it("marks current Care Plan requirements as derived fallback validation until authored criteria exist", () => {

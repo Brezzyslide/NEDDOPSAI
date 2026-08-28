@@ -163,6 +163,12 @@ export interface DeliverableRequirementCoverageReport {
   missing: DeliverableRequirementCoverageFailure[];
 }
 
+export interface PerRequirementDeliverableSection {
+  requirementId: string;
+  heading: string;
+  content: string;
+}
+
 export interface BlueprintRequirementClassificationSummary {
   blueprintCode: string;
   professionalDomain: string;
@@ -211,8 +217,9 @@ export function deriveDeliverableRequirementCoverageProfile(
 export function validateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
+  options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
 ): DeliverableRequirementCoverageFailure[] {
-  return evaluateDeliverableRequirementCoverage(contentMarkdown, profile).missing;
+  return evaluateDeliverableRequirementCoverage(contentMarkdown, profile, options).missing;
 }
 
 export function buildRequirementToDeliverablePlan(
@@ -299,10 +306,13 @@ export function groupRequirementFailuresForRepair(
 export function evaluateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
+  options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
 ): DeliverableRequirementCoverageReport {
   const failures: DeliverableRequirementCoverageFailure[] = [];
   const normalisedContent = normaliseContent(contentMarkdown);
   const structure = parseMarkdownStructure(contentMarkdown);
+  const structuredSections = normaliseDeliverableSections(options.deliverableSections);
+  const structuredSectionsProvided = structuredSections.size > 0;
   const plan = buildRequirementToDeliverablePlan(profile);
   const schema = buildDeliverableOutputSchema(profile);
   const classificationCounts = Object.fromEntries(
@@ -320,6 +330,8 @@ export function evaluateDeliverableRequirementCoverage(
       normalisedContent,
       structure,
       schema,
+      structuredSection: structuredSections.get(requirement.id) ?? null,
+      structuredSectionsProvided,
     });
     requirementResults.push(result);
     if (result.finalResult === "SATISFIED") {
@@ -397,6 +409,20 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
     "Machine-readable output schema derived from the requirement plan. The final deliverable must account for every requirement_id below:",
     JSON.stringify(schema, null, 2),
   ].join("\n");
+}
+
+function normaliseDeliverableSections(
+  sections: PerRequirementDeliverableSection[] | undefined,
+): Map<string, PerRequirementDeliverableSection> {
+  const mapped = new Map<string, PerRequirementDeliverableSection>();
+  for (const section of sections ?? []) {
+    const requirementId = section.requirementId?.trim();
+    const heading = section.heading?.trim();
+    const content = section.content?.trim();
+    if (!requirementId || !heading || !content) continue;
+    mapped.set(requirementId, { requirementId, heading, content });
+  }
+  return mapped;
 }
 
 export function classifyBlueprintRequirement(section: BlueprintSection): DeliverableRequirementClassification {
@@ -921,8 +947,19 @@ function validateRequirementAgainstContent(input: {
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
   const { requirement } = input;
+  if (input.structuredSectionsProvided && !input.structuredSection && isBlockingRequirement(requirement.classification)) {
+    return coverageItem(requirement, {
+      actualLocation: null,
+      structuralResult: "STRUCTURE_FAIL",
+      substantiveResult: requirement.classification === "FACTUAL_FIELD" ? "NOT_APPLICABLE" : "SUBSTANTIVE_FAIL",
+      finalResult: "NOT_SATISFIED",
+      failureReason: `deliverable.sections is missing an entry for required requirementId "${requirement.id}".`,
+    });
+  }
   if (requirement.classification === "FACTUAL_FIELD") {
     return validateFactualFieldRequirement(input);
   }
@@ -944,8 +981,13 @@ function validateFactualFieldRequirement(input: {
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
-  const { requirement, structure, schema } = input;
+  const { requirement, schema } = input;
+  const structure = input.structuredSection
+    ? parseMarkdownStructure(`## ${input.structuredSection.heading}\n\n${input.structuredSection.content}`)
+    : input.structure;
   const schemaField = findSchemaField(schema, requirement.id);
   const expected = requirement.requiredDeliverableRepresentation;
 
@@ -1141,8 +1183,16 @@ function validateRepresentedRequirement(input: {
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
-  const { requirement, normalisedContent, structure } = input;
+  const { requirement } = input;
+  const structure = input.structuredSection
+    ? parseMarkdownStructure(`## ${input.structuredSection.heading}\n\n${input.structuredSection.content}`)
+    : input.structure;
+  const normalisedContent = input.structuredSection
+    ? normaliseContent(input.structuredSection.content)
+    : input.normalisedContent;
   if (requirement.id === "support-schedule-table") {
     const table = findScheduleTable(structure);
     return coverageItem(requirement, table
@@ -1162,7 +1212,12 @@ function validateRepresentedRequirement(input: {
         });
   }
 
-  const relevant = findRelevantSectionContent(structure, requirement);
+  const relevant = input.structuredSection
+    ? {
+        content: input.structuredSection.content,
+        location: `deliverable.sections[${input.structuredSection.requirementId}] "${input.structuredSection.heading}"`,
+      }
+    : findRelevantSectionContent(structure, requirement);
   const hasAuthoredAdequacyCriteria = (requirement.adequacyCriteria ?? []).length > 0;
   const keywordMatch = hasAuthoredAdequacyCriteria
     ? true

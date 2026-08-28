@@ -19,6 +19,7 @@ import type { ProfessionalExecutionContext } from "./professionalExecutionContex
 import {
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
+  type PerRequirementDeliverableSection,
 } from "./deliverableRequirementCoverageService.js";
 
 export type BlueprintRuntimeGateState =
@@ -50,6 +51,7 @@ export interface BlueprintRuntimeGateFailure {
 export interface BlueprintRuntimeValidationInput {
   contract: BlueprintExecutionContract | null;
   contentMarkdown: string;
+  deliverableSections?: PerRequirementDeliverableSection[];
   rawClaims?: RawClaim[];
   evidencePack?: EvidencePack | null;
   artifactId?: string | null;
@@ -161,7 +163,9 @@ export function validateBlueprintRuntimeCompletion(
 
   if (input.professionalContext) {
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, contract);
-    const coverageReport = evaluateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile);
+    const coverageReport = evaluateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile, {
+      deliverableSections: input.deliverableSections,
+    });
     if (coverageReport.missing.length > 0) {
       failures.push({
         gate: "mandatory_deliverable_coverage",
