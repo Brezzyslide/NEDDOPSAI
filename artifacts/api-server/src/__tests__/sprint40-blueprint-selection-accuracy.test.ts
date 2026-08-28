@@ -165,12 +165,12 @@ const SPRINT40_CORPUS: CorpusCase[] = [
 const LEGACY_SPRINT40_BEFORE_MATCHES = 24;
 const LEGACY_HELDOUT_BEFORE_MATCHES = 15;
 
-function primeClassifier(caseRow: CorpusCase | BlueprintSelectionHeldoutCase, confidence = 0.91) {
+function primeClassifier(caseRow: CorpusCase | BlueprintSelectionHeldoutCase, confidence = 0.995) {
   gatewayMocks.process.mockResolvedValueOnce({
     content: JSON.stringify({
       blueprintCode: caseRow.expectedBlueprintCode ?? "NO_CAPABILITY",
       operation: caseRow.expectedOperation,
-      confidence: caseRow.expectedBlueprintCode ? confidence : 0.96,
+      confidence: caseRow.expectedBlueprintCode ? confidence : 0.995,
       reasoning: caseRow.expectedBlueprintCode
         ? "Matched against the registry option set."
         : "Request is outside the published professional blueprint registry.",
@@ -322,7 +322,7 @@ describe("Sprint 40 registry-driven blueprint selection", () => {
       content: JSON.stringify({
         blueprintCode: "service_agreement_review",
         operation: "CREATE",
-        confidence: 0.71,
+        confidence: 0.98,
         reasoning: "Close but ambiguous.",
       }),
       usedFallback: false,
@@ -333,9 +333,9 @@ describe("Sprint 40 registry-driven blueprint selection", () => {
     const { REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD, selectBlueprint } = await import("../services/workBlueprintService.js");
     const result = await selectBlueprint("fresh agreement maybe contract thing", ORG_ID);
 
-    expect(REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD).toBe(0.72);
+    expect(REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD).toBe(0.99);
     expect(result.blueprint).toBeNull();
-    expect(result.confidence).toBe(0.71);
+    expect(result.confidence).toBe(0.98);
     expect(dbMocks.select).not.toHaveBeenCalled();
   });
 

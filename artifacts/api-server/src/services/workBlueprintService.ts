@@ -617,7 +617,7 @@ const BUILT_IN_BLUEPRINTS: Omit<CreateBlueprintInput, never>[] = [
 
 // ─── Registry-driven classifier constants ─────────────────────────────────────
 
-export const REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.72;
+export const REGISTRY_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.99;
 const BLUEPRINT_CLASSIFIER_INPUT_USD_PER_MILLION = Number(process.env.BLUEPRINT_CLASSIFIER_INPUT_USD_PER_MILLION ?? "0.15");
 const BLUEPRINT_CLASSIFIER_OUTPUT_USD_PER_MILLION = Number(process.env.BLUEPRINT_CLASSIFIER_OUTPUT_USD_PER_MILLION ?? "0.60");
 
