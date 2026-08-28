@@ -42,13 +42,26 @@ export interface ManifestMemoryRef {
 
 /** How the blueprint was selected for this execution. */
 export interface BlueprintSelectionMetadata {
-  method: "canonical" | "keyword" | "semantic" | "none";
+  method: "canonical" | "keyword" | "semantic" | "registry_classifier" | "none";
   confidence: number;
   matchedKeywords: string[];
   fallbackUsed: boolean;
   canonicalIntent?: string;
   blueprintFamily?: string;
   blueprintMode?: string;
+  operation?: string;
+  specificity?: string;
+  noCapabilityReason?: string;
+  classifier?: {
+    model: string | null;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    totalTokens: number | null;
+    estimatedCostUsd: number | null;
+    latencyMs: number | null;
+    threshold: number;
+    cached: boolean;
+  };
   requestedDeliverableType?: string;
   deliverableStandardisation?: "standard_reusable" | "organisation_tailored" | "participant_specific" | "general";
 }

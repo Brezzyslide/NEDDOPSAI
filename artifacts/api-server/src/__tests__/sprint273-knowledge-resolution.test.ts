@@ -571,65 +571,82 @@ describe("selectBlueprint / classifyBlueprintWithLLM", () => {
     mandatoryCitations: [], isBuiltIn: true, createdAt: new Date(), updatedAt: new Date(),
   };
 
-  it("uses keyword fast path — 'care plan' matches care_plan blueprint, LLM never called", async () => {
+  it("uses registry classifier for free-text care plan requests", async () => {
+    process.env.AI_PROVIDER = "openai";
     const { db } = await import("@workspace/db");
     vi.mocked(db.select)
       .mockReset()
       .mockImplementationOnce(() => makeSelectChain([]))             // org blueprints → none
       .mockImplementationOnce(() => makeSelectChain([FULL_BLUEPRINT])); // built-in → found
 
+    mocks.gatewayProcess.mockResolvedValue({
+      content: JSON.stringify({ blueprintCode: "care_plan", operation: "CREATE", confidence: 0.88, reasoning: "Registry match." }),
+      usedFallback: false,
+    });
+
     const { selectBlueprint } = await import("../services/workBlueprintService.js");
     const result = await selectBlueprint("Please create a care plan for the participant", "org-1");
 
-    expect(mocks.gatewayProcess).not.toHaveBeenCalled();
+    expect(mocks.gatewayProcess).toHaveBeenCalled();
     expect(result.blueprint).not.toBeNull();
     expect(result.blueprint!.code).toBe("care_plan");
     expect(result.blueprint!.primarySpecialist).toBe("operations_manager");
     expect(result.confidence).toBeGreaterThan(0);
     expect(result.fallbackUsed).toBe(false);
+    expect(result.method).toBe("registry_classifier");
   });
 
-  it("uses keyword fast path — 'support plan' matches care_plan blueprint", async () => {
+  it("uses registry classifier for free-text support plan requests", async () => {
+    process.env.AI_PROVIDER = "openai";
     const { db } = await import("@workspace/db");
     vi.mocked(db.select)
       .mockReset()
       .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementationOnce(() => makeSelectChain([FULL_BLUEPRINT]));
 
+    mocks.gatewayProcess.mockResolvedValue({
+      content: JSON.stringify({ blueprintCode: "care_plan", operation: "CREATE", confidence: 0.86, reasoning: "Registry match." }),
+      usedFallback: false,
+    });
+
     const { selectBlueprint } = await import("../services/workBlueprintService.js");
     const result = await selectBlueprint("Create a support plan for Jane Smith", "org-1");
 
     expect(result.blueprint!.primarySpecialist).toBe("operations_manager");
-    expect(mocks.gatewayProcess).not.toHaveBeenCalled();
+    expect(mocks.gatewayProcess).toHaveBeenCalled();
   });
 
   it("org-published blueprint takes precedence over built-in for same code", async () => {
+    process.env.AI_PROVIDER = "openai";
     const orgBlueprint = { ...FULL_BLUEPRINT, organizationId: "org-1", id: "bp-org" };
     const { db } = await import("@workspace/db");
     vi.mocked(db.select)
       .mockReset()
       .mockImplementationOnce(() => makeSelectChain([orgBlueprint])); // org blueprint found first
 
+    mocks.gatewayProcess.mockResolvedValue({
+      content: JSON.stringify({ blueprintCode: "care_plan", operation: "CREATE", confidence: 0.9, reasoning: "Registry match." }),
+      usedFallback: false,
+    });
+
     const { selectBlueprint } = await import("../services/workBlueprintService.js");
     const result = await selectBlueprint("care plan for participant", "org-1");
 
     expect(result.blueprint!.id).toBe("bp-org");
-    expect(mocks.gatewayProcess).not.toHaveBeenCalled();
+    expect(mocks.gatewayProcess).toHaveBeenCalled();
   });
 
-  it("falls back to LLM classifier when no keyword matches", async () => {
+  it("uses registry classifier when exact canonical intent is absent", async () => {
     process.env.AI_PROVIDER = "openai";
     const { db } = await import("@workspace/db");
 
     vi.mocked(db.select)
       .mockReset()
-      // allRows query in classifyBlueprintWithLLM
-      .mockImplementationOnce(() => makeSelectChain([FULL_BLUEPRINT]))
-      // full blueprint fetch after LLM classification
+      .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementationOnce(() => makeSelectChain([FULL_BLUEPRINT]));
 
     mocks.gatewayProcess.mockResolvedValue({
-      content: JSON.stringify({ blueprintCode: "care_plan", confidence: 0.88, reasoning: "matches care plan intent" }),
+      content: JSON.stringify({ blueprintCode: "care_plan", operation: "CREATE", confidence: 0.88, reasoning: "matches care plan intent" }),
       usedFallback: false,
     });
 
@@ -646,13 +663,9 @@ describe("selectBlueprint / classifyBlueprintWithLLM", () => {
 
   it("returns null blueprint when LLM confidence is below 0.6 threshold", async () => {
     process.env.AI_PROVIDER = "openai";
-    const { db } = await import("@workspace/db");
-
-    vi.mocked(db.select).mockReset()
-      .mockImplementation(() => makeSelectChain([FULL_BLUEPRINT]));
 
     mocks.gatewayProcess.mockResolvedValue({
-      content: JSON.stringify({ blueprintCode: "care_plan", confidence: 0.45, reasoning: "Uncertain" }),
+      content: JSON.stringify({ blueprintCode: "care_plan", operation: "CREATE", confidence: 0.45, reasoning: "Uncertain" }),
       usedFallback: false,
     });
 
@@ -678,10 +691,6 @@ describe("selectBlueprint / classifyBlueprintWithLLM", () => {
 
   it("returns null gracefully when LLM returns invalid JSON", async () => {
     process.env.AI_PROVIDER = "openai";
-    const { db } = await import("@workspace/db");
-
-    vi.mocked(db.select).mockReset()
-      .mockImplementation(() => makeSelectChain([FULL_BLUEPRINT]));
 
     mocks.gatewayProcess.mockResolvedValue({ content: "not json at all!", usedFallback: false });
 

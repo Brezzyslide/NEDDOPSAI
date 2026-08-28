@@ -43,6 +43,7 @@ import {
   getBlueprintById,
   resolveCanonicalBlueprint,
   getBlueprintExecutionContract,
+  isBlueprintAuthorisedForSelection,
 } from "./workBlueprintService.js";
 import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
 import {
@@ -1010,41 +1011,64 @@ export class UnifiedExecutionEngine {
         };
       } else if (request.blueprintId) {
         blueprint = await getBlueprintById(request.blueprintId, organizationId);
-        selectionMeta = { method: "keyword", confidence: 1.0, matchedKeywords: [request.blueprintId], fallbackUsed: false };
+        if (blueprint && !isBlueprintAuthorisedForSelection(blueprint)) {
+          blueprint = null;
+        }
+        selectionMeta = { method: "canonical", confidence: 1.0, matchedKeywords: [], fallbackUsed: false };
       } else if (request.blueprintCode) {
         const selection = await selectBlueprint(request.blueprintCode, organizationId);
         blueprint = selection.blueprint;
         selectionMeta = {
-          method: selection.fallbackUsed ? "semantic" : "keyword",
+          method: selection.method ?? (selection.fallbackUsed ? "semantic" : "none"),
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
           canonicalIntent: selection.canonicalIntent,
           blueprintFamily: selection.blueprintFamily,
           blueprintMode: selection.blueprintMode,
+          operation: selection.operation,
+          noCapabilityReason: selection.noCapabilityReason,
+          classifier: selection.classifier,
         };
       } else {
         const selection = await selectBlueprint(userRequest, organizationId);
         blueprint = selection.blueprint;
         selectionMeta = {
-          method: selection.fallbackUsed ? "semantic" : (selection.matchedKeywords.length > 0 ? "keyword" : "none"),
+          method: selection.method ?? (selection.fallbackUsed ? "semantic" : "none"),
           confidence: selection.confidence,
           matchedKeywords: selection.matchedKeywords,
           fallbackUsed: selection.fallbackUsed,
           canonicalIntent: selection.canonicalIntent,
           blueprintFamily: selection.blueprintFamily,
           blueprintMode: selection.blueprintMode,
+          operation: selection.operation,
+          noCapabilityReason: selection.noCapabilityReason,
+          classifier: selection.classifier,
         };
       }
       tBlueprintMs = Date.now() - t1;
 
       if (selectionMeta) {
-        const operation = deriveProfessionalOperation(
-          userRequest,
-          selectionMeta.canonicalIntent ?? request.canonicalIntent ?? request.blueprintCode ?? null,
-        );
+        const operation = selectionMeta.operation
+          ? selectionMeta.operation
+          : deriveProfessionalOperation(
+              userRequest,
+              selectionMeta.canonicalIntent ?? request.canonicalIntent ?? request.blueprintCode ?? null,
+            );
         selectionMeta.requestedDeliverableType = deriveRequestedDeliverableType(userRequest, operation, blueprint);
         selectionMeta.deliverableStandardisation = deriveDeliverableStandardisation(userRequest, operation);
+      }
+
+      if (!blueprint && selectionMeta?.noCapabilityReason) {
+        return {
+          outcome: "awaiting_clarification" as const,
+          message:
+            "I cannot confidently match this request to a published professional Blueprint yet. " +
+            "Please clarify the professional work product you want NeedsOps to prepare or review.",
+          clarificationQuestions: [
+            "What professional deliverable do you want prepared or reviewed?",
+          ],
+        };
       }
 
       // ─── Sprint 29I (D1/F): Direct blueprint execution readiness check ────────

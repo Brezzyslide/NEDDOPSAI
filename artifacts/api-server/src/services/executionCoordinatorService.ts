@@ -47,13 +47,11 @@ import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import {
   claimTaskForExecution,
-  getTaskPlan,
   isTaskCancelled,
   reconcileTaskExecutionFailure,
   reconcileTaskExecutionSuccess,
   transitionTaskState,
 } from "./taskService.js";
-import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -537,20 +535,12 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       return;
     }
 
-    const plan = taskId
-      ? await getTaskPlan(taskId, organizationId).catch(() => null)
-      : null;
-    const canonicalIntent =
-      input.canonicalIntent ??
-      deriveProfessionalIntentKey(userRequest, plan?.intent ?? null) ??
-      undefined;
-
     const result = await executeWork({
       organizationId,
       requesterId,
       requesterRole,
       userRequest,
-      canonicalIntent,
+      canonicalIntent: input.canonicalIntent,
       conversationId,
       correlationId,
       taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan

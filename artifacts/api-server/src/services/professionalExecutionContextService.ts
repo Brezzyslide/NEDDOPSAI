@@ -2,7 +2,7 @@ import type { EvidencePack } from "./knowledgeResolutionService.js";
 import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 
-export type ProfessionalOperation = "CREATE" | "REVIEW" | "UPDATE" | "COMPARE" | "TAILOR" | "COMPLETE" | "INVESTIGATE";
+export type ProfessionalOperation = "CREATE" | "REVIEW" | "UPDATE" | "COMPARE" | "TAILOR" | "COMPLETE" | "INVESTIGATE" | "ASSESS";
 export type ContextSufficiency = "FULL_ORGANISATIONAL_CONTEXT" | "PARTIAL_ORGANISATIONAL_CONTEXT" | "MINIMAL_ORGANISATIONAL_CONTEXT";
 
 export interface ProfessionalDeliverableContract {
@@ -127,10 +127,11 @@ export function deriveProfessionalOperation(userRequest: string, canonicalIntent
   if (/\b(complete|fill|populate|finish)\b/.test(requestText)) return "COMPLETE";
   if (isReviewWorkProductRequest(requestText)) return "REVIEW";
   if (/\b(compare|comparison|contrast|difference|versus|vs)\b/.test(requestText)) return "COMPARE";
-  if (/\b(investigate|investigation|root cause|incident investigation)\b/.test(requestText)) return "INVESTIGATE";
   if (/\b(tailor|customise|customize|adapt|personalise|personalize)\b/.test(requestText)) return "TAILOR";
   if (isCreateWorkProductRequest(requestText)) return "CREATE";
   if (/\b(create|draft|write|develop|design|prepare|build|template|standard)\b/.test(requestText)) return "CREATE";
+  if (/\b(investigate|investigation|root cause|incident investigation)\b/.test(requestText)) return "INVESTIGATE";
+  if (/\b(assess|assessment|evaluate|evaluation)\b/.test(requestText)) return "ASSESS";
   const intentMode = canonicalIntent?.split(".").pop()?.toLowerCase();
   if (intentMode === "review") return "REVIEW";
   if (intentMode === "revise" || intentMode === "update") return "UPDATE";
@@ -140,53 +141,8 @@ export function deriveProfessionalOperation(userRequest: string, canonicalIntent
 }
 
 export function deriveProfessionalIntentKey(userRequest: string, canonicalIntent?: string | null): string | null {
-  const operation = deriveProfessionalOperation(userRequest, canonicalIntent).toLowerCase();
-  const text = userRequest.toLowerCase();
-  const mode = operation === "review" ? "review" : operation === "update" ? "revise" : "create";
-
-  if (/\b(restrictive practice|restrictive practices|unauthorised restrictive|unauthorized restrictive)\b/.test(text)) {
-    if (/\b(compare|comparison|versus|vs)\b/.test(text)) return "restrictive_practice.comparison";
-    if (/\b(authorisation|authorization|authorise|authorize|governance)\b/.test(text)) return "restrictive_practice.authorisation";
-    if (/\b(unauthorised|unauthorized|review|check|audit|validate)\b/.test(text) && operation !== "CREATE") return "restrictive_practice.review";
-    return "restrictive_practice.risk_assessment";
-  }
-
-  if (/\bservice agreement\b/.test(text)) return `agreements.${operation === "create" ? "create" : operation === "update" ? "revise" : operation}`;
-  if (/\b(care plan|care planning)\b/.test(text)) return `care_plan.${mode}`;
-  if (/\b(individual support plan|support plan|support planning)\b/.test(text)) return `support_plan.${mode}`;
-  if (/\bpolic(?:y|ies)\b/.test(text)) return `policy.${operation === "create" ? "create" : operation === "update" ? "revise" : "review"}`;
-  if (/\b(community access|community participation|community outing)\b/.test(text) && /\brisk\b/.test(text)) return "risk_assessment.community_access";
-  if (/\b(site|environmental|worksite|premises)\b/.test(text) && /\brisk\b/.test(text)) return "risk_assessment.site";
-  if (/\bfire\b/.test(text) && /\brisk\b/.test(text)) return "risk_assessment.fire";
-  if (/\brisk\b|\brisk assessment\b/.test(text)) {
-    if (operation === "complete") return "risk.assessment";
-    return "risk_assessment.general";
-  }
-  if (/\breportable incident\b|\bnotifiable incident\b/.test(text)) return "incident.reportable";
-  if (/\bincident\b/.test(text)) {
-    if (/\binvestigat(?:e|ion)\b|\breport template\b|\binvestigation report\b/.test(text)) return "incident.investigation";
-    return "incident.review";
-  }
-  if (/\bsafeguarding\b/.test(text)) return "safeguarding.assessment";
-  if (/\bonboarding readiness\b/.test(text)) return "workforce_compliance.onboarding_readiness";
-  if (/\b(onboard|onboarding|induction|new staff|new employee|staff checklist|employee checklist)\b/.test(text)) return "people.onboarding";
-  if (/\bgovernance framework\b/.test(text)) return "governance.framework";
-  if (/\bgovernance gap\b|\bgap analysis\b/.test(text)) return "governance.gap_analysis";
-  if (/\bstandard operating procedure\b|\bsop\b/.test(text)) return `operations.sop.${operation === "review" ? "review" : operation === "update" ? "revise" : "create"}`;
-  if (/\bprocess map\b|\bmap\b[\s\S]{0,40}\bprocess\b/.test(text)) return "process.map";
-  if (/\bbusiness process\b|\bprocess analysis\b/.test(text)) return "operations.process_analysis";
-  if (/\bcredential expiry|expired credential|expir(?:y|ies)\b/.test(text)) return "workforce_compliance.expiry_monitoring";
-  if (/\btraining needs analysis\b|\blearning needs\b/.test(text)) return "learning.needs_analysis";
-  if (/\blearning development plan\b|\bdevelopment plan\b/.test(text)) return "learning.development_plan";
-  if (/\bschads\b|\baward compliance\b/.test(text)) return "employment.schads_analysis";
-  if (/\bpayroll\b[\s\S]{0,40}\breconciliation\b/.test(text)) return "payroll.reconciliation";
-  if (/\baccounts payable\b/.test(text)) return "finance.accounts_payable";
-  if (/\bcash\s?flow forecast\b/.test(text)) return "financial_planning.cashflow";
-  if (/\bbudget variance\b/.test(text)) return "financial_reporting.variance";
-  if (/\bbusiness proposal\b|\bbusiness case\b/.test(text)) return `business_proposal.${operation === "review" ? "review" : "create"}`;
-  if (/\bmarketing campaign\b/.test(text)) return "marketing.campaign";
-  if (/\bstakeholder communication\b|\bletter\b/.test(text)) return `correspondence.${operation === "review" ? "review" : "create"}`;
-  return canonicalIntent ?? null;
+  const candidate = (canonicalIntent ?? userRequest).trim();
+  return /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/.test(candidate) ? candidate : null;
 }
 
 export function compileProfessionalExecutionContext(input: {
@@ -327,7 +283,7 @@ function deriveDeliverableType(userRequest: string, operation: ProfessionalOpera
   if (/\bpolic(?:y|ies)\b/.test(text) && operation === "REVIEW") return "POLICY_REVIEW";
   if (/\brisk\b/.test(text) && /\btemplate\b/.test(text)) return "STANDARD_RISK_TEMPLATE";
   if (/\brisk assessment\b/.test(text) && operation === "COMPLETE") return "PARTICIPANT_RISK_ASSESSMENT";
-  if (/\bincident\b/.test(text) && operation === "INVESTIGATE") return "INCIDENT_INVESTIGATION_REPORT";
+  if (/\bincident\b/.test(text) && /\binvestigat(?:e|ion)\b/.test(text)) return "INCIDENT_INVESTIGATION_REPORT";
   if (/\bincident\b/.test(text) && operation === "REVIEW") return "INCIDENT_REVIEW_REPORT";
   return normaliseDeliverableName(blueprint?.primaryDeliverable ?? blueprint?.deliverableContract?.primaryDeliverable ?? "PROFESSIONAL_DELIVERABLE");
 }

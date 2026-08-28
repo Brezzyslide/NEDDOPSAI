@@ -579,12 +579,12 @@ describe("15-16: Version management", () => {
   });
 });
 
-describe("17: Legacy blueprint compatibility", () => {
+describe("17: Registry selection authority", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("17. Legacy blueprint code (no intent map entry) resolves via keyword fallback", async () => {
+  it("17. Legacy blueprint code without registry authority fails closed", async () => {
     mockBlueprintRows = [makeBlueprintRow({
       id: "bp-meeting-minutes",
       code: "meeting_minutes",
@@ -592,18 +592,13 @@ describe("17: Legacy blueprint compatibility", () => {
       output_types: ["meeting_minutes"],
     })];
 
-    // "meeting minutes from today's standup" — no structured intent key.
-    // Intent map returns null → falls through to keyword matching.
     const result = await selectBlueprint("meeting minutes from today's standup", "org-123");
 
-    // No canonical intent (not in intent map)
     expect(result.canonicalIntent).toBeUndefined();
-    // Keyword fallback found a blueprint
-    expect(result.blueprint).not.toBeNull();
-    // Keyword matched (not LLM fallback)
-    expect(result.fallbackUsed).toBe(false);
-    // Matched keywords must contain "meeting" related terms
-    expect(result.matchedKeywords.length).toBeGreaterThan(0);
+    expect(result.blueprint).toBeNull();
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.method).toBe("registry_classifier");
+    expect(result.matchedKeywords).toEqual([]);
   });
 });
 

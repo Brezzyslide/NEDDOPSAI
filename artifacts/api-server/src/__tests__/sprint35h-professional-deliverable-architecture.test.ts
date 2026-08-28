@@ -182,8 +182,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.";
 
     expect(deriveProfessionalOperation(request, "agreements.create")).toBe("CREATE");
-    expect(deriveProfessionalIntentKey(request, "agreements.review")).toBe("agreements.create");
-    expect(planTask(request).intent).toBe("agreements.create");
+    expect(deriveProfessionalIntentKey(request, "agreements.create")).toBe("agreements.create");
+    expect(deriveProfessionalIntentKey(request, null)).toBeNull();
     expect(resolveIntent("agreements.create")).toMatchObject({
       family: "agreements",
       mode: "create",
@@ -201,7 +201,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
 
     expect(context.operation).toBe("REVIEW");
-    expect(planTask(request).intent).toBe("agreements.review");
+    expect(resolveIntent("agreements.review")).toMatchObject({
+      family: "agreements",
+      mode: "review",
+      code: "service_agreement_review",
+    });
     expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_SERVICE_AGREEMENT_CONTRACT_READINESS_ASSESSMENT");
     expect(context.professionalMethodRole).toBe("requested_deliverable_structure");
   });
@@ -289,18 +293,19 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
   it("threads canonical operation intent from task planning into execution", () => {
     const coordinator = source("services/executionCoordinatorService.ts");
 
-    expect(coordinator).toContain("getTaskPlan");
-    expect(coordinator).toContain("deriveProfessionalIntentKey(userRequest, plan?.intent ?? null)");
-    expect(coordinator).toContain("canonicalIntent,");
+    expect(coordinator).not.toContain("getTaskPlan");
+    expect(coordinator).not.toContain("deriveProfessionalIntentKey(userRequest, plan?.intent");
+    expect(coordinator).toContain("canonicalIntent: input.canonicalIntent");
   });
 
   it("proves generic operation separation beyond Service Agreements", () => {
-    expect(deriveProfessionalIntentKey("Create an incident investigation report", "incident.review")).toBe("incident.investigation");
-    expect(deriveProfessionalIntentKey("Review this incident investigation", "incident.review")).toBe("incident.review");
-    expect(deriveProfessionalIntentKey("Create a standard risk template", "risk.review")).toBe("risk.create");
-    expect(deriveProfessionalIntentKey("Complete this participant risk assessment", "risk.review")).toBe("risk.assessment");
-    expect(deriveProfessionalIntentKey("Create a medication policy", "policy.review")).toBe("policy.create");
-    expect(deriveProfessionalIntentKey("Review this medication policy", "policy.create")).toBe("policy.review");
+    expect(deriveProfessionalOperation("Create an incident investigation report", "incident.review")).toBe("CREATE");
+    expect(deriveProfessionalOperation("Review this incident investigation", "incident.review")).toBe("REVIEW");
+    expect(deriveProfessionalOperation("Create a standard risk template", "risk_assessment.general")).toBe("CREATE");
+    expect(deriveProfessionalOperation("Complete this participant risk assessment", "risk_assessment.general")).toBe("COMPLETE");
+    expect(deriveProfessionalOperation("Create a medication policy", "policy.review")).toBe("CREATE");
+    expect(deriveProfessionalOperation("Review this medication policy", "policy.create")).toBe("REVIEW");
+    expect(deriveProfessionalIntentKey("Create a standard risk template", null)).toBeNull();
   });
 
   it("routes standard Care Plan template creation to service delivery, not compliance audit readiness", () => {
@@ -308,7 +313,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const plan = planTask(request);
 
     expect(deriveProfessionalOperation(request, "compliance.audit_readiness")).toBe("CREATE");
-    expect(deriveProfessionalIntentKey(request, "compliance.audit_readiness")).toBe("care_plan.create");
+    expect(deriveProfessionalIntentKey(request, "care_plan.create")).toBe("care_plan.create");
+    expect(deriveProfessionalIntentKey(request, null)).toBeNull();
     expect(deriveDeliverableStandardisation(request)).toBe("standard_reusable");
     expect(plan.intent).toBe("care_plan.create");
     expect(plan.primarySpecialist).toBe("service_delivery_coordinator");
@@ -330,7 +336,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "Requested outcome: A standard care plan template ready for use in NDIS service delivery.",
     ].join("\n\n");
 
-    expect(planTask("Create Standard Comprehensive NDIS Care Plan Template", paraphrasedDescription).intent).toBe("care_plan.review");
+    expect(planTask("Create Standard Comprehensive NDIS Care Plan Template", paraphrasedDescription).intent).toBe("care_plan.create");
     expect(planTask("Create Standard Comprehensive NDIS Care Plan Template", paraphrasedDescription, sourceUserRequest).intent).toBe("care_plan.create");
 
     const proposal = buildAuthoritativeTaskProposalPresentation({
@@ -972,7 +978,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");
 
-    expect(deriveProfessionalIntentKey(request, "compliance.audit_readiness")).toBe("care_plan.create");
+    expect(deriveProfessionalIntentKey(request, "care_plan.create")).toBe("care_plan.create");
+    expect(deriveProfessionalIntentKey(request, null)).toBeNull();
     expect(deriveDeliverableStandardisation(request)).toBe("participant_specific");
 
     const result = validateWorkPackage(
