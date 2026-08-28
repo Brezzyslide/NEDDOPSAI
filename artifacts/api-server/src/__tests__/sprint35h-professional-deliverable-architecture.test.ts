@@ -736,6 +736,21 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(review).toContain("disableAutoRevision");
   });
 
+  it("gives self-review the requirement plan, failed requirements and deliverable contract", () => {
+    const runner = source("services/unifiedExecutionEngine.ts");
+    const review = source("services/selfReviewService.ts");
+
+    expect(runner).toContain("requirementPlan,");
+    expect(runner).toContain("failedRequirements: toReviewFailedRequirements");
+    expect(runner).toContain("deliverableContract: blueprint?.deliverableContract ?? null");
+    expect(review).toContain("## Requirement Plan");
+    expect(review).toContain("## Specific Failed Requirements");
+    expect(review).toContain("## Deliverable Contract");
+    expect(review).toContain("## Full Deliverable Under Review");
+    expect(review).toContain("Requirement plan supplied:");
+    expect(review).toContain("completion gate reported unsatisfied requirements");
+  });
+
   it("self-review rejects a worse automatic revision candidate", () => {
     const review = source("services/selfReviewService.ts");
 

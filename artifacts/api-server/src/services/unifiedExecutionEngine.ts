@@ -1725,6 +1725,9 @@ export class UnifiedExecutionEngine {
       // will now receive real evidence instead of reporting "EvidencePack not available".
       // No second retrieval is triggered — the same object reference is reused.
       evidencePack: evidencePack ?? null,
+      requirementPlan,
+      failedRequirements: [],
+      deliverableContract: blueprint?.deliverableContract ?? null,
     });
     await recordProfessionalSnapshot({
       organizationId,
@@ -1807,6 +1810,11 @@ export class UnifiedExecutionEngine {
           userId: requesterId,
           conversationId: request.conversationId,
           evidencePack: evidencePack ?? null,
+          requirementPlan,
+          failedRequirements: toReviewFailedRequirements(
+            evaluateDeliverableRequirementCoverage(draftContent, coverageProfile, { deliverableSections }).missing,
+          ),
+          deliverableContract: blueprint?.deliverableContract ?? null,
         });
         await recordProfessionalSnapshot({
           organizationId,
@@ -1900,6 +1908,9 @@ export class UnifiedExecutionEngine {
             conversationId: request.conversationId,
             evidencePack: evidencePack ?? null,
             disableAutoRevision: true,
+            requirementPlan,
+            failedRequirements: toReviewFailedRequirements(currentGroupMissing),
+            deliverableContract: blueprint?.deliverableContract ?? null,
           });
           await recordProfessionalSnapshot({
             organizationId,
@@ -4042,6 +4053,28 @@ function buildCoverageSnapshot(
     missing: report.missing,
     plan: report.plan,
   };
+}
+
+function toReviewFailedRequirements(
+  failures: DeliverableRequirementCoverageFailure[],
+): Array<{
+  requirementId: string;
+  requirement: string;
+  reason: string;
+  requiredDeliverableRepresentation?: string;
+  targetDeliverableLocation?: string | null;
+  adequacyCriteria?: string[];
+  substantiveResult?: string | null;
+}> {
+  return failures.map((failure) => ({
+    requirementId: failure.requirementId,
+    requirement: failure.requirement,
+    reason: failure.reason,
+    requiredDeliverableRepresentation: failure.requiredDeliverableRepresentation,
+    targetDeliverableLocation: failure.actualLocation ?? null,
+    adequacyCriteria: failure.adequacyCriteria,
+    substantiveResult: failure.substantiveResult ?? null,
+  }));
 }
 
 function validateDeliverableOutputSchemaCompleteness(
