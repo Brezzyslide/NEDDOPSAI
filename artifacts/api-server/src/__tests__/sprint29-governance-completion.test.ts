@@ -46,6 +46,7 @@ vi.mock("@workspace/db", () => ({
   organisationMemoryTable:  { id: "id", organizationId: "organizationId", status: "status", memoryType: "memoryType", confidence: "confidence", supersededBy: "supersededBy", updatedAt: "updatedAt" },
   orgAuditLogTable:         { id: "id", organizationId: "organizationId", resourceId: "resourceId", eventType: "eventType", actorUserId: "actorUserId", occurredAt: "occurredAt" },
   completedWorkTable:       { id: "id", organizationId: "organizationId", status: "status" },
+  tasksTable:               { id: "id", organizationId: "organizationId", currentState: "currentState" },
   workBlueprintsTable:      { id: "id", organizationId: "organizationId", status: "status", isBuiltIn: "isBuiltIn", isActive: "isActive" },
   executionIntentsTable:    { id: "id", organizationId: "organizationId", status: "status", createdAt: "createdAt" },
 }));
@@ -455,6 +456,7 @@ describe("Sprint 29 — Governance Completion", () => {
       approvals?: unknown[];
       memory?: unknown[];
       completedWork?: unknown[];
+      tasks?: unknown[];
       blueprints?: unknown[];
       audit?: unknown[];
     } = {}) {
@@ -462,13 +464,14 @@ describe("Sprint 29 — Governance Completion", () => {
         approvals    = [makeApproval(), makeApproval({ id: "a-2", state: "approved", requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000) })],
         memory       = [makeMemoryRow({ status: "approved" }), makeMemoryRow({ id: "mem-002", status: "proposed" })],
         completedWork = [{ status: "awaiting_approval" }, { status: "approved" }, { status: "approved" }],
+        tasks        = [{ currentState: "completed" }, { currentState: "completed" }, { currentState: "failed" }],
         blueprints   = [{ status: "published", isBuiltIn: false }, { status: "draft", isBuiltIn: false }],
         audit        = [makeAuditRow(), makeAuditRow({ id: "aud-002" })],
       } = opts;
 
       let call = 0;
       mockSelectImpl.mockImplementation(() => {
-        const sets = [approvals, memory, completedWork, blueprints, audit];
+        const sets = [approvals, memory, completedWork, tasks, blueprints, audit];
         return makeChain(sets[call++] ?? []);
       });
     }
@@ -481,8 +484,8 @@ describe("Sprint 29 — Governance Completion", () => {
       expect(typeof metrics.approvedLast30Days).toBe("number");
       expect(typeof metrics.memoryHealthScore).toBe("number");
       expect(typeof metrics.governanceScore).toBe("number");
-      expect(metrics.governanceScore).toBeGreaterThanOrEqual(0);
-      expect(metrics.governanceScore).toBeLessThanOrEqual(100);
+      expect(metrics.governanceScore!).toBeGreaterThanOrEqual(0);
+      expect(metrics.governanceScore!).toBeLessThanOrEqual(100);
     });
 
     it("counts pending approvals correctly", async () => {
@@ -542,10 +545,31 @@ describe("Sprint 29 — Governance Completion", () => {
       expect(metrics.memoryHealthScore).toBeLessThanOrEqual(100);
     });
 
-    it("returns memoryHealthScore 100 when no memory exists", async () => {
+    it("returns memoryHealthScore null when no memory exists", async () => {
       setupMetricsSelects({ memory: [] });
       const metrics = await computeGovernanceMetrics(ORG_ID);
-      expect(metrics.memoryHealthScore).toBe(100);
+      expect(metrics.memoryHealthScore).toBeNull();
+      expect(metrics.governanceScore).toBeNull();
+    });
+
+    it("computes executionSuccessRate from completed and failed tasks", async () => {
+      setupMetricsSelects({
+        completedWork: [
+          { status: "awaiting_approval" },
+          { status: "approved" },
+          { status: "approved" },
+          { status: "approved" },
+        ],
+        tasks: [
+          { currentState: "completed" },
+          { currentState: "completed" },
+          { currentState: "failed" },
+          { currentState: "failed" },
+        ],
+      });
+      const metrics = await computeGovernanceMetrics(ORG_ID);
+      expect(metrics.completedWorkApproved).toBe(3);
+      expect(metrics.executionSuccessRate).toBe(50);
     });
 
     it("computes blueprint coverage from published/draft counts", async () => {
@@ -587,8 +611,9 @@ describe("Sprint 29 — Governance Completion", () => {
       mockSelectImpl.mockReturnValue(makeChain([]));
       const metrics = await computeGovernanceMetrics(ORG_ID);
       expect(metrics.pendingApprovals).toBe(0);
-      expect(metrics.governanceScore).toBeGreaterThanOrEqual(0);
-      expect(metrics.governanceScore).toBeLessThanOrEqual(100);
+      expect(metrics.memoryHealthScore).toBeNull();
+      expect(metrics.executionSuccessRate).toBeNull();
+      expect(metrics.governanceScore).toBeNull();
     });
   });
 
@@ -690,10 +715,17 @@ describe("Sprint 29 — Governance Completion", () => {
 
     it("computeGovernanceMetrics returns a governanceScore between 0 and 100", async () => {
       // Fully populated scenario
-      mockSelectImpl.mockReturnValue(makeChain([makeApproval()]));
+      setupSelectSequence([
+        [makeApproval(), makeApproval({ id: "a-2", state: "approved", requestedAt: new Date(Date.now() - 1 * 60 * 60 * 1000) })],
+        [makeMemoryRow({ status: "approved" }), makeMemoryRow({ id: "mem-002", status: "proposed" })],
+        [{ status: "awaiting_approval" }, { status: "approved" }, { status: "approved" }],
+        [{ currentState: "completed" }, { currentState: "completed" }, { currentState: "failed" }],
+        [{ status: "published", isBuiltIn: false }, { status: "draft", isBuiltIn: false }],
+        [makeAuditRow(), makeAuditRow({ id: "aud-002" })],
+      ]);
       const metrics = await computeGovernanceMetrics(ORG_ID);
-      expect(metrics.governanceScore).toBeGreaterThanOrEqual(0);
-      expect(metrics.governanceScore).toBeLessThanOrEqual(100);
+      expect(metrics.governanceScore!).toBeGreaterThanOrEqual(0);
+      expect(metrics.governanceScore!).toBeLessThanOrEqual(100);
     });
 
     it("getMemoryAuditHistory returns empty array on DB error (non-critical)", async () => {

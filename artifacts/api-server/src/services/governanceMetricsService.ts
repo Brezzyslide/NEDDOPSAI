@@ -11,6 +11,7 @@ import {
   organisationMemoryTable,
   orgAuditLogTable,
   completedWorkTable,
+  tasksTable,
   workBlueprintsTable,
 } from "@workspace/db";
 import { eq, and, desc, gte, sql } from "drizzle-orm";
@@ -32,7 +33,7 @@ export interface GovernanceMetrics {
   approvedMemoryCount:    number;
   pendingMemoryCount:     number;
   supersededMemoryCount:  number;
-  memoryHealthScore:      number; // 0-100
+  memoryHealthScore:      number | null; // 0-100, null when no memory records exist
 
   // Work & execution
   completedWorkPending:   number;
@@ -45,7 +46,7 @@ export interface GovernanceMetrics {
   blueprintCoverage:       number; // 0-100 (published / (published + draft))
 
   // Composite governance score (0-100)
-  governanceScore:        number;
+  governanceScore:        number | null;
 
   // Audit activity (last 30 days)
   governanceEventsLast30Days: number;
@@ -105,8 +106,9 @@ export async function computeGovernanceMetrics(
   const supersededMemoryCount = memoryRows.filter(m => m.status === "superseded").length;
   const totalMemory           = memoryRows.length;
 
-  // Memory health: high approved ratio = good; many pending = bad
-  const memoryHealthScore = totalMemory === 0 ? 100
+  // Memory health: high approved ratio = good; many pending = bad.
+  // Zero memory records is not "perfect"; it is not computable.
+  const memoryHealthScore = totalMemory === 0 ? null
     : Math.round(
         (approvedMemoryCount / totalMemory) * 70 +
         (pendingMemoryCount === 0 ? 30 : Math.max(0, 30 - pendingMemoryCount * 3)),
@@ -126,9 +128,21 @@ export async function computeGovernanceMetrics(
 
     completedWorkPending  = cwRows.filter(w => w.status === "awaiting_approval").length;
     completedWorkApproved = cwRows.filter(w => w.status === "approved").length;
-    const totalTerminal   = completedWorkApproved + cwRows.filter(w => w.status === "rejected").length;
-    executionSuccessRate  = totalTerminal > 0
-      ? Math.round((completedWorkApproved / totalTerminal) * 100)
+  } catch { /* table may not be accessible */ }
+
+  // Execution success rate is task execution success, not Completed Work approval ratio.
+  try {
+    const taskRows = await db
+      .select({ currentState: tasksTable.currentState })
+      .from(tasksTable)
+      .where(eq(tasksTable.organizationId, organizationId))
+      .limit(500);
+
+    const completedTasks = taskRows.filter(t => t.currentState === "completed").length;
+    const failedTasks    = taskRows.filter(t => t.currentState === "failed").length;
+    const terminalTasks  = completedTasks + failedTasks;
+    executionSuccessRate = terminalTasks > 0
+      ? Math.round((completedTasks / terminalTasks) * 100)
       : null;
   } catch { /* table may not be accessible */ }
 
@@ -193,15 +207,15 @@ export async function computeGovernanceMetrics(
   const approvalFreshness    = approvedLast30Days > 0 || pendingApprovals.length === 0 ? 100
     : Math.max(0, 100 - pendingApprovals.length * 5);
   const agedApprovalPenalty  = Math.max(0, 100 - approvalsAgedOver48h * 20);
-  const workApprovalScore    = executionSuccessRate ?? 80;
-
-  const governanceScore = Math.min(100, Math.round(
-    approvalFreshness   * 0.25 +
-    memoryHealthScore   * 0.20 +
-    workApprovalScore   * 0.20 +
-    blueprintCoverage   * 0.15 +
-    agedApprovalPenalty * 0.20,
-  ));
+  const governanceScore = memoryHealthScore === null || executionSuccessRate === null
+    ? null
+    : Math.min(100, Math.round(
+        approvalFreshness   * 0.25 +
+        memoryHealthScore   * 0.20 +
+        executionSuccessRate * 0.20 +
+        blueprintCoverage   * 0.15 +
+        agedApprovalPenalty * 0.20,
+      ));
 
   return {
     pendingApprovals:       pendingApprovals.length,
