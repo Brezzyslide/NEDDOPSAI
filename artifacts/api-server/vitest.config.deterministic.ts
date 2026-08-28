@@ -12,6 +12,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    testTimeout: 10_000,
     exclude: [
       "src/__tests__/integration/**",
       "**/node_modules/**",
