@@ -269,13 +269,15 @@ describe("Sprint 28.7 — OpenAI provider source: response_format conditional", 
     expect(src).toContain("responseFormat,");
   });
 
-  it("provider source spreads response_format only when useJsonMode is true", async () => {
+  it("provider source spreads response_format only when a provider response format exists", async () => {
     const src = await readFile(
       join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/providers/openai.ts"),
       "utf-8",
     );
-    // Conditional spread: ...(useJsonMode ? { response_format: ... } : {})
-    expect(src).toMatch(/useJsonMode\s*\?\s*\{\s*response_format/);
+    // Conditional spread: text mode leaves providerResponseFormat undefined,
+    // while JSON modes send either caller schema or json_object.
+    expect(src).toContain("const providerResponseFormat = !useJsonMode");
+    expect(src).toMatch(/providerResponseFormat\s*\?\s*\{\s*response_format:\s*providerResponseFormat\s*\}/);
   });
 
   it("provider source handles undefined outputMode with a legacy default", async () => {

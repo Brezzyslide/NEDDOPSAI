@@ -292,6 +292,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("professional_work");
     expect(src).toContain("deliverable.sections[]");
     expect(src).toContain("deliverable.assembledMarkdown");
+    expect(src).toContain("buildProfessionalDeliverableResponseSchema");
+    expect(src).toContain("responseSchema: buildProfessionalDeliverableResponseSchema");
     expect(src).toContain("deriveOutputTypeForProfessionalContext");
     expect(src).toContain("deliverableType.toLowerCase()");
     expect(contextService).toContain("STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT");

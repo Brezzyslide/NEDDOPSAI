@@ -150,6 +150,12 @@ export interface AIRequest {
    * and emits a console.warn. New callers must always set this field.
    */
   outputMode?: GatewayOutputMode;
+  /**
+   * Strict provider JSON Schema response contract for structured outputs.
+   * When supplied for OpenAI JSON/structured mode, the provider sends
+   * response_format: { type: "json_schema", json_schema: ... }.
+   */
+  responseSchema?: AIJsonSchemaResponseFormat;
   /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
@@ -165,6 +171,12 @@ export interface AIRequest {
    * rather than manufacture content.
    */
   allowProviderFallback?: boolean;
+}
+
+export interface AIJsonSchemaResponseFormat {
+  name: string;
+  strict?: boolean;
+  schema: Record<string, unknown>;
 }
 
 export interface AIResponse {

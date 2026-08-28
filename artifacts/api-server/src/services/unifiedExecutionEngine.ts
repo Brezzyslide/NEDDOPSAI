@@ -2505,6 +2505,7 @@ export class UnifiedExecutionEngine {
       retrievedFields,
       maxTokens: outputBudget,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(professionalContext),
       runtimeProfile: "professional_execution",
       allowProviderFallback: false,
     });
@@ -2611,6 +2612,7 @@ export class UnifiedExecutionEngine {
       ],
       maxTokens: 6000,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
       runtimeProfile: "final_synthesis",
       allowProviderFallback: false,
     });
@@ -2716,6 +2718,7 @@ export class UnifiedExecutionEngine {
       ],
       maxTokens: 5000,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
       runtimeProfile: "targeted_repair",
       allowProviderFallback: false,
     });
@@ -3180,6 +3183,117 @@ function formatStructuredDeliverableResponseContract(
     ],
     "assembledMarkdown": "<${assembledDescription}>"
   }`;
+}
+
+function buildProfessionalDeliverableResponseSchema(
+  professionalContext: ProfessionalExecutionContext | undefined,
+): { name: string; strict: boolean; schema: Record<string, unknown> } {
+  const operation = professionalContext?.operation ?? "CREATE";
+  const deliverableType = professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE";
+  const audience = professionalContext?.deliverable.audience ?? "requested audience";
+  const stringArray = { type: "array", items: { type: "string" } };
+  return {
+    name: "professional_deliverable_response",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["professional_work", "requirement_coverage", "deliverable", "completion", "claims"],
+      properties: {
+        professional_work: {
+          type: "object",
+          additionalProperties: false,
+          required: ["summary", "blueprint_completion", "requirement_to_deliverable_plan", "evidence_map", "missing_information"],
+          properties: {
+            summary: { type: "string" },
+            blueprint_completion: stringArray,
+            requirement_to_deliverable_plan: stringArray,
+            evidence_map: stringArray,
+            missing_information: stringArray,
+          },
+        },
+        requirement_coverage: {
+          type: "object",
+          additionalProperties: false,
+          required: ["satisfied", "missing"],
+          properties: {
+            satisfied: stringArray,
+            missing: stringArray,
+          },
+        },
+        deliverable: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "audience", "sections", "assembledMarkdown"],
+          properties: {
+            type: { type: "string", const: deliverableType },
+            audience: { type: "string", const: audience },
+            sections: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["requirementId", "heading", "content"],
+                properties: {
+                  requirementId: { type: "string" },
+                  heading: { type: "string" },
+                  content: { type: "string" },
+                },
+              },
+            },
+            assembledMarkdown: { type: "string" },
+          },
+        },
+        completion: {
+          type: "object",
+          additionalProperties: false,
+          required: ["operation", "unresolvedProfessionalContent", "methodologyLeakage", "readyForCompletedWork"],
+          properties: {
+            operation: { type: "string", const: operation },
+            unresolvedProfessionalContent: { type: "number" },
+            methodologyLeakage: { type: "boolean" },
+            readyForCompletedWork: { type: "boolean" },
+          },
+        },
+        claims: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["clientClaimId", "claimText", "claimType", "sectionRef", "confidence", "reasoningSummary", "evidence", "relatedClaimIds"],
+            properties: {
+              clientClaimId: { type: "string" },
+              claimText: { type: "string" },
+              claimType: {
+                type: "string",
+                enum: ["observation", "absence_finding", "inference", "external_requirement", "recommendation"],
+              },
+              sectionRef: { type: ["string", "null"] },
+              confidence: { type: ["number", "null"] },
+              reasoningSummary: { type: ["string", "null"] },
+              evidence: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["chunkId", "relationship", "supportingSpan"],
+                  properties: {
+                    chunkId: { type: "string" },
+                    relationship: {
+                      type: "string",
+                      enum: ["direct_support", "context", "contradiction", "external_authority", "searched_for_absence"],
+                    },
+                    supportingSpan: { type: ["string", "null"] },
+                  },
+                },
+              },
+              relatedClaimIds: stringArray,
+            },
+          },
+        },
+      },
+    },
+  };
 }
 
 /**

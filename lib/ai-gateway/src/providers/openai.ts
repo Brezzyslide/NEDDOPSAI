@@ -202,12 +202,26 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
   //
   // Mapping:
   //   "text"       → no response_format sent
-  //   "json"       → response_format: { type: "json_object" }
-  //   "structured" → response_format: { type: "json_object" }  (future: JSON Schema)
+  //   "json"       → response_format: { type: "json_object" }, or caller schema
+  //   "structured" → response_format: caller JSON Schema, else json_object
   //   undefined    → response_format: { type: "json_object" }  (legacy default, warn)
   const outputMode = request.outputMode ?? "json";
   const useJsonMode = outputMode !== "text";
-  const responseFormat = useJsonMode ? "json_object" : null;
+  const providerResponseFormat = !useJsonMode
+    ? undefined
+    : request.responseSchema
+      ? {
+          type: "json_schema" as const,
+          json_schema: {
+            name: request.responseSchema.name,
+            strict: request.responseSchema.strict ?? true,
+            schema: request.responseSchema.schema,
+          },
+        }
+      : { type: "json_object" as const };
+  const responseFormat = providerResponseFormat?.type === "json_schema"
+    ? `json_schema:${request.responseSchema?.name ?? "unnamed"}`
+    : useJsonMode ? "json_object" : null;
 
   let lastError: unknown = null;
   let retries = 0;
@@ -222,7 +236,7 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
           { role: "system", content: request.systemPrompt },
           { role: "user", content: request.userMessage },
         ],
-        ...(useJsonMode ? { response_format: { type: "json_object" as const } } : {}),
+        ...(providerResponseFormat ? { response_format: providerResponseFormat } : {}),
         max_tokens: request.maxTokens ?? 2048,
         temperature: 0.3, // Low temp for deterministic structured output
       });
