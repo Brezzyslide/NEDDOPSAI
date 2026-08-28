@@ -2603,11 +2603,10 @@ export class UnifiedExecutionEngine {
       systemPrompt: buildFinalDeliverableSynthesisSystemPrompt(input.blueprint, input.blueprintContract, input.evidencePack ?? null, input.professionalContext),
       userMessage: buildFinalDeliverableSynthesisUserPrompt(input),
       retrievedFields: [
-        "blueprint.objective",
-        "blueprint.sections",
         "deliverableContract",
         "evidencePack.chunks",
         "failedDraft.content",
+        "requirementCoverageProfile",
         "gateFailures",
       ],
       maxTokens: 6000,
@@ -3651,15 +3650,6 @@ function shouldRunCanonicalFinalDeliverableSynthesis(
   return shouldAttemptFinalDeliverableSynthesis(failures, standardTemplateEvidence);
 }
 
-function shouldOmitBlueprintSectionTitlesFromFinalSynthesis(
-  professionalContext?: ProfessionalExecutionContext,
-): boolean {
-  if (!professionalContext) return false;
-  return professionalContext.professionalMethodRole === "internal_method_only" &&
-    professionalContext.deliverable.standardisation === "standard_reusable" &&
-    ["CREATE", "TAILOR", "UPDATE", "COMPLETE"].includes(professionalContext.operation);
-}
-
 function requiresCanonicalFinalDeliverablePayload(
   professionalContext?: ProfessionalExecutionContext,
 ): boolean {
@@ -3691,14 +3681,6 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   const blueprintName = professionalContext?.deliverable.requestedDeliverableType ?? blueprint?.title ?? "professional work";
-  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(professionalContext);
-  const sections = omitBlueprintSectionTitles
-    ? "- Omitted for this standard reusable deliverable. Use the requested deliverable contract and mandatory user-facing content instead of Blueprint section titles."
-    : contract?.sections.length
-    ? contract.sections.map((section) =>
-        `- ${section.sectionCode}: ${section.title}${section.required ? " (required internal check)" : ""}`,
-      ).join("\n")
-    : "- No structured Blueprint sections supplied.";
   const evidenceSummary = evidencePack && evidencePack.totalChunks > 0
     ? `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
@@ -3710,13 +3692,13 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
     ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
     : "- The substantive professional content required by the requested deliverable.";
-  const blueprintReference = omitBlueprintSectionTitles
-    ? "the requested professional domain"
-    : blueprint?.title ?? "the requested professional domain";
+  const deliverableContract = blueprint?.deliverableContract
+    ? JSON.stringify(blueprint.deliverableContract, null, 2)
+    : "{}";
 
   return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
-You transform internal professional analysis, evidence, ${blueprintReference} method completion and specialist conclusions into a user-facing deliverable.
+You transform Stage 1 professional findings, evidence, requirement coverage and the user-facing deliverable contract into a user-facing deliverable.
 ${contextBlock ? `\n${contextBlock}\n` : ""}
 
 The audience will receive the completed document, not the internal working method.
@@ -3730,6 +3712,9 @@ USER DELIVERABLE:
 - actual user-facing professional content for the requested document type
 - substantive provisions, instructions, responsibilities, prompts, review/sign-off fields and boundaries required for that document
 - clear reusable template structure suitable for human review
+
+USER-FACING DELIVERABLE CONTRACT:
+${deliverableContract}
 
 MANDATORY USER-FACING CONTENT:
 ${mandatoryContent}
@@ -3765,9 +3750,6 @@ Do not expose chain-of-thought. Return ONLY JSON:
   },
   "claims": []
 }
-
-Blueprint sections are internal completeness checks, not customer-facing headings unless the requested document type naturally uses them:
-${sections}
 
 ${evidenceSummary}`;
 }
@@ -3809,11 +3791,6 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const mandatoryContent = input.professionalContext.deliverable.mandatoryProfessionalContent.length
     ? input.professionalContext.deliverable.mandatoryProfessionalContent
     : ["Purpose", "Scope", "Responsibilities", "Review requirements", "Sign-off"];
-  const sectionChecks = input.blueprintContract?.sections.length
-    ? input.blueprintContract.sections.map((section) =>
-        `- ${section.title}: ${section.minimumContentExpectation}`,
-      ).join("\n")
-    : "No structured sections supplied.";
   const gateDetails = input.gateFailures.map((failure) =>
     [
       `- ${failure.gate}: ${failure.message}`,
@@ -3823,15 +3800,9 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const shouldOmitDefectiveDraft =
     input.professionalContext.deliverable.standardisation === "standard_reusable" &&
     input.gateFailures.some((failure) => failure.gate === "methodology_leak");
-  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(input.professionalContext);
   const failedDraftSection = shouldOmitDefectiveDraft
-    ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, Blueprint professional method and authoritative evidence.`
+    ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, requirement plan and authoritative evidence.`
     : `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`;
-  const blueprintMethodSection = omitBlueprintSectionTitles
-    ? `## BLUEPRINT PROFESSIONAL METHOD\nBlueprint code: ${input.professionalContext.blueprintCode ?? input.blueprint?.code ?? "unknown"}\nThe detailed Blueprint section titles and deliverableContract JSON are intentionally omitted because this is CREATE/TEMPLATE work and those fields are internal professional method authority, not customer-facing document structure. Use the mandatory user-facing content, authority hierarchy, evidence and requested deliverable contract above to draft the final artifact.`
-    : input.blueprint
-      ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
-      : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`;
   const structuredDeliverableInstruction = input.professionalContext.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST"
     ? `## CHECKLIST STRUCTURE CONTRACT
 This deliverable is a structured onboarding checklist, not a narrative review.
@@ -3846,13 +3817,9 @@ Unknown staff-specific values may remain as allowed factual fields, but professi
     `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each deliverable.sections[] entry must account for its requirementId, and assembledMarkdown must include the same user-facing content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
-    blueprintMethodSection,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",
-    omitBlueprintSectionTitles
-      ? `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nOmitted from this standard reusable final synthesis because previous output leaked methodology headings. Satisfy the professional method through the mandatory user-facing content and requested deliverable contract; do not reconstruct Blueprint section titles.`
-      : `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
     failedDraftSection,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
