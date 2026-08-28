@@ -558,6 +558,57 @@ export interface ParsedDeliverableSection {
   content: string;
 }
 
+export function assembleDeliverableMarkdownFromSections(
+  sections: ParsedDeliverableSection[] | undefined,
+  requirementOrder: string[] = [],
+): string {
+  const validSections = (sections ?? [])
+    .filter((section) => section.requirementId && section.heading && section.content.trim());
+  if (validSections.length === 0) return "";
+  const order = new Map(requirementOrder.map((requirementId, index) => [requirementId, index]));
+  return [...validSections]
+    .sort((left, right) =>
+      (order.get(left.requirementId) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(right.requirementId) ?? Number.MAX_SAFE_INTEGER)
+    )
+    .map((section) => `## ${section.heading}\n\n${section.content.trim()}`)
+    .join("\n\n");
+}
+
+export function mergeDeliverableSectionDeltas(input: {
+  currentSections: ParsedDeliverableSection[] | undefined;
+  repairSections: ParsedDeliverableSection[] | undefined;
+  allowedRequirementIds: string[];
+}): ParsedDeliverableSection[] {
+  const currentSections = input.currentSections ?? [];
+  const repairSections = input.repairSections ?? [];
+  if (currentSections.length === 0) {
+    throw new Error("Cannot merge repair sections because the current deliverable has no sections.");
+  }
+  if (repairSections.length === 0) {
+    throw new Error("Targeted repair returned no deliverable.sections[] deltas.");
+  }
+
+  const currentIds = new Set(currentSections.map((section) => section.requirementId));
+  const allowedIds = new Set(input.allowedRequirementIds);
+  const replacements = new Map<string, ParsedDeliverableSection>();
+
+  for (const section of repairSections) {
+    if (!currentIds.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned unknown requirementId "${section.requirementId}".`);
+    }
+    if (!allowedIds.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned non-deficient requirementId "${section.requirementId}".`);
+    }
+    if (replacements.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned duplicate requirementId "${section.requirementId}".`);
+    }
+    replacements.set(section.requirementId, section);
+  }
+
+  return currentSections.map((section) => replacements.get(section.requirementId) ?? section);
+}
+
 /**
  * Parses the specialist JSON response into content + raw claims.
  * If parsing fails or content is missing, returns content as-is with empty claims.
@@ -572,16 +623,16 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
     const parsed = JSON.parse(cleaned);
 
     const deliverableSections = parseDeliverableSections(parsed.deliverable);
-    const assembledMarkdown = typeof parsed.deliverable?.assembledMarkdown === "string"
+    const modelAssembledMarkdown = typeof parsed.deliverable?.assembledMarkdown === "string"
       ? parsed.deliverable.assembledMarkdown.trim()
       : "";
     const legacyDeliverableContent = typeof parsed.deliverable?.content === "string"
       ? parsed.deliverable.content.trim()
       : "";
     const sectionMarkdown = deliverableSections.length > 0
-      ? deliverableSections.map((section) => `## ${section.heading}\n\n${section.content}`).join("\n\n")
+      ? assembleDeliverableMarkdownFromSections(deliverableSections)
       : "";
-    const content = assembledMarkdown || legacyDeliverableContent || sectionMarkdown || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
+    const content = sectionMarkdown || modelAssembledMarkdown || legacyDeliverableContent || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
     const claims = Array.isArray(parsed.claims) ? (parsed.claims as RawClaim[]) : [];
 
     return {

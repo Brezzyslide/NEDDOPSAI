@@ -68,6 +68,8 @@ import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
   validateClaimBatch,
   parseSpecialistJsonOutput,
+  assembleDeliverableMarkdownFromSections,
+  mergeDeliverableSectionDeltas,
   rejectCrossTenantChunks,
   type ParsedDeliverableSection,
   type RawClaim,
@@ -2531,15 +2533,25 @@ export class UnifiedExecutionEngine {
     // parseSpecialistJsonOutput never throws — if parsing fails it returns the
     // raw text as content with an empty claims array, preserving backward compat.
     const parsed = parseSpecialistJsonOutput(response.content);
-    if (!parsed.content) {
+    const coverageProfile = professionalContext
+      ? deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract)
+      : null;
+    const requiresSectionPayload = Boolean(professionalContext);
+    const assembledContent = parsed.deliverableSections?.length
+      ? assembleDeliverableMarkdownFromSections(
+          parsed.deliverableSections,
+          coverageProfile ? requirementOrderForCoverageProfile(coverageProfile) : [],
+        )
+      : requiresSectionPayload ? "" : parsed.content;
+    if (!assembledContent) {
       throw new FallbackDraftError(
-        "AI specialist returned a JSON response but the 'content' field was missing or empty. " +
+        "AI specialist returned a JSON response but deliverable.sections[] was missing or empty. " +
         "The work output cannot be saved. Please retry.",
       );
     }
 
     return {
-      content: parsed.content,
+      content: assembledContent,
       claims: parsed.claims,
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
@@ -2563,7 +2575,7 @@ export class UnifiedExecutionEngine {
         configuredTimeoutMs: response.configuredTimeoutMs ?? null,
         retryCount: response.retryCount ?? null,
         providerFailureKind: response.providerFailureKind ?? null,
-        deliverableLength: parsed.content.length,
+        deliverableLength: assembledContent.length,
       },
     };
   }
@@ -2643,43 +2655,49 @@ export class UnifiedExecutionEngine {
       };
     }
     const parsed = parseSpecialistJsonOutput(response.content);
-    const deliverableContent = parsed.content;
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+    const deliverableContent = parsed.deliverableSections?.length
+      ? assembleDeliverableMarkdownFromSections(
+          parsed.deliverableSections,
+          requirementOrderForCoverageProfile(coverageProfile),
+        )
+      : canonicalPayloadRequired ? "" : parsed.content;
     if (canonicalPayloadRequired && !deliverableContent) {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
         modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
-        failureMessage: "Canonical final synthesis response did not include deliverable.sections[] or deliverable.assembledMarkdown, so the internal professional draft was not promoted to Completed Work.",
+        failureMessage: "Canonical final synthesis response did not include deliverable.sections[], so the internal professional draft was not promoted to Completed Work.",
       };
     }
-      return {
-        content: deliverableContent || parsed.content || input.currentContent,
-        claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
-        professionalWork: parsed.professionalWork,
-        requirementCoverage: parsed.requirementCoverage,
-        deliverable: parsed.deliverable,
-        deliverableSections: parsed.deliverableSections,
-        completion: parsed.completion,
-        modelTelemetry: {
-          stage: "final_synthesis",
-          configuredOutputBudget: 6000,
-          actualInputTokens: response.usage?.inputTokens ?? null,
-          actualOutputTokens: response.usage?.outputTokens ?? null,
-          actualTotalTokens: response.usage?.totalTokens ?? null,
-          cachedInputTokens: response.usage?.cachedInputTokens ?? null,
-          outputMode: response.outputMode,
-          responseFormat: response.responseFormat,
-          finishReason: response.finishReason ?? null,
-          model: response.model ?? null,
-          latencyMs: response.latencyMs,
-          usedFallback: response.usedFallback,
-          runtimeProfile: response.runtimeProfile ?? null,
-          configuredTimeoutMs: response.configuredTimeoutMs ?? null,
-          retryCount: response.retryCount ?? null,
-          providerFailureKind: response.providerFailureKind ?? null,
-          deliverableLength: (deliverableContent || parsed.content || input.currentContent).length,
-        },
-      };
+    return {
+      content: deliverableContent || input.currentContent,
+      claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
+      professionalWork: parsed.professionalWork,
+      requirementCoverage: parsed.requirementCoverage,
+      deliverable: parsed.deliverable,
+      deliverableSections: parsed.deliverableSections,
+      completion: parsed.completion,
+      modelTelemetry: {
+        stage: "final_synthesis",
+        configuredOutputBudget: 6000,
+        actualInputTokens: response.usage?.inputTokens ?? null,
+        actualOutputTokens: response.usage?.outputTokens ?? null,
+        actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
+        outputMode: response.outputMode,
+        responseFormat: response.responseFormat,
+        finishReason: response.finishReason ?? null,
+        model: response.model ?? null,
+        latencyMs: response.latencyMs,
+        usedFallback: response.usedFallback,
+        runtimeProfile: response.runtimeProfile ?? null,
+        configuredTimeoutMs: response.configuredTimeoutMs ?? null,
+        retryCount: response.retryCount ?? null,
+        providerFailureKind: response.providerFailureKind ?? null,
+        deliverableLength: (deliverableContent || input.currentContent).length,
+      },
+    };
   }
 
   private async repairMissingDeliverableRequirements(input: {
@@ -2744,24 +2762,45 @@ export class UnifiedExecutionEngine {
     }
 
     const parsed = parseSpecialistJsonOutput(response.content);
-    const deliverableContent = parsed.content;
-    if (!deliverableContent && !parsed.content) {
+    if (!parsed.deliverableSections?.length) {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
         modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
-        failureMessage: "Targeted requirement repair response did not include deliverable.sections[] or deliverable.assembledMarkdown.",
+        failureMessage: "Targeted requirement repair response did not include deliverable.sections[] deltas.",
       };
     }
 
-    const content = deliverableContent || parsed.content || input.currentContent;
+    let mergedSections: ParsedDeliverableSection[];
+    try {
+      mergedSections = mergeDeliverableSectionDeltas({
+        currentSections: input.deliverableSections,
+        repairSections: parsed.deliverableSections,
+        allowedRequirementIds: input.missingRequirements.map((requirement) => requirement.requirementId),
+      });
+    } catch (error) {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
+        failureMessage: error instanceof Error ? error.message : "Targeted requirement repair returned invalid deliverable.sections[] deltas.",
+      };
+    }
+
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+    const content = assembleDeliverableMarkdownFromSections(
+      mergedSections,
+      requirementOrderForCoverageProfile(coverageProfile),
+    );
     return {
       content,
       claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
-      deliverable: parsed.deliverable,
-      deliverableSections: parsed.deliverableSections,
+      deliverable: parsed.deliverable
+        ? { ...parsed.deliverable, sections: mergedSections }
+        : { sections: mergedSections },
+      deliverableSections: mergedSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "targeted_requirement_repair",
@@ -3165,7 +3204,6 @@ function buildDeterministicResult(
 
 function formatStructuredDeliverableResponseContract(
   professionalContext: ProfessionalExecutionContext | undefined,
-  assembledDescription: string,
 ): string {
   return `"deliverable": {
     "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
@@ -3176,8 +3214,7 @@ function formatStructuredDeliverableResponseContract(
         "heading": "<user-facing heading>",
         "content": "<substantive user-facing content for this requirement only>"
       }
-    ],
-    "assembledMarkdown": "<${assembledDescription}>"
+    ]
   }`;
 }
 
@@ -3220,7 +3257,7 @@ function buildProfessionalDeliverableResponseSchema(
         deliverable: {
           type: "object",
           additionalProperties: false,
-          required: ["type", "audience", "sections", "assembledMarkdown"],
+          required: ["type", "audience", "sections"],
           properties: {
             type: { type: "string", const: deliverableType },
             audience: { type: "string", const: audience },
@@ -3237,7 +3274,6 @@ function buildProfessionalDeliverableResponseSchema(
                 },
               },
             },
-            assembledMarkdown: { type: "string" },
           },
         },
         completion: {
@@ -3294,11 +3330,12 @@ function buildProfessionalDeliverableResponseSchema(
 
 /**
  * Appended to the specialist system prompt when evidence is available.
- * Instructs the specialist to return { content, claims } JSON in one response.
+ * Instructs the specialist to return structured professional work, deliverable
+ * sections and claims JSON in one response.
  *
  * CONTRACT (non-negotiable):
- * 1. "content" field = the complete human-readable Completed Work (same as before).
- *    No claim JSON, no chunkIds, no clientClaimIds may appear inside "content".
+ * 1. "deliverable.sections[]" = the complete user-facing professional work.
+ *    The server assembles markdown from those sections after validation.
  * 2. "claims" array = structured provenance metadata ONLY. Not a summary, not
  *    a rewrite of the report. Empty array is valid.
  * 3. Each claim references only chunkIds present in the AUTHORITATIVE EVIDENCE section.
@@ -3321,10 +3358,10 @@ The professional response must structurally separate internal work from the fina
     "missing_information": ["<unknown factual variables, if any>"]
   },
   "requirement_coverage": {
-    "satisfied": ["<requirement IDs represented in deliverable.sections[].content and assembledMarkdown>"],
+    "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  ${formatStructuredDeliverableResponseContract(professionalContext, "complete user-facing deliverable markdown only")},
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext.operation}",
     "unresolvedProfessionalContent": 0,
@@ -3334,7 +3371,7 @@ The professional response must structurally separate internal work from the fina
   "claims": []
 }
 
-The artifact generator consumes ONLY deliverable.sections[] and deliverable.assembledMarkdown. Do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in the deliverable.`
+The server assembles the final artifact markdown from deliverable.sections[] only. Do not return assembledMarkdown, and do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in the deliverable sections.`
     : "";
 
   if (!evidencePack || evidencePack.totalChunks === 0) {
@@ -3409,7 +3446,7 @@ RELATIONSHIP TYPES (use exactly one per evidence binding):
   searched_for_absence — chunk was retrieved when searching for absent content
 
 RULES:
-1. ${professionalSchema ? `The "deliverable.sections[]" and "deliverable.assembledMarkdown" fields must contain the complete user-facing deliverable. No internal professional work or claim JSON inside them.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
+1. ${professionalSchema ? `The "deliverable.sections[]" field must contain the complete user-facing deliverable sections. The server assembles markdown from those sections. No internal professional work or claim JSON inside them.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
 2. Only reference chunkIds from the list below. Do not invent chunk IDs.
 3. supportingSpan must be a verbatim exact quotation from the chunk text (not a paraphrase).
    The server verifies this as an exact substring — fabricated spans will be rejected.
@@ -3664,6 +3701,12 @@ function normalisePromptCacheKeyPart(part: unknown): string {
     .replace(/^-+|-+$/g, "") || "unknown";
 }
 
+function requirementOrderForCoverageProfile(
+  profile: ReturnType<typeof deriveDeliverableRequirementCoverageProfile>,
+): string[] {
+  return profile.requirements.map((requirement) => requirement.id);
+}
+
 function shouldAttemptFinalDeliverableSynthesis(
   failures: BlueprintRuntimeGateFailure[],
   standardTemplateEvidence: ReturnType<typeof classifyStandardTemplateEvidenceContext>,
@@ -3772,10 +3815,10 @@ Do not expose chain-of-thought. Return ONLY JSON:
     "missing_information": ["<unknown factual variables, if any>"]
   },
   "requirement_coverage": {
-    "satisfied": ["<requirement IDs represented in deliverable.sections[].content and assembledMarkdown>"],
+    "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  ${formatStructuredDeliverableResponseContract(professionalContext, "complete user-facing deliverable markdown")},
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext?.operation ?? "CREATE"}",
     "unresolvedProfessionalContent": 0,
@@ -3848,7 +3891,7 @@ Unknown staff-specific values may remain as allowed factual fields, but professi
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
-    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each deliverable.sections[] entry must account for its requirementId, and assembledMarkdown must include the same user-facing content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
+    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each deliverable.sections[] entry must account for its requirementId. The server assembles markdown from deliverable.sections[] after validation. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
     clauseFamilies.length
@@ -3883,20 +3926,23 @@ Rules:
 - FACTUAL_FIELD means the field itself must exist in reusable templates; unknown value does not excuse omission.
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
+- Return only deliverable.sections[] entries for the missing requirement IDs you changed. The server merges those section deltas into the existing deliverable and assembles the final markdown.
 - Return JSON only.
 
 Return ONLY JSON:
 {
   "professional_work": {
     "summary": "<brief repair summary>",
+    "blueprint_completion": ["<internal repair checks completed>"],
     "requirement_to_deliverable_plan": ["<missing requirement ID repaired at target location>"],
+    "evidence_map": ["<short evidence/provenance notes>"],
     "missing_information": ["<unknown factual values left as fields/placeholders>"]
   },
   "requirement_coverage": {
     "satisfied": ["<requirement IDs now represented>"],
     "missing": []
   },
-  ${formatStructuredDeliverableResponseContract(professionalContext, "complete repaired user-facing deliverable markdown")},
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext.operation}",
     "unresolvedProfessionalContent": 0,
@@ -3940,16 +3986,18 @@ function buildTargetedRequirementRepairUserPrompt(input: {
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
-    `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return the full deliverable with accepted content preserved.` : "Repair the listed logical section."}`,
+    `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return only the changed deliverable.sections[] entries for the listed missing requirement IDs.` : "Repair the listed logical section and return only changed deliverable.sections[] entries."}`,
     `## DEFICIENT DELIVERABLE SECTION(S)\n${deficientSections}`,
     `## EXACT REQUIREMENTS TO REPAIR\n${JSON.stringify(missing, null, 2)}`,
     evidenceSection,
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
+Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
 For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
 For MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
 Preserve existing satisfied clauses and wording as much as possible.
+The server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
   ].filter(Boolean).join("\n\n---\n\n");
 }

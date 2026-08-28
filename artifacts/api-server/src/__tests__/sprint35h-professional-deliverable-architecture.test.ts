@@ -23,7 +23,11 @@ import {
 import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService";
 import type { BlueprintExecutionContract } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
-import { parseSpecialistJsonOutput } from "../services/claimValidationService";
+import {
+  assembleDeliverableMarkdownFromSections,
+  mergeDeliverableSectionDeltas,
+  parseSpecialistJsonOutput,
+} from "../services/claimValidationService";
 import { planTask } from "../services/chiefOfStaffService";
 import { buildAuthoritativeTaskProposalPresentation } from "../services/taskProposalWorkforcePresentationService";
 import { validateWorkPackage } from "../services/workValidationService";
@@ -179,6 +183,17 @@ function coveredServiceAgreementMarkdown(options: {
   ].join("\n\n");
 }
 
+function carePlanDeliverableSections() {
+  return Array.from({ length: 9 }, (_, index) => {
+    const number = index + 1;
+    return {
+      requirementId: `mandatory-${number}`,
+      heading: `Care Plan Requirement ${number}`,
+      content: `Original substantive care plan content for requirement ${number} records the participant support intent, responsible role, review point, escalation trigger and evidence record needed for safe reusable practice.`,
+    };
+  });
+}
+
 describe("Sprint 35H professional operation and deliverable architecture", () => {
   it("orders Stage 1 professional prompt with static reusable blocks before request-specific context", () => {
     const src = source("services/unifiedExecutionEngine.ts");
@@ -290,8 +305,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       claims: [],
     }));
 
-    expect(parsed.content).toContain("NDIS Service Agreement");
+    expect(parsed.content).toContain("## Provider Responsibilities");
     expect(parsed.content).not.toContain("Provider Responsibilities Review");
+    expect(parsed.content).not.toContain("NDIS Service Agreement");
     expect(parsed.professionalWork).toBeTruthy();
     expect(parsed.deliverable).toBeTruthy();
     expect(parsed.deliverableSections).toEqual([
@@ -328,7 +344,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(contextService).toContain("PROFESSIONAL EXECUTION CONTEXT");
     expect(src).toContain("professional_work");
     expect(src).toContain("deliverable.sections[]");
-    expect(src).toContain("deliverable.assembledMarkdown");
+    expect(src).toContain("The server assembles the final artifact markdown from deliverable.sections[] only");
+    expect(src).toContain("Do not return assembledMarkdown");
     expect(src).toContain("buildProfessionalDeliverableResponseSchema");
     expect(src).toContain("responseSchema: buildProfessionalDeliverableResponseSchema");
     expect(src).toContain("deriveOutputTypeForProfessionalContext");
@@ -339,7 +356,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
     expect(src).toContain("requiresCanonicalFinalDeliverablePayload");
-    expect(src).toContain("Canonical final synthesis response did not include deliverable.sections[] or deliverable.assembledMarkdown");
+    expect(src).toContain("Canonical final synthesis response did not include deliverable.sections[]");
     expect(src).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
     expect(src).toContain("professionalContext.deliverable.mandatoryProfessionalContent");
     expect(src).not.toContain("=== STRUCTURED BLUEPRINT SECTIONS ===");
@@ -1182,6 +1199,91 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length === 0)).toBe(true);
     expect(prompt).toContain("Origin: DERIVED");
     expect(prompt).toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
+  });
+
+  it("merges targeted repair deltas into the existing 9-section deliverable", () => {
+    const currentSections = carePlanDeliverableSections();
+    const repairSections = [
+      {
+        requirementId: "mandatory-2",
+        heading: "Repaired Risk Controls",
+        content: "Repaired substantive wording for requirement two now explains the concrete risk controls, responsible owner, review trigger, escalation pathway and evidence record expected in the reusable care plan.",
+      },
+      {
+        requirementId: "mandatory-7",
+        heading: "Repaired Review Responsibilities",
+        content: "Repaired substantive wording for requirement seven now explains who reviews the care plan, when review occurs, what changes trigger review and how updates are recorded.",
+      },
+    ];
+
+    const merged = mergeDeliverableSectionDeltas({
+      currentSections,
+      repairSections,
+      allowedRequirementIds: ["mandatory-2", "mandatory-7"],
+    });
+    const assembled = assembleDeliverableMarkdownFromSections(
+      merged,
+      currentSections.map((section) => section.requirementId),
+    );
+
+    expect(merged).toHaveLength(9);
+    expect(merged.find((section) => section.requirementId === "mandatory-2")?.heading).toBe("Repaired Risk Controls");
+    expect(merged.find((section) => section.requirementId === "mandatory-7")?.heading).toBe("Repaired Review Responsibilities");
+    expect(merged.find((section) => section.requirementId === "mandatory-3")?.content).toContain("Original substantive care plan content");
+    expect(assembled.match(/^## /gm)).toHaveLength(9);
+    expect(assembled).toContain("## Repaired Risk Controls");
+    expect(assembled).toContain("## Care Plan Requirement 9");
+  });
+
+  it("rejects empty targeted repair deltas and leaves the current document unchanged", () => {
+    const currentSections = carePlanDeliverableSections();
+    const before = assembleDeliverableMarkdownFromSections(
+      currentSections,
+      currentSections.map((section) => section.requirementId),
+    );
+
+    expect(() =>
+      mergeDeliverableSectionDeltas({
+        currentSections,
+        repairSections: [],
+        allowedRequirementIds: ["mandatory-2"],
+      }),
+    ).toThrow("Targeted repair returned no deliverable.sections[] deltas.");
+    expect(assembleDeliverableMarkdownFromSections(
+      currentSections,
+      currentSections.map((section) => section.requirementId),
+    )).toBe(before);
+  });
+
+  it("rejects targeted repair deltas for unknown requirement IDs", () => {
+    const currentSections = carePlanDeliverableSections();
+
+    expect(() =>
+      mergeDeliverableSectionDeltas({
+        currentSections,
+        repairSections: [
+          {
+            requirementId: "mandatory-99",
+            heading: "Unknown Requirement",
+            content: "This section should not be accepted because it is not in the current deliverable section set.",
+          },
+        ],
+        allowedRequirementIds: ["mandatory-99"],
+      }),
+    ).toThrow('Targeted repair returned unknown requirementId "mandatory-99".');
+  });
+
+  it("assembles byte-identical markdown before and after no-op equivalent repair", () => {
+    const currentSections = carePlanDeliverableSections();
+    const order = currentSections.map((section) => section.requirementId);
+    const stageTwoAssembly = assembleDeliverableMarkdownFromSections(currentSections, order);
+    const merged = mergeDeliverableSectionDeltas({
+      currentSections,
+      repairSections: [currentSections[0]],
+      allowedRequirementIds: ["mandatory-1"],
+    });
+
+    expect(assembleDeliverableMarkdownFromSections(merged, order)).toBe(stageTwoAssembly);
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {
