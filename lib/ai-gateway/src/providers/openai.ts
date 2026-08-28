@@ -45,6 +45,7 @@ export interface OpenAICompletionResult {
   /** Sprint 28.7: the response_format value sent, or null when text mode */
   responseFormat: string | null;
   finishReason: string | null;
+  cachedInputTokens: number | null;
 }
 
 export interface OpenAIRuntimePolicy {
@@ -237,13 +238,15 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
           { role: "user", content: request.userMessage },
         ],
         ...(providerResponseFormat ? { response_format: providerResponseFormat } : {}),
+        ...(request.promptCacheKey ? { prompt_cache_key: request.promptCacheKey } : {}),
         max_tokens: request.maxTokens ?? 2048,
         temperature: 0.3, // Low temp for deterministic structured output
-      });
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
 
       const choice = completion.choices[0];
       const content = choice?.message?.content ?? "";
       const usage = completion.usage;
+      const promptTokenDetails = usage?.prompt_tokens_details;
 
       return {
         content,
@@ -258,6 +261,9 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
         configuredTimeoutMs: policy.timeoutMs,
         responseFormat,
         finishReason: choice?.finish_reason ?? null,
+        cachedInputTokens: typeof promptTokenDetails?.cached_tokens === "number"
+          ? promptTokenDetails.cached_tokens
+          : null,
       };
     } catch (err) {
       lastError = err;

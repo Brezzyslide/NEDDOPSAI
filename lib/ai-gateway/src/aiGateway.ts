@@ -192,6 +192,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
   let actualModel: string | undefined;
   let actualResponseFormat: string | null = null;
   let actualFinishReason: string | null = null;
+  let cachedInputTokens: number | null = null;
   let configuredTimeoutMs: number | undefined;
   let retryCount: number | undefined;
   let providerFailureKind: string | undefined;
@@ -209,6 +210,7 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
       actualModel = result.model;
       actualResponseFormat = result.responseFormat;
       actualFinishReason = result.finishReason;
+      cachedInputTokens = result.cachedInputTokens;
       configuredTimeoutMs = result.configuredTimeoutMs;
       retryCount = result.retries;
       recordSuccess({
@@ -296,10 +298,11 @@ async function processRequest(ctx: AIGatewayContext, request: AIRequest): Promis
     retryCount,
     runtimeProfile,
     providerFailureKind,
-    usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens } : undefined,
+    usage: inputTokens > 0 ? { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cachedInputTokens } : undefined,
     outputMode,
     responseFormat: actualResponseFormat,
     finishReason: actualFinishReason,
+    cachedInputTokens,
   };
 
   // ── Post-response audit event ──────────────────────────────────────────────

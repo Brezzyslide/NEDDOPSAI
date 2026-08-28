@@ -227,10 +227,13 @@ function isReviewWorkProductRequest(requestText: string): boolean {
     /\b(readiness|ready for use|compliant and ready|compliance check)\b/.test(requestText);
 }
 
-export function buildProfessionalExecutionContextBlock(context: ProfessionalExecutionContext): string {
+export function buildProfessionalExecutionContextBlock(
+  context: ProfessionalExecutionContext,
+  options: { includeUserRequest?: boolean } = {},
+): string {
   return [
     "## PROFESSIONAL EXECUTION CONTEXT",
-    `USER_REQUEST: ${context.userRequest}`,
+    options.includeUserRequest === false ? "" : `USER_REQUEST: ${context.userRequest}`,
     `OPERATION: ${context.operation}`,
     `DELIVERABLE_TYPE: ${context.deliverable.requestedDeliverableType}`,
     `PROFESSIONAL_DOMAIN: ${context.professionalDomain}`,

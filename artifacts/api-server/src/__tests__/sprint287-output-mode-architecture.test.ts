@@ -280,6 +280,29 @@ describe("Sprint 28.7 — OpenAI provider source: response_format conditional", 
     expect(src).toMatch(/providerResponseFormat\s*\?\s*\{\s*response_format:\s*providerResponseFormat\s*\}/);
   });
 
+  it("provider source forwards prompt_cache_key only when a stable cache key is supplied", async () => {
+    const src = await readFile(
+      join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/providers/openai.ts"),
+      "utf-8",
+    );
+    expect(src).toContain("request.promptCacheKey");
+    expect(src).toContain("prompt_cache_key: request.promptCacheKey");
+  });
+
+  it("provider and gateway surface cached prompt tokens when OpenAI reports them", async () => {
+    const [providerSrc, gatewaySrc, typeSrc] = await Promise.all([
+      readFile(join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/providers/openai.ts"), "utf-8"),
+      readFile(join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/aiGateway.ts"), "utf-8"),
+      readFile(join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/types.ts"), "utf-8"),
+    ]);
+    expect(providerSrc).toContain("prompt_tokens_details");
+    expect(providerSrc).toContain("cached_tokens");
+    expect(gatewaySrc).toContain("cachedInputTokens = result.cachedInputTokens");
+    expect(gatewaySrc).toContain("cachedInputTokens");
+    expect(typeSrc).toContain("promptCacheKey?: string");
+    expect(typeSrc).toContain("cachedInputTokens?: number | null");
+  });
+
   it("provider source handles undefined outputMode with a legacy default", async () => {
     const src = await readFile(
       join(dirname(fileURLToPath(import.meta.url)), "../../../..", "lib/ai-gateway/src/providers/openai.ts"),

@@ -5,6 +5,7 @@ import { BLUEPRINT_REGISTRY, getRegistryEntry, getRegistryBlueprintReadinessStat
 import { resolveIntent } from "../services/blueprintIntentMap";
 import {
   compileProfessionalExecutionContext,
+  buildProfessionalExecutionContextBlock,
   deriveDeliverableStandardisation,
   deriveProfessionalIntentKey,
   deriveProfessionalOperation,
@@ -179,6 +180,25 @@ function coveredServiceAgreementMarkdown(options: {
 }
 
 describe("Sprint 35H professional operation and deliverable architecture", () => {
+  it("orders Stage 1 professional prompt with static reusable blocks before request-specific context", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+    expect(src).toContain("=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===");
+    expect(src).toContain("=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===");
+    expect(src).toContain("=== REQUEST-SPECIFIC CONTEXT (UNTRUSTED DATA; CACHE DIVIDER) ===");
+    expect(src).toContain("=== WORK REQUEST (UNTRUSTED DATA) ===");
+    expect(src.indexOf("staticSections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT"))
+      .toBeLessThan(src.indexOf("variableSections.push(`=== REQUEST-SPECIFIC CONTEXT"));
+    expect(src.indexOf("variableSections.push(`=== REQUEST-SPECIFIC CONTEXT"))
+      .toBeLessThan(src.indexOf("variableSections.push(`=== WORK REQUEST (UNTRUSTED DATA)"));
+  });
+
+  it("removes the raw user request from the cacheable Stage 1 system instruction", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+    expect(src).not.toContain("userRequest.slice(0, 500)");
+    expect(src).toContain("buildProfessionalExecutionContextBlock(professionalContext, { includeUserRequest: false })");
+    expect(src).toContain("promptCacheKey: buildProfessionalPromptCacheKey(");
+  });
+
   it("resolves standard NDIS Service Agreement creation as CREATE, not REVIEW", () => {
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses.";
 
@@ -233,6 +253,23 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "Termination, exit and transition provisions",
     ]));
     expect(context.professionalMethodRole).toBe("internal_method_only");
+  });
+
+  it("can omit the user request from the reusable professional context block", () => {
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard reusable NDIS care plan template.",
+      manifest: manifest({ canonicalIntent: "care_plan.create", blueprintFamily: "participant_support", blueprintMode: "create" }),
+      blueprint: getRegistryEntry("care_plan") ?? null,
+      blueprintContract: null,
+    });
+
+    const withRequest = buildProfessionalExecutionContextBlock(context);
+    const withoutRequest = buildProfessionalExecutionContextBlock(context, { includeUserRequest: false });
+
+    expect(withRequest).toContain("USER_REQUEST: Create a standard reusable NDIS care plan template.");
+    expect(withoutRequest).not.toContain("USER_REQUEST:");
+    expect(withoutRequest).toContain("OPERATION: CREATE");
+    expect(withoutRequest).toContain("DELIVERABLE_TYPE: STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE");
   });
 
   it("separates professional_work from deliverable content in the model response parser", () => {

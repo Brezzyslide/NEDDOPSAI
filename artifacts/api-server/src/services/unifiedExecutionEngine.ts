@@ -123,7 +123,6 @@ import { classifyEvidenceMode, shouldRunClaimProvenance } from "./evidenceModeSe
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
 import { resolveAndCompileManifest } from "./specialistRuntimeManifestService.js";
-import { loadSpecialistContext } from "./specialistContextService.js";
 // Sprint 29H Part H: architectural specialist status guard
 import { getSpecialistByCode } from "../lib/workforceRegistry.js";
 import { getWorkerProfileByCode } from "../lib/workerProfileRegistry.js";
@@ -2480,8 +2479,6 @@ export class UnifiedExecutionEngine {
     // Sprint 29K.3: add claim emission addendum — instructs the specialist to
     // return { content, claims } JSON rather than plain text. outputMode changes
     // to "json" below.  Claim JSON must NOT appear inside contentMarkdown.
-    systemPrompt += buildClaimEmissionAddendum(evidencePack, professionalContext);
-
     const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract, professionalContext);
     const outputBudget = professionalContext?.outputDepth.configuredOutputBudget ?? 4000;
 
@@ -2518,6 +2515,7 @@ export class UnifiedExecutionEngine {
       maxTokens: outputBudget,
       outputMode: "json",
       responseSchema: buildProfessionalDeliverableResponseSchema(professionalContext),
+      promptCacheKey: buildProfessionalPromptCacheKey(authCtx.organizationId, specialistCode, blueprint, blueprintContract, professionalContext),
       runtimeProfile: "professional_execution",
       allowProviderFallback: false,
     });
@@ -2554,6 +2552,7 @@ export class UnifiedExecutionEngine {
         actualInputTokens: response.usage?.inputTokens ?? null,
         actualOutputTokens: response.usage?.outputTokens ?? null,
         actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
         outputMode: response.outputMode,
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
@@ -2667,6 +2666,7 @@ export class UnifiedExecutionEngine {
           actualInputTokens: response.usage?.inputTokens ?? null,
           actualOutputTokens: response.usage?.outputTokens ?? null,
           actualTotalTokens: response.usage?.totalTokens ?? null,
+          cachedInputTokens: response.usage?.cachedInputTokens ?? null,
           outputMode: response.outputMode,
           responseFormat: response.responseFormat,
           finishReason: response.finishReason ?? null,
@@ -2769,6 +2769,7 @@ export class UnifiedExecutionEngine {
         actualInputTokens: response.usage?.inputTokens ?? null,
         actualOutputTokens: response.usage?.outputTokens ?? null,
         actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
         outputMode: response.outputMode,
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
@@ -2816,17 +2817,16 @@ export interface CanonicalTaskRuntimeInstructionResult {
 export async function assembleCanonicalTaskRuntimeInstruction(
   input: CanonicalTaskRuntimeInstructionInput,
 ): Promise<CanonicalTaskRuntimeInstructionResult> {
-  const { specialistCode, organizationId, userRequest, manifest, blueprint, blueprintContract, evidencePack } = input;
+  const { specialistCode, organizationId, blueprint, blueprintContract } = input;
 
   const { dnaSource, ...specialistManifest } = await resolveAndCompileManifest(
     specialistCode,
     organizationId,
   );
 
-  const description = [
-    blueprint ? `${blueprint.title}:` : null,
-    userRequest.slice(0, 500),
-  ].filter(Boolean).join(" ");
+  const description = blueprint
+    ? `${blueprint.title}: produce the assigned professional work output.`
+    : "Produce the assigned professional work output.";
 
   const steps: ExecutionStep[] = [
     {
@@ -2844,25 +2844,10 @@ export async function assembleCanonicalTaskRuntimeInstruction(
     allowedDataCategories: ["task_context", "organisation_context", "approved_memory", "governed_knowledge"],
   };
 
-  const shouldRetrieveKnowledge = !evidencePack || evidencePack.totalChunks === 0;
-  const specialistContext = await loadSpecialistContext(
-    organizationId,
-    specialistCode,
-    undefined,
-    shouldRetrieveKnowledge
-      ? {
-          query: userRequest,
-          executionId: manifest.executionId,
-          writeAudit: true,
-        }
-      : undefined,
-  );
-
   const assembled = assembleRuntimeInstructions(
     specialistManifest,
     steps,
     constraints,
-    specialistContext,
   );
 
   const boundaryAddendum = [
@@ -3532,51 +3517,16 @@ function buildWorkPackagePrompt(
   contract?: BlueprintExecutionContract | null,
   professionalContext?: ProfessionalExecutionContext,
 ): string {
-  const sections: string[] = [];
+  const staticSections: string[] = [];
+  const variableSections: string[] = [];
 
-  sections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
   if (professionalContext) {
-    sections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext)}`);
-    sections.push(`=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}`);
+    staticSections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext, { includeUserRequest: false })}`);
+    staticSections.push(`=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}`);
   }
-
-  if (evidencePack && evidencePack.totalChunks > 0) {
-    const evidenceSection = buildEvidenceSection(evidencePack);
-    if (evidenceSection) sections.push(evidenceSection);
-  } else if (manifest.organisationLibrarySources.length > 0) {
-    const sourceLines = manifest.organisationLibrarySources.map(
-      s => `- ${s.title} [${s.sourceType}${s.authorityLevel ? `, ${s.authorityLevel}` : ""}]`
-    );
-    sections.push(
-      `=== ORGANISATION LIBRARY SOURCES (document metadata — content not yet indexed) ===\n` +
-      `NOTE: These documents are listed but their content could not be retrieved. ` +
-      `Use general professional knowledge for compliance guidance until the documents are ingested.\n` +
-      sourceLines.join("\n")
-    );
-  }
-
-  const hasUploadEvidence = evidencePack?.citationsByType?.["task_upload"]?.length ?? 0;
-  if (manifest.taskUploads.length > 0 && !hasUploadEvidence) {
-    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload — content not yet indexed]`);
-    sections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
-  }
-
-  if (manifest.cosMemories.length > 0) {
-    const memLines = manifest.cosMemories.map(m => {
-      const header = `- [${m.memoryType}] ${m.title}`;
-      return m.content ? `${header}\n  ${m.content}` : header;
-    });
-    sections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
-  }
-
-  if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
-    sections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
-  }
-
-  if (styleGuidanceBlock) sections.push(styleGuidanceBlock);
 
   if (blueprint) {
-    sections.push(
+    staticSections.push(
       `=== BLUEPRINT: ${blueprint.title} ===\n` +
       `Objective: ${blueprint.objective}\n` +
       `Family/mode: ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}\n` +
@@ -3585,7 +3535,9 @@ function buildWorkPackagePrompt(
     );
   }
 
-  const standardTemplateContext = classifyStandardTemplateEvidenceContext(userRequest);
+  const standardTemplateContext = professionalContext
+    ? { customerExampleOptional: professionalContext.deliverable.standardisation === "standard_reusable" }
+    : classifyStandardTemplateEvidenceContext(userRequest);
   if (standardTemplateContext.customerExampleOptional) {
     const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
       ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
@@ -3593,7 +3545,7 @@ function buildWorkPackagePrompt(
     const allowedPlaceholders = professionalContext
       ? formatAllowedFactualPlaceholderInstruction(professionalContext)
       : "Use clear factual placeholders for unknown customer-specific fields where appropriate.";
-    sections.push(
+    staticSections.push(
       `=== STANDARD REUSABLE TEMPLATE MODE ===\n` +
       `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
       `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
@@ -3608,7 +3560,7 @@ function buildWorkPackagePrompt(
 
   if (contract?.sections.length) {
     const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
-    sections.push(
+    staticSections.push(
       `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n` +
       contract.sections.map((section) =>
         [
@@ -3630,16 +3582,86 @@ function buildWorkPackagePrompt(
     );
   }
 
+  variableSections.push(`=== REQUEST-SPECIFIC CONTEXT (UNTRUSTED DATA; CACHE DIVIDER) ===`);
+
+  if (styleGuidanceBlock) variableSections.push(styleGuidanceBlock);
+
   if (evidencePack && evidencePack.totalChunks > 0) {
-    sections.push(
+    const evidenceSection = buildEvidenceSection(evidencePack);
+    if (evidenceSection) variableSections.push(evidenceSection);
+  } else if (manifest.organisationLibrarySources.length > 0) {
+    const sourceLines = manifest.organisationLibrarySources.map(
+      s => `- ${s.title} [${s.sourceType}${s.authorityLevel ? `, ${s.authorityLevel}` : ""}]`
+    );
+    variableSections.push(
+      `=== ORGANISATION LIBRARY SOURCES (document metadata — content not yet indexed) ===\n` +
+      `NOTE: These documents are listed but their content could not be retrieved. ` +
+      `Use general professional knowledge for compliance guidance until the documents are ingested.\n` +
+      sourceLines.join("\n")
+    );
+  }
+
+  const hasUploadEvidence = evidencePack?.citationsByType?.["task_upload"]?.length ?? 0;
+  if (manifest.taskUploads.length > 0 && !hasUploadEvidence) {
+    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload — content not yet indexed]`);
+    variableSections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
+  }
+
+  if (manifest.cosMemories.length > 0) {
+    const memLines = manifest.cosMemories.map(m => {
+      const header = `- [${m.memoryType}] ${m.title}`;
+      return m.content ? `${header}\n  ${m.content}` : header;
+    });
+    variableSections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
+  }
+
+  if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
+    variableSections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
+  }
+
+  if (evidencePack && evidencePack.totalChunks > 0) {
+    variableSections.push(
       `=== CITATION REQUIREMENTS ===\n` +
       `You MUST cite evidence from the AUTHORITATIVE EVIDENCE section above using the citation tags provided.\n` +
       `Do not cite sources not present in this prompt.\n` +
       `If evidence is insufficient for mandatory professional content, return a blocked/clarification result rather than emitting [INCOMPLETE] markers as Completed Work.`
     );
+    variableSections.push(buildClaimEmissionAddendum(evidencePack, professionalContext));
+  } else {
+    variableSections.push(buildClaimEmissionAddendum(undefined, professionalContext));
   }
 
-  return sections.join("\n\n");
+  variableSections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
+
+  return [...staticSections, ...variableSections].filter(Boolean).join("\n\n");
+}
+
+function buildProfessionalPromptCacheKey(
+  organizationId: string,
+  specialistCode: string,
+  blueprint: WorkBlueprint | null,
+  contract: BlueprintExecutionContract | null | undefined,
+  professionalContext?: ProfessionalExecutionContext,
+): string {
+  const organizationHash = createHash("sha256").update(organizationId).digest("hex").slice(0, 12);
+  return [
+    "professional-stage1-v1",
+    `org-${organizationHash}`,
+    specialistCode,
+    professionalContext?.blueprintCode ?? blueprint?.code ?? "no-blueprint",
+    professionalContext?.operation ?? "CREATE",
+    professionalContext?.deliverable.requestedDeliverableType ?? "professional-deliverable",
+    blueprint?.version ?? "unversioned",
+    contract?.mode ?? "legacy",
+  ].map((part) => normalisePromptCacheKeyPart(part)).join(":").slice(0, 240);
+}
+
+function normalisePromptCacheKeyPart(part: unknown): string {
+  return String(part ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "unknown";
 }
 
 function shouldAttemptFinalDeliverableSynthesis(
@@ -4086,6 +4108,7 @@ function buildSyntheticModelTelemetry(stage: string, content: string, configured
     actualInputTokens: null,
     actualOutputTokens: null,
     actualTotalTokens: null,
+    cachedInputTokens: null,
     outputMode: "json",
     responseFormat: null,
     finishReason: null,

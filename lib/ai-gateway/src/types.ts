@@ -156,6 +156,11 @@ export interface AIRequest {
    * response_format: { type: "json_schema", json_schema: ... }.
    */
   responseSchema?: AIJsonSchemaResponseFormat;
+  /**
+   * Stable grouping key for provider prompt-cache routing. This must be derived
+   * from reusable prompt shape, not per-request IDs.
+   */
+  promptCacheKey?: string;
   /** Model identifier (e.g. "gpt-4o-mini") */
   model?: string;
   maxTokens?: number;
@@ -220,6 +225,8 @@ export interface AIResponse {
   responseFormat: string | null;
   /** Provider completion finish reason when available. */
   finishReason?: string | null;
+  /** Input tokens served from provider prompt cache when reported. */
+  cachedInputTokens?: number | null;
 }
 
 // ─── Token usage ──────────────────────────────────────────────────────────────
@@ -228,6 +235,7 @@ export interface AITokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cachedInputTokens?: number | null;
 }
 
 // ─── Provider health ──────────────────────────────────────────────────────────
