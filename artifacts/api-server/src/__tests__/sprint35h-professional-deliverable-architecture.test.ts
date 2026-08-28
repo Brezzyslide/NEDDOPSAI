@@ -949,10 +949,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         mode: "create",
       },
     });
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const supportPlan = getRegistryEntry("individual_support_plan") as any;
 
     expect(context.operation).toBe("CREATE");
     expect(context.deliverable.requestedDeliverableType).toBe("STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE");
     expect(context.professionalMethodRole).toBe("internal_method_only");
+    expect(carePlan.sections.every((section: any) => section.sectionRole === "internal_method")).toBe(true);
+    expect((supportPlan.sections ?? []).some((section: any) => Object.prototype.hasOwnProperty.call(section, "sectionRole"))).toBe(false);
     expect(context.deliverable.mandatoryProfessionalContent).toEqual(expect.arrayContaining([
       "Participant goals, preferences and communication needs",
       "Support domains and daily living support structure",
@@ -961,6 +965,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]));
 
     const src = source("services/unifiedExecutionEngine.ts");
+    expect(src).toContain("Section role:");
+    expect(src).toContain("Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it.");
     expect(src).toContain("Use these as the final document structure or merge them into equivalent user-facing headings");
     expect(src).toContain("Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work");
     expect(src).toContain("prior draft leaked internal Blueprint methodology");

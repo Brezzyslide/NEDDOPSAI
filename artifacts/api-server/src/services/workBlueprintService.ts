@@ -26,6 +26,7 @@ import {
   type BlueprintMaturityState,
   type BlueprintOwnerType,
   type BlueprintPermittedOrgOverrides,
+  type BlueprintSectionRole,
   type BlueprintTemplateVersionPolicy,
   type WorkTemplateType,
 } from "@workspace/db";
@@ -99,6 +100,7 @@ export interface BlueprintSection {
   title: string;
   description: string | null;
   instructions: string | null;
+  sectionRole: BlueprintSectionRole | null;
   required: boolean;
   minimumContentExpectation: string | null;
   evidenceRequirements: Record<string, unknown>;
@@ -718,6 +720,7 @@ function mapSectionRow(row: typeof blueprintSectionsTable.$inferSelect): Bluepri
     title: row.title,
     description: row.description ?? null,
     instructions: row.instructions ?? null,
+    sectionRole: row.sectionRole ?? null,
     required: row.required,
     minimumContentExpectation: row.minimumContentExpectation ?? null,
     evidenceRequirements: (row.evidenceRequirements as Record<string, unknown>) ?? {},
@@ -2235,6 +2238,7 @@ async function seedRegistryBlueprintSections(
       title: section.title,
       description: section.description,
       instructions: section.instructions,
+      sectionRole: section.sectionRole ?? null,
       required: section.required,
       minimumContentExpectation: section.minimumContentExpectation,
       evidenceRequirements: section.evidenceRequirements ?? {},

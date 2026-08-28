@@ -24,6 +24,7 @@ export type BlueprintMaturityState =
   | "superseded";
 
 export type BlueprintOwnerType = "platform_owned" | "organisation_owned";
+export type BlueprintSectionRole = "internal_method" | "user_facing";
 
 export const BLUEPRINT_UNRESOLVED_OWNER = "owner_unresolved";
 export const BLUEPRINT_COORDINATOR_ROLE = "chief_of_staff";
@@ -151,6 +152,7 @@ export interface RegistryEntry {
     title: string;
     description: string;
     instructions: string;
+    sectionRole?: BlueprintSectionRole;
     required: boolean;
     minimumContentExpectation: string | null;
     evidenceRequirements?: Record<string, unknown>;
@@ -3011,13 +3013,18 @@ function section(
   };
 }
 
+const carePlanMethodSection = (...args: Parameters<typeof section>) => ({
+  ...section(...args),
+  sectionRole: "internal_method" as const,
+});
+
 const CARE_PLAN_SECTIONS = [
-  section("PARTICIPANT_CONTEXT", "Participant Context", "Participant identity, communication context, service setting and relevant preferences.", "Summarise verified participant context and state gaps rather than inventing missing detail.", 10, ["participant_context"]),
-  section("PURPOSE_AND_SCOPE", "Purpose and Scope", "Why the plan exists and what it does and does not cover.", "Define operational/service-delivery scope and external professional dependencies.", 20),
-  section("GOALS_AND_PREFERENCES", "Goals and Preferences", "Participant goals, preferences, strengths and choice/decision-making considerations.", "Distinguish activity, participation, progress, outcomes and goal achievement.", 30, ["participant_goals"]),
-  section("SUPPORT_REQUIREMENTS", "Support Requirements", "Daily living, community participation, routines and implementation responsibilities.", "Translate approved support requirements into operational support instructions without changing professional meaning.", 40, ["current_support_requirements"]),
-  section("RISKS_SAFEGUARDS_ESCALATION", "Risks, Safeguards and Escalation", "Known support risks, safeguards, emergency/escalation pathways and dependencies.", "Surface risk, BSP, RP, incident, clinical and mealtime dependencies for the correct authority.", 50, ["risk_context"]),
-  section("MONITORING_REVIEW_GAPS", "Monitoring, Review and Evidence Gaps", "Review date, monitoring responsibilities, unresolved conflicts and missing evidence.", "Record currentness, source provenance, review requirements and unresolved evidence gaps.", 60),
+  carePlanMethodSection("PARTICIPANT_CONTEXT", "Participant Context", "Participant identity, communication context, service setting and relevant preferences.", "Summarise verified participant context and state gaps rather than inventing missing detail.", 10, ["participant_context"]),
+  carePlanMethodSection("PURPOSE_AND_SCOPE", "Purpose and Scope", "Why the plan exists and what it does and does not cover.", "Define operational/service-delivery scope and external professional dependencies.", 20),
+  carePlanMethodSection("GOALS_AND_PREFERENCES", "Goals and Preferences", "Participant goals, preferences, strengths and choice/decision-making considerations.", "Distinguish activity, participation, progress, outcomes and goal achievement.", 30, ["participant_goals"]),
+  carePlanMethodSection("SUPPORT_REQUIREMENTS", "Support Requirements", "Daily living, community participation, routines and implementation responsibilities.", "Translate approved support requirements into operational support instructions without changing professional meaning.", 40, ["current_support_requirements"]),
+  carePlanMethodSection("RISKS_SAFEGUARDS_ESCALATION", "Risks, Safeguards and Escalation", "Known support risks, safeguards, emergency/escalation pathways and dependencies.", "Surface risk, BSP, RP, incident, clinical and mealtime dependencies for the correct authority.", 50, ["risk_context"]),
+  carePlanMethodSection("MONITORING_REVIEW_GAPS", "Monitoring, Review and Evidence Gaps", "Review date, monitoring responsibilities, unresolved conflicts and missing evidence.", "Record currentness, source provenance, review requirements and unresolved evidence gaps.", 60),
 ];
 
 const SUPPORT_PLAN_SECTIONS = [

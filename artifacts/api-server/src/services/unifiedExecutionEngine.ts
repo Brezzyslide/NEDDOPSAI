@@ -1138,6 +1138,7 @@ export class UnifiedExecutionEngine {
               },
               sections: blueprintContract.sections.map((section) => ({
                 sectionCode: section.sectionCode,
+                sectionRole: section.sectionRole,
                 required: section.required,
                 sortOrder: section.sortOrder,
                 evidenceRequirements: section.evidenceRequirements,
@@ -1168,6 +1169,7 @@ export class UnifiedExecutionEngine {
           },
           sections: blueprintContract.sections.map((section) => ({
             sectionCode: section.sectionCode,
+            sectionRole: section.sectionRole,
             required: section.required,
             sortOrder: section.sortOrder,
             evidenceRequirements: section.evidenceRequirements,
@@ -3292,6 +3294,10 @@ function buildWorkExecutionAddendum(
   const sectionLines = contract?.sections.length
     ? contract.sections.map((section) => [
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required)" : ""}`,
+        section.sectionRole ? `  Section role: ${section.sectionRole}` : "",
+        section.sectionRole === "internal_method"
+          ? "  Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
+          : "",
         section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
         section.instructions ? `  Instructions: ${section.instructions}` : "",
         section.prohibitedAssumptions.length > 0 ? `  Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
@@ -3452,6 +3458,10 @@ function buildWorkPackagePrompt(
       contract.sections.map((section) =>
         [
           `${section.sortOrder}. ${section.sectionCode} — ${section.title}${section.required ? " [REQUIRED]" : ""}`,
+          section.sectionRole ? `Section role: ${section.sectionRole}` : "",
+          section.sectionRole === "internal_method"
+            ? "Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
+            : "",
           section.description ? `Description: ${section.description}` : "",
           section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
           section.instructions ? `Instructions: ${section.instructions}` : "",

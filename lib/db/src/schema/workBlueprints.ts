@@ -95,6 +95,12 @@ export const BLUEPRINT_TEMPLATE_VERSION_POLICIES = [
 ] as const;
 export type BlueprintTemplateVersionPolicy = (typeof BLUEPRINT_TEMPLATE_VERSION_POLICIES)[number];
 
+export const BLUEPRINT_SECTION_ROLES = [
+  "internal_method",
+  "user_facing",
+] as const;
+export type BlueprintSectionRole = (typeof BLUEPRINT_SECTION_ROLES)[number];
+
 export const workBlueprintsTable = pgTable("work_blueprints", {
   id: text("id").primaryKey(),
 
@@ -257,6 +263,8 @@ export const blueprintSectionsTable = pgTable("blueprint_sections", {
   title: text("title").notNull(),
   description: text("description"),
   instructions: text("instructions"),
+  sectionRole: text("section_role")
+    .$type<BlueprintSectionRole>(),
   required: boolean("required").notNull().default(false),
   minimumContentExpectation: text("minimum_content_expectation"),
   evidenceRequirements: jsonb("evidence_requirements")
