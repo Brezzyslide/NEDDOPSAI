@@ -15,6 +15,7 @@ import {
   buildRequirementToDeliverablePlan,
   deriveDeliverableRequirementCoverageProfile,
   evaluateDeliverableRequirementCoverage,
+  formatRequirementCoveragePrompt,
   groupRequirementFailuresForRepair,
   validateDeliverableRequirementCoverage,
 } from "../services/deliverableRequirementCoverageService";
@@ -977,6 +978,112 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("do not reconstruct Blueprint section titles");
     expect(src).toContain("Factual placeholders may appear only inside otherwise drafted professional clauses");
     expect(src).toContain("Every mandatory user-facing section must contain substantive professional prose");
+  });
+
+  it("carries authored requirements and adequacy criteria through verbatim when present", () => {
+    const blueprint = {
+      ...getRegistryEntry("care_plan"),
+      deliverableContract: {
+        primaryDeliverable: "care_plan",
+        requirementPlan: [
+          {
+            id: "authored-worker-responsibilities",
+            requirementText: "Worker responsibilities must specify the responsible role, action, escalation trigger and evidence record.",
+            targetLocation: "Worker responsibilities section",
+            adequacyCriteria: [
+              "Names the responsible worker role.",
+              "States the action the worker must complete.",
+              "States the escalation trigger.",
+              "States the evidence record that must be completed.",
+            ],
+          },
+        ],
+      },
+    } as any;
+    const contract = {
+      blueprint,
+      sections: [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan template.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const prompt = formatRequirementCoveragePrompt(profile);
+
+    expect(profile.requirements).toHaveLength(1);
+    expect(profile.requirements[0]).toMatchObject({
+      id: "authored-worker-responsibilities",
+      origin: "AUTHORED",
+      description: "Worker responsibilities must specify the responsible role, action, escalation trigger and evidence record.",
+      requiredDeliverableRepresentation: "Worker responsibilities section",
+      adequacyCriteria: [
+        "Names the responsible worker role.",
+        "States the action the worker must complete.",
+        "States the escalation trigger.",
+        "States the evidence record that must be completed.",
+      ],
+    });
+    expect(prompt).toContain("Origin: AUTHORED");
+    expect(prompt).toContain("Requirement: Worker responsibilities must specify the responsible role, action, escalation trigger and evidence record.");
+    expect(prompt).toContain("Target location: Worker responsibilities section");
+    expect(prompt).toContain("    - Names the responsible worker role.");
+
+    const filler = [
+      "## Worker Responsibilities",
+      Array.from({ length: 162 }, (_, index) => `filler${index}`).join(" "),
+    ].join("\n\n");
+    const fillerReport = evaluateDeliverableRequirementCoverage(filler, profile);
+    expect(fillerReport.requirementResults[0]?.substantiveValidationMode).toBe("ADEQUACY_CRITERIA");
+    expect(fillerReport.missing[0]?.reason).toContain("authored adequacy criteria");
+
+    const substantive = [
+      "## Worker Responsibilities",
+      "The responsible worker role is the support worker allocated to the participant's shift. The action the worker must complete is the agreed personal support action during the shift. The escalation trigger is any change in participant support need or any emerging risk, and the worker must escalate to the service coordinator. The evidence record that must be completed is the participant support note before shift handover.",
+    ].join("\n\n");
+    const substantiveReport = evaluateDeliverableRequirementCoverage(substantive, profile);
+    expect(substantiveReport.missing).toHaveLength(0);
+    expect(substantiveReport.requirementResults[0]?.substantiveValidationMode).toBe("ADEQUACY_CRITERIA");
+  });
+
+  it("marks current Care Plan requirements as derived fallback validation until authored criteria exist", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard comprehensive NDIS care plan template.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const prompt = formatRequirementCoveragePrompt(profile);
+
+    expect(profile.requirements.length).toBeGreaterThan(0);
+    expect(profile.requirements.every((requirement) => requirement.origin === "DERIVED")).toBe(true);
+    expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length === 0)).toBe(true);
+    expect(prompt).toContain("Origin: DERIVED");
+    expect(prompt).toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
   });
 
   it("still requires participant evidence for participant-specific Care Plan work", () => {

@@ -19,10 +19,13 @@ export interface DeliverableRequirement {
   id: string;
   description: string;
   classification: DeliverableRequirementClassification;
+  origin: "AUTHORED" | "DERIVED";
   sourceBlueprintSection?: string;
   professionalRationale: string;
   evidenceAuthority: string[];
   requiredDeliverableRepresentation: string;
+  targetDeliverableLocation?: string;
+  adequacyCriteria: string[];
   coverageRules: DeliverableCoverageRule[];
 }
 
@@ -44,6 +47,7 @@ export interface DeliverableRequirementCoverageFailure {
   structuralResult?: RequirementStructuralResult;
   substantiveResult?: RequirementSubstantiveResult;
   finalResult?: RequirementFinalResult;
+  substantiveValidationMode?: RequirementSubstantiveValidationMode;
   reason: string;
 }
 
@@ -65,15 +69,23 @@ export type RequirementFinalResult =
   | "NOT_SATISFIED"
   | "NOT_APPLICABLE";
 
+export type RequirementSubstantiveValidationMode =
+  | "ADEQUACY_CRITERIA"
+  | "FALLBACK_HEURISTIC"
+  | "NOT_APPLICABLE";
+
 export interface DeliverableRequirementCoverageItem {
   requirementId: string;
   requirement: string;
   classification: DeliverableRequirementClassification;
+  origin: DeliverableRequirement["origin"];
   sourceBlueprintSection?: string;
   expectedRepresentation: string;
+  adequacyCriteria: string[];
   actualLocation: string | null;
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
+  substantiveValidationMode: RequirementSubstantiveValidationMode;
   finalResult: RequirementFinalResult;
   failureReason: string | null;
 }
@@ -89,9 +101,11 @@ export type RequirementCoverageStatus =
 export interface RequirementToDeliverablePlanItem {
   requirementId: string;
   professionalRequirement: string;
+  origin: DeliverableRequirement["origin"];
   sourceBlueprintSection?: string;
   classification: DeliverableRequirementClassification;
   authority: string[];
+  adequacyCriteria: string[];
   applicability: "applicable" | "internal_only" | "evidence_only" | "quality_control" | "optional";
   expectedUserFacingRepresentation: string;
   targetDeliverableLocation: string;
@@ -101,10 +115,12 @@ export interface RequirementToDeliverablePlanItem {
 export interface DeliverableOutputSchemaField {
   requirementId: string;
   classification: DeliverableRequirementClassification;
+  origin: DeliverableRequirement["origin"];
   requiredRepresentation: string;
   targetSection: string;
   fieldLabel: string;
   representationKind: DeliverableRepresentationKind;
+  adequacyCriteria: string[];
   minimumSubstance: string[];
 }
 
@@ -207,14 +223,16 @@ export function buildRequirementToDeliverablePlan(
     return {
       requirementId: requirement.id,
       professionalRequirement: requirement.description,
+      origin: requirement.origin ?? "DERIVED",
       sourceBlueprintSection: requirement.sourceBlueprintSection,
       classification: requirement.classification,
       authority: requirement.evidenceAuthority.length > 0
         ? requirement.evidenceAuthority
         : ["Blueprint professional method", "Professional deliverable contract"],
+      adequacyCriteria: requirement.adequacyCriteria ?? [],
       applicability,
       expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
-      targetDeliverableLocation: inferTargetDeliverableLocation(requirement),
+      targetDeliverableLocation: requirement.targetDeliverableLocation ?? inferTargetDeliverableLocation(requirement),
       status: isBlockingRequirement(requirement.classification) ? "missing" : nonBlockingStatus(requirement.classification),
     };
   });
@@ -229,10 +247,12 @@ export function buildDeliverableOutputSchema(
     .map((item): DeliverableOutputSchemaField => ({
       requirementId: item.requirementId,
       classification: item.classification,
+      origin: item.origin,
       requiredRepresentation: item.expectedUserFacingRepresentation,
       targetSection: item.targetDeliverableLocation,
       fieldLabel: deriveFieldLabel(item),
       representationKind: inferRepresentationKind(item),
+      adequacyCriteria: item.adequacyCriteria,
       minimumSubstance: deriveMinimumSubstance(item),
     }));
 
@@ -316,9 +336,11 @@ export function evaluateDeliverableRequirementCoverage(
       sourceBlueprintSection: requirement.sourceBlueprintSection,
       requiredDeliverableRepresentation: requirement.requiredDeliverableRepresentation,
       expectedRepresentation: result.expectedRepresentation,
+      adequacyCriteria: result.adequacyCriteria,
       actualLocation: result.actualLocation,
       structuralResult: result.structuralResult,
       substantiveResult: result.substantiveResult,
+      substantiveValidationMode: result.substantiveValidationMode,
       finalResult: result.finalResult,
       reason: result.failureReason ?? "Required professional substance is not represented in the user-facing deliverable.",
     });
@@ -355,8 +377,12 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
     .filter((requirement) => isBlockingRequirement(requirement.classification))
     .map((requirement) => [
       `- ${requirement.requirementId} [${requirement.classification}]`,
+      `  Origin: ${requirement.origin}`,
       `  Requirement: ${requirement.professionalRequirement}`,
       requirement.sourceBlueprintSection ? `  Source Blueprint section: ${requirement.sourceBlueprintSection}` : "",
+      requirement.adequacyCriteria.length
+        ? `  Adequacy criteria:\n${requirement.adequacyCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
+        : "  Adequacy criteria: DERIVED_FALLBACK_HEURISTIC",
       `  Final deliverable representation: ${requirement.expectedUserFacingRepresentation}`,
       `  Target location: ${requirement.targetDeliverableLocation}`,
     ].filter(Boolean).join("\n"));
@@ -453,6 +479,9 @@ function genericDeliverableRequirements(
   context: ProfessionalExecutionContext,
   contract?: BlueprintExecutionContract | null,
 ): DeliverableRequirement[] {
+  const authored = authoredDeliverableRequirements(contract);
+  if (authored.length > 0) return authored;
+
   if (context.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") {
     return workforceOnboardingChecklistRequirements(context, contract);
   }
@@ -486,6 +515,79 @@ function genericDeliverableRequirements(
     });
 
   return [...userFacing, ...blueprintDerived];
+}
+
+function authoredDeliverableRequirements(
+  contract?: BlueprintExecutionContract | null,
+): DeliverableRequirement[] {
+  const source = contract?.blueprint.deliverableContract as Record<string, unknown> | null | undefined;
+  const candidate = source?.requirementPlan ?? source?.requirements ?? source?.deliverableRequirements;
+  if (!Array.isArray(candidate)) return [];
+
+  return candidate
+    .map((raw, index) => parseAuthoredRequirement(raw, index))
+    .filter((requirement): requirement is DeliverableRequirement => Boolean(requirement));
+}
+
+function parseAuthoredRequirement(raw: unknown, index: number): DeliverableRequirement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const id = stringValue(record.id ?? record.requirementId ?? record.code) ?? `authored-${index + 1}`;
+  const description = stringValue(record.requirementText ?? record.requirement ?? record.description ?? record.text);
+  const representation = stringValue(
+    record.targetLocation ??
+      record.targetDeliverableLocation ??
+      record.requiredDeliverableRepresentation ??
+      record.finalDeliverableRepresentation,
+  );
+  if (!description || !representation) return null;
+
+  return req(
+    id,
+    description,
+    parseRequirementClassification(record.classification),
+    stringValue(record.sourceBlueprintSection ?? record.sectionCode),
+    representation,
+    parseCoverageRules(record.coverageRules),
+    {
+      origin: "AUTHORED",
+      professionalRationale: stringValue(record.professionalRationale),
+      evidenceAuthority: stringArray(record.evidenceAuthority ?? record.authority),
+      adequacyCriteria: stringArray(record.adequacyCriteria),
+      targetDeliverableLocation: representation,
+    },
+  );
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => typeof item === "string" ? item.trim() : "")
+    .filter(Boolean);
+}
+
+function parseRequirementClassification(value: unknown): DeliverableRequirementClassification {
+  if (typeof value === "string" && COVERAGE_CLASSIFICATIONS.includes(value as DeliverableRequirementClassification)) {
+    return value as DeliverableRequirementClassification;
+  }
+  return "MUST_BE_REPRESENTED";
+}
+
+function parseCoverageRules(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === "string" && item.trim()) return [[item.trim()]];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const allOf = stringArray(record.allOf);
+    if (allOf.length > 0) return [allOf];
+    const anyOf = stringArray(record.anyOf);
+    return anyOf.map((term) => [term]);
+  });
 }
 
 function workforceOnboardingChecklistRequirements(
@@ -617,15 +719,25 @@ function req(
   sourceBlueprintSection: string | undefined,
   representation: string,
   allOfAlternatives: string[][],
+  options: {
+    origin?: DeliverableRequirement["origin"];
+    professionalRationale?: string | null;
+    evidenceAuthority?: string[];
+    targetDeliverableLocation?: string;
+    adequacyCriteria?: string[];
+  } = {},
 ): DeliverableRequirement {
   return {
     id,
     description,
     classification,
+    origin: options.origin ?? "DERIVED",
     sourceBlueprintSection,
-    professionalRationale: "Blueprint professional substance must be represented without exposing internal methodology.",
-    evidenceAuthority: [],
+    professionalRationale: options.professionalRationale ?? "Blueprint professional substance must be represented without exposing internal methodology.",
+    evidenceAuthority: options.evidenceAuthority ?? [],
     requiredDeliverableRepresentation: representation,
+    targetDeliverableLocation: options.targetDeliverableLocation,
+    adequacyCriteria: options.adequacyCriteria ?? [],
     coverageRules: allOfAlternatives.map((allOf) => ({ allOf })),
   };
 }
@@ -1051,7 +1163,10 @@ function validateRepresentedRequirement(input: {
   }
 
   const relevant = findRelevantSectionContent(structure, requirement);
-  const keywordMatch = requirement.coverageRules.length > 0
+  const hasAuthoredAdequacyCriteria = (requirement.adequacyCriteria ?? []).length > 0;
+  const keywordMatch = hasAuthoredAdequacyCriteria
+    ? true
+    : requirement.coverageRules.length > 0
     ? requirement.coverageRules.some((rule) => coverageRuleMatches(normalisedContent, rule))
     : coverageRuleMatches(normalisedContent, { allOf: keywordCandidates(requirement.description) });
   if (!relevant) {
@@ -1079,6 +1194,7 @@ function validateRepresentedRequirement(input: {
       : substantive.partial
         ? "SUBSTANTIVE_PARTIAL"
         : "SUBSTANTIVE_FAIL",
+    substantiveValidationMode: substantive.mode,
     finalResult,
     failureReason: finalResult === "SATISFIED"
       ? null
@@ -1088,14 +1204,21 @@ function validateRepresentedRequirement(input: {
 
 function coverageItem(
   requirement: DeliverableRequirement,
-  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "sourceBlueprintSection" | "expectedRepresentation">,
+  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "origin" | "sourceBlueprintSection" | "expectedRepresentation" | "adequacyCriteria" | "substantiveValidationMode"> & {
+    substantiveValidationMode?: RequirementSubstantiveValidationMode;
+  },
 ): DeliverableRequirementCoverageItem {
   return {
     requirementId: requirement.id,
     requirement: requirement.description,
     classification: requirement.classification,
+    origin: requirement.origin ?? "DERIVED",
     sourceBlueprintSection: requirement.sourceBlueprintSection,
     expectedRepresentation: requirement.requiredDeliverableRepresentation,
+    adequacyCriteria: requirement.adequacyCriteria ?? [],
+    substantiveValidationMode: result.substantiveValidationMode ?? (
+      result.substantiveResult === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FALLBACK_HEURISTIC"
+    ),
     ...result,
   };
 }
@@ -1336,18 +1459,38 @@ function findRelevantSectionContent(
 function evaluateSubstantiveClauseContent(
   requirement: DeliverableRequirement,
   content: string,
-): { passed: boolean; partial: boolean; reason: string | null } {
+): { passed: boolean; partial: boolean; reason: string | null; mode: RequirementSubstantiveValidationMode } {
   const cleaned = stripSelfAssertionCoverage(content);
+  const normalised = normaliseContent(cleaned);
+
+  const adequacyCriteria = requirement.adequacyCriteria ?? [];
+  if (adequacyCriteria.length > 0) {
+    const criteriaResults = adequacyCriteria.map((criterion) => ({
+      criterion,
+      passed: adequacyCriterionMatchesContent(criterion, normalised),
+    }));
+    const missing = criteriaResults.filter((result) => !result.passed).map((result) => result.criterion);
+    if (missing.length === 0) {
+      return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA" };
+    }
+    return {
+      passed: false,
+      partial: missing.length < criteriaResults.length,
+      reason: `Relevant section does not satisfy authored adequacy criteria: ${missing.join("; ")}.`,
+      mode: "ADEQUACY_CRITERIA",
+    };
+  }
+
   const words = normaliseContent(cleaned).split(/\s+/).filter(Boolean);
   if (words.length < 18) {
     return {
       passed: false,
       partial: words.length >= 8,
       reason: "Relevant section is too thin to prove substantive professional coverage.",
+      mode: "FALLBACK_HEURISTIC",
     };
   }
 
-  const normalised = normaliseContent(cleaned);
   const operativeCount = [
     "must",
     "will",
@@ -1371,13 +1514,50 @@ function evaluateSubstantiveClauseContent(
     : requirement.coverageRules.some((rule) => coverageRuleMatches(normalised, rule));
 
   if (keywordRulesPass && operativeCount >= 2 && domain.passed) {
-    return { passed: true, partial: false, reason: null };
+    return { passed: true, partial: false, reason: null, mode: "FALLBACK_HEURISTIC" };
   }
   return {
     passed: false,
     partial: keywordRulesPass || domain.partial || operativeCount >= 2,
     reason: domain.reason ?? "Section exists but lacks enough operative professional content for the requirement.",
+    mode: "FALLBACK_HEURISTIC",
   };
+}
+
+function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {
+  const terms = criterion
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 3)
+    .filter((word) => ![
+      "must",
+      "include",
+      "includes",
+      "included",
+      "contain",
+      "contains",
+      "present",
+      "state",
+      "states",
+      "show",
+      "shows",
+      "with",
+      "where",
+      "when",
+      "that",
+      "this",
+      "from",
+      "into",
+      "relevant",
+      "specific",
+      "professional",
+      "section",
+      "requirement",
+    ].includes(word));
+  if (terms.length === 0) return normalisedContent.includes(normaliseContent(criterion));
+  const requiredMatches = Math.min(terms.length, terms.length <= 3 ? terms.length : Math.ceil(terms.length * 0.65));
+  return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
 }
 
 function domainSufficiency(requirementId: string, normalised: string): { passed: boolean; partial: boolean; reason: string | null } {
