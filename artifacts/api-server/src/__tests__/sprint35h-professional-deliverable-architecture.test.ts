@@ -968,6 +968,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const src = source("services/unifiedExecutionEngine.ts");
     expect(src).toContain("Section role:");
     expect(src).toContain("Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it.");
+    expect(src).toContain("Allowed source types:");
+    expect(src).toContain("Evidence requirements:");
+    expect(src).toContain("Validation rules:");
+    expect(src).toContain("Quality criteria:");
     expect(src).toContain("Use these as the final document structure or merge them into equivalent user-facing headings");
     expect(src).toContain("Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work");
     expect(src).toContain("prior draft leaked internal Blueprint methodology");

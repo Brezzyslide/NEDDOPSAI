@@ -3300,6 +3300,10 @@ function buildWorkExecutionAddendum(
           : "",
         section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
         section.instructions ? `  Instructions: ${section.instructions}` : "",
+        section.allowedSourceTypes.length > 0 ? `  Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
+        Object.keys(section.evidenceRequirements ?? {}).length > 0 ? `  Evidence requirements: ${JSON.stringify(section.evidenceRequirements)}` : "",
+        section.validationRules.length > 0 ? `  Validation rules: ${JSON.stringify(section.validationRules)}` : "",
+        section.qualityCriteria.length > 0 ? `  Quality criteria: ${JSON.stringify(section.qualityCriteria)}` : "",
         section.prohibitedAssumptions.length > 0 ? `  Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
       ].filter(Boolean).join("\n")).join("\n")
     : "No structured sections configured.";
@@ -3465,6 +3469,10 @@ function buildWorkPackagePrompt(
           section.description ? `Description: ${section.description}` : "",
           section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
           section.instructions ? `Instructions: ${section.instructions}` : "",
+          section.allowedSourceTypes.length ? `Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
+          Object.keys(section.evidenceRequirements ?? {}).length ? `Evidence requirements: ${JSON.stringify(section.evidenceRequirements)}` : "",
+          section.validationRules.length ? `Validation rules: ${JSON.stringify(section.validationRules)}` : "",
+          section.qualityCriteria.length ? `Quality criteria: ${JSON.stringify(section.qualityCriteria)}` : "",
           section.prohibitedAssumptions.length ? `Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
         ].filter(Boolean).join("\n")
       ).join("\n\n")
