@@ -45,37 +45,47 @@ function scoreColour(score: number | null) {
   return               { text: "text-red-400",        bg: "bg-red-400",     ring: "ring-red-400/30" };
 }
 
+function scoreHex(score: number | null) {
+  if (score === null) return "#94A3B8";
+  if (score >= 80) return "#34D399";
+  if (score >= 60) return "#FBBF24";
+  return "#F87171";
+}
+
 function HealthMeter({ score }: { score: number | null }) {
   const c   = scoreColour(score);
   const deg = score === null ? 0 : Math.round((score / 100) * 360);
   return (
     <div className={`relative h-28 w-28 rounded-full ring-4 ${c.ring} flex items-center justify-center`}
-         style={{ background: `conic-gradient(${c.bg.replace("bg-","").includes("emerald") ? "#34D399" : c.bg.includes("amber") ? "#FBBF24" : "#F87171"} ${deg}deg, #1E3A5F ${deg}deg)` }}>
+         style={{ background: `conic-gradient(${scoreHex(score)} ${deg}deg, #1E3A5F ${deg}deg)` }}>
       <div className="h-20 w-20 rounded-full bg-[#0B1829] flex flex-col items-center justify-center">
         <span className={`text-2xl font-bold ${c.text}`}>{score === null ? "-" : score}</span>
-        <span className="text-[#64748B] text-xs">/ 100</span>
+        <span className="text-[#64748B] text-xs">{score === null ? "No score" : "/ 100"}</span>
       </div>
     </div>
   );
 }
 
 function HealthIndicator({ label, value, max, unit, inverse }: {
-  label: string; value: number; max: number; unit?: string; inverse?: boolean;
+  label: string; value: number | null; max: number; unit?: string; inverse?: boolean;
 }) {
-  const pct   = Math.min(100, (value / max) * 100);
-  const good  = inverse ? value === 0 : pct >= 70;
-  const warn  = inverse ? value > 0 && value <= 3 : pct >= 40 && pct < 70;
+  const hasValue = value !== null;
+  const pct   = hasValue ? Math.min(100, (value / max) * 100) : 0;
+  const good  = hasValue && (inverse ? value === 0 : pct >= 70);
+  const warn  = hasValue && (inverse ? value > 0 && value <= 3 : pct >= 40 && pct < 70);
   const barCls = good ? "bg-emerald-400" : warn ? "bg-amber-400" : "bg-red-400";
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[#94A3B8] text-xs">{label}</span>
-        <span className={`text-sm font-semibold ${good ? "text-emerald-400" : warn ? "text-amber-400" : "text-red-400"}`}>
-          {value}{unit ?? ""}
+        <span className={`text-sm font-semibold ${!hasValue ? "text-[#94A3B8]" : good ? "text-emerald-400" : warn ? "text-amber-400" : "text-red-400"}`}>
+          {hasValue ? `${value}${unit ?? ""}` : "Not enough data"}
         </span>
       </div>
       <div className="h-1.5 bg-[#1E3A5F] rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all ${barCls}`} style={{ width: `${inverse ? Math.max(0, 100 - pct) : pct}%` }} />
+        {hasValue && (
+          <div className={`h-full rounded-full transition-all ${barCls}`} style={{ width: `${inverse ? Math.max(0, 100 - pct) : pct}%` }} />
+        )}
       </div>
     </div>
   );
@@ -182,7 +192,7 @@ export default function GovernanceCentre() {
   const metrics = metricsData?.metrics as GovernanceMetrics | undefined;
 
   const health      = healthData as Record<string, any> | undefined;
-  const healthScore = health?.healthScore ?? health?.overallScore ?? health?.score ?? 0;
+  const healthScore = health ? (health.healthScore ?? health.overallScore ?? health.score ?? null) : null;
 
   const pendingProposals  = proposalsData?.total ?? proposalsData?.proposals?.length ?? 0;
   const pendingMemory     = memoryData?.total ?? memoryData?.items?.length ?? 0;
@@ -191,18 +201,21 @@ export default function GovernanceCentre() {
   const totalPending      = pendingProposals + pendingMemory + pendingApprovals + pendingWork;
 
   // Organisation health dimensions
-  const libTotal     = health?.librarySourceCount ?? 0;
+  const libTotal     = health?.librarySourceCount ?? null;
   const libApproved  = health?.approvedSourceCount ?? 0;
-  const libPct       = libTotal > 0 ? Math.round((libApproved / libTotal) * 100) : 100;
+  const libPct       = libTotal === null ? null : libTotal > 0 ? Math.round((libApproved / libTotal) * 100) : null;
   const memApproved  = health?.approvedMemoryCount ?? 0;
-  const specCoverage = health?.specialistCoverage ?? 0;
+  const memTotal     = health ? memApproved + pendingMemory : null;
+  const memQuality   = memTotal === null || memTotal === 0 ? null : memApproved;
+  const specCoverage = health ? (health.specialistCoverage ?? null) : null;
   const conflicts    = (health?.conflictingKnowledge ?? 0) + (health?.duplicateKnowledge ?? 0);
   const retraining   = health?.specialistsNeedingRetraining?.length ?? 0;
 
   // Aggregate organisation health score (weighted)
-  const orgHealthScore = health
-    ? Math.round((healthScore * 0.4) + (specCoverage * 0.25) + (libPct * 0.2) + (Math.max(0, 100 - conflicts * 10) * 0.15))
-    : 0;
+  const orgHealthScore =
+    healthScore === null || specCoverage === null || libPct === null
+      ? null
+      : Math.round((healthScore * 0.4) + (specCoverage * 0.25) + (libPct * 0.2) + (Math.max(0, 100 - conflicts * 10) * 0.15));
 
   // AI-derived recommendations (no extra LLM call — derive from data)
   const recommendations: string[] = [];
@@ -211,6 +224,7 @@ export default function GovernanceCentre() {
   if (conflicts > 0)        recommendations.push(`${conflicts} conflicting or duplicate knowledge entries detected — review in the Knowledge Health dashboard.`);
   if (retraining > 0)       recommendations.push(`${retraining} specialist${retraining > 1 ? "s" : ""} may need retraining based on recent knowledge changes.`);
   if (pendingWork > 0)      recommendations.push(`${pendingWork} completed work item${pendingWork > 1 ? "s" : ""} awaiting your approval in the Approval Centre.`);
+  if (orgHealthScore === null) recommendations.push("Organisation health is not yet computable because the knowledge or memory baseline is incomplete.");
   if (recommendations.length === 0) recommendations.push("Your AI Workforce is operating well. No immediate action required.");
 
   const recentEvents = (auditData?.events ?? []).slice(0, 6);
@@ -238,7 +252,7 @@ export default function GovernanceCentre() {
                 <div className="text-center">
                   <p className="text-[#E2E8F0] font-semibold text-sm">Organisation Health</p>
                   <p className="text-[#64748B] text-xs">
-                    {orgHealthScore >= 80 ? "Healthy" : orgHealthScore >= 60 ? "Needs attention" : "Requires action"}
+                    {orgHealthScore === null ? "Not enough data" : orgHealthScore >= 80 ? "Healthy" : orgHealthScore >= 60 ? "Needs attention" : "Requires action"}
                   </p>
                 </div>
               </div>
@@ -248,7 +262,7 @@ export default function GovernanceCentre() {
                 <HealthIndicator label="Knowledge Quality"   value={healthScore}    max={100} unit="%" />
                 <HealthIndicator label="Specialist Readiness" value={specCoverage}  max={100} unit="%" />
                 <HealthIndicator label="Library Completeness" value={libPct}        max={100} unit="%" />
-                <HealthIndicator label="Memory Quality"      value={memApproved}   max={Math.max(1, memApproved + pendingMemory)} />
+                <HealthIndicator label="Memory Quality"      value={memQuality}    max={Math.max(1, memTotal ?? 0)} />
                 <HealthIndicator label="Conflicts & Duplicates" value={conflicts}   max={10} inverse />
                 <HealthIndicator label="Pending Decisions"   value={totalPending}  max={20} inverse />
               </div>
@@ -281,8 +295,8 @@ export default function GovernanceCentre() {
                     metrics.governanceScore === null ? "text-[#94A3B8]" :
                     metrics.governanceScore >= 80 ? "text-emerald-400" :
                     metrics.governanceScore >= 60 ? "text-amber-400" : "text-red-400"
-                  }`}>{metrics.governanceScore === null ? "-" : Math.round(metrics.governanceScore)}</span>
-                  <span className="text-[#64748B] text-xs">/ 100</span>
+                  }`}>{metrics.governanceScore === null ? "Not enough data" : Math.round(metrics.governanceScore)}</span>
+                  <span className="text-[#64748B] text-xs">{metrics.governanceScore === null ? "Insufficient governance data" : "/ 100"}</span>
                 </div>
               </div>
 
