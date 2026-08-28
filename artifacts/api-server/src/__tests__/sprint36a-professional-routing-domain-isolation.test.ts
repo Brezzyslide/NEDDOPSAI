@@ -260,7 +260,7 @@ describe("Sprint 36A professional routing and domain isolation", () => {
   it.each([
     ["Create a standard compliant NDIS Service Agreement template covering all relevant clauses.", "agreements.create", "STANDARD_REUSABLE_NDIS_SERVICE_AGREEMENT"],
     ["Review this participant service agreement.", "agreements.review", "PARTICIPANT_SERVICE_AGREEMENT_CONTRACT_READINESS_ASSESSMENT"],
-    ["Create a standard risk assessment template.", "risk.create", "STANDARD_RISK_TEMPLATE"],
+    ["Create a standard risk assessment template.", "risk_assessment.general", "STANDARD_RISK_TEMPLATE"],
     ["Complete this participant risk assessment.", "risk.assessment", "PARTICIPANT_RISK_ASSESSMENT"],
     ["Create a medication policy.", "policy.create", "POLICY_DOCUMENT"],
     ["Review this medication policy.", "policy.review", "POLICY_REVIEW"],

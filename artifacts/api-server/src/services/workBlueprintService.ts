@@ -41,6 +41,7 @@ import {
   type RegistryEntry,
 } from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
+import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -953,6 +954,15 @@ async function findBlueprintByCode(
   return null;
 }
 
+async function blueprintHasSections(blueprintId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: blueprintSectionsTable.id })
+    .from(blueprintSectionsTable)
+    .where(eq(blueprintSectionsTable.blueprintId, blueprintId))
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function resolveCanonicalBlueprint(
   canonicalIntent: string | undefined | null,
   organizationId: string,
@@ -1052,6 +1062,12 @@ export async function selectBlueprint(
   const canonical = await resolveCanonicalBlueprint(userRequest, organizationId);
   if (canonical?.blueprint) return canonical;
 
+  const derivedIntent = deriveProfessionalIntentKey(userRequest);
+  if (derivedIntent && derivedIntent !== userRequest.trim().toLowerCase()) {
+    const derived = await resolveCanonicalBlueprint(derivedIntent, organizationId);
+    if (derived?.blueprint) return derived;
+  }
+
   const lower = userRequest.toLowerCase();
   const scores: Record<string, { score: number; keywords: string[] }> = {};
 
@@ -1072,6 +1088,10 @@ export async function selectBlueprint(
   const [code, { score, keywords: matched }] = top;
   const blueprint = await findBlueprintByCode(code, organizationId);
   if (!blueprint) {
+    return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true, method: "keyword" };
+  }
+  const registryBackedCode = getRegistryEntry(resolveRegistryCodeForNewWork(blueprint.code));
+  if (!registryBackedCode && !(await blueprintHasSections(blueprint.id))) {
     return { blueprint: null, confidence: 0, matchedKeywords: matched, fallbackUsed: true, method: "keyword" };
   }
 
