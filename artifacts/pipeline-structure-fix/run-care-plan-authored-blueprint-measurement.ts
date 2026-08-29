@@ -86,6 +86,7 @@ const professionalContext = compileProfessionalExecutionContext({
 });
 const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
 const outputSchema = buildDeliverableOutputSchema(coverageProfile);
+const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
 
 const responseSchema = {
   type: "object",
@@ -189,10 +190,14 @@ function stagePayload(stage: "stage1" | "repair", userContent: string) {
 
 const baseUserContent = [
   "=== AUTHORITATIVE CARE_PLAN BLUEPRINT SECTIONS ===",
+  authoredContentFraming,
   contract.sections.map((section) => [
     `${section.sortOrder}. ${section.sectionCode} — ${section.title}`,
     `Section role: ${section.sectionRole}`,
     `Description: ${section.description ?? ""}`,
+    `Fixed content to emit verbatim: ${JSON.stringify(section.fixedContent ?? [])}`,
+    `Fields to render as labelled template fields: ${JSON.stringify(section.fields ?? [])}`,
+    `Completion prompt to emit in template: ${section.completionPrompt ?? ""}`,
     `Instructions: ${section.instructions ?? ""}`,
     `Evidence requirements: ${JSON.stringify(section.evidenceRequirements ?? {})}`,
     `Allowed source types: ${(section.allowedSourceTypes ?? []).join(", ")}`,
@@ -212,6 +217,10 @@ const baseUserContent = [
 
 function writeJson(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function writeMarkdown(path: string, value: string) {
+  writeFileSync(path, `${value.replace(/[ \t]+$/gm, "")}\n`);
 }
 
 async function callOpenAI(payload: Record<string, unknown>) {
@@ -307,8 +316,8 @@ async function main() {
   }
 
   const finalValidation = validate(finalSections);
-  writeFileSync(resolve(outputDir, "produced-document.md"), `${stage1Validation.markdown}\n`);
-  writeFileSync(resolve(outputDir, "final-produced-document.md"), `${finalValidation.markdown}\n`);
+  writeMarkdown(resolve(outputDir, "produced-document.md"), stage1Validation.markdown);
+  writeMarkdown(resolve(outputDir, "final-produced-document.md"), finalValidation.markdown);
 
   const summary = {
     status: finalValidation.runtime.passed && finalValidation.coverage.missing.length === 0 ? "completed_revalidated" : "blocked_by_validation",
@@ -356,6 +365,15 @@ async function main() {
       "Disaster management (4.12): settings other than SIL, supported accommodation and community access?",
       "Emergency contacts: this document or the intake form?",
       "Decision-making capacity, guardian or nominee: recorded here or elsewhere?",
+    ],
+    founderAuthoringGaps: [
+      "Support Plan Meeting (header): review cycle requirement",
+      "History and Background: confidentiality statement for sensitive history",
+      "Undertaking ADL: the ADL activity list to be used",
+      "Mobility and Mobility Strategy: manual handling and equipment check requirements",
+      "Support Delivery and Client Safety: worker screening and orientation requirements",
+      "Mealtime Management Strategy: choking and emergency response",
+      "Client Endorsement: participant agreement and consent wording",
     ],
   };
 

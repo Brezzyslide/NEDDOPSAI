@@ -3464,13 +3464,17 @@ function buildWorkExecutionAddendum(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   if (!blueprint) return "";
+  const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
   const sectionLines = contract?.sections.length
-    ? contract.sections.map((section) => [
+    ? [authoredContentFraming, ...contract.sections.map((section) => [
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required)" : ""}`,
         section.sectionRole ? `  Section role: ${section.sectionRole}` : "",
         section.sectionRole === "internal_method"
           ? "  Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
           : "",
+        section.fixedContent?.length ? `  Fixed content to emit verbatim: ${JSON.stringify(section.fixedContent)}` : "",
+        section.fields?.length ? `  Fields to render as labelled template fields: ${JSON.stringify(section.fields)}` : "",
+        section.completionPrompt ? `  Completion prompt to emit in template: ${section.completionPrompt}` : "",
         section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
         section.instructions ? `  Instructions: ${section.instructions}` : "",
         section.allowedSourceTypes.length > 0 ? `  Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
@@ -3478,7 +3482,7 @@ function buildWorkExecutionAddendum(
         section.validationRules.length > 0 ? `  Validation rules: ${JSON.stringify(section.validationRules)}` : "",
         section.qualityCriteria.length > 0 ? `  Quality criteria: ${JSON.stringify(section.qualityCriteria)}` : "",
         section.prohibitedAssumptions.length > 0 ? `  Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
-      ].filter(Boolean).join("\n")).join("\n")
+      ].filter(Boolean).join("\n"))].join("\n")
     : "No structured sections configured.";
   const deliverableContract = blueprint.deliverableContract
     ? JSON.stringify(blueprint.deliverableContract)
@@ -3597,8 +3601,9 @@ function buildWorkPackagePrompt(
 
   if (contract?.sections.length) {
     const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
+    const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
     staticSections.push(
-      `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n` +
+      `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n${authoredContentFraming}\n` +
       contract.sections.map((section) =>
         [
           `${section.sortOrder}. ${section.sectionCode} — ${section.title}${section.required ? " [REQUIRED]" : ""}`,
@@ -3607,6 +3612,9 @@ function buildWorkPackagePrompt(
             ? "Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
             : "",
           section.description ? `Description: ${section.description}` : "",
+          section.fixedContent?.length ? `Fixed content to emit verbatim:\n${section.fixedContent.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.fields?.length ? `Fields to render as labelled template fields:\n${section.fields.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.completionPrompt ? `Completion prompt to emit in template: ${section.completionPrompt}` : "",
           section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
           section.instructions ? `Instructions: ${section.instructions}` : "",
           section.allowedSourceTypes.length ? `Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",

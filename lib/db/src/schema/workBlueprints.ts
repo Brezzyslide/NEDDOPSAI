@@ -117,6 +117,12 @@ export const BLUEPRINT_SECTION_ROLES = [
 ] as const;
 export type BlueprintSectionRole = (typeof BLUEPRINT_SECTION_ROLES)[number];
 
+export interface BlueprintSectionTemplateContent {
+  fixedContent?: string[];
+  fields?: string[];
+  completionPrompt?: string | null;
+}
+
 export const workBlueprintsTable = pgTable("work_blueprints", {
   id: text("id").primaryKey(),
 
@@ -281,6 +287,15 @@ export const blueprintSectionsTable = pgTable("blueprint_sections", {
   instructions: text("instructions"),
   sectionRole: text("section_role")
     .$type<BlueprintSectionRole>(),
+  fixedContent: jsonb("fixed_content")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  templateFields: jsonb("template_fields")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  completionPrompt: text("completion_prompt"),
   required: boolean("required").notNull().default(false),
   minimumContentExpectation: text("minimum_content_expectation"),
   evidenceRequirements: jsonb("evidence_requirements")

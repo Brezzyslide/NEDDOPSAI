@@ -165,6 +165,9 @@ export interface RegistryEntry {
     description: string;
     instructions: string;
     sectionRole?: BlueprintSectionRole;
+    fixedContent?: string[];
+    fields?: string[];
+    completionPrompt?: string | null;
     required: boolean;
     minimumContentExpectation: string | null;
     evidenceRequirements?: Record<string, unknown>;
@@ -3038,7 +3041,7 @@ function carePlanUserSection(
   sortOrder: number,
   requiredEvidenceCategories: string[] = [],
   minimumContentExpectation: string | null = "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
-  extra?: Partial<ReturnType<typeof section>>,
+  extra?: Partial<ReturnType<typeof section>> & { fixedContent?: string[]; fields?: string[]; completionPrompt?: string | null },
 ) {
   return {
     ...section(sectionCode, title, description, instructions, sortOrder, requiredEvidenceCategories, minimumContentExpectation),
@@ -3270,21 +3273,155 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
   },
 ];
 
+const CARE_PLAN_FOUNDER_AUTHORING_GAPS = [
+  "Support Plan Meeting (header): review cycle requirement",
+  "History and Background: confidentiality statement for sensitive history",
+  "Undertaking ADL: the ADL activity list to be used",
+  "Mobility and Mobility Strategy: manual handling and equipment check requirements",
+  "Support Delivery and Client Safety: worker screening and orientation requirements",
+  "Mealtime Management Strategy: choking and emergency response",
+  "Client Endorsement: participant agreement and consent wording",
+];
+
+const CARE_PLAN_TEMPLATE_CONTENT = {
+  supportPlanMeeting: {
+    fixedContent: [
+      "This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.",
+      "Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below.",
+    ],
+    fields: ["Participant name", "Date of birth", "Gender", "Language spoken", "NDIS number", "Diagnosis", "People present", "Support plan developed by", "Plan date", "Date for review"],
+    completionPrompt: "Record every person who attended the planning meeting and their relationship to the participant. Where reports were used instead, name each report and its date.",
+  },
+  goals: {
+    fixedContent: [
+      "Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table below.",
+      "Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review.",
+    ],
+    fields: ["Table with columns Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes", "Minimum three personal goal rows, plus one row per NDIS plan goal"],
+    completionPrompt: "State the current situation specifically — what the participant does now. State the goal as what the participant will do or achieve. Give a target date, not \"ongoing\". Name a role or person, not \"the team\".",
+  },
+  aboutMe: {
+    fixedContent: [
+      "This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift.",
+    ],
+    fields: ["Strengths", "Likes", "Dislikes", "What matters to me", "How I prefer to communicate", "People who matter to me", "Informal supports"],
+    completionPrompt: "Write in the participant's own words where possible. Record what they enjoy, what they find difficult, and what a good day looks like for them. History, diagnoses and risk information belong in History and Background, not here.",
+  },
+  historyBackground: {
+    fixedContent: [
+      "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document.",
+    ],
+    fields: ["Relevant history", "Prior service involvement", "Risk-relevant context", "Source documents and dates"],
+    completionPrompt: "Include only what changes how a worker should deliver support. Name the source document and date for each statement.",
+  },
+  undertakingAdl: {
+    fixedContent: [
+      "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.",
+      "Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support.",
+    ],
+    fields: [],
+    completionPrompt: "For each activity, record which tier applies and describe what the worker does.",
+  },
+  communicationStrategy: {
+    fixedContent: [
+      "Every worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift.",
+    ],
+    fields: ["Verbal / non-verbal", "Expressive capacity", "Receptive capacity", "Communication aid or system used", "Communication strategy"],
+    completionPrompt: "Describe what the worker should actually do: how to gain attention, how long to allow for a response, what signs indicate the participant has or has not understood, and what to avoid.",
+  },
+  mobilityStrategy: {
+    fixedContent: [
+      "Where a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted.",
+    ],
+    fields: ["Mobility aid required", "Aid or equipment used", "Transfer method", "Number of workers required", "Mobility overview", "Mobility strategy"],
+    completionPrompt: "Name the specific aid and describe how it is used. Where transfers are required, state the method and the number of workers needed.",
+  },
+  supportDeliveryClientSafety: {
+    fixedContent: [
+      "Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager.",
+      "Incidents. Any incident affecting the participant must be reported to the service manager immediately and recorded in the provider's incident management system before the end of shift.",
+      "Reportable incidents. Where an incident meets the NDIS reportable incident criteria, the provider must submit an Immediate Notification Form to the NDIS Quality and Safeguards Commission within 24 hours of key personnel becoming aware of it, followed by a further form providing additional information and the actions taken within five business days. The 24-hour clock starts when key personnel become aware, not when the incident occurred.",
+      "The exception is the use of a restrictive practice that is unauthorised or not in accordance with the participant's behaviour support plan, which is notified within five business days — unless it resulted in harm, in which case the 24-hour timeframe applies.",
+      "Escalation. In an emergency, call 000 first, then notify the on-call service manager. For non-emergency concerns about the participant's wellbeing, contact the service manager the same day.",
+    ],
+    fields: [
+      "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning",
+      "Description per selected type",
+      "On-call contact",
+      "Service manager contact",
+    ],
+    completionPrompt: "For every support type selected, describe what the worker does, how often, and for how long.",
+  },
+  behaviouralManagement: {
+    fixedContent: [
+      "The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift.",
+      "Workers must not use any restrictive practice that is not recorded in the behaviour support plan and listed in the Restrictive Practices section of this plan. Use of an unauthorised restrictive practice is a reportable incident.",
+      "Where a behaviour escalates beyond the strategies below, workers withdraw to a safe distance, ensure the safety of the participant and others, and contact the on-call service manager.",
+      "Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no behaviour support plan is in place and no behaviours of concern have been identified for this participant. Workers should report any emerging concern to the service manager.",
+    ],
+    fields: ["Table with columns Behaviour | Possible trigger | Redirection strategy"],
+    completionPrompt: "Take each behaviour, trigger and strategy directly from the behaviour support plan. Do not invent strategies.",
+  },
+  restrictivePractices: {
+    fixedContent: [
+      "A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability. The NDIS Commission regulates five: chemical restraint, environmental restraint, mechanical restraint, physical restraint and seclusion.",
+      "Any regulated restrictive practice used with this participant must be authorised under applicable state or territory law, recorded in a current behaviour support plan, and listed below. Restrictive practices are used only as a last resort and for the shortest time necessary.",
+      "Workers must use only the practices listed, only as described, and must record every use.",
+      "Using a regulated restrictive practice that is not listed here, or using a listed practice differently from how it is described, is an unauthorised restrictive practice. It is a reportable incident and must be reported immediately.",
+      "Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
+    ],
+    fields: ["Practice type", "What it is in plain language", "What the worker does", "What the worker must not do", "Authorisation status and reference", "Recording requirement"],
+    completionPrompt: null,
+  },
+  mealtimeManagementStrategy: {
+    fixedContent: [
+      "Mealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here.",
+      "Assessment of swallowing, dysphagia risk and texture modification is made only by an appropriately credentialed professional. This plan carries the resulting strategy; it does not make the assessment.",
+      "Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
+    ],
+    fields: ["Source risk assessment and date", "Food texture", "Fluid consistency", "Positioning", "Supervision level", "Equipment", "Worker actions"],
+    completionPrompt: null,
+  },
+  disasterManagementStrategy: {
+    fixedContent: [
+      "This section records what workers do with this participant in an emergency or evacuation. It supplements, and does not replace, the site emergency plan.",
+      "In any emergency, worker priority is the safety of the participant and themselves. Call 000 first, then notify the on-call service manager.",
+    ],
+    fields: [
+      "SIL and supported accommodation: Evacuation assistance required, Assembly point, Equipment needed, Communication approach during evacuation, Medications or equipment to take, Who to notify",
+      "Community access: General risk arrangements, Location-specific risk arrangements, Transport contingency, What the worker carries, How the participant is returned to a safe location",
+    ],
+    completionPrompt: "State the participant-specific arrangements. Do not reproduce the site emergency plan.",
+  },
+  clientEndorsement: {
+    fixedContent: [],
+    fields: ["Participant or representative name", "Relationship", "Signature", "Date", "Plan provided to", "Consent obtained"],
+    completionPrompt: "Where the participant cannot sign, record who signed on their behalf and their authority to do so.",
+  },
+  documentControl: {
+    fixedContent: [
+      "Uncontrolled when printed. The current version of this document is held in the provider's document management system.",
+    ],
+    fields: ["Form ID", "Version", "Date", "Next review date"],
+    completionPrompt: null,
+  },
+};
+
 const CARE_PLAN_SECTIONS = [
-  carePlanUserSection("SUPPORT_PLAN_MEETING", "Support Plan Meeting", "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.", "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.", 10, ["intake_form", "service_agreement", "ndis_plan", "clinical_report"]),
-  carePlanUserSection("GOALS", "Goals", "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.", "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.", 20, ["ndis_plan", "strengths_based_questionnaire", "participant_voice", "allied_health_report"]),
-  carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.", 30, ["strengths_based_questionnaire", "participant_voice"]),
-  carePlanUserSection("HISTORY_BACKGROUND", "History and Background", "Background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.", "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.", 40, ["allied_health_report", "behaviour_support_plan", "intake_form"]),
-  carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"]),
-  carePlanUserSection("COMMUNICATION_STRATEGY", "Communication and Communication Strategy", "Verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.", "Complete capacity indicators and write the strategy a worker should actually use. Do not leave overview/strategy blank.", 60, ["intake_form", "speech_assessment", "behaviour_support_plan", "allied_health_report"]),
-  carePlanUserSection("MOBILITY_STRATEGY", "Mobility and Mobility Strategy", "Aid required / not required; overview and strategy.", "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.", 70, ["intake_form", "physiotherapy_assessment", "ot_assessment"]),
-  carePlanUserSection("SUPPORT_DELIVERY_CLIENT_SAFETY", "Support Delivery and Client Safety", "Support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.", "Every selected support type must have a corresponding description stating what the worker does. Reconcile selected supports against funded supports in the service agreement.", 80, ["service_agreement", "intake_form"]),
-  carePlanUserSection("BEHAVIOURAL_MANAGEMENT", "Behavioural Management", "Table: behaviour, possible trigger, redirection strategy.", "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, populate the table from the BSP. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.", 90, ["behaviour_support_plan"]),
-  carePlanUserSection("RESTRICTIVE_PRACTICES", "Restrictive Practices", "Support-worker-friendly statement of what restrictive practices are in place.", "Conditional. Where any restrictive practice is in place, name each practice in plain language, state what the worker does and does not do, and state authorisation status as recorded in the BSP. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.", 100, ["behaviour_support_plan", "restrictive_practice_authorisation"]),
-  carePlanUserSection("MEALTIME_MANAGEMENT_STRATEGY", "Mealtime Management Strategy", "The mealtime strategy a support worker executes.", "Draw the strategy from the mealtime management risk assessment and cite it. Where no hands-on strategy is required, state so with reference to the assessment and describe what does apply. Authority boundary: dysphagia, swallowing, texture-modification and other credentialed mealtime judgements require external or appropriately credentialed professional authority.", 110, ["mealtime_management_risk_assessment"]),
-  carePlanUserSection("DISASTER_MANAGEMENT_STRATEGY", "Disaster Management Strategy", "Participant-specific disaster and evacuation arrangements.", "Conditional. For SIL and supported accommodation, source from the disaster management risk assessment. For community access, source from the community access risk assessment and address both general and location-specific risk. For other settings, leave the [OPEN] decision visible and do not invent a rule.", 120, ["disaster_management_risk_assessment", "community_access_risk_assessment"]),
-  carePlanUserSection("CLIENT_ENDORSEMENT", "Client Endorsement", "Agreement statement, name of client or representative, signature, date, provided-to list, consent obtained.", "Provide a complete-able endorsement block. Do not fabricate signature or consent state.", 130, ["signing_process"]),
-  carePlanUserSection("DOCUMENT_CONTROL", "Document Control", "Form ID, version, date, \"uncontrolled when printed\" statement.", "Include form ID, version and date. Review date must be consistent with Support Plan Meeting.", 140),
+  carePlanUserSection("SUPPORT_PLAN_MEETING", "Support Plan Meeting", "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.", "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.", 10, ["intake_form", "service_agreement", "ndis_plan", "clinical_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.supportPlanMeeting),
+  carePlanUserSection("GOALS", "Goals", "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.", "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.", 20, ["ndis_plan", "strengths_based_questionnaire", "participant_voice", "allied_health_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.goals),
+  carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.", 30, ["strengths_based_questionnaire", "participant_voice"], undefined, CARE_PLAN_TEMPLATE_CONTENT.aboutMe),
+  carePlanUserSection("HISTORY_BACKGROUND", "History and Background", "Background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.", "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.", 40, ["allied_health_report", "behaviour_support_plan", "intake_form"], undefined, CARE_PLAN_TEMPLATE_CONTENT.historyBackground),
+  carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.undertakingAdl),
+  carePlanUserSection("COMMUNICATION_STRATEGY", "Communication and Communication Strategy", "Verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.", "Complete capacity indicators and write the strategy a worker should actually use. Do not leave overview/strategy blank.", 60, ["intake_form", "speech_assessment", "behaviour_support_plan", "allied_health_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.communicationStrategy),
+  carePlanUserSection("MOBILITY_STRATEGY", "Mobility and Mobility Strategy", "Aid required / not required; overview and strategy.", "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.", 70, ["intake_form", "physiotherapy_assessment", "ot_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.mobilityStrategy),
+  carePlanUserSection("SUPPORT_DELIVERY_CLIENT_SAFETY", "Support Delivery and Client Safety", "Support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.", "Every selected support type must have a corresponding description stating what the worker does. Reconcile selected supports against funded supports in the service agreement.", 80, ["service_agreement", "intake_form"], undefined, CARE_PLAN_TEMPLATE_CONTENT.supportDeliveryClientSafety),
+  carePlanUserSection("BEHAVIOURAL_MANAGEMENT", "Behavioural Management", "Table: behaviour, possible trigger, redirection strategy.", "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, populate the table from the BSP. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.", 90, ["behaviour_support_plan"], undefined, CARE_PLAN_TEMPLATE_CONTENT.behaviouralManagement),
+  carePlanUserSection("RESTRICTIVE_PRACTICES", "Restrictive Practices", "Support-worker-friendly statement of what restrictive practices are in place.", "Conditional. Where any restrictive practice is in place, name each practice in plain language, state what the worker does and does not do, and state authorisation status as recorded in the BSP. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.", 100, ["behaviour_support_plan", "restrictive_practice_authorisation"], undefined, CARE_PLAN_TEMPLATE_CONTENT.restrictivePractices),
+  carePlanUserSection("MEALTIME_MANAGEMENT_STRATEGY", "Mealtime Management Strategy", "The mealtime strategy a support worker executes.", "Draw the strategy from the mealtime management risk assessment and cite it. Where no hands-on strategy is required, state so with reference to the assessment and describe what does apply. Authority boundary: dysphagia, swallowing, texture-modification and other credentialed mealtime judgements require external or appropriately credentialed professional authority.", 110, ["mealtime_management_risk_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.mealtimeManagementStrategy),
+  carePlanUserSection("DISASTER_MANAGEMENT_STRATEGY", "Disaster Management Strategy", "Participant-specific disaster and evacuation arrangements.", "Conditional. For SIL and supported accommodation, source from the disaster management risk assessment. For community access, source from the community access risk assessment and address both general and location-specific risk. For other settings, leave the [OPEN] decision visible and do not invent a rule.", 120, ["disaster_management_risk_assessment", "community_access_risk_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.disasterManagementStrategy),
+  carePlanUserSection("CLIENT_ENDORSEMENT", "Client Endorsement", "Agreement statement, name of client or representative, signature, date, provided-to list, consent obtained.", "Provide a complete-able endorsement block. Do not fabricate signature or consent state.", 130, ["signing_process"], undefined, CARE_PLAN_TEMPLATE_CONTENT.clientEndorsement),
+  carePlanUserSection("DOCUMENT_CONTROL", "Document Control", "Form ID, version, date, \"uncontrolled when printed\" statement.", "Include form ID, version and date. Review date must be consistent with Support Plan Meeting.", 140, [], undefined, CARE_PLAN_TEMPLATE_CONTENT.documentControl),
 ];
 
 const SUPPORT_PLAN_SECTIONS = [

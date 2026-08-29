@@ -101,6 +101,9 @@ export interface BlueprintSection {
   description: string | null;
   instructions: string | null;
   sectionRole: BlueprintSectionRole | null;
+  fixedContent: string[];
+  fields: string[];
+  completionPrompt: string | null;
   required: boolean;
   minimumContentExpectation: string | null;
   evidenceRequirements: Record<string, unknown>;
@@ -721,6 +724,9 @@ function mapSectionRow(row: typeof blueprintSectionsTable.$inferSelect): Bluepri
     description: row.description ?? null,
     instructions: row.instructions ?? null,
     sectionRole: row.sectionRole ?? null,
+    fixedContent: (row.fixedContent as string[]) ?? [],
+    fields: (row.templateFields as string[]) ?? [],
+    completionPrompt: row.completionPrompt ?? null,
     required: row.required,
     minimumContentExpectation: row.minimumContentExpectation ?? null,
     evidenceRequirements: (row.evidenceRequirements as Record<string, unknown>) ?? {},
@@ -2239,6 +2245,9 @@ async function seedRegistryBlueprintSections(
       description: section.description,
       instructions: section.instructions,
       sectionRole: section.sectionRole ?? null,
+      fixedContent: section.fixedContent ?? [],
+      templateFields: section.fields ?? [],
+      completionPrompt: section.completionPrompt ?? null,
       required: section.required,
       minimumContentExpectation: section.minimumContentExpectation,
       evidenceRequirements: section.evidenceRequirements ?? {},

@@ -26,6 +26,9 @@ export interface DeliverableRequirement {
   requiredDeliverableRepresentation: string;
   targetDeliverableLocation?: string;
   adequacyCriteria: string[];
+  fixedContent: string[];
+  templateFields: string[];
+  completionPrompt: string | null;
   coverageRules: DeliverableCoverageRule[];
 }
 
@@ -94,7 +97,9 @@ export interface DeliverableRequirementCoverageItem {
 
 export interface DeliverableSubstantiveBreakdown {
   countedWordCount: number;
+  fixedContentWordCount: number;
   proseWordCount: number;
+  completionPromptWordCount: number;
   fieldLabelCount: number;
   placeholderCount: number;
   fieldAndPlaceholderWordCount: number;
@@ -564,11 +569,11 @@ function authoredDeliverableRequirements(
   if (!Array.isArray(candidate)) return [];
 
   return candidate
-    .map((raw, index) => parseAuthoredRequirement(raw, index))
+    .map((raw, index) => parseAuthoredRequirement(raw, index, contract))
     .filter((requirement): requirement is DeliverableRequirement => Boolean(requirement));
 }
 
-function parseAuthoredRequirement(raw: unknown, index: number): DeliverableRequirement | null {
+function parseAuthoredRequirement(raw: unknown, index: number, contract?: BlueprintExecutionContract | null): DeliverableRequirement | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
   const id = stringValue(record.id ?? record.requirementId ?? record.code) ?? `authored-${index + 1}`;
@@ -580,12 +585,16 @@ function parseAuthoredRequirement(raw: unknown, index: number): DeliverableRequi
       record.finalDeliverableRepresentation,
   );
   if (!description || !representation) return null;
+  const sectionCode = stringValue(record.sourceBlueprintSection ?? record.sectionCode);
+  const blueprintSection = sectionCode
+    ? contract?.sections.find((section) => section.sectionCode === sectionCode)
+    : null;
 
   return req(
     id,
     description,
     parseRequirementClassification(record.classification),
-    stringValue(record.sourceBlueprintSection ?? record.sectionCode),
+    sectionCode,
     representation,
     parseCoverageRules(record.coverageRules),
     {
@@ -594,6 +603,9 @@ function parseAuthoredRequirement(raw: unknown, index: number): DeliverableRequi
       evidenceAuthority: stringArray(record.evidenceAuthority ?? record.authority),
       adequacyCriteria: stringArray(record.adequacyCriteria),
       targetDeliverableLocation: representation,
+      fixedContent: blueprintSection?.fixedContent ?? [],
+      templateFields: blueprintSection?.fields ?? [],
+      completionPrompt: blueprintSection?.completionPrompt ?? null,
     },
   );
 }
@@ -764,6 +776,9 @@ function req(
     evidenceAuthority?: string[];
     targetDeliverableLocation?: string;
     adequacyCriteria?: string[];
+    fixedContent?: string[];
+    templateFields?: string[];
+    completionPrompt?: string | null;
   } = {},
 ): DeliverableRequirement {
   return {
@@ -777,6 +792,9 @@ function req(
     requiredDeliverableRepresentation: representation,
     targetDeliverableLocation: options.targetDeliverableLocation,
     adequacyCriteria: options.adequacyCriteria ?? [],
+    fixedContent: options.fixedContent ?? [],
+    templateFields: options.templateFields ?? [],
+    completionPrompt: options.completionPrompt ?? null,
     coverageRules: allOfAlternatives.map((allOf) => ({ allOf })),
   };
 }
@@ -1535,7 +1553,7 @@ function evaluateSubstantiveClauseContent(
   mode: RequirementSubstantiveValidationMode;
   breakdown: DeliverableSubstantiveBreakdown;
 } {
-  const breakdown = analyseSubstantiveCoverageContent(content);
+  const breakdown = analyseSubstantiveCoverageContent(content, requirement);
   const cleaned = breakdown.countedContent;
   const normalised = normaliseContent(cleaned);
 
@@ -1781,11 +1799,18 @@ function stripSelfAssertionCoverage(content: string): string {
     .join(" ");
 }
 
-function analyseSubstantiveCoverageContent(content: string): DeliverableSubstantiveBreakdown {
+function analyseSubstantiveCoverageContent(
+  content: string,
+  requirement?: Pick<DeliverableRequirement, "fixedContent" | "completionPrompt">,
+): DeliverableSubstantiveBreakdown {
   const strippedSelfDescription: string[] = [];
   const countedParts: string[] = [];
   for (const sentence of splitCoverageSentences(content)) {
     const normalised = normaliseContent(sentence);
+    if (isAuthoredTemplateContentPart(sentence, requirement?.fixedContent ?? [])) {
+      countedParts.push(sentence);
+      continue;
+    }
     if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) {
       strippedSelfDescription.push(sentence);
       continue;
@@ -1809,21 +1834,45 @@ function analyseSubstantiveCoverageContent(content: string): DeliverableSubstant
     countedParts.push(sentence);
   }
 
+  const fixedParts = countedParts.filter((part) => isAuthoredTemplateContentPart(part, requirement?.fixedContent ?? []));
+  const completionPromptParts = countedParts.filter((part) => isAuthoredCompletionPromptPart(part, requirement?.completionPrompt ?? null));
   const fieldLabelParts = countedParts.filter((part) => isFieldOrStructureLabel(part));
-  const proseParts = countedParts.filter((part) => !isFieldOrStructureLabel(part));
+  const proseParts = countedParts.filter((part) =>
+    !isFieldOrStructureLabel(part) &&
+    !isAuthoredTemplateContentPart(part, requirement?.fixedContent ?? []) &&
+    !isAuthoredCompletionPromptPart(part, requirement?.completionPrompt ?? null)
+  );
   const countedContent = countedParts.join(" ");
   const placeholderCount = (countedContent.match(/\[[A-Z0-9_]+\]/g) ?? []).length;
   const proseContent = proseParts.join(" ").replace(/\[[A-Z0-9_]+\]/g, " ");
   const fieldContent = fieldLabelParts.join(" ");
   return {
     countedWordCount: wordCountForCoverage(countedContent),
+    fixedContentWordCount: wordCountForCoverage(fixedParts.join(" ")),
     proseWordCount: wordCountForCoverage(proseContent),
+    completionPromptWordCount: wordCountForCoverage(completionPromptParts.join(" ")),
     fieldLabelCount: fieldLabelParts.length,
     placeholderCount,
     fieldAndPlaceholderWordCount: wordCountForCoverage(fieldContent),
     strippedSelfDescription,
     countedContent,
   };
+}
+
+function isAuthoredTemplateContentPart(part: string, fixedContent: string[]): boolean {
+  const normalisedPart = normaliseContent(part);
+  return fixedContent.some((fixed) => {
+    const normalisedFixed = normaliseContent(fixed);
+    if (!normalisedFixed) return false;
+    return normalisedFixed.includes(normalisedPart) || normalisedPart.includes(normalisedFixed);
+  });
+}
+
+function isAuthoredCompletionPromptPart(part: string, completionPrompt: string | null): boolean {
+  if (!completionPrompt) return false;
+  const normalisedPart = normaliseContent(part);
+  const normalisedPrompt = normaliseContent(completionPrompt);
+  return Boolean(normalisedPrompt) && (normalisedPrompt.includes(normalisedPart) || normalisedPart.includes(normalisedPrompt));
 }
 
 function splitCoverageSentences(content: string): string[] {
