@@ -68,6 +68,7 @@ import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
   validateClaimBatch,
   parseSpecialistJsonOutput,
+  assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   mergeDeliverableSectionDeltas,
   rejectCrossTenantChunks,
@@ -2537,9 +2538,15 @@ export class UnifiedExecutionEngine {
       ? deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract)
       : null;
     const requiresSectionPayload = Boolean(professionalContext);
-    const assembledContent = parsed.deliverableSections?.length
+    const assembledSections = assembleTemplateSectionsForContext(
+      professionalContext,
+      blueprintContract,
+      parsed.deliverableSections,
+    );
+    const finalDeliverableSections = assembledSections ?? parsed.deliverableSections;
+    const assembledContent = finalDeliverableSections?.length
       ? assembleDeliverableMarkdownFromSections(
-          parsed.deliverableSections,
+          finalDeliverableSections,
           coverageProfile ? requirementOrderForCoverageProfile(coverageProfile) : [],
         )
       : requiresSectionPayload ? "" : parsed.content;
@@ -2556,7 +2563,7 @@ export class UnifiedExecutionEngine {
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
       deliverable: parsed.deliverable,
-      deliverableSections: parsed.deliverableSections,
+      deliverableSections: finalDeliverableSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "primary_specialist",
@@ -2656,9 +2663,15 @@ export class UnifiedExecutionEngine {
     }
     const parsed = parseSpecialistJsonOutput(response.content);
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
-    const deliverableContent = parsed.deliverableSections?.length
+    const assembledSections = assembleTemplateSectionsForContext(
+      input.professionalContext,
+      input.blueprintContract,
+      parsed.deliverableSections,
+    );
+    const finalDeliverableSections = assembledSections ?? parsed.deliverableSections;
+    const deliverableContent = finalDeliverableSections?.length
       ? assembleDeliverableMarkdownFromSections(
-          parsed.deliverableSections,
+          finalDeliverableSections,
           requirementOrderForCoverageProfile(coverageProfile),
         )
       : canonicalPayloadRequired ? "" : parsed.content;
@@ -2675,8 +2688,10 @@ export class UnifiedExecutionEngine {
       claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
-      deliverable: parsed.deliverable,
-      deliverableSections: parsed.deliverableSections,
+      deliverable: parsed.deliverable
+        ? { ...parsed.deliverable, sections: finalDeliverableSections }
+        : finalDeliverableSections ? { sections: finalDeliverableSections } : parsed.deliverable,
+      deliverableSections: finalDeliverableSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "final_synthesis",
@@ -2788,8 +2803,13 @@ export class UnifiedExecutionEngine {
     }
 
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
-    const content = assembleDeliverableMarkdownFromSections(
+    const finalSections = assembleTemplateSectionsForContext(
+      input.professionalContext,
+      input.blueprintContract,
       mergedSections,
+    ) ?? mergedSections;
+    const content = assembleDeliverableMarkdownFromSections(
+      finalSections,
       requirementOrderForCoverageProfile(coverageProfile),
     );
     return {
@@ -2798,9 +2818,9 @@ export class UnifiedExecutionEngine {
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
       deliverable: parsed.deliverable
-        ? { ...parsed.deliverable, sections: mergedSections }
-        : { sections: mergedSections },
-      deliverableSections: mergedSections,
+        ? { ...parsed.deliverable, sections: finalSections }
+        : { sections: finalSections },
+      deliverableSections: finalSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "targeted_requirement_repair",
@@ -3212,7 +3232,7 @@ function formatStructuredDeliverableResponseContract(
       {
         "requirementId": "<one mandatory requirement ID satisfied by this section>",
         "heading": "<user-facing heading>",
-        "content": "<substantive user-facing content for this requirement only>"
+        "content": "<generated user-facing content for this requirement only; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"
       }
     ]
   }`;
@@ -3334,7 +3354,9 @@ function buildProfessionalDeliverableResponseSchema(
  * sections and claims JSON in one response.
  *
  * CONTRACT (non-negotiable):
- * 1. "deliverable.sections[]" = the complete user-facing professional work.
+ * 1. "deliverable.sections[]" = user-facing professional work by requirement.
+ *    For deterministic templates, section content contains model-generated deltas
+ *    only; the server adds authored fixed content, fields, structures and prompts.
  *    The server assembles markdown from those sections after validation.
  * 2. "claims" array = structured provenance metadata ONLY. Not a summary, not
  *    a rewrite of the report. Empty array is valid.
@@ -3371,7 +3393,7 @@ The professional response must structurally separate internal work from the fina
   "claims": []
 }
 
-The server assembles the final artifact markdown from deliverable.sections[] only. Do not return assembledMarkdown, and do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in the deliverable sections.`
+The server assembles the final artifact markdown from deliverable.sections[] only. For standard template content, return only generated additions beyond server-assembled fixed content, fields, structures and completion prompts. Do not return assembledMarkdown, and do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in the deliverable sections.`
     : "";
 
   if (!evidencePack || evidencePack.totalChunks === 0) {
@@ -3446,7 +3468,7 @@ RELATIONSHIP TYPES (use exactly one per evidence binding):
   searched_for_absence — chunk was retrieved when searching for absent content
 
 RULES:
-1. ${professionalSchema ? `The "deliverable.sections[]" field must contain the complete user-facing deliverable sections. The server assembles markdown from those sections. No internal professional work or claim JSON inside them.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
+1. ${professionalSchema ? `The "deliverable.sections[]" field must contain user-facing deliverable sections by requirement. For deterministic templates, return generated additions only; the server adds fixed content, fields, structures and completion prompts before assembling markdown. No internal professional work or claim JSON inside them.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
 2. Only reference chunkIds from the list below. Do not invent chunk IDs.
 3. supportingSpan must be a verbatim exact quotation from the chunk text (not a paraphrase).
    The server verifies this as an exact substring — fabricated spans will be rejected.
@@ -3464,7 +3486,7 @@ function buildWorkExecutionAddendum(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   if (!blueprint) return "";
-  const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
+  const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
   const sectionLines = contract?.sections.length
     ? [authoredContentFraming, ...contract.sections.map((section) => [
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required)" : ""}`,
@@ -3472,9 +3494,9 @@ function buildWorkExecutionAddendum(
         section.sectionRole === "internal_method"
           ? "  Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
           : "",
-        section.fixedContent?.length ? `  Fixed content to emit verbatim: ${JSON.stringify(section.fixedContent)}` : "",
-        section.fields?.length ? `  Fields to render as labelled template fields: ${JSON.stringify(section.fields)}` : "",
-        section.completionPrompt ? `  Completion prompt to emit in template: ${section.completionPrompt}` : "",
+        section.fixedContent?.length ? `  Fixed content assembled by server: ${JSON.stringify(section.fixedContent)}` : "",
+        section.fields?.length ? `  Fields/structures assembled by server: ${JSON.stringify(section.fields)}` : "",
+        section.completionPrompt ? `  Completion prompt assembled by server: ${section.completionPrompt}` : "",
         section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
         section.instructions ? `  Instructions: ${section.instructions}` : "",
         section.allowedSourceTypes.length > 0 ? `  Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
@@ -3601,7 +3623,7 @@ function buildWorkPackagePrompt(
 
   if (contract?.sections.length) {
     const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
-    const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
+    const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
     staticSections.push(
       `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n${authoredContentFraming}\n` +
       contract.sections.map((section) =>
@@ -3612,9 +3634,9 @@ function buildWorkPackagePrompt(
             ? "Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
             : "",
           section.description ? `Description: ${section.description}` : "",
-          section.fixedContent?.length ? `Fixed content to emit verbatim:\n${section.fixedContent.map((item) => `  - ${item}`).join("\n")}` : "",
-          section.fields?.length ? `Fields to render as labelled template fields:\n${section.fields.map((item) => `  - ${item}`).join("\n")}` : "",
-          section.completionPrompt ? `Completion prompt to emit in template: ${section.completionPrompt}` : "",
+          section.fixedContent?.length ? `Fixed content assembled by server:\n${section.fixedContent.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.fields?.length ? `Fields/structures assembled by server:\n${section.fields.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.completionPrompt ? `Completion prompt assembled by server: ${section.completionPrompt}` : "",
           section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
           section.instructions ? `Instructions: ${section.instructions}` : "",
           section.allowedSourceTypes.length ? `Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
@@ -3713,6 +3735,26 @@ function requirementOrderForCoverageProfile(
   profile: ReturnType<typeof deriveDeliverableRequirementCoverageProfile>,
 ): string[] {
   return profile.requirements.map((requirement) => requirement.id);
+}
+
+function assembleTemplateSectionsForContext(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+  modelSections: ParsedDeliverableSection[] | undefined,
+): ParsedDeliverableSection[] | undefined {
+  if (
+    professionalContext?.deliverable.standardisation !== "standard_reusable" ||
+    contract?.blueprint?.code !== "care_plan" ||
+    !contract.sections.length
+  ) {
+    return modelSections;
+  }
+  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  return assembleDeterministicTemplateDeliverableSections({
+    requirements: profile.requirements,
+    blueprintSections: contract.sections,
+    modelSections,
+  }).sections;
 }
 
 function shouldAttemptFinalDeliverableSynthesis(

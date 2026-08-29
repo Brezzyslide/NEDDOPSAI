@@ -941,7 +941,10 @@ function splitMarkdownTableRow(line: string): string[] {
 function hasSelectedSupportWithoutDescription(content: string): boolean {
   const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   for (const line of lines) {
-    if (!/\[[xX]\]|☑|✓|selected/i.test(line)) continue;
+    const explicitSelection = /\[[xX]\]|☑|✓/.test(line) ||
+      /^\|.*\|\s*(?:selected|yes|x|☑|✓)\s*\|/i.test(line) ||
+      /^[-*]?\s*[^:|]+:\s*selected\b/i.test(line);
+    if (!explicitSelection) continue;
     if (/:\s*$/.test(line)) return true;
     const afterSeparator = line.replace(/^[-*]\s*/, "").split(/:/).slice(1).join(" ").replace(/\[[^\]]+\]/g, "").trim();
     if (afterSeparator.length < 8) return true;

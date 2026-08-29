@@ -15,6 +15,7 @@ import {
 } from "../api-server/src/services/deliverableRequirementCoverageService.js";
 import { validateBlueprintRuntimeCompletion } from "../api-server/src/services/blueprintRuntimeValidationService.js";
 import {
+  assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   mergeDeliverableSectionDeltas,
   parseSpecialistJsonOutput,
@@ -86,7 +87,7 @@ const professionalContext = compileProfessionalExecutionContext({
 });
 const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
 const outputSchema = buildDeliverableOutputSchema(coverageProfile);
-const authoredContentFraming = "Authored fixedContent below is standing template content to EMIT VERBATIM in the matching user-facing deliverable section. Do not paraphrase it and do not describe that it exists. fields are labelled participant/template values to render as fillable fields or tables. completionPrompt is legitimate template output for the person completing the form.";
+const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
 
 const responseSchema = {
   type: "object",
@@ -169,7 +170,7 @@ function stagePayload(stage: "stage1" | "repair", userContent: string) {
         content: [
           "# Service Delivery Coordinator",
           buildProfessionalExecutionContextBlock(professionalContext),
-          "Return only valid JSON matching the strict schema. The server assembles markdown from deliverable.sections[]. Do not include internal requirement IDs in user-facing headings or body content.",
+          "Return only valid JSON matching the strict schema. The server deterministically assembles authored fixed content, fields, structures and completion prompts, then appends deliverable.sections[].content as model-generated content. Do not include internal requirement IDs in user-facing headings or body content.",
         ].join("\n\n"),
       },
       { role: "user", content: userContent },
@@ -195,9 +196,9 @@ const baseUserContent = [
     `${section.sortOrder}. ${section.sectionCode} — ${section.title}`,
     `Section role: ${section.sectionRole}`,
     `Description: ${section.description ?? ""}`,
-    `Fixed content to emit verbatim: ${JSON.stringify(section.fixedContent ?? [])}`,
-    `Fields to render as labelled template fields: ${JSON.stringify(section.fields ?? [])}`,
-    `Completion prompt to emit in template: ${section.completionPrompt ?? ""}`,
+    `Fixed content assembled by server: ${JSON.stringify(section.fixedContent ?? [])}`,
+    `Fields/structures assembled by server: ${JSON.stringify(section.fields ?? [])}`,
+    `Completion prompt assembled by server: ${section.completionPrompt ?? ""}`,
     `Instructions: ${section.instructions ?? ""}`,
     `Evidence requirements: ${JSON.stringify(section.evidenceRequirements ?? {})}`,
     `Allowed source types: ${(section.allowedSourceTypes ?? []).join(", ")}`,
@@ -251,8 +252,16 @@ function cost(usage: any) {
   return ((Math.max(0, input - cached) * inputRatePerMillion) + (cached * cachedInputRatePerMillion) + (output * outputRatePerMillion)) / 1_000_000;
 }
 
+function assembleTemplateSections(modelSections: PerRequirementDeliverableSection[]) {
+  return assembleDeterministicTemplateDeliverableSections({
+    requirements: coverageProfile.requirements,
+    blueprintSections: contract.sections,
+    modelSections,
+  });
+}
+
 function validate(currentSections: PerRequirementDeliverableSection[]) {
-  const requirementOrder = coverageProfile.requirements.map((requirement) => requirement.requirementId);
+  const requirementOrder = coverageProfile.requirements.map((requirement) => requirement.id);
   const markdown = assembleDeliverableMarkdownFromSections(currentSections, requirementOrder);
   const coverage = evaluateDeliverableRequirementCoverage(markdown, coverageProfile, { deliverableSections: currentSections });
   const runtime = validateBlueprintRuntimeCompletion({
@@ -279,10 +288,14 @@ async function main() {
   const stage1Parsed = parse(stage1Response);
   writeJson(resolve(outputDir, "parsed-response.json"), stage1Parsed);
 
-  let finalSections = sections(stage1Parsed);
+  let modelSections = sections(stage1Parsed);
+  let assembled = assembleTemplateSections(modelSections);
+  modelSections = assembled.modelGeneratedSections;
+  let finalSections = assembled.sections;
   let repairResponse: any = null;
   let repairParsed: any = null;
   let repairPayload: any = null;
+  let repairModelSections: PerRequirementDeliverableSection[] = [];
   const stage1Validation = validate(finalSections);
   const missing = stage1Validation.coverage.missing;
 
@@ -308,11 +321,14 @@ async function main() {
     writeJson(resolve(outputDir, "repair-openai-response.json"), repairResponse);
     repairParsed = parse(repairResponse);
     writeJson(resolve(outputDir, "repair-parsed-response.json"), repairParsed);
-    finalSections = mergeDeliverableSectionDeltas({
-      currentSections: finalSections,
-      repairSections: sections(repairParsed),
+    repairModelSections = sections(repairParsed);
+    modelSections = mergeDeliverableSectionDeltas({
+      currentSections: modelSections,
+      repairSections: repairModelSections,
       allowedRequirementIds: missing.map((failure) => failure.requirementId),
     });
+    assembled = assembleTemplateSections(modelSections);
+    finalSections = assembled.sections;
   }
 
   const finalValidation = validate(finalSections);
@@ -332,6 +348,7 @@ async function main() {
       usage: stage1Response.usage,
       cost: cost(stage1Response.usage),
       missingRequirements: stage1Validation.coverage.missing.map((failure) => failure.requirementId),
+      returnedModelSectionCount: sections(stage1Parsed).length,
     },
     repair: repairResponse ? {
       model: repairResponse.model,
@@ -339,13 +356,22 @@ async function main() {
       latencyMs: repairResponse.latencyMs,
       usage: repairResponse.usage,
       cost: cost(repairResponse.usage),
-      returnedDeltaSectionCount: sections(repairParsed).length,
+      returnedDeltaSectionCount: repairModelSections.length,
     } : null,
     totalCost: cost(stage1Response.usage) + (repairResponse ? cost(repairResponse.usage) : 0),
     output: {
       sectionCount: finalSections.length,
       wordCount: finalValidation.markdown.split(/\s+/).filter(Boolean).length,
+      goalRowCount: assembled.deterministicCompleteness.goalRowCount,
+      fixedContentComplete: assembled.deterministicCompleteness.fixedContentComplete,
+      deterministicAssemblyOrder: ["fixedContent", "fields", "structure", "completionPrompt", "modelGeneratedContent"],
     },
+    modelGeneratedContentBySection: assembled.modelGeneratedSections.map((section) => ({
+      requirementId: section.requirementId,
+      heading: section.heading,
+      wordCount: section.content.split(/\s+/).filter(Boolean).length,
+      content: section.content,
+    })),
     gateResults: {
       runtimePassed: finalValidation.runtime.passed,
       runtimeFailures: finalValidation.runtime.failures,

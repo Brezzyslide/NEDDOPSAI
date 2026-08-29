@@ -24,6 +24,7 @@ import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntime
 import type { BlueprintExecutionContract } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
 import {
+  assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   mergeDeliverableSectionDeltas,
   parseSpecialistJsonOutput,
@@ -1095,10 +1096,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(carePlan.sections[10].fixedContent).toContain("Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.");
 
     const src = source("services/unifiedExecutionEngine.ts");
-    expect(src).toContain("Authored fixedContent below is standing template content to EMIT VERBATIM");
-    expect(src).toContain("Fixed content to emit verbatim:");
-    expect(src).toContain("Fields to render as labelled template fields:");
-    expect(src).toContain("Completion prompt to emit in template:");
+    expect(src).toContain("Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server");
+    expect(src).toContain("fixed content, fields, structure, completion prompt, model-generated content");
+    expect(src).toContain("Fixed content assembled by server:");
+    expect(src).toContain("Fields/structures assembled by server:");
+    expect(src).toContain("Completion prompt assembled by server:");
     expect(src).toContain("Section role:");
     expect(src).toContain("Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it.");
     expect(src).toContain("Allowed source types:");
@@ -1640,6 +1642,118 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.substantiveBreakdown?.strippedSelfDescription).toEqual([]);
     expect(result.substantiveBreakdown?.fixedContentWordCount).toBeGreaterThan(0);
     expect(result.substantiveBreakdown?.proseWordCount).toBe(0);
+  });
+
+  it("assembles deterministic care plan template elements before model-generated content", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a standard reusable NDIS care plan template.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+    const assembly = assembleDeterministicTemplateDeliverableSections({
+      requirements: profile.requirements,
+      blueprintSections: contract.sections,
+      modelSections: [
+        {
+          requirementId: "care-plan-about-me",
+          heading: "About Me",
+          content: "Additional model-generated content appears after the deterministic template blocks.",
+        },
+        {
+          requirementId: "care-plan-goals",
+          heading: "Goals",
+          content: "NDIS plan goals and personal goals are recorded together in the table above.",
+        },
+        {
+          requirementId: "care-plan-undertaking-adl",
+          heading: "Undertaking ADL",
+          content: "Activities:\n- [ACTIVITY_1]: [TIER]\n- [ACTIVITY_2]: [TIER]\n- [ACTIVITY_3]: [TIER]",
+        },
+      ],
+    });
+    const meeting = assembly.sections.find((section) => section.requirementId === "care-plan-support-plan-meeting");
+    const goals = assembly.sections.find((section) => section.requirementId === "care-plan-goals");
+    const aboutMe = assembly.sections.find((section) => section.requirementId === "care-plan-about-me");
+
+    expect(assembly.sections).toHaveLength(14);
+    expect(assembly.deterministicCompleteness.fixedContentComplete).toBe(true);
+    expect(assembly.deterministicCompleteness.goalRowCount).toBe(3);
+    expect(meeting?.content).toContain("This plan describes the supports to be delivered to the participant");
+    expect(meeting?.content).toContain("Participant name: [PARTICIPANT_NAME]");
+    expect(meeting?.content).toContain("Record every person who attended the planning meeting");
+    expect(goals?.content.match(/\[CURRENT_SITUATION_\d+\]/g)).toHaveLength(3);
+    expect(goals?.content).toContain("| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |");
+    expect(goals?.content).not.toContain("table above");
+    expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-goals")?.content).toBe("");
+    expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-undertaking-adl")?.content).toBe("");
+    expect(aboutMe?.content.indexOf("This section is about who the participant is")).toBeLessThan(
+      aboutMe?.content.indexOf("Strengths: [STRENGTHS]") ?? Number.MAX_SAFE_INTEGER,
+    );
+    expect(aboutMe?.content.indexOf("Write in the participant's own words where possible")).toBeLessThan(
+      aboutMe?.content.indexOf("Additional model-generated content appears") ?? Number.MAX_SAFE_INTEGER,
+    );
+  });
+
+  it("validates deterministic care plan template prompts and structures by construction", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a standard reusable NDIS care plan template.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+    const assembly = assembleDeterministicTemplateDeliverableSections({
+      requirements: profile.requirements,
+      blueprintSections: contract.sections,
+      modelSections: [],
+    });
+    const markdown = assembleDeliverableMarkdownFromSections(
+      assembly.sections,
+      profile.requirements.map((requirement) => requirement.id),
+    );
+    const coverage = evaluateDeliverableRequirementCoverage(markdown, profile, {
+      deliverableSections: assembly.sections,
+    });
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: markdown,
+      deliverableSections: assembly.sections,
+      standardTemplateEvidence: {
+        standardTemplateRequested: true,
+        existingTemplateRequested: false,
+        participantSpecificRequested: false,
+        organisationSpecificRequested: false,
+        customerExampleOptional: true,
+      },
+      professionalContext,
+    });
+    const mechanicalDetails = runtime.failures
+      .filter((failure) => failure.gate === "mechanical_gate")
+      .flatMap((failure) => failure.details ?? []);
+
+    expect(coverage.totalApplicableRequirements).toBe(14);
+    expect(coverage.missing.filter((failure) => failure.reason.includes("missing authored completionPrompt"))).toHaveLength(0);
+    expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-goals")?.failureReason ?? "").not.toContain("three personal goal rows");
+    expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-support-delivery-client-safety")?.failureReason ?? "").not.toContain("support type list");
+    expect(mechanicalDetails).not.toContainEqual(expect.stringContaining("care_plan_selected_supports_described"));
   });
 
   it("merges targeted repair deltas into the existing 9-section deliverable", () => {

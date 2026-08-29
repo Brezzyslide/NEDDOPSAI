@@ -7,11 +7,11 @@
   "stage1": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 15777,
+    "latencyMs": 17077,
     "usage": {
       "prompt_tokens": 14387,
-      "completion_tokens": 2394,
-      "total_tokens": 16781,
+      "completion_tokens": 2561,
+      "total_tokens": 16948,
       "prompt_tokens_details": {
         "cached_tokens": 14208,
         "audio_tokens": 0
@@ -23,12 +23,12 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "cost": 0.0025288499999999996,
+    "cost": 0.0026290499999999995,
     "missingRequirements": [],
     "returnedModelSectionCount": 14
   },
   "repair": null,
-  "totalCost": 0.0025288499999999996,
+  "totalCost": 0.0026290499999999995,
   "output": {
     "sectionCount": 14,
     "wordCount": 1667,
