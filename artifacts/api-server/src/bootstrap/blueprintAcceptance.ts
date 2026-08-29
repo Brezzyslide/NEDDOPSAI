@@ -23,7 +23,7 @@ export interface BlueprintAcceptanceResult {
 
 export const BLUEPRINT_ACCEPTANCE_TARGETS = {
   registryCodes: 75,
-  professionalSections: 1_077,
+  professionalSections: 1_085,
 } as const;
 
 function expectedSectionId(blueprintCode: string, sectionCode: string): string {
