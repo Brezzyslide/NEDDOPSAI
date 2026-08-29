@@ -3,19 +3,22 @@
 Participant Name: [PARTICIPANT_NAME]
 Date of Birth: [DATE_OF_BIRTH]
 NDIS Number: [NDIS_NUMBER]
-Contact Information: [CONTACT_INFORMATION]
-Preferred Communication Method: [PREFERENCES]
-Gender: [GENDER]
 Address: [ADDRESS]
+Contact Number: [CONTACT_NUMBER]
 Emergency Contact: [EMERGENCY_CONTACT]
 
 ## Goals and Preferences
 
-Goals: [GOALS]
-Preferences: [PREFERENCES]
-Communication Needs: [COMMUNICATION_NEEDS]
-Support Needs: [SUPPORT_NEEDS]
-Desired Outcomes: [DESIRED_OUTCOMES]
+Goals:
+- [GOALS]
+Preferences:
+- [PREFERENCES]
+Communication Needs:
+- [COMMUNICATION_NEEDS]
+Support Needs:
+- [SUPPORT_NEEDS]
+Review Dates:
+- [REVIEW_DATES]
 
 ## Support Domains and Daily Living Support Structure
 
@@ -24,34 +27,29 @@ Support Domains:
 - Community Participation
 - Health and Wellbeing
 Daily Living Support Structure:
-- Personal Care: [SUPPORT_NEEDS]
-- Community Access: [SUPPORT_NEEDS]
-- Health Management: [SUPPORT_NEEDS]
+- Support Worker Responsibilities
+- Scheduled Support Times
 
 ## Provider and Worker Responsibilities
 
-The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner. Workers must adhere to the agreed support plans and communicate any changes or concerns promptly.
+Providers and workers are responsible for delivering supports in accordance with the participant's goals and preferences, ensuring safety and dignity at all times.
 
 ## Participant, Representative and Support-Network Responsibilities
 
-The participant and their representative are responsible for communicating their needs and preferences. They must also engage in the planning and review processes.
+Participants and their representatives are responsible for communicating their needs and preferences clearly and for participating actively in their support planning.
 
 ## Health, Medication, Behaviour Support and Restrictive-Practice Boundaries
 
-Health and medication management must be conducted by qualified professionals. Behaviour support plans must be adhered to, and any restrictive practices must be documented and justified.
+Health and medication support will be provided as per the participant’s health plan. Behaviour support strategies must align with the approved Behaviour Support Plan.
 
 ## Risk, Safety, Incident and Escalation Arrangements
 
-Risk management strategies must be in place, including emergency contact details and incident reporting procedures. Escalation pathways must be clearly defined.
+Risk management strategies will be implemented to ensure participant safety. In case of incidents, the following escalation pathways must be followed: [ESCALATION_PATHWAYS]
 
 ## Community Participation and Service-Delivery Coordination
 
-Community participation goals must be outlined, with clear responsibilities for coordination and support delivery.
-Community Participation Goals: [COMMUNITY_PARTICIPATION_GOALS]
-Coordination Responsibilities: [COORDINATION_RESPONSIBILITIES]
-Service Delivery Support: [SERVICE_DELIVERY_SUPPORT]
+Community participation will be encouraged through various activities. Coordination of services will be managed by the support coordinator.
 
 ## Review, Updates, Consent and Sign-off Provisions
 
-Review Date: [REVIEW_DATE]
-The care plan must be reviewed regularly to ensure it meets the participant's needs. Consent for the plan must be obtained from the participant and their representative. Sign-off: [SIGN_OFF]
+The care plan will be reviewed on [REVIEW_DATE]. All changes must be documented and consented to by the participant or their representative.

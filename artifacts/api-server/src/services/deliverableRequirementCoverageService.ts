@@ -48,6 +48,7 @@ export interface DeliverableRequirementCoverageFailure {
   substantiveResult?: RequirementSubstantiveResult;
   finalResult?: RequirementFinalResult;
   substantiveValidationMode?: RequirementSubstantiveValidationMode;
+  substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   reason: string;
 }
 
@@ -86,8 +87,19 @@ export interface DeliverableRequirementCoverageItem {
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
   substantiveValidationMode: RequirementSubstantiveValidationMode;
+  substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   finalResult: RequirementFinalResult;
   failureReason: string | null;
+}
+
+export interface DeliverableSubstantiveBreakdown {
+  countedWordCount: number;
+  proseWordCount: number;
+  fieldLabelCount: number;
+  placeholderCount: number;
+  fieldAndPlaceholderWordCount: number;
+  strippedSelfDescription: string[];
+  countedContent: string;
 }
 
 export type RequirementCoverageStatus =
@@ -353,6 +365,7 @@ export function evaluateDeliverableRequirementCoverage(
       structuralResult: result.structuralResult,
       substantiveResult: result.substantiveResult,
       substantiveValidationMode: result.substantiveValidationMode,
+      substantiveBreakdown: result.substantiveBreakdown,
       finalResult: result.finalResult,
       reason: result.failureReason ?? "Required professional substance is not represented in the user-facing deliverable.",
     });
@@ -1250,6 +1263,7 @@ function validateRepresentedRequirement(input: {
         ? "SUBSTANTIVE_PARTIAL"
         : "SUBSTANTIVE_FAIL",
     substantiveValidationMode: substantive.mode,
+    substantiveBreakdown: substantive.breakdown,
     finalResult,
     failureReason: finalResult === "SATISFIED"
       ? null
@@ -1514,8 +1528,15 @@ function findRelevantSectionContent(
 function evaluateSubstantiveClauseContent(
   requirement: DeliverableRequirement,
   content: string,
-): { passed: boolean; partial: boolean; reason: string | null; mode: RequirementSubstantiveValidationMode } {
-  const cleaned = stripSelfAssertionCoverage(content);
+): {
+  passed: boolean;
+  partial: boolean;
+  reason: string | null;
+  mode: RequirementSubstantiveValidationMode;
+  breakdown: DeliverableSubstantiveBreakdown;
+} {
+  const breakdown = analyseSubstantiveCoverageContent(content);
+  const cleaned = breakdown.countedContent;
   const normalised = normaliseContent(cleaned);
 
   const adequacyCriteria = requirement.adequacyCriteria ?? [];
@@ -1526,13 +1547,14 @@ function evaluateSubstantiveClauseContent(
     }));
     const missing = criteriaResults.filter((result) => !result.passed).map((result) => result.criterion);
     if (missing.length === 0) {
-      return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA" };
+      return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
     }
     return {
       passed: false,
       partial: missing.length < criteriaResults.length,
       reason: `Relevant section does not satisfy authored adequacy criteria: ${missing.join("; ")}.`,
       mode: "ADEQUACY_CRITERIA",
+      breakdown,
     };
   }
 
@@ -1543,6 +1565,7 @@ function evaluateSubstantiveClauseContent(
       partial: words.length >= 8,
       reason: "Relevant section is too thin to prove substantive professional coverage.",
       mode: "FALLBACK_HEURISTIC",
+      breakdown,
     };
   }
 
@@ -1569,13 +1592,14 @@ function evaluateSubstantiveClauseContent(
     : requirement.coverageRules.some((rule) => coverageRuleMatches(normalised, rule));
 
   if (keywordRulesPass && operativeCount >= 2 && domain.passed) {
-    return { passed: true, partial: false, reason: null, mode: "FALLBACK_HEURISTIC" };
+    return { passed: true, partial: false, reason: null, mode: "FALLBACK_HEURISTIC", breakdown };
   }
   return {
     passed: false,
     partial: keywordRulesPass || domain.partial || operativeCount >= 2,
     reason: domain.reason ?? "Section exists but lacks enough operative professional content for the requirement.",
     mode: "FALLBACK_HEURISTIC",
+    breakdown,
   };
 }
 
@@ -1734,8 +1758,7 @@ function domainSufficiency(requirementId: string, normalised: string): { passed:
 }
 
 function stripSelfAssertionCoverage(content: string): string {
-  return content
-    .split(/(?<=[.!?])\s+|\r?\n+/)
+  return splitCoverageSentences(content)
     .filter((sentence) => {
       const normalised = normaliseContent(sentence);
       if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) return false;
@@ -1746,6 +1769,67 @@ function stripSelfAssertionCoverage(content: string): string {
       return true;
     })
     .join(" ");
+}
+
+function analyseSubstantiveCoverageContent(content: string): DeliverableSubstantiveBreakdown {
+  const strippedSelfDescription: string[] = [];
+  const countedParts: string[] = [];
+  for (const sentence of splitCoverageSentences(content)) {
+    const normalised = normaliseContent(sentence);
+    if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/^(?:this|the)\s+(?:section|plan|document|template|agreement|care plan)\b.*\b(?:outlines?|describes?|details?|serves\s+to|is\s+designed\s+to|covers?|includes?|provides?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/^the following\b.*\b(?:outlines?|describes?|details?|covers?|includes?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && normalised.split(/\s+/).length <= 14) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && normalised.split(/\s+/).length <= 12) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    countedParts.push(sentence);
+  }
+
+  const fieldLabelParts = countedParts.filter((part) => isFieldOrStructureLabel(part));
+  const proseParts = countedParts.filter((part) => !isFieldOrStructureLabel(part));
+  const countedContent = countedParts.join(" ");
+  const placeholderCount = (countedContent.match(/\[[A-Z0-9_]+\]/g) ?? []).length;
+  const proseContent = proseParts.join(" ").replace(/\[[A-Z0-9_]+\]/g, " ");
+  const fieldContent = fieldLabelParts.join(" ");
+  return {
+    countedWordCount: wordCountForCoverage(countedContent),
+    proseWordCount: wordCountForCoverage(proseContent),
+    fieldLabelCount: fieldLabelParts.length,
+    placeholderCount,
+    fieldAndPlaceholderWordCount: wordCountForCoverage(fieldContent),
+    strippedSelfDescription,
+    countedContent,
+  };
+}
+
+function splitCoverageSentences(content: string): string[] {
+  return content
+    .split(/(?<=[.!?])\s+|\r?\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function isFieldOrStructureLabel(value: string): boolean {
+  const trimmed = value.trim().replace(/^[-*]\s+/, "");
+  return /^[A-Za-z][A-Za-z0-9 /&(),.'-]{1,90}:\s*(?:\[[A-Z0-9_]+\]|$|[-A-Za-z0-9_ /[\],.'()]+$)/.test(trimmed);
+}
+
+function wordCountForCoverage(value: string): number {
+  return normaliseContent(value).split(/\s+/).filter(Boolean).length;
 }
 
 function titleCase(value: string): string {

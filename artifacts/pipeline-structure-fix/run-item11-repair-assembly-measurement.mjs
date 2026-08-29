@@ -128,6 +128,37 @@ function stripSelfDescription(content) {
   };
 }
 
+function isFieldOrStructureLabel(value) {
+  const trimmed = String(value ?? "").trim().replace(/^[-*]\s+/, "");
+  return /^[A-Za-z][A-Za-z0-9 /&(),.'-]{1,90}:\s*(?:\[[A-Z0-9_]+\]|$|[-A-Za-z0-9_ /[\],.'()]+$)/.test(trimmed);
+}
+
+function contentBreakdown(content) {
+  const stripped = [];
+  const counted = [];
+  for (const sentence of splitSentences(content)) {
+    if (isSelfDescriptionSentence(sentence)) {
+      stripped.push(sentence);
+    } else {
+      counted.push(sentence);
+    }
+  }
+  const fieldLabelParts = counted.filter(isFieldOrStructureLabel);
+  const proseParts = counted.filter((part) => !isFieldOrStructureLabel(part));
+  const countedContent = counted.join(" ");
+  const proseContent = proseParts.join(" ").replace(/\[[A-Z0-9_]+\]/g, " ");
+  const fieldContent = fieldLabelParts.join(" ");
+  return {
+    strippedSelfDescription: stripped,
+    countedContent,
+    countedWordCount: wordCount(countedContent),
+    proseWordCount: wordCount(proseContent),
+    fieldLabelCount: fieldLabelParts.length,
+    placeholderCount: (countedContent.match(/\[[A-Z0-9_]+\]/g) ?? []).length,
+    fieldAndPlaceholderWordCount: wordCount(fieldContent),
+  };
+}
+
 function classificationLeakage(content) {
   return [...new Set([...String(content ?? "").matchAll(/\b(?:FACTUAL_FIELD|MUST_BE_REPRESENTED|CONDITIONAL)\b|\bmandatory-\d+\b|\bblueprint-[a-z0-9-]+\b/g)].map((match) => match[0]))];
 }
@@ -152,18 +183,22 @@ function validate(sections) {
   const byId = new Map(sections.map((section) => [section.requirementId, section]));
   return requirements.map(([id, text, target]) => {
     const section = byId.get(id);
-    const stripped = stripSelfDescription(section?.content ?? "");
+    const breakdown = contentBreakdown(section?.content ?? "");
     const leakage = classificationLeakage(section?.content ?? "");
-    const words = section ? wordCount(stripped.countedContent) : 0;
+    const words = section ? breakdown.countedWordCount : 0;
     return {
       id,
       text,
       target,
       present: Boolean(section),
       heading: section?.heading ?? null,
-      strippedSelfDescription: stripped.stripped,
-      countedContent: stripped.countedContent,
+      strippedSelfDescription: breakdown.strippedSelfDescription,
+      countedContent: breakdown.countedContent,
       wordCount: words,
+      proseWordCount: breakdown.proseWordCount,
+      fieldLabelCount: breakdown.fieldLabelCount,
+      placeholderCount: breakdown.placeholderCount,
+      fieldAndPlaceholderWordCount: breakdown.fieldAndPlaceholderWordCount,
       classificationLeakage: leakage,
       mode: "FALLBACK_HEURISTIC",
       pass: Boolean(section) && words >= 18 && leakage.length === 0,
@@ -221,7 +256,7 @@ function buildRepairPayload(basePayload, currentSections, missingValidation) {
     `## DEFICIENT DELIVERABLE SECTION(S)\n${deficient || "No matching section was present in the current deliverable."}`,
     `## EXACT REQUIREMENTS TO REPAIR\n${JSON.stringify(missing, null, 2)}`,
     "## RELEVANT AUTHORITATIVE EVIDENCE\n[NeedsOps standard template authority, retrieved 2026-08-28] (Reusable care plan template)\nA reusable care plan template may contain factual placeholders for participant name, goals, support needs, preferences, review dates and signatures while still drafting professional section content and responsibilities.",
-    "## REPAIR INSTRUCTIONS\nRepair only the missing requirement IDs listed above.\nReturn deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.\nFor FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.\nFor MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.\nThe server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.\nDo not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.",
+    "## REPAIR INSTRUCTIONS\nRepair only the missing requirement IDs listed above.\nReturn deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.\nFor factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown.\nFor must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.\nThe server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.\nDo not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.",
   ].join("\n\n---\n\n");
   return payload;
 }

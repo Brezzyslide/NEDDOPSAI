@@ -1,34 +1,33 @@
 {
-  "status": "blocked_by_validation",
+  "status": "completed_revalidated",
   "stage1": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 15516,
+    "latencyMs": 11040,
     "usage": {
       "inputTokens": 8239,
-      "outputTokens": 1567,
-      "totalTokens": 9806,
-      "cachedInputTokens": 8192
+      "outputTokens": 1106,
+      "totalTokens": 9345,
+      "cachedInputTokens": 0
     },
     "sectionCount": 9,
-    "documentWords": 255,
+    "documentWords": 229,
     "missingOrThinRequirements": [
       "mandatory-1",
-      "mandatory-2",
-      "mandatory-8"
+      "mandatory-2"
     ]
   },
   "repair": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 4706,
+    "latencyMs": 2701,
     "usage": {
-      "inputTokens": 1326,
-      "outputTokens": 392,
-      "totalTokens": 1718,
+      "inputTokens": 1167,
+      "outputTokens": 274,
+      "totalTokens": 1441,
       "cachedInputTokens": 0
     },
-    "returnedDeltaSectionCount": 3,
+    "returnedDeltaSectionCount": 2,
     "mergedSectionCount": 9,
     "failureMessage": null
   },
@@ -36,19 +35,17 @@
     "sectionCount": 9,
     "requiredRequirementCount": 9,
     "allRequirementIdsPresent": true,
-    "assembledMarkdownChars": 2337,
-    "assembledMarkdownWords": 279
+    "assembledMarkdownChars": 1944,
+    "assembledMarkdownWords": 245
   },
   "gateResults": {
     "structuredOutput": true,
     "deliverableSectionsPopulatedPerRequirement": true,
-    "fallbackHeuristicPassCount": 8,
-    "fallbackHeuristicFailCount": 1,
+    "fallbackHeuristicPassCount": 9,
+    "fallbackHeuristicFailCount": 0,
     "adequacyCriteriaValidatedCount": 0,
     "fallbackHeuristicValidatedCount": 9,
-    "missingOrThinRequirements": [
-      "mandatory-2"
-    ],
+    "missingOrThinRequirements": [],
     "classificationLeakage": [],
     "readyForCompletedWorkSelfReport": true,
     "methodologyLeakageSelfReport": false
@@ -61,8 +58,12 @@
       "present": true,
       "heading": "Participant Identity",
       "strippedSelfDescription": [],
-      "countedContent": "Participant Name: [PARTICIPANT_NAME] Date of Birth: [DATE_OF_BIRTH] NDIS Number: [NDIS_NUMBER] Contact Information: [CONTACT_INFORMATION] Preferred Communication Method: [PREFERENCES] Gender: [GENDER] Address: [ADDRESS] Emergency Contact: [EMERGENCY_CONTACT]",
-      "wordCount": 24,
+      "countedContent": "Participant Name: [PARTICIPANT_NAME] Date of Birth: [DATE_OF_BIRTH] NDIS Number: [NDIS_NUMBER] Address: [ADDRESS] Contact Number: [CONTACT_NUMBER] Emergency Contact: [EMERGENCY_CONTACT]",
+      "wordCount": 18,
+      "proseWordCount": 0,
+      "fieldLabelCount": 6,
+      "placeholderCount": 6,
+      "fieldAndPlaceholderWordCount": 18,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -74,11 +75,15 @@
       "present": true,
       "heading": "Goals and Preferences",
       "strippedSelfDescription": [],
-      "countedContent": "Goals: [GOALS] Preferences: [PREFERENCES] Communication Needs: [COMMUNICATION_NEEDS] Support Needs: [SUPPORT_NEEDS] Desired Outcomes: [DESIRED_OUTCOMES]",
-      "wordCount": 13,
+      "countedContent": "Goals: - [GOALS] Preferences: - [PREFERENCES] Communication Needs: - [COMMUNICATION_NEEDS] Support Needs: - [SUPPORT_NEEDS] Review Dates: - [REVIEW_DATES]",
+      "wordCount": 18,
+      "proseWordCount": 5,
+      "fieldLabelCount": 5,
+      "placeholderCount": 5,
+      "fieldAndPlaceholderWordCount": 8,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
-      "pass": false
+      "pass": true
     },
     {
       "id": "mandatory-3",
@@ -87,8 +92,12 @@
       "present": true,
       "heading": "Support Domains and Daily Living Support Structure",
       "strippedSelfDescription": [],
-      "countedContent": "Support Domains: - Daily Living Skills - Community Participation - Health and Wellbeing Daily Living Support Structure: - Personal Care: [SUPPORT_NEEDS] - Community Access: [SUPPORT_NEEDS] - Health Management: [SUPPORT_NEEDS]",
-      "wordCount": 29,
+      "countedContent": "Support Domains: - Daily Living Skills - Community Participation - Health and Wellbeing Daily Living Support Structure: - Support Worker Responsibilities - Scheduled Support Times",
+      "wordCount": 25,
+      "proseWordCount": 19,
+      "fieldLabelCount": 2,
+      "placeholderCount": 0,
+      "fieldAndPlaceholderWordCount": 6,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -100,8 +109,12 @@
       "present": true,
       "heading": "Provider and Worker Responsibilities",
       "strippedSelfDescription": [],
-      "countedContent": "The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner. Workers must adhere to the agreed support plans and communicate any changes or concerns promptly.",
-      "wordCount": 32,
+      "countedContent": "Providers and workers are responsible for delivering supports in accordance with the participant's goals and preferences, ensuring safety and dignity at all times.",
+      "wordCount": 23,
+      "proseWordCount": 23,
+      "fieldLabelCount": 0,
+      "placeholderCount": 0,
+      "fieldAndPlaceholderWordCount": 0,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -113,8 +126,12 @@
       "present": true,
       "heading": "Participant, Representative and Support-Network Responsibilities",
       "strippedSelfDescription": [],
-      "countedContent": "The participant and their representative are responsible for communicating their needs and preferences. They must also engage in the planning and review processes.",
-      "wordCount": 23,
+      "countedContent": "Participants and their representatives are responsible for communicating their needs and preferences clearly and for participating actively in their support planning.",
+      "wordCount": 21,
+      "proseWordCount": 21,
+      "fieldLabelCount": 0,
+      "placeholderCount": 0,
+      "fieldAndPlaceholderWordCount": 0,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -126,8 +143,12 @@
       "present": true,
       "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
       "strippedSelfDescription": [],
-      "countedContent": "Health and medication management must be conducted by qualified professionals. Behaviour support plans must be adhered to, and any restrictive practices must be documented and justified.",
-      "wordCount": 26,
+      "countedContent": "Health and medication support will be provided as per the participant’s health plan. Behaviour support strategies must align with the approved Behaviour Support Plan.",
+      "wordCount": 24,
+      "proseWordCount": 24,
+      "fieldLabelCount": 0,
+      "placeholderCount": 0,
+      "fieldAndPlaceholderWordCount": 0,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -139,8 +160,12 @@
       "present": true,
       "heading": "Risk, Safety, Incident and Escalation Arrangements",
       "strippedSelfDescription": [],
-      "countedContent": "Risk management strategies must be in place, including emergency contact details and incident reporting procedures. Escalation pathways must be clearly defined.",
-      "wordCount": 21,
+      "countedContent": "Risk management strategies will be implemented to ensure participant safety. In case of incidents, the following escalation pathways must be followed: [ESCALATION_PATHWAYS]",
+      "wordCount": 22,
+      "proseWordCount": 10,
+      "fieldLabelCount": 1,
+      "placeholderCount": 1,
+      "fieldAndPlaceholderWordCount": 12,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -152,8 +177,12 @@
       "present": true,
       "heading": "Community Participation and Service-Delivery Coordination",
       "strippedSelfDescription": [],
-      "countedContent": "Community participation goals must be outlined, with clear responsibilities for coordination and support delivery. Community Participation Goals: [COMMUNITY_PARTICIPATION_GOALS] Coordination Responsibilities: [COORDINATION_RESPONSIBILITIES] Service Delivery Support: [SERVICE_DELIVERY_SUPPORT]",
-      "wordCount": 25,
+      "countedContent": "Community participation will be encouraged through various activities. Coordination of services will be managed by the support coordinator.",
+      "wordCount": 18,
+      "proseWordCount": 18,
+      "fieldLabelCount": 0,
+      "placeholderCount": 0,
+      "fieldAndPlaceholderWordCount": 0,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
@@ -165,21 +194,21 @@
       "present": true,
       "heading": "Review, Updates, Consent and Sign-off Provisions",
       "strippedSelfDescription": [],
-      "countedContent": "Review Date: [REVIEW_DATE] The care plan must be reviewed regularly to ensure it meets the participant's needs. Consent for the plan must be obtained from the participant and their representative. Sign-off: [SIGN_OFF]",
-      "wordCount": 32,
+      "countedContent": "The care plan will be reviewed on [REVIEW_DATE]. All changes must be documented and consented to by the participant or their representative.",
+      "wordCount": 22,
+      "proseWordCount": 22,
+      "fieldLabelCount": 0,
+      "placeholderCount": 1,
+      "fieldAndPlaceholderWordCount": 0,
       "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     }
   ],
   "cost": {
-    "stage1Actual": 0.00156165,
-    "repairActual": 0.00043410000000000003,
-    "totalActual": 0.00199575,
-    "totalAtStage1CacheHitApprox": 0.00199575,
-    "stage1CacheableTokensApprox": 8192,
-    "stage1CacheablePercent": 99.4,
-    "stage1AtCacheHitApprox": 0.00156165,
-    "projectedCacheHitSavings": 0
+    "stage1Actual": 0.0018994499999999998,
+    "repairActual": 0.00033945,
+    "totalActual": 0.0022389,
+    "totalAtStage1CacheHitApprox": 0.0022389
   }
 }

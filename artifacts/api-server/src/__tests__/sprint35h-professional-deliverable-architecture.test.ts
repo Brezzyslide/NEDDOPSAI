@@ -1201,7 +1201,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(prompt).toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
   });
 
-  it("does not count self-describing section prose as substantive Care Plan coverage", () => {
+  it("strips self-describing Care Plan prose before substantive word-count validation", () => {
     const blueprint = getRegistryEntry("care_plan") as any;
     const contract = {
       blueprint,
@@ -1225,29 +1225,122 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const report = evaluateDeliverableRequirementCoverage("", profile, {
       deliverableSections: [
         {
-          requirementId: "mandatory-6",
-          heading: "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
-          content: "This section outlines the boundaries regarding health and medication management, behaviour support strategies, and any restrictive practices that may be in place.",
+          requirementId: "mandatory-1",
+          heading: "Participant Identity",
+          content: "This section serves to identify the participant and provide necessary contact information.",
+        },
+        {
+          requirementId: "mandatory-2",
+          heading: "Goals and Preferences",
+          content: "This section outlines the participant's goals, preferences, and any specific communication needs.",
+        },
+        {
+          requirementId: "mandatory-4",
+          heading: "Provider and Worker Responsibilities",
+          content: "This section describes the support delivery obligations and operational boundaries.",
+        },
+        {
+          requirementId: "mandatory-3",
+          heading: "Support Domains and Daily Living Support Structure",
+          content: "Support Domains:\n- Daily Living Skills\n- Community Participation\n- Health and Wellbeing\nDaily Living Support Structure:\n- Personal Care support is recorded with the support worker role and participant support priorities.\n- Community Access support is recorded with coordination responsibilities and escalation pathways.",
         },
         {
           requirementId: "mandatory-9",
           heading: "Review, Updates, Consent and Sign-off Provisions",
-          content: "Review Date: [REVIEW_DATE]. Record plan updates, the reviewer, participant consent, update reason, sign-off date, responsible provider role, review provisions and evidence retained for the care plan review.",
+          content: "Review Date: [REVIEW_DATE]\nRecord goals, communication preferences and support priorities. Record plan updates, the reviewer, participant consent, update reason, sign-off date, responsible provider role, review provisions and evidence retained for the care plan review.",
         },
       ],
     });
     const byId = new Map(report.requirementResults.map((item) => [item.requirementId, item]));
 
-    expect(byId.get("mandatory-6")).toMatchObject({
+    for (const [requirementId, stripped] of [
+      ["mandatory-1", "This section serves to identify the participant and provide necessary contact information."],
+      ["mandatory-2", "This section outlines the participant's goals, preferences, and any specific communication needs."],
+      ["mandatory-4", "This section describes the support delivery obligations and operational boundaries."],
+    ]) {
+      expect(byId.get(requirementId)).toMatchObject({
+        structuralResult: "STRUCTURE_PASS",
+        substantiveResult: "SUBSTANTIVE_FAIL",
+        failureReason: "Relevant section is too thin to prove substantive professional coverage.",
+      });
+      expect(byId.get(requirementId)?.finalResult).toMatch(/PARTIAL|NOT_SATISFIED/);
+      expect(byId.get(requirementId)?.substantiveBreakdown?.strippedSelfDescription).toEqual([stripped]);
+      expect(byId.get(requirementId)?.substantiveBreakdown?.countedWordCount).toBe(0);
+    }
+
+    expect(byId.get("mandatory-3")).toMatchObject({
       structuralResult: "STRUCTURE_PASS",
-      substantiveResult: "SUBSTANTIVE_FAIL",
-      finalResult: "PARTIAL",
-      failureReason: "Relevant section is too thin to prove substantive professional coverage.",
+      substantiveResult: "SUBSTANTIVE_PASS",
+      finalResult: "SATISFIED",
     });
+    expect(byId.get("mandatory-3")?.substantiveBreakdown?.strippedSelfDescription).toEqual([]);
+    expect(byId.get("mandatory-3")?.substantiveBreakdown?.countedContent).toContain("Support Domains:");
+    expect(byId.get("mandatory-3")?.substantiveBreakdown?.countedContent).toContain("Daily Living Skills");
+
     expect(byId.get("mandatory-9")).toMatchObject({
       structuralResult: "STRUCTURE_PASS",
       substantiveResult: "SUBSTANTIVE_PASS",
       finalResult: "SATISFIED",
+    });
+    expect(byId.get("mandatory-9")?.substantiveBreakdown?.strippedSelfDescription).toEqual([]);
+    expect(byId.get("mandatory-9")?.substantiveBreakdown?.countedContent).toContain("Review Date: [REVIEW_DATE]");
+    expect(byId.get("mandatory-9")?.substantiveBreakdown?.countedContent).toContain("Record goals, communication preferences and support priorities");
+    expect(byId.get("mandatory-9")?.substantiveBreakdown).toMatchObject({
+      fieldLabelCount: 1,
+      placeholderCount: 1,
+    });
+    expect(byId.get("mandatory-9")?.substantiveBreakdown?.proseWordCount).toBeGreaterThan(18);
+  });
+
+  it("reports field labels and placeholders separately from prose without changing fallback pass/fail", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard comprehensive NDIS care plan template.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const report = evaluateDeliverableRequirementCoverage("", profile, {
+      deliverableSections: [
+        {
+          requirementId: "mandatory-1",
+          heading: "Participant Identity",
+          content: [
+            "Participant Name: [PARTICIPANT_NAME]",
+            "Date of Birth: [DATE_OF_BIRTH]",
+            "NDIS Number: [NDIS_NUMBER]",
+            "Contact Information: [CONTACT_INFORMATION]",
+            "Preferred Communication Method: [PREFERENCES]",
+            "Gender: [GENDER]",
+            "Address: [ADDRESS]",
+            "Emergency Contact: [EMERGENCY_CONTACT]",
+          ].join("\n"),
+        },
+      ],
+    });
+    const participantIdentity = report.requirementResults.find((item) => item.requirementId === "mandatory-1");
+
+    expect(participantIdentity?.finalResult).toMatch(/SATISFIED|PARTIAL|NOT_SATISFIED/);
+    expect(participantIdentity?.substantiveBreakdown).toMatchObject({
+      countedWordCount: 30,
+      proseWordCount: 0,
+      fieldLabelCount: 8,
+      placeholderCount: 8,
+      fieldAndPlaceholderWordCount: 30,
+      strippedSelfDescription: [],
     });
   });
 
