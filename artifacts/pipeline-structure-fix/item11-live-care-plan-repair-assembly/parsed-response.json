@@ -1,27 +1,24 @@
 {
   "professional_work": {
-    "summary": "This document serves as a standard reusable NDIS care plan template designed for NDIS provider staff, participants, and their representatives. It outlines the necessary sections to ensure safe and effective support delivery, including participant identity, goals, support needs, responsibilities, and review processes.",
+    "summary": "This document serves as a standard reusable NDIS care plan template designed for use by NDIS provider staff, participants, and their representatives. It outlines the necessary sections for effective support delivery, including participant identity, goals, support needs, responsibilities, risk management, and review processes.",
     "blueprint_completion": [
-      "Participant identity and factual placeholder framework",
-      "Participant goals, preferences and communication needs",
-      "Support domains and daily living support structure",
-      "Provider and worker responsibilities",
-      "Participant, representative and support-network responsibilities",
-      "Health, medication, behaviour support and restrictive-practice boundaries",
-      "Risk, safety, incident and escalation arrangements",
-      "Community participation and service-delivery coordination",
-      "Review, updates, consent and sign-off provisions"
+      "PARTICIPANT_CONTEXT",
+      "PURPOSE_AND_SCOPE",
+      "GOALS_AND_PREFERENCES",
+      "SUPPORT_REQUIREMENTS",
+      "RISKS_SAFEGUARDS_ESCALATION",
+      "MONITORING_REVIEW_GAPS"
     ],
     "requirement_to_deliverable_plan": [
-      "Draft User-facing representation of Participant identity and factual placeholder framework",
-      "Draft User-facing representation of Participant goals, preferences and communication needs",
-      "Draft User-facing representation of Support domains and daily living support structure",
-      "Draft Responsibilities clauses for Provider and worker responsibilities",
-      "Draft Responsibilities clauses for Participant, representative and support-network responsibilities",
-      "Draft User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
-      "Draft User-facing representation of Risk, safety, incident and escalation arrangements",
-      "Draft User-facing representation of Community participation and service-delivery coordination",
-      "Draft Supervision, Check-ins and Sign-off provisions"
+      "User-facing representation of Participant identity and factual placeholder framework",
+      "User-facing representation of Participant goals, preferences and communication needs",
+      "User-facing representation of Support domains and daily living support structure",
+      "User-facing representation of Provider and worker responsibilities",
+      "User-facing representation of Participant, representative and support-network responsibilities",
+      "User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
+      "User-facing representation of Risk, safety, incident and escalation arrangements",
+      "User-facing representation of Community participation and service-delivery coordination",
+      "User-facing representation of Review, updates, consent and sign-off provisions"
     ],
     "evidence_map": [
       "NDIS provider guidance, retrieved 2026-08-28",
@@ -51,47 +48,47 @@
       {
         "requirementId": "mandatory-1",
         "heading": "Participant Identity",
-        "content": "Participant Name: [PARTICIPANT_NAME] \nDate of Birth: [DATE_OF_BIRTH] \nNDIS Number: [NDIS_NUMBER] \nContact Information: [CONTACT_INFORMATION] \nThis section serves to identify the participant and provide necessary contact information."
+        "content": "Participant Name: [PARTICIPANT_NAME] \nDate of Birth: [DATE_OF_BIRTH] \nNDIS Number: [NDIS_NUMBER] \nContact Information: [CONTACT_INFORMATION] \nPreferred Communication Method: [PREFERENCES]"
       },
       {
         "requirementId": "mandatory-2",
         "heading": "Goals and Preferences",
-        "content": "Goals: [GOALS] \nPreferences: [PREFERENCES] \nCommunication Needs: [COMMUNICATION_NEEDS] \nThis section outlines the participant's goals, preferences, and any specific communication needs to ensure effective support."
+        "content": "Goals: [GOALS] \nPreferences: [PREFERENCES] \nCommunication Needs: [COMMUNICATION_NEEDS]"
       },
       {
         "requirementId": "mandatory-3",
         "heading": "Support Domains and Daily Living Support Structure",
-        "content": "Support Domains: \n- Daily Living Skills \n- Community Participation \n- Health and Wellbeing \n- Social and Recreational Activities \nThis section describes the support delivery obligations and operational boundaries for daily living support."
+        "content": "Support Domains: \n- Daily Living Skills \n- Community Participation \n- Health and Wellbeing \nDaily Living Support Structure: \n- Personal Care: [SUPPORT_NEEDS] \n- Community Access: [SUPPORT_NEEDS] \n- Health Management: [SUPPORT_NEEDS]"
       },
       {
         "requirementId": "mandatory-4",
         "heading": "Provider and Worker Responsibilities",
-        "content": "The provider and workers are responsible for delivering supports in line with the participant's goals and preferences, ensuring safety and compliance with NDIS standards."
+        "content": "The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner. Workers must adhere to the agreed support plans and communicate any changes or concerns promptly."
       },
       {
         "requirementId": "mandatory-5",
         "heading": "Participant, Representative and Support-Network Responsibilities",
-        "content": "The participant and their representatives are responsible for actively participating in the planning and review processes, providing feedback, and communicating any changes in needs."
+        "content": "The participant and their representative are responsible for communicating their needs and preferences. They must also engage in the planning and review processes."
       },
       {
         "requirementId": "mandatory-6",
         "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
-        "content": "This section outlines the boundaries regarding health and medication management, behaviour support strategies, and any restrictive practices that may be in place."
+        "content": "Health and medication management must be conducted by qualified professionals. Behaviour support plans must be adhered to, and any restrictive practices must be documented and justified."
       },
       {
         "requirementId": "mandatory-7",
         "heading": "Risk, Safety, Incident and Escalation Arrangements",
-        "content": "Risk Management: \n- Identify potential risks and mitigation strategies. \n- Emergency contact procedures and escalation pathways."
+        "content": "Risk management strategies must be in place, including emergency contact details and incident reporting procedures. Escalation pathways must be clearly defined."
       },
       {
         "requirementId": "mandatory-8",
         "heading": "Community Participation and Service-Delivery Coordination",
-        "content": "This section describes how the participant will engage with the community and how service delivery will be coordinated to support their participation."
+        "content": "Community participation goals must be outlined, with clear responsibilities for coordination and support delivery."
       },
       {
         "requirementId": "mandatory-9",
         "heading": "Review, Updates, Consent and Sign-off Provisions",
-        "content": "Review Date: [REVIEW_DATE] \nThis section includes details on how and when the care plan will be reviewed, who will be involved, and the process for obtaining consent and sign-off."
+        "content": "Review Date: [REVIEW_DATE] \nThe care plan must be reviewed regularly to ensure it meets the participant's needs. Consent for the plan must be obtained from the participant and their representative. Sign-off: [SIGN_OFF]"
       }
     ]
   },
@@ -108,87 +105,87 @@
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section clearly outlines participant identity and includes placeholders for necessary information.",
+      "reasoningSummary": "The section clearly identifies the participant and includes placeholders for essential information.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-2",
-      "claimText": "The care plan includes a section for goals and preferences.",
+      "claimText": "The care plan outlines participant goals, preferences, and communication needs.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section clearly outlines participant goals and preferences with placeholders for specific details.",
+      "reasoningSummary": "The goals and preferences are explicitly stated in the care plan.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-3",
-      "claimText": "The care plan includes a section for support domains and daily living support structure.",
+      "claimText": "The care plan details support domains and daily living support structure.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section describes the support delivery obligations and operational boundaries.",
+      "reasoningSummary": "Support domains are clearly defined, with corresponding support needs outlined.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-4",
-      "claimText": "The care plan includes a section for provider and worker responsibilities.",
+      "claimText": "Responsibilities of providers and workers are clearly defined in the care plan.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section outlines the responsibilities of the provider and workers in delivering support.",
+      "reasoningSummary": "The responsibilities of both providers and workers are articulated in the document.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-5",
-      "claimText": "The care plan includes a section for participant, representative and support-network responsibilities.",
+      "claimText": "The care plan includes responsibilities for participants, representatives, and support networks.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section clearly defines the responsibilities of the participant and their support network.",
+      "reasoningSummary": "The roles and responsibilities of participants and their representatives are outlined.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-6",
-      "claimText": "The care plan includes a section for health, medication, behaviour support and restrictive-practice boundaries.",
+      "claimText": "Health, medication, and behaviour support boundaries are addressed in the care plan.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section outlines the boundaries regarding health and behaviour support.",
+      "reasoningSummary": "The care plan specifies the boundaries for health management and behaviour support.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-7",
-      "claimText": "The care plan includes a section for risk, safety, incident and escalation arrangements.",
+      "claimText": "Risk, safety, incident, and escalation arrangements are included in the care plan.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section identifies risks and outlines escalation procedures.",
+      "reasoningSummary": "Risk management strategies and escalation pathways are detailed in the document.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-8",
-      "claimText": "The care plan includes a section for community participation and service-delivery coordination.",
+      "claimText": "Community participation and service delivery coordination are outlined in the care plan.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section describes how the participant will engage with the community.",
+      "reasoningSummary": "The care plan describes how community participation will be supported.",
       "evidence": [],
       "relatedClaimIds": []
     },
     {
       "clientClaimId": "mandatory-9",
-      "claimText": "The care plan includes a section for review, updates, consent and sign-off provisions.",
+      "claimText": "Review, updates, consent, and sign-off provisions are included in the care plan.",
       "claimType": "observation",
       "sectionRef": null,
       "confidence": 1,
-      "reasoningSummary": "The section outlines the review process and consent requirements.",
+      "reasoningSummary": "The care plan specifies the review date and consent requirements.",
       "evidence": [],
       "relatedClaimIds": []
     }

@@ -1,6 +1,6 @@
 {
   "professional_work": {
-    "summary": "The NDIS care plan template has been enhanced to include comprehensive risk, safety, incident, and escalation arrangements, ensuring all mandatory requirements are met.",
+    "summary": "This NDIS care plan template provides a comprehensive framework for participant support, ensuring all necessary areas are covered in accordance with NDIS requirements.",
     "blueprint_completion": [],
     "requirement_to_deliverable_plan": [],
     "evidence_map": [],
@@ -9,7 +9,9 @@
   "requirement_coverage": {
     "satisfied": [],
     "missing": [
-      "mandatory-7"
+      "mandatory-1",
+      "mandatory-2",
+      "mandatory-8"
     ]
   },
   "deliverable": {
@@ -17,9 +19,19 @@
     "audience": "NDIS provider staff, participant and participant representative",
     "sections": [
       {
-        "requirementId": "mandatory-7",
-        "heading": "Risk, Safety, Incident and Escalation Arrangements",
-        "content": "Risk Management:\n- Identify potential risks and mitigation strategies.\n- Emergency contact procedures and escalation pathways.\n\nFACTUAL_FIELD: Participant Name\nFACTUAL_FIELD: Emergency Contact Details\nFACTUAL_FIELD: Incident Reporting Procedures\nFACTUAL_FIELD: Risk Assessment Review Date\nFACTUAL_FIELD: Responsible Staff Member"
+        "requirementId": "mandatory-1",
+        "heading": "Participant Identity",
+        "content": "Participant Name: [PARTICIPANT_NAME] \nDate of Birth: [DATE_OF_BIRTH] \nNDIS Number: [NDIS_NUMBER] \nContact Information: [CONTACT_INFORMATION] \nPreferred Communication Method: [PREFERENCES] \nGender: [GENDER] \nAddress: [ADDRESS] \nEmergency Contact: [EMERGENCY_CONTACT] \n"
+      },
+      {
+        "requirementId": "mandatory-2",
+        "heading": "Goals and Preferences",
+        "content": "Goals: [GOALS] \nPreferences: [PREFERENCES] \nCommunication Needs: [COMMUNICATION_NEEDS] \nSupport Needs: [SUPPORT_NEEDS] \nDesired Outcomes: [DESIRED_OUTCOMES] \n"
+      },
+      {
+        "requirementId": "mandatory-8",
+        "heading": "Community Participation and Service-Delivery Coordination",
+        "content": "Community participation goals must be outlined, with clear responsibilities for coordination and support delivery. \nCommunity Participation Goals: [COMMUNITY_PARTICIPATION_GOALS] \nCoordination Responsibilities: [COORDINATION_RESPONSIBILITIES] \nService Delivery Support: [SERVICE_DELIVERY_SUPPORT] \n"
       }
     ]
   },

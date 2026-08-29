@@ -1,50 +1,49 @@
 ## Participant Identity
 
-Participant Name: [PARTICIPANT_NAME] 
-Date of Birth: [DATE_OF_BIRTH] 
-NDIS Number: [NDIS_NUMBER] 
-Contact Information: [CONTACT_INFORMATION] 
-This section serves to identify the participant and provide necessary contact information.
+Participant Name: [PARTICIPANT_NAME]
+Date of Birth: [DATE_OF_BIRTH]
+NDIS Number: [NDIS_NUMBER]
+Contact Information: [CONTACT_INFORMATION]
+Preferred Communication Method: [PREFERENCES]
 
 ## Goals and Preferences
 
-Goals: [GOALS] 
-Preferences: [PREFERENCES] 
-Communication Needs: [COMMUNICATION_NEEDS] 
-This section outlines the participant's goals, preferences, and any specific communication needs to ensure effective support.
+Goals: [GOALS]
+Preferences: [PREFERENCES]
+Communication Needs: [COMMUNICATION_NEEDS]
 
 ## Support Domains and Daily Living Support Structure
 
-Support Domains: 
-- Daily Living Skills 
-- Community Participation 
-- Health and Wellbeing 
-- Social and Recreational Activities 
-This section describes the support delivery obligations and operational boundaries for daily living support.
+Support Domains:
+- Daily Living Skills
+- Community Participation
+- Health and Wellbeing
+Daily Living Support Structure:
+- Personal Care: [SUPPORT_NEEDS]
+- Community Access: [SUPPORT_NEEDS]
+- Health Management: [SUPPORT_NEEDS]
 
 ## Provider and Worker Responsibilities
 
-The provider and workers are responsible for delivering supports in line with the participant's goals and preferences, ensuring safety and compliance with NDIS standards.
+The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner. Workers must adhere to the agreed support plans and communicate any changes or concerns promptly.
 
 ## Participant, Representative and Support-Network Responsibilities
 
-The participant and their representatives are responsible for actively participating in the planning and review processes, providing feedback, and communicating any changes in needs.
+The participant and their representative are responsible for communicating their needs and preferences. They must also engage in the planning and review processes.
 
 ## Health, Medication, Behaviour Support and Restrictive-Practice Boundaries
 
-This section outlines the boundaries regarding health and medication management, behaviour support strategies, and any restrictive practices that may be in place.
+Health and medication management must be conducted by qualified professionals. Behaviour support plans must be adhered to, and any restrictive practices must be documented and justified.
 
 ## Risk, Safety, Incident and Escalation Arrangements
 
-Risk Management: 
-- Identify potential risks and mitigation strategies. 
-- Emergency contact procedures and escalation pathways.
+Risk management strategies must be in place, including emergency contact details and incident reporting procedures. Escalation pathways must be clearly defined.
 
 ## Community Participation and Service-Delivery Coordination
 
-This section describes how the participant will engage with the community and how service delivery will be coordinated to support their participation.
+Community participation goals must be outlined, with clear responsibilities for coordination and support delivery.
 
 ## Review, Updates, Consent and Sign-off Provisions
 
-Review Date: [REVIEW_DATE] 
-This section includes details on how and when the care plan will be reviewed, who will be involved, and the process for obtaining consent and sign-off.
+Review Date: [REVIEW_DATE]
+The care plan must be reviewed regularly to ensure it meets the participant's needs. Consent for the plan must be obtained from the participant and their representative. Sign-off: [SIGN_OFF]

@@ -1735,10 +1735,12 @@ function domainSufficiency(requirementId: string, normalised: string): { passed:
 
 function stripSelfAssertionCoverage(content: string): string {
   return content
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?])\s+|\r?\n+/)
     .filter((sentence) => {
       const normalised = normaliseContent(sentence);
       if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) return false;
+      if (/^(?:this|the)\s+(?:section|plan|document|template|agreement|care plan)\b.*\b(?:outlines?|describes?|details?|serves\s+to|is\s+designed\s+to|covers?|includes?|provides?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) return false;
+      if (/^the following\b.*\b(?:outlines?|describes?|details?|covers?|includes?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) return false;
       if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && normalised.split(/\s+/).length <= 14) return false;
       if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && normalised.split(/\s+/).length <= 12) return false;
       return true;

@@ -85,12 +85,66 @@ function wordCount(text) {
   return String(text ?? "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+function normaliseContent(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9$%./ ]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitSentences(content) {
+  return String(content ?? "")
+    .split(/(?<=[.!?])\s+|\r?\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function isSelfDescriptionSentence(sentence) {
+  const normalised = normaliseContent(sentence);
+  const words = normalised.split(/\s+/).filter(Boolean);
+  if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) return true;
+  if (/^(?:this|the)\s+(?:section|plan|document|template|agreement|care plan)\b.*\b(?:outlines?|describes?|details?|serves\s+to|is\s+designed\s+to|covers?|includes?|provides?|sets\s+out|summari[sz]es)\b/.test(normalised) && words.length <= 24) return true;
+  if (/^the following\b.*\b(?:outlines?|describes?|details?|covers?|includes?|sets\s+out|summari[sz]es)\b/.test(normalised) && words.length <= 24) return true;
+  if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && words.length <= 14) return true;
+  if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && words.length <= 12) return true;
+  return false;
+}
+
+function stripSelfDescription(content) {
+  const stripped = [];
+  const counted = [];
+  for (const sentence of splitSentences(content)) {
+    if (isSelfDescriptionSentence(sentence)) {
+      stripped.push(sentence);
+    } else {
+      counted.push(sentence);
+    }
+  }
+  return {
+    stripped,
+    countedContent: counted.join(" "),
+  };
+}
+
+function classificationLeakage(content) {
+  return [...new Set([...String(content ?? "").matchAll(/\b(?:FACTUAL_FIELD|MUST_BE_REPRESENTED|CONDITIONAL)\b|\bmandatory-\d+\b|\bblueprint-[a-z0-9-]+\b/g)].map((match) => match[0]))];
+}
+
 function assemble(sections) {
   const order = new Map(requirements.map(([id], index) => [id, index]));
   return [...sections]
     .filter((section) => section?.requirementId && section?.heading && String(section?.content ?? "").trim())
     .sort((left, right) => (order.get(left.requirementId) ?? 9999) - (order.get(right.requirementId) ?? 9999))
-    .map((section) => `## ${section.heading}\n\n${String(section.content).trim()}`)
+    .map((section) => {
+      const content = String(section.content)
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .join("\n")
+        .trim();
+      return `## ${section.heading}\n\n${content}`;
+    })
     .join("\n\n");
 }
 
@@ -98,16 +152,21 @@ function validate(sections) {
   const byId = new Map(sections.map((section) => [section.requirementId, section]));
   return requirements.map(([id, text, target]) => {
     const section = byId.get(id);
-    const words = section ? wordCount(section.content) : 0;
+    const stripped = stripSelfDescription(section?.content ?? "");
+    const leakage = classificationLeakage(section?.content ?? "");
+    const words = section ? wordCount(stripped.countedContent) : 0;
     return {
       id,
       text,
       target,
       present: Boolean(section),
       heading: section?.heading ?? null,
+      strippedSelfDescription: stripped.stripped,
+      countedContent: stripped.countedContent,
       wordCount: words,
+      classificationLeakage: leakage,
       mode: "FALLBACK_HEURISTIC",
-      pass: Boolean(section) && words >= 18,
+      pass: Boolean(section) && words >= 18 && leakage.length === 0,
     };
   });
 }
@@ -209,9 +268,10 @@ if (missing.length > 0) {
 const finalDocument = assemble(finalSections);
 writeFileSync(resolve(outputDir, "repaired-produced-document.md"), `${finalDocument}\n`);
 const finalValidation = validate(finalSections);
+const finalClassificationLeakage = [...new Set(finalValidation.flatMap((item) => item.classificationLeakage))];
 
 const summary = {
-  status: repairFailure ? "repair_failed" : finalValidation.every((item) => item.pass) ? "completed_revalidated" : "completed_with_remaining_failures",
+  status: repairFailure ? "repair_failed" : finalValidation.every((item) => item.pass) ? "completed_revalidated" : "blocked_by_validation",
   stage1: {
     model: stage1Response.model,
     finishReason: stage1Response.choices?.[0]?.finish_reason ?? null,
@@ -255,6 +315,7 @@ const summary = {
     adequacyCriteriaValidatedCount: 0,
     fallbackHeuristicValidatedCount: requirements.length,
     missingOrThinRequirements: finalValidation.filter((item) => !item.pass).map((item) => item.id),
+    classificationLeakage: finalClassificationLeakage,
     readyForCompletedWorkSelfReport: Boolean((repairParsed ?? stage1Parsed).completion?.readyForCompletedWork),
     methodologyLeakageSelfReport: Boolean((repairParsed ?? stage1Parsed).completion?.methodologyLeakage),
   },

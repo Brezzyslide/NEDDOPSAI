@@ -1201,6 +1201,56 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(prompt).toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
   });
 
+  it("does not count self-describing section prose as substantive Care Plan coverage", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard comprehensive NDIS care plan template.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const report = evaluateDeliverableRequirementCoverage("", profile, {
+      deliverableSections: [
+        {
+          requirementId: "mandatory-6",
+          heading: "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
+          content: "This section outlines the boundaries regarding health and medication management, behaviour support strategies, and any restrictive practices that may be in place.",
+        },
+        {
+          requirementId: "mandatory-9",
+          heading: "Review, Updates, Consent and Sign-off Provisions",
+          content: "Review Date: [REVIEW_DATE]. Record plan updates, the reviewer, participant consent, update reason, sign-off date, responsible provider role, review provisions and evidence retained for the care plan review.",
+        },
+      ],
+    });
+    const byId = new Map(report.requirementResults.map((item) => [item.requirementId, item]));
+
+    expect(byId.get("mandatory-6")).toMatchObject({
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "SUBSTANTIVE_FAIL",
+      finalResult: "PARTIAL",
+      failureReason: "Relevant section is too thin to prove substantive professional coverage.",
+    });
+    expect(byId.get("mandatory-9")).toMatchObject({
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "SUBSTANTIVE_PASS",
+      finalResult: "SATISFIED",
+    });
+  });
+
   it("merges targeted repair deltas into the existing 9-section deliverable", () => {
     const currentSections = carePlanDeliverableSections();
     const repairSections = [

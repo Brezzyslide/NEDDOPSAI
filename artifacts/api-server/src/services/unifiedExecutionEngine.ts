@@ -3922,8 +3922,8 @@ Your job is to modify the current user-facing deliverable only enough to satisfy
 
 Rules:
 - Preserve all already-satisfied content unless a small local edit is required.
-- Add missing FACTUAL_FIELD structures as fields/placeholders when values are unknown.
-- FACTUAL_FIELD means the field itself must exist in reusable templates; unknown value does not excuse omission.
+- Add missing factual-field structures as labelled fields or bracketed placeholders when values are unknown.
+- Factual field means the field itself must exist in reusable templates; unknown value does not excuse omission.
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
 - Return only deliverable.sections[] entries for the missing requirement IDs you changed. The server merges those section deltas into the existing deliverable and assembles the final markdown.
@@ -3971,7 +3971,7 @@ function buildTargetedRequirementRepairUserPrompt(input: {
   const missing = input.missingRequirements.map((requirement) => ({
     requirement_id: requirement.requirementId,
     requirement: requirement.requirement,
-    classification: requirement.classification,
+    requirement_type: requirement.classification.toLowerCase().replace(/_/g, "-"),
     required_representation: requirement.requiredDeliverableRepresentation,
     target_location: inferSchemaTarget(schema, requirement.requirementId),
     adequacy_criteria: requirement.adequacyCriteria,
@@ -3993,9 +3993,9 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
-For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
+For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown.
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
-For MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
+For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
 Preserve existing satisfied clauses and wording as much as possible.
 The server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`

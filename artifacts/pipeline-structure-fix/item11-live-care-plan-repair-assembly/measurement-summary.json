@@ -1,32 +1,34 @@
 {
-  "status": "completed_revalidated",
+  "status": "blocked_by_validation",
   "stage1": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 17848,
+    "latencyMs": 15516,
     "usage": {
       "inputTokens": 8239,
-      "outputTokens": 1603,
-      "totalTokens": 9842,
-      "cachedInputTokens": 0
+      "outputTokens": 1567,
+      "totalTokens": 9806,
+      "cachedInputTokens": 8192
     },
     "sectionCount": 9,
-    "documentWords": 271,
+    "documentWords": 255,
     "missingOrThinRequirements": [
-      "mandatory-7"
+      "mandatory-1",
+      "mandatory-2",
+      "mandatory-8"
     ]
   },
   "repair": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 3065,
+    "latencyMs": 4706,
     "usage": {
-      "inputTokens": 1029,
-      "outputTokens": 225,
-      "totalTokens": 1254,
+      "inputTokens": 1326,
+      "outputTokens": 392,
+      "totalTokens": 1718,
       "cachedInputTokens": 0
     },
-    "returnedDeltaSectionCount": 1,
+    "returnedDeltaSectionCount": 3,
     "mergedSectionCount": 9,
     "failureMessage": null
   },
@@ -34,17 +36,20 @@
     "sectionCount": 9,
     "requiredRequirementCount": 9,
     "allRequirementIdsPresent": true,
-    "assembledMarkdownChars": 2334,
-    "assembledMarkdownWords": 291
+    "assembledMarkdownChars": 2337,
+    "assembledMarkdownWords": 279
   },
   "gateResults": {
     "structuredOutput": true,
     "deliverableSectionsPopulatedPerRequirement": true,
-    "fallbackHeuristicPassCount": 9,
-    "fallbackHeuristicFailCount": 0,
+    "fallbackHeuristicPassCount": 8,
+    "fallbackHeuristicFailCount": 1,
     "adequacyCriteriaValidatedCount": 0,
     "fallbackHeuristicValidatedCount": 9,
-    "missingOrThinRequirements": [],
+    "missingOrThinRequirements": [
+      "mandatory-2"
+    ],
+    "classificationLeakage": [],
     "readyForCompletedWorkSelfReport": true,
     "methodologyLeakageSelfReport": false
   },
@@ -55,7 +60,10 @@
       "target": "User-facing representation of Participant identity and factual placeholder framework",
       "present": true,
       "heading": "Participant Identity",
-      "wordCount": 25,
+      "strippedSelfDescription": [],
+      "countedContent": "Participant Name: [PARTICIPANT_NAME] Date of Birth: [DATE_OF_BIRTH] NDIS Number: [NDIS_NUMBER] Contact Information: [CONTACT_INFORMATION] Preferred Communication Method: [PREFERENCES] Gender: [GENDER] Address: [ADDRESS] Emergency Contact: [EMERGENCY_CONTACT]",
+      "wordCount": 24,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -65,9 +73,12 @@
       "target": "User-facing representation of Participant goals, preferences and communication needs",
       "present": true,
       "heading": "Goals and Preferences",
-      "wordCount": 23,
+      "strippedSelfDescription": [],
+      "countedContent": "Goals: [GOALS] Preferences: [PREFERENCES] Communication Needs: [COMMUNICATION_NEEDS] Support Needs: [SUPPORT_NEEDS] Desired Outcomes: [DESIRED_OUTCOMES]",
+      "wordCount": 13,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
-      "pass": true
+      "pass": false
     },
     {
       "id": "mandatory-3",
@@ -75,7 +86,10 @@
       "target": "User-facing representation of Support domains and daily living support structure",
       "present": true,
       "heading": "Support Domains and Daily Living Support Structure",
-      "wordCount": 32,
+      "strippedSelfDescription": [],
+      "countedContent": "Support Domains: - Daily Living Skills - Community Participation - Health and Wellbeing Daily Living Support Structure: - Personal Care: [SUPPORT_NEEDS] - Community Access: [SUPPORT_NEEDS] - Health Management: [SUPPORT_NEEDS]",
+      "wordCount": 29,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -85,7 +99,10 @@
       "target": "Responsibilities clauses",
       "present": true,
       "heading": "Provider and Worker Responsibilities",
-      "wordCount": 24,
+      "strippedSelfDescription": [],
+      "countedContent": "The provider is responsible for ensuring that all supports are delivered in a safe and respectful manner. Workers must adhere to the agreed support plans and communicate any changes or concerns promptly.",
+      "wordCount": 32,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -95,7 +112,10 @@
       "target": "Responsibilities clauses",
       "present": true,
       "heading": "Participant, Representative and Support-Network Responsibilities",
-      "wordCount": 24,
+      "strippedSelfDescription": [],
+      "countedContent": "The participant and their representative are responsible for communicating their needs and preferences. They must also engage in the planning and review processes.",
+      "wordCount": 23,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -105,7 +125,10 @@
       "target": "User-facing representation of Health, medication, behaviour support and restrictive-practice boundaries",
       "present": true,
       "heading": "Health, Medication, Behaviour Support and Restrictive-Practice Boundaries",
-      "wordCount": 22,
+      "strippedSelfDescription": [],
+      "countedContent": "Health and medication management must be conducted by qualified professionals. Behaviour support plans must be adhered to, and any restrictive practices must be documented and justified.",
+      "wordCount": 26,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -115,7 +138,10 @@
       "target": "User-facing representation of Risk, safety, incident and escalation arrangements",
       "present": true,
       "heading": "Risk, Safety, Incident and Escalation Arrangements",
-      "wordCount": 36,
+      "strippedSelfDescription": [],
+      "countedContent": "Risk management strategies must be in place, including emergency contact details and incident reporting procedures. Escalation pathways must be clearly defined.",
+      "wordCount": 21,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -125,7 +151,10 @@
       "target": "User-facing representation of Community participation and service-delivery coordination",
       "present": true,
       "heading": "Community Participation and Service-Delivery Coordination",
-      "wordCount": 22,
+      "strippedSelfDescription": [],
+      "countedContent": "Community participation goals must be outlined, with clear responsibilities for coordination and support delivery. Community Participation Goals: [COMMUNITY_PARTICIPATION_GOALS] Coordination Responsibilities: [COORDINATION_RESPONSIBILITIES] Service Delivery Support: [SERVICE_DELIVERY_SUPPORT]",
+      "wordCount": 25,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     },
@@ -135,19 +164,22 @@
       "target": "Supervision, check-in and sign-off checklist section",
       "present": true,
       "heading": "Review, Updates, Consent and Sign-off Provisions",
-      "wordCount": 29,
+      "strippedSelfDescription": [],
+      "countedContent": "Review Date: [REVIEW_DATE] The care plan must be reviewed regularly to ensure it meets the participant's needs. Consent for the plan must be obtained from the participant and their representative. Sign-off: [SIGN_OFF]",
+      "wordCount": 32,
+      "classificationLeakage": [],
       "mode": "FALLBACK_HEURISTIC",
       "pass": true
     }
   ],
   "cost": {
-    "stage1Actual": 0.0021976499999999998,
-    "repairActual": 0.00028935,
-    "totalActual": 0.0024869999999999996,
-    "totalAtStage1CacheHitApprox": 0.001892775,
-    "stage1CacheableTokensApprox": 7923,
-    "stage1CacheablePercent": 96.2,
-    "stage1AtCacheHitApprox": 0.001603425,
-    "projectedCacheHitSavings": 0.0005942249999999997
+    "stage1Actual": 0.00156165,
+    "repairActual": 0.00043410000000000003,
+    "totalActual": 0.00199575,
+    "totalAtStage1CacheHitApprox": 0.00199575,
+    "stage1CacheableTokensApprox": 8192,
+    "stage1CacheablePercent": 99.4,
+    "stage1AtCacheHitApprox": 0.00156165,
+    "projectedCacheHitSavings": 0
   }
 }

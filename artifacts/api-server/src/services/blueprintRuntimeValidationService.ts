@@ -151,6 +151,7 @@ export function validateBlueprintRuntimeCompletion(
     ...detectInstructionalProfessionalText(input.contentMarkdown, standardTemplateEvidence),
     ...detectIncompleteProfessionalSections(input.contentMarkdown, standardTemplateEvidence),
     ...detectPlaceholderDominatedProfessionalSections(input.contentMarkdown, standardTemplateEvidence),
+    ...detectInternalClassificationLeakage(input.contentMarkdown, standardTemplateEvidence),
   ].sort();
   if (leakedMethodologyHeadings.length > 0) {
     failures.push({
@@ -309,6 +310,8 @@ const INSTRUCTIONAL_PLACEHOLDER_PATTERN =
   /^(?:INSERT|ADD|DESCRIBE|TBD|TODO|COMPLETE|SPECIFY|DETAIL)\b/;
 const INTERNAL_METHOD_HEADING_PATTERN =
   /\b(?:extraction|validation|governance\s+decision\s+trail|decision\s+trail|evidence\s+doctrine|completeness\s+gate|authority\s+package|preservation\s+inventory|readiness\s+findings|change\s+history|professional\s+boundaries|handoffs|reconciliation)\b/i;
+const INTERNAL_CLASSIFICATION_TOKEN_PATTERN =
+  /\b(?:FACTUAL_FIELD|MUST_BE_REPRESENTED|CONDITIONAL)\b|\bmandatory-\d+\b|\bblueprint-[a-z0-9-]+\b/g;
 const PROFESSIONAL_PLACEHOLDER_TERMS = [
   "CLAUSE",
   "CLAUSES",
@@ -643,6 +646,19 @@ export function detectPlaceholderDominatedProfessionalSections(
     }
   }
 
+  return [...findings].sort();
+}
+
+export function detectInternalClassificationLeakage(
+  contentMarkdown: string,
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+): string[] {
+  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
+
+  const findings = new Set<string>();
+  for (const match of contentMarkdown.matchAll(INTERNAL_CLASSIFICATION_TOKEN_PATTERN)) {
+    findings.add(`internal_classification:${match[0]}`);
+  }
   return [...findings].sort();
 }
 
