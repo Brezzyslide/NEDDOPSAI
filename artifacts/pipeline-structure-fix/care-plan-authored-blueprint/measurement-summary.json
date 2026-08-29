@@ -1,18 +1,19 @@
 {
   "status": "blocked_by_validation",
   "requirementCount": 14,
-  "adequacyCriteriaValidatedCount": 14,
+  "templateCriteriaValidatedCount": 14,
+  "adequacyCriteriaValidatedCount": 0,
   "fallbackHeuristicValidatedCount": 0,
   "stage1": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 21100,
+    "latencyMs": 18745,
     "usage": {
-      "prompt_tokens": 12707,
-      "completion_tokens": 2412,
-      "total_tokens": 15119,
+      "prompt_tokens": 14380,
+      "completion_tokens": 2299,
+      "total_tokens": 16679,
       "prompt_tokens_details": {
-        "cached_tokens": 12672,
+        "cached_tokens": 14208,
         "audio_tokens": 0
       },
       "completion_tokens_details": {
@@ -22,7 +23,7 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "cost": 0.0024028499999999998,
+    "cost": 0.0024707999999999996,
     "missingRequirements": [
       "care-plan-support-plan-meeting",
       "care-plan-goals",
@@ -35,20 +36,19 @@
       "care-plan-behavioural-management",
       "care-plan-restrictive-practices",
       "care-plan-mealtime-management-strategy",
-      "care-plan-disaster-management-strategy",
-      "care-plan-client-endorsement"
+      "care-plan-disaster-management-strategy"
     ]
   },
   "repair": {
     "model": "gpt-4o-mini-2024-07-18",
     "finishReason": "stop",
-    "latencyMs": 15395,
+    "latencyMs": 28053,
     "usage": {
-      "prompt_tokens": 5451,
-      "completion_tokens": 2198,
-      "total_tokens": 7649,
+      "prompt_tokens": 5231,
+      "completion_tokens": 2727,
+      "total_tokens": 7958,
       "prompt_tokens_details": {
-        "cached_tokens": 2176,
+        "cached_tokens": 0,
         "audio_tokens": 0
       },
       "completion_tokens_details": {
@@ -58,13 +58,13 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "cost": 0.00197325,
-    "returnedDeltaSectionCount": 13
+    "cost": 0.00242085,
+    "returnedDeltaSectionCount": 12
   },
-  "totalCost": 0.0043761,
+  "totalCost": 0.004891649999999999,
   "output": {
     "sectionCount": 14,
-    "wordCount": 889
+    "wordCount": 851
   },
   "gateResults": {
     "runtimePassed": false,
@@ -74,87 +74,8 @@
         "state": "validation",
         "message": "Draft contains unresolved professional-content placeholders. User/organisation data placeholders may remain for reusable templates, but professional clauses, obligations, rights, terms, conclusions and incomplete markers must be drafted before Completed Work is created.",
         "details": [
-          "[ACTIONS_1]",
-          "[ACTIONS_2]",
-          "[ACTIONS_3]",
-          "[AID_OR_EQUIPMENT_USED]",
-          "[ASSEMBLY_POINT]",
-          "[BEHAVIOUR_1]",
-          "[BEHAVIOUR_2]",
-          "[BEHAVIOUR_3]",
-          "[COMMUNICATION_AID_OR_SYSTEM_USED]",
-          "[COMMUNICATION_APPROACH]",
-          "[COMMUNICATION_STRATEGY]",
-          "[CURRENT_SITUATION_1]",
-          "[CURRENT_SITUATION_2]",
-          "[CURRENT_SITUATION_3]",
-          "[EQUIPMENT]",
-          "[EQUIPMENT_NEEDED]",
-          "[EVACUATION_ASSISTANCE_REQUIRED]",
-          "[EXPRESSIVE_CAPACITY]",
-          "[FLUID_CONSISTENCY]",
-          "[FOOD_TEXTURE]",
-          "[GOAL_1]",
-          "[GOAL_2]",
-          "[GOAL_3]",
-          "[MEDICATIONS_OR_EQUIPMENT_TO_TAKE]",
-          "[MOBILITY_AID_REQUIRED]",
-          "[MOBILITY_OVERVIEW]",
-          "[MOBILITY_STRATEGY]",
-          "[NEXT_REVIEW_DATE]",
-          "[NUMBER_OF_WORKERS_REQUIRED]",
-          "[ON_CALL_CONTACT]",
-          "[OUTCOMES_1]",
-          "[OUTCOMES_2]",
-          "[OUTCOMES_3]",
-          "[PARTICIPANT_OR_REPRESENTATIVE_NAME]",
-          "[PERSON_RESPONSIBLE_1]",
-          "[PERSON_RESPONSIBLE_2]",
-          "[PERSON_RESPONSIBLE_3]",
-          "[PLAN_PROVIDED_TO]",
-          "[POSSIBLE_TRIGGER_1]",
-          "[POSSIBLE_TRIGGER_2]",
-          "[POSSIBLE_TRIGGER_3]",
-          "[PRACTICE_TYPE]",
-          "[PRIOR_SERVICE_INVOLVEMENT]",
-          "[RECEPTIVE_CAPACITY]",
-          "[RECORDING_REQUIREMENT]",
-          "[REDIRECTION_STRATEGY_1]",
-          "[REDIRECTION_STRATEGY_2]",
-          "[REDIRECTION_STRATEGY_3]",
-          "[RISK_RELEVANT_CONTEXT]",
-          "[SERVICE_MANAGER_CONTACT]",
-          "[SOURCE_DOCUMENTS_AND_DATES]",
-          "[SOURCE_RISK_ASSESSMENT_AND_DATE]",
-          "[SUPERVISION_LEVEL]",
-          "[TIMEFRAME_1]",
-          "[TIMEFRAME_2]",
-          "[TIMEFRAME_3]",
-          "[TRANSFER_METHOD]",
-          "[VERBAL_NON_VERBAL]",
-          "[WHAT_IT_IS]",
-          "[WHAT_THE_WORKER_DOES]",
-          "[WHAT_THE_WORKER_MUST_NOT_DO]",
-          "[WHO_TO_NOTIFY]",
-          "[WORKER_ACTIONS]"
-        ]
-      },
-      {
-        "gate": "methodology_leak",
-        "state": "validation",
-        "message": "Draft exposes internal Blueprint methodology headings in a customer-facing standard template. Blueprint sections must remain internal working method unless the final deliverable contract explicitly maps them into user-facing content.",
-        "details": [
-          "About Me",
-          "Behavioural Management",
-          "Client Endorsement",
-          "Disaster Management Strategy",
-          "Document Control",
-          "History and Background",
-          "Mealtime Management Strategy",
-          "Mobility and Mobility Strategy",
-          "Restrictive Practices",
-          "Support Plan Meeting",
-          "Undertaking ADL"
+          "[HANDS_ON_SUPPORT]",
+          "[PROMPTING_NEEDS]"
         ]
       },
       {
@@ -162,7 +83,7 @@
         "state": "validation",
         "message": "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
         "details": [
-          "coverage=1/14 (7.1%)",
+          "coverage=2/14 (14.3%)",
           "care-plan-support-plan-meeting: Support Plan Meeting (header) (MUST_BE_REPRESENTED)",
           "care-plan-goals: Goals (MUST_BE_REPRESENTED)",
           "care-plan-about-me: About Me (MUST_BE_REPRESENTED)",
@@ -174,8 +95,15 @@
           "care-plan-behavioural-management: Behavioural Management (CONDITIONAL)",
           "care-plan-restrictive-practices: Restrictive Practices (CONDITIONAL)",
           "care-plan-mealtime-management-strategy: Mealtime Management Strategy (MUST_BE_REPRESENTED)",
-          "care-plan-disaster-management-strategy: Disaster Management Strategy (CONDITIONAL)",
-          "care-plan-client-endorsement: Client Endorsement (MUST_BE_REPRESENTED)"
+          "care-plan-disaster-management-strategy: Disaster Management Strategy (CONDITIONAL)"
+        ]
+      },
+      {
+        "gate": "mechanical_gate",
+        "state": "validation",
+        "message": "Care Plan mechanical gate failed.",
+        "details": [
+          "care_plan_minimum_three_personal_goals: Minimum three personal goals must be present."
         ]
       },
       {
@@ -215,23 +143,28 @@
           "Date for Review is a real date, later than the plan date",
           "Diagnosis is transcribed from a clinical source, never inferred"
         ],
-        "actualLocation": "deliverable.sections[care-plan-support-plan-meeting] \"Support Plan Meeting\"",
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
+        "actualLocation": "deliverable.sections[care-plan-support-plan-meeting] \"Support Plan Meeting (Header)\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 111,
+          "countedWordCount": 112,
           "fixedContentWordCount": 68,
           "proseWordCount": 0,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 10,
           "placeholderCount": 10,
-          "fieldAndPlaceholderWordCount": 43,
+          "fieldAndPlaceholderWordCount": 44,
           "strippedSelfDescription": [],
-          "countedContent": "Participant name: [PARTICIPANT_NAME] Date of birth: [DATE_OF_BIRTH] Gender: [GENDER] Language spoken: [LANGUAGE_SPOKEN] NDIS number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People present: [PEOPLE_PRESENT] Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY] Plan date: [PLAN_DATE] Date for review: [REVIEW_DATE] This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
+          "countedContent": "Participant name: [PARTICIPANT_NAME] Date of birth: [DATE_OF_BIRTH] Gender: [GENDER] Language spoken: [LANGUAGE_SPOKEN] NDIS number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People present: [PEOPLE_PRESENT] Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY] Plan date: [PLAN_DATE] Date for review: [DATE_FOR_REVIEW] This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Every field present and labelled; People present names people who attended the planning meeting. A document title in that field is a defect; Diagnosis is transcribed from a clinical source, never inferred."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-goals",
@@ -250,23 +183,30 @@
           "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
           "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance.",
+          "Required table structure is present: Table with columns Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes.",
+          "The goals table includes at least three personal goal rows."
+        ],
         "actualLocation": "deliverable.sections[care-plan-goals] \"Goals\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 109,
+          "countedWordCount": 75,
           "fixedContentWordCount": 46,
           "proseWordCount": 21,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 0,
-          "placeholderCount": 18,
+          "placeholderCount": 6,
           "fieldAndPlaceholderWordCount": 0,
           "strippedSelfDescription": [],
-          "countedContent": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes | |------------------|------|---------|-------------------|-----------|----------| | [CURRENT_SITUATION_1] | [GOAL_1] | [ACTIONS_1] | [PERSON_RESPONSIBLE_1] | [TIMEFRAME_1] | [OUTCOMES_1] | | [CURRENT_SITUATION_2] | [GOAL_2] | [ACTIONS_2] | [PERSON_RESPONSIBLE_2] | [TIMEFRAME_2] | [OUTCOMES_2] | | [CURRENT_SITUATION_3] | [GOAL_3] | [ACTIONS_3] | [PERSON_RESPONSIBLE_3] | [TIMEFRAME_3] | [OUTCOMES_3] | Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
+          "countedContent": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes | |-------------------|------|---------|-------------------|-----------|----------| | [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] | Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Minimum three personal goals present; NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports; Goal states what the participant will do or achieve; Person responsible names a role or person. \"The team\" is a defect; Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails; Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (1/2); missing declared template fields/structure: Minimum three personal goal rows, plus one row per NDIS plan goal; missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-about-me",
@@ -282,23 +222,28 @@
           "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
           "Written about the person, not about their deficits"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-about-me] \"About Me\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 54,
+          "countedWordCount": 61,
           "fixedContentWordCount": 28,
           "proseWordCount": 0,
           "completionPromptWordCount": 0,
-          "fieldLabelCount": 6,
-          "placeholderCount": 6,
-          "fieldAndPlaceholderWordCount": 26,
+          "fieldLabelCount": 7,
+          "placeholderCount": 7,
+          "fieldAndPlaceholderWordCount": 33,
           "strippedSelfDescription": [],
-          "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What matters to me: [WHAT_MATTERS] How I prefer to communicate: [COMMUNICATION_PREFERENCES] People who matter to me: [INFORMAL_SUPPORTS] This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
+          "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What matters to me: [WHAT_MATTERS] How I prefer to communicate: [COMMUNICATION_PREFERENCES] People who matter to me: [PEOPLE_WHO_MATTER_TO_ME] Informal supports: [INFORMAL_SUPPORTS] This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Strengths stated; Likes and dislikes stated; Informal supports identified; Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-history-background",
@@ -313,10 +258,15 @@
           "No clinical interpretation added beyond what the source states",
           "[OPEN] Should this section state an access restriction, given its content?"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-history-background] \"History and Background\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
           "countedWordCount": 57,
           "fixedContentWordCount": 33,
@@ -326,10 +276,10 @@
           "placeholderCount": 4,
           "fieldAndPlaceholderWordCount": 24,
           "strippedSelfDescription": [],
-          "countedContent": "Relevant history: [HISTORY_BACKGROUND] Prior service involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-relevant context: [RISK_RELEVANT_CONTEXT] Source documents and dates: [SOURCE_DOCUMENTS_AND_DATES] This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
+          "countedContent": "Relevant history: [RELEVANT_HISTORY] Prior service involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-relevant context: [RISK_RELEVANT_CONTEXT] Source documents and dates: [SOURCE_DOCUMENTS_AND_DATES] This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Carries only what a support worker operationally needs. Not the full file; No clinical interpretation added beyond what the source states; [OPEN] Should this section state an access restriction, given its content?."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-undertaking-adl",
@@ -344,23 +294,27 @@
           "States what needs hands-on support",
           "A capacity statement with no support description is inadequate"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-undertaking-adl] \"Undertaking ADL\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 70,
+          "countedWordCount": 72,
           "fixedContentWordCount": 57,
           "proseWordCount": 0,
-          "completionPromptWordCount": 13,
-          "fieldLabelCount": 1,
-          "placeholderCount": 0,
-          "fieldAndPlaceholderWordCount": 19,
+          "completionPromptWordCount": 0,
+          "fieldLabelCount": 4,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 34,
           "strippedSelfDescription": [],
-          "countedContent": "For each activity, record which tier applies and describe what the worker does. Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support."
+          "countedContent": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. - Independent actions: [INDEPENDENT_ACTIONS] - Needs prompting: [PROMPTING_NEEDS] - Needs hands-on support: [HANDS_ON_SUPPORT]"
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: A capacity statement with no support description is inadequate."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-communication-strategy",
@@ -375,10 +329,15 @@
           "Strategy states what a worker should actually do",
           "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-communication-strategy] \"Communication and Communication Strategy\"",
         "structuralResult": "STRUCTURE_PASS",
-        "substantiveResult": "SUBSTANTIVE_FAIL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
           "countedWordCount": 76,
           "fixedContentWordCount": 48,
@@ -391,7 +350,7 @@
           "countedContent": "Verbal / non-verbal: [VERBAL_NON_VERBAL] Expressive capacity: [EXPRESSIVE_CAPACITY] Receptive capacity: [RECEPTIVE_CAPACITY] Communication aid or system used: [COMMUNICATION_AID_OR_SYSTEM_USED] Communication strategy: [COMMUNICATION_STRATEGY] Every worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicators completed; Strategy narrative present. A ticked capacity box with an empty overview is a defect; Strategy states what a worker should actually do; Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-mobility-strategy",
@@ -405,10 +364,15 @@
           "Strategy narrative present, not checkbox alone",
           "Where an aid is used, it is named and its use described"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-mobility-strategy] \"Mobility and Mobility Strategy\"",
         "structuralResult": "STRUCTURE_PASS",
-        "substantiveResult": "SUBSTANTIVE_FAIL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
           "countedWordCount": 54,
           "fixedContentWordCount": 20,
@@ -421,7 +385,7 @@
           "countedContent": "Mobility aid required: [MOBILITY_AID_REQUIRED] Aid or equipment used: [AID_OR_EQUIPMENT_USED] Transfer method: [TRANSFER_METHOD] Number of workers required: [NUMBER_OF_WORKERS_REQUIRED] Mobility overview: [MOBILITY_OVERVIEW] Mobility strategy: [MOBILITY_STRATEGY] Where a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Strategy narrative present, not checkbox alone; Where an aid is used, it is named and its use described."
+        "reason": "Template section does not satisfy derived template criteria: missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-support-delivery-client-safety",
@@ -435,23 +399,29 @@
           "Descriptions state what the worker does, not what the support is called",
           "Selected supports reconcile against funded supports in the service agreement"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance.",
+          "The support type list is present."
+        ],
         "actualLocation": "deliverable.sections[care-plan-support-delivery-client-safety] \"Support Delivery and Client Safety\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 75,
+          "countedWordCount": 77,
           "fixedContentWordCount": 30,
           "proseWordCount": 25,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 3,
           "placeholderCount": 4,
-          "fieldAndPlaceholderWordCount": 18,
+          "fieldAndPlaceholderWordCount": 20,
           "strippedSelfDescription": [],
-          "countedContent": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPE] Description per selected type: [SUPPORT_DESCRIPTION] On-call contact: [ON_CALL_CONTACT] Service manager contact: [SERVICE_MANAGER_CONTACT] Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
+          "countedContent": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPES] Description per selected type: [DESCRIPTION_PER_SELECTED_TYPE] On-call contact: [ON_CALL_CONTACT] Service manager contact: [SERVICE_MANAGER_CONTACT] Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Every selected support type has a corresponding description. Selected-with-no- description is a hard fail; Descriptions state what the worker does, not what the support is called."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (4/5); missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-behavioural-management",
@@ -465,23 +435,29 @@
           "Redirection strategies are drawn from the BSP, not invented",
           "Strategies are written for a support worker to execute"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance.",
+          "Required table structure is present: Table with columns Behaviour | Possible trigger | Redirection strategy."
+        ],
         "actualLocation": "deliverable.sections[care-plan-behavioural-management] \"Behavioural Management\"",
         "structuralResult": "STRUCTURE_PASS",
-        "substantiveResult": "SUBSTANTIVE_FAIL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 55,
+          "countedWordCount": 36,
           "fixedContentWordCount": 26,
           "proseWordCount": 5,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 0,
-          "placeholderCount": 9,
+          "placeholderCount": 3,
           "fieldAndPlaceholderWordCount": 0,
           "strippedSelfDescription": [],
-          "countedContent": "| Behaviour | Possible trigger | Redirection strategy | |-----------|-----------------|---------------------| | [BEHAVIOUR_1] | [POSSIBLE_TRIGGER_1] | [REDIRECTION_STRATEGY_1] | | [BEHAVIOUR_2] | [POSSIBLE_TRIGGER_2] | [REDIRECTION_STRATEGY_2] | | [BEHAVIOUR_3] | [POSSIBLE_TRIGGER_3] | [REDIRECTION_STRATEGY_3] | The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
+          "countedContent": "| Behaviour | Possible trigger | Redirection strategy | |-----------|------------------|---------------------| | [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] | The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Each row has all three columns; Redirection strategies are drawn from the BSP, not invented; Strategies are written for a support worker to execute."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (3/4); missing authored completionPrompt."
       },
       {
         "requirementId": "care-plan-restrictive-practices",
@@ -495,23 +471,27 @@
           "What the worker does, and does not do",
           "Authorisation status stated as recorded in the BSP, never determined here"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled."
+        ],
         "actualLocation": "deliverable.sections[care-plan-restrictive-practices] \"Restrictive Practices\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 68,
+          "countedWordCount": 73,
           "fixedContentWordCount": 25,
           "proseWordCount": 0,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 6,
           "placeholderCount": 6,
-          "fieldAndPlaceholderWordCount": 43,
+          "fieldAndPlaceholderWordCount": 48,
           "strippedSelfDescription": [],
-          "countedContent": "Practice type: [PRACTICE_TYPE] What it is in plain language: [WHAT_IT_IS] What the worker does: [WHAT_THE_WORKER_DOES] What the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO] Authorisation status and reference: [AUTHORISATION_STATUS] Recording requirement: [RECORDING_REQUIREMENT] A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
+          "countedContent": "Practice type: [PRACTICE_TYPE] What it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE] What the worker does: [WHAT_THE_WORKER_DOES] What the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO] Authorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE] Recording requirement: [RECORDING_REQUIREMENT] A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Each practice named in plain language a support worker understands; Authorisation status stated as recorded in the BSP, never determined here."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (5/5)."
       },
       {
         "requirementId": "care-plan-mealtime-management-strategy",
@@ -525,10 +505,14 @@
           "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
           "Written as worker actions"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled."
+        ],
         "actualLocation": "deliverable.sections[care-plan-mealtime-management-strategy] \"Mealtime Management Strategy\"",
         "structuralResult": "STRUCTURE_PASS",
         "substantiveResult": "SUBSTANTIVE_PARTIAL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
           "countedWordCount": 65,
           "fixedContentWordCount": 35,
@@ -541,7 +525,7 @@
           "countedContent": "Source risk assessment and date: [SOURCE_RISK_ASSESSMENT_AND_DATE] Food texture: [FOOD_TEXTURE] Fluid consistency: [FLUID_CONSISTENCY] Positioning: [POSITIONING] Supervision level: [SUPERVISION_LEVEL] Equipment: [EQUIPMENT] Worker actions: [WORKER_ACTIONS] Mealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting); Written as worker actions."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (2/3)."
       },
       {
         "requirementId": "care-plan-disaster-management-strategy",
@@ -557,53 +541,28 @@
           "Written as worker actions",
           "[OPEN] Other settings: confirm"
         ],
+        "templateCriteria": [
+          "All authored fixedContent paragraphs are emitted verbatim.",
+          "All declared template fields are present and labelled.",
+          "The authored completionPrompt is emitted verbatim as template guidance."
+        ],
         "actualLocation": "deliverable.sections[care-plan-disaster-management-strategy] \"Disaster Management Strategy\"",
         "structuralResult": "STRUCTURE_PASS",
-        "substantiveResult": "SUBSTANTIVE_FAIL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "TEMPLATE_CRITERIA",
         "substantiveBreakdown": {
-          "countedWordCount": 64,
-          "fixedContentWordCount": 24,
+          "countedWordCount": 65,
+          "fixedContentWordCount": 23,
           "proseWordCount": 7,
           "completionPromptWordCount": 0,
           "fieldLabelCount": 5,
           "placeholderCount": 6,
-          "fieldAndPlaceholderWordCount": 30,
+          "fieldAndPlaceholderWordCount": 32,
           "strippedSelfDescription": [],
-          "countedContent": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED] Assembly point: [ASSEMBLY_POINT] Equipment needed: [EQUIPMENT_NEEDED] Communication approach during evacuation: [COMMUNICATION_APPROACH] Medications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE] Who to notify: [WHO_TO_NOTIFY] This section records what workers do with this participant in an emergency or evacuation. It supplements, and does not replace, the site emergency plan."
+          "countedContent": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED] Assembly point: [ASSEMBLY_POINT] Equipment needed: [EQUIPMENT_NEEDED] Communication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION] Medications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE] Who to notify: [WHO_TO_NOTIFY] In any emergency, worker priority is the safety of the participant and themselves. Call 000 first, then notify the on-call service manager."
         },
         "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: States participant-specific arrangements, not a reproduction of the site plan; Names the source risk assessment; For community access, addresses both general and location-specific risk; Written as worker actions; [OPEN] Other settings: confirm."
-      },
-      {
-        "requirementId": "care-plan-client-endorsement",
-        "requirement": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
-        "classification": "MUST_BE_REPRESENTED",
-        "sourceBlueprintSection": "CLIENT_ENDORSEMENT",
-        "requiredDeliverableRepresentation": "Client Endorsement",
-        "expectedRepresentation": "Client Endorsement",
-        "adequacyCriteria": [
-          "Block present and complete-able",
-          "Where the plan is provided to family or carer, consent is recorded",
-          "The system never fabricates a signature or a consent state"
-        ],
-        "actualLocation": "deliverable.sections[care-plan-client-endorsement] \"Client Endorsement\"",
-        "structuralResult": "STRUCTURE_PASS",
-        "substantiveResult": "SUBSTANTIVE_FAIL",
-        "substantiveValidationMode": "ADEQUACY_CRITERIA",
-        "substantiveBreakdown": {
-          "countedWordCount": 41,
-          "fixedContentWordCount": 0,
-          "proseWordCount": 0,
-          "completionPromptWordCount": 17,
-          "fieldLabelCount": 6,
-          "placeholderCount": 6,
-          "fieldAndPlaceholderWordCount": 24,
-          "strippedSelfDescription": [],
-          "countedContent": "Participant or representative name: [PARTICIPANT_OR_REPRESENTATIVE_NAME] Relationship: [RELATIONSHIP] Signature: [SIGNATURE] Date: [DATE] Plan provided to: [PLAN_PROVIDED_TO] Consent obtained: [CONSENT_OBTAINED] Where the participant cannot sign, record who signed on their behalf and their authority to do so."
-        },
-        "finalResult": "PARTIAL",
-        "reason": "Relevant section does not satisfy authored adequacy criteria: Block present and complete-able; Where the plan is provided to family or carer, consent is recorded; The system never fabricates a signature or a consent state."
+        "reason": "Template section does not satisfy derived template criteria: missing authored fixedContent (1/2); missing declared template fields/structure: Community access: General risk arrangements, Location-specific risk arrangements, Transport contingency, What the worker carries, How the participant is returned to a safe location; missing authored completionPrompt."
       }
     ]
   },
@@ -613,7 +572,12 @@
       "requirement": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Every field present and labelled",
         "People present names people who attended the planning meeting. A document title in that field is a defect",
@@ -621,17 +585,17 @@
         "Date for Review is a real date, later than the plan date",
         "Diagnosis is transcribed from a clinical source, never inferred"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Every field present and labelled; People present names people who attended the planning meeting. A document title in that field is a defect; Diagnosis is transcribed from a clinical source, never inferred.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 111,
+        "countedWordCount": 112,
         "fixedContentWordCount": 68,
         "proseWordCount": 0,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 10,
         "placeholderCount": 10,
-        "fieldAndPlaceholderWordCount": 43,
+        "fieldAndPlaceholderWordCount": 44,
         "strippedSelfDescription": [],
-        "countedContent": "Participant name: [PARTICIPANT_NAME] Date of birth: [DATE_OF_BIRTH] Gender: [GENDER] Language spoken: [LANGUAGE_SPOKEN] NDIS number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People present: [PEOPLE_PRESENT] Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY] Plan date: [PLAN_DATE] Date for review: [REVIEW_DATE] This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
+        "countedContent": "Participant name: [PARTICIPANT_NAME] Date of birth: [DATE_OF_BIRTH] Gender: [GENDER] Language spoken: [LANGUAGE_SPOKEN] NDIS number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People present: [PEOPLE_PRESENT] Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY] Plan date: [PLAN_DATE] Date for review: [DATE_FOR_REVIEW] This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
       }
     },
     {
@@ -639,7 +603,14 @@
       "requirement": "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "Required table structure is present: Table with columns Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes.",
+        "The goals table includes at least three personal goal rows."
+      ],
       "adequacyCriteria": [
         "Minimum three personal goals present",
         "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
@@ -650,17 +621,17 @@
         "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
         "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Minimum three personal goals present; NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports; Goal states what the participant will do or achieve; Person responsible names a role or person. \"The team\" is a defect; Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails; Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (1/2); missing declared template fields/structure: Minimum three personal goal rows, plus one row per NDIS plan goal; missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 109,
+        "countedWordCount": 75,
         "fixedContentWordCount": 46,
         "proseWordCount": 21,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 0,
-        "placeholderCount": 18,
+        "placeholderCount": 6,
         "fieldAndPlaceholderWordCount": 0,
         "strippedSelfDescription": [],
-        "countedContent": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes | |------------------|------|---------|-------------------|-----------|----------| | [CURRENT_SITUATION_1] | [GOAL_1] | [ACTIONS_1] | [PERSON_RESPONSIBLE_1] | [TIMEFRAME_1] | [OUTCOMES_1] | | [CURRENT_SITUATION_2] | [GOAL_2] | [ACTIONS_2] | [PERSON_RESPONSIBLE_2] | [TIMEFRAME_2] | [OUTCOMES_2] | | [CURRENT_SITUATION_3] | [GOAL_3] | [ACTIONS_3] | [PERSON_RESPONSIBLE_3] | [TIMEFRAME_3] | [OUTCOMES_3] | Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
+        "countedContent": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes | |-------------------|------|---------|-------------------|-----------|----------| | [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] | Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
       }
     },
     {
@@ -668,7 +639,12 @@
       "requirement": "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Strengths stated",
         "Likes and dislikes stated",
@@ -676,17 +652,17 @@
         "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
         "Written about the person, not about their deficits"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Strengths stated; Likes and dislikes stated; Informal supports identified; Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4).",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 54,
+        "countedWordCount": 61,
         "fixedContentWordCount": 28,
         "proseWordCount": 0,
         "completionPromptWordCount": 0,
-        "fieldLabelCount": 6,
-        "placeholderCount": 6,
-        "fieldAndPlaceholderWordCount": 26,
+        "fieldLabelCount": 7,
+        "placeholderCount": 7,
+        "fieldAndPlaceholderWordCount": 33,
         "strippedSelfDescription": [],
-        "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What matters to me: [WHAT_MATTERS] How I prefer to communicate: [COMMUNICATION_PREFERENCES] People who matter to me: [INFORMAL_SUPPORTS] This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
+        "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What matters to me: [WHAT_MATTERS] How I prefer to communicate: [COMMUNICATION_PREFERENCES] People who matter to me: [PEOPLE_WHO_MATTER_TO_ME] Informal supports: [INFORMAL_SUPPORTS] This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
       }
     },
     {
@@ -694,14 +670,19 @@
       "requirement": "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Carries only what a support worker operationally needs. Not the full file",
         "Every historical claim traceable to a named source document",
         "No clinical interpretation added beyond what the source states",
         "[OPEN] Should this section state an access restriction, given its content?"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Carries only what a support worker operationally needs. Not the full file; No clinical interpretation added beyond what the source states; [OPEN] Should this section state an access restriction, given its content?.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
         "countedWordCount": 57,
         "fixedContentWordCount": 33,
@@ -711,7 +692,7 @@
         "placeholderCount": 4,
         "fieldAndPlaceholderWordCount": 24,
         "strippedSelfDescription": [],
-        "countedContent": "Relevant history: [HISTORY_BACKGROUND] Prior service involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-relevant context: [RISK_RELEVANT_CONTEXT] Source documents and dates: [SOURCE_DOCUMENTS_AND_DATES] This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
+        "countedContent": "Relevant history: [RELEVANT_HISTORY] Prior service involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-relevant context: [RISK_RELEVANT_CONTEXT] Source documents and dates: [SOURCE_DOCUMENTS_AND_DATES] This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
       }
     },
     {
@@ -719,39 +700,48 @@
       "requirement": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "States what the participant does independently",
         "States what needs prompting",
         "States what needs hands-on support",
         "A capacity statement with no support description is inadequate"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: A capacity statement with no support description is inadequate.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 70,
+        "countedWordCount": 72,
         "fixedContentWordCount": 57,
         "proseWordCount": 0,
-        "completionPromptWordCount": 13,
-        "fieldLabelCount": 1,
-        "placeholderCount": 0,
-        "fieldAndPlaceholderWordCount": 19,
+        "completionPromptWordCount": 0,
+        "fieldLabelCount": 4,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 34,
         "strippedSelfDescription": [],
-        "countedContent": "For each activity, record which tier applies and describe what the worker does. Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support."
+        "countedContent": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. - Independent actions: [INDEPENDENT_ACTIONS] - Needs prompting: [PROMPTING_NEEDS] - Needs hands-on support: [HANDS_ON_SUPPORT]"
       }
     },
     {
       "requirementId": "care-plan-communication-strategy",
       "requirement": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
       "finalResult": "PARTIAL",
-      "substantiveResult": "SUBSTANTIVE_FAIL",
-      "mode": "ADEQUACY_CRITERIA",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Capacity indicators completed",
         "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
         "Strategy states what a worker should actually do",
         "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicators completed; Strategy narrative present. A ticked capacity box with an empty overview is a defect; Strategy states what a worker should actually do; Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable).",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
         "countedWordCount": 76,
         "fixedContentWordCount": 48,
@@ -768,14 +758,19 @@
       "requirementId": "care-plan-mobility-strategy",
       "requirement": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
       "finalResult": "PARTIAL",
-      "substantiveResult": "SUBSTANTIVE_FAIL",
-      "mode": "ADEQUACY_CRITERIA",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Capacity indicator completed",
         "Strategy narrative present, not checkbox alone",
         "Where an aid is used, it is named and its use described"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Strategy narrative present, not checkbox alone; Where an aid is used, it is named and its use described.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored completionPrompt.",
       "breakdown": {
         "countedWordCount": 54,
         "fixedContentWordCount": 20,
@@ -793,47 +788,59 @@
       "requirement": "Support Delivery and Client Safety section contains support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "The support type list is present."
+      ],
       "adequacyCriteria": [
         "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
         "Descriptions state what the worker does, not what the support is called",
         "Selected supports reconcile against funded supports in the service agreement"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Every selected support type has a corresponding description. Selected-with-no- description is a hard fail; Descriptions state what the worker does, not what the support is called.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (4/5); missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 75,
+        "countedWordCount": 77,
         "fixedContentWordCount": 30,
         "proseWordCount": 25,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 3,
         "placeholderCount": 4,
-        "fieldAndPlaceholderWordCount": 18,
+        "fieldAndPlaceholderWordCount": 20,
         "strippedSelfDescription": [],
-        "countedContent": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPE] Description per selected type: [SUPPORT_DESCRIPTION] On-call contact: [ON_CALL_CONTACT] Service manager contact: [SERVICE_MANAGER_CONTACT] Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
+        "countedContent": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPES] Description per selected type: [DESCRIPTION_PER_SELECTED_TYPE] On-call contact: [ON_CALL_CONTACT] Service manager contact: [SERVICE_MANAGER_CONTACT] Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
       }
     },
     {
       "requirementId": "care-plan-behavioural-management",
       "requirement": "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
       "finalResult": "PARTIAL",
-      "substantiveResult": "SUBSTANTIVE_FAIL",
-      "mode": "ADEQUACY_CRITERIA",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "Required table structure is present: Table with columns Behaviour | Possible trigger | Redirection strategy."
+      ],
       "adequacyCriteria": [
         "Each row has all three columns",
         "Redirection strategies are drawn from the BSP, not invented",
         "Strategies are written for a support worker to execute"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Each row has all three columns; Redirection strategies are drawn from the BSP, not invented; Strategies are written for a support worker to execute.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (3/4); missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 55,
+        "countedWordCount": 36,
         "fixedContentWordCount": 26,
         "proseWordCount": 5,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 0,
-        "placeholderCount": 9,
+        "placeholderCount": 3,
         "fieldAndPlaceholderWordCount": 0,
         "strippedSelfDescription": [],
-        "countedContent": "| Behaviour | Possible trigger | Redirection strategy | |-----------|-----------------|---------------------| | [BEHAVIOUR_1] | [POSSIBLE_TRIGGER_1] | [REDIRECTION_STRATEGY_1] | | [BEHAVIOUR_2] | [POSSIBLE_TRIGGER_2] | [REDIRECTION_STRATEGY_2] | | [BEHAVIOUR_3] | [POSSIBLE_TRIGGER_3] | [REDIRECTION_STRATEGY_3] | The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
+        "countedContent": "| Behaviour | Possible trigger | Redirection strategy | |-----------|------------------|---------------------| | [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] | The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
       }
     },
     {
@@ -841,23 +848,27 @@
       "requirement": "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
       "adequacyCriteria": [
         "Each practice named in plain language a support worker understands",
         "What the worker does, and does not do",
         "Authorisation status stated as recorded in the BSP, never determined here"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Each practice named in plain language a support worker understands; Authorisation status stated as recorded in the BSP, never determined here.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (5/5).",
       "breakdown": {
-        "countedWordCount": 68,
+        "countedWordCount": 73,
         "fixedContentWordCount": 25,
         "proseWordCount": 0,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 6,
         "placeholderCount": 6,
-        "fieldAndPlaceholderWordCount": 43,
+        "fieldAndPlaceholderWordCount": 48,
         "strippedSelfDescription": [],
-        "countedContent": "Practice type: [PRACTICE_TYPE] What it is in plain language: [WHAT_IT_IS] What the worker does: [WHAT_THE_WORKER_DOES] What the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO] Authorisation status and reference: [AUTHORISATION_STATUS] Recording requirement: [RECORDING_REQUIREMENT] A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
+        "countedContent": "Practice type: [PRACTICE_TYPE] What it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE] What the worker does: [WHAT_THE_WORKER_DOES] What the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO] Authorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE] Recording requirement: [RECORDING_REQUIREMENT] A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
       }
     },
     {
@@ -865,13 +876,17 @@
       "requirement": "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
       "finalResult": "PARTIAL",
       "substantiveResult": "SUBSTANTIVE_PARTIAL",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
       "adequacyCriteria": [
         "Strategy drawn from the mealtime management risk assessment, cited",
         "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
         "Written as worker actions"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting); Written as worker actions.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (2/3).",
       "breakdown": {
         "countedWordCount": 65,
         "fixedContentWordCount": 35,
@@ -888,8 +903,13 @@
       "requirementId": "care-plan-disaster-management-strategy",
       "requirement": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
       "finalResult": "PARTIAL",
-      "substantiveResult": "SUBSTANTIVE_FAIL",
-      "mode": "ADEQUACY_CRITERIA",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "States participant-specific arrangements, not a reproduction of the site plan",
         "Names the source risk assessment",
@@ -897,31 +917,35 @@
         "Written as worker actions",
         "[OPEN] Other settings: confirm"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: States participant-specific arrangements, not a reproduction of the site plan; Names the source risk assessment; For community access, addresses both general and location-specific risk; Written as worker actions; [OPEN] Other settings: confirm.",
+      "failureReason": "Template section does not satisfy derived template criteria: missing authored fixedContent (1/2); missing declared template fields/structure: Community access: General risk arrangements, Location-specific risk arrangements, Transport contingency, What the worker carries, How the participant is returned to a safe location; missing authored completionPrompt.",
       "breakdown": {
-        "countedWordCount": 64,
-        "fixedContentWordCount": 24,
+        "countedWordCount": 65,
+        "fixedContentWordCount": 23,
         "proseWordCount": 7,
         "completionPromptWordCount": 0,
         "fieldLabelCount": 5,
         "placeholderCount": 6,
-        "fieldAndPlaceholderWordCount": 30,
+        "fieldAndPlaceholderWordCount": 32,
         "strippedSelfDescription": [],
-        "countedContent": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED] Assembly point: [ASSEMBLY_POINT] Equipment needed: [EQUIPMENT_NEEDED] Communication approach during evacuation: [COMMUNICATION_APPROACH] Medications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE] Who to notify: [WHO_TO_NOTIFY] This section records what workers do with this participant in an emergency or evacuation. It supplements, and does not replace, the site emergency plan."
+        "countedContent": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED] Assembly point: [ASSEMBLY_POINT] Equipment needed: [EQUIPMENT_NEEDED] Communication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION] Medications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE] Who to notify: [WHO_TO_NOTIFY] In any emergency, worker priority is the safety of the participant and themselves. Call 000 first, then notify the on-call service manager."
       }
     },
     {
       "requirementId": "care-plan-client-endorsement",
       "requirement": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
-      "finalResult": "PARTIAL",
-      "substantiveResult": "SUBSTANTIVE_FAIL",
-      "mode": "ADEQUACY_CRITERIA",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
       "adequacyCriteria": [
         "Block present and complete-able",
         "Where the plan is provided to family or carer, consent is recorded",
         "The system never fabricates a signature or a consent state"
       ],
-      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Block present and complete-able; Where the plan is provided to family or carer, consent is recorded; The system never fabricates a signature or a consent state.",
+      "failureReason": null,
       "breakdown": {
         "countedWordCount": 41,
         "fixedContentWordCount": 0,
@@ -939,7 +963,11 @@
       "requirement": "Document Control section contains form ID, version, date, and \"uncontrolled when printed\" statement.",
       "finalResult": "SATISFIED",
       "substantiveResult": "SUBSTANTIVE_PASS",
-      "mode": "ADEQUACY_CRITERIA",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
       "adequacyCriteria": [
         "form ID, version and date present; review date consistent with 4.1"
       ],

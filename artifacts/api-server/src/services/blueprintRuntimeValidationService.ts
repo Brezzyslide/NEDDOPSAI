@@ -488,8 +488,28 @@ function isAllowedUserDataPlaceholder(
 ): boolean {
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
   const declared = normalisedDeclaredFactualPlaceholders(professionalContext);
-  if (declared.size > 0) return declared.has(token);
+  if (declared.size > 0) return placeholderTokenMatchesDeclared(token, declared);
   return USER_DATA_PLACEHOLDER_TERMS.some(term => token === term);
+}
+
+function placeholderTokenMatchesDeclared(token: string, declared: Set<string>): boolean {
+  if (declared.has(token)) return true;
+  const base = token.replace(/_\d+$/, "");
+  if (declared.has(base)) return true;
+  const variants = new Set([base]);
+  if (base.endsWith("S")) variants.add(base.slice(0, -1));
+  variants.add(`${base}S`);
+  for (const variant of variants) {
+    if (declared.has(variant)) return true;
+    for (const declaredToken of declared) {
+      if (variant.startsWith(`${declaredToken}_`) || variant.endsWith(`_${declaredToken}`)) return true;
+      if (declaredToken.endsWith("S")) {
+        const singular = declaredToken.slice(0, -1);
+        if (variant.startsWith(`${singular}_`) || variant.endsWith(`_${singular}`)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function isProfessionalPlaceholderToken(token: string): boolean {
@@ -534,7 +554,9 @@ export function detectLeakedBlueprintMethodologyHeadings(
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return [];
 
   const sectionLabels = new Set(
-    sections.flatMap((section) => [section.sectionCode, section.title])
+    sections
+      .filter((section) => section.sectionRole !== "user_facing")
+      .flatMap((section) => [section.sectionCode, section.title])
       .filter(Boolean)
       .map(normaliseHeadingLabel),
   );

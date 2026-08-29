@@ -442,7 +442,7 @@ function deriveAllowedFactualPlaceholders(
     return SERVICE_AGREEMENT_FACTUAL_PLACEHOLDERS;
   }
   if (deliverableType.includes("CARE_PLAN") || deliverableType.includes("SUPPORT_PLAN")) {
-    return [
+    return uniquePlaceholders([
       "[PARTICIPANT_NAME]",
       "[DATE_OF_BIRTH]",
       "[GENDER]",
@@ -486,7 +486,8 @@ function deriveAllowedFactualPlaceholders(
       "[FORM_ID]",
       "[VERSION]",
       "[DATE]",
-    ];
+      ...deriveTemplateFieldPlaceholders(blueprint),
+    ]);
   }
   if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST" || /\b(onboard|onboarding|induction|new staff|new employee|people_culture|talent_learning|workforce_compliance)\b/.test(domainText)) {
     return WORKFORCE_ONBOARDING_FACTUAL_PLACEHOLDERS;
@@ -495,6 +496,39 @@ function deriveAllowedFactualPlaceholders(
     return POLICY_FACTUAL_PLACEHOLDERS;
   }
   return GENERIC_FACTUAL_PLACEHOLDERS;
+}
+
+function deriveTemplateFieldPlaceholders(blueprint: WorkBlueprint | null): string[] {
+  return (blueprint?.sections ?? [])
+    .flatMap((section) => section.fields ?? [])
+    .flatMap((field) => {
+      const source = field.includes(":") ? field.split(":").slice(1).join(":") : field;
+    return source
+      .split(/,|\||—/)
+      .flatMap((label) => {
+        const cleaned = label
+          .trim()
+          .replace(/\([^)]*\)/g, "")
+          .replace(/\b(?:table with columns|minimum three personal goal rows|plus one row per ndis plan goal|selected from|sourced from|fields)\b/gi, "");
+        const token = placeholderTokenFromLabel(cleaned);
+        const generic = placeholderTokenFromLabel(cleaned.replace(/\b(?:per|for|of|and)\b.*$/i, ""));
+        return [token, generic].filter(Boolean);
+      })
+      .filter((token) => token.length > 1)
+      .map((token) => `[${token}]`);
+    });
+}
+
+function uniquePlaceholders(placeholders: string[]): string[] {
+  return Array.from(new Set(placeholders));
+}
+
+function placeholderTokenFromLabel(label: string): string {
+  return label
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/__+/g, "_")
+    .toUpperCase();
 }
 
 function deriveContextSufficiency(input: {

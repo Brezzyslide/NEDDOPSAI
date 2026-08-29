@@ -26,6 +26,7 @@ export interface DeliverableRequirement {
   requiredDeliverableRepresentation: string;
   targetDeliverableLocation?: string;
   adequacyCriteria: string[];
+  templateCriteria: string[];
   fixedContent: string[];
   templateFields: string[];
   completionPrompt: string | null;
@@ -74,6 +75,7 @@ export type RequirementFinalResult =
   | "NOT_APPLICABLE";
 
 export type RequirementSubstantiveValidationMode =
+  | "TEMPLATE_CRITERIA"
   | "ADEQUACY_CRITERIA"
   | "FALLBACK_HEURISTIC"
   | "NOT_APPLICABLE";
@@ -86,6 +88,7 @@ export interface DeliverableRequirementCoverageItem {
   sourceBlueprintSection?: string;
   expectedRepresentation: string;
   adequacyCriteria: string[];
+  templateCriteria: string[];
   actualLocation: string | null;
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
@@ -123,6 +126,7 @@ export interface RequirementToDeliverablePlanItem {
   classification: DeliverableRequirementClassification;
   authority: string[];
   adequacyCriteria: string[];
+  templateCriteria: string[];
   applicability: "applicable" | "internal_only" | "evidence_only" | "quality_control" | "optional";
   expectedUserFacingRepresentation: string;
   targetDeliverableLocation: string;
@@ -138,6 +142,7 @@ export interface DeliverableOutputSchemaField {
   fieldLabel: string;
   representationKind: DeliverableRepresentationKind;
   adequacyCriteria: string[];
+  templateCriteria: string[];
   minimumSubstance: string[];
 }
 
@@ -254,6 +259,7 @@ export function buildRequirementToDeliverablePlan(
         ? requirement.evidenceAuthority
         : ["Blueprint professional method", "Professional deliverable contract"],
       adequacyCriteria: requirement.adequacyCriteria ?? [],
+      templateCriteria: requirement.templateCriteria ?? [],
       applicability,
       expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
       targetDeliverableLocation: requirement.targetDeliverableLocation ?? inferTargetDeliverableLocation(requirement),
@@ -277,6 +283,7 @@ export function buildDeliverableOutputSchema(
       fieldLabel: deriveFieldLabel(item),
       representationKind: inferRepresentationKind(item),
       adequacyCriteria: item.adequacyCriteria,
+      templateCriteria: item.templateCriteria,
       minimumSubstance: deriveMinimumSubstance(item),
     }));
 
@@ -344,6 +351,7 @@ export function evaluateDeliverableRequirementCoverage(
     if (!isBlockingRequirement(requirement.classification)) continue;
     const result = validateRequirementAgainstContent({
       requirement,
+      standardisation: profile.standardisation,
       normalisedContent,
       structure,
       schema,
@@ -366,6 +374,7 @@ export function evaluateDeliverableRequirementCoverage(
       requiredDeliverableRepresentation: requirement.requiredDeliverableRepresentation,
       expectedRepresentation: result.expectedRepresentation,
       adequacyCriteria: result.adequacyCriteria,
+      templateCriteria: result.templateCriteria,
       actualLocation: result.actualLocation,
       structuralResult: result.structuralResult,
       substantiveResult: result.substantiveResult,
@@ -410,9 +419,12 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
       `  Origin: ${requirement.origin}`,
       `  Requirement: ${requirement.professionalRequirement}`,
       requirement.sourceBlueprintSection ? `  Source Blueprint section: ${requirement.sourceBlueprintSection}` : "",
+      requirement.templateCriteria.length
+        ? `  Template criteria:\n${requirement.templateCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
+        : "  Template criteria: DERIVED_UNAVAILABLE",
       requirement.adequacyCriteria.length
-        ? `  Adequacy criteria:\n${requirement.adequacyCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
-        : "  Adequacy criteria: DERIVED_FALLBACK_HEURISTIC",
+        ? `  Participant criteria:\n${requirement.adequacyCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
+        : "  Participant criteria: DERIVED_FALLBACK_HEURISTIC",
       `  Final deliverable representation: ${requirement.expectedUserFacingRepresentation}`,
       `  Target location: ${requirement.targetDeliverableLocation}`,
     ].filter(Boolean).join("\n"));
@@ -602,6 +614,7 @@ function parseAuthoredRequirement(raw: unknown, index: number, contract?: Bluepr
       professionalRationale: stringValue(record.professionalRationale),
       evidenceAuthority: stringArray(record.evidenceAuthority ?? record.authority),
       adequacyCriteria: stringArray(record.adequacyCriteria),
+      templateCriteria: deriveTemplateCriteriaForSection(blueprintSection),
       targetDeliverableLocation: representation,
       fixedContent: blueprintSection?.fixedContent ?? [],
       templateFields: blueprintSection?.fields ?? [],
@@ -619,6 +632,33 @@ function stringArray(value: unknown): string[] {
   return value
     .map((item) => typeof item === "string" ? item.trim() : "")
     .filter(Boolean);
+}
+
+function deriveTemplateCriteriaForSection(section?: BlueprintSection | null): string[] {
+  if (!section) return [];
+  const criteria: string[] = [];
+  if ((section.fixedContent ?? []).length > 0) {
+    criteria.push("All authored fixedContent paragraphs are emitted verbatim.");
+  }
+  if ((section.fields ?? []).length > 0) {
+    criteria.push("All declared template fields are present and labelled.");
+  }
+  if (section.completionPrompt) {
+    criteria.push("The authored completionPrompt is emitted verbatim as template guidance.");
+  }
+  for (const field of section.fields ?? []) {
+    const normalised = field.toLowerCase();
+    if (normalised.includes("table with columns")) {
+      criteria.push(`Required table structure is present: ${field}.`);
+    }
+    if (normalised.includes("minimum three personal goal rows")) {
+      criteria.push("The goals table includes at least three personal goal rows.");
+    }
+    if (normalised.includes("support types selected from")) {
+      criteria.push("The support type list is present.");
+    }
+  }
+  return criteria;
 }
 
 function parseRequirementClassification(value: unknown): DeliverableRequirementClassification {
@@ -776,6 +816,7 @@ function req(
     evidenceAuthority?: string[];
     targetDeliverableLocation?: string;
     adequacyCriteria?: string[];
+    templateCriteria?: string[];
     fixedContent?: string[];
     templateFields?: string[];
     completionPrompt?: string | null;
@@ -792,6 +833,7 @@ function req(
     requiredDeliverableRepresentation: representation,
     targetDeliverableLocation: options.targetDeliverableLocation,
     adequacyCriteria: options.adequacyCriteria ?? [],
+    templateCriteria: options.templateCriteria ?? [],
     fixedContent: options.fixedContent ?? [],
     templateFields: options.templateFields ?? [],
     completionPrompt: options.completionPrompt ?? null,
@@ -975,6 +1017,7 @@ interface MarkdownStructure {
 
 function validateRequirementAgainstContent(input: {
   requirement: DeliverableRequirement;
+  standardisation: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
@@ -1009,6 +1052,7 @@ function validateRequirementAgainstContent(input: {
 
 function validateFactualFieldRequirement(input: {
   requirement: DeliverableRequirement;
+  standardisation?: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
@@ -1211,6 +1255,7 @@ function validateStructuredFieldGroups(
 
 function validateRepresentedRequirement(input: {
   requirement: DeliverableRequirement;
+  standardisation?: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
@@ -1266,6 +1311,31 @@ function validateRepresentedRequirement(input: {
   }
 
   const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content);
+  if (input.standardisation === "standard_reusable" && (requirement.templateCriteria ?? []).length > 0) {
+    const template = evaluateTemplateRequirementContent(requirement, relevant.content);
+    const finalResult = template.passed
+      ? "SATISFIED"
+      : template.partial
+        ? "PARTIAL"
+        : "NOT_SATISFIED";
+
+    return coverageItem(requirement, {
+      actualLocation: relevant.location,
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: template.passed
+        ? "SUBSTANTIVE_PASS"
+        : template.partial
+          ? "SUBSTANTIVE_PARTIAL"
+          : "SUBSTANTIVE_FAIL",
+      substantiveValidationMode: "TEMPLATE_CRITERIA",
+      substantiveBreakdown: substantive.breakdown,
+      finalResult,
+      failureReason: finalResult === "SATISFIED"
+        ? null
+        : template.reason,
+    });
+  }
+
   const finalResult = substantive.passed && keywordMatch
     ? "SATISFIED"
     : substantive.partial || keywordMatch
@@ -1303,6 +1373,7 @@ function coverageItem(
     sourceBlueprintSection: requirement.sourceBlueprintSection,
     expectedRepresentation: requirement.requiredDeliverableRepresentation,
     adequacyCriteria: requirement.adequacyCriteria ?? [],
+    templateCriteria: requirement.templateCriteria ?? [],
     substantiveValidationMode: result.substantiveValidationMode ?? (
       result.substantiveResult === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FALLBACK_HEURISTIC"
     ),
@@ -1629,6 +1700,88 @@ function explicitlyStatesNonApplicabilityWithSource(content: string): boolean {
   const nonApplicable = /\b(?:not applicable|non applicable|does not apply|no .* required|no .* recorded|no .* identified|none apply)\b/.test(normalised);
   const sourceNamed = /\b(?:based on|according to|from|as recorded in|source|assessment|plan|bsp|behaviour support plan|risk assessment|intake|service agreement|ndis plan)\b/.test(normalised);
   return nonApplicable && sourceNamed;
+}
+
+function evaluateTemplateRequirementContent(
+  requirement: DeliverableRequirement,
+  content: string,
+): { passed: boolean; partial: boolean; reason: string } {
+  const normalised = normaliseContent(content);
+  const missing: string[] = [];
+
+  const fixedMissing = requirement.fixedContent.filter((fixed) =>
+    !normalised.includes(normaliseContent(fixed)),
+  );
+  if (fixedMissing.length > 0) {
+    missing.push(`missing authored fixedContent (${fixedMissing.length}/${requirement.fixedContent.length})`);
+  }
+
+  const missingFields = requirement.templateFields.filter((field) =>
+    !templateFieldIsRepresented(field, content),
+  );
+  if (missingFields.length > 0) {
+    missing.push(`missing declared template fields/structure: ${missingFields.join("; ")}`);
+  }
+
+  if (requirement.completionPrompt && !normalised.includes(normaliseContent(requirement.completionPrompt))) {
+    missing.push("missing authored completionPrompt");
+  }
+
+  if (missing.length === 0) {
+    return { passed: true, partial: false, reason: "" };
+  }
+
+  const totalChecks = requirement.fixedContent.length +
+    requirement.templateFields.length +
+    (requirement.completionPrompt ? 1 : 0);
+  const missingChecks = fixedMissing.length + missingFields.length + (requirement.completionPrompt && !normalised.includes(normaliseContent(requirement.completionPrompt)) ? 1 : 0);
+  return {
+    passed: false,
+    partial: totalChecks > missingChecks,
+    reason: `Template section does not satisfy derived template criteria: ${missing.join("; ")}.`,
+  };
+}
+
+function templateFieldIsRepresented(field: string, content: string): boolean {
+  const normalisedField = normaliseContent(field);
+  const normalisedContent = normaliseContent(content);
+  if (!normalisedField) return true;
+
+  const tableColumns = field.match(/table with columns\s+(.+)/i);
+  if (tableColumns) {
+    const columns = (tableColumns[1] ?? "")
+      .split("|")
+      .map((column) => normaliseContent(column))
+      .filter(Boolean);
+    return columns.every((column) => normalisedContent.includes(column));
+  }
+
+  if (/minimum three personal goal rows/i.test(field)) {
+    const currentSituationRows = (content.match(/\[CURRENT_SITUATION_\d+\]/g) ?? []).length;
+    const tableRowCount = content.split(/\r?\n/).filter((line) =>
+      /^\|/.test(line.trim()) && /\[[A-Z0-9_]+\]/.test(line),
+    ).length;
+    return Math.max(currentSituationRows, tableRowCount) >= 3;
+  }
+
+  if (/description per selected type/i.test(field)) {
+    return normalisedContent.includes("support type") &&
+      normalisedContent.includes("description") &&
+      /\[DESCRIPTION_[A-Z0-9_]+\]/.test(content);
+  }
+
+  const afterColon = field.includes(":") ? field.split(":").slice(1).join(":") : field;
+  const labels = afterColon
+    .split(/,|—/)
+    .map((label) => normaliseContent(label))
+    .filter((label) => label.length > 2)
+    .filter((label) => !/^(sourced from|source|fields|sil and supported accommodation|community access)$/.test(label));
+  if (labels.length > 1) {
+    const minimumMatches = Math.max(1, Math.ceil(labels.length * 0.8));
+    return labels.filter((label) => normalisedContent.includes(label)).length >= minimumMatches;
+  }
+
+  return normalisedContent.includes(normalisedField);
 }
 
 function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {

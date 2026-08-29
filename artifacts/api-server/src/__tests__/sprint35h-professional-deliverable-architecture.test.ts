@@ -1258,10 +1258,77 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
     expect(prompt).toContain("Origin: AUTHORED");
     expect(prompt).toContain("Requirement: Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.");
+    expect(prompt).toContain("Template criteria:");
+    expect(prompt).toContain("    - All authored fixedContent paragraphs are emitted verbatim.");
+    expect(prompt).toContain("    - All declared template fields are present and labelled.");
     expect(prompt).toContain("    - Every field present and labelled");
     expect(prompt).toContain("Requirement: Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.");
     expect(prompt).toContain("    - Redirection strategies are drawn from the BSP, not invented");
-    expect(prompt).not.toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
+    expect(prompt).not.toContain("Participant criteria: DERIVED_FALLBACK_HEURISTIC");
+  });
+
+  it("validates reusable Care Plan templates against derived template criteria without treating declared fields or user-facing headings as leaks", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard reusable NDIS care plan template.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const supportPlanMeeting = blueprint.sections.find((section: any) => section.sectionCode === "SUPPORT_PLAN_MEETING");
+    const content = [
+      "## Support Plan Meeting",
+      "Participant name: [PARTICIPANT_NAME]",
+      "Date of birth: [DATE_OF_BIRTH]",
+      "Gender: [GENDER]",
+      "Language spoken: [LANGUAGE_SPOKEN]",
+      "NDIS number: [NDIS_NUMBER]",
+      "Diagnosis: [DIAGNOSIS]",
+      "People present: [PEOPLE_PRESENT]",
+      "Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY]",
+      "Plan date: [PLAN_DATE]",
+      "Date for review: [REVIEW_DATE]",
+      "",
+      ...supportPlanMeeting.fixedContent,
+      "",
+      supportPlanMeeting.completionPrompt,
+    ].join("\n");
+    const oneRequirementProfile = {
+      ...profile,
+      requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-support-plan-meeting"),
+    };
+    const coverage = evaluateDeliverableRequirementCoverage(content, oneRequirementProfile);
+
+    expect(coverage.requirementResults[0]?.substantiveValidationMode).toBe("TEMPLATE_CRITERIA");
+    expect(coverage.missing).toHaveLength(0);
+
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: content,
+      standardTemplateEvidence: {
+        standardTemplateRequested: true,
+        existingTemplateRequested: false,
+        participantSpecificRequested: false,
+        organisationSpecificRequested: false,
+        customerExampleOptional: true,
+      },
+      professionalContext: context,
+    });
+    expect(runtime.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
+    expect(runtime.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
   });
 
   it("carries the authored Care Plan evidence contract and authority boundary from the specification", () => {

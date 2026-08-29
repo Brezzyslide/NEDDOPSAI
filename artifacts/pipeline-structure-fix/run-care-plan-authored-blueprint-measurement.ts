@@ -322,6 +322,7 @@ async function main() {
   const summary = {
     status: finalValidation.runtime.passed && finalValidation.coverage.missing.length === 0 ? "completed_revalidated" : "blocked_by_validation",
     requirementCount: coverageProfile.requirements.length,
+    templateCriteriaValidatedCount: finalValidation.coverage.requirementResults.filter((item) => item.substantiveValidationMode === "TEMPLATE_CRITERIA").length,
     adequacyCriteriaValidatedCount: finalValidation.coverage.requirementResults.filter((item) => item.substantiveValidationMode === "ADEQUACY_CRITERIA").length,
     fallbackHeuristicValidatedCount: finalValidation.coverage.requirementResults.filter((item) => item.substantiveValidationMode === "FALLBACK_HEURISTIC").length,
     stage1: {
@@ -356,6 +357,7 @@ async function main() {
       finalResult: item.finalResult,
       substantiveResult: item.substantiveResult,
       mode: item.substantiveValidationMode,
+      templateCriteria: item.templateCriteria,
       adequacyCriteria: item.adequacyCriteria,
       failureReason: item.failureReason,
       breakdown: item.substantiveBreakdown ?? null,
