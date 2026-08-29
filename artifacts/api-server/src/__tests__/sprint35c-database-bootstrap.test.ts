@@ -189,8 +189,8 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(() => assertBlueprintAcceptance(result)).toThrow(/Blueprint bootstrap acceptance failed/);
   });
 
-  it("keeps the expected professional section count pinned to 1,077", () => {
-    expect(expectedProfessionalSectionCount()).toBe(1_077);
+  it("keeps the expected professional section count pinned to 1,085", () => {
+    expect(expectedProfessionalSectionCount()).toBe(1_085);
   });
 
   it("does not include raw DATABASE_URL logging in the canonical bootstrap command", () => {

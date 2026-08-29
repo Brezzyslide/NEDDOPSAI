@@ -132,6 +132,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: false,
     notes: "Adds first-class task_state evidence_required so evidence gaps are not shown as approval-required or executing.",
   },
+  {
+    id: "0042-blueprint-section-template-content",
+    file: "0042_blueprint_section_template_content.sql",
+    transactional: true,
+    notes: "Adds blueprint section role and deterministic template content fields for authored care plan templates.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {
