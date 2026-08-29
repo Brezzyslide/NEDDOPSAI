@@ -68,6 +68,17 @@ export interface BlueprintDeliverableContract {
   namingConvention?: string;
   templateRequired?: boolean;
   completionRequirements?: string[];
+  requirementPlan?: Array<{
+    id: string;
+    sectionCode?: string;
+    requirementText: string;
+    classification?: string;
+    targetLocation: string;
+    adequacyCriteria?: string[];
+    evidenceAuthority?: string[];
+    coverageRules?: Array<{ allOf?: string[]; anyOf?: string[] }>;
+    conditionalApplicability?: Record<string, unknown>;
+  }>;
 }
 
 export interface BlueprintEvidenceContract {
@@ -80,6 +91,11 @@ export interface BlueprintEvidenceContract {
   freshnessRules?: Record<string, unknown>;
   claimIntegrityRequired?: boolean;
   missingEvidenceBehaviour?: BlueprintMissingEvidenceBehaviour;
+  documentToSections?: Array<{
+    documentType: string;
+    requiredWhen: string;
+    feeds: string[];
+  }>;
 }
 
 export interface BlueprintPermittedOrgOverrides {

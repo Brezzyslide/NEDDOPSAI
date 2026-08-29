@@ -1540,6 +1540,9 @@ function evaluateSubstantiveClauseContent(
   const normalised = normaliseContent(cleaned);
 
   const adequacyCriteria = requirement.adequacyCriteria ?? [];
+  if (requirement.classification === "CONDITIONAL" && explicitlyStatesNonApplicabilityWithSource(cleaned)) {
+    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+  }
   if (adequacyCriteria.length > 0) {
     const criteriaResults = adequacyCriteria.map((criterion) => ({
       criterion,
@@ -1601,6 +1604,13 @@ function evaluateSubstantiveClauseContent(
     mode: "FALLBACK_HEURISTIC",
     breakdown,
   };
+}
+
+function explicitlyStatesNonApplicabilityWithSource(content: string): boolean {
+  const normalised = normaliseContent(content);
+  const nonApplicable = /\b(?:not applicable|non applicable|does not apply|no .* required|no .* recorded|no .* identified|none apply)\b/.test(normalised);
+  const sourceNamed = /\b(?:based on|according to|from|as recorded in|source|assessment|plan|bsp|behaviour support plan|risk assessment|intake|service agreement|ndis plan)\b/.test(normalised);
+  return nonApplicable && sourceNamed;
 }
 
 function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {

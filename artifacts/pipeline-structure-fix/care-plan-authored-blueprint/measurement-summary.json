@@ -1,0 +1,924 @@
+{
+  "status": "blocked_by_validation",
+  "requirementCount": 14,
+  "adequacyCriteriaValidatedCount": 14,
+  "fallbackHeuristicValidatedCount": 0,
+  "stage1": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "finishReason": "stop",
+    "latencyMs": 13438,
+    "usage": {
+      "prompt_tokens": 10488,
+      "completion_tokens": 1988,
+      "total_tokens": 12476,
+      "prompt_tokens_details": {
+        "cached_tokens": 10368,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "cost": 0.0019884,
+    "missingRequirements": [
+      "care-plan-support-plan-meeting",
+      "care-plan-goals",
+      "care-plan-about-me",
+      "care-plan-history-background",
+      "care-plan-undertaking-adl",
+      "care-plan-communication-strategy",
+      "care-plan-mobility-strategy",
+      "care-plan-support-delivery-client-safety",
+      "care-plan-behavioural-management",
+      "care-plan-restrictive-practices",
+      "care-plan-mealtime-management-strategy",
+      "care-plan-disaster-management-strategy",
+      "care-plan-client-endorsement"
+    ]
+  },
+  "repair": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "finishReason": "stop",
+    "latencyMs": 15491,
+    "usage": {
+      "prompt_tokens": 5109,
+      "completion_tokens": 1969,
+      "total_tokens": 7078,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "cost": 0.00194775,
+    "returnedDeltaSectionCount": 13
+  },
+  "totalCost": 0.00393615,
+  "output": {
+    "sectionCount": 14,
+    "wordCount": 572
+  },
+  "gateResults": {
+    "runtimePassed": false,
+    "runtimeFailures": [
+      {
+        "gate": "professional_placeholder",
+        "state": "validation",
+        "message": "Draft contains unresolved professional-content placeholders. User/organisation data placeholders may remain for reusable templates, but professional clauses, obligations, rights, terms, conclusions and incomplete markers must be drafted before Completed Work is created.",
+        "details": [
+          "[AGREEMENT_STATEMENT]",
+          "[BEHAVIOURAL_REDIRECTION_DESCRIPTION]",
+          "[CLIENT_NAME]",
+          "[COMMUNICATION_STRATEGY]",
+          "[COMMUNITY_ACCESS_DESCRIPTION]",
+          "[COMPANIONSHIP_DESCRIPTION]",
+          "[EXPRESSIVE_CAPACITY]",
+          "[HANDS_ON_SUPPORT_TASKS]",
+          "[INDEPENDENT_TASKS]",
+          "[IN_HOME_ADL_DESCRIPTION]",
+          "[MOBILITY_OVERVIEW]",
+          "[MOBILITY_STRATEGY]",
+          "[NON_VERBAL_COMMUNICATION]",
+          "[PERSONAL_CARE_DESCRIPTION]",
+          "[PRIOR_SERVICE_INVOLVEMENT]",
+          "[PROMPTING_TASKS]",
+          "[RECEPTIVE_CAPACITY]",
+          "[RESTRICTIVE_PRACTICES]",
+          "[RISK_RELEVANT_CONTEXT]",
+          "[SOCIAL_ACTIVITY_DESCRIPTION]",
+          "[THERAPEUTIC_CLEANING_DESCRIPTION]",
+          "[TRANSPORT_TRAINING_DESCRIPTION]",
+          "[VERBAL_COMMUNICATION]",
+          "[WORKER_ACTIONS]"
+        ]
+      },
+      {
+        "gate": "methodology_leak",
+        "state": "validation",
+        "message": "Draft exposes internal Blueprint methodology headings in a customer-facing standard template. Blueprint sections must remain internal working method unless the final deliverable contract explicitly maps them into user-facing content.",
+        "details": [
+          "About Me",
+          "Behavioural Management",
+          "Client Endorsement",
+          "Disaster Management Strategy",
+          "Document Control",
+          "History and Background",
+          "Mealtime Management Strategy",
+          "Mobility and Mobility Strategy",
+          "Restrictive Practices",
+          "Undertaking ADL",
+          "placeholder_dominated_section:Communication and Communication Strategy",
+          "placeholder_dominated_section:Goals",
+          "placeholder_dominated_section:Support Delivery and Client Safety",
+          "placeholder_dominated_section:Support Plan Meeting (Header)"
+        ]
+      },
+      {
+        "gate": "mandatory_deliverable_coverage",
+        "state": "validation",
+        "message": "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
+        "details": [
+          "coverage=1/14 (7.1%)",
+          "care-plan-support-plan-meeting: Support Plan Meeting (header) (MUST_BE_REPRESENTED)",
+          "care-plan-goals: Goals (MUST_BE_REPRESENTED)",
+          "care-plan-about-me: About Me (MUST_BE_REPRESENTED)",
+          "care-plan-history-background: History and Background (MUST_BE_REPRESENTED)",
+          "care-plan-undertaking-adl: Undertaking ADL (MUST_BE_REPRESENTED)",
+          "care-plan-communication-strategy: Communication and Communication Strategy (MUST_BE_REPRESENTED)",
+          "care-plan-mobility-strategy: Mobility and Mobility Strategy (MUST_BE_REPRESENTED)",
+          "care-plan-support-delivery-client-safety: Support Delivery and Client Safety (MUST_BE_REPRESENTED)",
+          "care-plan-behavioural-management: Behavioural Management (CONDITIONAL)",
+          "care-plan-restrictive-practices: Restrictive Practices (CONDITIONAL)",
+          "care-plan-mealtime-management-strategy: Mealtime Management Strategy (MUST_BE_REPRESENTED)",
+          "care-plan-disaster-management-strategy: Disaster Management Strategy (CONDITIONAL)",
+          "care-plan-client-endorsement: Client Endorsement (MUST_BE_REPRESENTED)"
+        ]
+      },
+      {
+        "gate": "mechanical_gate",
+        "state": "validation",
+        "message": "Care Plan mechanical gate failed.",
+        "details": [
+          "care_plan_minimum_three_personal_goals: Minimum three personal goals must be present."
+        ]
+      },
+      {
+        "gate": "mechanical_gate",
+        "state": "validation",
+        "message": "Care Plan mechanical gate failed.",
+        "details": [
+          "care_plan_selected_supports_described: Every selected support type must have a non-empty description."
+        ]
+      },
+      {
+        "gate": "artifact_required",
+        "state": "artifact_generation",
+        "message": "Blueprint requires an artifact. Text-only completion is blocked until an artifact is generated and linked."
+      },
+      {
+        "gate": "approval_required",
+        "state": "awaiting_clarification",
+        "message": "Blueprint requires approval before completion.",
+        "details": [
+          "participant_support_content_owner"
+        ]
+      }
+    ],
+    "coverageMissing": [
+      {
+        "requirementId": "care-plan-support-plan-meeting",
+        "requirement": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "SUPPORT_PLAN_MEETING",
+        "requiredDeliverableRepresentation": "Support Plan Meeting (header)",
+        "expectedRepresentation": "Support Plan Meeting (header)",
+        "adequacyCriteria": [
+          "Every field present and labelled",
+          "People present names people who attended the planning meeting. A document title in that field is a defect",
+          "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+          "Date for Review is a real date, later than the plan date",
+          "Diagnosis is transcribed from a clinical source, never inferred"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-support-plan-meeting] \"Support Plan Meeting (Header)\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 54,
+          "proseWordCount": 15,
+          "fieldLabelCount": 9,
+          "placeholderCount": 9,
+          "fieldAndPlaceholderWordCount": 39,
+          "strippedSelfDescription": [
+            "This section outlines the details of the support plan meeting, including the individuals present and the purpose of the meeting."
+          ],
+          "countedContent": "Participant Name: [PARTICIPANT_NAME] Date of Birth: [DATE_OF_BIRTH] Gender: [GENDER] Language Spoken: [LANGUAGE_SPOKEN] NDIS Number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People Present: [PEOPLE_PRESENT] Support Plan Developed By: [SUPPORT_PLAN_DEVELOPED_BY] Date for Review: [REVIEW_DATE] It is essential to ensure that all relevant parties are involved in the planning process."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Every field present and labelled; People present names people who attended the planning meeting. A document title in that field is a defect; Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates; Date for Review is a real date, later than the plan date; Diagnosis is transcribed from a clinical source, never inferred."
+      },
+      {
+        "requirementId": "care-plan-goals",
+        "requirement": "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "GOALS",
+        "requiredDeliverableRepresentation": "Goals",
+        "expectedRepresentation": "Goals",
+        "adequacyCriteria": [
+          "Minimum three personal goals present",
+          "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+          "Current situation is specific to this participant, not generic",
+          "Goal states what the participant will do or achieve",
+          "Actions state what will be done to support the goal",
+          "Person responsible names a role or person. \"The team\" is a defect",
+          "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
+          "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-goals] \"Goals\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 41,
+          "proseWordCount": 33,
+          "fieldLabelCount": 0,
+          "placeholderCount": 6,
+          "fieldAndPlaceholderWordCount": 0,
+          "strippedSelfDescription": [],
+          "countedContent": "| Current Situation | Goal | Actions | Person Responsible | Timeframe | Outcomes | |-------------------|------|---------|--------------------|-----------|----------| | [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] | This table outlines the participant's goals, including personal and NDIS goals where applicable. Each goal should be specific, measurable, achievable, relevant, and time-bound."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Minimum three personal goals present; NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports; Goal states what the participant will do or achieve; Actions state what will be done to support the goal; Person responsible names a role or person. \"The team\" is a defect; Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails; Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them."
+      },
+      {
+        "requirementId": "care-plan-about-me",
+        "requirement": "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "ABOUT_ME",
+        "requiredDeliverableRepresentation": "About Me",
+        "expectedRepresentation": "About Me",
+        "adequacyCriteria": [
+          "Strengths stated",
+          "Likes and dislikes stated",
+          "Informal supports identified",
+          "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+          "Written about the person, not about their deficits"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-about-me] \"About Me\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 34,
+          "proseWordCount": 16,
+          "fieldLabelCount": 6,
+          "placeholderCount": 6,
+          "fieldAndPlaceholderWordCount": 18,
+          "strippedSelfDescription": [
+            "This section provides insights into the participant's strengths, likes, dislikes, what matters to them, communication preferences, and informal supports."
+          ],
+          "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What Matters: [WHAT_MATTERS] Communication Preferences: [COMMUNICATION_PREFERENCES] Informal Supports: [INFORMAL_SUPPORTS] This section is focused on the participant's individuality and should avoid any mention of deficits."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Strengths stated; Likes and dislikes stated; Informal supports identified; Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4); Written about the person, not about their deficits."
+      },
+      {
+        "requirementId": "care-plan-history-background",
+        "requirement": "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "HISTORY_BACKGROUND",
+        "requiredDeliverableRepresentation": "History and Background",
+        "expectedRepresentation": "History and Background",
+        "adequacyCriteria": [
+          "Carries only what a support worker operationally needs. Not the full file",
+          "Every historical claim traceable to a named source document",
+          "No clinical interpretation added beyond what the source states",
+          "[OPEN] Should this section state an access restriction, given its content?"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-history-background] \"History and Background\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 39,
+          "proseWordCount": 23,
+          "fieldLabelCount": 3,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 16,
+          "strippedSelfDescription": [],
+          "countedContent": "This section contains relevant history and context that support workers need to know. Relevant History: [HISTORY_BACKGROUND] Prior Service Involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-Relevant Context: [RISK_RELEVANT_CONTEXT] All claims must be traceable to a named source document."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Carries only what a support worker operationally needs. Not the full file; No clinical interpretation added beyond what the source states; [OPEN] Should this section state an access restriction, given its content?."
+      },
+      {
+        "requirementId": "care-plan-undertaking-adl",
+        "requirement": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "UNDERTAKING_ADL",
+        "requiredDeliverableRepresentation": "Undertaking ADL",
+        "expectedRepresentation": "Undertaking ADL",
+        "adequacyCriteria": [
+          "States what the participant does independently",
+          "States what needs prompting",
+          "States what needs hands-on support",
+          "A capacity statement with no support description is inadequate"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-undertaking-adl] \"Undertaking ADL\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 35,
+          "proseWordCount": 17,
+          "fieldLabelCount": 3,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 18,
+          "strippedSelfDescription": [
+            "This section outlines the participant's capacity for personal grooming and self-hygiene."
+          ],
+          "countedContent": "Independent Tasks: [INDEPENDENT_TASKS] Tasks Requiring Prompting: [PROMPTING_TASKS] Tasks Requiring Hands-On Support: [HANDS_ON_SUPPORT_TASKS] It is important to clearly define what the participant can do independently and what support is required."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: States what needs prompting; A capacity statement with no support description is inadequate."
+      },
+      {
+        "requirementId": "care-plan-communication-strategy",
+        "requirement": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "COMMUNICATION_STRATEGY",
+        "requiredDeliverableRepresentation": "Communication and Communication Strategy",
+        "expectedRepresentation": "Communication and Communication Strategy",
+        "adequacyCriteria": [
+          "Capacity indicators completed",
+          "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+          "Strategy states what a worker should actually do",
+          "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-communication-strategy] \"Communication and Communication Strategy\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 36,
+          "proseWordCount": 15,
+          "fieldLabelCount": 5,
+          "placeholderCount": 5,
+          "fieldAndPlaceholderWordCount": 21,
+          "strippedSelfDescription": [
+            "This section details the participant's communication abilities and strategies for effective interaction."
+          ],
+          "countedContent": "Verbal Communication: [VERBAL_COMMUNICATION] Non-Verbal Communication: [NON_VERBAL_COMMUNICATION] Expressive Capacity: [EXPRESSIVE_CAPACITY] Receptive Capacity: [RECEPTIVE_CAPACITY] Strategy: [COMMUNICATION_STRATEGY] The strategy should provide clear guidance on how support workers should communicate with the participant."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicators completed; Strategy narrative present. A ticked capacity box with an empty overview is a defect; Strategy states what a worker should actually do; Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)."
+      },
+      {
+        "requirementId": "care-plan-mobility-strategy",
+        "requirement": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "MOBILITY_STRATEGY",
+        "requiredDeliverableRepresentation": "Mobility and Mobility Strategy",
+        "expectedRepresentation": "Mobility and Mobility Strategy",
+        "adequacyCriteria": [
+          "Capacity indicator completed",
+          "Strategy narrative present, not checkbox alone",
+          "Where an aid is used, it is named and its use described"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-mobility-strategy] \"Mobility and Mobility Strategy\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 26,
+          "proseWordCount": 15,
+          "fieldLabelCount": 3,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 11,
+          "strippedSelfDescription": [
+            "This section outlines the participant's mobility needs and strategies."
+          ],
+          "countedContent": "Mobility Aid Required: [MOBILITY_AID] Overview: [MOBILITY_OVERVIEW] Strategy: [MOBILITY_STRATEGY] It is important to specify any aids used and how they are to be utilized."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Strategy narrative present, not checkbox alone; Where an aid is used, it is named and its use described."
+      },
+      {
+        "requirementId": "care-plan-support-delivery-client-safety",
+        "requirement": "Support Delivery and Client Safety section contains support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+        "requiredDeliverableRepresentation": "Support Delivery and Client Safety",
+        "expectedRepresentation": "Support Delivery and Client Safety",
+        "adequacyCriteria": [
+          "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
+          "Descriptions state what the worker does, not what the support is called",
+          "Selected supports reconcile against funded supports in the service agreement"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-support-delivery-client-safety] \"Support Delivery and Client Safety\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 56,
+          "proseWordCount": 9,
+          "fieldLabelCount": 9,
+          "placeholderCount": 8,
+          "fieldAndPlaceholderWordCount": 47,
+          "strippedSelfDescription": [
+            "This section includes a checklist of support types and their descriptions."
+          ],
+          "countedContent": "Support Types: - In-home ADL: [IN_HOME_ADL_DESCRIPTION] - Personal Care: [PERSONAL_CARE_DESCRIPTION] - Community Access: [COMMUNITY_ACCESS_DESCRIPTION] - Transport and Travel Training: [TRANSPORT_TRAINING_DESCRIPTION] - Social/Group Activity: [SOCIAL_ACTIVITY_DESCRIPTION] - Behavioural Redirection: [BEHAVIOURAL_REDIRECTION_DESCRIPTION] - Companionship and Mentorship: [COMPANIONSHIP_DESCRIPTION] - Therapeutic Cleaning: [THERAPEUTIC_CLEANING_DESCRIPTION] Each selected support type must have a corresponding description."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Descriptions state what the worker does, not what the support is called; Selected supports reconcile against funded supports in the service agreement."
+      },
+      {
+        "requirementId": "care-plan-behavioural-management",
+        "requirement": "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
+        "classification": "CONDITIONAL",
+        "sourceBlueprintSection": "BEHAVIOURAL_MANAGEMENT",
+        "requiredDeliverableRepresentation": "Behavioural Management",
+        "expectedRepresentation": "Behavioural Management",
+        "adequacyCriteria": [
+          "Each row has all three columns",
+          "Redirection strategies are drawn from the BSP, not invented",
+          "Strategies are written for a support worker to execute"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-behavioural-management] \"Behavioural Management\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 25,
+          "proseWordCount": 20,
+          "fieldLabelCount": 0,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 0,
+          "strippedSelfDescription": [],
+          "countedContent": "| Behaviour | Possible Trigger | Redirection Strategy | |-----------|------------------|---------------------| | [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] | This table is conditional and should be populated from the Behaviour Support Plan if applicable."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Each row has all three columns; Redirection strategies are drawn from the BSP, not invented; Strategies are written for a support worker to execute."
+      },
+      {
+        "requirementId": "care-plan-restrictive-practices",
+        "requirement": "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
+        "classification": "CONDITIONAL",
+        "sourceBlueprintSection": "RESTRICTIVE_PRACTICES",
+        "requiredDeliverableRepresentation": "Restrictive Practices",
+        "expectedRepresentation": "Restrictive Practices",
+        "adequacyCriteria": [
+          "Each practice named in plain language a support worker understands",
+          "What the worker does, and does not do",
+          "Authorisation status stated as recorded in the BSP, never determined here"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-restrictive-practices] \"Restrictive Practices\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 28,
+          "proseWordCount": 15,
+          "fieldLabelCount": 3,
+          "placeholderCount": 3,
+          "fieldAndPlaceholderWordCount": 13,
+          "strippedSelfDescription": [
+            "This section outlines any restrictive practices in place."
+          ],
+          "countedContent": "Practices: [RESTRICTIVE_PRACTICES] What the Worker Does: [WORKER_ACTIONS] Authorisation Status: [AUTHORISATION_STATUS] This section is conditional and should only be included if restrictive practices are in place."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Each practice named in plain language a support worker understands; Authorisation status stated as recorded in the BSP, never determined here."
+      },
+      {
+        "requirementId": "care-plan-mealtime-management-strategy",
+        "requirement": "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "MEALTIME_MANAGEMENT_STRATEGY",
+        "requiredDeliverableRepresentation": "Mealtime Management Strategy",
+        "expectedRepresentation": "Mealtime Management Strategy",
+        "adequacyCriteria": [
+          "Strategy drawn from the mealtime management risk assessment, cited",
+          "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+          "Written as worker actions"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-mealtime-management-strategy] \"Mealtime Management Strategy\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_PARTIAL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 13,
+          "proseWordCount": 10,
+          "fieldLabelCount": 1,
+          "placeholderCount": 1,
+          "fieldAndPlaceholderWordCount": 3,
+          "strippedSelfDescription": [
+            "This section outlines the strategy for managing mealtimes."
+          ],
+          "countedContent": "Strategy: [MEALTIME_STRATEGY] It should be drawn from the mealtime management risk assessment."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting); Written as worker actions."
+      },
+      {
+        "requirementId": "care-plan-disaster-management-strategy",
+        "requirement": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+        "classification": "CONDITIONAL",
+        "sourceBlueprintSection": "DISASTER_MANAGEMENT_STRATEGY",
+        "requiredDeliverableRepresentation": "Disaster Management Strategy",
+        "expectedRepresentation": "Disaster Management Strategy",
+        "adequacyCriteria": [
+          "States participant-specific arrangements, not a reproduction of the site plan",
+          "Names the source risk assessment",
+          "For community access, addresses both general and location-specific risk",
+          "Written as worker actions",
+          "[OPEN] Other settings: confirm"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-disaster-management-strategy] \"Disaster Management Strategy\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 17,
+          "proseWordCount": 14,
+          "fieldLabelCount": 1,
+          "placeholderCount": 1,
+          "fieldAndPlaceholderWordCount": 3,
+          "strippedSelfDescription": [
+            "This section outlines the participant-specific disaster and evacuation arrangements."
+          ],
+          "countedContent": "Arrangements: [DISASTER_ARRANGEMENTS] This section is conditional and should be populated based on the relevant risk assessments."
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: States participant-specific arrangements, not a reproduction of the site plan; Names the source risk assessment; For community access, addresses both general and location-specific risk; Written as worker actions; [OPEN] Other settings: confirm."
+      },
+      {
+        "requirementId": "care-plan-client-endorsement",
+        "requirement": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
+        "classification": "MUST_BE_REPRESENTED",
+        "sourceBlueprintSection": "CLIENT_ENDORSEMENT",
+        "requiredDeliverableRepresentation": "Client Endorsement",
+        "expectedRepresentation": "Client Endorsement",
+        "adequacyCriteria": [
+          "Block present and complete-able",
+          "Where the plan is provided to family or carer, consent is recorded",
+          "The system never fabricates a signature or a consent state"
+        ],
+        "actualLocation": "deliverable.sections[care-plan-client-endorsement] \"Client Endorsement\"",
+        "structuralResult": "STRUCTURE_PASS",
+        "substantiveResult": "SUBSTANTIVE_FAIL",
+        "substantiveValidationMode": "ADEQUACY_CRITERIA",
+        "substantiveBreakdown": {
+          "countedWordCount": 22,
+          "proseWordCount": 0,
+          "fieldLabelCount": 6,
+          "placeholderCount": 6,
+          "fieldAndPlaceholderWordCount": 22,
+          "strippedSelfDescription": [
+            "This section provides a block for client endorsement."
+          ],
+          "countedContent": "Agreement Statement: [AGREEMENT_STATEMENT] Name of Client/Representative: [CLIENT_NAME] Signature: [SIGNATURE] Date: [DATE] Provided To: [PROVIDED_TO] Consent Obtained: [CONSENT_OBTAINED]"
+        },
+        "finalResult": "PARTIAL",
+        "reason": "Relevant section does not satisfy authored adequacy criteria: Block present and complete-able; Where the plan is provided to family or carer, consent is recorded; The system never fabricates a signature or a consent state."
+      }
+    ]
+  },
+  "requirementValidation": [
+    {
+      "requirementId": "care-plan-support-plan-meeting",
+      "requirement": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Every field present and labelled",
+        "People present names people who attended the planning meeting. A document title in that field is a defect",
+        "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+        "Date for Review is a real date, later than the plan date",
+        "Diagnosis is transcribed from a clinical source, never inferred"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Every field present and labelled; People present names people who attended the planning meeting. A document title in that field is a defect; Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates; Date for Review is a real date, later than the plan date; Diagnosis is transcribed from a clinical source, never inferred.",
+      "breakdown": {
+        "countedWordCount": 54,
+        "proseWordCount": 15,
+        "fieldLabelCount": 9,
+        "placeholderCount": 9,
+        "fieldAndPlaceholderWordCount": 39,
+        "strippedSelfDescription": [
+          "This section outlines the details of the support plan meeting, including the individuals present and the purpose of the meeting."
+        ],
+        "countedContent": "Participant Name: [PARTICIPANT_NAME] Date of Birth: [DATE_OF_BIRTH] Gender: [GENDER] Language Spoken: [LANGUAGE_SPOKEN] NDIS Number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People Present: [PEOPLE_PRESENT] Support Plan Developed By: [SUPPORT_PLAN_DEVELOPED_BY] Date for Review: [REVIEW_DATE] It is essential to ensure that all relevant parties are involved in the planning process."
+      }
+    },
+    {
+      "requirementId": "care-plan-goals",
+      "requirement": "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Minimum three personal goals present",
+        "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+        "Current situation is specific to this participant, not generic",
+        "Goal states what the participant will do or achieve",
+        "Actions state what will be done to support the goal",
+        "Person responsible names a role or person. \"The team\" is a defect",
+        "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
+        "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Minimum three personal goals present; NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports; Goal states what the participant will do or achieve; Actions state what will be done to support the goal; Person responsible names a role or person. \"The team\" is a defect; Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails; Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them.",
+      "breakdown": {
+        "countedWordCount": 41,
+        "proseWordCount": 33,
+        "fieldLabelCount": 0,
+        "placeholderCount": 6,
+        "fieldAndPlaceholderWordCount": 0,
+        "strippedSelfDescription": [],
+        "countedContent": "| Current Situation | Goal | Actions | Person Responsible | Timeframe | Outcomes | |-------------------|------|---------|--------------------|-----------|----------| | [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] | This table outlines the participant's goals, including personal and NDIS goals where applicable. Each goal should be specific, measurable, achievable, relevant, and time-bound."
+      }
+    },
+    {
+      "requirementId": "care-plan-about-me",
+      "requirement": "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Strengths stated",
+        "Likes and dislikes stated",
+        "Informal supports identified",
+        "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+        "Written about the person, not about their deficits"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Strengths stated; Likes and dislikes stated; Informal supports identified; Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4); Written about the person, not about their deficits.",
+      "breakdown": {
+        "countedWordCount": 34,
+        "proseWordCount": 16,
+        "fieldLabelCount": 6,
+        "placeholderCount": 6,
+        "fieldAndPlaceholderWordCount": 18,
+        "strippedSelfDescription": [
+          "This section provides insights into the participant's strengths, likes, dislikes, what matters to them, communication preferences, and informal supports."
+        ],
+        "countedContent": "Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What Matters: [WHAT_MATTERS] Communication Preferences: [COMMUNICATION_PREFERENCES] Informal Supports: [INFORMAL_SUPPORTS] This section is focused on the participant's individuality and should avoid any mention of deficits."
+      }
+    },
+    {
+      "requirementId": "care-plan-history-background",
+      "requirement": "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Carries only what a support worker operationally needs. Not the full file",
+        "Every historical claim traceable to a named source document",
+        "No clinical interpretation added beyond what the source states",
+        "[OPEN] Should this section state an access restriction, given its content?"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Carries only what a support worker operationally needs. Not the full file; No clinical interpretation added beyond what the source states; [OPEN] Should this section state an access restriction, given its content?.",
+      "breakdown": {
+        "countedWordCount": 39,
+        "proseWordCount": 23,
+        "fieldLabelCount": 3,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 16,
+        "strippedSelfDescription": [],
+        "countedContent": "This section contains relevant history and context that support workers need to know. Relevant History: [HISTORY_BACKGROUND] Prior Service Involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-Relevant Context: [RISK_RELEVANT_CONTEXT] All claims must be traceable to a named source document."
+      }
+    },
+    {
+      "requirementId": "care-plan-undertaking-adl",
+      "requirement": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "States what the participant does independently",
+        "States what needs prompting",
+        "States what needs hands-on support",
+        "A capacity statement with no support description is inadequate"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: States what needs prompting; A capacity statement with no support description is inadequate.",
+      "breakdown": {
+        "countedWordCount": 35,
+        "proseWordCount": 17,
+        "fieldLabelCount": 3,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 18,
+        "strippedSelfDescription": [
+          "This section outlines the participant's capacity for personal grooming and self-hygiene."
+        ],
+        "countedContent": "Independent Tasks: [INDEPENDENT_TASKS] Tasks Requiring Prompting: [PROMPTING_TASKS] Tasks Requiring Hands-On Support: [HANDS_ON_SUPPORT_TASKS] It is important to clearly define what the participant can do independently and what support is required."
+      }
+    },
+    {
+      "requirementId": "care-plan-communication-strategy",
+      "requirement": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Capacity indicators completed",
+        "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+        "Strategy states what a worker should actually do",
+        "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicators completed; Strategy narrative present. A ticked capacity box with an empty overview is a defect; Strategy states what a worker should actually do; Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable).",
+      "breakdown": {
+        "countedWordCount": 36,
+        "proseWordCount": 15,
+        "fieldLabelCount": 5,
+        "placeholderCount": 5,
+        "fieldAndPlaceholderWordCount": 21,
+        "strippedSelfDescription": [
+          "This section details the participant's communication abilities and strategies for effective interaction."
+        ],
+        "countedContent": "Verbal Communication: [VERBAL_COMMUNICATION] Non-Verbal Communication: [NON_VERBAL_COMMUNICATION] Expressive Capacity: [EXPRESSIVE_CAPACITY] Receptive Capacity: [RECEPTIVE_CAPACITY] Strategy: [COMMUNICATION_STRATEGY] The strategy should provide clear guidance on how support workers should communicate with the participant."
+      }
+    },
+    {
+      "requirementId": "care-plan-mobility-strategy",
+      "requirement": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Capacity indicator completed",
+        "Strategy narrative present, not checkbox alone",
+        "Where an aid is used, it is named and its use described"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Strategy narrative present, not checkbox alone; Where an aid is used, it is named and its use described.",
+      "breakdown": {
+        "countedWordCount": 26,
+        "proseWordCount": 15,
+        "fieldLabelCount": 3,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 11,
+        "strippedSelfDescription": [
+          "This section outlines the participant's mobility needs and strategies."
+        ],
+        "countedContent": "Mobility Aid Required: [MOBILITY_AID] Overview: [MOBILITY_OVERVIEW] Strategy: [MOBILITY_STRATEGY] It is important to specify any aids used and how they are to be utilized."
+      }
+    },
+    {
+      "requirementId": "care-plan-support-delivery-client-safety",
+      "requirement": "Support Delivery and Client Safety section contains support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
+        "Descriptions state what the worker does, not what the support is called",
+        "Selected supports reconcile against funded supports in the service agreement"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Descriptions state what the worker does, not what the support is called; Selected supports reconcile against funded supports in the service agreement.",
+      "breakdown": {
+        "countedWordCount": 56,
+        "proseWordCount": 9,
+        "fieldLabelCount": 9,
+        "placeholderCount": 8,
+        "fieldAndPlaceholderWordCount": 47,
+        "strippedSelfDescription": [
+          "This section includes a checklist of support types and their descriptions."
+        ],
+        "countedContent": "Support Types: - In-home ADL: [IN_HOME_ADL_DESCRIPTION] - Personal Care: [PERSONAL_CARE_DESCRIPTION] - Community Access: [COMMUNITY_ACCESS_DESCRIPTION] - Transport and Travel Training: [TRANSPORT_TRAINING_DESCRIPTION] - Social/Group Activity: [SOCIAL_ACTIVITY_DESCRIPTION] - Behavioural Redirection: [BEHAVIOURAL_REDIRECTION_DESCRIPTION] - Companionship and Mentorship: [COMPANIONSHIP_DESCRIPTION] - Therapeutic Cleaning: [THERAPEUTIC_CLEANING_DESCRIPTION] Each selected support type must have a corresponding description."
+      }
+    },
+    {
+      "requirementId": "care-plan-behavioural-management",
+      "requirement": "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Each row has all three columns",
+        "Redirection strategies are drawn from the BSP, not invented",
+        "Strategies are written for a support worker to execute"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Each row has all three columns; Redirection strategies are drawn from the BSP, not invented; Strategies are written for a support worker to execute.",
+      "breakdown": {
+        "countedWordCount": 25,
+        "proseWordCount": 20,
+        "fieldLabelCount": 0,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 0,
+        "strippedSelfDescription": [],
+        "countedContent": "| Behaviour | Possible Trigger | Redirection Strategy | |-----------|------------------|---------------------| | [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] | This table is conditional and should be populated from the Behaviour Support Plan if applicable."
+      }
+    },
+    {
+      "requirementId": "care-plan-restrictive-practices",
+      "requirement": "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Each practice named in plain language a support worker understands",
+        "What the worker does, and does not do",
+        "Authorisation status stated as recorded in the BSP, never determined here"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Each practice named in plain language a support worker understands; Authorisation status stated as recorded in the BSP, never determined here.",
+      "breakdown": {
+        "countedWordCount": 28,
+        "proseWordCount": 15,
+        "fieldLabelCount": 3,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 13,
+        "strippedSelfDescription": [
+          "This section outlines any restrictive practices in place."
+        ],
+        "countedContent": "Practices: [RESTRICTIVE_PRACTICES] What the Worker Does: [WORKER_ACTIONS] Authorisation Status: [AUTHORISATION_STATUS] This section is conditional and should only be included if restrictive practices are in place."
+      }
+    },
+    {
+      "requirementId": "care-plan-mealtime-management-strategy",
+      "requirement": "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_PARTIAL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Strategy drawn from the mealtime management risk assessment, cited",
+        "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+        "Written as worker actions"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting); Written as worker actions.",
+      "breakdown": {
+        "countedWordCount": 13,
+        "proseWordCount": 10,
+        "fieldLabelCount": 1,
+        "placeholderCount": 1,
+        "fieldAndPlaceholderWordCount": 3,
+        "strippedSelfDescription": [
+          "This section outlines the strategy for managing mealtimes."
+        ],
+        "countedContent": "Strategy: [MEALTIME_STRATEGY] It should be drawn from the mealtime management risk assessment."
+      }
+    },
+    {
+      "requirementId": "care-plan-disaster-management-strategy",
+      "requirement": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "States participant-specific arrangements, not a reproduction of the site plan",
+        "Names the source risk assessment",
+        "For community access, addresses both general and location-specific risk",
+        "Written as worker actions",
+        "[OPEN] Other settings: confirm"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: States participant-specific arrangements, not a reproduction of the site plan; Names the source risk assessment; For community access, addresses both general and location-specific risk; Written as worker actions; [OPEN] Other settings: confirm.",
+      "breakdown": {
+        "countedWordCount": 17,
+        "proseWordCount": 14,
+        "fieldLabelCount": 1,
+        "placeholderCount": 1,
+        "fieldAndPlaceholderWordCount": 3,
+        "strippedSelfDescription": [
+          "This section outlines the participant-specific disaster and evacuation arrangements."
+        ],
+        "countedContent": "Arrangements: [DISASTER_ARRANGEMENTS] This section is conditional and should be populated based on the relevant risk assessments."
+      }
+    },
+    {
+      "requirementId": "care-plan-client-endorsement",
+      "requirement": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
+      "finalResult": "PARTIAL",
+      "substantiveResult": "SUBSTANTIVE_FAIL",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "Block present and complete-able",
+        "Where the plan is provided to family or carer, consent is recorded",
+        "The system never fabricates a signature or a consent state"
+      ],
+      "failureReason": "Relevant section does not satisfy authored adequacy criteria: Block present and complete-able; Where the plan is provided to family or carer, consent is recorded; The system never fabricates a signature or a consent state.",
+      "breakdown": {
+        "countedWordCount": 22,
+        "proseWordCount": 0,
+        "fieldLabelCount": 6,
+        "placeholderCount": 6,
+        "fieldAndPlaceholderWordCount": 22,
+        "strippedSelfDescription": [
+          "This section provides a block for client endorsement."
+        ],
+        "countedContent": "Agreement Statement: [AGREEMENT_STATEMENT] Name of Client/Representative: [CLIENT_NAME] Signature: [SIGNATURE] Date: [DATE] Provided To: [PROVIDED_TO] Consent Obtained: [CONSENT_OBTAINED]"
+      }
+    },
+    {
+      "requirementId": "care-plan-document-control",
+      "requirement": "Document Control section contains form ID, version, date, and \"uncontrolled when printed\" statement.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "ADEQUACY_CRITERIA",
+      "adequacyCriteria": [
+        "form ID, version and date present; review date consistent with 4.1"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 17,
+        "proseWordCount": 0,
+        "fieldLabelCount": 4,
+        "placeholderCount": 3,
+        "fieldAndPlaceholderWordCount": 17,
+        "strippedSelfDescription": [],
+        "countedContent": "Form ID: [FORM_ID] Version: [VERSION] Date: [DATE] Uncontrolled When Printed: This document is uncontrolled when printed."
+      }
+    }
+  ],
+  "openItems": [
+    "History and Background (4.4): access restriction given its content?",
+    "Disaster management (4.12): settings other than SIL, supported accommodation and community access?",
+    "Emergency contacts: this document or the intake form?",
+    "Decision-making capacity, guardian or nominee: recorded here or elsewhere?"
+  ]
+}

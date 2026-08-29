@@ -44,9 +44,9 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "care_plan.revise":  { family: "care_plan", mode: "revise",  code: "care_plan", isAction: false },
 
   // ── Support Plans ──────────────────────────────────────────────────────────
-  "support_plan.create":         { family: "support_plan", mode: "create", code: "individual_support_plan",    isAction: false },
-  "support_plan.review":         { family: "support_plan", mode: "review", code: "individual_support_plan",    isAction: false },
-  "support_plan.revise":         { family: "support_plan", mode: "revise", code: "individual_support_plan",    isAction: false },
+  "support_plan.create":         { family: "care_plan", mode: "create", code: "care_plan",                    isAction: false },
+  "support_plan.review":         { family: "care_plan", mode: "review", code: "care_plan",                    isAction: false },
+  "support_plan.revise":         { family: "care_plan", mode: "revise", code: "care_plan",                    isAction: false },
   "support_plan.sil.create":     { family: "support_plan", mode: "create", code: "sil_support_plan",           isAction: false },
   "support_plan.sil.review":     { family: "support_plan", mode: "review", code: "sil_support_plan",           isAction: false },
   "support_plan.sil.revise":     { family: "support_plan", mode: "revise", code: "sil_support_plan",           isAction: false },

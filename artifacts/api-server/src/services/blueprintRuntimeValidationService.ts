@@ -38,6 +38,7 @@ export interface BlueprintRuntimeGateFailure {
     | "professional_placeholder"
     | "methodology_leak"
     | "mandatory_deliverable_coverage"
+    | "mechanical_gate"
     | "final_synthesis"
     | "prohibited_deliverable"
     | "template_required"
@@ -181,6 +182,12 @@ export function validateBlueprintRuntimeCompletion(
       });
     }
   }
+
+  failures.push(...validateCarePlanMechanicalRules(
+    blueprint.code,
+    input.contentMarkdown,
+    input.deliverableSections,
+  ));
 
   failures.push(...validateSections(
     contract.sections,
@@ -756,6 +763,172 @@ function validateSections(
     }
   }
   return failures;
+}
+
+function validateCarePlanMechanicalRules(
+  blueprintCode: string | null | undefined,
+  contentMarkdown: string,
+  deliverableSections?: PerRequirementDeliverableSection[],
+): BlueprintRuntimeGateFailure[] {
+  if (blueprintCode !== "care_plan") return [];
+
+  const failures: BlueprintRuntimeGateFailure[] = [];
+  const content = assembleCarePlanMechanicalContent(contentMarkdown, deliverableSections);
+  const sections = extractMarkdownSections(content);
+  const sectionByHeading = (pattern: RegExp) => sections.find((section) => pattern.test(section.heading));
+
+  const planDate = findNamedDate(content, /\b(?:plan date|date)\b/i);
+  const reviewDate = findNamedDate(content, /\b(?:date for review|review date)\b/i);
+  if (planDate && reviewDate && reviewDate.getTime() <= planDate.getTime()) {
+    failures.push(mechanicalFailure("care_plan_review_date_later_than_plan_date", "Review date must be later than the plan date."));
+  }
+
+  const invalidTimeframe = content.match(/\btimeframe\b[\s\S]{0,240}\b(?:ongoing|tbc|as required|to be confirmed)\b/i);
+  if (invalidTimeframe) {
+    failures.push(mechanicalFailure("care_plan_no_invalid_timeframe", `Invalid timeframe value: ${invalidTimeframe[0].trim()}`));
+  }
+
+  const goals = sectionByHeading(/\bgoals?\b/i);
+  if (goals) {
+    const goalTable = extractMarkdownTablesFromText(goals.body).find((table) =>
+      ["current situation", "goal", "actions", "person responsible", "timeframe", "outcomes"].every((required) =>
+        table.headers.some((header) => normaliseRuntimeText(header).includes(required)),
+      ),
+    );
+    if (!goalTable) {
+      failures.push(mechanicalFailure("care_plan_goal_rows_complete", "Goals section must include a six-column goals table."));
+    } else {
+      const incomplete = goalTable.rows.some((row) =>
+        row.length < 6 ||
+        row.slice(0, 6).some((cell) => !cell.trim()) ||
+        /\bthe team\b/i.test(row[3] ?? ""),
+      );
+      if (incomplete) {
+        failures.push(mechanicalFailure("care_plan_goal_rows_complete", "Every goal row must populate current situation, goal, actions, person responsible, timeframe and outcomes."));
+      }
+      if (goalTable.rows.length < 3) {
+        failures.push(mechanicalFailure("care_plan_minimum_three_personal_goals", "Minimum three personal goals must be present."));
+      }
+    }
+  }
+
+  const support = sectionByHeading(/\bsupport delivery\b/i);
+  if (support && hasSelectedSupportWithoutDescription(support.body)) {
+    failures.push(mechanicalFailure("care_plan_selected_supports_described", "Every selected support type must have a non-empty description."));
+  }
+
+  for (const [rule, pattern] of [
+    ["care_plan_capacity_strategy_narratives_present", /\bcommunication\b/i],
+    ["care_plan_capacity_strategy_narratives_present", /\bmobility\b/i],
+  ] as const) {
+    const section = sectionByHeading(pattern);
+    if (section && /\b(?:verbal|non[- ]verbal|expressive|receptive|aid required|aid not required|capacity)\b/i.test(section.body)) {
+      const strategyText = section.body
+        .split(/\r?\n/)
+        .filter((line) => /\b(?:overview|strategy)\b/i.test(line) || !/^\s*(?:[-*]|\[[ xX]\])/.test(line))
+        .join(" ")
+        .replace(/\[[^\]]+\]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!/\bstrategy\b/i.test(section.body) || strategyText.split(/\s+/).filter(Boolean).length < 12) {
+        failures.push(mechanicalFailure(rule, `${section.heading} requires a non-empty strategy narrative, not checkbox-only content.`));
+      }
+    }
+  }
+
+  for (const headingPattern of [/\bbehavioural management\b/i, /\brestrictive practices\b/i, /\bdisaster management\b/i]) {
+    const section = sectionByHeading(headingPattern);
+    if (section && !section.body.trim()) {
+      failures.push(mechanicalFailure("care_plan_no_blank_conditional_sections", `${section.heading} is blank; conditional sections require content or explicit non-applicability naming the source.`));
+    }
+    if (section && section.body.trim() && section.body.trim().length < 30 && !/\b(?:not applicable|does not apply|no .* required|no .* recorded|based on|according to|source|assessment|plan|bsp)\b/i.test(section.body)) {
+      failures.push(mechanicalFailure("care_plan_no_blank_conditional_sections", `${section.heading} is too thin to establish content or source-based non-applicability.`));
+    }
+  }
+
+  return failures;
+}
+
+function mechanicalFailure(rule: string, detail: string): BlueprintRuntimeGateFailure {
+  return {
+    gate: "mechanical_gate",
+    state: "validation",
+    message: "Care Plan mechanical gate failed.",
+    details: [`${rule}: ${detail}`],
+  };
+}
+
+function assembleCarePlanMechanicalContent(
+  contentMarkdown: string,
+  deliverableSections?: PerRequirementDeliverableSection[],
+): string {
+  if (!deliverableSections?.length) return contentMarkdown;
+  return deliverableSections
+    .map((section) => `## ${section.heading}\n\n${section.content}`)
+    .join("\n\n");
+}
+
+function findNamedDate(content: string, labelPattern: RegExp): Date | null {
+  for (const line of content.split(/\r?\n/)) {
+    if (!labelPattern.test(line)) continue;
+    const match = line.match(/\b(\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4})\b/);
+    if (!match) continue;
+    const value = match[1] ?? "";
+    const parsed = value.includes("/")
+      ? parseSlashDate(value)
+      : new Date(`${value}T00:00:00Z`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function parseSlashDate(value: string): Date {
+  const [day, month, year] = value.split("/").map(Number);
+  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, day ?? 1));
+}
+
+function extractMarkdownTablesFromText(markdown: string): Array<{ headers: string[]; rows: string[][] }> {
+  const lines = markdown.split(/\r?\n/);
+  const tables: Array<{ headers: string[]; rows: string[][] }> = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = lines[index] ?? "";
+    const separator = lines[index + 1] ?? "";
+    if (!header.includes("|") || !/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(separator)) continue;
+    const headers = splitMarkdownTableRow(header);
+    const rows: string[][] = [];
+    for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
+      const row = lines[rowIndex] ?? "";
+      if (!row.includes("|") || !row.trim()) break;
+      rows.push(splitMarkdownTableRow(row));
+      index = rowIndex;
+    }
+    tables.push({ headers, rows });
+  }
+  return tables;
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function hasSelectedSupportWithoutDescription(content: string): boolean {
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (!/\[[xX]\]|☑|✓|selected/i.test(line)) continue;
+    if (/:\s*$/.test(line)) return true;
+    const afterSeparator = line.replace(/^[-*]\s*/, "").split(/:/).slice(1).join(" ").replace(/\[[^\]]+\]/g, "").trim();
+    if (afterSeparator.length < 8) return true;
+  }
+  return false;
+}
+
+function normaliseRuntimeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function isCustomerTemplateOptional(context?: StandardTemplateEvidenceContext | null): boolean {

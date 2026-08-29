@@ -401,6 +401,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
   });
 
+  it("routes generic individual support plan intents to care_plan while keeping SIL support plan standalone", () => {
+    expect(resolveIntent("support_plan.create")).toMatchObject({
+      family: "care_plan",
+      mode: "create",
+      code: "care_plan",
+    });
+    expect(resolveIntent("support_plan.review")).toMatchObject({
+      family: "care_plan",
+      mode: "review",
+      code: "care_plan",
+    });
+    expect(resolveIntent("support_plan.sil.create")).toMatchObject({
+      family: "support_plan",
+      mode: "create",
+      code: "sil_support_plan",
+    });
+  });
+
   it("preserves the original CREATE operation when CoS paraphrases the outcome as ready for use", () => {
     const sourceUserRequest = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
     const paraphrasedDescription = [
@@ -1022,7 +1040,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
   });
 
-  it("gives Care Plan CREATE final synthesis a user-facing structure independent of Blueprint section titles", () => {
+  it("gives Care Plan CREATE final synthesis the authored fourteen-section user-facing structure", () => {
     const context = compileProfessionalExecutionContext({
       userRequest: "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.",
       manifest: manifest({
@@ -1046,14 +1064,30 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(context.operation).toBe("CREATE");
     expect(context.deliverable.requestedDeliverableType).toBe("STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE");
     expect(context.professionalMethodRole).toBe("internal_method_only");
-    expect(carePlan.sections.every((section: any) => section.sectionRole === "internal_method")).toBe(true);
+    expect(carePlan.sections).toHaveLength(14);
+    expect(carePlan.sections.every((section: any) => section.sectionRole === "user_facing")).toBe(true);
+    expect(carePlan.sections.map((section: any) => section.sectionCode)).toEqual([
+      "SUPPORT_PLAN_MEETING",
+      "GOALS",
+      "ABOUT_ME",
+      "HISTORY_BACKGROUND",
+      "UNDERTAKING_ADL",
+      "COMMUNICATION_STRATEGY",
+      "MOBILITY_STRATEGY",
+      "SUPPORT_DELIVERY_CLIENT_SAFETY",
+      "BEHAVIOURAL_MANAGEMENT",
+      "RESTRICTIVE_PRACTICES",
+      "MEALTIME_MANAGEMENT_STRATEGY",
+      "DISASTER_MANAGEMENT_STRATEGY",
+      "CLIENT_ENDORSEMENT",
+      "DOCUMENT_CONTROL",
+    ]);
     expect((supportPlan.sections ?? []).some((section: any) => Object.prototype.hasOwnProperty.call(section, "sectionRole"))).toBe(false);
-    expect(context.deliverable.mandatoryProfessionalContent).toEqual(expect.arrayContaining([
-      "Participant goals, preferences and communication needs",
-      "Support domains and daily living support structure",
-      "Risk, safety, incident and escalation arrangements",
-      "Review, updates, consent and sign-off provisions",
-    ]));
+    expect(carePlan.deliverableContract.requirementPlan).toHaveLength(14);
+    expect(carePlan.deliverableContract.requirementPlan[0]).toMatchObject({
+      id: "care-plan-support-plan-meeting",
+      targetLocation: "Support Plan Meeting (header)",
+    });
 
     const src = source("services/unifiedExecutionEngine.ts");
     expect(src).toContain("Section role:");
@@ -1171,7 +1205,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(missingStructuredEntry.missing[0]?.reason).toContain('deliverable.sections is missing an entry for required requirementId "authored-worker-responsibilities"');
   });
 
-  it("marks current Care Plan requirements as derived fallback validation until authored criteria exist", () => {
+  it("uses authored Care Plan requirements and adequacy criteria instead of derived fallback requirements", () => {
     const blueprint = getRegistryEntry("care_plan") as any;
     const contract = {
       blueprint,
@@ -1194,14 +1228,57 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
     const prompt = formatRequirementCoveragePrompt(profile);
 
-    expect(profile.requirements.length).toBeGreaterThan(0);
-    expect(profile.requirements.every((requirement) => requirement.origin === "DERIVED")).toBe(true);
-    expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length === 0)).toBe(true);
-    expect(prompt).toContain("Origin: DERIVED");
-    expect(prompt).toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
+    expect(profile.requirements).toHaveLength(14);
+    expect(profile.requirements.every((requirement) => requirement.origin === "AUTHORED")).toBe(true);
+    expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
+    expect(profile.requirements.map((requirement) => requirement.id)).toEqual([
+      "care-plan-support-plan-meeting",
+      "care-plan-goals",
+      "care-plan-about-me",
+      "care-plan-history-background",
+      "care-plan-undertaking-adl",
+      "care-plan-communication-strategy",
+      "care-plan-mobility-strategy",
+      "care-plan-support-delivery-client-safety",
+      "care-plan-behavioural-management",
+      "care-plan-restrictive-practices",
+      "care-plan-mealtime-management-strategy",
+      "care-plan-disaster-management-strategy",
+      "care-plan-client-endorsement",
+      "care-plan-document-control",
+    ]);
+    expect(prompt).toContain("Origin: AUTHORED");
+    expect(prompt).toContain("Requirement: Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.");
+    expect(prompt).toContain("    - Every field present and labelled");
+    expect(prompt).toContain("Requirement: Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.");
+    expect(prompt).toContain("    - Redirection strategies are drawn from the BSP, not invented");
+    expect(prompt).not.toContain("Adequacy criteria: DERIVED_FALLBACK_HEURISTIC");
   });
 
-  it("strips self-describing Care Plan prose before substantive word-count validation", () => {
+  it("carries the authored Care Plan evidence contract and authority boundary from the specification", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+
+    expect(blueprint.evidenceContract.documentToSections).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        documentType: "Behaviour support plan",
+        requiredWhen: "where one exists",
+        feeds: expect.arrayContaining(["BEHAVIOURAL_MANAGEMENT", "RESTRICTIVE_PRACTICES", "COMMUNICATION_STRATEGY", "GOALS"]),
+      }),
+      expect.objectContaining({
+        documentType: "Mealtime management risk assessment",
+        requiredWhen: "always",
+        feeds: ["MEALTIME_MANAGEMENT_STRATEGY"],
+      }),
+    ]));
+    expect(blueprint.externalAuthorityRequiredFor).toEqual(expect.arrayContaining([
+      "Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
+      "Does not author or amend a behaviour support plan; implements an existing one.",
+      "Does not determine, grant or assess restrictive practice authorisation.",
+      "Does not carry clinical management, medication schedules or treating-professional contacts — those belong to health_support_plan.",
+    ]));
+  });
+
+  it("enforces Care Plan conditional non-applicability and mechanical gate rules", () => {
     const blueprint = getRegistryEntry("care_plan") as any;
     const contract = {
       blueprint,
@@ -1221,7 +1298,115 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       blueprint,
       blueprintContract: contract,
     });
-    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const validation = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: [
+        "## Goals",
+        "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |",
+        "| --- | --- | --- | --- | --- | --- |",
+        "| [CURRENT] | [GOAL] | [ACTIONS] | The team | ongoing | [OUTCOMES] |",
+        "",
+        "## Communication and Communication Strategy",
+        "- Verbal: [VERBAL]",
+        "- Non-verbal: [NON_VERBAL]",
+        "",
+        "## Support Delivery and Client Safety",
+        "- [x] Personal care:",
+        "",
+        "## Behavioural Management",
+        "",
+        "## Restrictive Practices",
+        "Based on the behaviour support plan, no restrictive practice is recorded and this section does not apply.",
+        "",
+        "## Disaster Management Strategy",
+        "Based on the community access risk assessment, no hands-on disaster strategy is required for this template.",
+      ].join("\n"),
+      standardTemplateEvidence: {
+        standardTemplateRequested: true,
+        existingTemplateRequested: false,
+        participantSpecificRequested: false,
+        organisationSpecificRequested: false,
+        customerExampleOptional: true,
+      },
+      professionalContext: context,
+    });
+    const mechanicalDetails = validation.failures
+      .filter((failure) => failure.gate === "mechanical_gate")
+      .flatMap((failure) => failure.details ?? []);
+
+    expect(mechanicalDetails).toEqual(expect.arrayContaining([
+      expect.stringContaining("care_plan_no_invalid_timeframe"),
+      expect.stringContaining("care_plan_goal_rows_complete"),
+      expect.stringContaining("care_plan_minimum_three_personal_goals"),
+      expect.stringContaining("care_plan_selected_supports_described"),
+      expect.stringContaining("care_plan_capacity_strategy_narratives_present"),
+      expect.stringContaining("care_plan_no_blank_conditional_sections"),
+    ]));
+  });
+
+  it("strips self-describing Care Plan prose before substantive word-count validation", () => {
+    const profile = {
+      deliverableType: "CARE_PLAN",
+      operation: "CREATE" as const,
+      standardisation: "standard_reusable" as const,
+      requirements: [
+        {
+          id: "mandatory-1",
+          description: "Participant identity and factual placeholder framework",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage regression fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Participant identity section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["participant"] }],
+        },
+        {
+          id: "mandatory-2",
+          description: "Participant goals, preferences and communication needs",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage regression fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Goals and preferences section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["goals", "preferences"] }],
+        },
+        {
+          id: "mandatory-3",
+          description: "Support domains and daily living support structure",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage regression fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Support domains section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["support", "domains"] }],
+        },
+        {
+          id: "mandatory-4",
+          description: "Provider and worker responsibilities",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage regression fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Responsibilities section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["support", "delivery"] }],
+        },
+        {
+          id: "mandatory-9",
+          description: "Review, updates, consent and sign-off provisions",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage regression fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Review section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["review", "consent"] }],
+        },
+      ],
+    };
     const report = evaluateDeliverableRequirementCoverage("", profile, {
       deliverableSections: [
         {
@@ -1293,26 +1478,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
   });
 
   it("reports field labels and placeholders separately from prose without changing fallback pass/fail", () => {
-    const blueprint = getRegistryEntry("care_plan") as any;
-    const contract = {
-      blueprint,
-      sections: blueprint.sections ?? [],
-      template: null,
-      mode: "create",
-    } as BlueprintExecutionContract;
-    const context = compileProfessionalExecutionContext({
-      userRequest: "Create a standard comprehensive NDIS care plan template.",
-      manifest: manifest({
-        canonicalIntent: "care_plan.create",
-        blueprintFamily: "care_plan",
-        blueprintMode: "create",
-        blueprintId: "care_plan",
-        primarySpecialist: "service_delivery_coordinator",
-      }),
-      blueprint,
-      blueprintContract: contract,
-    });
-    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const profile = {
+      deliverableType: "CARE_PLAN",
+      operation: "CREATE" as const,
+      standardisation: "standard_reusable" as const,
+      requirements: [
+        {
+          id: "mandatory-1",
+          description: "Participant identity and factual placeholder framework",
+          classification: "MUST_BE_REPRESENTED" as const,
+          origin: "DERIVED" as const,
+          professionalRationale: "Previous item 11 coverage reporting fixture.",
+          evidenceAuthority: [],
+          requiredDeliverableRepresentation: "Participant identity section",
+          adequacyCriteria: [],
+          coverageRules: [{ allOf: ["participant", "ndis"] }],
+        },
+      ],
+    };
     const report = evaluateDeliverableRequirementCoverage("", profile, {
       deliverableSections: [
         {

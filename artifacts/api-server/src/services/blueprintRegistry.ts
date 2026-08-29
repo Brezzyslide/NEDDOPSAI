@@ -115,6 +115,17 @@ export interface RegistryEntry {
     namingConvention?: string;
     templateRequired?: boolean;
     completionRequirements?: string[];
+    requirementPlan?: Array<{
+      id: string;
+      sectionCode?: string;
+      requirementText: string;
+      classification?: DeliverableRequirementClassificationName;
+      targetLocation: string;
+      adequacyCriteria?: string[];
+      evidenceAuthority?: string[];
+      coverageRules?: Array<{ allOf?: string[]; anyOf?: string[] }>;
+      conditionalApplicability?: Record<string, unknown>;
+    }>;
   };
   evidenceContract?: {
     requiredEvidenceCategories?: string[];
@@ -126,6 +137,7 @@ export interface RegistryEntry {
     freshnessRules?: Record<string, unknown>;
     claimIntegrityRequired?: boolean;
     missingEvidenceBehaviour?: "clarification_required" | "continue_with_flagged_gaps" | "block_completion" | "not_applicable_allowed";
+    documentToSections?: Array<{ documentType: string; requiredWhen: string; feeds: string[] }>;
   };
   permittedOrgOverrides?: {
     templateSubstitution?: boolean;
@@ -163,6 +175,11 @@ export interface RegistryEntry {
     sortOrder: number;
   }>;
 }
+
+type DeliverableRequirementClassificationName =
+  | "MUST_BE_REPRESENTED"
+  | "CONDITIONAL"
+  | "FACTUAL_FIELD";
 
 const SDC_OWNER = "service_delivery_coordinator";
 const SDC_SUPPORT = [
@@ -3013,18 +3030,261 @@ function section(
   };
 }
 
-const carePlanMethodSection = (...args: Parameters<typeof section>) => ({
-  ...section(...args),
-  sectionRole: "internal_method" as const,
-});
+function carePlanUserSection(
+  sectionCode: string,
+  title: string,
+  description: string,
+  instructions: string,
+  sortOrder: number,
+  requiredEvidenceCategories: string[] = [],
+  minimumContentExpectation: string | null = "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
+  extra?: Partial<ReturnType<typeof section>>,
+) {
+  return {
+    ...section(sectionCode, title, description, instructions, sortOrder, requiredEvidenceCategories, minimumContentExpectation),
+    sectionRole: "user_facing" as const,
+    ...(extra ?? {}),
+  };
+}
+
+const CARE_PLAN_AUTHORITY_BOUNDARY = [
+  "Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
+  "Does not author or amend a behaviour support plan; implements an existing one.",
+  "Does not determine, grant or assess restrictive practice authorisation.",
+  "Does not determine decision-making capacity, guardianship or nominee status.",
+  "Does not make forensic or risk-of-harm determinations.",
+  "Does not carry clinical management, medication schedules or treating-professional contacts — those belong to health_support_plan.",
+];
+
+const CARE_PLAN_OPEN_ITEMS = [
+  "History and Background (4.4): access restriction given its content?",
+  "Disaster management (4.12): settings other than SIL, supported accommodation and community access?",
+  "Emergency contacts: this document or the intake form?",
+  "Decision-making capacity, guardian or nominee: recorded here or elsewhere?",
+];
+
+const CARE_PLAN_DOCUMENT_TO_SECTIONS = [
+  { documentType: "NDIS plan", requiredWhen: "always", feeds: ["GOALS", "SUPPORT_DELIVERY_CLIENT_SAFETY"] },
+  { documentType: "Strengths-based questionnaire", requiredWhen: "always", feeds: ["ABOUT_ME", "GOALS"] },
+  { documentType: "Intake form", requiredWhen: "always", feeds: ["SUPPORT_PLAN_MEETING", "UNDERTAKING_ADL", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY", "SUPPORT_DELIVERY_CLIENT_SAFETY"] },
+  { documentType: "Service agreement", requiredWhen: "always", feeds: ["SUPPORT_DELIVERY_CLIENT_SAFETY"] },
+  { documentType: "Behaviour support plan", requiredWhen: "where one exists", feeds: ["BEHAVIOURAL_MANAGEMENT", "RESTRICTIVE_PRACTICES", "COMMUNICATION_STRATEGY", "GOALS"] },
+  { documentType: "Allied health reports", requiredWhen: "where relevant supports claimed", feeds: ["GOALS", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY", "UNDERTAKING_ADL", "HISTORY_BACKGROUND"] },
+  { documentType: "Mealtime management risk assessment", requiredWhen: "always", feeds: ["MEALTIME_MANAGEMENT_STRATEGY"] },
+  { documentType: "Disaster management risk assessment", requiredWhen: "SIL and supported accommodation", feeds: ["DISASTER_MANAGEMENT_STRATEGY"] },
+  { documentType: "Community access risk assessment", requiredWhen: "community access participants", feeds: ["DISASTER_MANAGEMENT_STRATEGY"] },
+];
+
+const CARE_PLAN_REQUIREMENT_PLAN = [
+  {
+    id: "care-plan-support-plan-meeting",
+    sectionCode: "SUPPORT_PLAN_MEETING",
+    requirementText: "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Support Plan Meeting (header)",
+    adequacyCriteria: [
+      "Every field present and labelled",
+      "People present names people who attended the planning meeting. A document title in that field is a defect",
+      "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+      "Date for Review is a real date, later than the plan date",
+      "Diagnosis is transcribed from a clinical source, never inferred",
+    ],
+  },
+  {
+    id: "care-plan-goals",
+    sectionCode: "GOALS",
+    requirementText: "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Goals",
+    adequacyCriteria: [
+      "Minimum three personal goals present",
+      "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+      "Current situation is specific to this participant, not generic",
+      "Goal states what the participant will do or achieve",
+      "Actions state what will be done to support the goal",
+      "Person responsible names a role or person. \"The team\" is a defect",
+      "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
+      "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them",
+    ],
+  },
+  {
+    id: "care-plan-about-me",
+    sectionCode: "ABOUT_ME",
+    requirementText: "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "About Me",
+    adequacyCriteria: [
+      "Strengths stated",
+      "Likes and dislikes stated",
+      "Informal supports identified",
+      "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+      "Written about the person, not about their deficits",
+    ],
+  },
+  {
+    id: "care-plan-history-background",
+    sectionCode: "HISTORY_BACKGROUND",
+    requirementText: "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "History and Background",
+    adequacyCriteria: [
+      "Carries only what a support worker operationally needs. Not the full file",
+      "Every historical claim traceable to a named source document",
+      "No clinical interpretation added beyond what the source states",
+      "[OPEN] Should this section state an access restriction, given its content?",
+    ],
+  },
+  {
+    id: "care-plan-undertaking-adl",
+    sectionCode: "UNDERTAKING_ADL",
+    requirementText: "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Undertaking ADL",
+    adequacyCriteria: [
+      "States what the participant does independently",
+      "States what needs prompting",
+      "States what needs hands-on support",
+      "A capacity statement with no support description is inadequate",
+    ],
+  },
+  {
+    id: "care-plan-communication-strategy",
+    sectionCode: "COMMUNICATION_STRATEGY",
+    requirementText: "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Communication and Communication Strategy",
+    adequacyCriteria: [
+      "Capacity indicators completed",
+      "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+      "Strategy states what a worker should actually do",
+      "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)",
+    ],
+  },
+  {
+    id: "care-plan-mobility-strategy",
+    sectionCode: "MOBILITY_STRATEGY",
+    requirementText: "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Mobility and Mobility Strategy",
+    adequacyCriteria: [
+      "Capacity indicator completed",
+      "Strategy narrative present, not checkbox alone",
+      "Where an aid is used, it is named and its use described",
+    ],
+  },
+  {
+    id: "care-plan-support-delivery-client-safety",
+    sectionCode: "SUPPORT_DELIVERY_CLIENT_SAFETY",
+    requirementText: "Support Delivery and Client Safety section contains support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Support Delivery and Client Safety",
+    adequacyCriteria: [
+      "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
+      "Descriptions state what the worker does, not what the support is called",
+      "Selected supports reconcile against funded supports in the service agreement",
+    ],
+  },
+  {
+    id: "care-plan-behavioural-management",
+    sectionCode: "BEHAVIOURAL_MANAGEMENT",
+    requirementText: "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
+    classification: "CONDITIONAL" as const,
+    targetLocation: "Behavioural Management",
+    adequacyCriteria: [
+      "Each row has all three columns",
+      "Redirection strategies are drawn from the BSP, not invented",
+      "Strategies are written for a support worker to execute",
+    ],
+    conditionalApplicability: {
+      appliesWhen: ["BSP exists", "behaviours of concern are recorded", "any goal references behaviour"],
+      nonApplicability: "Where none apply, state non-applicability per 3.1.",
+    },
+  },
+  {
+    id: "care-plan-restrictive-practices",
+    sectionCode: "RESTRICTIVE_PRACTICES",
+    requirementText: "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
+    classification: "CONDITIONAL" as const,
+    targetLocation: "Restrictive Practices",
+    adequacyCriteria: [
+      "Each practice named in plain language a support worker understands",
+      "What the worker does, and does not do",
+      "Authorisation status stated as recorded in the BSP, never determined here",
+    ],
+    conditionalApplicability: {
+      appliesWhen: ["any restrictive practice is in place"],
+      nonApplicability: "Where none, state non-applicability per 3.1.",
+    },
+  },
+  {
+    id: "care-plan-mealtime-management-strategy",
+    sectionCode: "MEALTIME_MANAGEMENT_STRATEGY",
+    requirementText: "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Mealtime Management Strategy",
+    adequacyCriteria: [
+      "Strategy drawn from the mealtime management risk assessment, cited",
+      "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+      "Written as worker actions",
+    ],
+  },
+  {
+    id: "care-plan-disaster-management-strategy",
+    sectionCode: "DISASTER_MANAGEMENT_STRATEGY",
+    requirementText: "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+    classification: "CONDITIONAL" as const,
+    targetLocation: "Disaster Management Strategy",
+    adequacyCriteria: [
+      "States participant-specific arrangements, not a reproduction of the site plan",
+      "Names the source risk assessment",
+      "For community access, addresses both general and location-specific risk",
+      "Written as worker actions",
+      "[OPEN] Other settings: confirm",
+    ],
+    conditionalApplicability: {
+      appliesWhen: ["SIL and supported accommodation", "community access participants"],
+      nonApplicability: "Other settings: [OPEN] — confirm",
+    },
+  },
+  {
+    id: "care-plan-client-endorsement",
+    sectionCode: "CLIENT_ENDORSEMENT",
+    requirementText: "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Client Endorsement",
+    adequacyCriteria: [
+      "Block present and complete-able",
+      "Where the plan is provided to family or carer, consent is recorded",
+      "The system never fabricates a signature or a consent state",
+    ],
+  },
+  {
+    id: "care-plan-document-control",
+    sectionCode: "DOCUMENT_CONTROL",
+    requirementText: "Document Control section contains form ID, version, date, and \"uncontrolled when printed\" statement.",
+    classification: "MUST_BE_REPRESENTED" as const,
+    targetLocation: "Document Control",
+    adequacyCriteria: [
+      "form ID, version and date present; review date consistent with 4.1",
+    ],
+  },
+];
 
 const CARE_PLAN_SECTIONS = [
-  carePlanMethodSection("PARTICIPANT_CONTEXT", "Participant Context", "Participant identity, communication context, service setting and relevant preferences.", "Summarise verified participant context and state gaps rather than inventing missing detail.", 10, ["participant_context"]),
-  carePlanMethodSection("PURPOSE_AND_SCOPE", "Purpose and Scope", "Why the plan exists and what it does and does not cover.", "Define operational/service-delivery scope and external professional dependencies.", 20),
-  carePlanMethodSection("GOALS_AND_PREFERENCES", "Goals and Preferences", "Participant goals, preferences, strengths and choice/decision-making considerations.", "Distinguish activity, participation, progress, outcomes and goal achievement.", 30, ["participant_goals"]),
-  carePlanMethodSection("SUPPORT_REQUIREMENTS", "Support Requirements", "Daily living, community participation, routines and implementation responsibilities.", "Translate approved support requirements into operational support instructions without changing professional meaning.", 40, ["current_support_requirements"]),
-  carePlanMethodSection("RISKS_SAFEGUARDS_ESCALATION", "Risks, Safeguards and Escalation", "Known support risks, safeguards, emergency/escalation pathways and dependencies.", "Surface risk, BSP, RP, incident, clinical and mealtime dependencies for the correct authority.", 50, ["risk_context"]),
-  carePlanMethodSection("MONITORING_REVIEW_GAPS", "Monitoring, Review and Evidence Gaps", "Review date, monitoring responsibilities, unresolved conflicts and missing evidence.", "Record currentness, source provenance, review requirements and unresolved evidence gaps.", 60),
+  carePlanUserSection("SUPPORT_PLAN_MEETING", "Support Plan Meeting", "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.", "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.", 10, ["intake_form", "service_agreement", "ndis_plan", "clinical_report"]),
+  carePlanUserSection("GOALS", "Goals", "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.", "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.", 20, ["ndis_plan", "strengths_based_questionnaire", "participant_voice", "allied_health_report"]),
+  carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.", 30, ["strengths_based_questionnaire", "participant_voice"]),
+  carePlanUserSection("HISTORY_BACKGROUND", "History and Background", "Background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.", "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.", 40, ["allied_health_report", "behaviour_support_plan", "intake_form"]),
+  carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"]),
+  carePlanUserSection("COMMUNICATION_STRATEGY", "Communication and Communication Strategy", "Verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.", "Complete capacity indicators and write the strategy a worker should actually use. Do not leave overview/strategy blank.", 60, ["intake_form", "speech_assessment", "behaviour_support_plan", "allied_health_report"]),
+  carePlanUserSection("MOBILITY_STRATEGY", "Mobility and Mobility Strategy", "Aid required / not required; overview and strategy.", "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.", 70, ["intake_form", "physiotherapy_assessment", "ot_assessment"]),
+  carePlanUserSection("SUPPORT_DELIVERY_CLIENT_SAFETY", "Support Delivery and Client Safety", "Support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.", "Every selected support type must have a corresponding description stating what the worker does. Reconcile selected supports against funded supports in the service agreement.", 80, ["service_agreement", "intake_form"]),
+  carePlanUserSection("BEHAVIOURAL_MANAGEMENT", "Behavioural Management", "Table: behaviour, possible trigger, redirection strategy.", "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, populate the table from the BSP. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.", 90, ["behaviour_support_plan"]),
+  carePlanUserSection("RESTRICTIVE_PRACTICES", "Restrictive Practices", "Support-worker-friendly statement of what restrictive practices are in place.", "Conditional. Where any restrictive practice is in place, name each practice in plain language, state what the worker does and does not do, and state authorisation status as recorded in the BSP. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.", 100, ["behaviour_support_plan", "restrictive_practice_authorisation"]),
+  carePlanUserSection("MEALTIME_MANAGEMENT_STRATEGY", "Mealtime Management Strategy", "The mealtime strategy a support worker executes.", "Draw the strategy from the mealtime management risk assessment and cite it. Where no hands-on strategy is required, state so with reference to the assessment and describe what does apply. Authority boundary: dysphagia, swallowing, texture-modification and other credentialed mealtime judgements require external or appropriately credentialed professional authority.", 110, ["mealtime_management_risk_assessment"]),
+  carePlanUserSection("DISASTER_MANAGEMENT_STRATEGY", "Disaster Management Strategy", "Participant-specific disaster and evacuation arrangements.", "Conditional. For SIL and supported accommodation, source from the disaster management risk assessment. For community access, source from the community access risk assessment and address both general and location-specific risk. For other settings, leave the [OPEN] decision visible and do not invent a rule.", 120, ["disaster_management_risk_assessment", "community_access_risk_assessment"]),
+  carePlanUserSection("CLIENT_ENDORSEMENT", "Client Endorsement", "Agreement statement, name of client or representative, signature, date, provided-to list, consent obtained.", "Provide a complete-able endorsement block. Do not fabricate signature or consent state.", 130, ["signing_process"]),
+  carePlanUserSection("DOCUMENT_CONTROL", "Document Control", "Form ID, version, date, \"uncontrolled when printed\" statement.", "Include form ID, version and date. Review date must be consistent with Support Plan Meeting.", 140),
 ];
 
 const SUPPORT_PLAN_SECTIONS = [
@@ -4284,7 +4544,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     code: "care_plan",
     blueprintFamily: "care_plan",
     title: "Care Plan",
-    purpose: "Document operational/service-delivery supports for a participant. Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
+    purpose: "Support-worker-facing operational document carrying day-to-day strategies derived from specialist assessments without making specialist judgements itself. Clinical, medication, dysphagia, mealtime or other credentialed health judgements require external or appropriately credentialed professional authority.",
     category: "clinical",
     supportedModes: ["create", "review", "revise"],
     primaryDeliverable: "Care Plan document",
@@ -4292,6 +4552,7 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     ownerType: "platform_owned",
     professionalAuthority: "mixed",
     externalAuthorityRequiredFor: [
+      ...CARE_PLAN_AUTHORITY_BOUNDARY,
       "clinical assessment",
       "medication judgement",
       "dysphagia or mealtime professional judgement",
@@ -4299,23 +4560,92 @@ export const BLUEPRINT_REGISTRY: RegistryEntry[] = [
     ],
     futureOwnerRoleCode: "service_delivery_coordinator",
     supportingSpecialists: SDC_SUPPORT,
-    deliverableContract: docxDeliverable("care_plan", "CARE_PLAN_{participant}_{date}", ["risk_context_review"], ["standalone_risk_assessment"]),
-    evidenceContract: participantEvidence([
-      "participant_context",
-      "current_support_requirements",
-      "participant_goals",
-    ], ["risk_context", "current_bsp", "current_rp_evidence", "credentialed_clinical_instruction"], 3),
+    deliverableContract: {
+      ...docxDeliverable("care_plan", "CARE_PLAN_{participant}_{date}", ["source_document_reconciliation"], [
+        "health_support_plan",
+        "behaviour_support_plan",
+        "standalone_risk_assessment",
+        "restrictive_practice_authorisation",
+      ]),
+      requirementPlan: CARE_PLAN_REQUIREMENT_PLAN,
+      completionRequirements: [
+        "all_fourteen_sections_present",
+        "conditional_sections_content_or_explicit_non_applicability",
+        "authored_adequacy_criteria_satisfied",
+        "mechanical_gate_rules_pass",
+        "artifact_generated",
+      ],
+    },
+    evidenceContract: {
+      requiredEvidenceCategories: [
+        "ndis_plan",
+        "strengths_based_questionnaire",
+        "intake_form",
+        "service_agreement",
+        "mealtime_management_risk_assessment",
+      ],
+      optionalEvidenceCategories: [
+        "behaviour_support_plan",
+        "allied_health_report",
+        "ot_assessment",
+        "speech_assessment",
+        "physiotherapy_assessment",
+        "disaster_management_risk_assessment",
+        "community_access_risk_assessment",
+        "restrictive_practice_authorisation",
+        "signing_process",
+      ],
+      documentToSections: CARE_PLAN_DOCUMENT_TO_SECTIONS,
+      allowedSourceTypes: [
+        "participant_document",
+        "participant_record",
+        "ndis_plan",
+        "strengths_based_questionnaire",
+        "intake_form",
+        "service_agreement",
+        "behaviour_support_plan",
+        "allied_health_report",
+        "ot_assessment",
+        "speech_assessment",
+        "physiotherapy_assessment",
+        "mealtime_management_risk_assessment",
+        "disaster_management_risk_assessment",
+        "community_access_risk_assessment",
+        "restrictive_practice_authorisation",
+        "organisational_source",
+        "task_upload",
+      ],
+      restrictedSourceTypes: ["memory_only", "user_assertion_only", "uncontrolled_copy"],
+      requiredEntityTypes: ["participant"],
+      minimumEvidenceCount: 5,
+      freshnessRules: {
+        currentnessRequired: true,
+        memoryCannotProveCurrentness: true,
+        participantDocumentsAreDistinctEvidenceClass: true,
+        provenanceMustSurviveRetrieval: true,
+        documentToSectionsContract: true,
+      },
+      claimIntegrityRequired: true,
+      missingEvidenceBehaviour: "block_completion",
+    },
     permittedOrgOverrides: { templateSubstitution: true, outputFormatPreferences: true, namingConvention: true, approvalWorkflow: true },
     templateRequired: true,
     allowedOrgTemplateOverride: true,
     templateVersionPolicy: "pin_at_execution",
-    requiredLibraryKnowledge: ["care_plan", "policy", "legislation"],
+    requiredLibraryKnowledge: ["care_plan", "health_support_plan", "behaviour_support_plan", "risk_assessment", "restrictive_practice_authorisation"],
     requiredEntityKnowledge: { participant: true },
     requiredApprovals: { participant_support_content_owner: true },
     validationRules: [
       { rule: "participant_context_present", required: true, description: "Participant context must be present." },
       { rule: "current_support_requirements_present", required: true, description: "Current approved support requirements must be present or flagged as a blocker." },
       { rule: "clinical_bsp_rp_boundaries_checked", required: true, description: "Clinical, BSP and RP dependencies must be routed to the correct authority." },
+      { rule: "care_plan_review_date_later_than_plan_date", required: true, description: "Review date is a valid date, later than the plan date." },
+      { rule: "care_plan_no_invalid_timeframe", required: true, description: "No timeframe field contains ongoing, TBC, as required or equivalent." },
+      { rule: "care_plan_selected_supports_described", required: true, description: "Every selected support type has a non-empty description." },
+      { rule: "care_plan_capacity_strategy_narratives_present", required: true, description: "Every capacity-indicator section has a non-empty strategy narrative." },
+      { rule: "care_plan_no_blank_conditional_sections", required: true, description: "No conditional section is blank; content or explicit non-applicability with source is required." },
+      { rule: "care_plan_goal_rows_complete", required: true, description: "Every goal row has all six columns populated." },
+      { rule: "care_plan_minimum_three_personal_goals", required: true, description: "Minimum three personal goals present." },
     ],
     qualityRules: [
       { dimension: "participant_centred", weight: 30, description: "Participant goals, preferences and support context are represented respectfully." },
