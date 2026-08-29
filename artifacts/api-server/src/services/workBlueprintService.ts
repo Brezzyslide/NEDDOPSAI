@@ -30,7 +30,7 @@ import {
   type BlueprintTemplateVersionPolicy,
   type WorkTemplateType,
 } from "@workspace/db";
-import { eq, and, or, isNull, desc, ilike, inArray, asc } from "drizzle-orm";
+import { eq, and, or, isNull, desc, ilike, inArray, notInArray, asc } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
@@ -2097,7 +2097,23 @@ async function seedRegistryBlueprintSections(
   blueprintId: string,
   now: Date,
 ): Promise<void> {
-  if (!entry.sections || entry.sections.length === 0) return;
+  const expectedSectionIds = (entry.sections ?? []).map((section) =>
+    `platform_blueprint_${entry.code}_section_${section.sectionCode.toLowerCase()}`,
+  );
+
+  if (expectedSectionIds.length === 0) {
+    await db
+      .delete(blueprintSectionsTable)
+      .where(eq(blueprintSectionsTable.blueprintId, blueprintId));
+    return;
+  }
+
+  await db
+    .delete(blueprintSectionsTable)
+    .where(and(
+      eq(blueprintSectionsTable.blueprintId, blueprintId),
+      notInArray(blueprintSectionsTable.id, expectedSectionIds),
+    ));
 
   for (const section of entry.sections) {
     const sectionId = `platform_blueprint_${entry.code}_section_${section.sectionCode.toLowerCase()}`;

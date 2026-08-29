@@ -7,6 +7,7 @@ export interface BlueprintAcceptanceResult {
   registryCodes: number;
   persistedExpectedBlueprints: number;
   expectedProfessionalSections: number;
+  persistedTotalProfessionalSections: number;
   persistedMatchingProfessionalSections: number;
   titleDrift: string[];
   methodDrift: string[];
@@ -53,6 +54,7 @@ export async function checkBlueprintAcceptance(client: MigrationDbClient): Promi
   );
 
   const rowsByCode = new Map(blueprintRows.rows.map((row) => [row.code, row]));
+  const blueprintIds = blueprintRows.rows.map((row) => row.id);
   const titleDrift = BLUEPRINT_REGISTRY
     .filter((entry) => rowsByCode.get(entry.code)?.title !== entry.title)
     .map((entry) => entry.code);
@@ -100,6 +102,17 @@ export async function checkBlueprintAcceptance(client: MigrationDbClient): Promi
     }
   }
 
+  const totalSectionsRow = blueprintIds.length > 0
+    ? await client.query<{ count: string }>(
+      `
+        SELECT count(*)::text AS count
+        FROM blueprint_sections
+        WHERE blueprint_id = ANY($1::text[])
+      `,
+      [blueprintIds],
+    )
+    : { rows: [{ count: "0" }] };
+
   const serviceDeliveryReviewRow = rowsByCode.get("service_delivery_review");
   const complianceImpactAssessment = resolveIntent("compliance.impact_assessment");
   const compatibilityKeys = [
@@ -121,6 +134,7 @@ export async function checkBlueprintAcceptance(client: MigrationDbClient): Promi
     registryCodes: BLUEPRINT_REGISTRY.length,
     persistedExpectedBlueprints: rowsByCode.size,
     expectedProfessionalSections: expectedSections,
+    persistedTotalProfessionalSections: Number(totalSectionsRow.rows[0]?.count ?? 0),
     persistedMatchingProfessionalSections,
     titleDrift,
     methodDrift,
@@ -141,6 +155,7 @@ export async function checkBlueprintAcceptance(client: MigrationDbClient): Promi
     result.registryCodes === BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes &&
     result.persistedExpectedBlueprints === BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes &&
     result.expectedProfessionalSections === BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections &&
+    result.persistedTotalProfessionalSections === BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections &&
     result.persistedMatchingProfessionalSections === BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections &&
     result.titleDrift.length === 0 &&
     result.methodDrift.length === 0 &&
@@ -163,6 +178,7 @@ export function assertBlueprintAcceptance(result: BlueprintAcceptanceResult): vo
       `registry=${result.registryCodes}/${BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes}`,
       `persisted=${result.persistedExpectedBlueprints}/${BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes}`,
       `sections=${result.persistedMatchingProfessionalSections}/${result.expectedProfessionalSections}`,
+      `totalSections=${result.persistedTotalProfessionalSections}/${BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections}`,
       `titleDrift=${result.titleDrift.length}`,
       `methodDrift=${result.methodDrift.length}`,
       `service_delivery_review=${result.serviceDeliveryReview.present ? result.serviceDeliveryReview.status : "missing"}`,

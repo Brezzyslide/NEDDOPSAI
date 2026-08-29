@@ -65,6 +65,7 @@ function passingAcceptance(overrides: Partial<BlueprintAcceptanceResult> = {}): 
     registryCodes: BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes,
     persistedExpectedBlueprints: BLUEPRINT_ACCEPTANCE_TARGETS.registryCodes,
     expectedProfessionalSections: BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections,
+    persistedTotalProfessionalSections: BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections,
     persistedMatchingProfessionalSections: BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections,
     titleDrift: [],
     methodDrift: [],
@@ -187,6 +188,15 @@ describe("Sprint 35C database bootstrap foundation", () => {
     });
 
     expect(() => assertBlueprintAcceptance(result)).toThrow(/Blueprint bootstrap acceptance failed/);
+  });
+
+  it("fails Blueprint acceptance when stale persisted sections remain", () => {
+    const result = passingAcceptance({
+      persistedTotalProfessionalSections: BLUEPRINT_ACCEPTANCE_TARGETS.professionalSections + 1,
+      passed: false,
+    });
+
+    expect(() => assertBlueprintAcceptance(result)).toThrow(/totalSections=1086\/1085/);
   });
 
   it("keeps the expected professional section count pinned to 1,085", () => {
