@@ -67,7 +67,11 @@ import { persistExecutionEvidence } from "./evidencePersistenceService.js";
 import {
   validateClaimBatch,
   parseSpecialistJsonOutput,
+  assembleDeterministicTemplateDeliverableSections,
+  assembleDeliverableMarkdownFromSections,
+  mergeDeliverableSectionDeltas,
   rejectCrossTenantChunks,
+  type ParsedDeliverableSection,
   type RawClaim,
   type ValidatedClaim,
 } from "./claimValidationService.js";
@@ -121,7 +125,6 @@ import { classifyEvidenceMode, shouldRunClaimProvenance } from "./evidenceModeSe
 import { logOrgEvent } from "./auditService.js";
 import { ResourceRegistry, createResourceRegistry } from "../lib/resources/ResourceRegistry.js";
 import { resolveAndCompileManifest } from "./specialistRuntimeManifestService.js";
-import { loadSpecialistContext } from "./specialistContextService.js";
 // Sprint 29H Part H: architectural specialist status guard
 import { getSpecialistByCode } from "../lib/workforceRegistry.js";
 import { getWorkerProfileByCode } from "../lib/workerProfileRegistry.js";
@@ -303,6 +306,7 @@ interface GeneratedProfessionalDraft {
   professionalWork?: Record<string, unknown>;
   requirementCoverage?: Record<string, unknown>;
   deliverable?: Record<string, unknown>;
+  deliverableSections?: ParsedDeliverableSection[];
   completion?: Record<string, unknown>;
   modelTelemetry: Record<string, unknown>;
 }
@@ -1114,6 +1118,7 @@ export class UnifiedExecutionEngine {
               },
               sections: blueprintContract.sections.map((section) => ({
                 sectionCode: section.sectionCode,
+                sectionRole: section.sectionRole,
                 required: section.required,
                 sortOrder: section.sortOrder,
                 evidenceRequirements: section.evidenceRequirements,
@@ -1144,6 +1149,7 @@ export class UnifiedExecutionEngine {
           },
           sections: blueprintContract.sections.map((section) => ({
             sectionCode: section.sectionCode,
+            sectionRole: section.sectionRole,
             required: section.required,
             sortOrder: section.sortOrder,
             evidenceRequirements: section.evidenceRequirements,
@@ -1591,6 +1597,7 @@ export class UnifiedExecutionEngine {
     let snapshotSequence = 1;
     let draftContent: string;
     let rawClaims: RawClaim[] = [];
+    let deliverableSections: ParsedDeliverableSection[] | undefined;
     let latestModelTelemetry: Record<string, unknown> | null = null;
     try {
       const draftResult = await this.generateTaskDraft(
@@ -1602,6 +1609,7 @@ export class UnifiedExecutionEngine {
       );
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
+      deliverableSections = draftResult.deliverableSections;
       latestModelTelemetry = draftResult.modelTelemetry;
       await recordProfessionalSnapshot({
         organizationId,
@@ -1616,10 +1624,11 @@ export class UnifiedExecutionEngine {
           professionalWork: draftResult.professionalWork ?? null,
           requirementCoverage: draftResult.requirementCoverage ?? null,
           deliverable: draftResult.deliverable ?? null,
+          deliverableSections: draftResult.deliverableSections ?? null,
           completion: draftResult.completion ?? null,
           requirementPlan,
         },
-        coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+        coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
         modelTelemetry: latestModelTelemetry,
       });
       tLlmMs = Date.now() - t5;
@@ -1694,6 +1703,9 @@ export class UnifiedExecutionEngine {
       // will now receive real evidence instead of reporting "EvidencePack not available".
       // No second retrieval is triggered — the same object reference is reused.
       evidencePack: evidencePack ?? null,
+      requirementPlan,
+      failedRequirements: [],
+      deliverableContract: blueprint?.deliverableContract ?? null,
     });
     await recordProfessionalSnapshot({
       organizationId,
@@ -1706,7 +1718,7 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       structuredOutput: { requirementPlan },
       reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
       modelTelemetry: latestModelTelemetry,
     });
     tReviewMs = Date.now() - t6;
@@ -1721,6 +1733,7 @@ export class UnifiedExecutionEngine {
       deferApprovalGate: true,
       standardTemplateEvidence,
       professionalContext,
+      deliverableSections,
     });
     if (shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
@@ -1748,6 +1761,7 @@ export class UnifiedExecutionEngine {
       } else {
         draftContent = synthesisResult.content;
         rawClaims = synthesisResult.claims;
+        deliverableSections = synthesisResult.deliverableSections;
         latestModelTelemetry = synthesisResult.modelTelemetry;
         await recordProfessionalSnapshot({
           organizationId,
@@ -1762,10 +1776,11 @@ export class UnifiedExecutionEngine {
             professionalWork: synthesisResult.professionalWork ?? null,
             requirementCoverage: synthesisResult.requirementCoverage ?? null,
             deliverable: synthesisResult.deliverable ?? null,
+            deliverableSections: synthesisResult.deliverableSections ?? null,
             completion: synthesisResult.completion ?? null,
             requirementPlan,
           },
-          coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+          coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
           modelTelemetry: latestModelTelemetry,
         });
         reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
@@ -1773,6 +1788,11 @@ export class UnifiedExecutionEngine {
           userId: requesterId,
           conversationId: request.conversationId,
           evidencePack: evidencePack ?? null,
+          requirementPlan,
+          failedRequirements: toReviewFailedRequirements(
+            evaluateDeliverableRequirementCoverage(draftContent, coverageProfile, { deliverableSections }).missing,
+          ),
+          deliverableContract: blueprint?.deliverableContract ?? null,
         });
         await recordProfessionalSnapshot({
           organizationId,
@@ -1785,7 +1805,7 @@ export class UnifiedExecutionEngine {
           contentMarkdown: reviewResult.finalContent,
           structuredOutput: { requirementPlan, afterFinalSynthesis: true },
           reviewSnapshot: buildReviewSnapshot(reviewResult),
-          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
           modelTelemetry: latestModelTelemetry,
         });
         runtimeGate = validateBlueprintRuntimeCompletion({
@@ -1797,17 +1817,18 @@ export class UnifiedExecutionEngine {
           deferApprovalGate: true,
           standardTemplateEvidence,
           professionalContext,
+          deliverableSections,
         });
       }
     }
     if (!runtimeGate.passed) {
-      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile);
+      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
       if (hasCoverageFailure && coverageReport.missing.length > 0) {
         const repairGroups = groupRequirementFailuresForRepair(coverageProfile, coverageReport.missing).slice(0, 8);
         let repairFailureMessage: string | null = null;
         for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
-          const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile);
+          const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
           if (currentCoverage.missing.length === 0) break;
           const groupIds = new Set(repairGroups[repairIndex]!.map((failure) => failure.requirementId));
           const currentGroupMissing = currentCoverage.missing.filter((failure) => groupIds.has(failure.requirementId));
@@ -1821,6 +1842,7 @@ export class UnifiedExecutionEngine {
             evidencePack: evidencePack ?? null,
             currentContent: reviewResult.finalContent,
             currentClaims: rawClaims,
+            deliverableSections,
             professionalContext,
             missingRequirements: currentGroupMissing,
             repairGroupIndex: repairIndex + 1,
@@ -1834,6 +1856,7 @@ export class UnifiedExecutionEngine {
 
           draftContent = repairResult.content;
           rawClaims = repairResult.claims;
+          deliverableSections = repairResult.deliverableSections;
           latestModelTelemetry = repairResult.modelTelemetry;
           await recordProfessionalSnapshot({
             organizationId,
@@ -1848,13 +1871,14 @@ export class UnifiedExecutionEngine {
               professionalWork: repairResult.professionalWork ?? null,
               requirementCoverage: repairResult.requirementCoverage ?? null,
               deliverable: repairResult.deliverable ?? null,
+              deliverableSections: repairResult.deliverableSections ?? null,
               completion: repairResult.completion ?? null,
               repairedRequirementIds: currentGroupMissing.map((failure) => failure.requirementId),
               repairGroupIndex: repairIndex + 1,
               repairGroupCount: repairGroups.length,
               requirementPlan,
             },
-            coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract),
+            coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
             modelTelemetry: latestModelTelemetry,
           });
           reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
@@ -1863,6 +1887,9 @@ export class UnifiedExecutionEngine {
             conversationId: request.conversationId,
             evidencePack: evidencePack ?? null,
             disableAutoRevision: true,
+            requirementPlan,
+            failedRequirements: toReviewFailedRequirements(currentGroupMissing),
+            deliverableContract: blueprint?.deliverableContract ?? null,
           });
           await recordProfessionalSnapshot({
             organizationId,
@@ -1880,7 +1907,7 @@ export class UnifiedExecutionEngine {
               repairGroupCount: repairGroups.length,
             },
             reviewSnapshot: buildReviewSnapshot(reviewResult),
-            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
             modelTelemetry: latestModelTelemetry,
           });
           runtimeGate = validateBlueprintRuntimeCompletion({
@@ -1892,6 +1919,7 @@ export class UnifiedExecutionEngine {
             deferApprovalGate: true,
             standardTemplateEvidence,
             professionalContext,
+            deliverableSections,
           });
           if (runtimeGate.passed) break;
         }
@@ -1939,9 +1967,9 @@ export class UnifiedExecutionEngine {
         stage: "gate_failure",
         sequence: snapshotSequence++,
         contentMarkdown: reviewResult.finalContent,
-        structuredOutput: { requirementPlan },
+        structuredOutput: { requirementPlan, deliverableSections: deliverableSections ?? null },
         reviewSnapshot: buildReviewSnapshot(reviewResult),
-        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
         gateSnapshot: { passed: false, failures: runtimeGate.failures },
         modelTelemetry: latestModelTelemetry,
       });
@@ -1963,7 +1991,7 @@ export class UnifiedExecutionEngine {
         metadata: {
           failedStage: "completion_gates",
           gateFailures: runtimeGate.failures,
-          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
         },
       });
 
@@ -1992,7 +2020,7 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       structuredOutput: { requirementPlan },
       reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
       gateSnapshot: { passed: true, failures: [] },
       modelTelemetry: latestModelTelemetry,
     });
@@ -2132,6 +2160,7 @@ export class UnifiedExecutionEngine {
         deferApprovalGate: true,
         standardTemplateEvidence,
         professionalContext,
+        deliverableSections,
       });
       if (!artifactGate.passed) {
         const blockingMessage = artifactGate.failures
@@ -2164,7 +2193,7 @@ export class UnifiedExecutionEngine {
           metadata: {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
-            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
           },
         });
         return {
@@ -2362,7 +2391,7 @@ export class UnifiedExecutionEngine {
         completedWorkId: finalWork.id,
         completedWorkStatus: finalWork.status,
         qualityScore: reviewResult.qualityScore,
-        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
       },
     });
 
@@ -2429,8 +2458,6 @@ export class UnifiedExecutionEngine {
     // Sprint 29K.3: add claim emission addendum — instructs the specialist to
     // return { content, claims } JSON rather than plain text. outputMode changes
     // to "json" below.  Claim JSON must NOT appear inside contentMarkdown.
-    systemPrompt += buildClaimEmissionAddendum(evidencePack, professionalContext);
-
     const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract, professionalContext);
     const outputBudget = professionalContext?.outputDepth.configuredOutputBudget ?? 4000;
 
@@ -2466,6 +2493,8 @@ export class UnifiedExecutionEngine {
       retrievedFields,
       maxTokens: outputBudget,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(professionalContext),
+      promptCacheKey: buildProfessionalPromptCacheKey(authCtx.organizationId, specialistCode, blueprint, blueprintContract, professionalContext),
       runtimeProfile: "professional_execution",
       allowProviderFallback: false,
     });
@@ -2481,19 +2510,36 @@ export class UnifiedExecutionEngine {
     // parseSpecialistJsonOutput never throws — if parsing fails it returns the
     // raw text as content with an empty claims array, preserving backward compat.
     const parsed = parseSpecialistJsonOutput(response.content);
-    if (!parsed.content) {
+    const coverageProfile = professionalContext
+      ? deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract)
+      : null;
+    const requiresSectionPayload = Boolean(professionalContext);
+    const assembledSections = assembleTemplateSectionsForContext(
+      professionalContext,
+      blueprintContract,
+      parsed.deliverableSections,
+    );
+    const finalDeliverableSections = assembledSections ?? parsed.deliverableSections;
+    const assembledContent = finalDeliverableSections?.length
+      ? assembleDeliverableMarkdownFromSections(
+          finalDeliverableSections,
+          coverageProfile ? requirementOrderForCoverageProfile(coverageProfile) : [],
+        )
+      : requiresSectionPayload ? "" : parsed.content;
+    if (!assembledContent) {
       throw new FallbackDraftError(
-        "AI specialist returned a JSON response but the 'content' field was missing or empty. " +
+        "AI specialist returned a JSON response but deliverable.sections[] was missing or empty. " +
         "The work output cannot be saved. Please retry.",
       );
     }
 
     return {
-      content: parsed.content,
+      content: assembledContent,
       claims: parsed.claims,
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
       deliverable: parsed.deliverable,
+      deliverableSections: finalDeliverableSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "primary_specialist",
@@ -2501,6 +2547,7 @@ export class UnifiedExecutionEngine {
         actualInputTokens: response.usage?.inputTokens ?? null,
         actualOutputTokens: response.usage?.outputTokens ?? null,
         actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
         outputMode: response.outputMode,
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
@@ -2511,7 +2558,7 @@ export class UnifiedExecutionEngine {
         configuredTimeoutMs: response.configuredTimeoutMs ?? null,
         retryCount: response.retryCount ?? null,
         providerFailureKind: response.providerFailureKind ?? null,
-        deliverableLength: parsed.content.length,
+        deliverableLength: assembledContent.length,
       },
     };
   }
@@ -2562,15 +2609,15 @@ export class UnifiedExecutionEngine {
       systemPrompt: buildFinalDeliverableSynthesisSystemPrompt(input.blueprint, input.blueprintContract, input.evidencePack ?? null, input.professionalContext),
       userMessage: buildFinalDeliverableSynthesisUserPrompt(input),
       retrievedFields: [
-        "blueprint.objective",
-        "blueprint.sections",
         "deliverableContract",
         "evidencePack.chunks",
         "failedDraft.content",
+        "requirementCoverageProfile",
         "gateFailures",
       ],
       maxTokens: 6000,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
       runtimeProfile: "final_synthesis",
       allowProviderFallback: false,
     });
@@ -2591,43 +2638,57 @@ export class UnifiedExecutionEngine {
       };
     }
     const parsed = parseSpecialistJsonOutput(response.content);
-    const deliverableContent = typeof parsed.deliverable?.content === "string"
-      ? parsed.deliverable.content.trim()
-      : "";
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+    const assembledSections = assembleTemplateSectionsForContext(
+      input.professionalContext,
+      input.blueprintContract,
+      parsed.deliverableSections,
+    );
+    const finalDeliverableSections = assembledSections ?? parsed.deliverableSections;
+    const deliverableContent = finalDeliverableSections?.length
+      ? assembleDeliverableMarkdownFromSections(
+          finalDeliverableSections,
+          requirementOrderForCoverageProfile(coverageProfile),
+        )
+      : canonicalPayloadRequired ? "" : parsed.content;
     if (canonicalPayloadRequired && !deliverableContent) {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
         modelTelemetry: buildSyntheticModelTelemetry("final_synthesis", input.currentContent, 6000),
-        failureMessage: "Canonical final synthesis response did not include deliverable.content, so the internal professional draft was not promoted to Completed Work.",
+        failureMessage: "Canonical final synthesis response did not include deliverable.sections[], so the internal professional draft was not promoted to Completed Work.",
       };
     }
-      return {
-        content: deliverableContent || parsed.content || input.currentContent,
-        claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
-        professionalWork: parsed.professionalWork,
-        requirementCoverage: parsed.requirementCoverage,
-        deliverable: parsed.deliverable,
-        completion: parsed.completion,
-        modelTelemetry: {
-          stage: "final_synthesis",
-          configuredOutputBudget: 6000,
-          actualInputTokens: response.usage?.inputTokens ?? null,
-          actualOutputTokens: response.usage?.outputTokens ?? null,
-          actualTotalTokens: response.usage?.totalTokens ?? null,
-          outputMode: response.outputMode,
-          responseFormat: response.responseFormat,
-          finishReason: response.finishReason ?? null,
-          model: response.model ?? null,
-          latencyMs: response.latencyMs,
-          usedFallback: response.usedFallback,
-          runtimeProfile: response.runtimeProfile ?? null,
-          configuredTimeoutMs: response.configuredTimeoutMs ?? null,
-          retryCount: response.retryCount ?? null,
-          providerFailureKind: response.providerFailureKind ?? null,
-          deliverableLength: (deliverableContent || parsed.content || input.currentContent).length,
-        },
-      };
+    return {
+      content: deliverableContent || input.currentContent,
+      claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
+      professionalWork: parsed.professionalWork,
+      requirementCoverage: parsed.requirementCoverage,
+      deliverable: parsed.deliverable
+        ? { ...parsed.deliverable, sections: finalDeliverableSections }
+        : finalDeliverableSections ? { sections: finalDeliverableSections } : parsed.deliverable,
+      deliverableSections: finalDeliverableSections,
+      completion: parsed.completion,
+      modelTelemetry: {
+        stage: "final_synthesis",
+        configuredOutputBudget: 6000,
+        actualInputTokens: response.usage?.inputTokens ?? null,
+        actualOutputTokens: response.usage?.outputTokens ?? null,
+        actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
+        outputMode: response.outputMode,
+        responseFormat: response.responseFormat,
+        finishReason: response.finishReason ?? null,
+        model: response.model ?? null,
+        latencyMs: response.latencyMs,
+        usedFallback: response.usedFallback,
+        runtimeProfile: response.runtimeProfile ?? null,
+        configuredTimeoutMs: response.configuredTimeoutMs ?? null,
+        retryCount: response.retryCount ?? null,
+        providerFailureKind: response.providerFailureKind ?? null,
+        deliverableLength: (deliverableContent || input.currentContent).length,
+      },
+    };
   }
 
   private async repairMissingDeliverableRequirements(input: {
@@ -2639,6 +2700,7 @@ export class UnifiedExecutionEngine {
     evidencePack?: EvidencePack | null;
     currentContent: string;
     currentClaims: RawClaim[];
+    deliverableSections?: ParsedDeliverableSection[];
     professionalContext: ProfessionalExecutionContext;
     missingRequirements: DeliverableRequirementCoverageFailure[];
     repairGroupIndex?: number;
@@ -2671,12 +2733,12 @@ export class UnifiedExecutionEngine {
       userMessage: buildTargetedRequirementRepairUserPrompt(input),
       retrievedFields: [
         "deliverableRequirementCoverage.missing",
-        "deliverableOutputSchema",
-        "currentDeliverable.content",
-        "evidencePack.chunks",
+        "currentDeliverable.deficientSections",
+        "evidencePack.relevantChunks",
       ],
       maxTokens: 5000,
       outputMode: "json",
+      responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
       runtimeProfile: "targeted_repair",
       allowProviderFallback: false,
     });
@@ -2691,25 +2753,50 @@ export class UnifiedExecutionEngine {
     }
 
     const parsed = parseSpecialistJsonOutput(response.content);
-    const deliverableContent = typeof parsed.deliverable?.content === "string"
-      ? parsed.deliverable.content.trim()
-      : "";
-    if (!deliverableContent && !parsed.content) {
+    if (!parsed.deliverableSections?.length) {
       return {
         content: input.currentContent,
         claims: input.currentClaims,
         modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
-        failureMessage: "Targeted requirement repair response did not include deliverable.content.",
+        failureMessage: "Targeted requirement repair response did not include deliverable.sections[] deltas.",
       };
     }
 
-    const content = deliverableContent || parsed.content || input.currentContent;
+    let mergedSections: ParsedDeliverableSection[];
+    try {
+      mergedSections = mergeDeliverableSectionDeltas({
+        currentSections: input.deliverableSections,
+        repairSections: parsed.deliverableSections,
+        allowedRequirementIds: input.missingRequirements.map((requirement) => requirement.requirementId),
+      });
+    } catch (error) {
+      return {
+        content: input.currentContent,
+        claims: input.currentClaims,
+        modelTelemetry: buildSyntheticModelTelemetry("targeted_requirement_repair", input.currentContent, 5000),
+        failureMessage: error instanceof Error ? error.message : "Targeted requirement repair returned invalid deliverable.sections[] deltas.",
+      };
+    }
+
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+    const finalSections = assembleTemplateSectionsForContext(
+      input.professionalContext,
+      input.blueprintContract,
+      mergedSections,
+    ) ?? mergedSections;
+    const content = assembleDeliverableMarkdownFromSections(
+      finalSections,
+      requirementOrderForCoverageProfile(coverageProfile),
+    );
     return {
       content,
       claims: parsed.claims.length > 0 ? parsed.claims : input.currentClaims,
       professionalWork: parsed.professionalWork,
       requirementCoverage: parsed.requirementCoverage,
-      deliverable: parsed.deliverable,
+      deliverable: parsed.deliverable
+        ? { ...parsed.deliverable, sections: finalSections }
+        : { sections: finalSections },
+      deliverableSections: finalSections,
       completion: parsed.completion,
       modelTelemetry: {
         stage: "targeted_requirement_repair",
@@ -2717,6 +2804,7 @@ export class UnifiedExecutionEngine {
         actualInputTokens: response.usage?.inputTokens ?? null,
         actualOutputTokens: response.usage?.outputTokens ?? null,
         actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
         outputMode: response.outputMode,
         responseFormat: response.responseFormat,
         finishReason: response.finishReason ?? null,
@@ -2764,17 +2852,16 @@ export interface CanonicalTaskRuntimeInstructionResult {
 export async function assembleCanonicalTaskRuntimeInstruction(
   input: CanonicalTaskRuntimeInstructionInput,
 ): Promise<CanonicalTaskRuntimeInstructionResult> {
-  const { specialistCode, organizationId, userRequest, manifest, blueprint, blueprintContract, evidencePack } = input;
+  const { specialistCode, organizationId, blueprint, blueprintContract } = input;
 
   const { dnaSource, ...specialistManifest } = await resolveAndCompileManifest(
     specialistCode,
     organizationId,
   );
 
-  const description = [
-    blueprint ? `${blueprint.title}:` : null,
-    userRequest.slice(0, 500),
-  ].filter(Boolean).join(" ");
+  const description = blueprint
+    ? `${blueprint.title}: produce the assigned professional work output.`
+    : "Produce the assigned professional work output.";
 
   const steps: ExecutionStep[] = [
     {
@@ -2792,25 +2879,10 @@ export async function assembleCanonicalTaskRuntimeInstruction(
     allowedDataCategories: ["task_context", "organisation_context", "approved_memory", "governed_knowledge"],
   };
 
-  const shouldRetrieveKnowledge = !evidencePack || evidencePack.totalChunks === 0;
-  const specialistContext = await loadSpecialistContext(
-    organizationId,
-    specialistCode,
-    undefined,
-    shouldRetrieveKnowledge
-      ? {
-          query: userRequest,
-          executionId: manifest.executionId,
-          writeAudit: true,
-        }
-      : undefined,
-  );
-
   const assembled = assembleRuntimeInstructions(
     specialistManifest,
     steps,
     constraints,
-    specialistContext,
   );
 
   const boundaryAddendum = [
@@ -3126,13 +3198,142 @@ function buildDeterministicResult(
 
 // ─── Sprint 29K.3: Claim emission addendum ───────────────────────────────────
 
+function formatStructuredDeliverableResponseContract(
+  professionalContext: ProfessionalExecutionContext | undefined,
+): string {
+  return `"deliverable": {
+    "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
+    "audience": "${professionalContext?.deliverable.audience ?? "requested audience"}",
+    "sections": [
+      {
+        "requirementId": "<one mandatory requirement ID satisfied by this section>",
+        "heading": "<user-facing heading>",
+        "content": "<generated user-facing content for this requirement only; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"
+      }
+    ]
+  }`;
+}
+
+function buildProfessionalDeliverableResponseSchema(
+  professionalContext: ProfessionalExecutionContext | undefined,
+): { name: string; strict: boolean; schema: Record<string, unknown> } {
+  const operation = professionalContext?.operation ?? "CREATE";
+  const deliverableType = professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE";
+  const audience = professionalContext?.deliverable.audience ?? "requested audience";
+  const stringArray = { type: "array", items: { type: "string" } };
+  return {
+    name: "professional_deliverable_response",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["professional_work", "requirement_coverage", "deliverable", "completion", "claims"],
+      properties: {
+        professional_work: {
+          type: "object",
+          additionalProperties: false,
+          required: ["summary", "blueprint_completion", "requirement_to_deliverable_plan", "evidence_map", "missing_information"],
+          properties: {
+            summary: { type: "string" },
+            blueprint_completion: stringArray,
+            requirement_to_deliverable_plan: stringArray,
+            evidence_map: stringArray,
+            missing_information: stringArray,
+          },
+        },
+        requirement_coverage: {
+          type: "object",
+          additionalProperties: false,
+          required: ["satisfied", "missing"],
+          properties: {
+            satisfied: stringArray,
+            missing: stringArray,
+          },
+        },
+        deliverable: {
+          type: "object",
+          additionalProperties: false,
+          required: ["type", "audience", "sections"],
+          properties: {
+            type: { type: "string", const: deliverableType },
+            audience: { type: "string", const: audience },
+            sections: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["requirementId", "heading", "content"],
+                properties: {
+                  requirementId: { type: "string" },
+                  heading: { type: "string" },
+                  content: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+        completion: {
+          type: "object",
+          additionalProperties: false,
+          required: ["operation", "unresolvedProfessionalContent", "methodologyLeakage", "readyForCompletedWork"],
+          properties: {
+            operation: { type: "string", const: operation },
+            unresolvedProfessionalContent: { type: "number" },
+            methodologyLeakage: { type: "boolean" },
+            readyForCompletedWork: { type: "boolean" },
+          },
+        },
+        claims: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["clientClaimId", "claimText", "claimType", "sectionRef", "confidence", "reasoningSummary", "evidence", "relatedClaimIds"],
+            properties: {
+              clientClaimId: { type: "string" },
+              claimText: { type: "string" },
+              claimType: {
+                type: "string",
+                enum: ["observation", "absence_finding", "inference", "external_requirement", "recommendation"],
+              },
+              sectionRef: { type: ["string", "null"] },
+              confidence: { type: ["number", "null"] },
+              reasoningSummary: { type: ["string", "null"] },
+              evidence: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["chunkId", "relationship", "supportingSpan"],
+                  properties: {
+                    chunkId: { type: "string" },
+                    relationship: {
+                      type: "string",
+                      enum: ["direct_support", "context", "contradiction", "external_authority", "searched_for_absence"],
+                    },
+                    supportingSpan: { type: ["string", "null"] },
+                  },
+                },
+              },
+              relatedClaimIds: stringArray,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 /**
  * Appended to the specialist system prompt when evidence is available.
- * Instructs the specialist to return { content, claims } JSON in one response.
+ * Instructs the specialist to return structured professional work, deliverable
+ * sections and claims JSON in one response.
  *
  * CONTRACT (non-negotiable):
- * 1. "content" field = the complete human-readable Completed Work (same as before).
- *    No claim JSON, no chunkIds, no clientClaimIds may appear inside "content".
+ * 1. "deliverable.sections[]" = user-facing professional work by requirement.
+ *    For deterministic templates, section content contains model-generated deltas
+ *    only; the server adds authored fixed content, fields, structures and prompts.
+ *    The server assembles markdown from those sections after validation.
  * 2. "claims" array = structured provenance metadata ONLY. Not a summary, not
  *    a rewrite of the report. Empty array is valid.
  * 3. Each claim references only chunkIds present in the AUTHORITATIVE EVIDENCE section.
@@ -3155,14 +3356,10 @@ The professional response must structurally separate internal work from the fina
     "missing_information": ["<unknown factual variables, if any>"]
   },
   "requirement_coverage": {
-    "satisfied": ["<requirement IDs represented in deliverable.content>"],
+    "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  "deliverable": {
-    "type": "${professionalContext.deliverable.requestedDeliverableType}",
-    "audience": "${professionalContext.deliverable.audience}",
-    "content": "<complete user-facing deliverable markdown only>"
-  },
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext.operation}",
     "unresolvedProfessionalContent": 0,
@@ -3172,7 +3369,7 @@ The professional response must structurally separate internal work from the fina
   "claims": []
 }
 
-The artifact generator consumes ONLY "deliverable.content". Do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in deliverable.content.`
+The server assembles the final artifact markdown from deliverable.sections[] only. For standard template content, return only generated additions beyond server-assembled fixed content, fields, structures and completion prompts. Do not return assembledMarkdown, and do not put internal analysis, Blueprint methodology headings, control codes, or professional placeholder tokens in the deliverable sections.`
     : "";
 
   if (!evidencePack || evidencePack.totalChunks === 0) {
@@ -3247,7 +3444,7 @@ RELATIONSHIP TYPES (use exactly one per evidence binding):
   searched_for_absence — chunk was retrieved when searching for absent content
 
 RULES:
-1. ${professionalSchema ? `The "deliverable.content" field must contain the complete user-facing deliverable. No internal professional work or claim JSON inside it.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
+1. ${professionalSchema ? `The "deliverable.sections[]" field must contain user-facing deliverable sections by requirement. For deterministic templates, return generated additions only; the server adds fixed content, fields, structures and completion prompts before assembling markdown. No internal professional work or claim JSON inside them.` : `The "content" field must contain the complete human-readable report. No claim JSON inside it.`}
 2. Only reference chunkIds from the list below. Do not invent chunk IDs.
 3. supportingSpan must be a verbatim exact quotation from the chunk text (not a paraphrase).
    The server verifies this as an exact substring — fabricated spans will be rejected.
@@ -3265,13 +3462,25 @@ function buildWorkExecutionAddendum(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   if (!blueprint) return "";
+  const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
   const sectionLines = contract?.sections.length
-    ? contract.sections.map((section) => [
+    ? [authoredContentFraming, ...contract.sections.map((section) => [
         `- ${section.sectionCode}: ${section.title}${section.required ? " (required)" : ""}`,
+        section.sectionRole ? `  Section role: ${section.sectionRole}` : "",
+        section.sectionRole === "internal_method"
+          ? "  Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
+          : "",
+        section.fixedContent?.length ? `  Fixed content assembled by server: ${JSON.stringify(section.fixedContent)}` : "",
+        section.fields?.length ? `  Fields/structures assembled by server: ${JSON.stringify(section.fields)}` : "",
+        section.completionPrompt ? `  Completion prompt assembled by server: ${section.completionPrompt}` : "",
         section.minimumContentExpectation ? `  Minimum: ${section.minimumContentExpectation}` : "",
         section.instructions ? `  Instructions: ${section.instructions}` : "",
+        section.allowedSourceTypes.length > 0 ? `  Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
+        Object.keys(section.evidenceRequirements ?? {}).length > 0 ? `  Evidence requirements: ${JSON.stringify(section.evidenceRequirements)}` : "",
+        section.validationRules.length > 0 ? `  Validation rules: ${JSON.stringify(section.validationRules)}` : "",
+        section.qualityCriteria.length > 0 ? `  Quality criteria: ${JSON.stringify(section.qualityCriteria)}` : "",
         section.prohibitedAssumptions.length > 0 ? `  Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
-      ].filter(Boolean).join("\n")).join("\n")
+      ].filter(Boolean).join("\n"))].join("\n")
     : "No structured sections configured.";
   const deliverableContract = blueprint.deliverableContract
     ? JSON.stringify(blueprint.deliverableContract)
@@ -3279,12 +3488,6 @@ function buildWorkExecutionAddendum(
   const evidenceContract = blueprint.evidenceContract
     ? JSON.stringify(blueprint.evidenceContract)
     : "No evidence contract configured.";
-  const contextBlock = professionalContext
-    ? `\n${buildProfessionalExecutionContextBlock(professionalContext)}\n`
-    : "";
-  const coverageContract = professionalContext
-    ? `\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}\n`
-    : "";
   const sectionHeading = professionalContext?.professionalMethodRole === "requested_deliverable_structure"
     ? "Review/Assessment Sections"
     : "Internal Professional Method Checklist";
@@ -3299,9 +3502,7 @@ function buildWorkExecutionAddendum(
 ## WORK EXECUTION CONTRACT
 
 You are executing professional work using the "${blueprint.title}" blueprint as professional method authority.
-${contextBlock}
 ${methodBoundary}
-${coverageContract}
 
 **Objective:** ${blueprint.objective}
 
@@ -3355,51 +3556,16 @@ function buildWorkPackagePrompt(
   contract?: BlueprintExecutionContract | null,
   professionalContext?: ProfessionalExecutionContext,
 ): string {
-  const sections: string[] = [];
+  const staticSections: string[] = [];
+  const variableSections: string[] = [];
 
-  sections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
   if (professionalContext) {
-    sections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext)}`);
-    sections.push(`=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}`);
+    staticSections.push(`=== REQUESTED OPERATION AND DELIVERABLE CONTRACT ===\n${buildProfessionalExecutionContextBlock(professionalContext, { includeUserRequest: false })}`);
+    staticSections.push(`=== DELIVERABLE REQUIREMENT COVERAGE CONTRACT ===\n${formatRequirementCoveragePrompt(deriveDeliverableRequirementCoverageProfile(professionalContext, contract))}`);
   }
-
-  if (evidencePack && evidencePack.totalChunks > 0) {
-    const evidenceSection = buildEvidenceSection(evidencePack);
-    if (evidenceSection) sections.push(evidenceSection);
-  } else if (manifest.organisationLibrarySources.length > 0) {
-    const sourceLines = manifest.organisationLibrarySources.map(
-      s => `- ${s.title} [${s.sourceType}${s.authorityLevel ? `, ${s.authorityLevel}` : ""}]`
-    );
-    sections.push(
-      `=== ORGANISATION LIBRARY SOURCES (document metadata — content not yet indexed) ===\n` +
-      `NOTE: These documents are listed but their content could not be retrieved. ` +
-      `Use general professional knowledge for compliance guidance until the documents are ingested.\n` +
-      sourceLines.join("\n")
-    );
-  }
-
-  const hasUploadEvidence = evidencePack?.citationsByType?.["task_upload"]?.length ?? 0;
-  if (manifest.taskUploads.length > 0 && !hasUploadEvidence) {
-    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload — content not yet indexed]`);
-    sections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
-  }
-
-  if (manifest.cosMemories.length > 0) {
-    const memLines = manifest.cosMemories.map(m => {
-      const header = `- [${m.memoryType}] ${m.title}`;
-      return m.content ? `${header}\n  ${m.content}` : header;
-    });
-    sections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
-  }
-
-  if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
-    sections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
-  }
-
-  if (styleGuidanceBlock) sections.push(styleGuidanceBlock);
 
   if (blueprint) {
-    sections.push(
+    staticSections.push(
       `=== BLUEPRINT: ${blueprint.title} ===\n` +
       `Objective: ${blueprint.objective}\n` +
       `Family/mode: ${blueprint.blueprintFamily ?? "legacy"} / ${contract?.mode ?? "legacy"}\n` +
@@ -3408,7 +3574,9 @@ function buildWorkPackagePrompt(
     );
   }
 
-  const standardTemplateContext = classifyStandardTemplateEvidenceContext(userRequest);
+  const standardTemplateContext = professionalContext
+    ? { customerExampleOptional: professionalContext.deliverable.standardisation === "standard_reusable" }
+    : classifyStandardTemplateEvidenceContext(userRequest);
   if (standardTemplateContext.customerExampleOptional) {
     const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
       ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
@@ -3416,7 +3584,7 @@ function buildWorkPackagePrompt(
     const allowedPlaceholders = professionalContext
       ? formatAllowedFactualPlaceholderInstruction(professionalContext)
       : "Use clear factual placeholders for unknown customer-specific fields where appropriate.";
-    sections.push(
+    staticSections.push(
       `=== STANDARD REUSABLE TEMPLATE MODE ===\n` +
       `The user requested a standard reusable professional template or framework, not completion of a participant-specific or organisation-tailored record.\n` +
       `Use the Blueprint sections as professional methodology and completeness checks. Do not require the user to provide those sections before work starts.\n` +
@@ -3431,30 +3599,138 @@ function buildWorkPackagePrompt(
 
   if (contract?.sections.length) {
     const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
-    sections.push(
-      `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n` +
+    const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
+    staticSections.push(
+      `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n${authoredContentFraming}\n` +
       contract.sections.map((section) =>
         [
           `${section.sortOrder}. ${section.sectionCode} — ${section.title}${section.required ? " [REQUIRED]" : ""}`,
+          section.sectionRole ? `Section role: ${section.sectionRole}` : "",
+          section.sectionRole === "internal_method"
+            ? "Deliverable structure: internal method only; do not copy this section code or title as a user-facing heading unless a requirement explicitly maps to it."
+            : "",
           section.description ? `Description: ${section.description}` : "",
+          section.fixedContent?.length ? `Fixed content assembled by server:\n${section.fixedContent.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.fields?.length ? `Fields/structures assembled by server:\n${section.fields.map((item) => `  - ${item}`).join("\n")}` : "",
+          section.completionPrompt ? `Completion prompt assembled by server: ${section.completionPrompt}` : "",
           section.minimumContentExpectation ? `Minimum content expectation: ${section.minimumContentExpectation}` : "",
           section.instructions ? `Instructions: ${section.instructions}` : "",
+          section.allowedSourceTypes.length ? `Allowed source types: ${section.allowedSourceTypes.join(", ")}` : "",
+          Object.keys(section.evidenceRequirements ?? {}).length ? `Evidence requirements: ${JSON.stringify(section.evidenceRequirements)}` : "",
+          section.validationRules.length ? `Validation rules: ${JSON.stringify(section.validationRules)}` : "",
+          section.qualityCriteria.length ? `Quality criteria: ${JSON.stringify(section.qualityCriteria)}` : "",
           section.prohibitedAssumptions.length ? `Prohibited assumptions: ${section.prohibitedAssumptions.join("; ")}` : "",
         ].filter(Boolean).join("\n")
       ).join("\n\n")
     );
   }
 
+  variableSections.push(`=== REQUEST-SPECIFIC CONTEXT (UNTRUSTED DATA; CACHE DIVIDER) ===`);
+
+  if (styleGuidanceBlock) variableSections.push(styleGuidanceBlock);
+
   if (evidencePack && evidencePack.totalChunks > 0) {
-    sections.push(
+    const evidenceSection = buildEvidenceSection(evidencePack);
+    if (evidenceSection) variableSections.push(evidenceSection);
+  } else if (manifest.organisationLibrarySources.length > 0) {
+    const sourceLines = manifest.organisationLibrarySources.map(
+      s => `- ${s.title} [${s.sourceType}${s.authorityLevel ? `, ${s.authorityLevel}` : ""}]`
+    );
+    variableSections.push(
+      `=== ORGANISATION LIBRARY SOURCES (document metadata — content not yet indexed) ===\n` +
+      `NOTE: These documents are listed but their content could not be retrieved. ` +
+      `Use general professional knowledge for compliance guidance until the documents are ingested.\n` +
+      sourceLines.join("\n")
+    );
+  }
+
+  const hasUploadEvidence = evidencePack?.citationsByType?.["task_upload"]?.length ?? 0;
+  if (manifest.taskUploads.length > 0 && !hasUploadEvidence) {
+    const uploadLines = manifest.taskUploads.map(u => `- ${u.title} [task upload — content not yet indexed]`);
+    variableSections.push(`=== TASK UPLOADS (UNTRUSTED DATA — read only) ===\n${uploadLines.join("\n")}`);
+  }
+
+  if (manifest.cosMemories.length > 0) {
+    const memLines = manifest.cosMemories.map(m => {
+      const header = `- [${m.memoryType}] ${m.title}`;
+      return m.content ? `${header}\n  ${m.content}` : header;
+    });
+    variableSections.push(`=== ORGANISATION MEMORY (authoritative) ===\n${memLines.join("\n")}`);
+  }
+
+  if (Object.keys(manifest.entityKnowledge ?? {}).length > 0) {
+    variableSections.push(`=== ENTITY KNOWLEDGE ===\n${JSON.stringify(manifest.entityKnowledge, null, 2)}`);
+  }
+
+  if (evidencePack && evidencePack.totalChunks > 0) {
+    variableSections.push(
       `=== CITATION REQUIREMENTS ===\n` +
       `You MUST cite evidence from the AUTHORITATIVE EVIDENCE section above using the citation tags provided.\n` +
       `Do not cite sources not present in this prompt.\n` +
       `If evidence is insufficient for mandatory professional content, return a blocked/clarification result rather than emitting [INCOMPLETE] markers as Completed Work.`
     );
+    variableSections.push(buildClaimEmissionAddendum(evidencePack, professionalContext));
+  } else {
+    variableSections.push(buildClaimEmissionAddendum(undefined, professionalContext));
   }
 
-  return sections.join("\n\n");
+  variableSections.push(`=== WORK REQUEST (UNTRUSTED DATA) ===\n${userRequest}`);
+
+  return [...staticSections, ...variableSections].filter(Boolean).join("\n\n");
+}
+
+function buildProfessionalPromptCacheKey(
+  organizationId: string,
+  specialistCode: string,
+  blueprint: WorkBlueprint | null,
+  contract: BlueprintExecutionContract | null | undefined,
+  professionalContext?: ProfessionalExecutionContext,
+): string {
+  const organizationHash = createHash("sha256").update(organizationId).digest("hex").slice(0, 12);
+  return [
+    "professional-stage1-v1",
+    `org-${organizationHash}`,
+    specialistCode,
+    professionalContext?.blueprintCode ?? blueprint?.code ?? "no-blueprint",
+    professionalContext?.operation ?? "CREATE",
+    professionalContext?.deliverable.requestedDeliverableType ?? "professional-deliverable",
+    blueprint?.version ?? "unversioned",
+    contract?.mode ?? "legacy",
+  ].map((part) => normalisePromptCacheKeyPart(part)).join(":").slice(0, 240);
+}
+
+function normalisePromptCacheKeyPart(part: unknown): string {
+  return String(part ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "unknown";
+}
+
+function requirementOrderForCoverageProfile(
+  profile: ReturnType<typeof deriveDeliverableRequirementCoverageProfile>,
+): string[] {
+  return profile.requirements.map((requirement) => requirement.id);
+}
+
+function assembleTemplateSectionsForContext(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+  modelSections: ParsedDeliverableSection[] | undefined,
+): ParsedDeliverableSection[] | undefined {
+  if (
+    professionalContext?.deliverable.standardisation !== "standard_reusable" ||
+    contract?.blueprint?.code !== "care_plan" ||
+    !contract.sections.length
+  ) {
+    return modelSections;
+  }
+  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  return assembleDeterministicTemplateDeliverableSections({
+    requirements: profile.requirements,
+    blueprintSections: contract.sections,
+    modelSections,
+  }).sections;
 }
 
 function shouldAttemptFinalDeliverableSynthesis(
@@ -3475,15 +3751,6 @@ function shouldRunCanonicalFinalDeliverableSynthesis(
 ): boolean {
   if (professionalContext.operation === "CREATE" || professionalContext.operation === "TAILOR") return true;
   return shouldAttemptFinalDeliverableSynthesis(failures, standardTemplateEvidence);
-}
-
-function shouldOmitBlueprintSectionTitlesFromFinalSynthesis(
-  professionalContext?: ProfessionalExecutionContext,
-): boolean {
-  if (!professionalContext) return false;
-  return professionalContext.professionalMethodRole === "internal_method_only" &&
-    professionalContext.deliverable.standardisation === "standard_reusable" &&
-    ["CREATE", "TAILOR", "UPDATE", "COMPLETE"].includes(professionalContext.operation);
 }
 
 function requiresCanonicalFinalDeliverablePayload(
@@ -3517,14 +3784,6 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   const blueprintName = professionalContext?.deliverable.requestedDeliverableType ?? blueprint?.title ?? "professional work";
-  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(professionalContext);
-  const sections = omitBlueprintSectionTitles
-    ? "- Omitted for this standard reusable deliverable. Use the requested deliverable contract and mandatory user-facing content instead of Blueprint section titles."
-    : contract?.sections.length
-    ? contract.sections.map((section) =>
-        `- ${section.sectionCode}: ${section.title}${section.required ? " (required internal check)" : ""}`,
-      ).join("\n")
-    : "- No structured Blueprint sections supplied.";
   const evidenceSummary = evidencePack && evidencePack.totalChunks > 0
     ? `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
@@ -3536,13 +3795,13 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   const mandatoryContent = professionalContext?.deliverable.mandatoryProfessionalContent.length
     ? professionalContext.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n")
     : "- The substantive professional content required by the requested deliverable.";
-  const blueprintReference = omitBlueprintSectionTitles
-    ? "the requested professional domain"
-    : blueprint?.title ?? "the requested professional domain";
+  const deliverableContract = blueprint?.deliverableContract
+    ? JSON.stringify(blueprint.deliverableContract, null, 2)
+    : "{}";
 
   return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
-You transform internal professional analysis, evidence, ${blueprintReference} method completion and specialist conclusions into a user-facing deliverable.
+You transform Stage 1 professional findings, evidence, requirement coverage and the user-facing deliverable contract into a user-facing deliverable.
 ${contextBlock ? `\n${contextBlock}\n` : ""}
 
 The audience will receive the completed document, not the internal working method.
@@ -3556,6 +3815,9 @@ USER DELIVERABLE:
 - actual user-facing professional content for the requested document type
 - substantive provisions, instructions, responsibilities, prompts, review/sign-off fields and boundaries required for that document
 - clear reusable template structure suitable for human review
+
+USER-FACING DELIVERABLE CONTRACT:
+${deliverableContract}
 
 MANDATORY USER-FACING CONTENT:
 ${mandatoryContent}
@@ -3579,14 +3841,10 @@ Do not expose chain-of-thought. Return ONLY JSON:
     "missing_information": ["<unknown factual variables, if any>"]
   },
   "requirement_coverage": {
-    "satisfied": ["<requirement IDs represented in deliverable.content>"],
+    "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  "deliverable": {
-    "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
-    "audience": "${professionalContext?.deliverable.audience ?? "requested audience"}",
-    "content": "<complete user-facing deliverable markdown>"
-  },
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext?.operation ?? "CREATE"}",
     "unresolvedProfessionalContent": 0,
@@ -3595,9 +3853,6 @@ Do not expose chain-of-thought. Return ONLY JSON:
   },
   "claims": []
 }
-
-Blueprint sections are internal completeness checks, not customer-facing headings unless the requested document type naturally uses them:
-${sections}
 
 ${evidenceSummary}`;
 }
@@ -3628,7 +3883,6 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
     : "";
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
-  const coverageContract = formatRequirementCoveragePrompt(coverageProfile);
   const deliverableSchema = buildDeliverableOutputSchema(coverageProfile);
   const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(deliverableSchema);
   const requirementPlan = buildRequirementToDeliverablePlan(coverageProfile)
@@ -3640,11 +3894,6 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const mandatoryContent = input.professionalContext.deliverable.mandatoryProfessionalContent.length
     ? input.professionalContext.deliverable.mandatoryProfessionalContent
     : ["Purpose", "Scope", "Responsibilities", "Review requirements", "Sign-off"];
-  const sectionChecks = input.blueprintContract?.sections.length
-    ? input.blueprintContract.sections.map((section) =>
-        `- ${section.title}: ${section.minimumContentExpectation}`,
-      ).join("\n")
-    : "No structured sections supplied.";
   const gateDetails = input.gateFailures.map((failure) =>
     [
       `- ${failure.gate}: ${failure.message}`,
@@ -3654,15 +3903,9 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const shouldOmitDefectiveDraft =
     input.professionalContext.deliverable.standardisation === "standard_reusable" &&
     input.gateFailures.some((failure) => failure.gate === "methodology_leak");
-  const omitBlueprintSectionTitles = shouldOmitBlueprintSectionTitlesFromFinalSynthesis(input.professionalContext);
   const failedDraftSection = shouldOmitDefectiveDraft
-    ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, Blueprint professional method and authoritative evidence.`
+    ? `## DEFECTIVE DRAFT STATUS\nThe prior draft leaked internal Blueprint methodology into a customer-facing standard template, so it is intentionally omitted from this synthesis prompt. Do not reconstruct it. Build the final deliverable from the requested deliverable contract, mandatory user-facing content, requirement plan and authoritative evidence.`
     : `## FAILED DRAFT TO REPAIR\nThe draft below is defective. Do not preserve its internal headings, control codes, methodology labels, professional placeholder tokens, or incomplete markers. Reuse only genuinely useful user-facing wording:\n${input.currentContent}`;
-  const blueprintMethodSection = omitBlueprintSectionTitles
-    ? `## BLUEPRINT PROFESSIONAL METHOD\nBlueprint code: ${input.professionalContext.blueprintCode ?? input.blueprint?.code ?? "unknown"}\nThe detailed Blueprint section titles and deliverableContract JSON are intentionally omitted because this is CREATE/TEMPLATE work and those fields are internal professional method authority, not customer-facing document structure. Use the mandatory user-facing content, authority hierarchy, evidence and requested deliverable contract above to draft the final artifact.`
-    : input.blueprint
-      ? `## BLUEPRINT PROFESSIONAL METHOD\n${input.blueprint.title}\nObjective: ${input.blueprint.objective}\nDeliverable contract: ${JSON.stringify(input.blueprint.deliverableContract ?? {})}\nThis is internal professional method authority unless the operation is REVIEW or INVESTIGATE.`
-      : `## BLUEPRINT PROFESSIONAL METHOD\nNo Blueprint supplied.`;
   const structuredDeliverableInstruction = input.professionalContext.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST"
     ? `## CHECKLIST STRUCTURE CONTRACT
 This deliverable is a structured onboarding checklist, not a narrative review.
@@ -3673,19 +3916,13 @@ Unknown staff-specific values may remain as allowed factual fields, but professi
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
-    `## REQUESTED DELIVERABLE\n${buildProfessionalExecutionContextBlock(input.professionalContext)}`,
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
-    coverageContract,
-    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each section must account for every listed requirement ID in the internal JSON requirement_to_deliverable_plan and in deliverable.content. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
+    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each deliverable.sections[] entry must account for its requirementId. The server assembles markdown from deliverable.sections[] after validation. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
-    blueprintMethodSection,
     clauseFamilies.length
       ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",
-    omitBlueprintSectionTitles
-      ? `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nOmitted from this standard reusable final synthesis because previous output leaked methodology headings. Satisfy the professional method through the mandatory user-facing content and requested deliverable contract; do not reconstruct Blueprint section titles.`
-      : `## INTERNAL BLUEPRINT COMPLETENESS CHECKS\nUse this as a private checklist only. Do not copy these headings into the final deliverable:\n${sectionChecks}`,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
     failedDraftSection,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
@@ -3703,10 +3940,7 @@ If mandatory professional content cannot be completed from the request, evidence
 
 function buildTargetedRequirementRepairSystemPrompt(
   professionalContext: ProfessionalExecutionContext,
-  contract?: BlueprintExecutionContract | null,
 ): string {
-  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  const schema = buildDeliverableOutputSchema(profile);
   return `You are performing deterministic professional coverage repair.
 
 This is NOT a broad rewrite and NOT a general self-review.
@@ -3714,31 +3948,27 @@ Your job is to modify the current user-facing deliverable only enough to satisfy
 
 Rules:
 - Preserve all already-satisfied content unless a small local edit is required.
-- Add missing FACTUAL_FIELD structures as fields/placeholders when values are unknown.
-- FACTUAL_FIELD means the field itself must exist in reusable templates; unknown value does not excuse omission.
+- Add missing factual-field structures as labelled fields or bracketed placeholders when values are unknown.
+- Factual field means the field itself must exist in reusable templates; unknown value does not excuse omission.
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
+- Return only deliverable.sections[] entries for the missing requirement IDs you changed. The server merges those section deltas into the existing deliverable and assembles the final markdown.
 - Return JSON only.
-
-Machine-readable output schema derived from the requirement plan:
-${JSON.stringify(schema, null, 2)}
 
 Return ONLY JSON:
 {
   "professional_work": {
     "summary": "<brief repair summary>",
+    "blueprint_completion": ["<internal repair checks completed>"],
     "requirement_to_deliverable_plan": ["<missing requirement ID repaired at target location>"],
+    "evidence_map": ["<short evidence/provenance notes>"],
     "missing_information": ["<unknown factual values left as fields/placeholders>"]
   },
   "requirement_coverage": {
     "satisfied": ["<requirement IDs now represented>"],
     "missing": []
   },
-  "deliverable": {
-    "type": "${professionalContext.deliverable.requestedDeliverableType}",
-    "audience": "${professionalContext.deliverable.audience}",
-    "content": "<complete repaired user-facing deliverable markdown>"
-  },
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext.operation}",
     "unresolvedProfessionalContent": 0,
@@ -3764,40 +3994,111 @@ function buildTargetedRequirementRepairUserPrompt(input: {
 }): string {
   const profile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const schema = buildDeliverableOutputSchema(profile);
-  const sectionGenerationPlan = formatDeliverableSectionGenerationPlan(schema);
   const missing = input.missingRequirements.map((requirement) => ({
     requirement_id: requirement.requirementId,
-    classification: requirement.classification,
+    requirement: requirement.requirement,
+    requirement_type: requirement.classification.toLowerCase().replace(/_/g, "-"),
     required_representation: requirement.requiredDeliverableRepresentation,
-    actual_location: requirement.actualLocation ?? null,
-    structural_result: requirement.structuralResult ?? null,
-    substantive_result: requirement.substantiveResult ?? null,
-    final_result: requirement.finalResult ?? "NOT_SATISFIED",
+    target_location: inferSchemaTarget(schema, requirement.requirementId),
+    adequacy_criteria: requirement.adequacyCriteria,
     failure_reason: requirement.reason,
-    target_section_or_table: inferSchemaTarget(schema, requirement.requirementId),
-    source_blueprint_section: requirement.sourceBlueprintSection ?? null,
-    professional_requirement: requirement.requirement,
   }));
-  const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
-    ? buildEvidenceSection(input.evidencePack)
-    : "";
+  const deficientSections = formatDeficientDeliverableSections(
+    input.currentContent,
+    input.deliverableSections,
+    input.missingRequirements,
+  );
+  const evidenceSection = buildRelevantRepairEvidenceSection(input.evidencePack ?? null, input.missingRequirements);
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
-    `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return the full deliverable with accepted content preserved.` : "Repair the listed logical section."}`,
-    `## CURRENT DELIVERABLE TO REPAIR\n${input.currentContent}`,
-    `## EXACT MISSING REQUIREMENTS\n${JSON.stringify(missing, null, 2)}`,
-    `## COMPLETE OUTPUT SCHEMA\n${JSON.stringify(schema, null, 2)}`,
-    `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\n${sectionGenerationPlan}`,
-    evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
+    `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return only the changed deliverable.sections[] entries for the listed missing requirement IDs.` : "Repair the listed logical section and return only changed deliverable.sections[] entries."}`,
+    `## DEFICIENT DELIVERABLE SECTION(S)\n${deficientSections}`,
+    `## EXACT REQUIREMENTS TO REPAIR\n${JSON.stringify(missing, null, 2)}`,
+    evidenceSection,
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
-For FACTUAL_FIELD requirements, add the target field/column/placeholder where values are unknown.
+Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
+For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown.
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
-For MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
+For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
 Preserve existing satisfied clauses and wording as much as possible.
+The server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
   ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function formatDeficientDeliverableSections(
+  currentContent: string,
+  sections: ParsedDeliverableSection[] | undefined,
+  missingRequirements: DeliverableRequirementCoverageFailure[],
+): string {
+  const missingIds = new Set(missingRequirements.map((requirement) => requirement.requirementId));
+  const matchingSections = (sections ?? [])
+    .filter((section) => missingIds.has(section.requirementId))
+    .map((section) => [
+      `requirementId: ${section.requirementId}`,
+      `heading: ${section.heading}`,
+      `content:\n${section.content}`,
+    ].join("\n"));
+
+  if (matchingSections.length > 0) {
+    return matchingSections.join("\n\n");
+  }
+
+  const headings = missingRequirements
+    .map((requirement) => requirement.actualLocation)
+    .filter((heading): heading is string => Boolean(heading));
+  if (headings.length > 0) {
+    const snippets = headings
+      .map((heading) => extractSectionSnippet(currentContent, heading))
+      .filter(Boolean);
+    if (snippets.length > 0) return snippets.join("\n\n");
+  }
+
+  return currentContent.slice(0, 1800);
+}
+
+function extractSectionSnippet(content: string, heading: string): string {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`(^|\\n)(#{1,4}\\s*)?${escapedHeading}[^\\n]*(?:\\n[\\s\\S]*?)(?=\\n#{1,4}\\s|$)`, "i"));
+  return match?.[0]?.trim().slice(0, 1800) ?? "";
+}
+
+function buildRelevantRepairEvidenceSection(
+  evidencePack: EvidencePack | null,
+  missingRequirements: DeliverableRequirementCoverageFailure[],
+): string {
+  if (!evidencePack || evidencePack.totalChunks === 0) return "";
+  const terms = new Set(
+    missingRequirements.flatMap((requirement) =>
+      [
+        requirement.requirement,
+        requirement.requiredDeliverableRepresentation,
+        requirement.sourceBlueprintSection ?? "",
+      ]
+        .join(" ")
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((term) => term.length > 4),
+    ),
+  );
+  const ranked = evidencePack.chunks
+    .map((chunk) => {
+      const text = `${chunk.sourceTitle} ${chunk.sectionTitle ?? ""} ${chunk.text}`.toLowerCase();
+      const hits = [...terms].filter((term) => text.includes(term)).length;
+      return { chunk, hits };
+    })
+    .filter(({ hits }) => hits > 0)
+    .sort((a, b) => b.hits - a.hits || b.chunk.confidence - a.chunk.confidence)
+    .slice(0, 3)
+    .map(({ chunk }) => {
+      const locParts = [chunk.sectionTitle, chunk.pageNumber != null ? `p.${chunk.pageNumber}` : null].filter(Boolean);
+      const locLine = locParts.length > 0 ? ` (${locParts.join(", ")})` : "";
+      return `[${chunk.citation}]${locLine}\n${chunk.text.slice(0, 1200)}`;
+    });
+  if (ranked.length === 0) return "";
+  return `## RELEVANT AUTHORITATIVE EVIDENCE\n${ranked.join("\n\n")}`;
 }
 
 function formatDeliverableSectionGenerationPlan(schema: ReturnType<typeof buildDeliverableOutputSchema>): string {
@@ -3881,6 +4182,7 @@ function buildSyntheticModelTelemetry(stage: string, content: string, configured
     actualInputTokens: null,
     actualOutputTokens: null,
     actualTotalTokens: null,
+    cachedInputTokens: null,
     outputMode: "json",
     responseFormat: null,
     finishReason: null,
@@ -3895,9 +4197,10 @@ function buildCoverageSnapshot(
   contentMarkdown: string,
   professionalContext: ProfessionalExecutionContext,
   contract?: BlueprintExecutionContract | null,
+  deliverableSections?: ParsedDeliverableSection[],
 ): Record<string, unknown> {
   const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile);
+  const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile, { deliverableSections });
   return {
     deliverableType: report.deliverableType,
     operation: report.operation,
@@ -3911,6 +4214,28 @@ function buildCoverageSnapshot(
     missing: report.missing,
     plan: report.plan,
   };
+}
+
+function toReviewFailedRequirements(
+  failures: DeliverableRequirementCoverageFailure[],
+): Array<{
+  requirementId: string;
+  requirement: string;
+  reason: string;
+  requiredDeliverableRepresentation?: string;
+  targetDeliverableLocation?: string | null;
+  adequacyCriteria?: string[];
+  substantiveResult?: string | null;
+}> {
+  return failures.map((failure) => ({
+    requirementId: failure.requirementId,
+    requirement: failure.requirement,
+    reason: failure.reason,
+    requiredDeliverableRepresentation: failure.requiredDeliverableRepresentation,
+    targetDeliverableLocation: failure.actualLocation ?? null,
+    adequacyCriteria: failure.adequacyCriteria,
+    substantiveResult: failure.substantiveResult ?? null,
+  }));
 }
 
 function validateDeliverableOutputSchemaCompleteness(

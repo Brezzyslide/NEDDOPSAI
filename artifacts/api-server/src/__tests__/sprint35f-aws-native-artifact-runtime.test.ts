@@ -5,6 +5,7 @@ import { getRegistryEntry, resolveRegistryProfessionalOwner } from "../services/
 import {
   classifyStandardTemplateEvidenceContext,
   detectIncompleteProfessionalSections,
+  detectInternalClassificationLeakage,
   detectInstructionalProfessionalText,
   detectLeakedBlueprintMethodologyHeadings,
   detectPlaceholderDominatedProfessionalSections,
@@ -500,6 +501,41 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(true);
   });
 
+  it("blocks internal requirement classification tokens in user-facing deliverables", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Risk, Safety, Incident and Escalation Arrangements",
+      "Risk Management:",
+      "- Identify potential risks and mitigation strategies.",
+      "- Emergency contact procedures and escalation pathways.",
+      "",
+      "FACTUAL_FIELD: Participant Name",
+      "FACTUAL_FIELD: Emergency Contact Details",
+      "mandatory-1 must be present before the plan is accepted.",
+    ].join("\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-care-plan",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectInternalClassificationLeakage(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "internal_classification:FACTUAL_FIELD",
+      "internal_classification:mandatory-1",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.includes("internal_classification:FACTUAL_FIELD") &&
+      failure.details?.includes("internal_classification:mandatory-1"),
+    )).toBe(true);
+  });
+
   it("does not combine a professional heading with valid body prose as instructional text", () => {
     const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
     const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
@@ -633,10 +669,10 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(uee).toContain("buildFinalDeliverableSynthesisSystemPrompt");
     expect(uee).toContain("extractUserFacingClauseFamilies");
     expect(uee).toContain("USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT");
-    expect(uee).toContain("Use this as a private checklist only. Do not copy these headings");
+    expect(uee).toContain("Use the Blueprint sections as professional methodology and completeness checks");
     expect(uee).toContain("The draft below is defective. Do not preserve its internal headings");
-    expect(uee).toContain("internal professional analysis, evidence, ${blueprintReference} method completion and specialist conclusions");
-    expect(uee).toContain("Canonical final synthesis response did not include deliverable.content");
+    expect(uee).toContain("The server assembles the final artifact markdown from deliverable.sections[] only");
+    expect(uee).toContain("Canonical final synthesis response did not include deliverable.sections[]");
     expect(uee).toContain("INTERNAL ONLY");
     expect(uee).toContain("Allowed placeholders are factual/user-specific data placeholders");
     expect(uee).toContain("Not allowed: unresolved professional-content placeholders");

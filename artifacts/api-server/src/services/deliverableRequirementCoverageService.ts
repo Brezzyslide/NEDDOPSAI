@@ -19,10 +19,17 @@ export interface DeliverableRequirement {
   id: string;
   description: string;
   classification: DeliverableRequirementClassification;
+  origin: "AUTHORED" | "DERIVED";
   sourceBlueprintSection?: string;
   professionalRationale: string;
   evidenceAuthority: string[];
   requiredDeliverableRepresentation: string;
+  targetDeliverableLocation?: string;
+  adequacyCriteria: string[];
+  templateCriteria: string[];
+  fixedContent: string[];
+  templateFields: string[];
+  completionPrompt: string | null;
   coverageRules: DeliverableCoverageRule[];
 }
 
@@ -44,6 +51,8 @@ export interface DeliverableRequirementCoverageFailure {
   structuralResult?: RequirementStructuralResult;
   substantiveResult?: RequirementSubstantiveResult;
   finalResult?: RequirementFinalResult;
+  substantiveValidationMode?: RequirementSubstantiveValidationMode;
+  substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   reason: string;
 }
 
@@ -65,17 +74,40 @@ export type RequirementFinalResult =
   | "NOT_SATISFIED"
   | "NOT_APPLICABLE";
 
+export type RequirementSubstantiveValidationMode =
+  | "TEMPLATE_CRITERIA"
+  | "ADEQUACY_CRITERIA"
+  | "FALLBACK_HEURISTIC"
+  | "NOT_APPLICABLE";
+
 export interface DeliverableRequirementCoverageItem {
   requirementId: string;
   requirement: string;
   classification: DeliverableRequirementClassification;
+  origin: DeliverableRequirement["origin"];
   sourceBlueprintSection?: string;
   expectedRepresentation: string;
+  adequacyCriteria: string[];
+  templateCriteria: string[];
   actualLocation: string | null;
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
+  substantiveValidationMode: RequirementSubstantiveValidationMode;
+  substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   finalResult: RequirementFinalResult;
   failureReason: string | null;
+}
+
+export interface DeliverableSubstantiveBreakdown {
+  countedWordCount: number;
+  fixedContentWordCount: number;
+  proseWordCount: number;
+  completionPromptWordCount: number;
+  fieldLabelCount: number;
+  placeholderCount: number;
+  fieldAndPlaceholderWordCount: number;
+  strippedSelfDescription: string[];
+  countedContent: string;
 }
 
 export type RequirementCoverageStatus =
@@ -89,9 +121,12 @@ export type RequirementCoverageStatus =
 export interface RequirementToDeliverablePlanItem {
   requirementId: string;
   professionalRequirement: string;
+  origin: DeliverableRequirement["origin"];
   sourceBlueprintSection?: string;
   classification: DeliverableRequirementClassification;
   authority: string[];
+  adequacyCriteria: string[];
+  templateCriteria: string[];
   applicability: "applicable" | "internal_only" | "evidence_only" | "quality_control" | "optional";
   expectedUserFacingRepresentation: string;
   targetDeliverableLocation: string;
@@ -101,10 +136,13 @@ export interface RequirementToDeliverablePlanItem {
 export interface DeliverableOutputSchemaField {
   requirementId: string;
   classification: DeliverableRequirementClassification;
+  origin: DeliverableRequirement["origin"];
   requiredRepresentation: string;
   targetSection: string;
   fieldLabel: string;
   representationKind: DeliverableRepresentationKind;
+  adequacyCriteria: string[];
+  templateCriteria: string[];
   minimumSubstance: string[];
 }
 
@@ -145,6 +183,12 @@ export interface DeliverableRequirementCoverageReport {
   plan: RequirementToDeliverablePlanItem[];
   requirementResults: DeliverableRequirementCoverageItem[];
   missing: DeliverableRequirementCoverageFailure[];
+}
+
+export interface PerRequirementDeliverableSection {
+  requirementId: string;
+  heading: string;
+  content: string;
 }
 
 export interface BlueprintRequirementClassificationSummary {
@@ -195,8 +239,9 @@ export function deriveDeliverableRequirementCoverageProfile(
 export function validateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
+  options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
 ): DeliverableRequirementCoverageFailure[] {
-  return evaluateDeliverableRequirementCoverage(contentMarkdown, profile).missing;
+  return evaluateDeliverableRequirementCoverage(contentMarkdown, profile, options).missing;
 }
 
 export function buildRequirementToDeliverablePlan(
@@ -207,14 +252,17 @@ export function buildRequirementToDeliverablePlan(
     return {
       requirementId: requirement.id,
       professionalRequirement: requirement.description,
+      origin: requirement.origin ?? "DERIVED",
       sourceBlueprintSection: requirement.sourceBlueprintSection,
       classification: requirement.classification,
       authority: requirement.evidenceAuthority.length > 0
         ? requirement.evidenceAuthority
         : ["Blueprint professional method", "Professional deliverable contract"],
+      adequacyCriteria: requirement.adequacyCriteria ?? [],
+      templateCriteria: requirement.templateCriteria ?? [],
       applicability,
       expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
-      targetDeliverableLocation: inferTargetDeliverableLocation(requirement),
+      targetDeliverableLocation: requirement.targetDeliverableLocation ?? inferTargetDeliverableLocation(requirement),
       status: isBlockingRequirement(requirement.classification) ? "missing" : nonBlockingStatus(requirement.classification),
     };
   });
@@ -229,10 +277,13 @@ export function buildDeliverableOutputSchema(
     .map((item): DeliverableOutputSchemaField => ({
       requirementId: item.requirementId,
       classification: item.classification,
+      origin: item.origin,
       requiredRepresentation: item.expectedUserFacingRepresentation,
       targetSection: item.targetDeliverableLocation,
       fieldLabel: deriveFieldLabel(item),
       representationKind: inferRepresentationKind(item),
+      adequacyCriteria: item.adequacyCriteria,
+      templateCriteria: item.templateCriteria,
       minimumSubstance: deriveMinimumSubstance(item),
     }));
 
@@ -279,10 +330,13 @@ export function groupRequirementFailuresForRepair(
 export function evaluateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
+  options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
 ): DeliverableRequirementCoverageReport {
   const failures: DeliverableRequirementCoverageFailure[] = [];
   const normalisedContent = normaliseContent(contentMarkdown);
   const structure = parseMarkdownStructure(contentMarkdown);
+  const structuredSections = normaliseDeliverableSections(options.deliverableSections);
+  const structuredSectionsProvided = structuredSections.size > 0;
   const plan = buildRequirementToDeliverablePlan(profile);
   const schema = buildDeliverableOutputSchema(profile);
   const classificationCounts = Object.fromEntries(
@@ -297,9 +351,12 @@ export function evaluateDeliverableRequirementCoverage(
     if (!isBlockingRequirement(requirement.classification)) continue;
     const result = validateRequirementAgainstContent({
       requirement,
+      standardisation: profile.standardisation,
       normalisedContent,
       structure,
       schema,
+      structuredSection: structuredSections.get(requirement.id) ?? null,
+      structuredSectionsProvided,
     });
     requirementResults.push(result);
     if (result.finalResult === "SATISFIED") {
@@ -316,9 +373,13 @@ export function evaluateDeliverableRequirementCoverage(
       sourceBlueprintSection: requirement.sourceBlueprintSection,
       requiredDeliverableRepresentation: requirement.requiredDeliverableRepresentation,
       expectedRepresentation: result.expectedRepresentation,
+      adequacyCriteria: result.adequacyCriteria,
+      templateCriteria: result.templateCriteria,
       actualLocation: result.actualLocation,
       structuralResult: result.structuralResult,
       substantiveResult: result.substantiveResult,
+      substantiveValidationMode: result.substantiveValidationMode,
+      substantiveBreakdown: result.substantiveBreakdown,
       finalResult: result.finalResult,
       reason: result.failureReason ?? "Required professional substance is not represented in the user-facing deliverable.",
     });
@@ -355,8 +416,15 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
     .filter((requirement) => isBlockingRequirement(requirement.classification))
     .map((requirement) => [
       `- ${requirement.requirementId} [${requirement.classification}]`,
+      `  Origin: ${requirement.origin}`,
       `  Requirement: ${requirement.professionalRequirement}`,
       requirement.sourceBlueprintSection ? `  Source Blueprint section: ${requirement.sourceBlueprintSection}` : "",
+      requirement.templateCriteria.length
+        ? `  Template criteria:\n${requirement.templateCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
+        : "  Template criteria: DERIVED_UNAVAILABLE",
+      requirement.adequacyCriteria.length
+        ? `  Participant criteria:\n${requirement.adequacyCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
+        : "  Participant criteria: DERIVED_FALLBACK_HEURISTIC",
       `  Final deliverable representation: ${requirement.expectedUserFacingRepresentation}`,
       `  Target location: ${requirement.targetDeliverableLocation}`,
     ].filter(Boolean).join("\n"));
@@ -371,6 +439,20 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
     "Machine-readable output schema derived from the requirement plan. The final deliverable must account for every requirement_id below:",
     JSON.stringify(schema, null, 2),
   ].join("\n");
+}
+
+function normaliseDeliverableSections(
+  sections: PerRequirementDeliverableSection[] | undefined,
+): Map<string, PerRequirementDeliverableSection> {
+  const mapped = new Map<string, PerRequirementDeliverableSection>();
+  for (const section of sections ?? []) {
+    const requirementId = section.requirementId?.trim();
+    const heading = section.heading?.trim();
+    const content = section.content?.trim();
+    if (!requirementId || !heading || !content) continue;
+    mapped.set(requirementId, { requirementId, heading, content });
+  }
+  return mapped;
 }
 
 export function classifyBlueprintRequirement(section: BlueprintSection): DeliverableRequirementClassification {
@@ -453,6 +535,9 @@ function genericDeliverableRequirements(
   context: ProfessionalExecutionContext,
   contract?: BlueprintExecutionContract | null,
 ): DeliverableRequirement[] {
+  const authored = authoredDeliverableRequirements(contract);
+  if (authored.length > 0) return authored;
+
   if (context.deliverable.requestedDeliverableType === "WORKFORCE_ONBOARDING_CHECKLIST") {
     return workforceOnboardingChecklistRequirements(context, contract);
   }
@@ -486,6 +571,114 @@ function genericDeliverableRequirements(
     });
 
   return [...userFacing, ...blueprintDerived];
+}
+
+function authoredDeliverableRequirements(
+  contract?: BlueprintExecutionContract | null,
+): DeliverableRequirement[] {
+  const source = contract?.blueprint.deliverableContract as Record<string, unknown> | null | undefined;
+  const candidate = source?.requirementPlan ?? source?.requirements ?? source?.deliverableRequirements;
+  if (!Array.isArray(candidate)) return [];
+
+  return candidate
+    .map((raw, index) => parseAuthoredRequirement(raw, index, contract))
+    .filter((requirement): requirement is DeliverableRequirement => Boolean(requirement));
+}
+
+function parseAuthoredRequirement(raw: unknown, index: number, contract?: BlueprintExecutionContract | null): DeliverableRequirement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  const id = stringValue(record.id ?? record.requirementId ?? record.code) ?? `authored-${index + 1}`;
+  const description = stringValue(record.requirementText ?? record.requirement ?? record.description ?? record.text);
+  const representation = stringValue(
+    record.targetLocation ??
+      record.targetDeliverableLocation ??
+      record.requiredDeliverableRepresentation ??
+      record.finalDeliverableRepresentation,
+  );
+  if (!description || !representation) return null;
+  const sectionCode = stringValue(record.sourceBlueprintSection ?? record.sectionCode);
+  const blueprintSection = sectionCode
+    ? contract?.sections.find((section) => section.sectionCode === sectionCode)
+    : null;
+
+  return req(
+    id,
+    description,
+    parseRequirementClassification(record.classification),
+    sectionCode,
+    representation,
+    parseCoverageRules(record.coverageRules),
+    {
+      origin: "AUTHORED",
+      professionalRationale: stringValue(record.professionalRationale),
+      evidenceAuthority: stringArray(record.evidenceAuthority ?? record.authority),
+      adequacyCriteria: stringArray(record.adequacyCriteria),
+      templateCriteria: deriveTemplateCriteriaForSection(blueprintSection),
+      targetDeliverableLocation: representation,
+      fixedContent: blueprintSection?.fixedContent ?? [],
+      templateFields: blueprintSection?.fields ?? [],
+      completionPrompt: blueprintSection?.completionPrompt ?? null,
+    },
+  );
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => typeof item === "string" ? item.trim() : "")
+    .filter(Boolean);
+}
+
+function deriveTemplateCriteriaForSection(section?: BlueprintSection | null): string[] {
+  if (!section) return [];
+  const criteria: string[] = [];
+  if ((section.fixedContent ?? []).length > 0) {
+    criteria.push("All authored fixedContent paragraphs are emitted verbatim.");
+  }
+  if ((section.fields ?? []).length > 0) {
+    criteria.push("All declared template fields are present and labelled.");
+  }
+  if (section.completionPrompt) {
+    criteria.push("The authored completionPrompt is emitted verbatim as template guidance.");
+  }
+  for (const field of section.fields ?? []) {
+    const normalised = field.toLowerCase();
+    if (normalised.includes("table with columns")) {
+      criteria.push(`Required table structure is present: ${field}.`);
+    }
+    if (normalised.includes("minimum three personal goal rows")) {
+      criteria.push("The goals table includes at least three personal goal rows.");
+    }
+    if (normalised.includes("support types selected from")) {
+      criteria.push("The support type list is present.");
+    }
+  }
+  return criteria;
+}
+
+function parseRequirementClassification(value: unknown): DeliverableRequirementClassification {
+  if (typeof value === "string" && COVERAGE_CLASSIFICATIONS.includes(value as DeliverableRequirementClassification)) {
+    return value as DeliverableRequirementClassification;
+  }
+  return "MUST_BE_REPRESENTED";
+}
+
+function parseCoverageRules(value: unknown): string[][] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === "string" && item.trim()) return [[item.trim()]];
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const allOf = stringArray(record.allOf);
+    if (allOf.length > 0) return [allOf];
+    const anyOf = stringArray(record.anyOf);
+    return anyOf.map((term) => [term]);
+  });
 }
 
 function workforceOnboardingChecklistRequirements(
@@ -617,15 +810,33 @@ function req(
   sourceBlueprintSection: string | undefined,
   representation: string,
   allOfAlternatives: string[][],
+  options: {
+    origin?: DeliverableRequirement["origin"];
+    professionalRationale?: string | null;
+    evidenceAuthority?: string[];
+    targetDeliverableLocation?: string;
+    adequacyCriteria?: string[];
+    templateCriteria?: string[];
+    fixedContent?: string[];
+    templateFields?: string[];
+    completionPrompt?: string | null;
+  } = {},
 ): DeliverableRequirement {
   return {
     id,
     description,
     classification,
+    origin: options.origin ?? "DERIVED",
     sourceBlueprintSection,
-    professionalRationale: "Blueprint professional substance must be represented without exposing internal methodology.",
-    evidenceAuthority: [],
+    professionalRationale: options.professionalRationale ?? "Blueprint professional substance must be represented without exposing internal methodology.",
+    evidenceAuthority: options.evidenceAuthority ?? [],
     requiredDeliverableRepresentation: representation,
+    targetDeliverableLocation: options.targetDeliverableLocation,
+    adequacyCriteria: options.adequacyCriteria ?? [],
+    templateCriteria: options.templateCriteria ?? [],
+    fixedContent: options.fixedContent ?? [],
+    templateFields: options.templateFields ?? [],
+    completionPrompt: options.completionPrompt ?? null,
     coverageRules: allOfAlternatives.map((allOf) => ({ allOf })),
   };
 }
@@ -806,11 +1017,23 @@ interface MarkdownStructure {
 
 function validateRequirementAgainstContent(input: {
   requirement: DeliverableRequirement;
+  standardisation: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
   const { requirement } = input;
+  if (input.structuredSectionsProvided && !input.structuredSection && isBlockingRequirement(requirement.classification)) {
+    return coverageItem(requirement, {
+      actualLocation: null,
+      structuralResult: "STRUCTURE_FAIL",
+      substantiveResult: requirement.classification === "FACTUAL_FIELD" ? "NOT_APPLICABLE" : "SUBSTANTIVE_FAIL",
+      finalResult: "NOT_SATISFIED",
+      failureReason: `deliverable.sections is missing an entry for required requirementId "${requirement.id}".`,
+    });
+  }
   if (requirement.classification === "FACTUAL_FIELD") {
     return validateFactualFieldRequirement(input);
   }
@@ -829,11 +1052,17 @@ function validateRequirementAgainstContent(input: {
 
 function validateFactualFieldRequirement(input: {
   requirement: DeliverableRequirement;
+  standardisation?: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
-  const { requirement, structure, schema } = input;
+  const { requirement, schema } = input;
+  const structure = input.structuredSection
+    ? parseMarkdownStructure(`## ${input.structuredSection.heading}\n\n${input.structuredSection.content}`)
+    : input.structure;
   const schemaField = findSchemaField(schema, requirement.id);
   const expected = requirement.requiredDeliverableRepresentation;
 
@@ -1026,11 +1255,20 @@ function validateStructuredFieldGroups(
 
 function validateRepresentedRequirement(input: {
   requirement: DeliverableRequirement;
+  standardisation?: DeliverableRequirementCoverageProfile["standardisation"];
   normalisedContent: string;
   structure: MarkdownStructure;
   schema: DeliverableOutputSchema;
+  structuredSection: PerRequirementDeliverableSection | null;
+  structuredSectionsProvided: boolean;
 }): DeliverableRequirementCoverageItem {
-  const { requirement, normalisedContent, structure } = input;
+  const { requirement } = input;
+  const structure = input.structuredSection
+    ? parseMarkdownStructure(`## ${input.structuredSection.heading}\n\n${input.structuredSection.content}`)
+    : input.structure;
+  const normalisedContent = input.structuredSection
+    ? normaliseContent(input.structuredSection.content)
+    : input.normalisedContent;
   if (requirement.id === "support-schedule-table") {
     const table = findScheduleTable(structure);
     return coverageItem(requirement, table
@@ -1050,8 +1288,16 @@ function validateRepresentedRequirement(input: {
         });
   }
 
-  const relevant = findRelevantSectionContent(structure, requirement);
-  const keywordMatch = requirement.coverageRules.length > 0
+  const relevant = input.structuredSection
+    ? {
+        content: input.structuredSection.content,
+        location: `deliverable.sections[${input.structuredSection.requirementId}] "${input.structuredSection.heading}"`,
+      }
+    : findRelevantSectionContent(structure, requirement);
+  const hasAuthoredAdequacyCriteria = (requirement.adequacyCriteria ?? []).length > 0;
+  const keywordMatch = hasAuthoredAdequacyCriteria
+    ? true
+    : requirement.coverageRules.length > 0
     ? requirement.coverageRules.some((rule) => coverageRuleMatches(normalisedContent, rule))
     : coverageRuleMatches(normalisedContent, { allOf: keywordCandidates(requirement.description) });
   if (!relevant) {
@@ -1065,6 +1311,31 @@ function validateRepresentedRequirement(input: {
   }
 
   const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content);
+  if (input.standardisation === "standard_reusable" && (requirement.templateCriteria ?? []).length > 0) {
+    const template = evaluateTemplateRequirementContent(requirement, relevant.content);
+    const finalResult = template.passed
+      ? "SATISFIED"
+      : template.partial
+        ? "PARTIAL"
+        : "NOT_SATISFIED";
+
+    return coverageItem(requirement, {
+      actualLocation: relevant.location,
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: template.passed
+        ? "SUBSTANTIVE_PASS"
+        : template.partial
+          ? "SUBSTANTIVE_PARTIAL"
+          : "SUBSTANTIVE_FAIL",
+      substantiveValidationMode: "TEMPLATE_CRITERIA",
+      substantiveBreakdown: substantive.breakdown,
+      finalResult,
+      failureReason: finalResult === "SATISFIED"
+        ? null
+        : template.reason,
+    });
+  }
+
   const finalResult = substantive.passed && keywordMatch
     ? "SATISFIED"
     : substantive.partial || keywordMatch
@@ -1079,6 +1350,8 @@ function validateRepresentedRequirement(input: {
       : substantive.partial
         ? "SUBSTANTIVE_PARTIAL"
         : "SUBSTANTIVE_FAIL",
+    substantiveValidationMode: substantive.mode,
+    substantiveBreakdown: substantive.breakdown,
     finalResult,
     failureReason: finalResult === "SATISFIED"
       ? null
@@ -1088,14 +1361,22 @@ function validateRepresentedRequirement(input: {
 
 function coverageItem(
   requirement: DeliverableRequirement,
-  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "sourceBlueprintSection" | "expectedRepresentation">,
+  result: Omit<DeliverableRequirementCoverageItem, "requirementId" | "requirement" | "classification" | "origin" | "sourceBlueprintSection" | "expectedRepresentation" | "adequacyCriteria" | "substantiveValidationMode"> & {
+    substantiveValidationMode?: RequirementSubstantiveValidationMode;
+  },
 ): DeliverableRequirementCoverageItem {
   return {
     requirementId: requirement.id,
     requirement: requirement.description,
     classification: requirement.classification,
+    origin: requirement.origin ?? "DERIVED",
     sourceBlueprintSection: requirement.sourceBlueprintSection,
     expectedRepresentation: requirement.requiredDeliverableRepresentation,
+    adequacyCriteria: requirement.adequacyCriteria ?? [],
+    templateCriteria: requirement.templateCriteria ?? [],
+    substantiveValidationMode: result.substantiveValidationMode ?? (
+      result.substantiveResult === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FALLBACK_HEURISTIC"
+    ),
     ...result,
   };
 }
@@ -1336,18 +1617,50 @@ function findRelevantSectionContent(
 function evaluateSubstantiveClauseContent(
   requirement: DeliverableRequirement,
   content: string,
-): { passed: boolean; partial: boolean; reason: string | null } {
-  const cleaned = stripSelfAssertionCoverage(content);
+): {
+  passed: boolean;
+  partial: boolean;
+  reason: string | null;
+  mode: RequirementSubstantiveValidationMode;
+  breakdown: DeliverableSubstantiveBreakdown;
+} {
+  const breakdown = analyseSubstantiveCoverageContent(content, requirement);
+  const cleaned = breakdown.countedContent;
+  const normalised = normaliseContent(cleaned);
+
+  const adequacyCriteria = requirement.adequacyCriteria ?? [];
+  if (requirement.classification === "CONDITIONAL" && explicitlyStatesNonApplicabilityWithSource(cleaned)) {
+    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+  }
+  if (adequacyCriteria.length > 0) {
+    const criteriaResults = adequacyCriteria.map((criterion) => ({
+      criterion,
+      passed: adequacyCriterionMatchesContent(criterion, normalised),
+    }));
+    const missing = criteriaResults.filter((result) => !result.passed).map((result) => result.criterion);
+    if (missing.length === 0) {
+      return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+    }
+    return {
+      passed: false,
+      partial: missing.length < criteriaResults.length,
+      reason: `Relevant section does not satisfy authored adequacy criteria: ${missing.join("; ")}.`,
+      mode: "ADEQUACY_CRITERIA",
+      breakdown,
+    };
+  }
+
   const words = normaliseContent(cleaned).split(/\s+/).filter(Boolean);
   if (words.length < 18) {
     return {
       passed: false,
       partial: words.length >= 8,
       reason: "Relevant section is too thin to prove substantive professional coverage.",
+      mode: "FALLBACK_HEURISTIC",
+      breakdown,
     };
   }
 
-  const normalised = normaliseContent(cleaned);
   const operativeCount = [
     "must",
     "will",
@@ -1371,13 +1684,140 @@ function evaluateSubstantiveClauseContent(
     : requirement.coverageRules.some((rule) => coverageRuleMatches(normalised, rule));
 
   if (keywordRulesPass && operativeCount >= 2 && domain.passed) {
-    return { passed: true, partial: false, reason: null };
+    return { passed: true, partial: false, reason: null, mode: "FALLBACK_HEURISTIC", breakdown };
   }
   return {
     passed: false,
     partial: keywordRulesPass || domain.partial || operativeCount >= 2,
     reason: domain.reason ?? "Section exists but lacks enough operative professional content for the requirement.",
+    mode: "FALLBACK_HEURISTIC",
+    breakdown,
   };
+}
+
+function explicitlyStatesNonApplicabilityWithSource(content: string): boolean {
+  const normalised = normaliseContent(content);
+  const nonApplicable = /\b(?:not applicable|non applicable|does not apply|no .* required|no .* recorded|no .* identified|none apply)\b/.test(normalised);
+  const sourceNamed = /\b(?:based on|according to|from|as recorded in|source|assessment|plan|bsp|behaviour support plan|risk assessment|intake|service agreement|ndis plan)\b/.test(normalised);
+  return nonApplicable && sourceNamed;
+}
+
+function evaluateTemplateRequirementContent(
+  requirement: DeliverableRequirement,
+  content: string,
+): { passed: boolean; partial: boolean; reason: string } {
+  const normalised = normaliseContent(content);
+  const missing: string[] = [];
+
+  const fixedMissing = requirement.fixedContent.filter((fixed) =>
+    !normalised.includes(normaliseContent(fixed)),
+  );
+  if (fixedMissing.length > 0) {
+    missing.push(`missing authored fixedContent (${fixedMissing.length}/${requirement.fixedContent.length})`);
+  }
+
+  const missingFields = requirement.templateFields.filter((field) =>
+    !templateFieldIsRepresented(field, content),
+  );
+  if (missingFields.length > 0) {
+    missing.push(`missing declared template fields/structure: ${missingFields.join("; ")}`);
+  }
+
+  if (requirement.completionPrompt && !normalised.includes(normaliseContent(requirement.completionPrompt))) {
+    missing.push("missing authored completionPrompt");
+  }
+
+  if (missing.length === 0) {
+    return { passed: true, partial: false, reason: "" };
+  }
+
+  const totalChecks = requirement.fixedContent.length +
+    requirement.templateFields.length +
+    (requirement.completionPrompt ? 1 : 0);
+  const missingChecks = fixedMissing.length + missingFields.length + (requirement.completionPrompt && !normalised.includes(normaliseContent(requirement.completionPrompt)) ? 1 : 0);
+  return {
+    passed: false,
+    partial: totalChecks > missingChecks,
+    reason: `Template section does not satisfy derived template criteria: ${missing.join("; ")}.`,
+  };
+}
+
+function templateFieldIsRepresented(field: string, content: string): boolean {
+  const normalisedField = normaliseContent(field);
+  const normalisedContent = normaliseContent(content);
+  if (!normalisedField) return true;
+
+  const tableColumns = field.match(/table with columns\s+(.+)/i);
+  if (tableColumns) {
+    const columns = (tableColumns[1] ?? "")
+      .split("|")
+      .map((column) => normaliseContent(column))
+      .filter(Boolean);
+    return columns.every((column) => normalisedContent.includes(column));
+  }
+
+  if (/minimum three personal goal rows/i.test(field)) {
+    const currentSituationRows = (content.match(/\[CURRENT_SITUATION_\d+\]/g) ?? []).length;
+    const tableRowCount = content.split(/\r?\n/).filter((line) =>
+      /^\|/.test(line.trim()) && /\[[A-Z0-9_]+\]/.test(line),
+    ).length;
+    return Math.max(currentSituationRows, tableRowCount) >= 3;
+  }
+
+  if (/description per selected type/i.test(field)) {
+    return normalisedContent.includes("support type") &&
+      normalisedContent.includes("description") &&
+      /\[DESCRIPTION_[A-Z0-9_]+\]/.test(content);
+  }
+
+  const afterColon = field.includes(":") ? field.split(":").slice(1).join(":") : field;
+  const labels = afterColon
+    .split(/,|—/)
+    .map((label) => normaliseContent(label))
+    .filter((label) => label.length > 2)
+    .filter((label) => !/^(sourced from|source|fields|sil and supported accommodation|community access)$/.test(label));
+  if (labels.length > 1) {
+    const minimumMatches = Math.max(1, Math.ceil(labels.length * 0.8));
+    return labels.filter((label) => normalisedContent.includes(label)).length >= minimumMatches;
+  }
+
+  return normalisedContent.includes(normalisedField);
+}
+
+function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {
+  const terms = criterion
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 3)
+    .filter((word) => ![
+      "must",
+      "include",
+      "includes",
+      "included",
+      "contain",
+      "contains",
+      "present",
+      "state",
+      "states",
+      "show",
+      "shows",
+      "with",
+      "where",
+      "when",
+      "that",
+      "this",
+      "from",
+      "into",
+      "relevant",
+      "specific",
+      "professional",
+      "section",
+      "requirement",
+    ].includes(word));
+  if (terms.length === 0) return normalisedContent.includes(normaliseContent(criterion));
+  const requiredMatches = Math.min(terms.length, terms.length <= 3 ? terms.length : Math.ceil(terms.length * 0.65));
+  return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
 }
 
 function domainSufficiency(requirementId: string, normalised: string): { passed: boolean; partial: boolean; reason: string | null } {
@@ -1499,16 +1939,109 @@ function domainSufficiency(requirementId: string, normalised: string): { passed:
 }
 
 function stripSelfAssertionCoverage(content: string): string {
-  return content
-    .split(/(?<=[.!?])\s+/)
+  return splitCoverageSentences(content)
     .filter((sentence) => {
       const normalised = normaliseContent(sentence);
       if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) return false;
+      if (/^(?:this|the)\s+(?:section|plan|document|template|agreement|care plan)\b.*\b(?:outlines?|describes?|details?|serves\s+to|is\s+designed\s+to|covers?|includes?|provides?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) return false;
+      if (/^the following\b.*\b(?:outlines?|describes?|details?|covers?|includes?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) return false;
       if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && normalised.split(/\s+/).length <= 14) return false;
       if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && normalised.split(/\s+/).length <= 12) return false;
       return true;
     })
     .join(" ");
+}
+
+function analyseSubstantiveCoverageContent(
+  content: string,
+  requirement?: Pick<DeliverableRequirement, "fixedContent" | "completionPrompt">,
+): DeliverableSubstantiveBreakdown {
+  const strippedSelfDescription: string[] = [];
+  const countedParts: string[] = [];
+  for (const sentence of splitCoverageSentences(content)) {
+    const normalised = normaliseContent(sentence);
+    if (isAuthoredTemplateContentPart(sentence, requirement?.fixedContent ?? [])) {
+      countedParts.push(sentence);
+      continue;
+    }
+    if (/^(all|every|each)\b.*\b(covered|addressed|included|represented|compliant)\b/.test(normalised)) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/^(?:this|the)\s+(?:section|plan|document|template|agreement|care plan)\b.*\b(?:outlines?|describes?|details?|serves\s+to|is\s+designed\s+to|covers?|includes?|provides?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/^the following\b.*\b(?:outlines?|describes?|details?|covers?|includes?|sets\s+out|summari[sz]es)\b/.test(normalised) && normalised.split(/\s+/).length <= 24) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/\b(this agreement|this document|the template)\b.*\b(covers|addresses|includes|is compliant|is complete)\b/.test(normalised) && normalised.split(/\s+/).length <= 14) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    if (/\b(privacy|complaints?|pricing|responsibilities|termination|variation|cancellation)\b.*\b(is|are)\b.*\b(addressed|covered|included|represented)\b/.test(normalised) && normalised.split(/\s+/).length <= 12) {
+      strippedSelfDescription.push(sentence);
+      continue;
+    }
+    countedParts.push(sentence);
+  }
+
+  const fixedParts = countedParts.filter((part) => isAuthoredTemplateContentPart(part, requirement?.fixedContent ?? []));
+  const completionPromptParts = countedParts.filter((part) => isAuthoredCompletionPromptPart(part, requirement?.completionPrompt ?? null));
+  const fieldLabelParts = countedParts.filter((part) => isFieldOrStructureLabel(part));
+  const proseParts = countedParts.filter((part) =>
+    !isFieldOrStructureLabel(part) &&
+    !isAuthoredTemplateContentPart(part, requirement?.fixedContent ?? []) &&
+    !isAuthoredCompletionPromptPart(part, requirement?.completionPrompt ?? null)
+  );
+  const countedContent = countedParts.join(" ");
+  const placeholderCount = (countedContent.match(/\[[A-Z0-9_]+\]/g) ?? []).length;
+  const proseContent = proseParts.join(" ").replace(/\[[A-Z0-9_]+\]/g, " ");
+  const fieldContent = fieldLabelParts.join(" ");
+  return {
+    countedWordCount: wordCountForCoverage(countedContent),
+    fixedContentWordCount: wordCountForCoverage(fixedParts.join(" ")),
+    proseWordCount: wordCountForCoverage(proseContent),
+    completionPromptWordCount: wordCountForCoverage(completionPromptParts.join(" ")),
+    fieldLabelCount: fieldLabelParts.length,
+    placeholderCount,
+    fieldAndPlaceholderWordCount: wordCountForCoverage(fieldContent),
+    strippedSelfDescription,
+    countedContent,
+  };
+}
+
+function isAuthoredTemplateContentPart(part: string, fixedContent: string[]): boolean {
+  const normalisedPart = normaliseContent(part);
+  return fixedContent.some((fixed) => {
+    const normalisedFixed = normaliseContent(fixed);
+    if (!normalisedFixed) return false;
+    return normalisedFixed.includes(normalisedPart) || normalisedPart.includes(normalisedFixed);
+  });
+}
+
+function isAuthoredCompletionPromptPart(part: string, completionPrompt: string | null): boolean {
+  if (!completionPrompt) return false;
+  const normalisedPart = normaliseContent(part);
+  const normalisedPrompt = normaliseContent(completionPrompt);
+  return Boolean(normalisedPrompt) && (normalisedPrompt.includes(normalisedPart) || normalisedPart.includes(normalisedPrompt));
+}
+
+function splitCoverageSentences(content: string): string[] {
+  return content
+    .split(/(?<=[.!?])\s+|\r?\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function isFieldOrStructureLabel(value: string): boolean {
+  const trimmed = value.trim().replace(/^[-*]\s+/, "");
+  return /^[A-Za-z][A-Za-z0-9 /&(),.'-]{1,90}:\s*(?:\[[A-Z0-9_]+\]|$|[-A-Za-z0-9_ /[\],.'()]+$)/.test(trimmed);
+}
+
+function wordCountForCoverage(value: string): number {
+  return normaliseContent(value).split(/\s+/).filter(Boolean).length;
 }
 
 function titleCase(value: string): string {

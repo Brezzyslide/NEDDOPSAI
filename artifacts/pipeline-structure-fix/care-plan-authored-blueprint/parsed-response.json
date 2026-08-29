@@ -1,0 +1,229 @@
+{
+  "content": "## Support Plan Meeting (Header)\n\nParticipant name: [PARTICIPANT_NAME]\nDate of birth: [DATE_OF_BIRTH]\nGender: [GENDER]\nLanguage spoken: [LANGUAGE_SPOKEN]\nNDIS number: [NDIS_NUMBER]\nDiagnosis: [DIAGNOSIS]\nPeople present: [PEOPLE_PRESENT]\nSupport plan developed by: [SUPPORT_PLAN_DEVELOPED_BY]\nPlan date: [PLAN_DATE]\nDate for review: [DATE_FOR_REVIEW]\n\nThis plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.\n\nWhere this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below.\n\n## Goals\n\n| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |\n|-------------------|------|---------|-------------------|-----------|----------|\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n\nGoals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review.\n\n## About Me\n\nStrengths: [STRENGTHS]\nLikes: [LIKES]\nDislikes: [DISLIKES]\nWhat matters to me: [WHAT_MATTERS]\nHow I prefer to communicate: [COMMUNICATION_PREFERENCES]\nPeople who matter to me: [PEOPLE_WHO_MATTER_TO_ME]\nInformal supports: [INFORMAL_SUPPORTS]\n\nThis section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift.\n\n## History and Background\n\nRelevant history: [HISTORY_BACKGROUND]\nPrior service involvement: [PRIOR_SERVICE_INVOLVEMENT]\nRisk-relevant context: [RISK_RELEVANT_CONTEXT]\nSource documents and dates: [SOURCE_DOCUMENTS_AND_DATES]\n\nThis section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document.\n\n## Undertaking ADL\n\nSupport is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.\n\nEach activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. For each activity, record which tier applies and describe what the worker does.\n\n## Communication and Communication Strategy\n\nVerbal / non-verbal: [VERBAL_NON_VERBAL]\nExpressive capacity: [EXPRESSIVE_CAPACITY]\nReceptive capacity: [RECEPTIVE_CAPACITY]\nCommunication aid or system used: [COMMUNICATION_AID_OR_SYSTEM_USED]\nCommunication strategy: [COMMUNICATION_STRATEGY]\n\nEvery worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift.\n\n## Mobility and Mobility Strategy\n\nMobility aid required: [MOBILITY_AID_REQUIRED]\nAid or equipment used: [AID_OR_EQUIPMENT_USED]\nTransfer method: [TRANSFER_METHOD]\nNumber of workers required: [NUMBER_OF_WORKERS_REQUIRED]\nMobility overview: [MOBILITY_OVERVIEW]\nMobility strategy: [MOBILITY_STRATEGY]\n\nWhere a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted.\n\n## Support Delivery and Client Safety\n\nSupport types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPES]\n\nDescription per selected type: [DESCRIPTION_PER_SELECTED_TYPE]\nOn-call contact: [ON_CALL_CONTACT]\nService manager contact: [SERVICE_MANAGER_CONTACT]\n\nSupports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager.\n\n## Behavioural Management\n\n| Behaviour | Possible trigger | Redirection strategy |\n|-----------|------------------|---------------------|\n| [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] |\n\nThe strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift.\n\n## Restrictive Practices\n\nPractice type: [PRACTICE_TYPE]\nWhat it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE]\nWhat the worker does: [WHAT_THE_WORKER_DOES]\nWhat the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO]\nAuthorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE]\nRecording requirement: [RECORDING_REQUIREMENT]\n\nA restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability.\n\n## Mealtime Management Strategy\n\nSource risk assessment and date: [SOURCE_RISK_ASSESSMENT_AND_DATE]\nFood texture: [FOOD_TEXTURE]\nFluid consistency: [FLUID_CONSISTENCY]\nPositioning: [POSITIONING]\nSupervision level: [SUPERVISION_LEVEL]\nEquipment: [EQUIPMENT]\nWorker actions: [WORKER_ACTIONS]\n\nMealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here.\n\n## Disaster Management Strategy\n\nSIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED]\nAssembly point: [ASSEMBLY_POINT]\nEquipment needed: [EQUIPMENT_NEEDED]\nCommunication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION]\nMedications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE]\nWho to notify: [WHO_TO_NOTIFY]\n\nThis section records what workers do with this participant in an emergency or evacuation. In any emergency, worker priority is the safety of the participant and themselves.\n\n## Client Endorsement\n\nParticipant or representative name: [PARTICIPANT_OR_REPRESENTATIVE_NAME]\nRelationship: [RELATIONSHIP]\nSignature: [SIGNATURE]\nDate: [DATE]\nPlan provided to: [PLAN_PROVIDED_TO]\nConsent obtained: [CONSENT_OBTAINED]\n\nWhere the participant cannot sign, record who signed on their behalf and their authority to do so.\n\n## Document Control\n\nForm ID: [FORM_ID]\nVersion: [VERSION]\nDate: [DATE]\nNext review date: [NEXT_REVIEW_DATE]\n\nUncontrolled when printed. The current version of this document is held in the provider's document management system.",
+  "claims": [
+    {
+      "statement": "The care plan template includes all required sections and fields as specified in the blueprint.",
+      "evidenceSource": "Blueprint specifications",
+      "confidence": "high"
+    },
+    {
+      "statement": "All content is participant-centred and traceable to evidence requirements.",
+      "evidenceSource": "Evidence requirements",
+      "confidence": "high"
+    }
+  ],
+  "professionalWork": {
+    "summary": "This document serves as a standard reusable NDIS care plan template designed for use by provider staff, participants, and their representatives. It outlines the necessary support structures, goals, and strategies to ensure effective and safe service delivery for participants with disabilities.",
+    "blueprint_completion": [
+      "Support Plan Meeting",
+      "Goals",
+      "About Me",
+      "History and Background",
+      "Undertaking ADL",
+      "Communication and Communication Strategy",
+      "Mobility and Mobility Strategy",
+      "Support Delivery and Client Safety",
+      "Behavioural Management",
+      "Restrictive Practices",
+      "Mealtime Management Strategy",
+      "Disaster Management Strategy",
+      "Client Endorsement",
+      "Document Control"
+    ],
+    "requirement_to_deliverable_plan": [
+      "Draft Support Plan Meeting (header) to include client details and meeting information.",
+      "Create a Goals table with specific participant goals and actions.",
+      "Write an About Me section focusing on the participant's strengths and preferences.",
+      "Compile a History and Background section with relevant operational history.",
+      "Detail the Undertaking ADL section with participant's self-care capabilities.",
+      "Develop a Communication Strategy outlining effective communication methods.",
+      "Outline the Mobility Strategy including aids and transfer methods.",
+      "Describe Support Delivery and Client Safety measures and obligations.",
+      "If applicable, create a Behavioural Management table from the BSP.",
+      "If applicable, detail Restrictive Practices as per the BSP.",
+      "Draft a Mealtime Management Strategy based on the risk assessment.",
+      "If applicable, outline the Disaster Management Strategy for emergencies.",
+      "Include a Client Endorsement section for consent and agreement.",
+      "Finalize Document Control with versioning and review dates."
+    ],
+    "evidence_map": [
+      "intake_form",
+      "service_agreement",
+      "ndis_plan",
+      "clinical_report",
+      "strengths_based_questionnaire",
+      "mealtime_management_risk_assessment"
+    ],
+    "missing_information": []
+  },
+  "requirementCoverage": {
+    "satisfied": [
+      "care-plan-support-plan-meeting",
+      "care-plan-goals",
+      "care-plan-about-me",
+      "care-plan-history-background",
+      "care-plan-undertaking-adl",
+      "care-plan-communication-strategy",
+      "care-plan-mobility-strategy",
+      "care-plan-support-delivery-client-safety",
+      "care-plan-behavioural-management",
+      "care-plan-restrictive-practices",
+      "care-plan-mealtime-management-strategy",
+      "care-plan-disaster-management-strategy",
+      "care-plan-client-endorsement",
+      "care-plan-document-control"
+    ],
+    "missing": []
+  },
+  "deliverable": {
+    "sections": [
+      {
+        "requirementId": "care-plan-support-plan-meeting",
+        "heading": "Support Plan Meeting (Header)",
+        "content": "Participant name: [PARTICIPANT_NAME]\nDate of birth: [DATE_OF_BIRTH]\nGender: [GENDER]\nLanguage spoken: [LANGUAGE_SPOKEN]\nNDIS number: [NDIS_NUMBER]\nDiagnosis: [DIAGNOSIS]\nPeople present: [PEOPLE_PRESENT]\nSupport plan developed by: [SUPPORT_PLAN_DEVELOPED_BY]\nPlan date: [PLAN_DATE]\nDate for review: [DATE_FOR_REVIEW]\n\nThis plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.\n\nWhere this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
+      },
+      {
+        "requirementId": "care-plan-goals",
+        "heading": "Goals",
+        "content": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |\n|-------------------|------|---------|-------------------|-----------|----------|\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n\nGoals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
+      },
+      {
+        "requirementId": "care-plan-about-me",
+        "heading": "About Me",
+        "content": "Strengths: [STRENGTHS]\nLikes: [LIKES]\nDislikes: [DISLIKES]\nWhat matters to me: [WHAT_MATTERS]\nHow I prefer to communicate: [COMMUNICATION_PREFERENCES]\nPeople who matter to me: [PEOPLE_WHO_MATTER_TO_ME]\nInformal supports: [INFORMAL_SUPPORTS]\n\nThis section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
+      },
+      {
+        "requirementId": "care-plan-history-background",
+        "heading": "History and Background",
+        "content": "Relevant history: [HISTORY_BACKGROUND]\nPrior service involvement: [PRIOR_SERVICE_INVOLVEMENT]\nRisk-relevant context: [RISK_RELEVANT_CONTEXT]\nSource documents and dates: [SOURCE_DOCUMENTS_AND_DATES]\n\nThis section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
+      },
+      {
+        "requirementId": "care-plan-undertaking-adl",
+        "heading": "Undertaking ADL",
+        "content": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.\n\nEach activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. For each activity, record which tier applies and describe what the worker does."
+      },
+      {
+        "requirementId": "care-plan-communication-strategy",
+        "heading": "Communication and Communication Strategy",
+        "content": "Verbal / non-verbal: [VERBAL_NON_VERBAL]\nExpressive capacity: [EXPRESSIVE_CAPACITY]\nReceptive capacity: [RECEPTIVE_CAPACITY]\nCommunication aid or system used: [COMMUNICATION_AID_OR_SYSTEM_USED]\nCommunication strategy: [COMMUNICATION_STRATEGY]\n\nEvery worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift."
+      },
+      {
+        "requirementId": "care-plan-mobility-strategy",
+        "heading": "Mobility and Mobility Strategy",
+        "content": "Mobility aid required: [MOBILITY_AID_REQUIRED]\nAid or equipment used: [AID_OR_EQUIPMENT_USED]\nTransfer method: [TRANSFER_METHOD]\nNumber of workers required: [NUMBER_OF_WORKERS_REQUIRED]\nMobility overview: [MOBILITY_OVERVIEW]\nMobility strategy: [MOBILITY_STRATEGY]\n\nWhere a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted."
+      },
+      {
+        "requirementId": "care-plan-support-delivery-client-safety",
+        "heading": "Support Delivery and Client Safety",
+        "content": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPES]\n\nDescription per selected type: [DESCRIPTION_PER_SELECTED_TYPE]\nOn-call contact: [ON_CALL_CONTACT]\nService manager contact: [SERVICE_MANAGER_CONTACT]\n\nSupports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
+      },
+      {
+        "requirementId": "care-plan-behavioural-management",
+        "heading": "Behavioural Management",
+        "content": "| Behaviour | Possible trigger | Redirection strategy |\n|-----------|------------------|---------------------|\n| [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] |\n\nThe strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
+      },
+      {
+        "requirementId": "care-plan-restrictive-practices",
+        "heading": "Restrictive Practices",
+        "content": "Practice type: [PRACTICE_TYPE]\nWhat it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE]\nWhat the worker does: [WHAT_THE_WORKER_DOES]\nWhat the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO]\nAuthorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE]\nRecording requirement: [RECORDING_REQUIREMENT]\n\nA restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
+      },
+      {
+        "requirementId": "care-plan-mealtime-management-strategy",
+        "heading": "Mealtime Management Strategy",
+        "content": "Source risk assessment and date: [SOURCE_RISK_ASSESSMENT_AND_DATE]\nFood texture: [FOOD_TEXTURE]\nFluid consistency: [FLUID_CONSISTENCY]\nPositioning: [POSITIONING]\nSupervision level: [SUPERVISION_LEVEL]\nEquipment: [EQUIPMENT]\nWorker actions: [WORKER_ACTIONS]\n\nMealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here."
+      },
+      {
+        "requirementId": "care-plan-disaster-management-strategy",
+        "heading": "Disaster Management Strategy",
+        "content": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED]\nAssembly point: [ASSEMBLY_POINT]\nEquipment needed: [EQUIPMENT_NEEDED]\nCommunication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION]\nMedications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE]\nWho to notify: [WHO_TO_NOTIFY]\n\nThis section records what workers do with this participant in an emergency or evacuation. In any emergency, worker priority is the safety of the participant and themselves."
+      },
+      {
+        "requirementId": "care-plan-client-endorsement",
+        "heading": "Client Endorsement",
+        "content": "Participant or representative name: [PARTICIPANT_OR_REPRESENTATIVE_NAME]\nRelationship: [RELATIONSHIP]\nSignature: [SIGNATURE]\nDate: [DATE]\nPlan provided to: [PLAN_PROVIDED_TO]\nConsent obtained: [CONSENT_OBTAINED]\n\nWhere the participant cannot sign, record who signed on their behalf and their authority to do so."
+      },
+      {
+        "requirementId": "care-plan-document-control",
+        "heading": "Document Control",
+        "content": "Form ID: [FORM_ID]\nVersion: [VERSION]\nDate: [DATE]\nNext review date: [NEXT_REVIEW_DATE]\n\nUncontrolled when printed. The current version of this document is held in the provider's document management system."
+      }
+    ]
+  },
+  "deliverableSections": [
+    {
+      "requirementId": "care-plan-support-plan-meeting",
+      "heading": "Support Plan Meeting (Header)",
+      "content": "Participant name: [PARTICIPANT_NAME]\nDate of birth: [DATE_OF_BIRTH]\nGender: [GENDER]\nLanguage spoken: [LANGUAGE_SPOKEN]\nNDIS number: [NDIS_NUMBER]\nDiagnosis: [DIAGNOSIS]\nPeople present: [PEOPLE_PRESENT]\nSupport plan developed by: [SUPPORT_PLAN_DEVELOPED_BY]\nPlan date: [PLAN_DATE]\nDate for review: [DATE_FOR_REVIEW]\n\nThis plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.\n\nWhere this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below."
+    },
+    {
+      "requirementId": "care-plan-goals",
+      "heading": "Goals",
+      "content": "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |\n|-------------------|------|---------|-------------------|-----------|----------|\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n| [CURRENT_SITUATION] | [GOAL] | [ACTIONS] | [PERSON_RESPONSIBLE] | [TIMEFRAME] | [OUTCOMES] |\n\nGoals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table above. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review."
+    },
+    {
+      "requirementId": "care-plan-about-me",
+      "heading": "About Me",
+      "content": "Strengths: [STRENGTHS]\nLikes: [LIKES]\nDislikes: [DISLIKES]\nWhat matters to me: [WHAT_MATTERS]\nHow I prefer to communicate: [COMMUNICATION_PREFERENCES]\nPeople who matter to me: [PEOPLE_WHO_MATTER_TO_ME]\nInformal supports: [INFORMAL_SUPPORTS]\n\nThis section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift."
+    },
+    {
+      "requirementId": "care-plan-history-background",
+      "heading": "History and Background",
+      "content": "Relevant history: [HISTORY_BACKGROUND]\nPrior service involvement: [PRIOR_SERVICE_INVOLVEMENT]\nRisk-relevant context: [RISK_RELEVANT_CONTEXT]\nSource documents and dates: [SOURCE_DOCUMENTS_AND_DATES]\n\nThis section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document."
+    },
+    {
+      "requirementId": "care-plan-undertaking-adl",
+      "heading": "Undertaking ADL",
+      "content": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.\n\nEach activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. For each activity, record which tier applies and describe what the worker does."
+    },
+    {
+      "requirementId": "care-plan-communication-strategy",
+      "heading": "Communication and Communication Strategy",
+      "content": "Verbal / non-verbal: [VERBAL_NON_VERBAL]\nExpressive capacity: [EXPRESSIVE_CAPACITY]\nReceptive capacity: [RECEPTIVE_CAPACITY]\nCommunication aid or system used: [COMMUNICATION_AID_OR_SYSTEM_USED]\nCommunication strategy: [COMMUNICATION_STRATEGY]\n\nEvery worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift."
+    },
+    {
+      "requirementId": "care-plan-mobility-strategy",
+      "heading": "Mobility and Mobility Strategy",
+      "content": "Mobility aid required: [MOBILITY_AID_REQUIRED]\nAid or equipment used: [AID_OR_EQUIPMENT_USED]\nTransfer method: [TRANSFER_METHOD]\nNumber of workers required: [NUMBER_OF_WORKERS_REQUIRED]\nMobility overview: [MOBILITY_OVERVIEW]\nMobility strategy: [MOBILITY_STRATEGY]\n\nWhere a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted."
+    },
+    {
+      "requirementId": "care-plan-support-delivery-client-safety",
+      "heading": "Support Delivery and Client Safety",
+      "content": "Support types selected from — In-home ADL, Personal care, Community access, Transport and travel training, Social/group activity, Behavioural redirection, Companionship and mentorship, Therapeutic cleaning: [SUPPORT_TYPES]\n\nDescription per selected type: [DESCRIPTION_PER_SELECTED_TYPE]\nOn-call contact: [ON_CALL_CONTACT]\nService manager contact: [SERVICE_MANAGER_CONTACT]\n\nSupports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager."
+    },
+    {
+      "requirementId": "care-plan-behavioural-management",
+      "heading": "Behavioural Management",
+      "content": "| Behaviour | Possible trigger | Redirection strategy |\n|-----------|------------------|---------------------|\n| [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] |\n\nThe strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift."
+    },
+    {
+      "requirementId": "care-plan-restrictive-practices",
+      "heading": "Restrictive Practices",
+      "content": "Practice type: [PRACTICE_TYPE]\nWhat it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE]\nWhat the worker does: [WHAT_THE_WORKER_DOES]\nWhat the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO]\nAuthorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE]\nRecording requirement: [RECORDING_REQUIREMENT]\n\nA restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability."
+    },
+    {
+      "requirementId": "care-plan-mealtime-management-strategy",
+      "heading": "Mealtime Management Strategy",
+      "content": "Source risk assessment and date: [SOURCE_RISK_ASSESSMENT_AND_DATE]\nFood texture: [FOOD_TEXTURE]\nFluid consistency: [FLUID_CONSISTENCY]\nPositioning: [POSITIONING]\nSupervision level: [SUPERVISION_LEVEL]\nEquipment: [EQUIPMENT]\nWorker actions: [WORKER_ACTIONS]\n\nMealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here."
+    },
+    {
+      "requirementId": "care-plan-disaster-management-strategy",
+      "heading": "Disaster Management Strategy",
+      "content": "SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED]\nAssembly point: [ASSEMBLY_POINT]\nEquipment needed: [EQUIPMENT_NEEDED]\nCommunication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION]\nMedications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE]\nWho to notify: [WHO_TO_NOTIFY]\n\nThis section records what workers do with this participant in an emergency or evacuation. In any emergency, worker priority is the safety of the participant and themselves."
+    },
+    {
+      "requirementId": "care-plan-client-endorsement",
+      "heading": "Client Endorsement",
+      "content": "Participant or representative name: [PARTICIPANT_OR_REPRESENTATIVE_NAME]\nRelationship: [RELATIONSHIP]\nSignature: [SIGNATURE]\nDate: [DATE]\nPlan provided to: [PLAN_PROVIDED_TO]\nConsent obtained: [CONSENT_OBTAINED]\n\nWhere the participant cannot sign, record who signed on their behalf and their authority to do so."
+    },
+    {
+      "requirementId": "care-plan-document-control",
+      "heading": "Document Control",
+      "content": "Form ID: [FORM_ID]\nVersion: [VERSION]\nDate: [DATE]\nNext review date: [NEXT_REVIEW_DATE]\n\nUncontrolled when printed. The current version of this document is held in the provider's document management system."
+    }
+  ],
+  "completion": {
+    "readyForCompletedWork": true,
+    "methodologyLeakage": false,
+    "notes": []
+  }
+}

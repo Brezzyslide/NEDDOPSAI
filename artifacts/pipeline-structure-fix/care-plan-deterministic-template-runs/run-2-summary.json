@@ -1,0 +1,584 @@
+{
+  "status": "blocked_by_validation",
+  "requirementCount": 14,
+  "templateCriteriaValidatedCount": 14,
+  "adequacyCriteriaValidatedCount": 0,
+  "fallbackHeuristicValidatedCount": 0,
+  "stage1": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "finishReason": "stop",
+    "latencyMs": 17077,
+    "usage": {
+      "prompt_tokens": 14387,
+      "completion_tokens": 2561,
+      "total_tokens": 16948,
+      "prompt_tokens_details": {
+        "cached_tokens": 14208,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "cost": 0.0026290499999999995,
+    "missingRequirements": [],
+    "returnedModelSectionCount": 14
+  },
+  "repair": null,
+  "totalCost": 0.0026290499999999995,
+  "output": {
+    "sectionCount": 14,
+    "wordCount": 1667,
+    "goalRowCount": 3,
+    "fixedContentComplete": true,
+    "deterministicAssemblyOrder": [
+      "fixedContent",
+      "fields",
+      "structure",
+      "completionPrompt",
+      "modelGeneratedContent"
+    ]
+  },
+  "modelGeneratedContentBySection": [
+    {
+      "requirementId": "care-plan-support-plan-meeting",
+      "heading": "Support Plan Meeting (Header)",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-goals",
+      "heading": "Goals",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-about-me",
+      "heading": "About Me",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-history-background",
+      "heading": "History and Background",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-undertaking-adl",
+      "heading": "Undertaking ADL",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-communication-strategy",
+      "heading": "Communication and Communication Strategy",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-mobility-strategy",
+      "heading": "Mobility and Mobility Strategy",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-support-delivery-client-safety",
+      "heading": "Support Delivery and Client Safety",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-behavioural-management",
+      "heading": "Behavioural Management",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-restrictive-practices",
+      "heading": "Restrictive Practices",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-mealtime-management-strategy",
+      "heading": "Mealtime Management Strategy",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-disaster-management-strategy",
+      "heading": "Disaster Management Strategy",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-client-endorsement",
+      "heading": "Client Endorsement",
+      "wordCount": 0,
+      "content": ""
+    },
+    {
+      "requirementId": "care-plan-document-control",
+      "heading": "Document Control",
+      "wordCount": 0,
+      "content": ""
+    }
+  ],
+  "gateResults": {
+    "runtimePassed": false,
+    "runtimeFailures": [
+      {
+        "gate": "artifact_required",
+        "state": "artifact_generation",
+        "message": "Blueprint requires an artifact. Text-only completion is blocked until an artifact is generated and linked."
+      },
+      {
+        "gate": "approval_required",
+        "state": "awaiting_clarification",
+        "message": "Blueprint requires approval before completion.",
+        "details": [
+          "participant_support_content_owner"
+        ]
+      }
+    ],
+    "coverageMissing": []
+  },
+  "requirementValidation": [
+    {
+      "requirementId": "care-plan-support-plan-meeting",
+      "requirement": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Every field present and labelled",
+        "People present names people who attended the planning meeting. A document title in that field is a defect",
+        "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+        "Date for Review is a real date, later than the plan date",
+        "Diagnosis is transcribed from a clinical source, never inferred"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 137,
+        "fixedContentWordCount": 68,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 25,
+        "fieldLabelCount": 10,
+        "placeholderCount": 10,
+        "fieldAndPlaceholderWordCount": 44,
+        "strippedSelfDescription": [],
+        "countedContent": "This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. Where this plan was developed from written reports rather than a planning meeting, the source documents and their dates are recorded below. Participant name: [PARTICIPANT_NAME] Date of birth: [DATE_OF_BIRTH] Gender: [GENDER] Language spoken: [LANGUAGE_SPOKEN] NDIS number: [NDIS_NUMBER] Diagnosis: [DIAGNOSIS] People present: [PEOPLE_PRESENT] Support plan developed by: [SUPPORT_PLAN_DEVELOPED_BY] Plan date: [PLAN_DATE] Date for review: [DATE_FOR_REVIEW] Record every person who attended the planning meeting and their relationship to the participant. Where reports were used instead, name each report and its date."
+      }
+    },
+    {
+      "requirementId": "care-plan-goals",
+      "requirement": "Goals section contains a table per objective with current situation, goal, actions, person responsible, timeframe, and outcomes.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "Required table structure is present: Table with columns Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes.",
+        "The goals table includes at least three personal goal rows."
+      ],
+      "adequacyCriteria": [
+        "Minimum three personal goals present",
+        "NDIS goals present where an NDIS plan exists, sourced from the plan or allied health reports",
+        "Current situation is specific to this participant, not generic",
+        "Goal states what the participant will do or achieve",
+        "Actions state what will be done to support the goal",
+        "Person responsible names a role or person. \"The team\" is a defect",
+        "Timeframe is a date or bounded period. \"Ongoing\" is not a timeframe and fails",
+        "Outcomes describes what achievement looks like. This may be generated, but must follow from the stated goal and actions — never invented independently of them"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 144,
+        "fixedContentWordCount": 59,
+        "proseWordCount": 8,
+        "completionPromptWordCount": 35,
+        "fieldLabelCount": 0,
+        "placeholderCount": 18,
+        "fieldAndPlaceholderWordCount": 0,
+        "strippedSelfDescription": [],
+        "countedContent": "Goals are drawn from the participant's NDIS plan and from what the participant says matters to them. NDIS plan goals and personal goals are recorded together in the table below. Every goal must have a named person responsible and a target date. Support workers are responsible for working toward these goals in every shift, not only at review. | Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes | | --- | --- | --- | --- | --- | --- | | [CURRENT_SITUATION_1] | [GOAL_1] | [ACTIONS_1] | [PERSON_RESPONSIBLE_1] | [TIMEFRAME_1] | [OUTCOMES_1] | | [CURRENT_SITUATION_2] | [GOAL_2] | [ACTIONS_2] | [PERSON_RESPONSIBLE_2] | [TIMEFRAME_2] | [OUTCOMES_2] | | [CURRENT_SITUATION_3] | [GOAL_3] | [ACTIONS_3] | [PERSON_RESPONSIBLE_3] | [TIMEFRAME_3] | [OUTCOMES_3] | State the current situation specifically — what the participant does now. State the goal as what the participant will do or achieve. Give a target date, not \"ongoing\". Name a role or person, not \"the team\"."
+      }
+    },
+    {
+      "requirementId": "care-plan-about-me",
+      "requirement": "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Strengths stated",
+        "Likes and dislikes stated",
+        "Informal supports identified",
+        "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+        "Written about the person, not about their deficits"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 104,
+        "fixedContentWordCount": 28,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 38,
+        "fieldLabelCount": 7,
+        "placeholderCount": 7,
+        "fieldAndPlaceholderWordCount": 38,
+        "strippedSelfDescription": [],
+        "countedContent": "This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift. Strengths: [STRENGTHS] Likes: [LIKES] Dislikes: [DISLIKES] What matters to me: [WHAT_MATTERS_TO_ME] How I prefer to communicate: [HOW_I_PREFER_TO_COMMUNICATE] People who matter to me: [PEOPLE_WHO_MATTER_TO_ME] Informal supports: [INFORMAL_SUPPORTS] Write in the participant's own words where possible. Record what they enjoy, what they find difficult, and what a good day looks like for them. History, diagnoses and risk information belong in History and Background, not here."
+      }
+    },
+    {
+      "requirementId": "care-plan-history-background",
+      "requirement": "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Carries only what a support worker operationally needs. Not the full file",
+        "Every historical claim traceable to a named source document",
+        "No clinical interpretation added beyond what the source states",
+        "[OPEN] Should this section state an access restriction, given its content?"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 76,
+        "fixedContentWordCount": 33,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 19,
+        "fieldLabelCount": 4,
+        "placeholderCount": 4,
+        "fieldAndPlaceholderWordCount": 24,
+        "strippedSelfDescription": [],
+        "countedContent": "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document. Relevant history: [RELEVANT_HISTORY] Prior service involvement: [PRIOR_SERVICE_INVOLVEMENT] Risk-relevant context: [RISK_RELEVANT_CONTEXT] Source documents and dates: [SOURCE_DOCUMENTS_AND_DATES] Include only what changes how a worker should deliver support. Name the source document and date for each statement."
+      }
+    },
+    {
+      "requirementId": "care-plan-undertaking-adl",
+      "requirement": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "States what the participant does independently",
+        "States what needs prompting",
+        "States what needs hands-on support",
+        "A capacity statement with no support description is inadequate"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 70,
+        "fixedContentWordCount": 57,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 13,
+        "fieldLabelCount": 1,
+        "placeholderCount": 0,
+        "fieldAndPlaceholderWordCount": 19,
+        "strippedSelfDescription": [],
+        "countedContent": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support. For each activity, record which tier applies and describe what the worker does."
+      }
+    },
+    {
+      "requirementId": "care-plan-communication-strategy",
+      "requirement": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Capacity indicators completed",
+        "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+        "Strategy states what a worker should actually do",
+        "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 108,
+        "fixedContentWordCount": 48,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 32,
+        "fieldLabelCount": 6,
+        "placeholderCount": 5,
+        "fieldAndPlaceholderWordCount": 60,
+        "strippedSelfDescription": [],
+        "countedContent": "Every worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift. Verbal / non-verbal: [VERBAL_NON_VERBAL] Expressive capacity: [EXPRESSIVE_CAPACITY] Receptive capacity: [RECEPTIVE_CAPACITY] Communication aid or system used: [COMMUNICATION_AID_OR_SYSTEM_USED] Communication strategy: [COMMUNICATION_STRATEGY] Describe what the worker should actually do: how to gain attention, how long to allow for a response, what signs indicate the participant has or has not understood, and what to avoid."
+      }
+    },
+    {
+      "requirementId": "care-plan-mobility-strategy",
+      "requirement": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Capacity indicator completed",
+        "Strategy narrative present, not checkbox alone",
+        "Where an aid is used, it is named and its use described"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 77,
+        "fixedContentWordCount": 20,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 23,
+        "fieldLabelCount": 6,
+        "placeholderCount": 6,
+        "fieldAndPlaceholderWordCount": 34,
+        "strippedSelfDescription": [],
+        "countedContent": "Where a mobility aid or transfer equipment is used, it is named in this plan and must not be substituted. Mobility aid required: [MOBILITY_AID_REQUIRED] Aid or equipment used: [AID_OR_EQUIPMENT_USED] Transfer method: [TRANSFER_METHOD] Number of workers required: [NUMBER_OF_WORKERS_REQUIRED] Mobility overview: [MOBILITY_OVERVIEW] Mobility strategy: [MOBILITY_STRATEGY] Name the specific aid and describe how it is used. Where transfers are required, state the method and the number of workers needed."
+      }
+    },
+    {
+      "requirementId": "care-plan-support-delivery-client-safety",
+      "requirement": "Support Delivery and Client Safety section contains support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "The support type list is present."
+      ],
+      "adequacyCriteria": [
+        "Every selected support type has a corresponding description. Selected-with-no- description is a hard fail",
+        "Descriptions state what the worker does, not what the support is called",
+        "Selected supports reconcile against funded supports in the service agreement"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 279,
+        "fixedContentWordCount": 198,
+        "proseWordCount": 24,
+        "completionPromptWordCount": 16,
+        "fieldLabelCount": 2,
+        "placeholderCount": 10,
+        "fieldAndPlaceholderWordCount": 12,
+        "strippedSelfDescription": [],
+        "countedContent": "Supports are delivered only as funded in the participant's service agreement and NDIS plan. Workers must not deliver supports outside those recorded here without authorisation from the service manager. Incidents. Any incident affecting the participant must be reported to the service manager immediately and recorded in the provider's incident management system before the end of shift. Reportable incidents. Where an incident meets the NDIS reportable incident criteria, the provider must submit an Immediate Notification Form to the NDIS Quality and Safeguards Commission within 24 hours of key personnel becoming aware of it, followed by a further form providing additional information and the actions taken within five business days. The 24-hour clock starts when key personnel become aware, not when the incident occurred. The exception is the use of a restrictive practice that is unauthorised or not in accordance with the participant's behaviour support plan, which is notified within five business days — unless it resulted in harm, in which case the 24-hour timeframe applies. Escalation. In an emergency, call 000 first, then notify the on-call service manager. For non-emergency concerns about the participant's wellbeing, contact the service manager the same day. On-call contact: [ON_CALL_CONTACT] Service manager contact: [SERVICE_MANAGER_CONTACT] | Support type | Description | | --- | --- | | In-home ADL | [DESCRIPTION_IN_HOME_ADL] | | Personal care | [DESCRIPTION_PERSONAL_CARE] | | Community access | [DESCRIPTION_COMMUNITY_ACCESS] | | Transport and travel training | [DESCRIPTION_TRANSPORT_AND_TRAVEL_TRAINING] | | Social/group activity | [DESCRIPTION_SOCIAL_GROUP_ACTIVITY] | | Behavioural redirection | [DESCRIPTION_BEHAVIOURAL_REDIRECTION] | | Companionship and mentorship | [DESCRIPTION_COMPANIONSHIP_AND_MENTORSHIP] | | Therapeutic cleaning | [DESCRIPTION_THERAPEUTIC_CLEANING] | For every support type selected, describe what the worker does, how often, and for how long."
+      }
+    },
+    {
+      "requirementId": "care-plan-behavioural-management",
+      "requirement": "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance.",
+        "Required table structure is present: Table with columns Behaviour | Possible trigger | Redirection strategy."
+      ],
+      "adequacyCriteria": [
+        "Each row has all three columns",
+        "Redirection strategies are drawn from the BSP, not invented",
+        "Strategies are written for a support worker to execute"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 154,
+        "fixedContentWordCount": 128,
+        "proseWordCount": 5,
+        "completionPromptWordCount": 16,
+        "fieldLabelCount": 1,
+        "placeholderCount": 5,
+        "fieldAndPlaceholderWordCount": 27,
+        "strippedSelfDescription": [],
+        "countedContent": "The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift. Workers must not use any restrictive practice that is not recorded in the behaviour support plan and listed in the Restrictive Practices section of this plan. Use of an unauthorised restrictive practice is a reportable incident. Where a behaviour escalates beyond the strategies below, workers withdraw to a safe distance, ensure the safety of the participant and others, and contact the on-call service manager. Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no behaviour support plan is in place and no behaviours of concern have been identified for this participant. Workers should report any emerging concern to the service manager. | Behaviour | Possible trigger | Redirection strategy | | --- | --- | --- | | [BEHAVIOUR] | [POSSIBLE_TRIGGER] | [REDIRECTION_STRATEGY] | Take each behaviour, trigger and strategy directly from the behaviour support plan. Do not invent strategies."
+      }
+    },
+    {
+      "requirementId": "care-plan-restrictive-practices",
+      "requirement": "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
+      "adequacyCriteria": [
+        "Each practice named in plain language a support worker understands",
+        "What the worker does, and does not do",
+        "Authorisation status stated as recorded in the BSP, never determined here"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 222,
+        "fixedContentWordCount": 174,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 0,
+        "fieldLabelCount": 8,
+        "placeholderCount": 8,
+        "fieldAndPlaceholderWordCount": 83,
+        "strippedSelfDescription": [],
+        "countedContent": "A restrictive practice is any practice or intervention that has the effect of restricting the rights or freedom of movement of a person with disability. The NDIS Commission regulates five: chemical restraint, environmental restraint, mechanical restraint, physical restraint and seclusion. Any regulated restrictive practice used with this participant must be authorised under applicable state or territory law, recorded in a current behaviour support plan, and listed below. Restrictive practices are used only as a last resort and for the shortest time necessary. Workers must use only the practices listed, only as described, and must record every use. Using a regulated restrictive practice that is not listed here, or using a listed practice differently from how it is described, is an unauthorised restrictive practice. It is a reportable incident and must be reported immediately. Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager. Practice type: [PRACTICE_TYPE] What it is in plain language: [WHAT_IT_IS_IN_PLAIN_LANGUAGE] What the worker does: [WHAT_THE_WORKER_DOES] What the worker must not do: [WHAT_THE_WORKER_MUST_NOT_DO] Authorisation status and reference: [AUTHORISATION_STATUS_AND_REFERENCE] Recording requirement: [RECORDING_REQUIREMENT]"
+      }
+    },
+    {
+      "requirementId": "care-plan-mealtime-management-strategy",
+      "requirement": "Mealtime Management Strategy section contains the mealtime strategy a support worker executes.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
+      "adequacyCriteria": [
+        "Strategy drawn from the mealtime management risk assessment, cited",
+        "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+        "Written as worker actions"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 134,
+        "fixedContentWordCount": 104,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 0,
+        "fieldLabelCount": 8,
+        "placeholderCount": 9,
+        "fieldAndPlaceholderWordCount": 52,
+        "strippedSelfDescription": [],
+        "countedContent": "Mealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here. Assessment of swallowing, dysphagia risk and texture modification is made only by an appropriately credentialed professional. This plan carries the resulting strategy; it does not make the assessment. Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager. Source risk assessment and date: [SOURCE_RISK_ASSESSMENT_AND_DATE] Food texture: [FOOD_TEXTURE] Fluid consistency: [FLUID_CONSISTENCY] Positioning: [POSITIONING] Supervision level: [SUPERVISION_LEVEL] Equipment: [EQUIPMENT] Worker actions: [WORKER_ACTIONS]"
+      }
+    },
+    {
+      "requirementId": "care-plan-disaster-management-strategy",
+      "requirement": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "States participant-specific arrangements, not a reproduction of the site plan",
+        "Names the source risk assessment",
+        "For community access, addresses both general and location-specific risk",
+        "Written as worker actions",
+        "[OPEN] Other settings: confirm"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 147,
+        "fixedContentWordCount": 47,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 12,
+        "fieldLabelCount": 13,
+        "placeholderCount": 11,
+        "fieldAndPlaceholderWordCount": 88,
+        "strippedSelfDescription": [],
+        "countedContent": "This section records what workers do with this participant in an emergency or evacuation. It supplements, and does not replace, the site emergency plan. In any emergency, worker priority is the safety of the participant and themselves. Call 000 first, then notify the on-call service manager. SIL and supported accommodation: Evacuation assistance required: [EVACUATION_ASSISTANCE_REQUIRED] Assembly point: [ASSEMBLY_POINT] Equipment needed: [EQUIPMENT_NEEDED] Communication approach during evacuation: [COMMUNICATION_APPROACH_DURING_EVACUATION] Medications or equipment to take: [MEDICATIONS_OR_EQUIPMENT_TO_TAKE] Who to notify: [WHO_TO_NOTIFY] Community access: General risk arrangements: [GENERAL_RISK_ARRANGEMENTS] Location-specific risk arrangements: [LOCATION_SPECIFIC_RISK_ARRANGEMENTS] Transport contingency: [TRANSPORT_CONTINGENCY] What the worker carries: [WHAT_THE_WORKER_CARRIES] How the participant is returned to a safe location: [HOW_THE_PARTICIPANT_IS_RETURNED_TO_A_SAFE_LOCATION] State the participant-specific arrangements. Do not reproduce the site emergency plan."
+      }
+    },
+    {
+      "requirementId": "care-plan-client-endorsement",
+      "requirement": "Client Endorsement section contains agreement statement, name of client or representative, signature, date, provided-to list, and consent obtained.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All declared template fields are present and labelled.",
+        "The authored completionPrompt is emitted verbatim as template guidance."
+      ],
+      "adequacyCriteria": [
+        "Block present and complete-able",
+        "Where the plan is provided to family or carer, consent is recorded",
+        "The system never fabricates a signature or a consent state"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 41,
+        "fixedContentWordCount": 0,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 17,
+        "fieldLabelCount": 6,
+        "placeholderCount": 6,
+        "fieldAndPlaceholderWordCount": 24,
+        "strippedSelfDescription": [],
+        "countedContent": "Participant or representative name: [PARTICIPANT_OR_REPRESENTATIVE_NAME] Relationship: [RELATIONSHIP] Signature: [SIGNATURE] Date: [DATE] Plan provided to: [PLAN_PROVIDED_TO] Consent obtained: [CONSENT_OBTAINED] Where the participant cannot sign, record who signed on their behalf and their authority to do so."
+      }
+    },
+    {
+      "requirementId": "care-plan-document-control",
+      "requirement": "Document Control section contains form ID, version, date, and \"uncontrolled when printed\" statement.",
+      "finalResult": "SATISFIED",
+      "substantiveResult": "SUBSTANTIVE_PASS",
+      "mode": "TEMPLATE_CRITERIA",
+      "templateCriteria": [
+        "All authored fixedContent paragraphs are emitted verbatim.",
+        "All declared template fields are present and labelled."
+      ],
+      "adequacyCriteria": [
+        "form ID, version and date present; review date consistent with 4.1"
+      ],
+      "failureReason": null,
+      "breakdown": {
+        "countedWordCount": 32,
+        "fixedContentWordCount": 18,
+        "proseWordCount": 0,
+        "completionPromptWordCount": 0,
+        "fieldLabelCount": 4,
+        "placeholderCount": 4,
+        "fieldAndPlaceholderWordCount": 14,
+        "strippedSelfDescription": [],
+        "countedContent": "Uncontrolled when printed. The current version of this document is held in the provider's document management system. Form ID: [FORM_ID] Version: [VERSION] Date: [DATE] Next review date: [NEXT_REVIEW_DATE]"
+      }
+    }
+  ],
+  "openItems": [
+    "History and Background (4.4): access restriction given its content?",
+    "Disaster management (4.12): settings other than SIL, supported accommodation and community access?",
+    "Emergency contacts: this document or the intake form?",
+    "Decision-making capacity, guardian or nominee: recorded here or elsewhere?"
+  ],
+  "founderAuthoringGaps": [
+    "Support Plan Meeting (header): review cycle requirement",
+    "History and Background: confidentiality statement for sensitive history",
+    "Undertaking ADL: the ADL activity list to be used",
+    "Mobility and Mobility Strategy: manual handling and equipment check requirements",
+    "Support Delivery and Client Safety: worker screening and orientation requirements",
+    "Mealtime Management Strategy: choking and emergency response",
+    "Client Endorsement: participant agreement and consent wording"
+  ]
+}

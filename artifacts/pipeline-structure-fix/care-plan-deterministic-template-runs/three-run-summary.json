@@ -1,0 +1,56 @@
+[
+  {
+    "run": 1,
+    "status": "blocked_by_validation",
+    "promptTokens": 14387,
+    "cachedTokens": 14208,
+    "completionTokens": 2415,
+    "totalCost": 0.00254145,
+    "sectionCount": 14,
+    "wordCount": 1667,
+    "goalRowCount": 3,
+    "fixedContentComplete": true,
+    "runtimeFailures": [
+      "artifact_required",
+      "approval_required"
+    ],
+    "coverageMissingCount": 0,
+    "nonzeroModelSections": []
+  },
+  {
+    "run": 2,
+    "status": "blocked_by_validation",
+    "promptTokens": 14387,
+    "cachedTokens": 14208,
+    "completionTokens": 2561,
+    "totalCost": 0.0026290499999999995,
+    "sectionCount": 14,
+    "wordCount": 1667,
+    "goalRowCount": 3,
+    "fixedContentComplete": true,
+    "runtimeFailures": [
+      "artifact_required",
+      "approval_required"
+    ],
+    "coverageMissingCount": 0,
+    "nonzeroModelSections": []
+  },
+  {
+    "run": 3,
+    "status": "blocked_by_validation",
+    "promptTokens": 14387,
+    "cachedTokens": 14208,
+    "completionTokens": 2394,
+    "totalCost": 0.0025288499999999996,
+    "sectionCount": 14,
+    "wordCount": 1667,
+    "goalRowCount": 3,
+    "fixedContentComplete": true,
+    "runtimeFailures": [
+      "artifact_required",
+      "approval_required"
+    ],
+    "coverageMissingCount": 0,
+    "nonzeroModelSections": []
+  }
+]

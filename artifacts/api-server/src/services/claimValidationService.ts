@@ -548,7 +548,292 @@ export interface SpecialistJsonOutput {
   professionalWork?: Record<string, unknown>;
   requirementCoverage?: Record<string, unknown>;
   deliverable?: Record<string, unknown>;
+  deliverableSections?: ParsedDeliverableSection[];
   completion?: Record<string, unknown>;
+}
+
+export interface ParsedDeliverableSection {
+  requirementId: string;
+  heading: string;
+  content: string;
+}
+
+export interface DeterministicTemplateRequirement {
+  id: string;
+  sourceBlueprintSection?: string;
+  targetDeliverableLocation?: string;
+  fixedContent?: string[];
+  templateFields?: string[];
+  completionPrompt?: string | null;
+}
+
+export interface DeterministicTemplateBlueprintSection {
+  sectionCode: string;
+  title: string;
+  sortOrder?: number;
+  fixedContent?: string[];
+  fields?: string[];
+  completionPrompt?: string | null;
+}
+
+export interface DeterministicTemplateAssemblyResult {
+  sections: ParsedDeliverableSection[];
+  modelGeneratedSections: ParsedDeliverableSection[];
+  deterministicCompleteness: {
+    fixedContentComplete: boolean;
+    sectionCount: number;
+    goalRowCount: number;
+  };
+}
+
+export function assembleDeterministicTemplateDeliverableSections(input: {
+  requirements: DeterministicTemplateRequirement[];
+  blueprintSections: DeterministicTemplateBlueprintSection[];
+  modelSections: ParsedDeliverableSection[] | undefined;
+}): DeterministicTemplateAssemblyResult {
+  const modelByRequirement = new Map((input.modelSections ?? []).map((section) => [section.requirementId, section]));
+  const blueprintByCode = new Map(input.blueprintSections.map((section) => [section.sectionCode, section]));
+  const sections = input.requirements.map((requirement) => {
+    const blueprintSection = requirement.sourceBlueprintSection
+      ? blueprintByCode.get(requirement.sourceBlueprintSection)
+      : undefined;
+    const heading = modelByRequirement.get(requirement.id)?.heading?.trim() ||
+      blueprintSection?.title ||
+      requirement.targetDeliverableLocation ||
+      requirement.id;
+    const deterministicParts = deterministicTemplateParts(requirement, blueprintSection);
+    const modelContent = stripDeterministicTemplateEcho(
+      modelByRequirement.get(requirement.id)?.content ?? "",
+      deterministicParts,
+    );
+    return {
+      requirementId: requirement.id,
+      heading,
+      content: [...deterministicParts, modelContent].filter((part) => part.trim()).join("\n\n"),
+    };
+  });
+  const markdown = assembleDeliverableMarkdownFromSections(sections, input.requirements.map((requirement) => requirement.id));
+  return {
+    sections,
+    modelGeneratedSections: input.requirements.map((requirement) => ({
+      requirementId: requirement.id,
+      heading: modelByRequirement.get(requirement.id)?.heading?.trim() ||
+        blueprintByCode.get(requirement.sourceBlueprintSection ?? "")?.title ||
+        requirement.targetDeliverableLocation ||
+        requirement.id,
+      content: stripDeterministicTemplateEcho(modelByRequirement.get(requirement.id)?.content ?? "", deterministicTemplateParts(requirement, blueprintByCode.get(requirement.sourceBlueprintSection ?? ""))),
+    })),
+    deterministicCompleteness: {
+      fixedContentComplete: input.requirements.every((requirement) =>
+        (requirement.fixedContent ?? []).every((fixed) => markdown.includes(fixed)),
+      ),
+      sectionCount: sections.filter((section) => section.content.trim()).length,
+      goalRowCount: (markdown.match(/\[CURRENT_SITUATION_\d+\]/g) ?? []).length,
+    },
+  };
+}
+
+export function assembleDeliverableMarkdownFromSections(
+  sections: ParsedDeliverableSection[] | undefined,
+  requirementOrder: string[] = [],
+): string {
+  const validSections = (sections ?? [])
+    .filter((section) => section.requirementId && section.heading && section.content.trim());
+  if (validSections.length === 0) return "";
+  const order = new Map(requirementOrder.map((requirementId, index) => [requirementId, index]));
+  return [...validSections]
+    .sort((left, right) =>
+      (order.get(left.requirementId) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(right.requirementId) ?? Number.MAX_SAFE_INTEGER)
+    )
+    .map((section) => `## ${section.heading}\n\n${section.content.trim()}`)
+    .join("\n\n");
+}
+
+function deterministicTemplateParts(
+  requirement: DeterministicTemplateRequirement,
+  blueprintSection?: DeterministicTemplateBlueprintSection,
+): string[] {
+  const fixedContent = requirement.fixedContent ?? blueprintSection?.fixedContent ?? [];
+  const fields = requirement.templateFields ?? blueprintSection?.fields ?? [];
+  const completionPrompt = requirement.completionPrompt ?? blueprintSection?.completionPrompt ?? null;
+  const scalarFields = fields.filter((field) => !isStructuredTemplateField(field));
+  const structuredFields = fields.filter(isStructuredTemplateField);
+  return [
+    ...fixedContent,
+    renderScalarTemplateFields(scalarFields),
+    ...structuredFields.map(renderStructuredTemplateField).filter(Boolean),
+    completionPrompt ?? "",
+  ].filter((part) => part.trim());
+}
+
+function renderScalarTemplateFields(fields: string[]): string {
+  if (fields.length === 0) return "";
+  return fields.map((field) => `${field}: [${placeholderToken(field)}]`).join("\n");
+}
+
+function renderStructuredTemplateField(field: string): string {
+  const table = field.match(/table with columns\s+(.+)/i);
+  if (table) {
+    const columns = (table[1] ?? "")
+      .split("|")
+      .map((column) => column.trim())
+      .filter(Boolean);
+    const rowCount = columns.map((column) => column.toLowerCase()).includes("current situation") ? 3 : 1;
+    return renderMarkdownTable(columns, rowCount);
+  }
+
+  if (/minimum three personal goal rows/i.test(field) || /description per selected type/i.test(field)) {
+    return "";
+  }
+
+  const supportTypes = field.match(/support types selected from\s+[—-]\s+(.+)/i);
+  if (supportTypes) {
+    const types = supportTypes[1]!.split(",").map((item) => item.trim()).filter(Boolean);
+    return renderMarkdownRows(["Support type", "Description"], types.map((type) => [
+      type,
+      `[DESCRIPTION_${placeholderToken(type)}]`,
+    ]));
+  }
+
+  if (field.includes(":")) {
+    const [prefix, values] = field.split(/:\s+/, 2);
+    const labels = (values ?? "").split(",").map((label) => label.trim()).filter(Boolean);
+    if (labels.length > 1) {
+      return [`${prefix}:`, ...labels.map((label) => `${label}: [${placeholderToken(label)}]`)].join("\n");
+    }
+  }
+
+  return `${field}: [${placeholderToken(field)}]`;
+}
+
+function isStructuredTemplateField(field: string): boolean {
+  return /table with columns|minimum three personal goal rows|support types selected from|description per selected type|:\s*[^:]+,\s*[^:]+/i.test(field);
+}
+
+function renderMarkdownTable(columns: string[], rowCount: number): string {
+  const rows = Array.from({ length: rowCount }, (_, rowIndex) =>
+    columns.map((column) => `[${placeholderToken(column)}${rowCount > 1 ? `_${rowIndex + 1}` : ""}]`),
+  );
+  return renderMarkdownRows(columns, rows);
+}
+
+function renderMarkdownRows(columns: string[], rows: string[][]): string {
+  return [
+    `| ${columns.join(" | ")} |`,
+    `| ${columns.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ].join("\n");
+}
+
+function placeholderToken(label: string): string {
+  return label
+    .replace(/["']/g, "")
+    .replace(/&/g, " and ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toUpperCase();
+}
+
+function stripDeterministicTemplateEcho(content: string, deterministicParts: string[]): string {
+  let result = content.trim();
+  const deterministicSentences = deterministicParts.flatMap(splitTemplateSentences);
+  for (const part of deterministicParts) {
+    if (!part.trim()) continue;
+    result = result.split(part).join("");
+    for (const sentence of deterministicSentences) {
+      if (sentence.length >= 12) {
+        result = result.split(sentence).join("");
+      }
+    }
+  }
+  return result
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && isLoadBearingGeneratedTemplateLine(line, deterministicSentences))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function splitTemplateSentences(content: string): string[] {
+  return content
+    .split(/(?<=[.!?])\s+|\r?\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function isLoadBearingGeneratedTemplateLine(line: string, deterministicSentences: string[]): boolean {
+  if (/^\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?$/.test(line)) return false;
+  if (/^\|.*\[[A-Z0-9_]+\].*\|?$/.test(line)) return false;
+  if (/^\|.*\|$/.test(line) && !/[.!?]/.test(line)) return false;
+  if (/^[-*]\s*\[[A-Z0-9_]+\]:\s*\[[A-Z0-9_]+\]$/.test(line)) return false;
+  if (/^[A-Z][A-Za-z0-9 /&()'-]{2,40}:$/.test(line)) return false;
+  if (/^[A-Z][A-Za-z0-9 /&()'-]+:\s*\[[A-Z0-9_]+\]$/.test(line)) return false;
+  if (/^support types selected from\b/i.test(line)) return false;
+  if (/^description per selected type\b/i.test(line)) return false;
+  const withoutPlaceholders = line.replace(/\[[A-Z0-9_]+\]/g, " ").trim();
+  if (!/[a-z0-9]/i.test(withoutPlaceholders)) return false;
+  if (!withoutPlaceholders) return false;
+  if (isNearDeterministicEcho(withoutPlaceholders, deterministicSentences)) return false;
+  return true;
+}
+
+function isNearDeterministicEcho(line: string, deterministicSentences: string[]): boolean {
+  const lineWords = contentWordSet(line);
+  if (lineWords.size === 0) return false;
+  const deterministicWords = contentWordSet(deterministicSentences.join(" "));
+  if (lineWords.size <= 6 && [...lineWords].every((word) => deterministicWords.has(word))) return true;
+  return deterministicSentences.some((sentence) => {
+    const sentenceWords = contentWordSet(sentence);
+    if (sentenceWords.size === 0) return false;
+    const overlap = [...lineWords].filter((word) => sentenceWords.has(word)).length;
+    return overlap / Math.max(lineWords.size, 1) >= 0.7;
+  });
+}
+
+function contentWordSet(value: string): Set<string> {
+  return new Set(value
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]+/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2)
+    .filter((word) => !["the", "and", "for", "with", "from", "this", "that", "are", "but", "not"].includes(word)));
+}
+
+export function mergeDeliverableSectionDeltas(input: {
+  currentSections: ParsedDeliverableSection[] | undefined;
+  repairSections: ParsedDeliverableSection[] | undefined;
+  allowedRequirementIds: string[];
+}): ParsedDeliverableSection[] {
+  const currentSections = input.currentSections ?? [];
+  const repairSections = input.repairSections ?? [];
+  if (currentSections.length === 0) {
+    throw new Error("Cannot merge repair sections because the current deliverable has no sections.");
+  }
+  if (repairSections.length === 0) {
+    throw new Error("Targeted repair returned no deliverable.sections[] deltas.");
+  }
+
+  const currentIds = new Set(currentSections.map((section) => section.requirementId));
+  const allowedIds = new Set(input.allowedRequirementIds);
+  const replacements = new Map<string, ParsedDeliverableSection>();
+
+  for (const section of repairSections) {
+    if (!currentIds.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned unknown requirementId "${section.requirementId}".`);
+    }
+    if (!allowedIds.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned non-deficient requirementId "${section.requirementId}".`);
+    }
+    if (replacements.has(section.requirementId)) {
+      throw new Error(`Targeted repair returned duplicate requirementId "${section.requirementId}".`);
+    }
+    replacements.set(section.requirementId, section);
+  }
+
+  return currentSections.map((section) => replacements.get(section.requirementId) ?? section);
 }
 
 /**
@@ -564,10 +849,17 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       .trim();
     const parsed = JSON.parse(cleaned);
 
-    const deliverableContent = typeof parsed.deliverable?.content === "string"
+    const deliverableSections = parseDeliverableSections(parsed.deliverable);
+    const modelAssembledMarkdown = typeof parsed.deliverable?.assembledMarkdown === "string"
+      ? parsed.deliverable.assembledMarkdown.trim()
+      : "";
+    const legacyDeliverableContent = typeof parsed.deliverable?.content === "string"
       ? parsed.deliverable.content.trim()
       : "";
-    const content = deliverableContent || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
+    const sectionMarkdown = deliverableSections.length > 0
+      ? assembleDeliverableMarkdownFromSections(deliverableSections)
+      : "";
+    const content = sectionMarkdown || modelAssembledMarkdown || legacyDeliverableContent || (typeof parsed.content === "string" ? parsed.content.trim() : rawContent.trim());
     const claims = Array.isArray(parsed.claims) ? (parsed.claims as RawClaim[]) : [];
 
     return {
@@ -576,6 +868,7 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       professionalWork: isRecord(parsed.professional_work) ? parsed.professional_work : undefined,
       requirementCoverage: isRecord(parsed.requirement_coverage) ? parsed.requirement_coverage : undefined,
       deliverable: isRecord(parsed.deliverable) ? parsed.deliverable : undefined,
+      deliverableSections: deliverableSections.length > 0 ? deliverableSections : undefined,
       completion: isRecord(parsed.completion) ? parsed.completion : undefined,
     };
   } catch {
@@ -586,6 +879,18 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseDeliverableSections(deliverable: unknown): ParsedDeliverableSection[] {
+  if (!isRecord(deliverable) || !Array.isArray(deliverable.sections)) return [];
+  return deliverable.sections.flatMap((raw) => {
+    if (!isRecord(raw)) return [];
+    const requirementId = typeof raw.requirementId === "string" ? raw.requirementId.trim() : "";
+    const heading = typeof raw.heading === "string" ? raw.heading.trim() : "";
+    const content = typeof raw.content === "string" ? raw.content.trim() : "";
+    if (!requirementId || !heading || !content) return [];
+    return [{ requirementId, heading, content }];
+  });
 }
 
 // ─── Cross-tenant chunk guard ─────────────────────────────────────────────────

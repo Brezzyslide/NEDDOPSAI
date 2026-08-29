@@ -1,0 +1,9 @@
+{
+  "stage1Cost": 0.0020331,
+  "repairCost": 0.0003396,
+  "totalActual": 0.0023727,
+  "stage1CacheableTokensApprox": 7923,
+  "stage1AtCacheHitApprox": 0.001438875,
+  "totalAtStage1CacheHitApprox": 0.001778475,
+  "stage1CacheablePercent": 96.1
+}

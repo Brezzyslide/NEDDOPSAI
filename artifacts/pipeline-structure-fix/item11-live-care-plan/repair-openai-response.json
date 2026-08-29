@@ -1,0 +1,36 @@
+{
+  "id": "chatcmpl-EI03mC4JC8rFwnw60f6yRB9On6Whu",
+  "object": "chat.completion",
+  "created": 1787958842,
+  "model": "gpt-4o-mini-2024-07-18",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"professional_work\":{\"summary\":\"This document serves as a standard reusable NDIS care plan template designed for provider staff, participants, and their representatives. It includes comprehensive sections necessary for safe participant support, risk management, responsibilities, and review processes.\",\"blueprint_completion\":[],\"requirement_to_deliverable_plan\":[],\"evidence_map\":[],\"missing_information\":[]},\"requirement_coverage\":{\"satisfied\":[],\"missing\":[\"mandatory-1\",\"mandatory-2\"]},\"deliverable\":{\"type\":\"STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE\",\"audience\":\"NDIS provider staff, participant and participant representative\",\"sections\":[{\"requirementId\":\"mandatory-1\",\"heading\":\"Participant Identity\",\"content\":\"Participant Name: [PARTICIPANT_NAME]\\nDate of Birth: [DOB]\\nNDIS Number: [NDIS_NUMBER]\\nAddress: [ADDRESS]\\nGender: [GENDER]\\nPreferred Language: [PREFERRED_LANGUAGE]\\nEmergency Contact: [EMERGENCY_CONTACT]\"},{\"requirementId\":\"mandatory-2\",\"heading\":\"Goals and Preferences\",\"content\":\"Goals: [GOALS]\\nPreferences: [PREFERENCES]\\nCommunication Needs: [COMMUNICATION_NEEDS]\\nCultural Considerations: [CULTURAL_CONSIDERATIONS]\\nSupport Preferences: [SUPPORT_PREFERENCES]\"}],\"assembledMarkdown\":\"\"},\"completion\":{\"operation\":\"CREATE\",\"unresolvedProfessionalContent\":0,\"methodologyLeakage\":false,\"readyForCompletedWork\":true},\"claims\":[]}",
+        "refusal": null,
+        "annotations": []
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1056,
+    "completion_tokens": 302,
+    "total_tokens": 1358,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "audio_tokens": 0,
+      "accepted_prediction_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "service_tier": "default",
+  "system_fingerprint": "fp_9709ac0e8b"
+}

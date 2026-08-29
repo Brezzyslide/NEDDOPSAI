@@ -68,6 +68,17 @@ export interface BlueprintDeliverableContract {
   namingConvention?: string;
   templateRequired?: boolean;
   completionRequirements?: string[];
+  requirementPlan?: Array<{
+    id: string;
+    sectionCode?: string;
+    requirementText: string;
+    classification?: string;
+    targetLocation: string;
+    adequacyCriteria?: string[];
+    evidenceAuthority?: string[];
+    coverageRules?: Array<{ allOf?: string[]; anyOf?: string[] }>;
+    conditionalApplicability?: Record<string, unknown>;
+  }>;
 }
 
 export interface BlueprintEvidenceContract {
@@ -80,6 +91,11 @@ export interface BlueprintEvidenceContract {
   freshnessRules?: Record<string, unknown>;
   claimIntegrityRequired?: boolean;
   missingEvidenceBehaviour?: BlueprintMissingEvidenceBehaviour;
+  documentToSections?: Array<{
+    documentType: string;
+    requiredWhen: string;
+    feeds: string[];
+  }>;
 }
 
 export interface BlueprintPermittedOrgOverrides {
@@ -94,6 +110,18 @@ export const BLUEPRINT_TEMPLATE_VERSION_POLICIES = [
   "use_latest",
 ] as const;
 export type BlueprintTemplateVersionPolicy = (typeof BLUEPRINT_TEMPLATE_VERSION_POLICIES)[number];
+
+export const BLUEPRINT_SECTION_ROLES = [
+  "internal_method",
+  "user_facing",
+] as const;
+export type BlueprintSectionRole = (typeof BLUEPRINT_SECTION_ROLES)[number];
+
+export interface BlueprintSectionTemplateContent {
+  fixedContent?: string[];
+  fields?: string[];
+  completionPrompt?: string | null;
+}
 
 export const workBlueprintsTable = pgTable("work_blueprints", {
   id: text("id").primaryKey(),
@@ -257,6 +285,17 @@ export const blueprintSectionsTable = pgTable("blueprint_sections", {
   title: text("title").notNull(),
   description: text("description"),
   instructions: text("instructions"),
+  sectionRole: text("section_role")
+    .$type<BlueprintSectionRole>(),
+  fixedContent: jsonb("fixed_content")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  templateFields: jsonb("template_fields")
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  completionPrompt: text("completion_prompt"),
   required: boolean("required").notNull().default(false),
   minimumContentExpectation: text("minimum_content_expectation"),
   evidenceRequirements: jsonb("evidence_requirements")

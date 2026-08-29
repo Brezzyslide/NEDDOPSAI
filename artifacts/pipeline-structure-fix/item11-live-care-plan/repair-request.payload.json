@@ -1,0 +1,261 @@
+{
+  "model": "gpt-4o-mini-2024-07-18",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are performing deterministic professional coverage repair.\n\nThis is NOT a broad rewrite and NOT a general self-review.\nYour job is to modify the current user-facing deliverable only enough to satisfy exact missing mandatory requirement IDs.\n\nRules:\n- Preserve all already-satisfied content unless a small local edit is required.\n- Add missing FACTUAL_FIELD structures as fields/placeholders when values are unknown.\n- FACTUAL_FIELD means the field itself must exist in reusable templates; unknown value does not excuse omission.\n- Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.\n- Do not remove existing clauses or schedules that already satisfy requirements.\n- Return JSON only."
+    },
+    {
+      "role": "user",
+      "content": "## ORIGINAL REQUEST\nCreate a standard reusable NDIS care plan template for provider staff, participants and representatives. Include all professional sections needed for safe participant support, risk, responsibilities, review and sign-off.\n\n---\n\n## REPAIR GROUP\nRepair the listed logical section.\n\n---\n\n## DEFICIENT DELIVERABLE SECTION(S)\nrequirementId: mandatory-1\nheading: Participant Identity\ncontent:\nParticipant Name: [PARTICIPANT_NAME]\nDate of Birth: [DOB]\nNDIS Number: [NDIS_NUMBER]\nAddress: [ADDRESS]\n\nrequirementId: mandatory-2\nheading: Goals and Preferences\ncontent:\nGoals: [GOALS]\nPreferences: [PREFERENCES]\nCommunication Needs: [COMMUNICATION_NEEDS]\n\n---\n\n## EXACT REQUIREMENTS TO REPAIR\n[\n  {\n    \"requirement_id\": \"mandatory-1\",\n    \"requirement\": \"Participant identity and factual placeholder framework\",\n    \"classification\": \"MUST_BE_REPRESENTED\",\n    \"required_representation\": \"User-facing representation of Participant identity and factual placeholder framework\",\n    \"target_location\": \"User-facing representation of Participant identity and factual placeholder framework\",\n    \"adequacy_criteria\": [],\n    \"failure_reason\": \"Relevant section is too thin to prove substantive professional coverage.\"\n  },\n  {\n    \"requirement_id\": \"mandatory-2\",\n    \"requirement\": \"Participant goals, preferences and communication needs\",\n    \"classification\": \"MUST_BE_REPRESENTED\",\n    \"required_representation\": \"User-facing representation of Participant goals, preferences and communication needs\",\n    \"target_location\": \"User-facing representation of Participant goals, preferences and communication needs\",\n    \"adequacy_criteria\": [],\n    \"failure_reason\": \"Relevant section is too thin to prove substantive professional coverage.\"\n  }\n]\n\n---\n\n## REPAIR INSTRUCTIONS\nRepair only the missing requirement IDs listed above.\nFor MUST_BE_REPRESENTED or CONDITIONAL requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.\nPreserve existing satisfied clauses and wording as much as possible.\nReturn the full deliverable with accepted content preserved.\nDo not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable."
+    }
+  ],
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "professional_deliverable_response",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "professional_work",
+          "requirement_coverage",
+          "deliverable",
+          "completion",
+          "claims"
+        ],
+        "properties": {
+          "professional_work": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "summary",
+              "blueprint_completion",
+              "requirement_to_deliverable_plan",
+              "evidence_map",
+              "missing_information"
+            ],
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "blueprint_completion": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "requirement_to_deliverable_plan": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidence_map": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "missing_information": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "requirement_coverage": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "satisfied",
+              "missing"
+            ],
+            "properties": {
+              "satisfied": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "deliverable": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type",
+              "audience",
+              "sections",
+              "assembledMarkdown"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE"
+              },
+              "audience": {
+                "type": "string",
+                "const": "NDIS provider staff, participant and participant representative"
+              },
+              "sections": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "requirementId",
+                    "heading",
+                    "content"
+                  ],
+                  "properties": {
+                    "requirementId": {
+                      "type": "string"
+                    },
+                    "heading": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "assembledMarkdown": {
+                "type": "string"
+              }
+            }
+          },
+          "completion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "operation",
+              "unresolvedProfessionalContent",
+              "methodologyLeakage",
+              "readyForCompletedWork"
+            ],
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "CREATE"
+              },
+              "unresolvedProfessionalContent": {
+                "type": "number"
+              },
+              "methodologyLeakage": {
+                "type": "boolean"
+              },
+              "readyForCompletedWork": {
+                "type": "boolean"
+              }
+            }
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "clientClaimId",
+                "claimText",
+                "claimType",
+                "sectionRef",
+                "confidence",
+                "reasoningSummary",
+                "evidence",
+                "relatedClaimIds"
+              ],
+              "properties": {
+                "clientClaimId": {
+                  "type": "string"
+                },
+                "claimText": {
+                  "type": "string"
+                },
+                "claimType": {
+                  "type": "string",
+                  "enum": [
+                    "observation",
+                    "absence_finding",
+                    "inference",
+                    "external_requirement",
+                    "recommendation"
+                  ]
+                },
+                "sectionRef": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "confidence": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "reasoningSummary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "chunkId",
+                      "relationship",
+                      "supportingSpan"
+                    ],
+                    "properties": {
+                      "chunkId": {
+                        "type": "string"
+                      },
+                      "relationship": {
+                        "type": "string",
+                        "enum": [
+                          "direct_support",
+                          "context",
+                          "contradiction",
+                          "external_authority",
+                          "searched_for_absence"
+                        ]
+                      },
+                      "supportingSpan": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                },
+                "relatedClaimIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "prompt_cache_key": "professional-stage1-v1:item11-care-plan-local-repair",
+  "temperature": 0.3,
+  "max_tokens": 5000
+}

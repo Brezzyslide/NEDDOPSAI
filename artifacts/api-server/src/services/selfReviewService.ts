@@ -150,6 +150,26 @@ export interface ReviewResult {
   evidenceSummaryHash: string;
 }
 
+export interface ReviewRequirementPlanItem {
+  requirementId: string;
+  requirement: string;
+  origin?: string;
+  targetDeliverableLocation?: string;
+  expectedUserFacingRepresentation?: string;
+  adequacyCriteria?: string[];
+  substantiveValidationMode?: string;
+}
+
+export interface ReviewFailedRequirement {
+  requirementId: string;
+  requirement: string;
+  reason: string;
+  requiredDeliverableRepresentation?: string;
+  targetDeliverableLocation?: string | null;
+  adequacyCriteria?: string[];
+  substantiveResult?: string | null;
+}
+
 export interface ReviewContext {
   organizationId: string;
   userId: string;
@@ -163,6 +183,12 @@ export interface ReviewContext {
   evidencePack?: EvidencePack | null;
   /** When true, score the draft but do not ask the LLM to rewrite it. */
   disableAutoRevision?: boolean;
+  /** Requirement plan used to judge whether the deliverable is complete. */
+  requirementPlan?: ReviewRequirementPlanItem[];
+  /** Specific failed requirements from completion gates, if review follows a failed gate. */
+  failedRequirements?: ReviewFailedRequirement[];
+  /** User-facing deliverable contract; included in revision context for professional work. */
+  deliverableContract?: unknown;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -173,7 +199,7 @@ export async function reviewDraft(
   blueprint: WorkBlueprint | null,
   ctx: ReviewContext,
 ): Promise<ReviewResult> {
-  const dimensions = runDeterministicReview(content, manifest, blueprint, ctx.evidencePack);
+  const dimensions = runDeterministicReview(content, manifest, blueprint, ctx);
   const qualityScore = computeWeightedScore(dimensions, blueprint);
   const passed = qualityScore >= QUALITY_THRESHOLD;
   const improvementFeedback = dimensions
@@ -193,7 +219,7 @@ export async function reviewDraft(
     // requested, revisionLimitReached is set true and execution stops.
     const revised_ = await attemptRevision(content, improvementFeedback, manifest, ctx);
     if (revised_ !== content) {
-      const candidateDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx.evidencePack);
+      const candidateDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx);
       const candidateScore = computeWeightedScore(candidateDimensions, blueprint);
       if (candidateScore >= qualityScore) {
         revised = true;
@@ -256,20 +282,20 @@ function runDeterministicReview(
   content: string,
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
-  evidencePack?: EvidencePack | null,
+  ctx: Pick<ReviewContext, "evidencePack" | "requirementPlan" | "failedRequirements"> = {},
 ): DimensionResult[] {
   return [
     reviewInstructionAdherence(content, blueprint),
     reviewPolicyCompliance(content, manifest),
     reviewWritingStyleCompliance(content, manifest, blueprint),
     reviewSourceCoverage(content, manifest),
-    reviewCompleteness(content, blueprint),
+    reviewCompleteness(content, blueprint, ctx),
     reviewConfidence(content),
     reviewMissingInformation(content),
     reviewApprovalRequirements(content, blueprint),
     reviewSafety(content),
     reviewConsistency(content, blueprint, manifest),
-    reviewEvidenceCitationGrounding(content, manifest, evidencePack), // Sprint 29F.1 Part 4
+    reviewEvidenceCitationGrounding(content, manifest, ctx.evidencePack), // Sprint 29F.1 Part 4
   ];
 }
 
@@ -451,7 +477,11 @@ function reviewSourceCoverage(content: string, manifest: WorkPackageManifest): D
   };
 }
 
-function reviewCompleteness(content: string, blueprint: WorkBlueprint | null): DimensionResult {
+function reviewCompleteness(
+  content: string,
+  blueprint: WorkBlueprint | null,
+  ctx: Pick<ReviewContext, "requirementPlan" | "failedRequirements"> = {},
+): DimensionResult {
   const minContentLength = 200;
   const hasHeadings = /^#{1,3}\s.+/m.test(content) || /^[A-Z][A-Z\s]{3,}:/m.test(content);
   const hasActionItems = /action|recommend|next step|follow.up/i.test(content);
@@ -495,6 +525,24 @@ function reviewCompleteness(content: string, blueprint: WorkBlueprint | null): D
 
   if (blueprint?.successCriteria && blueprint.successCriteria.length > 0) {
     evidence.push(`Blueprint success criteria count: ${blueprint.successCriteria.length}`);
+  }
+
+  if (ctx.requirementPlan?.length) {
+    const failedRequirements = ctx.failedRequirements ?? [];
+    evidence.push(`Requirement plan supplied: ${ctx.requirementPlan.length} requirement(s)`);
+    evidence.push(`Specific failed requirements supplied: ${failedRequirements.length}`);
+    if (failedRequirements.length > 0) {
+      const deduction = Math.min(4, Math.ceil(failedRequirements.length / 2));
+      score -= deduction;
+      suggestions.push(
+        `Address failed requirements explicitly: ${failedRequirements
+          .map((requirement) => `${requirement.requirementId} (${requirement.reason})`)
+          .join("; ")}`,
+      );
+      evidence.push(`Deduction -${deduction}: completion gate reported unsatisfied requirements`);
+    }
+  } else {
+    evidence.push("Requirement plan not supplied to self-review context");
   }
 
   // ── Plan-language detection (Sprint 29H Part C) ───────────────────────────
@@ -964,12 +1012,20 @@ async function attemptRevision(
 
     const gateway = createAIGateway(gatewayCtx);
 
-    const systemPrompt = `You are a professional editor. Revise the provided work output to address the quality feedback. 
+    const systemPrompt = `You are a professional editor. Revise the provided work output to address the quality feedback.
 Do not add new facts or claims. Do not reproduce any source documents verbatim.
 Preserve the original meaning and structure while improving quality.
+Use the requirement plan, failed requirements and deliverable contract as the review standard.
+Every listed failed requirement must be repaired in the revised deliverable where possible from the supplied content and evidence context.
 Return only the revised content — no preamble, no explanation.`;
 
-    const userMessage = `## Quality Feedback to Address\n${feedback.map((f, i) => `${i + 1}. ${f}`).join("\n")}\n\n## Original Content\n${content.slice(0, 8000)}`;
+    const userMessage = [
+      `## Quality Feedback to Address\n${feedback.map((f, i) => `${i + 1}. ${f}`).join("\n")}`,
+      `## Requirement Plan\n${ctx.requirementPlan?.length ? JSON.stringify(ctx.requirementPlan, null, 2) : "No requirement plan supplied."}`,
+      `## Specific Failed Requirements\n${ctx.failedRequirements?.length ? JSON.stringify(ctx.failedRequirements, null, 2) : "No specific failed requirements supplied."}`,
+      `## Deliverable Contract\n${ctx.deliverableContract ? JSON.stringify(ctx.deliverableContract, null, 2) : "No deliverable contract supplied."}`,
+      `## Full Deliverable Under Review\n${content}`,
+    ].join("\n\n");
 
     const response = await gateway.process({
       systemPrompt,

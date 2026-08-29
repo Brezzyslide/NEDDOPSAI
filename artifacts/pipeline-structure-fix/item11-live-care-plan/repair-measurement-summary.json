@@ -1,0 +1,113 @@
+{
+  "status": "repair_completed",
+  "latencyMs": 5594,
+  "model": "gpt-4o-mini-2024-07-18",
+  "finishReason": "stop",
+  "usage": {
+    "inputTokens": 1056,
+    "outputTokens": 302,
+    "totalTokens": 1358,
+    "cachedInputTokens": 0
+  },
+  "deliverable": {
+    "assembledMarkdownChars": 0,
+    "assembledMarkdownWords": 0,
+    "sectionCount": 2,
+    "requiredRequirementCount": 9,
+    "allRequirementIdsPresent": false
+  },
+  "gateResults": {
+    "structuredOutput": true,
+    "deliverableSectionsPopulatedPerRequirement": false,
+    "fallbackHeuristicPassCount": 1,
+    "fallbackHeuristicFailCount": 8,
+    "adequacyCriteriaValidatedCount": 0,
+    "fallbackHeuristicValidatedCount": 9,
+    "missingOrThinRequirements": [
+      "mandatory-2",
+      "mandatory-3",
+      "mandatory-4",
+      "mandatory-5",
+      "mandatory-6",
+      "mandatory-7",
+      "mandatory-8",
+      "mandatory-9"
+    ],
+    "readyForCompletedWorkSelfReport": true,
+    "methodologyLeakageSelfReport": false
+  },
+  "requirementValidation": [
+    {
+      "id": "mandatory-1",
+      "present": true,
+      "heading": "Participant Identity",
+      "wordCount": 20,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": true
+    },
+    {
+      "id": "mandatory-2",
+      "present": true,
+      "heading": "Goals and Preferences",
+      "wordCount": 13,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-3",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-4",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-5",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-6",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-7",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-8",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    },
+    {
+      "id": "mandatory-9",
+      "present": false,
+      "heading": null,
+      "wordCount": 0,
+      "mode": "FALLBACK_HEURISTIC",
+      "pass": false
+    }
+  ]
+}

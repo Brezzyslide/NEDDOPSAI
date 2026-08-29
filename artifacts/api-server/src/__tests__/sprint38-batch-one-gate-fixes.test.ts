@@ -185,7 +185,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
     ]));
 
     expect(classifications.get("PARTICIPANT_NAME")).toBe("legitimate_factual_field");
-    expect(classifications.get("NDIS_NUMBER")).toBe("unresolved_professional_content");
+    expect(classifications.get("NDIS_NUMBER")).toBe("legitimate_factual_field");
     expect(classifications.get("PROVIDER_NAME")).toBe("unresolved_professional_content");
     expect(classifications.get("PROVIDER_ABN")).toBe("unresolved_professional_content");
     expect(classifications.get("AGREEMENT_PERIOD")).toBe("unresolved_professional_content");
@@ -201,7 +201,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
       "[Insert goal description]",
       "[Insert known risks]",
       "[Insert date]",
-      "[NDIS_NUMBER]",
+      "[PROVIDER_NAME]",
       "[PROVIDER_ABN]",
       "[AGREEMENT_PERIOD]",
     ]));

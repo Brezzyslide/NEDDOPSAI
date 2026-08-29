@@ -1,0 +1,39 @@
+{
+  "professional_work": {
+    "summary": "This document provides a comprehensive NDIS care plan template that meets the necessary requirements for participant support.",
+    "blueprint_completion": [],
+    "requirement_to_deliverable_plan": [],
+    "evidence_map": [],
+    "missing_information": []
+  },
+  "requirement_coverage": {
+    "satisfied": [],
+    "missing": [
+      "mandatory-1",
+      "mandatory-2"
+    ]
+  },
+  "deliverable": {
+    "type": "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+    "audience": "NDIS provider staff, participant and participant representative",
+    "sections": [
+      {
+        "requirementId": "mandatory-1",
+        "heading": "Participant Identity",
+        "content": "Participant Name: [PARTICIPANT_NAME]\nDate of Birth: [DATE_OF_BIRTH]\nNDIS Number: [NDIS_NUMBER]\nAddress: [ADDRESS]\nContact Number: [CONTACT_NUMBER]\nEmergency Contact: [EMERGENCY_CONTACT]"
+      },
+      {
+        "requirementId": "mandatory-2",
+        "heading": "Goals and Preferences",
+        "content": "Goals:\n- [GOALS]\nPreferences:\n- [PREFERENCES]\nCommunication Needs:\n- [COMMUNICATION_NEEDS]\nSupport Needs:\n- [SUPPORT_NEEDS]\nReview Dates:\n- [REVIEW_DATES]"
+      }
+    ]
+  },
+  "completion": {
+    "operation": "CREATE",
+    "unresolvedProfessionalContent": 0,
+    "methodologyLeakage": false,
+    "readyForCompletedWork": true
+  },
+  "claims": []
+}
