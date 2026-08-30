@@ -1695,6 +1695,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(goals?.content.match(/\[CURRENT_SITUATION_\d+\]/g)).toHaveLength(3);
     expect(goals?.content).toContain("| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |");
     expect(goals?.content).not.toContain("table above");
+    expect(goals?.content.trim()).toMatch(/> \*Guidance: State the current situation specifically/);
     expect(adl?.content).toContain("| Activity | Support level | What the worker does |");
     expect(adl?.content.match(/\| [^|\n]+ \| \[SUPPORT_LEVEL_[A-Z0-9_]+\] \| \[WHAT_THE_WORKER_DOES_[A-Z0-9_]+\] \|/g)).toHaveLength(26);
     expect(adl?.content).toContain("| Personal hygiene and grooming | [SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING] | [WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING] |");
@@ -1720,6 +1721,20 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(aboutMe?.content.indexOf("Write in the participant's own words where possible")).toBeLessThan(
       aboutMe?.content.indexOf("Additional model-generated content appears") ?? Number.MAX_SAFE_INTEGER,
     );
+    expect(aboutMe?.content.trim()).toMatch(/> \*Guidance: Write in the participant's own words where possible/);
+
+    const markdown = assembleDeliverableMarkdownFromSections(assembly.sections);
+    expect(markdown.match(/^> \*Guidance:/gm)).toHaveLength(14);
+    expect(markdown).not.toContain("\n\nRecord every person who attended the planning meeting");
+  });
+
+  it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {
+    const exportService = source("services/completedWorkExportService.ts");
+
+    expect(exportService).toContain('case "blockquote"');
+    expect(exportService).toContain('pdf.font("Helvetica-Oblique").fontSize(10).fillColor("#555555")');
+    expect(exportService).toContain("new TextRun({ text: node.content ?? \"\", italics: true, color: \"555555\" })");
+    expect(exportService).toContain("border: { left: { style: BorderStyle.SINGLE");
   });
 
   it("validates deterministic care plan template prompts and structures by construction", () => {

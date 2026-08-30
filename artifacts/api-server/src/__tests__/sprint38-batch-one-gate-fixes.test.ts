@@ -186,13 +186,50 @@ describe("Sprint 38 Batch One gate fixes", () => {
 
     expect(classifications.get("PARTICIPANT_NAME")).toBe("legitimate_factual_field");
     expect(classifications.get("NDIS_NUMBER")).toBe("legitimate_factual_field");
+    const adlActivities = [
+      "Personal hygiene and grooming",
+      "Showering and bathing",
+      "Dressing and undressing",
+      "Toileting and continence",
+      "Oral hygiene",
+      "Eating and drinking",
+      "Meal preparation",
+      "Medication management",
+      "Mobility within the home",
+      "Transfers and positioning",
+      "Bedtime and morning routines",
+      "Household cleaning",
+      "Laundry and clothing care",
+      "Making and changing bedding",
+      "Shopping for essential items",
+      "Managing personal belongings",
+      "Using household appliances",
+      "Maintaining a safe home environment",
+      "Managing daily routines",
+      "Time awareness and task initiation",
+      "Attending appointments",
+      "Community access",
+      "Transport and travel",
+      "Money handling and everyday purchases",
+      "Communication of daily needs",
+      "Decision-making relating to daily activities",
+    ];
+    const toToken = (label: string) => label
+      .replace(/["']/g, "")
+      .replace(/&/g, " and ")
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toUpperCase();
+    expect(adlActivities.map((activity) =>
+      classifyBracketedPlaceholderToken(
+        `SUPPORT_LEVEL_${toToken(activity)}`,
+        standardTemplateEvidence,
+        professionalContext,
+      ),
+    )).toEqual(Array.from({ length: 26 }, () => "legitimate_factual_field"));
     expect(classifyBracketedPlaceholderToken(
-      "SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING",
-      standardTemplateEvidence,
-      professionalContext,
-    )).toBe("legitimate_factual_field");
-    expect(classifyBracketedPlaceholderToken(
-      "SUPPORT_LEVEL_ANYTHING",
+      "SUPPORT_LEVEL_UNKNOWN_THING",
       standardTemplateEvidence,
       professionalContext,
     )).toBe("unresolved_professional_content");

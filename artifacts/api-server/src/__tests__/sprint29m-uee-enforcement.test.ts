@@ -22,6 +22,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { randomUUID } from "crypto";
+import { writeFileSync } from "fs";
 
 // ─── Hoisted mock functions ───────────────────────────────────────────────────
 
@@ -253,6 +254,7 @@ import {
 import {
   compileProfessionalExecutionContext,
 } from "../services/professionalExecutionContextService.js";
+import { validateBlueprintRuntimeCompletion } from "../services/blueprintRuntimeValidationService.js";
 import type { BlueprintExecutionContract } from "../services/workBlueprintService.js";
 
 // ─── Test data ────────────────────────────────────────────────────────────────
@@ -1139,9 +1141,46 @@ describe("D — care plan template full path uses declared Blueprint placeholder
 
     const contentMarkdown = mockCreateDraft.mock.calls[0]?.[0]?.contentMarkdown as string;
     const coverage = evaluateDeliverableRequirementCoverage(contentMarkdown, profile);
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      standardTemplateEvidence: {
+        standardTemplateRequested: true,
+        existingTemplateRequested: false,
+        participantSpecificRequested: false,
+        organisationSpecificRequested: false,
+        customerExampleOptional: true,
+      },
+      professionalContext,
+    });
+    const goalRowCount = (contentMarkdown.match(/\[CURRENT_SITUATION_\d+\]/g) ?? []).length;
+    const adlRowCount = (contentMarkdown.match(/\| [^|\n]+ \| \[SUPPORT_LEVEL_[A-Z0-9_]+\] \| \[WHAT_THE_WORKER_DOES_[A-Z0-9_]+\] \|/g) ?? []).length;
+    const contentGateFailures = runtime.failures.filter((failure) =>
+      ["professional_placeholder", "methodology_leak", "mandatory_deliverable_coverage"].includes(failure.gate),
+    );
+    writeFileSync("/tmp/needsops-care-plan-full-path-template.md", `${contentMarkdown.replace(/[ \t]+$/gm, "")}\n`);
+    writeFileSync("/tmp/needsops-care-plan-full-path-summary.json", `${JSON.stringify({
+      source: "UnifiedExecutionEngine.executeTask",
+      outcome: result.trigger === "task" ? result.workResult.outcome : null,
+      completedWorkStatus: result.trigger === "task" ? result.workResult.completedWorkStatus : null,
+      coverage: `${coverage.totalApplicableRequirements - coverage.missingCount}/${coverage.totalApplicableRequirements}`,
+      goalRowCount,
+      adlRowCount,
+      gateResults: {
+        runtimePassed: runtime.passed,
+        runtimeFailures: runtime.failures,
+        contentGateFailures,
+        artifactGenerationCalled: mockGenerateCompletedWorkArtifacts.mock.calls.length,
+        approvalSubmissionCalled: mockSubmitForApproval.mock.calls.length,
+        coverageMissing: coverage.missing,
+      },
+    }, null, 2)}\n`);
     expect(coverage.totalApplicableRequirements).toBe(14);
     expect(coverage.missingCount).toBe(0);
-    expect((contentMarkdown.match(/\[CURRENT_SITUATION_\d+\]/g) ?? [])).toHaveLength(3);
+    expect(contentGateFailures).toHaveLength(0);
+    expect(goalRowCount).toBe(3);
+    expect(adlRowCount).toBe(26);
+    expect(contentMarkdown.match(/^> \*Guidance:/gm)).toHaveLength(14);
     expect(contentMarkdown).toContain("[NDIS_NUMBER]");
     expect(contentMarkdown).toContain("[SUPPORT_TYPE]");
 

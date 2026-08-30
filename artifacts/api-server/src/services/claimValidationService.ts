@@ -663,7 +663,7 @@ function deterministicTemplateParts(
     ...fixedContent,
     renderScalarTemplateFields(scalarFields),
     ...structuredFields.map(renderStructuredTemplateField).filter(Boolean),
-    completionPrompt ?? "",
+    renderCompletionPrompt(completionPrompt),
   ].filter((part) => part.trim());
 }
 
@@ -713,6 +713,11 @@ function renderStructuredTemplateField(field: string): string {
   }
 
   return `${field}: [${placeholderToken(field)}]`;
+}
+
+function renderCompletionPrompt(completionPrompt: string | null): string {
+  if (!completionPrompt?.trim()) return "";
+  return `> *Guidance: ${completionPrompt.trim()}*`;
 }
 
 function isStructuredTemplateField(field: string): boolean {
