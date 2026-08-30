@@ -18,12 +18,25 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks (all declared via vi.hoisted so vi.mock factories can reference them) ─
 
-const { mockInsert, mockUpdate, mockLogOrg, mockSelectImpl } = vi.hoisted(() => ({
-  mockInsert:     vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
-  mockUpdate:     vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
-  mockLogOrg:     vi.fn().mockResolvedValue(undefined),
-  mockSelectImpl: vi.fn(),
-}));
+const { mockInsert, mockUpdate, mockDelete, mockLogOrg, mockSelectImpl, seededSectionRows } = vi.hoisted(() => {
+  const seededSectionRows = new Map<string, Record<string, unknown>>();
+  const mockInsert = vi.fn().mockImplementation(() => ({
+    values: vi.fn().mockImplementation(async (row: Record<string, unknown>) => {
+      if (row && typeof row === "object" && "sectionCode" in row) {
+        seededSectionRows.set(String(row.id), row);
+      }
+      return undefined;
+    }),
+  }));
+  return {
+    mockInsert,
+    mockUpdate:     vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+    mockDelete:     vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+    mockLogOrg:     vi.fn().mockResolvedValue(undefined),
+    mockSelectImpl: vi.fn(),
+    seededSectionRows,
+  };
+});
 
 // Select chain factory
 function makeSelectChain(rows: unknown[]) {
@@ -41,13 +54,23 @@ function makeSelectChain(rows: unknown[]) {
 
 vi.mock("@workspace/db", () => ({
   db: {
-    select:  () => mockSelectImpl(),
+    select:  (selection?: Record<string, unknown>) => mockSelectImpl(selection),
     insert:  mockInsert,
     update:  mockUpdate,
+    delete:  mockDelete,
   },
   workBlueprintsTable:  { id: "id", code: "code", organizationId: "organizationId", isActive: "isActive", status: "status" },
   blueprintVersionsTable: { id: "id", blueprintId: "blueprintId", organizationId: "organizationId", createdAt: "createdAt" },
-  blueprintSectionsTable: { id: "id", blueprintId: "blueprintId" },
+  blueprintSectionsTable: {
+    id: "id",
+    blueprintId: "blueprintId",
+    sectionCode: "sectionCode",
+    sectionRole: "sectionRole",
+    fixedContent: "fixedContent",
+    templateFields: "templateFields",
+    completionPrompt: "completionPrompt",
+    sortOrder: "sortOrder",
+  },
   workTemplatesTable: { id: "id" },
   blueprintIntentMappingsTable: { id: "id" },
 }));
@@ -61,6 +84,7 @@ vi.mock("drizzle-orm", () => ({
   asc:   (col: unknown)               => ({ op: "asc",   col }),
   ilike: (col: unknown, val: unknown) => ({ op: "ilike", col, val }),
   inArray:(col: unknown, arr: unknown) => ({ op: "inArray", col, arr }),
+  notInArray:(col: unknown, arr: unknown) => ({ op: "notInArray", col, arr }),
 }));
 
 vi.mock("../services/auditService.js", () => ({
@@ -135,6 +159,7 @@ import {
   selectBlueprint,
   listBlueprints,
 } from "../services/workBlueprintService.js";
+import { BLUEPRINT_REGISTRY } from "../services/blueprintRegistry.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -147,14 +172,76 @@ function setupSingleSelect(rows: unknown[]) {
   mockSelectImpl.mockReturnValue(makeSelectChain(rows));
 }
 
+function makeSeedSelectChain(limitRows: unknown[], orderRows: unknown[] = limitRows) {
+  const limitResolved = Promise.resolve(limitRows);
+  const orderResolved = Promise.resolve(orderRows);
+  const c: Record<string, unknown> = {};
+  c.from = () => c;
+  c.where = () => c;
+  c.limit = () => limitResolved;
+  c.orderBy = () => orderResolved;
+  c.then = limitResolved.then.bind(limitResolved);
+  c.catch = limitResolved.catch.bind(limitResolved);
+  c.finally = limitResolved.finally.bind(limitResolved);
+  return c;
+}
+
+function setupSeedBuiltInSelects(firstRegistryBlueprintMissing = false) {
+  let registryLookupCount = 0;
+  mockSelectImpl.mockImplementation((selection?: Record<string, unknown>) => {
+    const keys = Object.keys(selection ?? {});
+    const seededRows = Array.from(seededSectionRows.values());
+
+    if (keys.includes("sectionRole")) {
+      return makeSelectChain(seededRows.map((row) => ({
+        id: row.id,
+        sectionCode: row.sectionCode,
+        sectionRole: row.sectionRole,
+        fixedContent: row.fixedContent,
+        templateFields: row.templateFields,
+        completionPrompt: row.completionPrompt,
+      })));
+    }
+
+    if (!selection) {
+      return makeSeedSelectChain(
+        [makeBlueprintRow({ id: "existing", code: "care_plan", objective: "[PLACEHOLDER] Existing" })],
+        seededRows,
+      );
+    }
+
+    if (keys.length === 1 && keys[0] === "id") {
+      return makeSelectChain([]);
+    }
+
+    if (keys.includes("objective")) {
+      const isFirstLookup = registryLookupCount++ === 0;
+      if (firstRegistryBlueprintMissing && isFirstLookup) return makeSelectChain([]);
+      const entry = BLUEPRINT_REGISTRY[Math.max(0, registryLookupCount - 1)];
+      return makeSelectChain([{ id: `existing-${entry?.code ?? registryLookupCount}`, objective: "[PLACEHOLDER] Existing" }]);
+    }
+
+    return makeSelectChain([]);
+  });
+}
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    seededSectionRows.clear();
+    mockInsert.mockImplementation(() => ({
+      values: vi.fn().mockImplementation(async (row: Record<string, unknown>) => {
+        if (row && typeof row === "object" && "sectionCode" in row) {
+          seededSectionRows.set(String(row.id), row);
+        }
+        return undefined;
+      }),
+    }));
     mockUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) });
+    mockDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
     mockLogOrg.mockResolvedValue(undefined);
   });
 
@@ -1004,24 +1091,24 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
     });
 
     it("seedBuiltInBlueprints sets status=published for all built-ins", async () => {
-      // All 14 built-ins already exist → none seeded
       const { seedBuiltInBlueprints } = await import("../services/workBlueprintService.js");
-      // setupSingleSelect: each of the 14 built-in checks returns an existing row
-      mockSelectImpl.mockReturnValue(makeSelectChain([{ id: "existing" }]));
+      setupSeedBuiltInSelects();
       await seedBuiltInBlueprints();
-      expect(mockInsert).not.toHaveBeenCalled();
+      const insertedBlueprintRows = mockInsert.mock.results
+        .map((result) => result.value.values.mock.calls[0]?.[0])
+        .filter((row) => row?.isBuiltIn === true);
+      expect(insertedBlueprintRows.length).toBeGreaterThan(0);
+      expect(insertedBlueprintRows.every((row) => row.status === "published")).toBe(true);
     });
 
     it("seedBuiltInBlueprints inserts status=published when seeding new built-ins", async () => {
       // First built-in does not exist → gets inserted; rest exist
-      let call = 0;
-      mockSelectImpl.mockImplementation(() => {
-        if (call++ === 0) return makeSelectChain([]); // first: not found
-        return makeSelectChain([{ id: "existing" }]); // rest: found
-      });
+      setupSeedBuiltInSelects(true);
       const { seedBuiltInBlueprints } = await import("../services/workBlueprintService.js");
       await seedBuiltInBlueprints();
-      const insertVals = mockInsert.mock.results[0]!.value.values.mock.calls[0]?.[0];
+      const insertVals = mockInsert.mock.results
+        .map((result) => result.value.values.mock.calls[0]?.[0])
+        .find((row) => row && !("sectionCode" in row));
       expect(insertVals.status).toBe("published");
       expect(insertVals.isBuiltIn).toBe(true);
     });
