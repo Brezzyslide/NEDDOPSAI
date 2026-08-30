@@ -496,19 +496,8 @@ function placeholderTokenMatchesDeclared(token: string, declared: Set<string>): 
   if (declared.has(token)) return true;
   const base = token.replace(/_\d+$/, "");
   if (declared.has(base)) return true;
-  const variants = new Set([base]);
-  if (base.endsWith("S")) variants.add(base.slice(0, -1));
-  variants.add(`${base}S`);
-  for (const variant of variants) {
-    if (declared.has(variant)) return true;
-    for (const declaredToken of declared) {
-      if (variant.startsWith(`${declaredToken}_`) || variant.endsWith(`_${declaredToken}`)) return true;
-      if (declaredToken.endsWith("S")) {
-        const singular = declaredToken.slice(0, -1);
-        if (variant.startsWith(`${singular}_`) || variant.endsWith(`_${singular}`)) return true;
-      }
-    }
-  }
+  if (base.endsWith("S") && declared.has(base.slice(0, -1))) return true;
+  if (declared.has(`${base}S`)) return true;
   return false;
 }
 

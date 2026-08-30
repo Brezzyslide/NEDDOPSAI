@@ -186,6 +186,16 @@ describe("Sprint 38 Batch One gate fixes", () => {
 
     expect(classifications.get("PARTICIPANT_NAME")).toBe("legitimate_factual_field");
     expect(classifications.get("NDIS_NUMBER")).toBe("legitimate_factual_field");
+    expect(classifyBracketedPlaceholderToken(
+      "SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING",
+      standardTemplateEvidence,
+      professionalContext,
+    )).toBe("legitimate_factual_field");
+    expect(classifyBracketedPlaceholderToken(
+      "SUPPORT_LEVEL_ANYTHING",
+      standardTemplateEvidence,
+      professionalContext,
+    )).toBe("unresolved_professional_content");
     expect(classifications.get("PROVIDER_NAME")).toBe("unresolved_professional_content");
     expect(classifications.get("PROVIDER_ABN")).toBe("unresolved_professional_content");
     expect(classifications.get("AGREEMENT_PERIOD")).toBe("unresolved_professional_content");

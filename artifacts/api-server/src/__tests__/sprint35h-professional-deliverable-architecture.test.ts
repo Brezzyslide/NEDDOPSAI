@@ -1699,9 +1699,19 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(adl?.content.match(/\| [^|\n]+ \| \[SUPPORT_LEVEL_[A-Z0-9_]+\] \| \[WHAT_THE_WORKER_DOES_[A-Z0-9_]+\] \|/g)).toHaveLength(26);
     expect(adl?.content).toContain("| Personal hygiene and grooming | [SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING] | [WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING] |");
     expect(adl?.content).toContain("| Decision-making relating to daily activities | [SUPPORT_LEVEL_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES] | [WHAT_THE_WORKER_DOES_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES] |");
-    expect(derivePlaceholderTokensFromTemplateField(
+    const adlPlaceholders = derivePlaceholderTokensFromTemplateField(
       blueprint.sections?.find((section: any) => section.sectionCode === "UNDERTAKING_ADL")?.fields?.[0] ?? "",
-    )).toEqual(["[ACTIVITY]", "[SUPPORT_LEVEL]", "[WHAT_THE_WORKER_DOES]"]);
+    );
+    expect(adlPlaceholders).toEqual(expect.arrayContaining([
+      "[ACTIVITY]",
+      "[SUPPORT_LEVEL]",
+      "[WHAT_THE_WORKER_DOES]",
+      "[SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING]",
+      "[WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING]",
+      "[SUPPORT_LEVEL_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES]",
+      "[WHAT_THE_WORKER_DOES_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES]",
+    ]));
+    expect(adlPlaceholders).not.toContain("[SUPPORT_LEVEL_ANYTHING]");
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-goals")?.content).toBe("");
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-undertaking-adl")?.content).toBe("");
     expect(aboutMe?.content.indexOf("This section is about who the participant is")).toBeLessThan(

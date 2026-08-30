@@ -471,7 +471,28 @@ function deriveTemplateFieldPlaceholders(blueprint: WorkBlueprint | null): strin
 
 export function derivePlaceholderTokensFromTemplateField(field: string): string[] {
   if (/table with columns\s+activity\s*\|\s*support level\s*\|\s*what the worker does/i.test(field)) {
-    return ["[ACTIVITY]", "[SUPPORT_LEVEL]", "[WHAT_THE_WORKER_DOES]"];
+    return uniquePlaceholders([
+      "[ACTIVITY]",
+      "[SUPPORT_LEVEL]",
+      "[WHAT_THE_WORKER_DOES]",
+      ...CARE_PLAN_ADL_ACTIVITY_ROWS.flatMap((activity) => {
+        const activityToken = placeholderTokenFromLabel(activity);
+        return [
+          `[SUPPORT_LEVEL_${activityToken}]`,
+          `[WHAT_THE_WORKER_DOES_${activityToken}]`,
+        ];
+      }),
+    ]);
+  }
+
+  const supportTypes = field.match(/support types selected from\s+[—-]\s+(.+)/i);
+  if (supportTypes) {
+    const types = supportTypes[1]!.split(",").map((item) => item.trim()).filter(Boolean);
+    return uniquePlaceholders([
+      "[SUPPORT_TYPE]",
+      "[SUPPORT_DESCRIPTION]",
+      ...types.map((type) => `[DESCRIPTION_${placeholderTokenFromLabel(type)}]`),
+    ]);
   }
 
   const source = field.includes(":") ? field.split(":").slice(1).join(":") : field;
@@ -505,6 +526,35 @@ function deriveTemplateFieldPlaceholderAliases(label: string): string[] {
   }
   return aliases;
 }
+
+const CARE_PLAN_ADL_ACTIVITY_ROWS = [
+  "Personal hygiene and grooming",
+  "Showering and bathing",
+  "Dressing and undressing",
+  "Toileting and continence",
+  "Oral hygiene",
+  "Eating and drinking",
+  "Meal preparation",
+  "Medication management",
+  "Mobility within the home",
+  "Transfers and positioning",
+  "Bedtime and morning routines",
+  "Household cleaning",
+  "Laundry and clothing care",
+  "Making and changing bedding",
+  "Shopping for essential items",
+  "Managing personal belongings",
+  "Using household appliances",
+  "Maintaining a safe home environment",
+  "Managing daily routines",
+  "Time awareness and task initiation",
+  "Attending appointments",
+  "Community access",
+  "Transport and travel",
+  "Money handling and everyday purchases",
+  "Communication of daily needs",
+  "Decision-making relating to daily activities",
+] as const;
 
 function uniquePlaceholders(placeholders: string[]): string[] {
   return Array.from(new Set(placeholders));
