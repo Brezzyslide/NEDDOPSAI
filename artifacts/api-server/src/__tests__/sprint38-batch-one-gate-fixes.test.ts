@@ -284,7 +284,7 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(result.missingEvidenceItems.every((item) => item.required === false)).toBe(true);
   });
 
-  it("blocks unresolved professional placeholders before Completed Work can be accepted", () => {
+  it("allows declared factual placeholders in standard reusable templates but still hard-fails instructions", () => {
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");
     const request = "Create a standard comprehensive NDIS Care Plan template.";
@@ -311,6 +311,42 @@ describe("Sprint 38 Batch One gate fixes", () => {
       failure.details?.includes("[Insert goal description]") &&
       failure.details?.includes("[Insert known risks]"),
     )).toBe(true);
+    expect(gate.failures.find((failure) => failure.gate === "professional_placeholder")?.details)
+      .not.toEqual(expect.arrayContaining(["[PARTICIPANT_NAME]", "[NDIS_NUMBER]"]));
+  });
+
+  it("keeps participant-specific placeholder enforcement strict even for declared care-plan fields", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const request = "Complete a care plan for participant Alex.";
+    const reusableEvidence = classifyStandardTemplateEvidenceContext("Create a standard comprehensive NDIS Care Plan template.");
+    const reusableContext = compileProfessionalExecutionContext({
+      userRequest: request,
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const participantContext = {
+      ...reusableContext,
+      specificity: "PARTICIPANT_SPECIFIC" as const,
+      deliverable: {
+        ...reusableContext.deliverable,
+        standardisation: "participant_specific" as const,
+      },
+    };
+
+    expect(classifyBracketedPlaceholderToken(
+      "NDIS_NUMBER",
+      reusableEvidence,
+      participantContext,
+    )).toBe("unresolved_professional_content");
+
+    const findings = detectUnresolvedProfessionalPlaceholders(
+      "Participant NDIS Number: [NDIS_NUMBER]",
+      reusableEvidence,
+      participantContext,
+    );
+    expect(findings).toEqual(["[NDIS_NUMBER]"]);
   });
 
   it("keeps sub-threshold self-review output in draft instead of moving it to awaiting approval", () => {

@@ -486,10 +486,20 @@ function isAllowedUserDataPlaceholder(
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
   professionalContext?: ProfessionalExecutionContext | null,
 ): boolean {
-  if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
+  if (!isStandardReusableTemplatePlaceholderMode(standardTemplateEvidence, professionalContext)) return false;
   const declared = normalisedDeclaredFactualPlaceholders(professionalContext);
   if (declared.size > 0) return placeholderTokenMatchesDeclared(token, declared);
   return USER_DATA_PLACEHOLDER_TERMS.some(term => token === term);
+}
+
+function isStandardReusableTemplatePlaceholderMode(
+  standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+  professionalContext?: ProfessionalExecutionContext | null,
+): boolean {
+  if (professionalContext?.specificity === "PARTICIPANT_SPECIFIC") return false;
+  if (professionalContext?.deliverable.standardisation === "participant_specific") return false;
+  if (professionalContext?.deliverable.standardisation === "standard_reusable") return true;
+  return isCustomerTemplateOptional(standardTemplateEvidence);
 }
 
 function placeholderTokenMatchesDeclared(token: string, declared: Set<string>): boolean {
