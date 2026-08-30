@@ -383,6 +383,7 @@ describe("task_execution data-field contract — allowlist integrity", () => {
       "failedDraft.content",
       "gateFailures",
       "evidencePack.chunks",
+      "requirementCoverageProfile",
     ]));
     expect(allowlist.some(f => f.includes("storageKey"))).toBe(false);
     expect(allowlist).not.toContain("conversation.id");

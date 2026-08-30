@@ -298,6 +298,7 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "failedDraft.content",
     "gateFailures",
     "evidencePack.chunks",
+    "requirementCoverageProfile",
     // targeted_repair_context
     // Allows the existing repair path to see only the deterministic missing
     // requirements, deficient deliverable sections, and relevant evidence.
