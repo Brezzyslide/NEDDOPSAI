@@ -2193,10 +2193,10 @@ async function verifySeededRegistryBlueprintSections(
       mismatches.push(`${entry.code}.${expected.sectionCode}.row missing`);
       continue;
     }
-    compareSeededField(mismatches, entry.code, expected.sectionCode, "sectionRole", actual.sectionRole ?? null, expected.sectionRole ?? null);
-    compareSeededField(mismatches, entry.code, expected.sectionCode, "fixedContent", actual.fixedContent ?? [], expected.fixedContent ?? []);
-    compareSeededField(mismatches, entry.code, expected.sectionCode, "templateFields", actual.templateFields ?? [], expected.fields ?? []);
-    compareSeededField(mismatches, entry.code, expected.sectionCode, "completionPrompt", actual.completionPrompt ?? null, expected.completionPrompt ?? null);
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "sectionRole", actual.sectionRole, expected.sectionRole ?? null);
+    compareSeededJsonArrayField(mismatches, entry.code, expected.sectionCode, "fixedContent", actual.fixedContent, expected.fixedContent ?? []);
+    compareSeededJsonArrayField(mismatches, entry.code, expected.sectionCode, "templateFields", actual.templateFields, expected.fields ?? []);
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "completionPrompt", actual.completionPrompt, expected.completionPrompt ?? null);
   }
 
   if (mismatches.length > 0) {
@@ -2215,6 +2215,25 @@ function compareSeededField(
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     mismatches.push(`${blueprintCode}.${sectionCode}.${field}`);
   }
+}
+
+function compareSeededJsonArrayField(
+  mismatches: string[],
+  blueprintCode: string,
+  sectionCode: string,
+  field: string,
+  actual: unknown,
+  expected: string[],
+): void {
+  if (actual === undefined) {
+    mismatches.push(`${blueprintCode}.${sectionCode}.${field} missing`);
+    return;
+  }
+  if (!Array.isArray(actual)) {
+    mismatches.push(`${blueprintCode}.${sectionCode}.${field} not_array`);
+    return;
+  }
+  compareSeededField(mismatches, blueprintCode, sectionCode, field, actual, expected);
 }
 
 /**

@@ -164,4 +164,35 @@ describe("Blueprint section registry seed verification", () => {
       expect(Object.prototype.hasOwnProperty.call(row, "completionPrompt")).toBe(true);
     }
   });
+
+  it("fails loudly when a persisted section drops a registry-declared template field", async () => {
+    const carePlan = getRegistryEntry("care_plan");
+    if (!carePlan) throw new Error("missing care_plan registry entry");
+
+    mockDb.select.mockImplementation((selection?: Record<string, unknown>) => {
+      const isVerificationRead = Boolean(selection && "sectionRole" in selection);
+      return {
+        from: vi.fn(() => ({
+          where: vi.fn(() => {
+            if (isVerificationRead) {
+              return Promise.resolve(Array.from(seededSections.values()).map((row) => ({
+                id: row.id,
+                sectionCode: row.sectionCode,
+                sectionRole: row.sectionRole,
+                fixedContent: row.sectionCode === "SUPPORT_PLAN_MEETING" ? [] : row.fixedContent,
+                templateFields: row.templateFields,
+                completionPrompt: row.completionPrompt,
+              })));
+            }
+            return {
+              limit: vi.fn(async () => []),
+            };
+          }),
+        })),
+      };
+    });
+
+    await expect(seedRegistryBlueprintSections(carePlan, "blueprint-care-plan", new Date("2026-08-30T00:00:00Z")))
+      .rejects.toThrow("care_plan.SUPPORT_PLAN_MEETING.fixedContent");
+  });
 });
