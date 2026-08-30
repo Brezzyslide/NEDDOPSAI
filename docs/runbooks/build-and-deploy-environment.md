@@ -32,6 +32,24 @@ Build command:
 scripts/build-api-image.sh
 ```
 
+## Dev Runtime Endpoint
+
+The NeedsOps Dev environment is served through CloudFront:
+
+- Web/app origin: `https://d2y3hd4ltf3qdv.cloudfront.net`
+- API health/readiness path: `https://d2y3hd4ltf3qdv.cloudfront.net/api/readyz`
+- API route prefixes: `/api` and `/v1`
+
+When the endpoint is not already known, discover it from Terraform output in
+`infrastructure/terraform/environments/dev`:
+
+```sh
+terraform output -json
+```
+
+The relevant output is the Dev CloudFront domain. The Terraform output model also
+records the API path patterns, including `/api/*` and `/v1/*`.
+
 Required or derived build-time values:
 
 - `AWS_PROFILE` - AWS profile used for ECR login and repository lookup. Default: `needsops-dev`.
