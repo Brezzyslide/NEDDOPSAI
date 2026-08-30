@@ -60,6 +60,19 @@ function contract(blueprint: WorkBlueprint, mode = "onboarding"): BlueprintExecu
   };
 }
 
+function planFromProfile(profile: DeliverableRequirementCoverageProfile) {
+  return profile.requirements.map((requirement) => ({
+    requirementId: requirement.id,
+    professionalRequirement: requirement.description,
+    classification: requirement.classification,
+    authority: [],
+    applicability: "applicable" as const,
+    expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
+    targetDeliverableLocation: requirement.requiredDeliverableRepresentation,
+    status: "missing" as const,
+  }));
+}
+
 describe("Sprint 36A professional routing and domain isolation", () => {
   it("keeps the current professional registry broad enough for workforce onboarding", () => {
     expect(BLUEPRINT_REGISTRY.length).toBeGreaterThanOrEqual(75);
@@ -233,16 +246,7 @@ describe("Sprint 36A professional routing and domain isolation", () => {
       blueprintContract: contract(blueprint!, "onboarding"),
     });
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract(blueprint!, "onboarding"));
-    const plan = profile.requirements.map((requirement) => ({
-      requirementId: requirement.id,
-      professionalRequirement: requirement.description,
-      classification: requirement.classification,
-      authority: [],
-      applicability: "applicable" as const,
-      expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
-      targetDeliverableLocation: requirement.requiredDeliverableRepresentation,
-      status: "missing" as const,
-    }));
+    const plan = planFromProfile(profile);
 
     const preflight = validateProfessionalExecutionPreflight({
       blueprint: blueprint!,
@@ -255,6 +259,117 @@ describe("Sprint 36A professional routing and domain isolation", () => {
 
     expect(preflight.passed).toBe(true);
     expect(preflight.requirementPlanStatus).toBe("RESOLVED");
+  });
+
+  it("passes professional execution pre-flight for care_plan placeholders declared by Blueprint fields", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    expect(blueprint).toBeTruthy();
+    const careManifest = manifest({
+      canonicalIntent: "care_plan.create",
+      blueprintId: "care_plan",
+      blueprintFamily: "care_plan",
+      blueprintMode: "create",
+      primarySpecialist: "service_delivery_coordinator",
+      supportingSpecialists: [],
+      selectionMetadata: { canonicalIntent: "care_plan.create", blueprintMode: "create" } as never,
+    });
+    const careContract = contract(blueprint!, "create");
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard NDIS care plan template.",
+      manifest: careManifest,
+      blueprint: blueprint!,
+      blueprintContract: careContract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, careContract);
+    const preflight = validateProfessionalExecutionPreflight({
+      blueprint: blueprint!,
+      manifest: careManifest,
+      professionalContext: context,
+      coverageProfile: profile,
+      requirementPlan: planFromProfile(profile),
+      schemaCheck: { passed: true, missingRequirementIds: [] },
+    });
+
+    expect(context.deliverable.allowedFactualPlaceholders).toEqual(
+      expect.arrayContaining(["[NDIS_NUMBER]", "[SUPPORT_TYPE]", "[SUPPORT_DESCRIPTION]"]),
+    );
+    expect(preflight.passed).toBe(true);
+    expect(preflight.failedChecks).not.toContain("FACTUAL_FIELDS_DOMAIN_VALID");
+    expect(preflight.details).toMatchObject({
+      factualPlaceholderDeclarationCheckSkipped: false,
+      undeclaredFactualPlaceholders: [],
+    });
+  });
+
+  it("fails onboarding pre-flight when NDIS_NUMBER is not declared by the workforce Blueprint", () => {
+    const base = getRegistryEntry("people_management_review");
+    expect(base).toBeTruthy();
+    const blueprint = {
+      ...base!,
+      sections: [{
+        id: "onboarding-fields",
+        blueprintId: "people_management_review",
+        sectionCode: "ONBOARDING_FIELDS",
+        title: "Onboarding Fields",
+        description: null,
+        instructions: null,
+        sectionRole: "user_facing",
+        fields: [
+          "Staff name",
+          "Role",
+          "Start date",
+          "Manager",
+          "Supervisor",
+          "Employment type",
+          "Required clearances",
+          "Clearance status",
+          "Induction date",
+          "Completion status",
+          "Sign off",
+        ],
+        fixedContent: [],
+        completionPrompt: null,
+        required: true,
+        minimumContentExpectation: null,
+        evidenceRequirements: {},
+        allowedSourceTypes: [],
+        prohibitedAssumptions: [],
+        validationRules: [],
+        qualityCriteria: [],
+        sortOrder: 10,
+        createdAt: new Date("2026-08-27T00:00:00Z"),
+        updatedAt: new Date("2026-08-27T00:00:00Z"),
+      }],
+    } as WorkBlueprint;
+    const onboardingContract = contract(blueprint, "onboarding");
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a new staff onboarding checklist.",
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: onboardingContract,
+    });
+    const contaminatedContext = {
+      ...context,
+      deliverable: {
+        ...context.deliverable,
+        allowedFactualPlaceholders: [...context.deliverable.allowedFactualPlaceholders, "[NDIS_NUMBER]"],
+      },
+    };
+    const profile = deriveDeliverableRequirementCoverageProfile(contaminatedContext, onboardingContract);
+    const preflight = validateProfessionalExecutionPreflight({
+      blueprint,
+      manifest: manifest(),
+      professionalContext: contaminatedContext,
+      coverageProfile: profile,
+      requirementPlan: planFromProfile(profile),
+      schemaCheck: { passed: true, missingRequirementIds: [] },
+    });
+
+    expect(preflight.passed).toBe(false);
+    expect(preflight.failedChecks).toContain("FACTUAL_FIELDS_DOMAIN_VALID");
+    expect(preflight.details.undeclaredFactualPlaceholders).toEqual([
+      { placeholder: "[NDIS_NUMBER]", blueprintCode: "people_management_review" },
+    ]);
   });
 
   it.each([

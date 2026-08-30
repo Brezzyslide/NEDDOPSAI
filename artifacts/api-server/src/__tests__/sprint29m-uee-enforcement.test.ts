@@ -31,10 +31,12 @@ const {
   mockMakeDbInsertChain,
   mockSelectBlueprint,
   mockAssembleWorkPackage,
+  mockUpdateManifestObservability,
   mockValidateWorkPackage,
   mockReviewDraft,
   mockCreateDraft,
   mockSubmitForApproval,
+  mockGenerateCompletedWorkArtifacts,
   mockLogOrgEvent,
   mockGatewayProcess,
   mockOpenSession,
@@ -68,10 +70,12 @@ const {
     mockMakeDbInsertChain:          insertResult,
     mockSelectBlueprint:           vi.fn(),
     mockAssembleWorkPackage:       vi.fn(),
+    mockUpdateManifestObservability: vi.fn().mockResolvedValue(undefined),
     mockValidateWorkPackage:       vi.fn(),
     mockReviewDraft:               vi.fn(),
     mockCreateDraft:               vi.fn(),
     mockSubmitForApproval:         vi.fn(),
+    mockGenerateCompletedWorkArtifacts: vi.fn(),
     mockLogOrgEvent:               vi.fn().mockResolvedValue(undefined),
     mockGatewayProcess:            vi.fn(),
     mockOpenSession:               vi.fn().mockReturnValue({ sessionId: "sess-001" }),
@@ -171,7 +175,7 @@ vi.mock("../services/workBlueprintService.js", () => ({
 
 vi.mock("../services/workPackageService.js", () => ({
   assembleWorkPackage:         mockAssembleWorkPackage,
-  updateManifestObservability: vi.fn().mockResolvedValue(undefined),
+  updateManifestObservability: mockUpdateManifestObservability,
 }));
 
 vi.mock("../services/workValidationService.js", () => ({
@@ -190,6 +194,10 @@ vi.mock("../services/selfReviewService.js", () => ({
 vi.mock("../services/completedWorkService.js", () => ({
   createDraft:       mockCreateDraft,
   submitForApproval: mockSubmitForApproval,
+}));
+
+vi.mock("../services/completedWorkArtifactService.js", () => ({
+  generateCompletedWorkArtifacts: mockGenerateCompletedWorkArtifacts,
 }));
 
 vi.mock("../services/auditService.js", () => ({
@@ -237,6 +245,15 @@ vi.mock("../services/knowledgeResolutionService.js", () => ({
 // ─── Import UEE after all mocks ───────────────────────────────────────────────
 
 import { UnifiedExecutionEngine, type ExecutionLaneContext } from "../services/unifiedExecutionEngine.js";
+import { getRegistryEntry } from "../services/blueprintRegistry.js";
+import {
+  deriveDeliverableRequirementCoverageProfile,
+  evaluateDeliverableRequirementCoverage,
+} from "../services/deliverableRequirementCoverageService.js";
+import {
+  compileProfessionalExecutionContext,
+} from "../services/professionalExecutionContextService.js";
+import type { BlueprintExecutionContract } from "../services/workBlueprintService.js";
 
 // ─── Test data ────────────────────────────────────────────────────────────────
 
@@ -600,6 +617,10 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
     currentVersionId: randomUUID(),
   });
   mockSubmitForApproval.mockResolvedValue({ id: DRAFT_ID, status: "awaiting_approval" });
+  mockGenerateCompletedWorkArtifacts.mockResolvedValue([
+    { id: "artifact-docx-1", fileFormat: "docx" },
+    { id: "artifact-pdf-1", fileFormat: "pdf" },
+  ]);
 }
 
 // ─── Section A: Evidence gate ─────────────────────────────────────────────────
@@ -798,5 +819,178 @@ describe("C — PROFESSIONAL_WORK lane: evidence gate does not fire (best-effort
     if (result.trigger === "task") {
       expect(result.workResult.outcome).not.toBe("execution_failed");
     }
+  });
+});
+
+// ─── Section D: Care plan template full path ─────────────────────────────────
+
+describe("D — care plan template full path uses declared Blueprint placeholders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.AI_PROVIDER = "openai";
+    mockDbInsert.mockReturnValue(mockMakeDbInsertChain());
+    mockDbSelect.mockImplementation(() => makeSelectChain([]));
+    mockOpenSession.mockReturnValue({ sessionId: "sess-001" });
+    mockCloseSession.mockReturnValue({ sessionId: "sess-001" });
+    mockMarkSessionError.mockReturnValue({ sessionId: "sess-001" });
+    mockRecordProviderState.mockReturnValue({ sessionId: "sess-001" });
+  });
+
+  it("passes preflight and reaches Completed Work artifact generation for the standard care plan template", async () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const userRequest = "Create a standard comprehensive NDIS care plan template.";
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const manifest = {
+      ...makeManifest("service_delivery_coordinator"),
+      canonicalIntent: "care_plan.create",
+      blueprintFamily: "care_plan",
+      blueprintMode: "create",
+      blueprintId: "care_plan",
+      blueprintVersion: blueprint.version,
+      title: "Standard Comprehensive NDIS Care Plan Template",
+      userRequest,
+      outputTypes: ["care_plan"],
+      requiredLibraryKnowledge: [],
+      mandatoryCitations: [],
+    };
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest,
+      manifest,
+      blueprint,
+      blueprintContract: contract,
+    });
+    expect(professionalContext.deliverable.allowedFactualPlaceholders).toEqual(
+      expect.arrayContaining(["[NDIS_NUMBER]", "[SUPPORT_TYPE]", "[SUPPORT_DESCRIPTION]"]),
+    );
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+    const responseSections = profile.requirements.map((requirement) => ({
+      requirementId: requirement.id,
+      heading: requirement.targetDeliverableLocation ?? requirement.sourceBlueprintSection ?? requirement.id,
+      content: ".",
+    }));
+
+    mockLoadDNAWithStaticFallback.mockResolvedValue({
+      ...mockResolvedDNA,
+      specialistId: "service_delivery_coordinator",
+      dnaId: "service_delivery_coordinator",
+      canonicalProfile: {
+        ...mockCanonicalProfile,
+        identity: {
+          ...mockCanonicalProfile.identity,
+          specialistId: "service_delivery_coordinator",
+          displayName: "Service Delivery Coordinator",
+        },
+      },
+    });
+    mockLoadOrgSpecialistConfig.mockResolvedValue(null);
+    mockLoadSpecialistContext.mockResolvedValue(mockSpecialistContextPackage);
+    mockDbSelect.mockImplementationOnce(() =>
+      makeSelectChain([makePlan("service_delivery_coordinator")]),
+    );
+    mockGetSpecialistByCode.mockReturnValue({ executionStatus: "available", dnaStatus: "active" });
+    mockSelectBlueprint.mockResolvedValue({
+      blueprint,
+      confidence: 0.97,
+      matchedKeywords: ["care plan"],
+      fallbackUsed: false,
+    });
+    mockAssembleWorkPackage.mockResolvedValue({ manifest });
+    mockValidateWorkPackage.mockReturnValue({ passed: true, missingItems: [], issues: [], summary: "OK" });
+    mockResolveEvidenceForTask.mockResolvedValue(null);
+    mockGatewayProcess.mockResolvedValue({
+      content: JSON.stringify({
+        professional_work: {
+          summary: "Care plan template generated.",
+          blueprint_completion: ["Generated section deltas for every required care-plan section."],
+          requirement_to_deliverable_plan: profile.requirements.map((requirement) => requirement.id),
+          evidence_map: [],
+          missing_information: [],
+        },
+        requirement_coverage: {
+          satisfied: profile.requirements.map((requirement) => requirement.id),
+          missing: [],
+        },
+        deliverable: {
+          sections: responseSections,
+        },
+        completion: {
+          operation: "CREATE",
+          unresolvedProfessionalContent: 0,
+          methodologyLeakage: false,
+          readyForCompletedWork: true,
+        },
+        claims: [],
+      }),
+      promptTokens: 1_200,
+      completionTokens: 400,
+      totalTokens: 1_600,
+      modelVersion: "gpt-4o",
+      outputMode: "json",
+    });
+    mockReviewDraft.mockImplementation(async (content: string) => ({
+      passed: true,
+      overallScore: 88,
+      dimensions: [],
+      qualityScore: 88,
+      finalContent: content,
+    }));
+    mockCreateDraft.mockResolvedValue({
+      id: DRAFT_ID,
+      version: { id: randomUUID(), versionNumber: 1 },
+      currentVersionId: randomUUID(),
+      status: "draft",
+      title: "Standard Comprehensive NDIS Care Plan Template",
+    });
+    mockSubmitForApproval.mockResolvedValue({
+      id: DRAFT_ID,
+      status: "awaiting_approval",
+      title: "Standard Comprehensive NDIS Care Plan Template",
+    });
+    mockGenerateCompletedWorkArtifacts.mockResolvedValue([
+      { id: "artifact-docx-1", fileFormat: "docx" },
+      { id: "artifact-pdf-1", fileFormat: "pdf" },
+    ]);
+
+    const engine = makeEngine();
+    const result = await engine.execute(makeRequest({
+      laneContext: PROFESSIONAL_LANE,
+      userRequest,
+      title: "Standard Comprehensive NDIS Care Plan Template",
+      outputRequiresApproval: true,
+    }));
+
+    expect(result.trigger).toBe("task");
+    if (result.trigger === "task") {
+      expect(result.workResult.outcome).toBe("completed");
+      expect(result.workResult.completedWorkId).toBe(DRAFT_ID);
+      expect(result.workResult.completedWorkStatus).toBe("awaiting_approval");
+      expect(result.workResult.blueprintCode).toBe("care_plan");
+    }
+
+    expect(mockGatewayProcess).toHaveBeenCalledTimes(2);
+    expect(mockGatewayProcess.mock.calls.map(([payload]) => payload.runtimeProfile)).toEqual([
+      "professional_execution",
+      "final_synthesis",
+    ]);
+    expect(mockReviewDraft).toHaveBeenCalled();
+    expect(mockCreateDraft).toHaveBeenCalledOnce();
+    expect(mockGenerateCompletedWorkArtifacts).toHaveBeenCalledOnce();
+    expect(mockSubmitForApproval).toHaveBeenCalledOnce();
+
+    const contentMarkdown = mockCreateDraft.mock.calls[0]?.[0]?.contentMarkdown as string;
+    const coverage = evaluateDeliverableRequirementCoverage(contentMarkdown, profile);
+    expect(coverage.totalApplicableRequirements).toBe(14);
+    expect(coverage.missingCount).toBe(0);
+    expect((contentMarkdown.match(/\[CURRENT_SITUATION_\d+\]/g) ?? [])).toHaveLength(3);
+    expect(contentMarkdown).toContain("[NDIS_NUMBER]");
+    expect(contentMarkdown).toContain("[SUPPORT_TYPE]");
+
+    expect(mockUpdateManifestObservability).toHaveBeenCalled();
   });
 });
