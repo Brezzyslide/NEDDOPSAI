@@ -93,7 +93,10 @@ import {
   deriveRequestedDeliverableType,
   type ProfessionalExecutionContext,
 } from "./professionalExecutionContextService.js";
-import { validateProfessionalExecutionPreflight } from "./professionalExecutionPreflightService.js";
+import {
+  formatUndeclaredFactualPlaceholderDetails,
+  validateProfessionalExecutionPreflight,
+} from "./professionalExecutionPreflightService.js";
 import {
   buildRequirementToDeliverablePlan,
   buildDeliverableOutputSchema,
@@ -1544,7 +1547,8 @@ export class UnifiedExecutionEngine {
       };
     }
     if (!preflightCheck.passed) {
-      const message = `Professional execution contract is unresolved before synthesis: ${preflightCheck.failedChecks.join(", ")}`;
+      const undeclaredPlaceholderDetails = formatUndeclaredFactualPlaceholderDetails(preflightCheck.details);
+      const message = `Professional execution contract is unresolved before synthesis: ${preflightCheck.failedChecks.join(", ")}${undeclaredPlaceholderDetails ? `. ${undeclaredPlaceholderDetails}` : ""}`;
       await persistInlineExecutionSession({
         organizationId,
         taskId: request.taskId,

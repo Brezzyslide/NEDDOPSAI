@@ -452,52 +452,7 @@ function deriveAllowedFactualPlaceholders(
     return SERVICE_AGREEMENT_FACTUAL_PLACEHOLDERS;
   }
   if (deliverableType.includes("CARE_PLAN") || deliverableType.includes("SUPPORT_PLAN")) {
-    return uniquePlaceholders([
-      "[PARTICIPANT_NAME]",
-      "[DATE_OF_BIRTH]",
-      "[GENDER]",
-      "[LANGUAGE_SPOKEN]",
-      "[NDIS_NUMBER]",
-      "[DIAGNOSIS]",
-      "[PEOPLE_PRESENT]",
-      "[SUPPORT_PLAN_DEVELOPED_BY]",
-      "[PLAN_DATE]",
-      "[GOALS]",
-      "[CURRENT_SITUATION]",
-      "[ACTIONS]",
-      "[PERSON_RESPONSIBLE]",
-      "[TIMEFRAME]",
-      "[OUTCOMES]",
-      "[STRENGTHS]",
-      "[LIKES]",
-      "[DISLIKES]",
-      "[WHAT_MATTERS]",
-      "[COMMUNICATION_PREFERENCES]",
-      "[INFORMAL_SUPPORTS]",
-      "[HISTORY_BACKGROUND]",
-      "[SUPPORT_NEEDS]",
-      "[PREFERENCES]",
-      "[COMMUNICATION_NEEDS]",
-      "[MOBILITY_AID]",
-      "[SUPPORT_TYPE]",
-      "[SUPPORT_DESCRIPTION]",
-      "[BEHAVIOUR]",
-      "[POSSIBLE_TRIGGER]",
-      "[REDIRECTION_STRATEGY]",
-      "[RESTRICTIVE_PRACTICE]",
-      "[AUTHORISATION_STATUS]",
-      "[MEALTIME_STRATEGY]",
-      "[DISASTER_ARRANGEMENTS]",
-      "[PROVIDED_TO]",
-      "[CONSENT_OBTAINED]",
-      "[REVIEW_DATE]",
-      "[SIGNATURE]",
-      "[SIGN_OFF]",
-      "[FORM_ID]",
-      "[VERSION]",
-      "[DATE]",
-      ...deriveTemplateFieldPlaceholders(blueprint),
-    ]);
+    return deriveTemplateFieldPlaceholders(blueprint);
   }
   if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST" || /\b(onboard|onboarding|induction|new staff|new employee|people_culture|talent_learning|workforce_compliance)\b/.test(domainText)) {
     return WORKFORCE_ONBOARDING_FACTUAL_PLACEHOLDERS;
@@ -511,22 +466,40 @@ function deriveAllowedFactualPlaceholders(
 function deriveTemplateFieldPlaceholders(blueprint: WorkBlueprint | null): string[] {
   return (blueprint?.sections ?? [])
     .flatMap((section) => section.fields ?? [])
-    .flatMap((field) => {
-      const source = field.includes(":") ? field.split(":").slice(1).join(":") : field;
-    return source
-      .split(/,|\||—/)
-      .flatMap((label) => {
-        const cleaned = label
-          .trim()
-          .replace(/\([^)]*\)/g, "")
-          .replace(/\b(?:table with columns|minimum three personal goal rows|plus one row per ndis plan goal|selected from|sourced from|fields)\b/gi, "");
-        const token = placeholderTokenFromLabel(cleaned);
-        const generic = placeholderTokenFromLabel(cleaned.replace(/\b(?:per|for|of|and)\b.*$/i, ""));
-        return [token, generic].filter(Boolean);
-      })
-      .filter((token) => token.length > 1)
-      .map((token) => `[${token}]`);
-    });
+    .flatMap(derivePlaceholderTokensFromTemplateField);
+}
+
+export function derivePlaceholderTokensFromTemplateField(field: string): string[] {
+  const source = field.includes(":") ? field.split(":").slice(1).join(":") : field;
+  const labels = source.split(/,|\||—/);
+  return uniquePlaceholders(labels.flatMap((label) => {
+    const cleaned = label
+      .trim()
+      .replace(/\([^)]*\)/g, "")
+      .replace(/\b(?:table with columns|minimum three personal goal rows|plus one row per ndis plan goal|selected from|sourced from|fields)\b/gi, "")
+      .trim();
+    const token = placeholderTokenFromLabel(cleaned);
+    const generic = placeholderTokenFromLabel(cleaned.replace(/\b(?:per|for|of|and)\b.*$/i, ""));
+    const aliases = deriveTemplateFieldPlaceholderAliases(cleaned);
+    return [token, generic, ...aliases]
+      .filter((candidate) => candidate.length > 1)
+      .map((candidate) => `[${candidate}]`);
+  }));
+}
+
+function deriveTemplateFieldPlaceholderAliases(label: string): string[] {
+  const lower = label.toLowerCase();
+  const aliases: string[] = [];
+  if (/\bgoal\b/.test(lower)) aliases.push("GOALS");
+  if (/\bdate\s+for\s+review\b/.test(lower) || /\bnext\s+review\s+date\b/.test(lower)) aliases.push("REVIEW_DATE");
+  if (/\bwhat\s+matters\s+to\s+me\b/.test(lower)) aliases.push("WHAT_MATTERS");
+  if (/\bhow\s+i\s+prefer\s+to\s+communicate\b/.test(lower)) aliases.push("COMMUNICATION_PREFERENCES");
+  if (/\bmobility\b/.test(lower) && /\baid\b/.test(lower)) aliases.push("MOBILITY_AID");
+  if (/\bsupport\s+types?\b/.test(lower)) aliases.push("SUPPORT_TYPE");
+  if (/\bdescription\b/.test(lower) && (/\bsupport\b/.test(lower) || /\bselected\s+type\b/.test(lower))) {
+    aliases.push("SUPPORT_DESCRIPTION");
+  }
+  return aliases;
 }
 
 function uniquePlaceholders(placeholders: string[]): string[] {
