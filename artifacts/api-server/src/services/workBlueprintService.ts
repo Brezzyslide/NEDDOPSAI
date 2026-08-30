@@ -2092,7 +2092,7 @@ function registryContractSeedValues(entry: RegistryEntry, registryOwner: string)
   };
 }
 
-async function seedRegistryBlueprintSections(
+export async function seedRegistryBlueprintSections(
   entry: RegistryEntry,
   blueprintId: string,
   now: Date,
@@ -2157,6 +2157,63 @@ async function seedRegistryBlueprintSections(
       ...values,
       createdAt: now,
     });
+  }
+
+  await verifySeededRegistryBlueprintSections(entry, blueprintId, expectedSectionIds);
+}
+
+async function verifySeededRegistryBlueprintSections(
+  entry: RegistryEntry,
+  blueprintId: string,
+  expectedSectionIds: string[],
+): Promise<void> {
+  if (expectedSectionIds.length === 0) return;
+
+  const rows = await db
+    .select({
+      id: blueprintSectionsTable.id,
+      sectionCode: blueprintSectionsTable.sectionCode,
+      sectionRole: blueprintSectionsTable.sectionRole,
+      fixedContent: blueprintSectionsTable.fixedContent,
+      templateFields: blueprintSectionsTable.templateFields,
+      completionPrompt: blueprintSectionsTable.completionPrompt,
+    })
+    .from(blueprintSectionsTable)
+    .where(and(
+      eq(blueprintSectionsTable.blueprintId, blueprintId),
+      inArray(blueprintSectionsTable.id, expectedSectionIds),
+    ));
+
+  const rowBySectionCode = new Map(rows.map((row) => [row.sectionCode, row]));
+  const mismatches: string[] = [];
+
+  for (const expected of entry.sections ?? []) {
+    const actual = rowBySectionCode.get(expected.sectionCode);
+    if (!actual) {
+      mismatches.push(`${entry.code}.${expected.sectionCode}.row missing`);
+      continue;
+    }
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "sectionRole", actual.sectionRole ?? null, expected.sectionRole ?? null);
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "fixedContent", actual.fixedContent ?? [], expected.fixedContent ?? []);
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "templateFields", actual.templateFields ?? [], expected.fields ?? []);
+    compareSeededField(mismatches, entry.code, expected.sectionCode, "completionPrompt", actual.completionPrompt ?? null, expected.completionPrompt ?? null);
+  }
+
+  if (mismatches.length > 0) {
+    throw new Error(`Registry Blueprint section seed verification failed: ${mismatches.slice(0, 20).join(", ")}`);
+  }
+}
+
+function compareSeededField(
+  mismatches: string[],
+  blueprintCode: string,
+  sectionCode: string,
+  field: string,
+  actual: unknown,
+  expected: unknown,
+): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    mismatches.push(`${blueprintCode}.${sectionCode}.${field}`);
   }
 }
 
