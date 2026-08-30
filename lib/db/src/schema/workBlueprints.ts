@@ -142,6 +142,13 @@ export const workBlueprintsTable = pgTable("work_blueprints", {
   /** Semver version of this blueprint definition */
   version: text("version").notNull().default("1.0.0"),
 
+  /**
+   * Stable sha256 hash over the blueprint content fields and ordered sections.
+   * Set by publish/bootstrap so executions can pin content provenance instead
+   * of trusting a mutable version label alone.
+   */
+  contentHash: text("content_hash"),
+
   /** Canonical work-product family, e.g. care_plan */
   blueprintFamily: text("blueprint_family"),
 

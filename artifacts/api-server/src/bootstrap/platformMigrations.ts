@@ -138,6 +138,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds blueprint section role and deterministic template content fields for authored care plan templates.",
   },
+  {
+    id: "0043-blueprint-content-hash-provenance",
+    file: "0043_blueprint_content_hash_provenance.sql",
+    transactional: true,
+    notes: "Adds Blueprint content hash and Completed Work Blueprint provenance pinning columns.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

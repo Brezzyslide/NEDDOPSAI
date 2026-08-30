@@ -36,6 +36,8 @@ export interface CreateDraftInput {
   conversationId?: string;
   blueprintId?: string;
   blueprintVersion?: string | null;
+  blueprintContentHash?: string | null;
+  blueprintProvenanceStatus?: string | null;
   blueprintFamily?: string | null;
   blueprintMode?: string | null;
   canonicalIntent?: string | null;
@@ -63,6 +65,8 @@ export interface CompletedWorkItem {
   conversationId: string | null;
   blueprintId: string | null;
   blueprintVersion: string | null;
+  blueprintContentHash: string | null;
+  blueprintProvenanceStatus: string;
   blueprintFamily: string | null;
   blueprintMode: string | null;
   canonicalIntent: string | null;
@@ -136,6 +140,10 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
       conversationId: input.conversationId ?? null,
       blueprintId: input.blueprintId ?? null,
       blueprintVersion: input.blueprintVersion ?? null,
+      blueprintContentHash: input.blueprintContentHash ?? null,
+      blueprintProvenanceStatus: input.blueprintProvenanceStatus ?? (
+        input.blueprintContentHash ? "hash_pinned" : "provenance_unverified"
+      ),
       blueprintFamily: input.blueprintFamily ?? null,
       blueprintMode: input.blueprintMode ?? null,
       canonicalIntent: input.canonicalIntent ?? null,
@@ -835,6 +843,8 @@ function mapRow(row: typeof completedWorkTable.$inferSelect): CompletedWorkItem 
     conversationId: row.conversationId ?? null,
     blueprintId: row.blueprintId ?? null,
     blueprintVersion: row.blueprintVersion ?? null,
+    blueprintContentHash: row.blueprintContentHash ?? null,
+    blueprintProvenanceStatus: row.blueprintProvenanceStatus ?? "provenance_unverified",
     blueprintFamily: row.blueprintFamily ?? null,
     blueprintMode: row.blueprintMode ?? null,
     canonicalIntent: row.canonicalIntent ?? null,

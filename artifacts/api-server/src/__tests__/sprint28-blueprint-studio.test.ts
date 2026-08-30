@@ -58,6 +58,7 @@ vi.mock("drizzle-orm", () => ({
   or:    (...args: unknown[])         => ({ op: "or",    args }),
   isNull:(col: unknown)               => ({ op: "isNull", col }),
   desc:  (col: unknown)               => ({ op: "desc",  col }),
+  asc:   (col: unknown)               => ({ op: "asc",   col }),
   ilike: (col: unknown, val: unknown) => ({ op: "ilike", col, val }),
   inArray:(col: unknown, arr: unknown) => ({ op: "inArray", col, arr }),
 }));
@@ -403,9 +404,10 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       const published = makeBlueprintRow({ status: "published" });
       const version   = makeVersionRow();
 
-      // Select sequence: getBlueprintById → previouslyPublished → update + insert → getBlueprintById → version by ID
+      // Select sequence: getBlueprintById → getBlueprintSections → previouslyPublished → update + insert → getBlueprintById → version by ID
       setupSelectSequence([
         [makeBlueprintRow()], // getBlueprintById (current)
+        [],                   // getBlueprintSections
         [],                   // previouslyPublished (none)
         [published],          // getBlueprintById (after update)
         [version],            // getVersionById
@@ -415,6 +417,8 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
 
       expect(mockUpdate).toHaveBeenCalledTimes(1); // published the blueprint
       expect(mockInsert).toHaveBeenCalledTimes(1); // version snapshot
+      const updateVals = mockUpdate.mock.results[0]!.value.set.mock.calls[0]?.[0];
+      expect(updateVals.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(result.blueprint.status).toBe("published");
       expect(result.version.status).toBe("published");
       expect(result.version.notes).toBe("Initial publish");
@@ -426,7 +430,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       const published = makeBlueprintRow({ status: "published" });
       const version  = makeVersionRow();
 
-      setupSelectSequence([[current], [prevPub], [published], [version]]);
+      setupSelectSequence([[current], [], [prevPub], [published], [version]]);
 
       await publishBlueprint("bp-001", ORG_ID, USER_ID);
 
@@ -441,6 +445,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       setupSelectSequence([
         [makeBlueprintRow()],
         [],
+        [],
         [makeBlueprintRow({ status: "published" })],
         [makeVersionRow()],
       ]);
@@ -450,6 +455,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       const insertVals = mockInsert.mock.results[0]!.value.values.mock.calls[0]?.[0];
       expect(insertVals.status).toBe("published");
       expect(typeof insertVals.snapshot).toBe("object");
+      expect(insertVals.snapshot.contentHash).toMatch(/^sha256:[a-f0-9]{64}$/);
       expect(insertVals.notes).toBe("v1 release");
     });
 
@@ -469,6 +475,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       setupSelectSequence([
         [makeBlueprintRow({ status: "review" })],
         [],
+        [],
         [makeBlueprintRow({ status: "published" })],
         [makeVersionRow()],
       ]);
@@ -478,7 +485,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
 
     it("logs work_blueprint_published audit event", async () => {
       setupSelectSequence([
-        [makeBlueprintRow()], [], [makeBlueprintRow({ status: "published" })], [makeVersionRow()],
+        [makeBlueprintRow()], [], [], [makeBlueprintRow({ status: "published" })], [makeVersionRow()],
       ]);
       await publishBlueprint("bp-001", ORG_ID, USER_ID);
       expect(mockLogOrg).toHaveBeenCalledWith(expect.objectContaining({ eventType: "work_blueprint_published" }));
@@ -875,6 +882,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
       setupSelectSequence([
         [makeBlueprintRow({ status: "draft" })],
         [],
+        [],
         [makeBlueprintRow({ status: "published" })],
         [makeVersionRow()],
       ]);
@@ -885,6 +893,7 @@ describe("workBlueprintService — Sprint 28 Blueprint Studio", () => {
     it("review → published is allowed", async () => {
       setupSelectSequence([
         [makeBlueprintRow({ status: "review" })],
+        [],
         [],
         [makeBlueprintRow({ status: "published" })],
         [makeVersionRow()],

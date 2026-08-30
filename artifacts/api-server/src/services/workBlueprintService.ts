@@ -42,6 +42,7 @@ import {
   type RegistryEntry,
 } from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
+import { computeBlueprintContentHash } from "./blueprintContentHashService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ export interface WorkBlueprint {
   code: string;
   title: string;
   version: string;
+  contentHash?: string | null;
   blueprintFamily: string | null;
   supportedModes: string[];
   maturityState: BlueprintMaturityState;
@@ -635,6 +637,7 @@ function mapRow(row: typeof workBlueprintsTable.$inferSelect): WorkBlueprint {
     code: row.code,
     title: row.title,
     version: row.version,
+    contentHash: row.contentHash ?? null,
     blueprintFamily: row.blueprintFamily ?? null,
     supportedModes: (row.supportedModes as string[]) ?? [],
     maturityState: row.maturityState ?? "placeholder",
@@ -734,6 +737,7 @@ function blueprintToSnapshot(bp: WorkBlueprint): Record<string, unknown> {
     code: bp.code,
     title: bp.title,
     version: bp.version,
+    contentHash: bp.contentHash,
     blueprintFamily: bp.blueprintFamily,
     supportedModes: bp.supportedModes,
     maturityState: bp.maturityState,
@@ -833,7 +837,25 @@ export async function getBlueprintExecutionContract(
     getBlueprintSections(blueprint.id),
     resolveTemplateForBlueprint(blueprint, organizationId),
   ]);
+  reportBlueprintContentHashDrift(blueprint, sections);
   return { blueprint, sections, template, mode };
+}
+
+export function reportBlueprintContentHashDrift(
+  blueprint: WorkBlueprint,
+  sections: BlueprintSection[],
+): { storedHash: string | null; computedHash: string; drifted: boolean } {
+  const computedHash = computeBlueprintContentHash({ blueprint, sections });
+  const drifted = Boolean(blueprint.contentHash && blueprint.contentHash !== computedHash);
+  if (drifted) {
+    console.warn("[blueprint:content-hash-drift]", {
+      blueprintId: blueprint.id,
+      blueprintCode: blueprint.code,
+      storedHash: blueprint.contentHash,
+      computedHash,
+    });
+  }
+  return { storedHash: blueprint.contentHash, computedHash, drifted };
 }
 
 export async function getBlueprintSpecification(
@@ -1634,6 +1656,11 @@ export async function publishBlueprint(
   if (existing.status !== "draft" && existing.status !== "review") {
     throw Object.assign(new Error("Only draft or review blueprints can be published"), { statusCode: 409 });
   }
+  const sections = await getBlueprintSections(id);
+  const contentHash = computeBlueprintContentHash({
+    blueprint: { ...existing, status: "published" },
+    sections,
+  });
 
   // Supersede any currently-published blueprint with the same code for this org
   const previouslyPublished = await db
@@ -1657,12 +1684,12 @@ export async function publishBlueprint(
 
   // Publish this blueprint
   await db.update(workBlueprintsTable)
-    .set({ status: "published", isActive: true, updatedAt: new Date() })
+    .set({ status: "published", isActive: true, contentHash, updatedAt: new Date() })
     .where(eq(workBlueprintsTable.id, id));
 
   // Create immutable version snapshot
   const versionId = randomUUID();
-  const snapshot  = blueprintToSnapshot({ ...existing, status: "published" });
+  const snapshot  = blueprintToSnapshot({ ...existing, status: "published", contentHash });
 
   await db.insert(blueprintVersionsTable).values({
     id: versionId,
@@ -1682,7 +1709,7 @@ export async function publishBlueprint(
     eventType: "work_blueprint_published",
     resourceType: "work_blueprint",
     resourceId: id,
-    metadata: { versionLabel: existing.version, versionId, notes },
+    metadata: { versionLabel: existing.version, versionId, contentHash, notes },
   });
 
   const published = await getBlueprintById(id, organizationId);
@@ -2023,6 +2050,7 @@ export async function seedRegistryBlueprints(): Promise<void> {
         })
         .where(eq(workBlueprintsTable.id, existingRow.id));
       await seedRegistryBlueprintSections(entry, existingRow.id, now);
+      await updateBlueprintContentHashFromStoredRows(existingRow.id);
       continue;
     }
 
@@ -2066,7 +2094,26 @@ export async function seedRegistryBlueprints(): Promise<void> {
       updatedAt: now,
     });
     await seedRegistryBlueprintSections(entry, blueprintId, now);
+    await updateBlueprintContentHashFromStoredRows(blueprintId);
   }
+}
+
+async function updateBlueprintContentHashFromStoredRows(blueprintId: string): Promise<string> {
+  const blueprintRows = await db
+    .select()
+    .from(workBlueprintsTable)
+    .where(eq(workBlueprintsTable.id, blueprintId))
+    .limit(1);
+  const row = blueprintRows[0];
+  if (!row) throw new Error(`Blueprint ${blueprintId} not found while computing content hash`);
+  const blueprint = mapRow(row);
+  const sections = await getBlueprintSections(blueprintId);
+  const contentHash = computeBlueprintContentHash({ blueprint, sections });
+  await db
+    .update(workBlueprintsTable)
+    .set({ contentHash, updatedAt: new Date() })
+    .where(eq(workBlueprintsTable.id, blueprintId));
+  return contentHash;
 }
 
 function registryContractSeedValues(entry: RegistryEntry, registryOwner: string) {

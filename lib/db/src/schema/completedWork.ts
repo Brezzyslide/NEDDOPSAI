@@ -68,6 +68,8 @@ export const completedWorkTable = pgTable("completed_work", {
   /** Blueprint used to govern execution */
   blueprintId: text("blueprint_id"),
   blueprintVersion: text("blueprint_version"),
+  blueprintContentHash: text("blueprint_content_hash"),
+  blueprintProvenanceStatus: text("blueprint_provenance_status").notNull().default("provenance_unverified"),
   blueprintFamily: text("blueprint_family"),
   blueprintMode: text("blueprint_mode"),
   canonicalIntent: text("canonical_intent"),

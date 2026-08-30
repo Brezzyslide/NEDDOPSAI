@@ -2098,6 +2098,8 @@ export class UnifiedExecutionEngine {
       conversationId: request.conversationId,
       blueprintId: blueprint?.id,
       blueprintVersion: manifest.blueprintVersion ?? blueprint?.version ?? null,
+      blueprintContentHash: blueprint?.contentHash ?? null,
+      blueprintProvenanceStatus: blueprint?.contentHash ? "hash_pinned" : "provenance_unverified",
       blueprintFamily: manifest.blueprintFamily ?? blueprint?.blueprintFamily ?? null,
       blueprintMode: manifest.blueprintMode ?? blueprintContract?.mode ?? null,
       canonicalIntent: manifest.canonicalIntent ?? selectionMeta?.canonicalIntent ?? null,

@@ -201,6 +201,61 @@ describe("createDraft — transaction and insert order", () => {
     expect(second).toHaveProperty("versionNumber", 1);
   });
 
+  it("pins Blueprint content hash provenance on new Completed Work drafts", async () => {
+    setupSelectReturns(fakeRow({
+      blueprintContentHash: "sha256:abc",
+      blueprintProvenanceStatus: "hash_pinned",
+    }));
+
+    await createDraft({
+      organizationId: ORG_ID,
+      primarySpecialist: "operations_manager",
+      title: "Hash pin test",
+      outputType: "policy_draft",
+      contentMarkdown: "Content.",
+      createdByUserId: USER_ID,
+      blueprintId: "bp-001",
+      blueprintVersion: "1.0.0",
+      blueprintContentHash: "sha256:abc",
+    });
+
+    const captured = (mockTx as unknown as { _captured: Record<string, unknown>[][] })._captured;
+    const [parent] = captured.at(-1)!;
+    expect(parent).toMatchObject({
+      blueprintId: "bp-001",
+      blueprintVersion: "1.0.0",
+      blueprintContentHash: "sha256:abc",
+      blueprintProvenanceStatus: "hash_pinned",
+    });
+  });
+
+  it("marks Completed Work provenance unverified when no Blueprint hash is available", async () => {
+    setupSelectReturns(fakeRow({
+      blueprintContentHash: null,
+      blueprintProvenanceStatus: "provenance_unverified",
+    }));
+
+    await createDraft({
+      organizationId: ORG_ID,
+      primarySpecialist: "operations_manager",
+      title: "Legacy provenance test",
+      outputType: "policy_draft",
+      contentMarkdown: "Content.",
+      createdByUserId: USER_ID,
+      blueprintId: "bp-legacy",
+      blueprintVersion: "1.0.0",
+    });
+
+    const captured = (mockTx as unknown as { _captured: Record<string, unknown>[][] })._captured;
+    const [parent] = captured.at(-1)!;
+    expect(parent).toMatchObject({
+      blueprintId: "bp-legacy",
+      blueprintVersion: "1.0.0",
+      blueprintContentHash: null,
+      blueprintProvenanceStatus: "provenance_unverified",
+    });
+  });
+
   it("rolls back both writes when the transaction throws", async () => {
     mockTx.mockRejectedValueOnce(new Error("PostgreSQL 23503 — FK violation"));
 
