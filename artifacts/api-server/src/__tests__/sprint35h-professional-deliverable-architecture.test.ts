@@ -7,6 +7,7 @@ import {
   compileProfessionalExecutionContext,
   buildProfessionalExecutionContextBlock,
   deriveDeliverableStandardisation,
+  derivePlaceholderTokensFromTemplateField,
   deriveProfessionalIntentKey,
   deriveProfessionalOperation,
 } from "../services/professionalExecutionContextService";
@@ -1086,8 +1087,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(carePlan.sections[0].fixedContent).toContain("This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.");
     expect(carePlan.sections[0].fields).toContain("Participant name");
     expect(carePlan.sections[0].completionPrompt).toBe("Record every person who attended the planning meeting and their relationship to the participant. Where reports were used instead, name each report and its date.");
+    expect(carePlan.sections.every((section: any) => (section.fixedContent ?? []).length > 0)).toBe(true);
+    expect(carePlan.sections.every((section: any) => (section.fields ?? []).length > 0)).toBe(true);
+    expect(carePlan.sections.every((section: any) => Boolean(section.completionPrompt))).toBe(true);
     expect(carePlan.sections[8].fixedContent).toContain("Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no behaviour support plan is in place and no behaviours of concern have been identified for this participant. Workers should report any emerging concern to the service manager.");
     expect(carePlan.sections[10].fixedContent).toContain("Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.");
+    expect(carePlan.sections[12].fixedContent.join("\n")).toContain("I have been involved in the development of this Care Plan.");
+    expect(carePlan.sections[13].completionPrompt).toBe("Record the form ID, version and date. The review date must match the date recorded in the plan header.");
 
     const src = source("services/unifiedExecutionEngine.ts");
     expect(src).toContain("Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server");
@@ -1677,6 +1683,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
     const meeting = assembly.sections.find((section) => section.requirementId === "care-plan-support-plan-meeting");
     const goals = assembly.sections.find((section) => section.requirementId === "care-plan-goals");
+    const adl = assembly.sections.find((section) => section.requirementId === "care-plan-undertaking-adl");
     const aboutMe = assembly.sections.find((section) => section.requirementId === "care-plan-about-me");
 
     expect(assembly.sections).toHaveLength(14);
@@ -1688,6 +1695,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(goals?.content.match(/\[CURRENT_SITUATION_\d+\]/g)).toHaveLength(3);
     expect(goals?.content).toContain("| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |");
     expect(goals?.content).not.toContain("table above");
+    expect(adl?.content).toContain("| Activity | Support level | What the worker does |");
+    expect(adl?.content.match(/\| [^|\n]+ \| \[SUPPORT_LEVEL_[A-Z0-9_]+\] \| \[WHAT_THE_WORKER_DOES_[A-Z0-9_]+\] \|/g)).toHaveLength(26);
+    expect(adl?.content).toContain("| Personal hygiene and grooming | [SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING] | [WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING] |");
+    expect(adl?.content).toContain("| Decision-making relating to daily activities | [SUPPORT_LEVEL_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES] | [WHAT_THE_WORKER_DOES_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES] |");
+    expect(derivePlaceholderTokensFromTemplateField(
+      blueprint.sections?.find((section: any) => section.sectionCode === "UNDERTAKING_ADL")?.fields?.[0] ?? "",
+    )).toEqual(["[ACTIVITY]", "[SUPPORT_LEVEL]", "[WHAT_THE_WORKER_DOES]"]);
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-goals")?.content).toBe("");
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-undertaking-adl")?.content).toBe("");
     expect(aboutMe?.content.indexOf("This section is about who the participant is")).toBeLessThan(

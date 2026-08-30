@@ -1749,10 +1749,14 @@ function templateFieldIsRepresented(field: string, content: string): boolean {
 
   const tableColumns = field.match(/table with columns\s+(.+)/i);
   if (tableColumns) {
-    const columns = (tableColumns[1] ?? "")
+    const columns = (tableColumns[1] ?? "").split(",")[0]!
       .split("|")
       .map((column) => normaliseContent(column))
       .filter(Boolean);
+    if (columns.join("|") === "activity|support level|what the worker does") {
+      const activityRows = (content.match(/\|\s*[^|\n]+\s*\|\s*\[SUPPORT_LEVEL_[A-Z0-9_]+\]\s*\|\s*\[WHAT_THE_WORKER_DOES_[A-Z0-9_]+\]\s*\|/g) ?? []).length;
+      return activityRows >= 26;
+    }
     return columns.every((column) => normalisedContent.includes(column));
   }
 

@@ -301,6 +301,7 @@ export interface ExecuteWorkResult {
   validationResult?: ValidationResult;
   message: string;
   clarificationQuestions?: string[];
+  failureMetadata?: Record<string, unknown>;
 }
 
 interface GeneratedProfessionalDraft {
@@ -2006,6 +2007,11 @@ export class UnifiedExecutionEngine {
         manifestId: manifest.id,
         blueprintCode: blueprint?.code,
         message: `Blueprint completion gates blocked this work: ${blockingMessage}`,
+        failureMetadata: {
+          failedStage: "completion_gates",
+          gateFailures: runtimeGate.failures,
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+        },
         clarificationQuestions: runtimeGate.failures
           .filter((failure) => failure.state === "awaiting_clarification")
           .map((failure) => failure.message),
@@ -2207,6 +2213,11 @@ export class UnifiedExecutionEngine {
           manifestId: manifest.id,
           blueprintCode: blueprint?.code,
           message: `Blueprint completion gates blocked this work after artifact generation: ${blockingMessage}`,
+          failureMetadata: {
+            failedStage: "post_artifact_completion_gates",
+            gateFailures: artifactGate.failures,
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          },
           clarificationQuestions: artifactGate.failures
             .filter((failure) => failure.state === "awaiting_clarification")
             .map((failure) => failure.message),

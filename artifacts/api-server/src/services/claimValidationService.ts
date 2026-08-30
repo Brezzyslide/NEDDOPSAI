@@ -673,9 +673,17 @@ function renderScalarTemplateFields(fields: string[]): string {
 }
 
 function renderStructuredTemplateField(field: string): string {
+  if (/table with columns\s+activity\s*\|\s*support level\s*\|\s*what the worker does/i.test(field)) {
+    return renderMarkdownRows(["Activity", "Support level", "What the worker does"], CARE_PLAN_ADL_ACTIVITY_ROWS.map((activity) => [
+      activity,
+      `[SUPPORT_LEVEL_${placeholderToken(activity)}]`,
+      `[WHAT_THE_WORKER_DOES_${placeholderToken(activity)}]`,
+    ]));
+  }
+
   const table = field.match(/table with columns\s+(.+)/i);
   if (table) {
-    const columns = (table[1] ?? "")
+    const columns = (table[1] ?? "").split(",")[0]!
       .split("|")
       .map((column) => column.trim())
       .filter(Boolean);
@@ -710,6 +718,35 @@ function renderStructuredTemplateField(field: string): string {
 function isStructuredTemplateField(field: string): boolean {
   return /table with columns|minimum three personal goal rows|support types selected from|description per selected type|:\s*[^:]+,\s*[^:]+/i.test(field);
 }
+
+const CARE_PLAN_ADL_ACTIVITY_ROWS = [
+  "Personal hygiene and grooming",
+  "Showering and bathing",
+  "Dressing and undressing",
+  "Toileting and continence",
+  "Oral hygiene",
+  "Eating and drinking",
+  "Meal preparation",
+  "Medication management",
+  "Mobility within the home",
+  "Transfers and positioning",
+  "Bedtime and morning routines",
+  "Household cleaning",
+  "Laundry and clothing care",
+  "Making and changing bedding",
+  "Shopping for essential items",
+  "Managing personal belongings",
+  "Using household appliances",
+  "Maintaining a safe home environment",
+  "Managing daily routines",
+  "Time awareness and task initiation",
+  "Attending appointments",
+  "Community access",
+  "Transport and travel",
+  "Money handling and everyday purchases",
+  "Communication of daily needs",
+  "Decision-making relating to daily activities",
+] as const;
 
 function renderMarkdownTable(columns: string[], rowCount: number): string {
   const rows = Array.from({ length: rowCount }, (_, rowIndex) =>

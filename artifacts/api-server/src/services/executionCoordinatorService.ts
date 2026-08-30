@@ -756,6 +756,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         organizationId,
         errorMessage: result.message,
         correlationId,
+        failureMetadata: result.failureMetadata,
       }).catch(() => {});
       if (!conversationId) return;
       const humanLabel = result.outcome === "execution_principal_missing"

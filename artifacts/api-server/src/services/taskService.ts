@@ -688,6 +688,7 @@ export async function reconcileTaskExecutionFailure(input: {
   organizationId: string;
   errorMessage?: string;
   correlationId?: string;
+  failureMetadata?: Record<string, unknown>;
 }): Promise<{ status: "failed" | "cancelled" | "not_applicable" | "not_found"; task?: typeof tasksTable.$inferSelect }> {
   if (!input.taskId) return { status: "not_applicable" };
   const task = await getTaskById(input.taskId, input.organizationId);
@@ -703,6 +704,7 @@ export async function reconcileTaskExecutionFailure(input: {
           errorMessage: input.errorMessage,
           correlationId: input.correlationId,
           failedAt: new Date().toISOString(),
+          ...(input.failureMetadata ?? {}),
         },
       }),
       updatedAt: new Date(),

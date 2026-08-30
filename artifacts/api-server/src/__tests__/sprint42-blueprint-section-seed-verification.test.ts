@@ -149,6 +149,9 @@ describe("Blueprint section registry seed verification", () => {
     await seedRegistryBlueprintSections(carePlan, "blueprint-care-plan", new Date("2026-08-30T00:00:00Z"));
 
     expect(seededSections.size).toBe(14);
+    expect((carePlan.sections ?? []).every((section) => (section.fixedContent ?? []).length > 0)).toBe(true);
+    expect((carePlan.sections ?? []).every((section) => (section.fields ?? []).length > 0)).toBe(true);
+    expect((carePlan.sections ?? []).every((section) => Boolean(section.completionPrompt))).toBe(true);
     for (const section of carePlan.sections ?? []) {
       const id = `platform_blueprint_care_plan_section_${section.sectionCode.toLowerCase()}`;
       const row = seededSections.get(id);

@@ -470,6 +470,10 @@ function deriveTemplateFieldPlaceholders(blueprint: WorkBlueprint | null): strin
 }
 
 export function derivePlaceholderTokensFromTemplateField(field: string): string[] {
+  if (/table with columns\s+activity\s*\|\s*support level\s*\|\s*what the worker does/i.test(field)) {
+    return ["[ACTIVITY]", "[SUPPORT_LEVEL]", "[WHAT_THE_WORKER_DOES]"];
+  }
+
   const source = field.includes(":") ? field.split(":").slice(1).join(":") : field;
   const labels = source.split(/,|\||—/);
   return uniquePlaceholders(labels.flatMap((label) => {

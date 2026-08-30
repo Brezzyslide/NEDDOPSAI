@@ -821,6 +821,7 @@ async function startAwsNativeExecution(input: {
           organizationId: input.task.organizationId,
           errorMessage: result.message,
           correlationId: input.pkg.executionId,
+          failureMetadata: result.failureMetadata,
         });
       } else {
         await db

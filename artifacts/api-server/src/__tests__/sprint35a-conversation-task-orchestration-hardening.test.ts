@@ -72,6 +72,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("export async function reconcileTaskExecutionFailure");
     expect(src).toContain('currentState: "failed"');
     expect(src).toContain('if (task.currentState === "cancelled")');
+    expect(src).toContain("failureMetadata?: Record<string, unknown>");
+    expect(src).toContain("...(input.failureMetadata ?? {})");
   });
 
   it("dispatchWorkExecution claims the task before emitting execution start", () => {
@@ -106,6 +108,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const src = source("services/executionCoordinatorService.ts");
 
     expect(src).toContain("reconcileTaskExecutionFailure({");
+    expect(src).toContain("failureMetadata: result.failureMetadata");
     expect(src).toContain("if (!conversationId) return;");
   });
 

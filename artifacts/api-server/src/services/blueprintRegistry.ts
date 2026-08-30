@@ -3317,10 +3317,13 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
   undertakingAdl: {
     fixedContent: [
       "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated.",
-      "Each activity is recorded against one of three tiers: does independently, needs prompting or supervision, needs hands-on support.",
+      "Each activity below is recorded against one support level. Where an activity requires a specific strategy, that strategy is recorded in the section that governs it — mobility and transfers in Mobility and Mobility Strategy, meal preparation and eating in Mealtime Management Strategy, and medication in the participant's health support plan. This section records the level of support required, not the clinical or specialist strategy.",
+      "Support levels: Independent — completes the activity safely and effectively without assistance. Independent with prompting — physically completes the activity but requires verbal, visual or gestural prompts, reminders or task initiation. Independent with supervision — completes the activity but requires another person to remain available or observe for safety. Partial physical assistance — completes part of the activity but requires hands-on assistance for specific components. Full physical assistance — requires hands-on support for most or all of the activity. Unable to complete — cannot currently undertake the activity, even with ordinary prompting or supervision, without another person completing it. Not applicable / not assessed — activity is not relevant or sufficient information is unavailable.",
     ],
-    fields: [],
-    completionPrompt: "For each activity, record which tier applies and describe what the worker does.",
+    fields: [
+      "Table with columns Activity | Support level | What the worker does, emitted deterministically with rows: Personal hygiene and grooming / Showering and bathing / Dressing and undressing / Toileting and continence / Oral hygiene / Eating and drinking / Meal preparation / Medication management / Mobility within the home / Transfers and positioning / Bedtime and morning routines / Household cleaning / Laundry and clothing care / Making and changing bedding / Shopping for essential items / Managing personal belongings / Using household appliances / Maintaining a safe home environment / Managing daily routines / Time awareness and task initiation / Attending appointments / Community access / Transport and travel / Money handling and everyday purchases / Communication of daily needs / Decision-making relating to daily activities",
+    ],
+    completionPrompt: "Record a support level for every activity. Where the level is anything other than Independent or Not applicable, describe what the worker does. Do not leave an activity blank — use Not assessed and say why.",
   },
   communicationStrategy: {
     fixedContent: [
@@ -3371,7 +3374,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
     ],
     fields: ["Practice type", "What it is in plain language", "What the worker does", "What the worker must not do", "Authorisation status and reference", "Recording requirement"],
-    completionPrompt: null,
+    completionPrompt: "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where none are in place, state so and name the source document.",
   },
   mealtimeManagementStrategy: {
     fixedContent: [
@@ -3380,7 +3383,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
     ],
     fields: ["Source risk assessment and date", "Food texture", "Fluid consistency", "Positioning", "Supervision level", "Equipment", "Worker actions"],
-    completionPrompt: null,
+    completionPrompt: "Record the strategy exactly as set out in the mealtime management risk assessment. Where no hands-on strategy is required, state so and describe what support does apply.",
   },
   disasterManagementStrategy: {
     fixedContent: [
@@ -3394,16 +3397,18 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
     completionPrompt: "State the participant-specific arrangements. Do not reproduce the site emergency plan.",
   },
   clientEndorsement: {
-    fixedContent: [],
-    fields: ["Participant or representative name", "Relationship", "Signature", "Date", "Plan provided to", "Consent obtained"],
-    completionPrompt: "Where the participant cannot sign, record who signed on their behalf and their authority to do so.",
+    fixedContent: [
+      "I have been involved in the development of this Care Plan. My needs, preferences, choices and goals have been considered, and I agree with the supports outlined in this plan.",
+    ],
+    fields: ["Participant or representative name", "Relationship to participant", "Signature", "Date", "Plan provided to", "Consent form reference and date"],
+    completionPrompt: "Where the participant cannot sign, record who signed on their behalf and their authority to do so. List everyone the plan is provided to, and reference the consent form completed at intake.",
   },
   documentControl: {
     fixedContent: [
       "Uncontrolled when printed. The current version of this document is held in the provider's document management system.",
     ],
     fields: ["Form ID", "Version", "Date", "Next review date"],
-    completionPrompt: null,
+    completionPrompt: "Record the form ID, version and date. The review date must match the date recorded in the plan header.",
   },
 };
 
