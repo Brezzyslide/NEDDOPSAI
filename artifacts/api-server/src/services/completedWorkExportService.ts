@@ -326,27 +326,37 @@ export class PdfExporter {
             const rows = node.children ?? [];
             if (rows.length === 0) break;
             const colCount = rows[0]?.children?.length ?? 1;
-            const colWidth = (pdf.page.width - 144) / colCount;
+            const tableX = 72;
+            const tableWidth = pdf.page.width - 144;
+            const colWidths = calculatePdfTableColumnWidths(rows, tableWidth, colCount);
             let tableY = pdf.y;
             for (let ri = 0; ri < rows.length; ri++) {
               const row = rows[ri]!;
               const cells = row.children ?? [];
               const isHeader = ri === 0;
-              if (isHeader) {
-                pdf.rect(72, tableY, pdf.page.width - 144, 18).fill("#eeeeee");
+              const rowHeight = calculatePdfTableRowHeight(pdf, cells, colWidths, isHeader);
+              if (tableY + rowHeight > pdf.page.height - 72) {
+                pdf.addPage();
+                tableY = 72;
               }
-              let cellX = 72;
-              for (const cell of cells) {
+              if (isHeader) {
+                pdf.rect(tableX, tableY, tableWidth, rowHeight).fill("#eeeeee");
+              }
+              let cellX = tableX;
+              for (let ci = 0; ci < colCount; ci++) {
+                const cell = cells[ci];
+                const colWidth = colWidths[ci] ?? tableWidth / colCount;
                 pdf.fillColor("#000000")
                    .font(isHeader ? "Helvetica-Bold" : "Helvetica")
                    .fontSize(9)
-                   .text(cell.content ?? "", cellX + 4, tableY + 4, {
-                     width: colWidth - 8, height: 14, ellipsis: true,
+                   .text(cell?.content ?? "", cellX + 4, tableY + 4, {
+                     width: colWidth - 8,
+                     lineGap: 1,
                    });
-                pdf.rect(cellX, tableY, colWidth, 18).stroke("#cccccc");
+                pdf.rect(cellX, tableY, colWidth, rowHeight).stroke("#cccccc");
                 cellX += colWidth;
               }
-              tableY += 18;
+              tableY += rowHeight;
             }
             pdf.y = tableY;
             pdf.moveDown(0.5);
@@ -378,6 +388,43 @@ export class PdfExporter {
       pdf.end();
     });
   }
+}
+
+function calculatePdfTableColumnWidths(
+  rows: DocumentNode[],
+  tableWidth: number,
+  colCount: number,
+): number[] {
+  const minimumWidth = Math.min(72, tableWidth / Math.max(colCount, 1));
+  const weights = Array.from({ length: colCount }, (_, columnIndex) => {
+    const longest = Math.max(
+      1,
+      ...rows.map((row) => (row.children?.[columnIndex]?.content ?? "").length),
+    );
+    return Math.max(minimumWidth, Math.sqrt(longest) * 18);
+  });
+  const minimumTotal = minimumWidth * colCount;
+  if (minimumTotal >= tableWidth) return Array.from({ length: colCount }, () => tableWidth / colCount);
+
+  const flexibleWidth = tableWidth - minimumTotal;
+  const flexibleWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map((weight) => minimumWidth + (weight / flexibleWeight) * flexibleWidth);
+}
+
+function calculatePdfTableRowHeight(
+  pdf: PDFKit.PDFDocument,
+  cells: DocumentNode[],
+  colWidths: number[],
+  isHeader: boolean,
+): number {
+  pdf.font(isHeader ? "Helvetica-Bold" : "Helvetica").fontSize(9);
+  const heights = colWidths.map((colWidth, index) =>
+    pdf.heightOfString(cells[index]?.content ?? "", {
+      width: colWidth - 8,
+      lineGap: 1,
+    }) + 8,
+  );
+  return Math.max(20, ...heights);
 }
 
 // ─── DOCX Exporter ────────────────────────────────────────────────────────────

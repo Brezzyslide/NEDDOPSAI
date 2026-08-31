@@ -355,6 +355,37 @@ describe("PdfExporter", () => {
     }
   });
 
+  it("wraps goals and ADL table cells in PDF without ellipsis clipping", async () => {
+    const { PDFParse } = await import("pdf-parse");
+    const doc = makeDoc({
+      title: "Care Plan Tables",
+      nodes: parseMarkdown([
+        "# Care Plan Tables",
+        "",
+        "| Goal | Current Situation | Person Responsible | Strategy | Review Date | Evidence |",
+        "| --- | --- | --- | --- | --- | --- |",
+        "| [GOAL_1] | [CURRENT_SITUATION_FOR_GOAL_1] | [PERSON_RESPONSIBLE_FOR_GOAL_1] | [STRATEGY_FOR_GOAL_1] | [REVIEW_DATE_FOR_GOAL_1] | [EVIDENCE_FOR_GOAL_1] |",
+        "",
+        "| Activity | Support Level | What the Worker Does |",
+        "| --- | --- | --- |",
+        "| Personal hygiene and grooming | [SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING] | [WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING] |",
+      ].join("\n")),
+    });
+
+    const result = await exporter.export(doc);
+    const parser = new PDFParse({ data: new Uint8Array(result.buffer) });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    const compactText = parsed.text.replace(/\s+/g, "");
+
+    expect(compactText).not.toContain("…");
+    expect(compactText).not.toContain("...");
+    expect(compactText).toContain("[CURRENT_SITUATION_FOR_GOAL_1]");
+    expect(compactText).toContain("[PERSON_RESPONSIBLE_FOR_GOAL_1]");
+    expect(compactText).toContain("[SUPPORT_LEVEL_PERSONAL_HYGIENE_AND_GROOMING]");
+    expect(compactText).toContain("[WHAT_THE_WORKER_DOES_PERSONAL_HYGIENE_AND_GROOMING]");
+  });
+
   it("handles heading-only document", async () => {
     const doc = makeDoc({ nodes: [{ type: "heading", level: 1, content: "Title Only" }] });
     const result = await exporter.export(doc);
