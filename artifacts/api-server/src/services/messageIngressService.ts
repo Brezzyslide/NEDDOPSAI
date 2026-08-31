@@ -927,6 +927,8 @@ async function maybeHandleDeterministicControl(input: {
       });
       response = result.status === "modified"
         ? `Updated the task specification for "${result.taskTitle ?? "that task"}" and moved it back into planning so the change is handled explicitly.`
+        : result.status === "not_modified"
+          ? `I could not update "${result.taskTitle ?? "that task"}". ${result.reason ?? "The task state did not allow modification."}`
         : "That task is already complete or cancelled, so I did not rewrite it. Create a revision task if you want to change the completed record.";
       break;
     }

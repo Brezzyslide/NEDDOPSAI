@@ -826,7 +826,7 @@ export async function modifyTaskFromConversation(input: {
   taskId: string;
   actorUserId: string;
   changeRequest: string;
-}): Promise<{ status: "modified" | "needs_revision_task"; taskId: string; taskTitle?: string }> {
+}): Promise<{ status: "modified" | "needs_revision_task" | "not_modified"; taskId: string; taskTitle?: string; reason?: string }> {
   const result = await recordTaskModification({
     taskId: input.taskId,
     organizationId: input.organizationId,
@@ -847,7 +847,7 @@ export async function modifyTaskFromConversation(input: {
       changeRequest: input.changeRequest.slice(0, 500),
     },
   }).catch(() => {});
-  return { status: result.status, taskId: input.taskId, taskTitle: result.task.title };
+  return { status: result.status, taskId: input.taskId, taskTitle: result.task.title, reason: result.reason };
 }
 
 export async function resolveSingleApproval(input: {

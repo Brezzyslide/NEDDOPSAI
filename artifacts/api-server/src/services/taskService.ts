@@ -48,13 +48,13 @@ const VALID_TRANSITIONS: Record<TaskState, TaskState[]> = {
   draft: ["queued", "cancelled"],
   queued: ["planning", "executing", "cancelled"],
   planning: ["awaiting_approval", "approved", "cancelled"],
-  awaiting_approval: ["approved", "cancelled", "failed"],
-  evidence_required: ["queued", "cancelled", "failed"],
-  approved: ["executing", "cancelled"],
-  executing: ["completed", "evidence_required", "failed", "cancelled"],
+  awaiting_approval: ["planning", "approved", "cancelled", "failed"],
+  evidence_required: ["planning", "queued", "cancelled", "failed"],
+  approved: ["planning", "awaiting_approval", "executing", "cancelled"],
+  executing: ["awaiting_approval", "completed", "evidence_required", "failed", "cancelled"],
   completed: [],
   cancelled: [],
-  failed: ["queued"],
+  failed: ["planning", "queued", "awaiting_approval"],
 };
 
 export function isValidTransition(from: TaskState, to: TaskState): boolean {
@@ -404,13 +404,15 @@ export async function transitionTaskState(
   taskId: string,
   organizationId: string,
   to: TaskState,
+  updates: Partial<typeof tasksTable.$inferInsert> = {},
 ): Promise<typeof tasksTable.$inferSelect> {
   const task = await getTaskById(taskId, organizationId);
   if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
 
   const from = task.currentState as TaskState;
-  if (from === to) return task;
-  if (!isValidTransition(from, to)) {
+  const hasUpdates = Object.keys(updates).length > 0;
+  if (from === to && !hasUpdates) return task;
+  if (from !== to && !isValidTransition(from, to)) {
     throw Object.assign(
       new Error(`Cannot transition task from '${from}' to '${to}'`),
       { code: "VALIDATION_ERROR" },
@@ -419,7 +421,7 @@ export async function transitionTaskState(
 
   const [updated] = await db
     .update(tasksTable)
-    .set({ currentState: to, updatedAt: new Date() })
+    .set({ ...updates, currentState: to, updatedAt: new Date() })
     .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
     .returning();
 
@@ -534,7 +536,7 @@ export async function requestTaskApprovalGate(input: {
   completedWorkId?: string;
   completedWorkStatus?: string;
   correlationId?: string;
-}): Promise<{ status: "pending_approval" | "cancelled" | "completed" | "not_required" | "not_applicable" | "not_found"; task?: typeof tasksTable.$inferSelect; approval?: Awaited<ReturnType<typeof createApproval>> }> {
+}): Promise<{ status: "pending_approval" | "cancelled" | "completed" | "not_required" | "not_applicable" | "not_found" | "not_ready"; task?: typeof tasksTable.$inferSelect; approval?: Awaited<ReturnType<typeof createApproval>>; reason?: string }> {
   if (!input.taskId) return { status: "not_applicable" };
   const task = await getTaskById(input.taskId, input.organizationId);
   if (!task) return { status: "not_found" };
@@ -559,10 +561,8 @@ export async function requestTaskApprovalGate(input: {
     notes: input.notes ?? `Approval required before finalising task: ${task.title}`,
   });
 
-  const [updated] = await db
-    .update(tasksTable)
-    .set({
-      currentState: "awaiting_approval",
+  try {
+    const updated = await transitionTaskState(input.taskId, input.organizationId, "awaiting_approval", {
       approvalState: "pending_approval",
       metadata: mergeTaskMetadata(task.metadata, {
         approvalGate: {
@@ -574,16 +574,19 @@ export async function requestTaskApprovalGate(input: {
           requestedAt: new Date().toISOString(),
         },
       }),
-      updatedAt: new Date(),
-    })
-    .where(and(
-      eq(tasksTable.id, input.taskId),
-      eq(tasksTable.organizationId, input.organizationId),
-      inArray(tasksTable.currentState, ["approved", "executing", "failed", "planning"]),
-    ))
-    .returning();
-
-  return { status: "pending_approval", task: updated ?? task, approval };
+    });
+    return { status: "pending_approval", task: updated, approval };
+  } catch (err) {
+    const latest = await getTaskById(input.taskId, input.organizationId);
+    if (latest?.currentState === "cancelled") return { status: "cancelled", task: latest };
+    if (latest?.currentState === "completed") return { status: "completed", task: latest };
+    return {
+      status: "not_ready",
+      task: latest ?? task,
+      approval,
+      reason: err instanceof Error ? err.message : "Task could not enter approval.",
+    };
+  }
 }
 
 export async function reconcileTaskExecutionSuccess(input: {
@@ -593,7 +596,7 @@ export async function reconcileTaskExecutionSuccess(input: {
   completedWorkStatus?: string;
   correlationId?: string;
   requestedByUserId?: string;
-}): Promise<{ status: "completed" | "cancelled" | "awaiting_approval" | "not_applicable" | "not_found"; task?: typeof tasksTable.$inferSelect }> {
+}): Promise<{ status: "completed" | "cancelled" | "awaiting_approval" | "not_applicable" | "not_found" | "approval_not_ready"; task?: typeof tasksTable.$inferSelect; reason?: string }> {
   if (!input.taskId) return { status: "not_applicable" };
   const task = await getTaskById(input.taskId, input.organizationId);
   if (!task) return { status: "not_found" };
@@ -613,6 +616,8 @@ export async function reconcileTaskExecutionSuccess(input: {
       return { status: "awaiting_approval", task: approvalGate.task };
     }
     if (approvalGate.status === "cancelled") return { status: "cancelled", task: approvalGate.task };
+    if (approvalGate.status === "completed") return { status: "completed", task: approvalGate.task };
+    if (approvalGate.status === "not_ready") return { status: "approval_not_ready", task: approvalGate.task, reason: approvalGate.reason };
   }
 
   const [updated] = await db
@@ -746,7 +751,7 @@ export async function recordTaskModification(input: {
   actorUserId: string;
   changeRequest: string;
   conversationId?: string;
-}): Promise<{ status: "modified" | "needs_revision_task"; task: typeof tasksTable.$inferSelect }> {
+}): Promise<{ status: "modified" | "needs_revision_task" | "not_modified"; task: typeof tasksTable.$inferSelect; reason?: string }> {
   const task = await getTaskById(input.taskId, input.organizationId);
   if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
   if (TERMINAL_TASK_STATES.has(task.currentState as TaskState)) {
@@ -801,19 +806,21 @@ export async function recordTaskModification(input: {
   });
 
   const nextState: TaskState = task.currentState === "executing" ? "failed" : "planning";
-  const [updated] = await db
-    .update(tasksTable)
-    .set({
-      currentState: nextState,
+  try {
+    const updated = await transitionTaskState(input.taskId, input.organizationId, nextState, {
       description: updatedSpecification,
       approvalState: refreshedPlan.requiresApproval ? "required" : "not_required",
       metadata: mergeTaskMetadata(nextMetadata, buildApprovalRequirement(refreshedPlan)),
-      updatedAt: new Date(),
-    })
-    .where(and(eq(tasksTable.id, input.taskId), eq(tasksTable.organizationId, input.organizationId)))
-    .returning();
-
-  return { status: "modified", task: updated ?? task };
+    });
+    return { status: "modified", task: updated };
+  } catch (err) {
+    const latest = await getTaskById(input.taskId, input.organizationId);
+    return {
+      status: "not_modified",
+      task: latest ?? task,
+      reason: err instanceof Error ? err.message : "Task could not be modified.",
+    };
+  }
 }
 
 export async function getTaskPlan(

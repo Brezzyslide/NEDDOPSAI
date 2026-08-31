@@ -703,6 +703,29 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         ).catch(err => console.warn("[ExecutionCoordinator] Approval request message failed:", err?.message));
         return;
       }
+      if (reconciliation.status === "approval_not_ready") {
+        const message = reconciliation.reason ?? "Work was created, but the task could not be moved into pending approval.";
+        await logOrgEvent({
+          eventType: "execution_coordinator.approval_reconciliation_failed",
+          organizationId,
+          actorType: "system",
+          resourceType: "task",
+          resourceId: taskId ?? "unknown",
+          metadata: { correlationId, completedWorkId: result.completedWorkId, reason: message },
+        }).catch(() => {});
+        if (!conversationId) return;
+        emitExecutionEvent(conversationId, {
+          type: "execution_failed",
+          conversationId,
+          correlationId,
+          organizationId,
+          humanLabel: "Work could not be submitted for approval.",
+          errorMessage: message,
+        });
+        await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", message, correlationId)
+          .catch(() => {});
+        return;
+      }
       if (!conversationId) {
         if (input.intentId) {
           await db

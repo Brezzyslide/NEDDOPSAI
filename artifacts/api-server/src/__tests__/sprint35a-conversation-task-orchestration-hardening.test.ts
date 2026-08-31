@@ -35,9 +35,10 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("export async function requestTaskApprovalGate");
     expect(src).toContain("getPendingApprovalForTask");
     expect(src).toContain("await createApproval({");
-    expect(src).toContain('currentState: "awaiting_approval"');
+    expect(src).toContain('transitionTaskState(input.taskId, input.organizationId, "awaiting_approval"');
     expect(src).toContain('approvalState: "pending_approval"');
     expect(src).toContain("approvalType: plan.approvalType");
+    expect(src).toContain('status: "not_ready"');
   });
 
   it("does not dispatch legacy specialist runs directly from taskService", () => {
@@ -275,8 +276,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(shared).toContain('"evidence_required"');
     expect(dbSchema).toContain('"evidence_required"');
-    expect(taskService).toContain('executing: ["completed", "evidence_required", "failed", "cancelled"]');
-    expect(taskService).toContain('evidence_required: ["queued", "cancelled", "failed"]');
+    expect(taskService).toContain('executing: ["awaiting_approval", "completed", "evidence_required", "failed", "cancelled"]');
+    expect(taskService).toContain('evidence_required: ["planning", "queued", "cancelled", "failed"]');
     expect(coordinator).toContain('transitionTaskState(taskId, organizationId, "evidence_required")');
     expect(activeExecutions).toContain('"evidence_required"');
     expect(migration).toContain("ALTER TYPE task_state ADD VALUE IF NOT EXISTS 'evidence_required'");
@@ -386,10 +387,11 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     const gateIndex = src.indexOf("export async function requestTaskApprovalGate");
     const approvalIndex = src.indexOf("await createApproval({", gateIndex);
-    const stateIndex = src.indexOf('currentState: "awaiting_approval"', gateIndex);
+    const stateIndex = src.indexOf('transitionTaskState(input.taskId, input.organizationId, "awaiting_approval"', gateIndex);
     expect(gateIndex).toBeGreaterThan(-1);
     expect(approvalIndex).toBeGreaterThan(gateIndex);
     expect(stateIndex).toBeGreaterThan(approvalIndex);
+    expect(src.indexOf('status: "not_ready"', gateIndex)).toBeGreaterThan(stateIndex);
   });
 
   it("approval-required completed work pauses task completion at awaiting approval", () => {
