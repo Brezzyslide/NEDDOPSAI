@@ -11,6 +11,10 @@ import {
 import {
   compileProfessionalExecutionContext,
 } from "../services/professionalExecutionContextService";
+import {
+  deriveDeliverableRequirementCoverageProfile,
+  evaluateDeliverableRequirementCoverage,
+} from "../services/deliverableRequirementCoverageService";
 import { validateWorkPackage } from "../services/workValidationService";
 import type { EvidencePack } from "../services/knowledgeResolutionService";
 import type { BlueprintExecutionContract, WorkBlueprint } from "../services/workBlueprintService";
@@ -313,6 +317,42 @@ describe("Sprint 38 Batch One gate fixes", () => {
     )).toBe(true);
     expect(gate.failures.find((failure) => failure.gate === "professional_placeholder")?.details)
       .not.toEqual(expect.arrayContaining(["[PARTICIPANT_NAME]", "[NDIS_NUMBER]"]));
+  });
+
+  it("fails coverage when structured sections contain 14 sections but persisted markdown contains only 5", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const request = "Create a standard comprehensive NDIS Care Plan template.";
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: request,
+      manifest: manifest(),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract(blueprint));
+    const fullStructuredSections = profile.requirements.slice(0, 14).map((requirement, index) => ({
+      requirementId: requirement.id,
+      heading: `Section ${index + 1}`,
+      content: [
+        `Complete structured content for ${requirement.description}.`,
+        ...(requirement.templateCriteria.length > 0 ? requirement.templateCriteria : requirement.adequacyCriteria),
+      ].join(" "),
+    }));
+    const truncatedMarkdown = fullStructuredSections.slice(0, 5)
+      .map((section) => `## ${section.heading}\n\n${section.content}`)
+      .join("\n\n");
+
+    const coverage = evaluateDeliverableRequirementCoverage(truncatedMarkdown, profile, {
+      deliverableSections: fullStructuredSections,
+    });
+
+    expect(coverage.missing).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        requirementId: "__deliverable_section_integrity__",
+        reason: expect.stringContaining("markdown section count (5) does not match structured deliverable section count (14)"),
+      }),
+    ]));
+    expect(coverage.missingCount).toBeGreaterThan(0);
   });
 
   it("keeps participant-specific placeholder enforcement strict even for declared care-plan fields", () => {

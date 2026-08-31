@@ -332,11 +332,14 @@ export function evaluateDeliverableRequirementCoverage(
   profile: DeliverableRequirementCoverageProfile,
   options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
 ): DeliverableRequirementCoverageReport {
-  const failures: DeliverableRequirementCoverageFailure[] = [];
   const normalisedContent = normaliseContent(contentMarkdown);
   const structure = parseMarkdownStructure(contentMarkdown);
   const structuredSections = normaliseDeliverableSections(options.deliverableSections);
-  const structuredSectionsProvided = structuredSections.size > 0;
+  const failures: DeliverableRequirementCoverageFailure[] = buildDeliverableSectionIntegrityFailures(
+    profile,
+    structure,
+    structuredSections,
+  );
   const plan = buildRequirementToDeliverablePlan(profile);
   const schema = buildDeliverableOutputSchema(profile);
   const classificationCounts = Object.fromEntries(
@@ -355,8 +358,8 @@ export function evaluateDeliverableRequirementCoverage(
       normalisedContent,
       structure,
       schema,
-      structuredSection: structuredSections.get(requirement.id) ?? null,
-      structuredSectionsProvided,
+      structuredSection: null,
+      structuredSectionsProvided: false,
     });
     requirementResults.push(result);
     if (result.finalResult === "SATISFIED") {
@@ -405,6 +408,52 @@ export function evaluateDeliverableRequirementCoverage(
     plan,
     requirementResults,
     missing: failures,
+  };
+}
+
+function buildDeliverableSectionIntegrityFailures(
+  profile: DeliverableRequirementCoverageProfile,
+  structure: MarkdownStructure,
+  structuredSections: Map<string, PerRequirementDeliverableSection>,
+): DeliverableRequirementCoverageFailure[] {
+  if (structuredSections.size === 0) return [];
+
+  const markdownSections = structure.sections.filter((section) => section.title !== "Document");
+  const failures: DeliverableRequirementCoverageFailure[] = [];
+  if (markdownSections.length !== structuredSections.size) {
+    failures.push(deliverableSectionIntegrityFailure(
+      `Assembled markdown section count (${markdownSections.length}) does not match structured deliverable section count (${structuredSections.size}) for ${profile.deliverableType}. Coverage must validate the persisted artifact markdown.`,
+    ));
+  }
+
+  const normalisedMarkdown = normaliseContent(markdownSections
+    .map((section) => `${section.title}\n${section.content}`)
+    .join("\n\n"));
+  const missingStructuredSections = Array.from(structuredSections.values())
+    .filter((section) => !normalisedMarkdown.includes(normaliseContent(section.heading)) ||
+      !normalisedMarkdown.includes(normaliseContent(section.content)));
+  if (missingStructuredSections.length > 0) {
+    failures.push(deliverableSectionIntegrityFailure(
+      `Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): ${missingStructuredSections.map((section) => section.requirementId).join(", ")}.`,
+    ));
+  }
+
+  return failures;
+}
+
+function deliverableSectionIntegrityFailure(reason: string): DeliverableRequirementCoverageFailure {
+  return {
+    requirementId: "__deliverable_section_integrity__",
+    requirement: "Persisted deliverable markdown must match the structured deliverable sections used during execution.",
+    classification: "QUALITY_CONTROL",
+    requiredDeliverableRepresentation: "The shipped markdown artifact contains the same complete section set as the structured deliverable.",
+    expectedRepresentation: "Structured deliverable section side-channel may inform parsing but must not substitute for the persisted artifact.",
+    actualLocation: null,
+    structuralResult: "STRUCTURE_FAIL",
+    substantiveResult: "SUBSTANTIVE_FAIL",
+    substantiveValidationMode: "FALLBACK_HEURISTIC",
+    finalResult: "NOT_SATISFIED",
+    reason,
   };
 }
 
