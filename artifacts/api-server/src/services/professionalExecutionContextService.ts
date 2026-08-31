@@ -169,8 +169,13 @@ export function compileProfessionalExecutionContext(input: {
   evidencePack?: EvidencePack | null;
 }): ProfessionalExecutionContext {
   const operation = deriveProfessionalOperation(input.userRequest, input.manifest.canonicalIntent);
-  const standardisation = classifyStandardisation(input.userRequest, operation);
   const requestedDeliverableType = deriveDeliverableType(input.userRequest, operation, input.blueprint);
+  const standardisation = resolveDeliverableStandardisation(
+    input.userRequest,
+    operation,
+    requestedDeliverableType,
+    input.manifest.selectionMetadata?.deliverableStandardisation,
+  );
   const mandatoryProfessionalContent = deriveMandatoryProfessionalContent(input.userRequest, requestedDeliverableType, operation, input.blueprintContract);
   const allowedFactualPlaceholders = deriveAllowedFactualPlaceholders(
     input.userRequest,
@@ -406,6 +411,22 @@ function deriveUserFacingPurpose(deliverableType: string, operation: Professiona
   if (operation === "REVIEW") return "a professional review or readiness assessment";
   if (operation === "INVESTIGATE") return "an investigation report with findings and next actions";
   return "the requested professional deliverable";
+}
+
+function resolveDeliverableStandardisation(
+  userRequest: string,
+  operation: ProfessionalOperation,
+  requestedDeliverableType: string,
+  manifestStandardisation?: string | null,
+): ProfessionalDeliverableContract["standardisation"] {
+  const text = userRequest.toLowerCase();
+  const explicitParticipantSpecific = isExplicitParticipantSpecificRequest(text);
+  if (explicitParticipantSpecific) return "participant_specific";
+  if (/^STANDARD_REUSABLE_/.test(requestedDeliverableType)) return "standard_reusable";
+  if (manifestStandardisation === "standard_reusable" && isReusableWorkProductRequest(text)) return "standard_reusable";
+  if (manifestStandardisation === "organisation_tailored") return "organisation_tailored";
+  if (manifestStandardisation === "participant_specific") return "participant_specific";
+  return classifyStandardisation(userRequest, operation);
 }
 
 function classifyStandardisation(userRequest: string, operation: ProfessionalOperation): ProfessionalDeliverableContract["standardisation"] {

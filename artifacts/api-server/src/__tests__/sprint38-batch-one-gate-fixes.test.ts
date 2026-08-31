@@ -389,6 +389,57 @@ describe("Sprint 38 Batch One gate fixes", () => {
     expect(findings).toEqual(["[NDIS_NUMBER]"]);
   });
 
+  it("resolves the standard NDIS care plan template request deterministically across repeated context compilation", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const request = "Create a standard NDIS care plan template";
+
+    const contexts = Array.from({ length: 10 }, () => compileProfessionalExecutionContext({
+      userRequest: request,
+      manifest: manifest({
+        selectionMetadata: {
+          canonicalIntent: "care_plan.create",
+          blueprintFamily: "care_plan",
+          blueprintMode: "create",
+          requestedDeliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+          deliverableStandardisation: "standard_reusable",
+        },
+      }),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    }));
+
+    expect(contexts.map((context) => context.specificity))
+      .toEqual(Array.from({ length: 10 }, () => "STANDARD_NON_PARTICIPANT_SPECIFIC"));
+    expect(contexts.map((context) => context.deliverable.standardisation))
+      .toEqual(Array.from({ length: 10 }, () => "standard_reusable"));
+    expect(contexts.map((context) => context.deliverable.requestedDeliverableType))
+      .toEqual(Array.from({ length: 10 }, () => "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE"));
+  });
+
+  it("does not let standard reusable manifest metadata override an explicit participant-specific care plan request", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Michael.",
+      manifest: manifest({
+        selectionMetadata: {
+          canonicalIntent: "care_plan.create",
+          blueprintFamily: "care_plan",
+          blueprintMode: "create",
+          requestedDeliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+          deliverableStandardisation: "standard_reusable",
+        },
+      }),
+      blueprint,
+      blueprintContract: contract(blueprint),
+    });
+
+    expect(context.specificity).toBe("PARTICIPANT_SPECIFIC");
+    expect(context.deliverable.standardisation).toBe("participant_specific");
+    expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_NDIS_CARE_PLAN");
+  });
+
   it("keeps sub-threshold self-review output in draft instead of moving it to awaiting approval", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
     expect(uee).toContain("const qualityGatePassed = reviewResult.passed");
