@@ -61,7 +61,8 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("export async function cancelTask");
     expect(src).toContain('status: "already_cancelled"');
     expect(src).toContain('status: "already_completed"');
-    expect(src).toContain('currentState: "cancelled"');
+    expect(src).toContain('transitionTaskState(taskId, organizationId, "cancelled")');
+    expect(src).toContain('status: "not_cancelled"');
   });
 
   it("reconciles execution success and failure through taskService", () => {

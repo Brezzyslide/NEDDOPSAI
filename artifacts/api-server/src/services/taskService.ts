@@ -420,10 +420,17 @@ export async function transitionTaskState(
   const [updated] = await db
     .update(tasksTable)
     .set({ currentState: to, updatedAt: new Date() })
-    .where(eq(tasksTable.id, taskId))
+    .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
     .returning();
 
-  return updated!;
+  if (!updated) {
+    throw Object.assign(
+      new Error(`Task transition from '${from}' to '${to}' did not update a row`),
+      { code: "CONFLICT" },
+    );
+  }
+
+  return updated;
 }
 
 export async function claimTaskForExecution(
@@ -480,17 +487,27 @@ export async function cancelTask(
   taskId: string,
   organizationId: string,
   metadata: Record<string, unknown> = {},
-): Promise<{ status: "cancelled" | "already_cancelled" | "already_completed"; task: typeof tasksTable.$inferSelect }> {
+): Promise<{ status: "cancelled" | "already_cancelled" | "already_completed" | "not_cancelled"; task: typeof tasksTable.$inferSelect; reason?: string }> {
   const task = await getTaskById(taskId, organizationId);
   if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
   if (task.currentState === "cancelled") return { status: "already_cancelled", task };
   if (task.currentState === "completed") return { status: "already_completed", task };
 
+  let transitioned: typeof tasksTable.$inferSelect;
+  try {
+    transitioned = await transitionTaskState(taskId, organizationId, "cancelled");
+  } catch (err) {
+    return {
+      status: "not_cancelled",
+      task,
+      reason: err instanceof Error ? err.message : "Task could not be cancelled.",
+    };
+  }
+
   const [updated] = await db
     .update(tasksTable)
     .set({
-      currentState: "cancelled",
-      metadata: mergeTaskMetadata(task.metadata, {
+      metadata: mergeTaskMetadata(transitioned.metadata, {
         cancellation: {
           ...metadata,
           cancelledAt: new Date().toISOString(),
@@ -501,11 +518,11 @@ export async function cancelTask(
     .where(and(
       eq(tasksTable.id, taskId),
       eq(tasksTable.organizationId, organizationId),
-      inArray(tasksTable.currentState, ["draft", "queued", "planning", "awaiting_approval", "approved", "executing", "failed"]),
+      eq(tasksTable.currentState, "cancelled"),
     ))
     .returning();
 
-  return { status: "cancelled", task: updated ?? task };
+  return { status: "cancelled", task: updated ?? transitioned };
 }
 
 export async function requestTaskApprovalGate(input: {

@@ -701,6 +701,8 @@ async function maybeHandlePendingConfirmation(input: {
       content: input.content,
       response: result.status === "already_cancelled"
         ? `"${title}" is already cancelled. I have not changed anything else.`
+        : result.status === "not_cancelled"
+          ? `I could not cancel "${title}". ${result.reason ?? "The task state did not allow cancellation."}`
         : `Cancelled. I have stopped "${title}" and preserved its history.`,
       idempotencyKey: input.idempotencyKey,
       mode: "cancellation_request",

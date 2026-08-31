@@ -409,11 +409,15 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
           responseContent = "The task was already cancelled.";
           break;
         }
-        await taskService.cancelTask(taskId, ctx.tenantId, {
+        const result = await taskService.cancelTask(taskId, ctx.tenantId, {
           cancelledBy: user.id,
           source: "task_workroom_command",
           conversationId: conv.id,
         });
+        if (result.status === "not_cancelled") {
+          res.status(409).json({ error: { code: "TASK_NOT_CANCELLED", message: result.reason ?? "The task state did not allow cancellation." } });
+          return;
+        }
         await cancelTaskExecution(taskId, ctx.tenantId).catch(() => {});
         responseContent = "The task has been cancelled.";
         break;

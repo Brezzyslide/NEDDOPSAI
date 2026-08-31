@@ -753,7 +753,7 @@ export async function cancelTaskFromConversation(input: {
   conversationId: string;
   taskId: string;
   actorUserId: string;
-}): Promise<{ status: "cancelled" | "already_cancelled"; taskId: string }> {
+}): Promise<{ status: "cancelled" | "already_cancelled" | "not_cancelled"; taskId: string; reason?: string }> {
   const result = await cancelTask(input.taskId, input.organizationId, {
     cancelledBy: input.actorUserId,
     conversationId: input.conversationId,
@@ -761,6 +761,9 @@ export async function cancelTaskFromConversation(input: {
   });
   if (result.status === "already_completed") {
     throw Object.assign(new Error("Completed tasks cannot be cancelled."), { code: "VALIDATION_ERROR" });
+  }
+  if (result.status === "not_cancelled") {
+    return { status: "not_cancelled", taskId: input.taskId, reason: result.reason };
   }
 
   const checkpoint = await getActiveCheckpointByConversation(input.conversationId).catch(() => null);

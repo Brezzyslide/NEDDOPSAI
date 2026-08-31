@@ -244,6 +244,10 @@ router.delete("/:taskId", requireAuth, resolveTenantFromSlug, async (req, res, n
       cancelledBy: user.id,
       source: "tasks_route",
     });
+    if (result.status === "not_cancelled") {
+      res.status(409).json({ error: { code: "TASK_NOT_CANCELLED", message: result.reason ?? "The task state did not allow cancellation." } });
+      return;
+    }
     await cancelTaskExecution(req.params.taskId!, ctx.tenantId).catch(() => {});
     const updated = result.task;
 
