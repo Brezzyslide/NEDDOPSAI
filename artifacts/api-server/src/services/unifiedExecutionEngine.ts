@@ -1496,6 +1496,8 @@ export class UnifiedExecutionEngine {
           operation: professionalContext.operation,
           deliverableType: professionalContext.deliverable.requestedDeliverableType,
           specificity: professionalContext.specificity,
+          standardisation: professionalContext.deliverable.standardisation,
+          allowedFactualPlaceholders: professionalContext.deliverable.allowedFactualPlaceholders,
           audience: professionalContext.deliverable.audience,
           primarySpecialist: professionalContext.primarySpecialist,
           supportingSpecialists: professionalContext.supportingSpecialists,
@@ -1997,6 +1999,7 @@ export class UnifiedExecutionEngine {
           failedStage: "completion_gates",
           gateFailures: runtimeGate.failures,
           coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
       });
 
@@ -2011,6 +2014,7 @@ export class UnifiedExecutionEngine {
           failedStage: "completion_gates",
           gateFailures: runtimeGate.failures,
           coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
         clarificationQuestions: runtimeGate.failures
           .filter((failure) => failure.state === "awaiting_clarification")
@@ -2206,6 +2210,7 @@ export class UnifiedExecutionEngine {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
             coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+            professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
           },
         });
         return {
@@ -2219,6 +2224,7 @@ export class UnifiedExecutionEngine {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
             coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+            professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
           },
           clarificationQuestions: artifactGate.failures
             .filter((failure) => failure.state === "awaiting_clarification")
@@ -3792,6 +3798,19 @@ function buildRuntimeGateFailureItems(
       ? [{ name: failure.gate, reason: failure.message }]
       : [];
   });
+}
+
+function buildProfessionalContextFailureSnapshot(
+  professionalContext: ProfessionalExecutionContext,
+): Record<string, unknown> {
+  return {
+    specificity: professionalContext.specificity,
+    deliverable: {
+      requestedDeliverableType: professionalContext.deliverable.requestedDeliverableType,
+      standardisation: professionalContext.deliverable.standardisation,
+      allowedFactualPlaceholders: professionalContext.deliverable.allowedFactualPlaceholders,
+    },
+  };
 }
 
 function buildFinalDeliverableSynthesisSystemPrompt(

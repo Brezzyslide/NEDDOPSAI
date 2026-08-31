@@ -1,5 +1,5 @@
 import type { EvidencePack } from "./knowledgeResolutionService.js";
-import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
+import type { BlueprintExecutionContract, BlueprintSection, WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 
 export type ProfessionalOperation = "CREATE" | "REVIEW" | "UPDATE" | "COMPARE" | "TAILOR" | "COMPLETE" | "INVESTIGATE";
@@ -172,7 +172,13 @@ export function compileProfessionalExecutionContext(input: {
   const standardisation = classifyStandardisation(input.userRequest, operation);
   const requestedDeliverableType = deriveDeliverableType(input.userRequest, operation, input.blueprint);
   const mandatoryProfessionalContent = deriveMandatoryProfessionalContent(input.userRequest, requestedDeliverableType, operation, input.blueprintContract);
-  const allowedFactualPlaceholders = deriveAllowedFactualPlaceholders(input.userRequest, requestedDeliverableType, operation, input.blueprint);
+  const allowedFactualPlaceholders = deriveAllowedFactualPlaceholders(
+    input.userRequest,
+    requestedDeliverableType,
+    operation,
+    input.blueprint,
+    input.blueprintContract,
+  );
   const deliverable: ProfessionalDeliverableContract = {
     requestedDeliverableType,
     audience: deriveAudience(input.userRequest, requestedDeliverableType, operation),
@@ -446,13 +452,21 @@ function deriveAllowedFactualPlaceholders(
   deliverableType: string,
   operation: ProfessionalOperation,
   blueprint: WorkBlueprint | null,
+  blueprintContract?: BlueprintExecutionContract | null,
 ): string[] {
   const domainText = `${userRequest} ${deliverableType} ${blueprint?.blueprintFamily ?? ""} ${blueprint?.code ?? ""}`.toLowerCase();
   if (deliverableType.includes("SERVICE_AGREEMENT") || /\bservice agreement\b/.test(domainText)) {
     return SERVICE_AGREEMENT_FACTUAL_PLACEHOLDERS;
   }
   if (deliverableType.includes("CARE_PLAN") || deliverableType.includes("SUPPORT_PLAN")) {
-    return deriveTemplateFieldPlaceholders(blueprint);
+    const sections = blueprintContract?.sections?.length
+      ? blueprintContract.sections
+      : blueprint?.sections ?? [];
+    const placeholders = deriveTemplateFieldPlaceholders(sections);
+    if (sections.length > 0 && placeholders.length === 0) {
+      throw new Error(`No declared factual placeholders could be derived for Blueprint ${blueprint?.code ?? blueprintContract?.blueprint?.code ?? "unknown"}`);
+    }
+    return placeholders;
   }
   if (deliverableType === "WORKFORCE_ONBOARDING_CHECKLIST" || /\b(onboard|onboarding|induction|new staff|new employee|people_culture|talent_learning|workforce_compliance)\b/.test(domainText)) {
     return WORKFORCE_ONBOARDING_FACTUAL_PLACEHOLDERS;
@@ -463,8 +477,8 @@ function deriveAllowedFactualPlaceholders(
   return GENERIC_FACTUAL_PLACEHOLDERS;
 }
 
-function deriveTemplateFieldPlaceholders(blueprint: WorkBlueprint | null): string[] {
-  return (blueprint?.sections ?? [])
+function deriveTemplateFieldPlaceholders(sections: BlueprintSection[]): string[] {
+  return sections
     .flatMap((section) => section.fields ?? [])
     .flatMap(derivePlaceholderTokensFromTemplateField);
 }
