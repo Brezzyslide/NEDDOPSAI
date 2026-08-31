@@ -11,6 +11,10 @@
  *   Part 7 — Tenant isolation on comment resolution
  *   Part 8 — Invalid document / format handling
  */
+import { execFileSync } from "child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mock db ──────────────────────────────────────────────────────────────────
@@ -67,6 +71,8 @@ import {
   type IntermediateDocument,
 } from "../services/completedWorkExportService.js";
 import { logOrgEvent } from "../services/auditService.js";
+import { getRegistryEntry } from "../services/blueprintRegistry.js";
+import { derivePlaceholderTokensFromTemplateField } from "../services/professionalExecutionContextService.js";
 
 // ─── Shared fixtures ──────────────────────────────────────────────────────────
 
@@ -102,6 +108,41 @@ function makeDoc(overrides?: Partial<IntermediateDocument>): IntermediateDocumen
     ],
     ...overrides,
   };
+}
+
+function carePlanPlaceholderTokens(): string[] {
+  const blueprint = getRegistryEntry("care_plan");
+  if (!blueprint) throw new Error("missing care_plan blueprint");
+  return Array.from(new Set(
+    blueprint.sections
+      .flatMap((section) => section.fields ?? [])
+      .flatMap(derivePlaceholderTokensFromTemplateField),
+  ));
+}
+
+function documentWithCarePlanPlaceholders(): IntermediateDocument {
+  const tokens = carePlanPlaceholderTokens();
+  return makeDoc({
+    title: "Care Plan Template",
+    nodes: parseMarkdown([
+      "# Care Plan Template",
+      "",
+      "## Placeholder Register",
+      "",
+      tokens.join(" "),
+    ].join("\n")),
+  });
+}
+
+function readDocxXml(buffer: Buffer): string {
+  const dir = mkdtempSync(join(tmpdir(), "needsops-docx-"));
+  const path = join(dir, "document.docx");
+  try {
+    writeFileSync(path, buffer);
+    return execFileSync("unzip", ["-p", path, "word/document.xml"], { encoding: "utf8" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -300,6 +341,20 @@ describe("PdfExporter", () => {
     expect(result.filename).toMatch(/\.pdf$/);
   });
 
+  it("preserves every declared care-plan placeholder token in PDF text", async () => {
+    const { PDFParse } = await import("pdf-parse");
+    const tokens = carePlanPlaceholderTokens();
+    const result = await exporter.export(documentWithCarePlanPlaceholders());
+    const parser = new PDFParse({ data: new Uint8Array(result.buffer) });
+    const parsed = await parser.getText();
+    await parser.destroy();
+    const compactText = parsed.text.replace(/\s+/g, "");
+
+    for (const token of tokens) {
+      expect(compactText).toContain(token);
+    }
+  });
+
   it("handles heading-only document", async () => {
     const doc = makeDoc({ nodes: [{ type: "heading", level: 1, content: "Title Only" }] });
     const result = await exporter.export(doc);
@@ -366,6 +421,16 @@ describe("DocxExporter", () => {
   it("sets .docx extension in filename", async () => {
     const result = await exporter.export(makeDoc());
     expect(result.filename).toMatch(/\.docx$/);
+  });
+
+  it("preserves every declared care-plan placeholder token in DOCX XML", async () => {
+    const tokens = carePlanPlaceholderTokens();
+    const result = await exporter.export(documentWithCarePlanPlaceholders());
+    const xml = readDocxXml(result.buffer);
+
+    for (const token of tokens) {
+      expect(xml).toContain(token.replace(/^\[|\]$/g, ""));
+    }
   });
 
   it("handles empty nodes list", async () => {

@@ -183,14 +183,23 @@ export function parseMarkdown(markdown: string): DocumentNode[] {
 }
 
 function stripInlineMarkup(text: string): string {
-  return text
+  const protectedPlaceholders: string[] = [];
+  const placeholderProtectedText = text.replace(/\[[A-Z0-9_]{2,160}\]/g, (token) => {
+    const index = protectedPlaceholders.push(token) - 1;
+    return `@@NEEDSOPSPLACEHOLDER${index}@@`;
+  });
+
+  return placeholderProtectedText
     .replace(/\*\*(.+?)\*\*/g,  "$1") // bold
     .replace(/\*(.+?)\*/g,      "$1") // italic
     .replace(/__(.+?)__/g,      "$1") // bold (alt)
     .replace(/_(.+?)_/g,        "$1") // italic (alt)
     .replace(/`(.+?)`/g,        "$1") // inline code
     .replace(/\[(.+?)\]\(.+?\)/g, "$1") // links → label only
-    .replace(/~~(.+?)~~/g,      "$1"); // strikethrough
+    .replace(/~~(.+?)~~/g,      "$1") // strikethrough
+    .replace(/@@NEEDSOPSPLACEHOLDER(\d+)@@/g, (_, index: string) =>
+      protectedPlaceholders[Number(index)] ?? "",
+    );
 }
 
 // ─── Exporter interface ───────────────────────────────────────────────────────
