@@ -31,6 +31,8 @@ export const QUALITY_THRESHOLD = 70;
 
 /** The maximum number of automatic revision cycles permitted per review. */
 export const MAX_AUTO_REVISIONS = 1;
+const REVISION_MAX_TOKENS = 6000;
+const MIN_REVISION_LENGTH_RATIO = 0.85;
 
 export const REVIEW_DIMENSIONS = [
   "instruction_adherence",
@@ -217,8 +219,12 @@ export async function reviewDraft(
     // ── Enforce MAX_AUTO_REVISIONS = 1 ────────────────────────────────────
     // Attempt exactly one automatic revision. If a second revision were
     // requested, revisionLimitReached is set true and execution stops.
-    const revised_ = await attemptRevision(content, improvementFeedback, manifest, ctx);
-    if (revised_ !== content) {
+    const revisionAttempt = await attemptRevision(content, improvementFeedback, manifest, ctx);
+    const revised_ = revisionAttempt.content;
+    if (revisionAttempt.discardReason) {
+      autoRevisionNote = revisionAttempt.discardReason;
+    }
+    if (!revisionAttempt.discardReason && revised_ !== content) {
       const candidateDimensions = runDeterministicReview(revised_, manifest, blueprint, ctx);
       const candidateScore = computeWeightedScore(candidateDimensions, blueprint);
       if (candidateScore >= qualityScore) {
@@ -988,14 +994,19 @@ function checkTerminologyUsage(
 
 // ─── Revision ─────────────────────────────────────────────────────────────────
 
+interface RevisionAttemptResult {
+  content: string;
+  discardReason?: string;
+}
+
 async function attemptRevision(
   content: string,
   feedback: string[],
   manifest: WorkPackageManifest,
   ctx: ReviewContext,
-): Promise<string> {
+): Promise<RevisionAttemptResult> {
   const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
-  if (provider !== "openai") return content; // No revision without LLM
+  if (provider !== "openai") return { content }; // No revision without LLM
 
   try {
     const gatewayCtx: AIGatewayContext = {
@@ -1031,15 +1042,34 @@ Return only the revised content — no preamble, no explanation.`;
       systemPrompt,
       userMessage,
       retrievedFields: [],
-      maxTokens: 2000,
+      maxTokens: REVISION_MAX_TOKENS,
       outputMode: "text", // Self-review revision produces prose — never JSON
     });
 
-    if (response.usedFallback || !response.content) return content;
-    return response.content.trim();
+    if (response.usedFallback || !response.content) return { content };
+    const revised = response.content.trim();
+    const finishReason = String(response.finishReason ?? "").toLowerCase();
+    if (finishReason === "length") {
+      return {
+        content,
+        discardReason: "Auto-revision discarded because the model hit the output length limit; retained prior draft.",
+      };
+    }
+    if (isMateriallyShorterRevision(content, revised)) {
+      return {
+        content,
+        discardReason: `Auto-revision discarded because it retained less than ${Math.round(MIN_REVISION_LENGTH_RATIO * 100)}% of the original length; retained prior draft.`,
+      };
+    }
+    return { content: revised };
   } catch {
-    return content; // Revision failed — return original
+    return { content }; // Revision failed — return original
   }
+}
+
+function isMateriallyShorterRevision(original: string, revised: string): boolean {
+  if (original.trim().length < 1000) return false;
+  return revised.length < original.length * MIN_REVISION_LENGTH_RATIO;
 }
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────

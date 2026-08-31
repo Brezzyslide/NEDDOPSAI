@@ -124,6 +124,7 @@ This document requires sign-off from the Compliance Manager before distribution.
 `;
 
 const SHORT_CONTENT = "Brief output.";
+const LONG_INCOMPLETE_CONTENT = `# Draft\n\n${"Brief unsupported output with missing professional structure. ".repeat(80)}`;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -348,6 +349,40 @@ describe("Revision limit enforcement", () => {
     expect(result.finalContent).toBe(revisedContent);
     expect(result.autoRevisionNote).toBeDefined();
     expect(result.autoRevisionNote).toContain("Auto-revised");
+  });
+
+  it("discards a revision that finishes because of output length", async () => {
+    process.env.AI_PROVIDER = "openai";
+    const truncatedRevision = `${LONG_INCOMPLETE_CONTENT.slice(0, 900)}\n\n| Decision-making | [WHAT_THE_WORKER_DOES_DECISION_MAKING_RELATING_TO_D`;
+    mockGatewayProcess.mockResolvedValueOnce({
+      content: truncatedRevision,
+      usedFallback: false,
+      finishReason: "length",
+    });
+
+    const result = await reviewDraft(LONG_INCOMPLETE_CONTENT, makeManifest(), makeBlueprint(), ctx);
+
+    expect(mockGatewayProcess).toHaveBeenCalledTimes(1);
+    expect(result.revised).toBe(false);
+    expect(result.finalContent).toBe(LONG_INCOMPLETE_CONTENT);
+    expect(result.autoRevisionNote).toContain("output length limit");
+  });
+
+  it("discards a materially shorter revision and retains the original", async () => {
+    process.env.AI_PROVIDER = "openai";
+    const truncatedRevision = LONG_INCOMPLETE_CONTENT.slice(0, Math.floor(LONG_INCOMPLETE_CONTENT.length * 0.5));
+    mockGatewayProcess.mockResolvedValueOnce({
+      content: truncatedRevision,
+      usedFallback: false,
+      finishReason: "stop",
+    });
+
+    const result = await reviewDraft(LONG_INCOMPLETE_CONTENT, makeManifest(), makeBlueprint(), ctx);
+
+    expect(mockGatewayProcess).toHaveBeenCalledTimes(1);
+    expect(result.revised).toBe(false);
+    expect(result.finalContent).toBe(LONG_INCOMPLETE_CONTENT);
+    expect(result.autoRevisionNote).toContain("less than 85%");
   });
 });
 
