@@ -1193,7 +1193,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(substantiveReport.missing).toHaveLength(0);
     expect(substantiveReport.requirementResults[0]?.substantiveValidationMode).toBe("ADEQUACY_CRITERIA");
 
-    const structuredReport = evaluateDeliverableRequirementCoverage("This assembled document is intentionally not scanned for the requirement.", profile, {
+    const structuredReport = evaluateDeliverableRequirementCoverage([
+      "## Worker Responsibilities",
+      "The responsible worker role is the support worker. The action the worker must complete is personal support. The escalation trigger is a changed support need. The evidence record that must be completed is the participant support note.",
+    ].join("\n\n"), profile, {
       deliverableSections: [
         {
           requirementId: "authored-worker-responsibilities",
@@ -1213,7 +1216,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         },
       ],
     });
-    expect(missingStructuredEntry.missing[0]?.reason).toContain('deliverable.sections is missing an entry for required requirementId "authored-worker-responsibilities"');
+    expect(missingStructuredEntry.missing[0]?.reason).toContain("Structured deliverable sections are not represented in the persisted markdown artifact");
+    expect(missingStructuredEntry.missing[0]?.reason).toContain("wrong-requirement-id");
   });
 
   it("uses authored Care Plan requirements and adequacy criteria instead of derived fallback requirements", () => {
@@ -1485,35 +1489,38 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         },
       ],
     };
-    const report = evaluateDeliverableRequirementCoverage("", profile, {
-      deliverableSections: [
-        {
-          requirementId: "mandatory-1",
-          heading: "Participant Identity",
-          content: "This section serves to identify the participant and provide necessary contact information.",
-        },
-        {
-          requirementId: "mandatory-2",
-          heading: "Goals and Preferences",
-          content: "This section outlines the participant's goals, preferences, and any specific communication needs.",
-        },
-        {
-          requirementId: "mandatory-4",
-          heading: "Provider and Worker Responsibilities",
-          content: "This section describes the support delivery obligations and operational boundaries.",
-        },
-        {
-          requirementId: "mandatory-3",
-          heading: "Support Domains and Daily Living Support Structure",
-          content: "Support Domains:\n- Daily Living Skills\n- Community Participation\n- Health and Wellbeing\nDaily Living Support Structure:\n- Personal Care support is recorded with the support worker role and participant support priorities.\n- Community Access support is recorded with coordination responsibilities and escalation pathways.",
-        },
-        {
-          requirementId: "mandatory-9",
-          heading: "Review, Updates, Consent and Sign-off Provisions",
-          content: "Review Date: [REVIEW_DATE]\nRecord goals, communication preferences and support priorities. Record plan updates, the reviewer, participant consent, update reason, sign-off date, responsible provider role, review provisions and evidence retained for the care plan review.",
-        },
-      ],
-    });
+    const deliverableSections = [
+      {
+        requirementId: "mandatory-1",
+        heading: "Participant Identity",
+        content: "This section serves to identify the participant and provide necessary contact information.",
+      },
+      {
+        requirementId: "mandatory-2",
+        heading: "Goals and Preferences",
+        content: "This section outlines the participant's goals, preferences, and any specific communication needs.",
+      },
+      {
+        requirementId: "mandatory-4",
+        heading: "Provider and Worker Responsibilities",
+        content: "This section describes the support delivery obligations and operational boundaries.",
+      },
+      {
+        requirementId: "mandatory-3",
+        heading: "Support Domains and Daily Living Support Structure",
+        content: "Support Domains:\n- Daily Living Skills\n- Community Participation\n- Health and Wellbeing\nDaily Living Support Structure:\n- Personal Care support is recorded with the support worker role and participant support priorities.\n- Community Access support is recorded with coordination responsibilities and escalation pathways.",
+      },
+      {
+        requirementId: "mandatory-9",
+        heading: "Review, Updates, Consent and Sign-off Provisions",
+        content: "Review Date: [REVIEW_DATE]\nRecord goals, communication preferences and support priorities. Record plan updates, the reviewer, participant consent, update reason, sign-off date, responsible provider role, review provisions and evidence retained for the care plan review.",
+      },
+    ];
+    const report = evaluateDeliverableRequirementCoverage(
+      deliverableSections.map((section) => `## ${section.heading}\n\n${section.content}`).join("\n\n"),
+      profile,
+      { deliverableSections },
+    );
     const byId = new Map(report.requirementResults.map((item) => [item.requirementId, item]));
 
     for (const [requirementId, stripped] of [
@@ -1574,21 +1581,22 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         },
       ],
     };
-    const report = evaluateDeliverableRequirementCoverage("", profile, {
+    const participantIdentityContent = [
+      "Participant Name: [PARTICIPANT_NAME]",
+      "Date of Birth: [DATE_OF_BIRTH]",
+      "NDIS Number: [NDIS_NUMBER]",
+      "Contact Information: [CONTACT_INFORMATION]",
+      "Preferred Communication Method: [PREFERENCES]",
+      "Gender: [GENDER]",
+      "Address: [ADDRESS]",
+      "Emergency Contact: [EMERGENCY_CONTACT]",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Participant Identity\n\n${participantIdentityContent}`, profile, {
       deliverableSections: [
         {
           requirementId: "mandatory-1",
           heading: "Participant Identity",
-          content: [
-            "Participant Name: [PARTICIPANT_NAME]",
-            "Date of Birth: [DATE_OF_BIRTH]",
-            "NDIS Number: [NDIS_NUMBER]",
-            "Contact Information: [CONTACT_INFORMATION]",
-            "Preferred Communication Method: [PREFERENCES]",
-            "Gender: [GENDER]",
-            "Address: [ADDRESS]",
-            "Emergency Contact: [EMERGENCY_CONTACT]",
-          ].join("\n"),
+          content: participantIdentityContent,
         },
       ],
     });
@@ -1628,7 +1636,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
         },
       ],
     };
-    const report = evaluateDeliverableRequirementCoverage("", profile, {
+    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${fixedContent}`, profile, {
       deliverableSections: [
         {
           requirementId: "care-plan-support-plan-meeting",
