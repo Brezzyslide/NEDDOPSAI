@@ -50,6 +50,8 @@ const {
   mockParseExecutionActions,
   mockValidateExecutionActions,
   mockExtractWriteTargets,
+  mockGetBlueprintById,
+  mockGetBlueprintExecutionContract,
   mockGetSpecialistByCode,
   mockLoadDNAWithStaticFallback,
   mockLoadOrgSpecialistConfig,
@@ -89,6 +91,13 @@ const {
     mockParseExecutionActions:     vi.fn().mockReturnValue([]),
     mockValidateExecutionActions:  vi.fn().mockReturnValue({ valid: true, blockedActions: [] }),
     mockExtractWriteTargets:       vi.fn().mockReturnValue([]),
+    mockGetBlueprintById:          vi.fn(),
+    mockGetBlueprintExecutionContract: vi.fn(async (blueprint) => ({
+      blueprint,
+      sections: blueprint?.sections ?? [],
+      template: null,
+      mode: null,
+    })),
     mockGetSpecialistByCode:       vi.fn(),
     mockLoadDNAWithStaticFallback: vi.fn(),
     mockLoadOrgSpecialistConfig:   vi.fn(),
@@ -165,13 +174,8 @@ vi.mock("../lib/workforceRegistry.js", () => ({
 vi.mock("../services/workBlueprintService.js", () => ({
   selectBlueprint:  mockSelectBlueprint,
   resolveCanonicalBlueprint: vi.fn().mockResolvedValue(null),
-  getBlueprintExecutionContract: vi.fn(async (blueprint) => ({
-    blueprint,
-    sections: blueprint?.sections ?? [],
-    template: null,
-    mode: null,
-  })),
-  getBlueprintById: vi.fn(),
+  getBlueprintExecutionContract: mockGetBlueprintExecutionContract,
+  getBlueprintById: mockGetBlueprintById,
 }));
 
 vi.mock("../services/workPackageService.js", () => ({
@@ -993,12 +997,13 @@ describe("D — care plan template full path uses declared Blueprint placeholder
   });
 
   it("passes preflight and reaches Completed Work artifact generation for the standard care plan template", async () => {
-    const blueprint = getRegistryEntry("care_plan");
-    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const registryBlueprint = getRegistryEntry("care_plan");
+    if (!registryBlueprint) throw new Error("missing care_plan blueprint");
+    const { sections: hydratedSections = [], ...blueprint } = registryBlueprint as typeof registryBlueprint & { sections?: BlueprintExecutionContract["sections"] };
     const userRequest = "Create a standard comprehensive NDIS care plan template.";
     const contract = {
       blueprint,
-      sections: blueprint.sections ?? [],
+      sections: hydratedSections,
       template: null,
       mode: "create",
     } satisfies BlueprintExecutionContract;
@@ -1056,7 +1061,9 @@ describe("D — care plan template full path uses declared Blueprint placeholder
       matchedKeywords: ["care plan"],
       fallbackUsed: false,
     });
-    mockAssembleWorkPackage.mockResolvedValue({ manifest });
+    mockGetBlueprintById.mockResolvedValue(blueprint);
+    mockGetBlueprintExecutionContract.mockResolvedValue(contract);
+	    mockAssembleWorkPackage.mockResolvedValue({ manifest });
     mockValidateWorkPackage.mockReturnValue({ passed: true, missingItems: [], issues: [], summary: "OK" });
     mockResolveEvidenceForTask.mockResolvedValue(null);
     mockGatewayProcess.mockResolvedValue({
@@ -1116,6 +1123,7 @@ describe("D — care plan template full path uses declared Blueprint placeholder
     const engine = makeEngine();
     const result = await engine.execute(makeRequest({
       laneContext: PROFESSIONAL_LANE,
+      blueprintId: blueprint.id,
       userRequest,
       title: "Standard Comprehensive NDIS Care Plan Template",
       outputRequiresApproval: true,
