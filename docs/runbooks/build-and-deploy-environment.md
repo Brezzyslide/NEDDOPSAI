@@ -32,6 +32,29 @@ Build command:
 scripts/build-api-image.sh
 ```
 
+## Release Test Gate
+
+The release-gate test command is the deterministic API suite that does not require a
+local PostgreSQL database:
+
+```sh
+cd artifacts/api-server
+PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vitest run --config vitest.config.deterministic.ts
+```
+
+Pinned config:
+
+- `artifacts/api-server/vitest.config.deterministic.ts`
+
+For a release candidate, run this exact command on the release SHA and on the parent
+SHA being replaced. The gate is the name-level failed-test diff between those two runs:
+no test may fail only on the release SHA.
+
+Do not gate releases on a fixed historical failure count. Older preflight artifacts used
+an unpinned invocation that executed additional DB/auth/work-execution branches and
+produced a larger failure count. That result is useful context only; it is not the
+release gate unless the exact command and environment are also pinned.
+
 ## Dev Runtime Endpoint
 
 The NeedsOps Dev environment is served through CloudFront:
