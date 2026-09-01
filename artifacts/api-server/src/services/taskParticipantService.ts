@@ -32,7 +32,7 @@ export interface ParticipantResolutionCandidate {
 }
 
 export interface ParticipantResolutionResult {
-  status: "not_applicable" | "resolved" | "ambiguous" | "unresolved";
+  status: "not_applicable" | "resolved" | "confirmation_required" | "ambiguous" | "unresolved";
   subjectParticipantIds: string[];
   candidates: ParticipantResolutionCandidate[];
   staffConflicts: string[];
@@ -203,10 +203,11 @@ export async function resolveSubjectParticipantForTaskRequest(
 
   if (candidates.length === 1 && staffConflicts.length === 0) {
     return {
-      status: "resolved",
-      subjectParticipantIds: [candidates[0]!.id],
+      status: "confirmation_required",
+      subjectParticipantIds: [],
       candidates,
       staffConflicts,
+      clarifyingQuestion: "Please confirm this is the participant for the task before I retrieve participant documents.",
     };
   }
 

@@ -250,7 +250,11 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     explicitSubjectParticipantIds: input.subjectParticipantIds,
   });
 
-  if (participantResolution.status === "ambiguous" || participantResolution.status === "unresolved") {
+  if (
+    participantResolution.status === "confirmation_required" ||
+    participantResolution.status === "ambiguous" ||
+    participantResolution.status === "unresolved"
+  ) {
     throw Object.assign(
       new Error(participantResolution.clarifyingQuestion ?? "Please confirm which participant this task is for."),
       {
