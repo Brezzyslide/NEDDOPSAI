@@ -21,6 +21,9 @@ import {
   evaluateDeliverableRequirementCoverage,
   type PerRequirementDeliverableSection,
 } from "./deliverableRequirementCoverageService.js";
+import {
+  findUnconfirmedCarePlanProtectiveStrategies,
+} from "./carePlanBehaviourStrategyService.js";
 
 export type BlueprintRuntimeGateState =
   | "validation"
@@ -44,7 +47,8 @@ export interface BlueprintRuntimeGateFailure {
     | "template_required"
     | "artifact_required"
     | "approval_required"
-    | "care_plan_behaviour_safety";
+    | "care_plan_behaviour_safety"
+    | "care_plan_protective_confirmation";
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];
@@ -197,6 +201,12 @@ export function validateBlueprintRuntimeCompletion(
     professionalContext: input.professionalContext,
     professionalWork: input.professionalWork,
   }));
+
+  failures.push(...validateCarePlanProtectiveConfirmation(
+    blueprint.code,
+    input.contentMarkdown,
+    input.professionalContext,
+  ));
 
   failures.push(...validateSections(
     contract.sections,
@@ -965,6 +975,25 @@ function validateCarePlanBehaviourSafety(input: CarePlanBehaviourSafetyInput): B
     state: "validation",
     message: "Participant-specific Behavioural Management safety gates failed.",
     details: failures,
+  }];
+}
+
+function validateCarePlanProtectiveConfirmation(
+  blueprintCode: string | null | undefined,
+  contentMarkdown: string,
+  professionalContext?: ProfessionalExecutionContext | null,
+): BlueprintRuntimeGateFailure[] {
+  if (blueprintCode !== "care_plan") return [];
+  if (professionalContext?.specificity !== "PARTICIPANT_SPECIFIC") return [];
+  const issues = findUnconfirmedCarePlanProtectiveStrategies(contentMarkdown);
+  if (issues.length === 0) return [];
+  return [{
+    gate: "care_plan_protective_confirmation",
+    state: "awaiting_clarification",
+    message: "Protective Behavioural Management strategies require Authorised Program Officer confirmation before the care plan can be approved.",
+    details: issues.map((issue) =>
+      `${issue.reason} Strategy: ${issue.strategy}. BSP source: ${issue.bspSource || "blank"}.`,
+    ),
   }];
 }
 

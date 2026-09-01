@@ -1750,7 +1750,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(behaviouralManagement?.content.match(/\| Behaviour or trigger \| Strategy \| What the worker does \| BSP source \|/g)).toHaveLength(3);
     expect(behaviouralManagement?.content).toContain("| [PROACTIVE_BEHAVIOUR_OR_TRIGGER] | [PROACTIVE_STRATEGY] | [PROACTIVE_WORKER_ACTIONS] | [PROACTIVE_BSP_SOURCE] |");
     expect(behaviouralManagement?.content).toContain("| [REACTIVE_BEHAVIOUR_OR_TRIGGER] | [REACTIVE_STRATEGY] | [REACTIVE_WORKER_ACTIONS] | [REACTIVE_BSP_SOURCE] |");
-    expect(behaviouralManagement?.content).toContain("| [PROTECTIVE_BEHAVIOUR_OR_TRIGGER] | [PROTECTIVE_STRATEGY] | [PROTECTIVE_WORKER_ACTIONS] | [PROTECTIVE_BSP_SOURCE] |");
+    expect(behaviouralManagement?.content).toContain("| [PROTECTIVE_BEHAVIOUR_OR_TRIGGER] | [PROTECTIVE_STRATEGY] (UNCONFIRMED - APO review required before approval) | [PROTECTIVE_WORKER_ACTIONS] | [PROTECTIVE_BSP_SOURCE] |");
     const behaviourPlaceholders = blueprint.sections
       ?.find((section: any) => section.sectionCode === "BEHAVIOURAL_MANAGEMENT")
       ?.fields?.flatMap(derivePlaceholderTokensFromTemplateField) ?? [];
@@ -1944,6 +1944,44 @@ The strategies below implement the participant's behaviour support plan.
       deferApprovalGate: true,
     });
     expect(proven.failures.filter((failure) => failure.gate === "care_plan_behaviour_safety")).toHaveLength(0);
+
+    const protectiveMarkdown = behaviouralMarkdown
+      .replace("| Loud environment | Offer quiet space | Prompt Michael to move to the lounge | \"Offer access to a quiet space\" - BSP page 4 |", "")
+      .replace("| --- | --- | --- | --- |`", "| --- | --- | --- | --- |")
+      .replace("### Protective strategies\n\n| Behaviour or trigger | Strategy | What the worker does | BSP source |\n| --- | --- | --- | --- |", "### Protective strategies\n\n| Behaviour or trigger | Strategy | What the worker does | BSP source |\n| --- | --- | --- | --- |\n| Risk of harm | Move hazardous items away | Move items out of reach | \"Move hazardous items away during escalation\" - BSP page 8 |");
+    const unconfirmedProtective = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: protectiveMarkdown,
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          {
+            strategy: "Move hazardous items away",
+            bspSource: "\"Move hazardous items away during escalation\" - BSP page 8",
+          },
+        ],
+      },
+      deferApprovalGate: true,
+    });
+    expect(unconfirmedProtective.failures.find((failure) => failure.gate === "care_plan_protective_confirmation")?.details).toEqual(expect.arrayContaining([
+      expect.stringContaining("does not carry an APO confirmation signal"),
+    ]));
+
+    const confirmedProtective = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: protectiveMarkdown.replace("Move hazardous items away", "Move hazardous items away - APO confirmed").replace("Move items out of reach", "Move items out of reach after APO confirmation"),
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          {
+            strategy: "Move hazardous items away - APO confirmed",
+            bspSource: "\"Move hazardous items away during escalation\" - BSP page 8",
+          },
+        ],
+      },
+      deferApprovalGate: true,
+    });
+    expect(confirmedProtective.failures.filter((failure) => failure.gate === "care_plan_protective_confirmation")).toHaveLength(0);
   });
 
   it("merges targeted repair deltas into the existing 9-section deliverable", () => {

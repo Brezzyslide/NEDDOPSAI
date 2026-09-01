@@ -28,6 +28,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import type { ReviewResult } from "./selfReviewService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
+import { findUnconfirmedCarePlanProtectiveStrategies } from "./carePlanBehaviourStrategyService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -341,6 +342,20 @@ export async function approve(
   // touch approvedVersionId — the approval is permanently attached to this version.
   const versions = await getVersions(id, organizationId);
   const versionToPinId = versions[0]?.id ?? null;
+  const work = await getCompletedWork(id, organizationId);
+  if (!work) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
+  if (work.outputType === "care_plan") {
+    const issues = findUnconfirmedCarePlanProtectiveStrategies(versions[0]?.contentMarkdown ?? "");
+    if (issues.length > 0) {
+      throw Object.assign(
+        new Error(`Cannot approve care plan while protective strategies are unconfirmed: ${issues.map((issue) => issue.strategy).join(", ")}`),
+        {
+          statusCode: 400,
+          details: issues,
+        },
+      );
+    }
+  }
   const approvedAt = new Date();
 
   return transitionStatus(id, organizationId, "awaiting_approval", "approved", actorUserId, {

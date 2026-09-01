@@ -713,7 +713,9 @@ function renderStructuredTemplateField(field: string): string {
         "BSP source",
       ], [[
         `[${prefix}_BEHAVIOUR_OR_TRIGGER]`,
-        `[${prefix}_STRATEGY]`,
+        fold === "protective"
+          ? `[${prefix}_STRATEGY] (UNCONFIRMED - APO review required before approval)`
+          : `[${prefix}_STRATEGY]`,
         `[${prefix}_WORKER_ACTIONS]`,
         `[${prefix}_BSP_SOURCE]`,
       ]]),
