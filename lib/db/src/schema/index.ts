@@ -10,6 +10,8 @@ export * from "./specialists";
 export * from "./capabilities";
 export * from "./specialistCapabilities";
 export * from "./tasks";
+export * from "./participants";
+export * from "./taskParticipants";
 export * from "./taskCreationIdempotency";
 export * from "./taskSpecialists";
 export * from "./taskExecutionPlans";

@@ -267,6 +267,7 @@ router.post(
         mimeType: String(body.mimeType),
         fileSize: Number(body.fileSize),
         checksum: String(body.checksum),
+        participantIds: normaliseParticipantIds(body),
       });
 
       // ── Auto-trigger ingestion (Task #19) ───────────────────────────────
@@ -289,6 +290,9 @@ router.post(
         ingestionQueued: Boolean(ingestionJob),
         ingestionJobId: ingestionJob?.id ?? null,
         ingestionStatus: ingestionJob?.status ?? null,
+        participantLinkStatus: source.sourceType === "participant_document"
+          ? normaliseParticipantIds(body).length > 0 ? "linked" : "unlinked_unretrievable"
+          : "not_applicable",
       });
     } catch (err) {
       if (err instanceof KnowledgeSourceError) {
@@ -299,6 +303,15 @@ router.post(
     }
   },
 );
+
+function normaliseParticipantIds(body: Record<string, any>): string[] {
+  const raw = Array.isArray(body.participantIds)
+    ? body.participantIds
+    : body.participantId
+      ? [body.participantId]
+      : [];
+  return [...new Set(raw.map((id) => String(id ?? "").trim()).filter(Boolean))];
+}
 
 // ─── Upload file (proxy route) ────────────────────────────────────────────────
 //

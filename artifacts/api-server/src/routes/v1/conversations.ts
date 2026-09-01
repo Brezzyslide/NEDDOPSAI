@@ -93,7 +93,19 @@ router.get("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
     const user = req.appUser!;
     const conversations = await conversationService.getConversations(ctx.tenantId, user.id);
     res.json({ conversations, total: conversations.length });
-  } catch (err) { next(err); }
+  } catch (err: any) {
+    if (err?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+      res.status(409).json({
+        error: {
+          code: err.code,
+          message: err.message,
+          participantResolution: err.participantResolution,
+        },
+      });
+      return;
+    }
+    next(err);
+  }
 });
 
 // ─── Create conversation ───────────────────────────────────────────────────────
@@ -443,12 +455,24 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
   try {
     const ctx = req.tenantContext!;
     const user = req.appUser!;
-    const { title, description, priority, idempotencyKey, allowDuplicate } = req.body as {
+    const {
+      title,
+      description,
+      priority,
+      idempotencyKey,
+      allowDuplicate,
+      subjectParticipantIds,
+      relatedParticipantIds,
+      guardianContextParticipantIds,
+    } = req.body as {
       title?: string;
       description?: string;
       priority?: string;
       idempotencyKey?: string;
       allowDuplicate?: boolean;
+      subjectParticipantIds?: string[];
+      relatedParticipantIds?: string[];
+      guardianContextParticipantIds?: string[];
     };
     const requestIdempotencyKey =
       typeof idempotencyKey === "string" && idempotencyKey.trim()
@@ -488,6 +512,9 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       conversationId: conv.id,
       idempotencyKey: requestIdempotencyKey,
       allowDuplicate: allowDuplicate === true,
+      subjectParticipantIds,
+      relatedParticipantIds,
+      guardianContextParticipantIds,
     });
 
     // Create (or retrieve) the dedicated task_workroom.

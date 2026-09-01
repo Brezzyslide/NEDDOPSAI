@@ -46,6 +46,7 @@ import {
 } from "./knowledgeOrchestrationEngine.js";
 import type { SensitivityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
 import { projectKnowledgeCitationsToEvidenceReferences } from "../lib/knowledge/evidenceReferenceProjection.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import type { EvidenceReference } from "./specialistIntelligenceService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -498,6 +499,10 @@ export async function buildSpecialistContext(params: {
     ? `${task.title} [${task.currentState}]`
     : "Unknown task";
 
+  const entityIds = taskId
+    ? await getRetrievalSubjectParticipantIdsForTask(organizationId, taskId)
+    : [];
+
   const canonicalContext = await loadSpecialistContext(
     organizationId,
     workforceRoleCode,
@@ -508,6 +513,7 @@ export async function buildSpecialistContext(params: {
         ...relevantMessages.slice(-10).map(message => message.content),
       ].filter(Boolean).join("\n"),
       taskId: taskId ?? undefined,
+      entityIds,
       executionId: params.specialistRunId,
       writeAudit: true,
     },

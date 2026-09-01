@@ -51,6 +51,7 @@ import {
   InactiveDNAError,
 } from "./specialistRuntimeManifestService.js";
 import { loadSpecialistContext } from "./specialistContextService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import {
   getBlueprintById,
   getBlueprintExecutionContract,
@@ -564,6 +565,7 @@ async function buildExecutionPackage(
   // specialist config (goals, style, escalation), language profile, and
   // (Task #17) retrieved knowledge document chunks from the Organisation Library.
   // Degrades gracefully — never blocks execution if any context load fails.
+  const entityIds = await getRetrievalSubjectParticipantIdsForTask(task.organizationId, task.id);
   const specialistContext = await loadSpecialistContext(
     task.organizationId,
     primaryRole,
@@ -572,6 +574,7 @@ async function buildExecutionPackage(
       // Use task title + description as query for hybrid retrieval
       query:        task.description ? `${task.title}: ${task.description}` : task.title,
       taskId:       task.id,
+      entityIds,
       executionId,
       writeAudit:   true,
     },

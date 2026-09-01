@@ -23,6 +23,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { computeAuthorityBonus, computeFreshnessBonus } from "../services/hybridRetrievalService.js";
+import { deriveRetrievalEntityIdsFromTaskParticipants } from "../services/taskParticipantService.js";
 
 // ─── Mock the DB for the retrieveChunks governance tests ─────────────────────
 // We verify that the correct SQL WHERE clauses are composed by inspecting the
@@ -48,6 +49,10 @@ vi.mock("@workspace/db", () => ({
   knowledgeChunksTable:        { id: "id", organizationId: "organization_id", knowledgeSourceId: "knowledge_source_id", sourceVersionId: "source_version_id", chunkIndex: "chunk_index", sectionTitle: "section_title", pageNumber: "page_number", text: "text", tokenCount: "token_count", embedding: "embedding" },
   knowledgeSourcesTable:       { id: "id", organizationId: "organization_id", title: "title", sourceType: "source_type", status: "status", isCurrent: "is_current", sensitivityClassification: "sensitivity_classification", authorityLevel: "authority_level", effectiveFrom: "effective_from", effectiveTo: "effective_to", deletedAt: "deleted_at" },
   knowledgeSourceVersionsTable: { id: "id", organizationId: "organization_id", versionLabel: "version_label" },
+  participantsTable:           { id: "id", organizationId: "organization_id", status: "status", deletedAt: "deleted_at" },
+  taskParticipantsTable:       { id: "id", organizationId: "organization_id", taskId: "task_id", participantId: "participant_id", role: "role" },
+  membershipsTable:            { id: "id", organizationId: "organization_id", userId: "user_id", status: "status" },
+  usersTable:                  { id: "id", displayName: "display_name", firstName: "first_name", lastName: "last_name", email: "email" },
   retrievalAuditEventsTable:   { id: "id" },
   eq: vi.fn(),
   and: vi.fn(),
@@ -207,6 +212,97 @@ describe("hybridRetrievalService — governance SQL (Part G)", () => {
     });
     const sql = captureRawSql();
     expect(sql).toContain("deleted_at IS NULL");
+  });
+
+  it("G8: organisation library retrieval excludes participant documents from org-wide fallback", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "org_library",
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("ks.source_type <> 'participant_document'");
+    expect(sql).toContain("OR NOT EXISTS");
+  });
+
+  it("G8: all-library retrieval excludes participant documents", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "all_library",
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("ks.source_type <> 'participant_document'");
+  });
+
+  it("G8: entity-scoped retrieval returns nothing when no subject participant is supplied", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "entity_scoped",
+      entityIds: [],
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("AND 1=0");
+  });
+
+  it("G8: entity-scoped retrieval binds scope_id to the requested subject participant", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "entity_scoped",
+      entityIds: ["participant-a"],
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("ks.source_type = 'participant_document'");
+    expect(sql).toContain("kss.scope_type = 'entity'");
+    expect(sql).toContain("kss.scope_id IN ('participant-a')");
+    expect(sql).not.toContain("participant-b");
+  });
+
+  it("G8: task upload retrieval excludes unlinked participant documents", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "task_upload",
+      taskId: "task-001",
+      entityIds: [],
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("ks.source_scope = 'task'");
+    expect(sql).toContain("ks.task_id = 'task-001'");
+    expect(sql).toContain("ks.source_type <> 'participant_document'");
+  });
+
+  it("G8: task upload retrieval only allows participant documents scoped to the subject participant", async () => {
+    await retrieveChunks({
+      organisationId: "org-001",
+      query: "care plan",
+      queryEmbedding: null,
+      scopeMode: "task_upload",
+      taskId: "task-001",
+      entityIds: ["participant-a"],
+    });
+    const sql = captureRawSql();
+    expect(sql).toContain("ks.source_scope = 'task'");
+    expect(sql).toContain("ks.task_id = 'task-001'");
+    expect(sql).toContain("ks.source_type <> 'participant_document'");
+    expect(sql).toContain("kss.scope_type = 'entity'");
+    expect(sql).toContain("kss.scope_id IN ('participant-a')");
+    expect(sql).not.toContain("participant-b");
+  });
+
+  it("G8: retrieval binding uses only subject participants, not related or guardian context", () => {
+    expect(deriveRetrievalEntityIdsFromTaskParticipants([
+      { role: "subject", participantId: "participant-a" },
+      { role: "related", participantId: "participant-b" },
+      { role: "guardian_context", participantId: "participant-c" },
+    ])).toEqual(["participant-a"]);
   });
 
   // G7 — high semantic score ≠ authority: scoring formula proof

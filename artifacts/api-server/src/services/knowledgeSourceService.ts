@@ -39,6 +39,7 @@ import {
   knowledgeSourcesTable,
   knowledgeSourceScopesTable,
   knowledgeSourceVersionsTable,
+  participantsTable,
   type KnowledgeSource,
   type KnowledgeSourceVersion,
   type KnowledgeSourceScopeRecord,
@@ -82,6 +83,8 @@ export interface CompleteUploadInput {
   mimeType: string;
   fileSize: number;
   checksum: string;
+  /** Participant IDs this source is explicitly linked to when sourceType=participant_document. */
+  participantIds?: string[];
 }
 
 export interface UpdateSourceMetadataInput {
@@ -147,6 +150,32 @@ function validateScopeType(t: string): void {
   }
 }
 
+function uniqueCleanIds(ids: unknown[]): string[] {
+  return [...new Set(ids.map(id => String(id ?? "").trim()).filter(Boolean))];
+}
+
+async function assertParticipantsBelongToOrganisation(
+  organizationId: string,
+  participantIds: string[],
+): Promise<void> {
+  if (participantIds.length === 0) return;
+  const rows = await db
+    .select({ id: participantsTable.id })
+    .from(participantsTable)
+    .where(and(
+      eq(participantsTable.organizationId, organizationId),
+      isNull(participantsTable.deletedAt),
+    ));
+  const allowed = new Set(rows.map(row => row.id));
+  const missing = participantIds.filter(id => !allowed.has(id));
+  if (missing.length > 0) {
+    throw new KnowledgeSourceError(
+      "Participant scope must reference an existing participant in this organisation.",
+      "INVALID_PARTICIPANT_SCOPE",
+    );
+  }
+}
+
 // ─── Duplicate checksum detection ────────────────────────────────────────────
 
 export async function findDuplicateChecksum(
@@ -200,6 +229,10 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   const scope = KNOWLEDGE_SOURCE_SCOPES.includes(input.sourceScope as never)
     ? input.sourceScope!
     : "library";
+  const participantIds = uniqueCleanIds(input.participantIds ?? []);
+  if (participantIds.length > 0) {
+    await assertParticipantsBelongToOrganisation(input.organizationId, participantIds);
+  }
 
   // Duplicate detection
   const duplicate = await findDuplicateChecksum(
@@ -270,6 +303,21 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
     })
     .returning();
 
+  if (input.sourceType === "participant_document") {
+    for (const participantId of participantIds) {
+      await db
+        .insert(knowledgeSourceScopesTable)
+        .values({
+          id: randomUUID(),
+          knowledgeSourceId: input.sourceId,
+          organizationId: input.organizationId,
+          scopeType: "entity",
+          scopeId: participantId,
+        })
+        .onConflictDoNothing();
+    }
+  }
+
   logOrgEvent({
     eventType: "knowledge.source.uploaded",
     organizationId: input.organizationId,
@@ -282,6 +330,9 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
       mimeType: input.mimeType,
       fileSize: input.fileSize,
       versionLabel,
+      participantLinkStatus: input.sourceType === "participant_document"
+        ? participantIds.length > 0 ? "linked" : "unlinked_unretrievable"
+        : "not_applicable",
     },
   }).catch(() => {});
 
@@ -860,6 +911,15 @@ export async function assignScope(input: AssignScopeInput): Promise<KnowledgeSou
     );
   }
   validateScopeType(input.scopeType);
+  if (source.sourceType === "participant_document" && input.scopeType !== "entity") {
+    throw new KnowledgeSourceError(
+      "Participant documents can only be scoped to a participant entity.",
+      "INVALID_PARTICIPANT_SCOPE",
+    );
+  }
+  if (input.scopeType === "entity") {
+    await assertParticipantsBelongToOrganisation(input.organizationId, [input.scopeId]);
+  }
 
   // Upsert: if duplicate, return existing
   const existing = await db

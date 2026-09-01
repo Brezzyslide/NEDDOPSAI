@@ -39,6 +39,8 @@ export interface ChunkRetrievalParams {
   taskId?: string | null;
   /** Required for specialist_scoped scope */
   specialistId?: string;
+  /** Required for entity_scoped scope. These are participant/entity IDs. */
+  entityIds?: string[];
   /** Sensitivity levels to allow. Defaults to public+internal+confidential */
   allowedSensitivity?: SensitivityLevel[];
   /** Source IDs to skip (already claimed by higher priority layer) */
@@ -108,6 +110,7 @@ export async function retrieveChunks(params: ChunkRetrievalParams): Promise<RawC
     scopeMode,
     taskId,
     specialistId,
+    entityIds = [],
     allowedSensitivity = DEFAULT_ALLOWED_SENSITIVITY,
     excludeSourceIds = [],
     limit = DEFAULT_LIMIT,
@@ -125,7 +128,7 @@ export async function retrieveChunks(params: ChunkRetrievalParams): Promise<RawC
       : "";
 
   // ── Build scope WHERE clause ───────────────────────────────────────────────
-  const scopeClause = buildScopeClause(scopeMode, taskId ?? null, specialistId ?? null);
+  const scopeClause = buildScopeClause(scopeMode, taskId ?? null, specialistId ?? null, entityIds);
 
   // ── Format query embedding for pgvector ───────────────────────────────────
   const embeddingStr = queryEmbedding
@@ -228,12 +231,26 @@ function buildScopeClause(
   mode: ChunkScopeMode,
   taskId: string | null,
   specialistId: string | null,
+  entityIds: string[],
 ): string {
   switch (mode) {
     case "task_upload": {
       if (!taskId) return "AND 1=0"; // no task = no results
       const safeId = taskId.replace(/'/g, "''");
-      return `AND ks.source_scope = 'task' AND ks.task_id = '${safeId}'`;
+      const participantScopeClause = entityIds.length === 0
+        ? "ks.source_type <> 'participant_document'"
+        : `(
+            ks.source_type <> 'participant_document'
+            OR EXISTS (
+              SELECT 1 FROM knowledge_source_scopes kss
+              WHERE kss.knowledge_source_id = ks.id
+                AND kss.scope_type = 'entity'
+                AND kss.scope_id IN (${entityIds.map(id => `'${id.replace(/'/g, "''")}'`).join(", ")})
+            )
+          )`;
+      return `AND ks.source_scope = 'task'
+              AND ks.task_id = '${safeId}'
+              AND ${participantScopeClause}`;
     }
 
     case "specialist_scoped": {
@@ -252,6 +269,7 @@ function buildScopeClause(
       // Org/workforce-scoped sources, OR sources with no scope assignment
       // (no scope = implicitly org-wide)
       return `AND ks.source_scope = 'library'
+              AND ks.source_type <> 'participant_document'
               AND (
                 EXISTS (
                   SELECT 1 FROM knowledge_source_scopes kss
@@ -266,18 +284,21 @@ function buildScopeClause(
     }
 
     case "entity_scoped": {
-      // Entity knowledge scope — defined for future use.
-      // Currently no entity-scoped sources exist; returns empty.
+      if (entityIds.length === 0) return "AND 1=0";
+      const safeIds = entityIds.map(id => `'${id.replace(/'/g, "''")}'`).join(", ");
       return `AND ks.source_scope = 'library'
+              AND ks.source_type = 'participant_document'
               AND EXISTS (
                 SELECT 1 FROM knowledge_source_scopes kss
                 WHERE kss.knowledge_source_id = ks.id
                   AND kss.scope_type = 'entity'
+                  AND kss.scope_id IN (${safeIds})
               )`;
     }
 
     case "all_library": {
-      return `AND ks.source_scope = 'library'`;
+      return `AND ks.source_scope = 'library'
+              AND ks.source_type <> 'participant_document'`;
     }
 
     default:

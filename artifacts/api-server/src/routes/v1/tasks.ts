@@ -28,7 +28,17 @@ router.get("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
     const states = state ? (state.split(",") as TaskState[]) : undefined;
     const tasks = await taskService.getTasksByOrg(ctx.tenantId, states);
     res.json({ tasks, total: tasks.length });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+      res.status(409).json({
+        error: {
+          code: err.code,
+          message: err.message,
+          participantResolution: err.participantResolution,
+        },
+      });
+      return;
+    }
     next(err);
   }
 });
@@ -38,7 +48,18 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
     const user = req.appUser!;
     const ctx = req.tenantContext!;
-    const { title, description, priority, originatingModule, conversationId, idempotencyKey, allowDuplicate } = req.body as {
+    const {
+      title,
+      description,
+      priority,
+      originatingModule,
+      conversationId,
+      idempotencyKey,
+      allowDuplicate,
+      subjectParticipantIds,
+      relatedParticipantIds,
+      guardianContextParticipantIds,
+    } = req.body as {
       title?: string;
       description?: string;
       priority?: TaskPriority;
@@ -46,6 +67,9 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       conversationId?: string;
       idempotencyKey?: string;
       allowDuplicate?: boolean;
+      subjectParticipantIds?: string[];
+      relatedParticipantIds?: string[];
+      guardianContextParticipantIds?: string[];
     };
     const requestIdempotencyKey =
       typeof idempotencyKey === "string" && idempotencyKey.trim()
@@ -126,6 +150,9 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       conversationId,
       idempotencyKey: requestIdempotencyKey,
       allowDuplicate: allowDuplicate === true,
+      subjectParticipantIds,
+      relatedParticipantIds,
+      guardianContextParticipantIds,
     });
 
     const meta = auditService.getRequestMeta(req);

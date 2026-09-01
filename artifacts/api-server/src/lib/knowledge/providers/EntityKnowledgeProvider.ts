@@ -60,6 +60,7 @@ export class EntityKnowledgeProvider implements IKnowledgeProvider {
       query:             context.query,
       queryEmbedding:    context.queryEmbedding ?? null,
       scopeMode:         "entity_scoped",
+      entityIds:         context.entityIds,
       allowedSensitivity: context.allowedSensitivity,
       excludeSourceIds:  context.excludeSourceIds ?? [],
       limit:             context.maxItems ?? 20,

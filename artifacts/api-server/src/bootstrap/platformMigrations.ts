@@ -150,6 +150,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds append-only care plan Behavioural Management strategy classification and APO confirmation measurement records.",
   },
+  {
+    id: "0045-participant-scoping",
+    file: "0045_participant_scoping.sql",
+    transactional: true,
+    notes: "Adds first-class participants and task participant bindings for participant-scoped knowledge retrieval.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

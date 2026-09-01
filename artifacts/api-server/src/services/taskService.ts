@@ -17,6 +17,10 @@ import {
 } from "@workspace/db";
 import { planTask, type TaskPlan } from "./chiefOfStaffService.js";
 import { createApproval, getPendingApprovalForTask, supersedePendingApprovalsForTask } from "./approvalService.js";
+import {
+  persistTaskParticipants,
+  resolveSubjectParticipantForTaskRequest,
+} from "./taskParticipantService.js";
 import type { ApprovalType, TaskState, TaskPriority } from "@workspace/shared";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +36,9 @@ export interface CreateTaskInput {
   conversationId?: string;
   idempotencyKey?: string;
   allowDuplicate?: boolean;
+  subjectParticipantIds?: string[];
+  relatedParticipantIds?: string[];
+  guardianContextParticipantIds?: string[];
 }
 
 export interface TaskWithPlan {
@@ -236,6 +243,28 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     return hydrateTaskWithPlan(existing.task, existing.reason);
   }
 
+  const participantResolution = await resolveSubjectParticipantForTaskRequest({
+    organizationId: input.organizationId,
+    title: input.title,
+    description: input.description,
+    explicitSubjectParticipantIds: input.subjectParticipantIds,
+  });
+
+  if (participantResolution.status === "ambiguous" || participantResolution.status === "unresolved") {
+    throw Object.assign(
+      new Error(participantResolution.clarifyingQuestion ?? "Please confirm which participant this task is for."),
+      {
+        code: "PARTICIPANT_RESOLUTION_REQUIRED",
+        status: 409,
+        participantResolution,
+      },
+    );
+  }
+
+  const subjectParticipantIds = participantResolution.status === "resolved"
+    ? participantResolution.subjectParticipantIds
+    : [];
+
   const taskId = randomUUID();
   const idempotencyKey = input.idempotencyKey?.trim() || undefined;
   const workIntentKey = input.conversationId ? deriveWorkIntentKey(input.title, input.description) : undefined;
@@ -314,6 +343,14 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
 
     const [task] = await tx.insert(tasksTable).values(taskRow).returning();
     if (!task) throw new Error("Failed to create task");
+
+    await persistTaskParticipants({
+      organizationId: input.organizationId,
+      taskId,
+      subjectParticipantIds,
+      relatedParticipantIds: input.relatedParticipantIds,
+      guardianContextParticipantIds: input.guardianContextParticipantIds,
+    }, tx as typeof db);
 
     // Chief of Staff plans the task
     const plan = planTask(input.title, input.description, input.sourceUserRequest);

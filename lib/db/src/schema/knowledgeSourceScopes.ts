@@ -13,6 +13,8 @@
  *   department   — department code e.g. "finance", "operations"
  *   location     — location identifier
  *   task_type    — task category e.g. "incident", "onboarding", "compliance"
+ *   entity       — participant/entity identifier. For participant documents,
+ *                  scopeId must be the participants.id for the same org.
  *
  * Design notes:
  *   - Duplicate (knowledgeSourceId, scopeType, scopeId) is rejected by unique index.
@@ -40,7 +42,7 @@ export const knowledgeSourceScopesTable = pgTable("knowledge_source_scopes", {
 
   /**
    * Type of scope target.
-   * organisation | workforce | specialist | department | location | task_type
+   * organisation | workforce | specialist | department | location | task_type | entity
    */
   scopeType: text("scope_type").notNull(),
 
@@ -52,6 +54,7 @@ export const knowledgeSourceScopesTable = pgTable("knowledge_source_scopes", {
    * - department:   department code
    * - location:     location identifier
    * - task_type:    task type code
+   * - entity:       participant/entity ID
    */
   scopeId: text("scope_id").notNull(),
 
@@ -69,5 +72,6 @@ export const KNOWLEDGE_SCOPE_TYPES = [
   "department",
   "location",
   "task_type",
+  "entity",
 ] as const;
 export type KnowledgeScopeType = (typeof KNOWLEDGE_SCOPE_TYPES)[number];
