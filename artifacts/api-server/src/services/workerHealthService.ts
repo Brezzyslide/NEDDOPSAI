@@ -23,6 +23,15 @@ export interface WorkerHealthState {
   avgProcessingMs:   number | null;
 }
 
+export interface WorkerLivenessSignal {
+  state: "healthy" | "idle" | "not_running" | "stalled";
+  message: string;
+  thresholdMinutes: number;
+  jobsQueued: number;
+  oldestQueuedAgeSeconds: number | null;
+  lastClaimedAt: Date | null;
+}
+
 const _state: WorkerHealthState = {
   running:           false,
   workerId:          null,
@@ -89,4 +98,70 @@ export function workerJobFailed(deadLettered = false): void {
 
 export function getWorkerHealth(): WorkerHealthState {
   return { ..._state };
+}
+
+export function getWorkerStalledAfterMinutes(): number {
+  const raw = Number(process.env.KNOWLEDGE_WORKER_STALLED_AFTER_MINUTES ?? "10");
+  return Number.isFinite(raw) && raw > 0 ? raw : 10;
+}
+
+export function assessWorkerLiveness(input: {
+  running: boolean;
+  jobsQueued: number;
+  oldestQueuedAgeSeconds: number | null;
+  lastClaimedAt: Date | null;
+  now?: Date;
+  thresholdMinutes?: number;
+}): WorkerLivenessSignal {
+  const thresholdMinutes = input.thresholdMinutes ?? getWorkerStalledAfterMinutes();
+  const thresholdSeconds = thresholdMinutes * 60;
+  const now = input.now ?? new Date();
+  const lastClaimAgeSeconds = input.lastClaimedAt
+    ? Math.floor((now.getTime() - input.lastClaimedAt.getTime()) / 1000)
+    : null;
+
+  if (input.jobsQueued <= 0) {
+    return {
+      state: input.running ? "healthy" : "idle",
+      message: input.running ? "Worker is running and the queue is empty." : "No worker is running, but no jobs are queued.",
+      thresholdMinutes,
+      jobsQueued: input.jobsQueued,
+      oldestQueuedAgeSeconds: input.oldestQueuedAgeSeconds,
+      lastClaimedAt: input.lastClaimedAt,
+    };
+  }
+
+  const noRecentClaim = lastClaimAgeSeconds === null || lastClaimAgeSeconds > thresholdSeconds;
+  const oldQueue = (input.oldestQueuedAgeSeconds ?? 0) > thresholdSeconds;
+
+  if (noRecentClaim && oldQueue) {
+    return {
+      state: "stalled",
+      message: "Jobs are queued but no worker has claimed work within the liveness threshold.",
+      thresholdMinutes,
+      jobsQueued: input.jobsQueued,
+      oldestQueuedAgeSeconds: input.oldestQueuedAgeSeconds,
+      lastClaimedAt: input.lastClaimedAt,
+    };
+  }
+
+  if (!input.running && !input.lastClaimedAt) {
+    return {
+      state: "not_running",
+      message: "No in-process worker is running; queued jobs are still within the liveness threshold.",
+      thresholdMinutes,
+      jobsQueued: input.jobsQueued,
+      oldestQueuedAgeSeconds: input.oldestQueuedAgeSeconds,
+      lastClaimedAt: input.lastClaimedAt,
+    };
+  }
+
+  return {
+    state: "healthy",
+    message: "Worker has recent claim activity while jobs are queued.",
+    thresholdMinutes,
+    jobsQueued: input.jobsQueued,
+    oldestQueuedAgeSeconds: input.oldestQueuedAgeSeconds,
+    lastClaimedAt: input.lastClaimedAt,
+  };
 }

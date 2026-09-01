@@ -156,6 +156,17 @@ variable "api_desired_count" {
   }
 }
 
+variable "knowledge_worker_desired_count" {
+  type        = number
+  description = "Permanent Knowledge Ingestion Worker desired count. Keep 0 until participant scoping is live and approved for ingestion."
+  default     = 0
+
+  validation {
+    condition     = var.knowledge_worker_desired_count >= 0 && var.knowledge_worker_desired_count <= 2
+    error_message = "knowledge_worker_desired_count must be 0, 1, or 2 for Dev."
+  }
+}
+
 variable "api_temporary_http_cidrs" {
   type        = list(string)
   description = "Temporary HTTP health-test CIDRs while DNS/ACM HTTPS is not ready. Keep empty for final HTTPS-only posture."

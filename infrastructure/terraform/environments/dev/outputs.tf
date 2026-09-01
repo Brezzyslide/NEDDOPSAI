@@ -105,6 +105,19 @@ output "api_runtime" {
   description = "Permanent Dev API runtime metadata. Does not include secrets."
 }
 
+output "knowledge_ingestion_worker_runtime" {
+  value = {
+    ecs_cluster_name    = aws_ecs_cluster.api.name
+    ecs_service_name    = aws_ecs_service.knowledge_ingestion_worker.name
+    task_definition_arn = aws_ecs_task_definition.knowledge_ingestion_worker.arn
+    container_name      = local.knowledge_worker_container_name
+    log_group_name      = aws_cloudwatch_log_group.knowledge_ingestion_worker.name
+    desired_count       = var.knowledge_worker_desired_count
+    enabled             = var.knowledge_worker_desired_count > 0
+  }
+  description = "Disabled-by-default Knowledge Ingestion Worker runtime metadata. desired_count must remain 0 until participant scoping is enabled."
+}
+
 output "web_runtime" {
   value = {
     web_bucket_name   = aws_s3_bucket.web.id

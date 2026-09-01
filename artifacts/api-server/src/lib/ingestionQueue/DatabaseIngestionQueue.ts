@@ -127,13 +127,13 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
     const job = rows[0];
     if (!job) throw new Error("DatabaseIngestionQueue.enqueue: insert returned no rows");
 
-    logOrgEvent({
+    await logOrgEvent({
       eventType:      "ingestion_job.queued",
       organizationId: input.organizationId,
       resourceType:   "ingestion_job",
       resourceId:     id,
       actorUserId:    input.actorUserId,
-    }).catch(() => {});
+    });
 
     return job;
   }
@@ -460,10 +460,25 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
     const processingStatuses = ["fetching","extracting","normalising","chunking","embedding","cancelling"];
     const processing = processingStatuses.reduce((s, k) => s + (counts[k] ?? 0), 0);
 
-    const [oldestRow] = await db.execute<{ oldest: string | null }>(sql`
-      SELECT MIN(created_at)::text AS oldest
+    const [oldestRow] = await db.execute<{ oldest: string | null; age_seconds: string | null }>(sql`
+      SELECT
+        MIN(created_at)::text AS oldest,
+        EXTRACT(EPOCH FROM (NOW() - MIN(created_at)))::int::text AS age_seconds
       FROM   ingestion_jobs
       WHERE  status = 'queued'
+    `).then(r => (r.rows ?? r as any));
+
+    const [zeroAttemptRow] = await db.execute<{ cnt: string }>(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM   ingestion_jobs
+      WHERE  status = 'queued'
+        AND  attempt_count = 0
+    `).then(r => (r.rows ?? r as any));
+
+    const [lastClaimRow] = await db.execute<{ last_claimed_at: string | null }>(sql`
+      SELECT MAX(claimed_at)::text AS last_claimed_at
+      FROM   ingestion_jobs
+      WHERE  claimed_at IS NOT NULL
     `).then(r => (r.rows ?? r as any));
 
     const [stuckRow] = await db.execute<{ cnt: string }>(sql`
@@ -479,9 +494,12 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
       processing,
       failed:         counts["failed"]          ?? 0,
       deadLettered:   counts["dead_lettered"]   ?? 0,
-      completedTotal: counts["review_required"] ?? 0 + (counts["approved"] ?? 0),
+      completedTotal: (counts["review_required"] ?? 0) + (counts["approved"] ?? 0),
       stuck:          parseInt(stuckRow?.cnt ?? "0", 10),
       oldestQueuedAt: oldestRow?.oldest ? new Date(oldestRow.oldest) : null,
+      oldestQueuedAgeSeconds: oldestRow?.age_seconds ? parseInt(oldestRow.age_seconds, 10) : null,
+      queuedZeroAttempt: parseInt(zeroAttemptRow?.cnt ?? "0", 10),
+      lastClaimedAt: lastClaimRow?.last_claimed_at ? new Date(lastClaimRow.last_claimed_at) : null,
     };
   }
 

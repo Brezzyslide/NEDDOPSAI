@@ -186,7 +186,14 @@ async function runPipeline(
     // ── Stage 2: fetch from object storage ─────────────────────────────────
     currentStage = "fetching";
     await checkCancellation(jobId, organizationId);
-    await _transition(jobId, organizationId, "extracting");
+    const jobStateRows = await db
+      .select({ status: ingestionJobsTable.status })
+      .from(ingestionJobsTable)
+      .where(and(eq(ingestionJobsTable.id, jobId), eq(ingestionJobsTable.organizationId, organizationId)))
+      .limit(1);
+    if (jobStateRows[0]?.status === "queued") {
+      await _transition(jobId, organizationId, "fetching");
+    }
     await updateVersionIngestionStatus(sourceVersionId, organizationId, "processing");
 
     const storageKey = version.storageKey;
@@ -197,6 +204,7 @@ async function runPipeline(
     // ── Stage 3: extract text ───────────────────────────────────────────────
     currentStage = "extracting";
     await checkCancellation(jobId, organizationId);
+    await _transition(jobId, organizationId, "extracting");
 
     const ext = extFromMime(version.mimeType ?? "");
     const extractor = getExtractor(version.mimeType ?? "", ext);
@@ -604,16 +612,112 @@ class PipelineError extends Error {
   }
 }
 
+async function fetchFromObjectStorage(storageKey: string): Promise<Buffer> {
+  const provider = (process.env.KNOWLEDGE_STORAGE_PROVIDER ?? "").toLowerCase();
+
+  if (provider === "local") {
+    return fetchFromLocalObjectStorage(storageKey);
+  }
+
+  if (provider === "s3" || process.env.KNOWLEDGE_S3_BUCKET || process.env.APP_STORAGE_BUCKET) {
+    return fetchFromS3ObjectStorage(storageKey);
+  }
+
+  return fetchFromReplitObjectStorage(storageKey);
+}
+
+async function fetchFromLocalObjectStorage(storageKey: string): Promise<Buffer> {
+  const root = process.env.KNOWLEDGE_LOCAL_STORAGE_ROOT;
+  if (!root) {
+    throw new PipelineError(
+      "KNOWLEDGE_LOCAL_STORAGE_ROOT not configured — cannot fetch local source file.",
+      "STORAGE_NOT_CONFIGURED",
+      true,
+    );
+  }
+
+  const { readFile } = await import("fs/promises");
+  const path = await import("path");
+  const rootPath = path.resolve(root);
+  const targetPath = path.resolve(rootPath, storageKey);
+
+  if (path.isAbsolute(storageKey) || !targetPath.startsWith(`${rootPath}${path.sep}`)) {
+    throw new PipelineError(
+      "Storage key is not valid for local knowledge storage.",
+      "INVALID_STORAGE_KEY",
+      true,
+    );
+  }
+
+  try {
+    return await readFile(targetPath);
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      throw new PipelineError(
+        `Source file not found in local storage (key: ${storageKey.slice(0, 60)}).`,
+        "OBJECT_NOT_FOUND",
+        true,
+      );
+    }
+
+    const msg = err instanceof Error ? err.message.slice(0, 300) : "Unknown error";
+    throw new PipelineError(`Failed to fetch local source file: ${msg}`, "FETCH_FAILED", false);
+  }
+}
+
+async function fetchFromS3ObjectStorage(storageKey: string): Promise<Buffer> {
+  const bucketName = process.env.KNOWLEDGE_S3_BUCKET ?? process.env.APP_STORAGE_BUCKET;
+  if (!bucketName) {
+    throw new PipelineError(
+      "KNOWLEDGE_S3_BUCKET or APP_STORAGE_BUCKET not configured — cannot fetch source file.",
+      "STORAGE_NOT_CONFIGURED",
+      true,
+    );
+  }
+
+  const prefix = (process.env.KNOWLEDGE_S3_PREFIX ?? "knowledge").replace(/^\/+|\/+$/g, "");
+  const objectKey = prefix ? `${prefix}/${storageKey}` : storageKey;
+
+  try {
+    const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
+    const client = new S3Client({ region: process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION });
+    const result = await client.send(new GetObjectCommand({ Bucket: bucketName, Key: objectKey }));
+    return await streamToBuffer(result.Body);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.slice(0, 300) : "Unknown error";
+    const name = err instanceof Error ? err.name : "";
+
+    if (name === "NoSuchKey" || name === "NotFound" || msg.includes("NoSuchKey") || msg.includes("404")) {
+      throw new PipelineError(
+        `Source file not found in S3 storage (key: ${storageKey.slice(0, 60)}).`,
+        "OBJECT_NOT_FOUND",
+        true,
+      );
+    }
+
+    if (
+      msg.includes("ECONNREFUSED") || msg.includes("ECONNRESET") ||
+      msg.includes("ETIMEDOUT") || msg.includes("socket hang up") ||
+      msg.includes("network") || msg.includes("timeout")
+    ) {
+      throw new PipelineError(
+        `S3 storage fetch failed (transient network error): ${msg}`,
+        "FETCH_FAILED_TRANSIENT",
+        false,
+      );
+    }
+
+    throw new PipelineError(`Failed to fetch S3 source file: ${msg}`, "FETCH_FAILED", false);
+  }
+}
+
 /**
  * Fetch a document buffer from Replit Object Storage using the sidecar-authenticated
  * GCS client. Parses PRIVATE_OBJECT_DIR (format: /{bucketId}/{prefix}) to construct
  * the correct bucket name and object path.
- *
- * Sprint 28.6: Previous implementation used `new Storage()` (no sidecar credentials)
- * which produced an empty bucket name and failed with a GCS authentication error on
- * every attempt — silently, because the lease expired before GCS returned the error.
  */
-async function fetchFromObjectStorage(storageKey: string): Promise<Buffer> {
+async function fetchFromReplitObjectStorage(storageKey: string): Promise<Buffer> {
   const privateDir = process.env.PRIVATE_OBJECT_DIR;
   if (!privateDir) {
     throw new PipelineError(
@@ -684,6 +788,22 @@ async function fetchFromObjectStorage(storageKey: string): Promise<Buffer> {
       false,
     );
   }
+}
+
+async function streamToBuffer(body: unknown): Promise<Buffer> {
+  if (!body) return Buffer.alloc(0);
+  if (Buffer.isBuffer(body)) return body;
+
+  if (typeof body === "object" && body !== null && "transformToByteArray" in body) {
+    const bytes = await (body as { transformToByteArray: () => Promise<Uint8Array> }).transformToByteArray();
+    return Buffer.from(bytes);
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Uint8Array | string>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }
 
 async function updateVersionIngestionStatus(

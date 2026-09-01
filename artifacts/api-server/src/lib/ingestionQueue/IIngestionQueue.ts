@@ -26,6 +26,9 @@ export interface QueueHealth {
   completedTotal:   number;
   stuck:            number;
   oldestQueuedAt:   Date | null;
+  oldestQueuedAgeSeconds: number | null;
+  queuedZeroAttempt: number;
+  lastClaimedAt:    Date | null;
 }
 
 export interface IIngestionQueue {

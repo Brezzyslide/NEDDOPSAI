@@ -12,7 +12,7 @@
 import { Router } from "express";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
-import { getWorkerHealth } from "../../services/workerHealthService.js";
+import { assessWorkerLiveness, getWorkerHealth } from "../../services/workerHealthService.js";
 import { getIngestionQueue } from "../../lib/ingestionQueue/index.js";
 import { getInProcessWorker } from "../../workers/knowledgeIngestionWorker.js";
 
@@ -33,6 +33,12 @@ router.get(
 
       const worker = getInProcessWorker();
       const isRunning = worker?.isRunning() ?? false;
+      const liveness = assessWorkerLiveness({
+        running: isRunning,
+        jobsQueued: queueHealth.queued,
+        oldestQueuedAgeSeconds: queueHealth.oldestQueuedAgeSeconds,
+        lastClaimedAt: queueHealth.lastClaimedAt,
+      });
 
       res.json({
         worker: {
@@ -40,6 +46,7 @@ router.get(
           running: isRunning,
         },
         queue: queueHealth,
+        liveness,
         mode:   process.env.KNOWLEDGE_WORKER_MODE ?? "in-process",
         provider: process.env.KNOWLEDGE_QUEUE_PROVIDER ?? "database",
       });

@@ -36,6 +36,23 @@ interface KnowledgeSource {
   createdAt: string;
   updatedAt: string;
   approvedAt?: string;
+  latestIngestionJob?: IngestionJobSummary | null;
+}
+
+interface IngestionJobSummary {
+  id: string;
+  status: string;
+  attemptCount?: number;
+  maxAttempts?: number;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  chunkCount?: number | null;
+  embeddingCount?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  lastAttemptAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 interface ScopeRecord {
@@ -63,6 +80,44 @@ const STATUS_CONFIG: Record<SourceStatus, { label: string; badge: string }> = {
   superseded:      { label: "Superseded",       badge: "bg-slate-100 text-slate-400 border-slate-200" },
   archived:        { label: "Archived",         badge: "bg-slate-50 text-slate-400 border-slate-200" },
 };
+
+const ACTIVE_JOB_STATUSES = new Set(["queued", "fetching", "extracting", "normalising", "chunking", "embedding", "cancelling"]);
+const STALLED_JOB_THRESHOLD_MS = 10 * 60 * 1000;
+
+function isIngestionJobStalled(job?: IngestionJobSummary | null): boolean {
+  if (!job || job.status !== "queued" || (job.attemptCount ?? 0) !== 0 || !job.createdAt) return false;
+  return Date.now() - new Date(job.createdAt).getTime() > STALLED_JOB_THRESHOLD_MS;
+}
+
+function ingestionJobBadge(job?: IngestionJobSummary | null): { label: string; cls: string } | null {
+  if (!job) return null;
+  if (isIngestionJobStalled(job)) {
+    return { label: "Processing stalled", cls: "bg-red-50 text-red-700 border-red-200" };
+  }
+  const labels: Record<string, string> = {
+    queued: "Queued",
+    fetching: "Fetching",
+    extracting: "Extracting",
+    normalising: "Organising",
+    chunking: "Sectioning",
+    embedding: "Indexing",
+    review_required: "Ready",
+    approved: "Indexed",
+    failed: "Processing failed",
+    dead_lettered: "Processing failed",
+    cancelled: "Cancelled",
+  };
+  const failed = job.status === "failed" || job.status === "dead_lettered";
+  const ready = job.status === "review_required" || job.status === "approved";
+  return {
+    label: labels[job.status] ?? job.status,
+    cls: failed
+      ? "bg-red-50 text-red-700 border-red-200"
+      : ready
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-blue-50 text-blue-700 border-blue-200",
+  };
+}
 
 const STATUS_FILTERS: Array<{ key: SourceStatus | "all"; label: string }> = [
   { key: "all",             label: "All" },
@@ -209,7 +264,8 @@ export default function OrgLibraryPage() {
     staleTime: 30_000,
     refetchInterval: (qdata) => {
       const hasProcessing = qdata?.state?.data?.sources?.some(
-        (s: KnowledgeSource) => s.status === "processing",
+        (s: KnowledgeSource) =>
+          s.status === "processing" || ACTIVE_JOB_STATUSES.has(s.latestIngestionJob?.status ?? ""),
       );
       return hasProcessing ? 8000 : false;
     },
@@ -479,6 +535,7 @@ export default function OrgLibraryPage() {
         <div className="space-y-3">
           {sources.map(source => {
             const sc = STATUS_CONFIG[source.status] ?? STATUS_CONFIG.uploaded;
+            const jobBadge = ingestionJobBadge(source.latestIngestionJob);
             return (
               <div
                 key={source.id}
@@ -494,6 +551,11 @@ export default function OrgLibraryPage() {
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${sc.badge}`}>
                         {sc.label}
                       </span>
+                      {jobBadge && (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${jobBadge.cls}`}>
+                          {jobBadge.label}
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
                         {CATEGORY_LABELS[source.sourceType] ?? source.sourceType}
                       </span>
@@ -526,6 +588,14 @@ export default function OrgLibraryPage() {
                       <span>Added {friendlyDate(source.createdAt)}</span>
                       {source.approvedAt && <span>· Approved {friendlyDate(source.approvedAt)}</span>}
                     </div>
+                    {isIngestionJobStalled(source.latestIngestionJob) && (
+                      <p className="text-xs text-red-600 mt-1">
+                        No worker has claimed this document for processing for more than 10 minutes.
+                      </p>
+                    )}
+                    {source.latestIngestionJob?.lastErrorMessage && (
+                      <p className="text-xs text-red-600 mt-1">{source.latestIngestionJob.lastErrorMessage}</p>
+                    )}
                   </div>
 
                   {/* Actions */}

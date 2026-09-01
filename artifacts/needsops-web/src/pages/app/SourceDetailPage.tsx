@@ -41,12 +41,19 @@ interface KnowledgeSource {
 interface IngestionJob {
   id: string;
   status: string;
+  attemptCount?: number;
+  maxAttempts?: number;
   requiresHumanReview: boolean;
   promptInjectionFlags: unknown[];
   chunkCount?: number;
+  embeddingCount?: number;
   lastErrorCode?: string;
   lastErrorMessage?: string;
+  startedAt?: string;
   completedAt?: string;
+  lastAttemptAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Chunk {
@@ -84,6 +91,44 @@ const STATUS_LABELS: Record<string, { label: string; badge: string; stage: strin
   superseded:      { label: "Superseded",          badge: "bg-slate-100 text-slate-400 border-slate-200",  stage: "A newer version of this source is in use." },
   archived:        { label: "Archived",            badge: "bg-slate-50 text-slate-400 border-slate-200",   stage: "This source has been archived." },
 };
+
+const STALLED_JOB_THRESHOLD_MS = 10 * 60 * 1000;
+
+function isJobTerminal(status?: string): boolean {
+  return !!status && ["review_required", "approved", "failed", "dead_lettered", "cancelled", "revoked"].includes(status);
+}
+
+function describeJob(job?: IngestionJob | null): { label: string; badge: string; detail: string; isStalled: boolean; isFailed: boolean } | null {
+  if (!job) return null;
+
+  const ageMs = job.createdAt ? Date.now() - new Date(job.createdAt).getTime() : 0;
+  const isStalled = job.status === "queued" && (job.attemptCount ?? 0) === 0 && ageMs > STALLED_JOB_THRESHOLD_MS;
+  if (isStalled) {
+    return {
+      label: "Stalled",
+      badge: "bg-red-50 text-red-700 border-red-200",
+      detail: "No worker has claimed this document for processing. It has been queued for more than 10 minutes.",
+      isStalled: true,
+      isFailed: false,
+    };
+  }
+
+  const labels: Record<string, { label: string; detail: string; badge: string }> = {
+    queued:          { label: "Queued",       detail: "Waiting for a worker to claim this document.", badge: "bg-slate-100 text-slate-600 border-slate-200" },
+    fetching:        { label: "Fetching",     detail: "Retrieving the uploaded document.", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+    extracting:      { label: "Extracting",   detail: "Reading text from the document.", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+    normalising:     { label: "Organising",   detail: "Preparing extracted text for review.", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+    chunking:        { label: "Sectioning",   detail: "Breaking the document into reviewable sections.", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+    embedding:       { label: "Indexing",     detail: "Indexing the document for retrieval.", badge: "bg-blue-50 text-blue-600 border-blue-200" },
+    review_required: { label: "Ready",        detail: "Document processing finished and is ready for review.", badge: "bg-amber-50 text-amber-700 border-amber-200" },
+    approved:        { label: "Approved",     detail: "Document is approved and available.", badge: "bg-green-50 text-green-700 border-green-200" },
+    failed:          { label: "Failed",       detail: job.lastErrorMessage || "Processing failed.", badge: "bg-red-50 text-red-700 border-red-200" },
+    dead_lettered:   { label: "Failed",       detail: job.lastErrorMessage || "Processing failed after all retry attempts.", badge: "bg-red-50 text-red-700 border-red-200" },
+    cancelled:       { label: "Cancelled",    detail: "Processing was cancelled.", badge: "bg-slate-100 text-slate-500 border-slate-200" },
+  };
+  const fallback = labels[job.status] ?? { label: job.status, detail: "Processing status is being checked.", badge: "bg-slate-100 text-slate-500 border-slate-200" };
+  return { ...fallback, isStalled: false, isFailed: job.status === "failed" || job.status === "dead_lettered" };
+}
 
 const AUTHORITY_LABELS: Record<string, string> = {
   mandatory:      "Required reading",
@@ -163,7 +208,7 @@ export default function SourceDetailPage() {
     },
     refetchInterval: (data) => {
       const status = data?.state?.data?.jobs?.[0]?.status;
-      return status === "processing" || status === "pending" ? 5000 : false;
+      return status && !isJobTerminal(status) ? 5000 : false;
     },
   });
 
@@ -297,6 +342,7 @@ export default function SourceDetailPage() {
   const warnings = warningsData;
 
   const statusInfo = STATUS_LABELS[source?.status ?? "uploaded"] ?? STATUS_LABELS.uploaded;
+  const jobInfo = describeJob(job);
 
   const isScannedPdf =
     warnings?.pipelineWarnings?.some(w =>
@@ -436,6 +482,15 @@ export default function SourceDetailPage() {
               {statusInfo.stage}
             </p>
           )}
+          {jobInfo && (
+            <div className={`mt-3 text-sm rounded-lg px-3 py-2 border ${jobInfo.badge}`}>
+              <div className="font-medium">Processing: {jobInfo.label}</div>
+              <div className="mt-0.5">{jobInfo.detail}</div>
+              {job.attemptCount !== undefined && (
+                <div className="mt-1 text-xs opacity-80">Attempts: {job.attemptCount}/{job.maxAttempts ?? "?"}</div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Scoped to */}
@@ -540,12 +595,17 @@ export default function SourceDetailPage() {
         {/* No sections yet */}
         {chunks.length === 0 && (source.status === "uploaded" || source.status === "processing") && (
           <div className="bg-white border border-slate-200 rounded-xl p-8 text-center shadow-sm">
-            <div className="text-3xl mb-3">⏳</div>
+            <div className="text-3xl mb-3">{jobInfo?.isStalled ? "⚠" : "⏳"}</div>
             <p className="text-slate-600 font-medium text-sm">
-              {source.status === "processing"
-                ? "NeedsOps is reading and organising this document."
-                : "This document is queued for processing."}
+              {jobInfo?.isStalled
+                ? "Processing is stalled."
+                : source.status === "processing"
+                  ? "NeedsOps is reading and organising this document."
+                  : "This document is queued for processing."}
             </p>
+            {jobInfo?.isStalled && (
+              <p className="text-xs text-red-600 mt-1">{jobInfo.detail}</p>
+            )}
           </div>
         )}
 

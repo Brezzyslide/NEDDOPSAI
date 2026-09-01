@@ -82,13 +82,13 @@ export async function enqueueIngestionJob(
   const job = rows[0];
   if (!job) throw new IngestionJobError("Failed to create ingestion job.", "CREATE_FAILED");
 
-  logOrgEvent({
+  await logOrgEvent({
     eventType: "ingestion_job.queued",
     organizationId: input.organizationId,
     resourceType: "ingestion_job",
     resourceId: id,
     actorUserId: input.actorUserId,
-  }).catch(() => {});
+  });
 
   return job;
 }

@@ -71,10 +71,29 @@ import {
 } from "../../services/knowledgeSourceService.js";
 import { getRequestMeta } from "../../services/auditService.js";
 import { triggerIngestion as triggerIngestionJob } from "../../services/ingestionPipelineService.js";
+import { listIngestionJobs } from "../../services/ingestionJobService.js";
 
 const router = Router({ mergeParams: true });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function safeIngestionJobSummary(job: Record<string, unknown>) {
+  return {
+    id:               job.id,
+    status:           job.status,
+    attemptCount:     job.attemptCount,
+    maxAttempts:      job.maxAttempts,
+    lastErrorCode:    job.lastErrorCode,
+    lastErrorMessage: job.lastErrorMessage,
+    chunkCount:       job.chunkCount,
+    embeddingCount:   job.embeddingCount,
+    startedAt:        job.startedAt,
+    completedAt:      job.completedAt,
+    lastAttemptAt:    job.lastAttemptAt,
+    createdAt:        job.createdAt,
+    updatedAt:        job.updatedAt,
+  };
+}
 
 function requireOwnerOrAdminInline(req: any, res: any): boolean {
   const role = req.tenantContext?.role;
@@ -108,7 +127,20 @@ router.get(
         includeDeleted: includeDeleted === "true",
       });
 
-      res.json(result);
+      const jobs = await listIngestionJobs(ctx.tenantId, { limit: 200 });
+      const latestJobBySource = new Map<string, ReturnType<typeof safeIngestionJobSummary>>();
+      for (const job of jobs) {
+        if (!job.knowledgeSourceId) continue;
+        latestJobBySource.set(job.knowledgeSourceId, safeIngestionJobSummary(job as any));
+      }
+
+      res.json({
+        ...result,
+        sources: result.sources.map((source) => ({
+          ...source,
+          latestIngestionJob: latestJobBySource.get(source.id) ?? null,
+        })),
+      });
     } catch (err) {
       next(err);
     }
@@ -238,24 +270,26 @@ router.post(
       });
 
       // ── Auto-trigger ingestion (Task #19) ───────────────────────────────
-      // Enqueue asynchronously — do not block the upload response.
+      // Upload completion is only fully successful once the source is queued.
       // Not enqueued for duplicates (existing job already running).
+      let ingestionJob: Awaited<ReturnType<typeof triggerIngestionJob>> | null = null;
       if (!isDuplicate && source.status !== "revoked" && !source.deletedAt) {
-        triggerIngestionJob({
+        ingestionJob = await triggerIngestionJob({
           organizationId:    ctx.tenantId,
           knowledgeSourceId: source.id,
           sourceVersionId:   version.id,
           actorUserId:       user.id,
-        }).catch((err: unknown) => {
-          // Non-fatal — upload succeeded; log for ops monitoring
-          const msg = err instanceof Error ? err.message.slice(0, 200) : "unknown";
-          console.error(
-            `[knowledgeSources] Failed to enqueue ingestion for source=${source.id}: ${msg}`,
-          );
         });
       }
 
-      res.status(isDuplicate ? 200 : 201).json({ source, version, isDuplicate, ingestionQueued: !isDuplicate });
+      res.status(isDuplicate ? 200 : 201).json({
+        source,
+        version,
+        isDuplicate,
+        ingestionQueued: Boolean(ingestionJob),
+        ingestionJobId: ingestionJob?.id ?? null,
+        ingestionStatus: ingestionJob?.status ?? null,
+      });
     } catch (err) {
       if (err instanceof KnowledgeSourceError) {
         res.status(400).json({ error: { code: err.code, message: err.message } });
