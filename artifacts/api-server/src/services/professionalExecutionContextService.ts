@@ -531,6 +531,17 @@ export function derivePlaceholderTokensFromTemplateField(field: string): string[
     ]);
   }
 
+  const behaviourFold = field.match(/\b(proactive|reactive|protective)\s+strategies\s+table with columns\s+behaviour or trigger\s*\|\s*strategy\s*\|\s*what the worker does\s*\|\s*bsp source/i);
+  if (behaviourFold) {
+    const prefix = behaviourFold[1]!.toUpperCase();
+    return uniquePlaceholders([
+      `[${prefix}_BEHAVIOUR_OR_TRIGGER]`,
+      `[${prefix}_STRATEGY]`,
+      `[${prefix}_WORKER_ACTIONS]`,
+      `[${prefix}_BSP_SOURCE]`,
+    ]);
+  }
+
   const supportTypes = field.match(/support types selected from\s+[—-]\s+(.+)/i);
   if (supportTypes) {
     const types = supportTypes[1]!.split(",").map((item) => item.trim()).filter(Boolean);

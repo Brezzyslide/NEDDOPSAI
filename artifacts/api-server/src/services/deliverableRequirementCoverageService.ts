@@ -419,10 +419,11 @@ function buildDeliverableSectionIntegrityFailures(
   if (structuredSections.size === 0) return [];
 
   const markdownSections = structure.sections.filter((section) => section.title !== "Document");
+  const topLevelMarkdownSections = markdownSections.filter((section) => section.headingLevel === 2);
   const failures: DeliverableRequirementCoverageFailure[] = [];
-  if (markdownSections.length !== structuredSections.size) {
+  if (topLevelMarkdownSections.length !== structuredSections.size) {
     failures.push(deliverableSectionIntegrityFailure(
-      `Assembled markdown section count (${markdownSections.length}) does not match structured deliverable section count (${structuredSections.size}) for ${profile.deliverableType}. Coverage must validate the persisted artifact markdown.`,
+      `Assembled markdown section count (${topLevelMarkdownSections.length}) does not match structured deliverable section count (${structuredSections.size}) for ${profile.deliverableType}. Coverage must validate the persisted artifact markdown.`,
     ));
   }
 
@@ -1049,6 +1050,7 @@ interface MarkdownSection {
   normalisedTitle: string;
   content: string;
   startLine: number;
+  headingLevel: number;
 }
 
 interface MarkdownTable {
@@ -1440,6 +1442,7 @@ function parseMarkdownStructure(markdown: string): MarkdownStructure {
     normalisedTitle: "document",
     content: "",
     startLine: 1,
+    headingLevel: 0,
   };
 
   const commitSection = () => {
@@ -1450,7 +1453,7 @@ function parseMarkdownStructure(markdown: string): MarkdownStructure {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
-    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    const heading = /^(#{1,2})\s+(.+?)\s*$/.exec(line);
     if (heading) {
       commitSection();
       current = {
@@ -1458,6 +1461,7 @@ function parseMarkdownStructure(markdown: string): MarkdownStructure {
         normalisedTitle: normaliseContent(heading[2]!.trim()),
         content: "",
         startLine: index + 1,
+        headingLevel: heading[1]!.length,
       };
       continue;
     }

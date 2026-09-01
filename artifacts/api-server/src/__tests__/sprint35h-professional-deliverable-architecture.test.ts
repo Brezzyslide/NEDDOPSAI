@@ -1090,7 +1090,12 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(carePlan.sections.every((section: any) => (section.fixedContent ?? []).length > 0)).toBe(true);
     expect(carePlan.sections.every((section: any) => (section.fields ?? []).length > 0)).toBe(true);
     expect(carePlan.sections.every((section: any) => Boolean(section.completionPrompt))).toBe(true);
-    expect(carePlan.sections[8].fixedContent).toContain("Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no behaviour support plan is in place and no behaviours of concern have been identified for this participant. Workers should report any emerging concern to the service manager.");
+    expect(carePlan.sections[8].fixedContent).toContain("These strategies are derived from the behaviour support plan and grouped for operational use. They are confirmed by the provider's Authorised Program Officer before this plan is approved, and reviewed whenever the behaviour support plan changes.");
+    expect(carePlan.sections[8].fields).toEqual([
+      "Proactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
+      "Reactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
+      "Protective strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
+    ]);
     expect(carePlan.sections[10].fixedContent).toContain("Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.");
     expect(carePlan.sections[12].fixedContent.join("\n")).toContain("I have been involved in the development of this Care Plan.");
     expect(carePlan.sections[13].completionPrompt).toBe("Record the form ID, version and date. The review date must match the date recorded in the plan header.");
@@ -1692,6 +1697,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const meeting = assembly.sections.find((section) => section.requirementId === "care-plan-support-plan-meeting");
     const goals = assembly.sections.find((section) => section.requirementId === "care-plan-goals");
     const adl = assembly.sections.find((section) => section.requirementId === "care-plan-undertaking-adl");
+    const behaviouralManagement = assembly.sections.find((section) => section.requirementId === "care-plan-behavioural-management");
     const restrictivePractices = assembly.sections.find((section) => section.requirementId === "care-plan-restrictive-practices");
     const aboutMe = assembly.sections.find((section) => section.requirementId === "care-plan-about-me");
 
@@ -1734,6 +1740,31 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "[RESTRICTIVE_PRACTICE_WORKER_MUST_NOT_DO]",
       "[RESTRICTIVE_PRACTICE_AUTHORISATION_STATUS_AND_REFERENCE]",
       "[RESTRICTIVE_PRACTICE_RECORDING_REQUIREMENT]",
+    ]));
+    expect(behaviouralManagement?.content).toContain("These strategies are derived from the behaviour support plan and grouped for operational use. They are confirmed by the provider's Authorised Program Officer before this plan is approved, and reviewed whenever the behaviour support plan changes.");
+    expect(behaviouralManagement?.content).toContain("### Proactive strategies");
+    expect(behaviouralManagement?.content).toContain("### Reactive strategies");
+    expect(behaviouralManagement?.content).toContain("### Protective strategies");
+    expect(behaviouralManagement?.content.match(/\| Behaviour or trigger \| Strategy \| What the worker does \| BSP source \|/g)).toHaveLength(3);
+    expect(behaviouralManagement?.content).toContain("| [PROACTIVE_BEHAVIOUR_OR_TRIGGER] | [PROACTIVE_STRATEGY] | [PROACTIVE_WORKER_ACTIONS] | [PROACTIVE_BSP_SOURCE] |");
+    expect(behaviouralManagement?.content).toContain("| [REACTIVE_BEHAVIOUR_OR_TRIGGER] | [REACTIVE_STRATEGY] | [REACTIVE_WORKER_ACTIONS] | [REACTIVE_BSP_SOURCE] |");
+    expect(behaviouralManagement?.content).toContain("| [PROTECTIVE_BEHAVIOUR_OR_TRIGGER] | [PROTECTIVE_STRATEGY] | [PROTECTIVE_WORKER_ACTIONS] | [PROTECTIVE_BSP_SOURCE] |");
+    const behaviourPlaceholders = blueprint.sections
+      ?.find((section: any) => section.sectionCode === "BEHAVIOURAL_MANAGEMENT")
+      ?.fields?.flatMap(derivePlaceholderTokensFromTemplateField) ?? [];
+    expect(behaviourPlaceholders).toEqual(expect.arrayContaining([
+      "[PROACTIVE_BEHAVIOUR_OR_TRIGGER]",
+      "[PROACTIVE_STRATEGY]",
+      "[PROACTIVE_WORKER_ACTIONS]",
+      "[PROACTIVE_BSP_SOURCE]",
+      "[REACTIVE_BEHAVIOUR_OR_TRIGGER]",
+      "[REACTIVE_STRATEGY]",
+      "[REACTIVE_WORKER_ACTIONS]",
+      "[REACTIVE_BSP_SOURCE]",
+      "[PROTECTIVE_BEHAVIOUR_OR_TRIGGER]",
+      "[PROTECTIVE_STRATEGY]",
+      "[PROTECTIVE_WORKER_ACTIONS]",
+      "[PROTECTIVE_BSP_SOURCE]",
     ]));
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-goals")?.content).toBe("");
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-undertaking-adl")?.content).toBe("");

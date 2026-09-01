@@ -699,6 +699,27 @@ function renderStructuredTemplateField(field: string): string {
     ]]);
   }
 
+  const behaviourFold = field.match(/\b(proactive|reactive|protective)\s+strategies\s+table with columns\s+behaviour or trigger\s*\|\s*strategy\s*\|\s*what the worker does\s*\|\s*bsp source/i);
+  if (behaviourFold) {
+    const fold = behaviourFold[1]!.toLowerCase();
+    const prefix = fold.toUpperCase();
+    const title = `${capitalise(fold)} strategies`;
+    return [
+      `### ${title}`,
+      renderMarkdownRows([
+        "Behaviour or trigger",
+        "Strategy",
+        "What the worker does",
+        "BSP source",
+      ], [[
+        `[${prefix}_BEHAVIOUR_OR_TRIGGER]`,
+        `[${prefix}_STRATEGY]`,
+        `[${prefix}_WORKER_ACTIONS]`,
+        `[${prefix}_BSP_SOURCE]`,
+      ]]),
+    ].join("\n\n");
+  }
+
   const table = field.match(/table with columns\s+(.+)/i);
   if (table) {
     const columns = (table[1] ?? "").split(",")[0]!
@@ -794,6 +815,10 @@ function placeholderToken(label: string): string {
     .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toUpperCase();
+}
+
+function capitalise(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function stripDeterministicTemplateEcho(content: string, deterministicParts: string[]): string {
