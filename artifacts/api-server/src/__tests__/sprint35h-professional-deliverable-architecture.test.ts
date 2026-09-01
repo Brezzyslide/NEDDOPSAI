@@ -1692,6 +1692,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const meeting = assembly.sections.find((section) => section.requirementId === "care-plan-support-plan-meeting");
     const goals = assembly.sections.find((section) => section.requirementId === "care-plan-goals");
     const adl = assembly.sections.find((section) => section.requirementId === "care-plan-undertaking-adl");
+    const restrictivePractices = assembly.sections.find((section) => section.requirementId === "care-plan-restrictive-practices");
     const aboutMe = assembly.sections.find((section) => section.requirementId === "care-plan-about-me");
 
     expect(assembly.sections).toHaveLength(14);
@@ -1721,6 +1722,19 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "[WHAT_THE_WORKER_DOES_DECISION_MAKING_RELATING_TO_DAILY_ACTIVITIES]",
     ]));
     expect(adlPlaceholders).not.toContain("[SUPPORT_LEVEL_ANYTHING]");
+    expect(restrictivePractices?.content).toContain("| Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement |");
+    expect(restrictivePractices?.content).toContain("| [PRACTICE_TYPE] | [RESTRICTIVE_PRACTICE_PLAIN_LANGUAGE] | [RESTRICTIVE_PRACTICE_WORKER_ACTIONS] | [RESTRICTIVE_PRACTICE_WORKER_MUST_NOT_DO] | [RESTRICTIVE_PRACTICE_AUTHORISATION_STATUS_AND_REFERENCE] | [RESTRICTIVE_PRACTICE_RECORDING_REQUIREMENT] |");
+    const restrictivePracticePlaceholders = derivePlaceholderTokensFromTemplateField(
+      blueprint.sections?.find((section: any) => section.sectionCode === "RESTRICTIVE_PRACTICES")?.fields?.[0] ?? "",
+    );
+    expect(restrictivePracticePlaceholders).toEqual(expect.arrayContaining([
+      "[PRACTICE_TYPE]",
+      "[RESTRICTIVE_PRACTICE_PLAIN_LANGUAGE]",
+      "[RESTRICTIVE_PRACTICE_WORKER_ACTIONS]",
+      "[RESTRICTIVE_PRACTICE_WORKER_MUST_NOT_DO]",
+      "[RESTRICTIVE_PRACTICE_AUTHORISATION_STATUS_AND_REFERENCE]",
+      "[RESTRICTIVE_PRACTICE_RECORDING_REQUIREMENT]",
+    ]));
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-goals")?.content).toBe("");
     expect(assembly.modelGeneratedSections.find((section) => section.requirementId === "care-plan-undertaking-adl")?.content).toBe("");
     expect(aboutMe?.content.indexOf("This section is about who the participant is")).toBeLessThan(

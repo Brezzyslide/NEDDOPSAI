@@ -681,6 +681,24 @@ function renderStructuredTemplateField(field: string): string {
     ]));
   }
 
+  if (/table with columns\s+practice type\s*\|\s*what it is in plain language\s*\|\s*what the worker does\s*\|\s*what the worker must not do\s*\|\s*authorisation status and reference\s*\|\s*recording requirement/i.test(field)) {
+    return renderMarkdownRows([
+      "Practice type",
+      "What it is in plain language",
+      "What the worker does",
+      "What the worker must not do",
+      "Authorisation status and reference",
+      "Recording requirement",
+    ], [[
+      "[PRACTICE_TYPE]",
+      "[RESTRICTIVE_PRACTICE_PLAIN_LANGUAGE]",
+      "[RESTRICTIVE_PRACTICE_WORKER_ACTIONS]",
+      "[RESTRICTIVE_PRACTICE_WORKER_MUST_NOT_DO]",
+      "[RESTRICTIVE_PRACTICE_AUTHORISATION_STATUS_AND_REFERENCE]",
+      "[RESTRICTIVE_PRACTICE_RECORDING_REQUIREMENT]",
+    ]]);
+  }
+
   const table = field.match(/table with columns\s+(.+)/i);
   if (table) {
     const columns = (table[1] ?? "").split(",")[0]!

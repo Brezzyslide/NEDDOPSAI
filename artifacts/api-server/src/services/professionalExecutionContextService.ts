@@ -520,6 +520,17 @@ export function derivePlaceholderTokensFromTemplateField(field: string): string[
     ]);
   }
 
+  if (/table with columns\s+practice type\s*\|\s*what it is in plain language\s*\|\s*what the worker does\s*\|\s*what the worker must not do\s*\|\s*authorisation status and reference\s*\|\s*recording requirement/i.test(field)) {
+    return uniquePlaceholders([
+      "[PRACTICE_TYPE]",
+      "[RESTRICTIVE_PRACTICE_PLAIN_LANGUAGE]",
+      "[RESTRICTIVE_PRACTICE_WORKER_ACTIONS]",
+      "[RESTRICTIVE_PRACTICE_WORKER_MUST_NOT_DO]",
+      "[RESTRICTIVE_PRACTICE_AUTHORISATION_STATUS_AND_REFERENCE]",
+      "[RESTRICTIVE_PRACTICE_RECORDING_REQUIREMENT]",
+    ]);
+  }
+
   const supportTypes = field.match(/support types selected from\s+[—-]\s+(.+)/i);
   if (supportTypes) {
     const types = supportTypes[1]!.split(",").map((item) => item.trim()).filter(Boolean);
