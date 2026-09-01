@@ -144,6 +144,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds Blueprint content hash and Completed Work Blueprint provenance pinning columns.",
   },
+  {
+    id: "0044-care-plan-behaviour-strategy-measurement",
+    file: "0044_care_plan_behaviour_strategy_measurement.sql",
+    transactional: true,
+    notes: "Adds append-only care plan Behavioural Management strategy classification and APO confirmation measurement records.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { findUnconfirmedCarePlanProtectiveStrategies } from "../services/carePlanBehaviourStrategyService";
+import {
+  carePlanStrategyFingerprint,
+  findUnconfirmedCarePlanProtectiveStrategies,
+} from "../services/carePlanBehaviourStrategyService";
 
 describe("care plan behaviour strategy confirmation", () => {
   it("ignores placeholder-only protective template rows", () => {
@@ -41,5 +44,14 @@ describe("care plan behaviour strategy confirmation", () => {
 | Escalation with harm risk | Move hazards away - APO confirmed | Remove loose items from reach after APO confirmation | "Remove loose items" - BSP page 8 |`);
 
     expect(issues).toHaveLength(0);
+  });
+
+  it("uses strategy text plus BSP source as the retained-confirmation identity", () => {
+    const original = carePlanStrategyFingerprint("Move hazards away", "\"Remove loose items\" - BSP page 8");
+    const same = carePlanStrategyFingerprint("  Move   hazards away ", "\"Remove loose items\" - BSP page 8");
+    const changedSource = carePlanStrategyFingerprint("Move hazards away", "\"Remove loose items immediately\" - BSP page 9");
+
+    expect(same).toBe(original);
+    expect(changedSource).not.toBe(original);
   });
 });

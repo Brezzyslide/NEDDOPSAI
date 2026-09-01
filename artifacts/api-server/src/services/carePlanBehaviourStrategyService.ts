@@ -1,7 +1,63 @@
+import { createHash, randomUUID } from "crypto";
+import type { CarePlanBehaviourStrategyConfirmationStatus } from "@workspace/db";
+
 export interface CarePlanProtectiveStrategyConfirmationIssue {
   strategy: string;
   bspSource: string;
   reason: string;
+}
+
+export interface RecordCarePlanBehaviourStrategyMeasurementInput {
+  organizationId: string;
+  taskId?: string | null;
+  completedWorkId?: string | null;
+  completedWorkVersionId?: string | null;
+  participantId?: string | null;
+  strategyText: string;
+  bspSourceQuote: string;
+  modelFolds: string[];
+  apoFolds?: string[];
+  confirmationStatus: CarePlanBehaviourStrategyConfirmationStatus;
+  actorUserId?: string | null;
+  confirmedAt?: Date | null;
+  correctedAt?: Date | null;
+  metadata?: Record<string, unknown>;
+}
+
+export async function recordCarePlanBehaviourStrategyMeasurement(
+  input: RecordCarePlanBehaviourStrategyMeasurementInput,
+): Promise<{ id: string; strategyFingerprint: string }> {
+  const {
+    db,
+    carePlanBehaviourStrategyMeasurementsTable,
+  } = await import("@workspace/db");
+  const id = randomUUID();
+  const strategyFingerprint = carePlanStrategyFingerprint(input.strategyText, input.bspSourceQuote);
+  await db.insert(carePlanBehaviourStrategyMeasurementsTable).values({
+    id,
+    organizationId: input.organizationId,
+    taskId: input.taskId ?? null,
+    completedWorkId: input.completedWorkId ?? null,
+    completedWorkVersionId: input.completedWorkVersionId ?? null,
+    participantId: input.participantId ?? null,
+    strategyFingerprint,
+    strategyText: input.strategyText,
+    bspSourceQuote: input.bspSourceQuote,
+    modelFolds: input.modelFolds,
+    apoFolds: input.apoFolds ?? [],
+    confirmationStatus: input.confirmationStatus,
+    actorUserId: input.actorUserId ?? null,
+    confirmedAt: input.confirmedAt ?? null,
+    correctedAt: input.correctedAt ?? null,
+    metadata: input.metadata ?? {},
+  });
+  return { id, strategyFingerprint };
+}
+
+export function carePlanStrategyFingerprint(strategyText: string, bspSourceQuote: string): string {
+  return createHash("sha256")
+    .update(`${normaliseText(strategyText)}\n${normaliseText(bspSourceQuote)}`, "utf8")
+    .digest("hex");
 }
 
 export function findUnconfirmedCarePlanProtectiveStrategies(

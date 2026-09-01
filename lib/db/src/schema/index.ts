@@ -135,6 +135,7 @@ export * from "./completedWork";
 export * from "./completedWorkVersions";
 export * from "./completedWorkComments";
 export * from "./completedWorkAssets";
+export * from "./carePlanBehaviourStrategyMeasurements";
 export * from "./workArtifacts";
 // Task #36 — Server-side notification state
 export * from "./notificationReads";
