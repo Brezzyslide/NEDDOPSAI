@@ -56,8 +56,17 @@ export async function recordCarePlanBehaviourStrategyMeasurement(
 
 export function carePlanStrategyFingerprint(strategyText: string, bspSourceQuote: string): string {
   return createHash("sha256")
-    .update(`${normaliseText(strategyText)}\n${normaliseText(bspSourceQuote)}`, "utf8")
+    .update(`${normaliseStrategyIdentityText(strategyText)}\n${normaliseText(bspSourceQuote)}`, "utf8")
     .digest("hex");
+}
+
+export function normaliseStrategyIdentityText(strategyText: string): string {
+  return normaliseText(
+    strategyText
+      .replace(/\(\s*unconfirmed\s*[-–—]\s*apo review required before approval\s*\)/gi, " ")
+      .replace(/\bunconfirmed\s*[-–—]\s*apo review required before approval\b/gi, " ")
+      .replace(/\bapo review required before approval\b/gi, " "),
+  );
 }
 
 export function findUnconfirmedCarePlanProtectiveStrategies(

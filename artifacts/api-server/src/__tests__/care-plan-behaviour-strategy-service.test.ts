@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   carePlanStrategyFingerprint,
   findUnconfirmedCarePlanProtectiveStrategies,
+  normaliseStrategyIdentityText,
 } from "../services/carePlanBehaviourStrategyService";
 
 describe("care plan behaviour strategy confirmation", () => {
@@ -49,9 +50,12 @@ describe("care plan behaviour strategy confirmation", () => {
   it("uses strategy text plus BSP source as the retained-confirmation identity", () => {
     const original = carePlanStrategyFingerprint("Move hazards away", "\"Remove loose items\" - BSP page 8");
     const same = carePlanStrategyFingerprint("  Move   hazards away ", "\"Remove loose items\" - BSP page 8");
+    const withMarker = carePlanStrategyFingerprint("Move hazards away (UNCONFIRMED - APO review required before approval)", "\"Remove loose items\" - BSP page 8");
     const changedSource = carePlanStrategyFingerprint("Move hazards away", "\"Remove loose items immediately\" - BSP page 9");
 
     expect(same).toBe(original);
+    expect(withMarker).toBe(original);
     expect(changedSource).not.toBe(original);
+    expect(normaliseStrategyIdentityText("Move hazards away (UNCONFIRMED - APO review required before approval)")).toBe("move hazards away");
   });
 });
