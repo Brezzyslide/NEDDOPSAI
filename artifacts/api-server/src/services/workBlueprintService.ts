@@ -42,6 +42,7 @@ import {
   type RegistryEntry,
 } from "./blueprintRegistry.js";
 import { getAllIntentKeys, resolveIntent, type IntentResolution } from "./blueprintIntentMap.js";
+import { deriveBlueprintSelectionFloor } from "./blueprintSelectionFloor.js";
 import { computeBlueprintContentHash } from "./blueprintContentHashService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1107,7 +1108,14 @@ export async function selectBlueprint(
   }
 
   const confidence = Math.min(1.0, score / 3);
-  return { blueprint, confidence, matchedKeywords: matched, fallbackUsed: false, method: "keyword" };
+  return {
+    blueprint,
+    confidence,
+    matchedKeywords: matched,
+    fallbackUsed: false,
+    method: "keyword",
+    ...deriveBlueprintSelectionFloor(blueprint, userRequest),
+  };
 }
 
 // ─── LLM semantic blueprint classifier ───────────────────────────────────────
@@ -1243,11 +1251,14 @@ Return blueprintCode as null if the request is casual conversation, a general qu
       return { blueprint: null, confidence: 0, matchedKeywords: [], fallbackUsed: true };
     }
 
+    const blueprint = mapRow(full);
     return {
-      blueprint:       mapRow(full),
+      blueprint,
       confidence:      Math.min(1.0, parsed.confidence),
       matchedKeywords: [], // no keyword match — semantic classification
       fallbackUsed:    false,
+      method:          "semantic",
+      ...deriveBlueprintSelectionFloor(blueprint, userRequest),
     };
   } catch {
     // LLM classification must never abort the pipeline

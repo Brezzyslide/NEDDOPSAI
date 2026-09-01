@@ -44,6 +44,9 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "care_plan.revise":  { family: "care_plan", mode: "revise",  code: "care_plan", isAction: false },
 
   // ── Support Plans ──────────────────────────────────────────────────────────
+  "individual_support_plan.create":  { family: "support_plan", mode: "create", code: "individual_support_plan", isAction: false },
+  "individual_support_plan.review":  { family: "support_plan", mode: "review", code: "individual_support_plan", isAction: false },
+  "individual_support_plan.revise":  { family: "support_plan", mode: "revise", code: "individual_support_plan", isAction: false },
   "support_plan.create":         { family: "care_plan", mode: "create", code: "care_plan",                    isAction: false },
   "support_plan.review":         { family: "care_plan", mode: "review", code: "care_plan",                    isAction: false },
   "support_plan.revise":         { family: "care_plan", mode: "revise", code: "care_plan",                    isAction: false },
@@ -67,6 +70,9 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "support_strategy.combined":   { family: "support_strategy", mode: "combined",   code: "support_strategy_analysis", isAction: false },
 
   // ── Risk Assessments ───────────────────────────────────────────────────────
+  "risk.create":                      { family: "risk_assessment", mode: "general",          code: "participant_risk_assessment",     isAction: false },
+  "risk.review":                      { family: "risk_assessment", mode: "general",          code: "participant_risk_assessment",     isAction: false },
+  "risk.assessment":                  { family: "risk_assessment", mode: "general",          code: "participant_risk_assessment",     isAction: false },
   "risk_assessment.general":          { family: "risk_assessment", mode: "general",          code: "participant_risk_assessment",     isAction: false },
   "risk_assessment.health":           { family: "risk_assessment", mode: "health",            code: "participant_risk_assessment",     isAction: false },
   "risk_assessment.behavioural":      { family: "risk_assessment", mode: "behavioural",       code: "participant_risk_assessment",     isAction: false },
@@ -209,6 +215,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   "compliance.legislation_review": { family: "compliance", mode: "legislation_review", code: "legislation_regulatory_review", isAction: false },
   "compliance.impact_assessment":  { family: "policy",     mode: "impact_assessment",  code: "regulatory_change_impact_assessment", isAction: false },
   "compliance.response":           { family: "compliance", mode: "response",           code: "regulator_response_submission", isAction: false },
+  "regulatory_change_impact.impact_assessment": { family: "compliance", mode: "impact_assessment", code: "regulatory_change_impact", isAction: false },
 
   // ── Employment & SCHADS ───────────────────────────────────────────────────
   "employment.schads_analysis": { family: "employment", mode: "schads_analysis", code: "schads_award_analysis",       isAction: false },
@@ -217,6 +224,7 @@ const INTENT_MAP: Record<string, IntentResult> = {
   // ── Financial ─────────────────────────────────────────────────────────────
   "financial.analysis":   { family: "financial_planning", mode: "performance", code: "financial_planning_reporting_review", isAction: false },
   "financial.tax_review": { family: "financial", mode: "tax_review", code: "tax_financial_obligation_review",isAction: false },
+  "business_financial_analysis.analysis": { family: "financial", mode: "analysis", code: "business_financial_analysis", isAction: false },
   "financial_planning.budget":              { family: "financial_planning", mode: "budget",               code: "financial_planning_reporting_review", isAction: false },
   "financial_planning.forecast":            { family: "financial_planning", mode: "forecast",             code: "financial_planning_reporting_review", isAction: false },
   "financial_planning.cashflow":            { family: "financial_planning", mode: "cashflow",             code: "financial_planning_reporting_review", isAction: false },

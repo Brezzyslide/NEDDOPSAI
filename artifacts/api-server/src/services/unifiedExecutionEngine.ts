@@ -45,6 +45,7 @@ import {
   getBlueprintExecutionContract,
 } from "./workBlueprintService.js";
 import type { BlueprintExecutionContract, WorkBlueprint } from "./workBlueprintService.js";
+import { deriveBlueprintSelectionFloor } from "./blueprintSelectionFloor.js";
 import {
   classifyStandardTemplateEvidenceContext,
   validateBlueprintRuntimeCompletion,
@@ -1018,7 +1019,13 @@ export class UnifiedExecutionEngine {
         };
       } else if (request.blueprintId) {
         blueprint = await getBlueprintById(request.blueprintId, organizationId);
-        selectionMeta = { method: "keyword", confidence: 1.0, matchedKeywords: [request.blueprintId], fallbackUsed: false };
+        selectionMeta = {
+          method: "keyword",
+          confidence: 1.0,
+          matchedKeywords: [request.blueprintId],
+          fallbackUsed: false,
+          ...(blueprint ? deriveBlueprintSelectionFloor(blueprint, request.canonicalIntent ?? request.blueprintCode ?? userRequest) : {}),
+        };
       } else if (request.blueprintCode) {
         const selection = await selectBlueprint(request.blueprintCode, organizationId);
         blueprint = selection.blueprint;

@@ -16,7 +16,12 @@ import {
   type DeliverableRequirementCoverageProfile,
 } from "../services/deliverableRequirementCoverageService";
 import { validateProfessionalExecutionPreflight } from "../services/professionalExecutionPreflightService";
+import {
+  classifyStandardTemplateEvidenceContext,
+  validateBlueprintRuntimeCompletion,
+} from "../services/blueprintRuntimeValidationService";
 import { classifyMessage } from "../services/conversationIntelligenceService";
+import { deriveBlueprintSelectionFloor } from "../services/blueprintSelectionFloor";
 import type { BlueprintExecutionContract, WorkBlueprint } from "../services/workBlueprintService";
 import type { WorkPackageManifest } from "../services/workPackageService";
 
@@ -383,5 +388,124 @@ describe("Sprint 36A professional routing and domain isolation", () => {
   ])("preserves representative non-onboarding routing: %s", (request, intent, deliverable) => {
     expect(deriveProfessionalIntentKey(request, null)).toBe(intent);
     expect(deriveRequestedDeliverableType(request)).toBe(deliverable);
+  });
+
+  it("maps standard risk-assessment template intent to a registry-backed blueprint floor", () => {
+    const blueprint = getRegistryEntry("participant_risk_assessment");
+    expect(blueprint).toBeTruthy();
+    expect(resolveIntent("risk.create")).toMatchObject({
+      code: "participant_risk_assessment",
+      family: "risk_assessment",
+      mode: "general",
+      isAction: false,
+    });
+
+    const selectionFloor = deriveBlueprintSelectionFloor(
+      blueprint as WorkBlueprint,
+      "Create a standard risk assessment template.",
+    );
+    expect(selectionFloor).toEqual({
+      canonicalIntent: "risk.create",
+      blueprintFamily: "risk_assessment",
+      blueprintMode: "general",
+    });
+
+    const riskManifest = manifest({
+      canonicalIntent: selectionFloor.canonicalIntent ?? null,
+      blueprintId: "participant_risk_assessment",
+      blueprintFamily: selectionFloor.blueprintFamily ?? null,
+      blueprintMode: selectionFloor.blueprintMode ?? null,
+      primarySpecialist: "service_delivery_coordinator",
+      supportingSpecialists: [],
+      selectionMetadata: selectionFloor as never,
+    });
+    const riskContract = contract(blueprint as WorkBlueprint, selectionFloor.blueprintMode);
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard risk assessment template.",
+      manifest: riskManifest,
+      blueprint: blueprint as WorkBlueprint,
+      blueprintContract: riskContract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, riskContract);
+    const preflight = validateProfessionalExecutionPreflight({
+      blueprint: blueprint as WorkBlueprint,
+      manifest: riskManifest,
+      professionalContext: context,
+      coverageProfile: profile,
+      requirementPlan: planFromProfile(profile),
+      schemaCheck: { passed: true, missingRequirementIds: [] },
+    });
+
+    expect(preflight.failedChecks).not.toContain("CAPABILITY_RESOLVED");
+    expect(preflight.failedChecks).not.toContain("OPERATION_SUPPORTED");
+    expect(preflight.passed).toBe(true);
+  });
+
+  it("moves participant risk assessment from preflight to runtime content gates", () => {
+    const blueprint = getRegistryEntry("participant_risk_assessment");
+    expect(blueprint).toBeTruthy();
+    expect(blueprint?.sections).toHaveLength(3);
+    expect(blueprint?.sections?.filter((section) => (section.fixedContent ?? []).length > 0)).toHaveLength(0);
+    expect(blueprint?.sections?.filter((section) => (section.fields ?? []).length > 0)).toHaveLength(0);
+    expect(blueprint?.sections?.filter((section) => section.completionPrompt)).toHaveLength(0);
+    expect(blueprint?.deliverableContract?.requirementPlan ?? []).toHaveLength(0);
+
+    const selectionFloor = deriveBlueprintSelectionFloor(
+      blueprint as WorkBlueprint,
+      "Create a standard risk assessment template.",
+    );
+    const riskManifest = manifest({
+      canonicalIntent: selectionFloor.canonicalIntent ?? null,
+      blueprintId: "participant_risk_assessment",
+      blueprintFamily: selectionFloor.blueprintFamily ?? null,
+      blueprintMode: selectionFloor.blueprintMode ?? null,
+      primarySpecialist: "service_delivery_coordinator",
+      supportingSpecialists: [],
+      selectionMetadata: selectionFloor as never,
+    });
+    const riskContract = contract(blueprint as WorkBlueprint, selectionFloor.blueprintMode ?? "general");
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a standard risk assessment template.",
+      manifest: riskManifest,
+      blueprint: blueprint as WorkBlueprint,
+      blueprintContract: riskContract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, riskContract);
+    const preflight = validateProfessionalExecutionPreflight({
+      blueprint: blueprint as WorkBlueprint,
+      manifest: riskManifest,
+      professionalContext: context,
+      coverageProfile: profile,
+      requirementPlan: planFromProfile(profile),
+      schemaCheck: { passed: true, missingRequirementIds: [] },
+    });
+
+    expect(preflight.passed).toBe(true);
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract: riskContract,
+      contentMarkdown: "",
+      artifactId: "artifact-risk-template",
+      approvalStates: { participant_support_content_owner: true },
+      rawClaims: [],
+      evidencePack: null,
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Create a standard risk assessment template."),
+      professionalContext: context,
+    });
+
+    expect(runtime.passed).toBe(false);
+    expect(runtime.failures.map((failure) => failure.gate)).toContain("mandatory_deliverable_coverage");
+  });
+
+  it("gives every registry blueprint a mechanical preflight floor", () => {
+    expect(BLUEPRINT_REGISTRY).toHaveLength(75);
+
+    const missing = BLUEPRINT_REGISTRY
+      .map((entry) => ({
+        code: entry.code,
+        floor: deriveBlueprintSelectionFloor(entry as WorkBlueprint, entry.code),
+      }))
+      .filter(({ floor }) => !floor.canonicalIntent || !floor.blueprintFamily || !floor.blueprintMode);
+
+    expect(missing).toEqual([]);
   });
 });
