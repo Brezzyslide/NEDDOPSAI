@@ -712,7 +712,10 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("buildTaskCreateIdempotencyKey");
     expect(src).toContain("if (!conversationId || !slug || creatingTask) return");
     expect(src).toContain('headers: { "Idempotency-Key": idempotencyKey }');
-    expect(src).toContain("body: JSON.stringify({ title, description: summary, idempotencyKey })");
+    expect(src).toContain("body: JSON.stringify({");
+    expect(src).toContain("description: summary");
+    expect(src).toContain("idempotencyKey");
+    expect(src).toContain("subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined");
   });
 
   it("UI copy distinguishes queued/readiness from actual execution start and concrete approvals", () => {

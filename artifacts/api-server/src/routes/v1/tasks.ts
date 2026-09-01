@@ -210,7 +210,17 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
     );
 
     res.status(201).json({ task: result.task, plan: result.plan, specialists: result.specialists, reusedExisting: false });
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+      res.status(409).json({
+        error: {
+          code: err.code,
+          message: err.message,
+          participantResolution: err.participantResolution,
+        },
+      });
+      return;
+    }
     next(err);
   }
 });

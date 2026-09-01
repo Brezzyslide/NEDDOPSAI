@@ -58,6 +58,19 @@ interface TaskProposalData {
   actions: string[];
 }
 
+interface ParticipantResolutionCandidate {
+  id: string;
+  displayName?: string | null;
+  preferredName?: string | null;
+  externalParticipantId?: string | null;
+}
+
+interface ParticipantResolutionState {
+  status: "confirmation_required" | "ambiguous" | "unresolved";
+  clarifyingQuestion?: string;
+  candidates?: ParticipantResolutionCandidate[];
+}
+
 function formatRoleName(role: string) {
   return role.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -79,6 +92,10 @@ function buildTaskCreateIdempotencyKey(conversationId: string, title: string, su
   return `conversation-create:${conversationId}:${stableHash(normalised)}`;
 }
 
+function buildTaskProposalKey(title: string, summary: string): string {
+  return stableHash(`${title}\n${summary}`);
+}
+
 function SenderLabel({ senderType, workforceRoleCode }: { senderType: MessageSenderType; workforceRoleCode?: string }) {
   if (senderType === "user") return null;
   const roleName = workforceRoleCode
@@ -94,13 +111,17 @@ function TaskProposalCard({
   onContinue,
   creating,
   existingTaskId,
+  participantResolution,
 }: {
   data: TaskProposalData;
-  onCreateTask: (title: string, summary: string) => void;
+  onCreateTask: (title: string, summary: string, subjectParticipantId?: string) => void;
   onContinue: () => void;
   creating: boolean;
   existingTaskId?: string | null;
+  participantResolution?: ParticipantResolutionState;
 }) {
+  const participantCandidates = participantResolution?.candidates ?? [];
+
   return (
     <div className="mt-3 bg-[#0B1829] border border-[#00D4FF]/30 rounded-xl p-4 space-y-3">
       <div className="flex items-center gap-2">
@@ -151,6 +172,39 @@ function TaskProposalCard({
               </span>
             ))}
           </div>
+        </div>
+      )}
+      {participantResolution && !existingTaskId && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 space-y-2">
+          <p className="text-amber-300 text-xs font-semibold uppercase tracking-wider">
+            Participant confirmation required
+          </p>
+          <p className="text-[#CBD5E1] text-xs">
+            {participantResolution.clarifyingQuestion ?? "Select the participant before creating this task."}
+          </p>
+          {participantCandidates.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {participantCandidates.map(candidate => {
+                const label = candidate.displayName ?? candidate.preferredName ?? "Unnamed participant";
+                const detail = candidate.externalParticipantId ? `ID ${candidate.externalParticipantId}` : null;
+                return (
+                  <button
+                    key={candidate.id}
+                    onClick={() => onCreateTask(data.title, data.summary, candidate.id)}
+                    disabled={creating}
+                    className="w-full text-left px-3 py-2 rounded-lg border border-[#1E3A5F] bg-[#112033] hover:border-[#00D4FF]/40 disabled:opacity-50 transition-colors"
+                  >
+                    <span className="block text-sm font-semibold text-[#E2E8F0]">{label}</span>
+                    {detail && <span className="block text-xs text-[#64748B] mt-0.5">{detail}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[#94A3B8] text-xs">
+              No matching participant was found. Continue discussing so the Chief of Staff can clarify.
+            </p>
+          )}
         </div>
       )}
       <div className="flex gap-2 pt-1">
@@ -277,13 +331,15 @@ function MessageBubble({
   onConfirm,
   creatingTask,
   existingTaskId,
+  participantResolution,
 }: {
   msg: Message;
-  onCreateTask: (title: string, summary: string) => void;
+  onCreateTask: (title: string, summary: string, subjectParticipantId?: string) => void;
   onContinueDiscussing: () => void;
   onConfirm: () => void;
   creatingTask: boolean;
   existingTaskId?: string | null;
+  participantResolution?: ParticipantResolutionState;
 }) {
   const isUser = msg.senderType === "user";
   const isSystem = msg.senderType === "system";
@@ -330,6 +386,7 @@ function MessageBubble({
               onContinue={onContinueDiscussing}
               creating={creatingTask}
               existingTaskId={existingTaskId}
+              participantResolution={participantResolution}
             />
           )}
           {isClarification && (
@@ -390,6 +447,7 @@ export default function WorkforceChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [input, setInput] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
+  const [participantResolutionByProposal, setParticipantResolutionByProposal] = useState<Record<string, ParticipantResolutionState>>({});
   const [error, setError] = useState<string | null>(null);
   const [autoCreatedTask, setAutoCreatedTask] = useState<{
     taskId: string;
@@ -580,7 +638,7 @@ export default function WorkforceChatPage() {
     }
   };
 
-  const handleCreateTask = async (title: string, summary: string) => {
+  const handleCreateTask = async (title: string, summary: string, subjectParticipantId?: string) => {
     if (!conversationId || !slug || creatingTask) return;
 
     // If a task is already linked to this conversation, navigate there directly
@@ -592,15 +650,34 @@ export default function WorkforceChatPage() {
     setCreatingTask(true);
     try {
       const idempotencyKey = buildTaskCreateIdempotencyKey(conversationId, title, summary);
+      const proposalKey = buildTaskProposalKey(title, summary);
       const r = await apiFetch(
         `/v1/organisations/${slug}/conversations/${conversationId}/create-task`,
         {
           method: "POST",
           headers: { "Idempotency-Key": idempotencyKey },
-          body: JSON.stringify({ title, description: summary, idempotencyKey }),
+          body: JSON.stringify({
+            title,
+            description: summary,
+            idempotencyKey,
+            subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined,
+          }),
         }
       );
       const d = await r.json();
+      if (r.status === 409 && d?.error?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+        const participantResolution = d.error.participantResolution as ParticipantResolutionState | undefined;
+        if (participantResolution) {
+          setParticipantResolutionByProposal(prev => ({
+            ...prev,
+            [proposalKey]: participantResolution,
+          }));
+          setError(null);
+        } else {
+          setError(d?.error?.message ?? "Please confirm which participant this task is for.");
+        }
+        return;
+      }
       if (r.status === 409 && d?.error?.code === "DUPLICATE_TASK") {
         // A task was already created for this conversation (e.g. by auto-dispatch).
         // Navigate to it if we have the ID, otherwise reload the conversation to fetch it.
@@ -627,6 +704,11 @@ export default function WorkforceChatPage() {
         return;
       }
       if (d.task) {
+        setParticipantResolutionByProposal(prev => {
+          const next = { ...prev };
+          delete next[proposalKey];
+          return next;
+        });
         setLinkedTaskId(d.task.id);
         setLocation(`/app/${slug}/tasks/${d.task.id}`);
       }
@@ -690,6 +772,16 @@ export default function WorkforceChatPage() {
               onConfirm={() => sendMessage("Confirm, please proceed.")}
               creatingTask={creatingTask}
               existingTaskId={linkedTaskId}
+              participantResolution={
+                msg.messageType === "task_proposal" && msg.structuredContent
+                  ? participantResolutionByProposal[
+                      buildTaskProposalKey(
+                        ((msg.structuredContent as { data: TaskProposalData }).data).title,
+                        ((msg.structuredContent as { data: TaskProposalData }).data).summary,
+                      )
+                    ]
+                  : undefined
+              }
             />
           ))}
 

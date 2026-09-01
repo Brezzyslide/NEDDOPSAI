@@ -600,7 +600,19 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       reusedExisting: result.reusedExisting === true,
       dedupeReason: result.dedupeReason,
     });
-  } catch (err) { next(err); }
+  } catch (err: any) {
+    if (err?.code === "PARTICIPANT_RESOLUTION_REQUIRED") {
+      res.status(409).json({
+        error: {
+          code: err.code,
+          message: err.message,
+          participantResolution: err.participantResolution,
+        },
+      });
+      return;
+    }
+    next(err);
+  }
 });
 
 // ─── Execution progress SSE stream (Sprint 27.1) ──────────────────────────────
