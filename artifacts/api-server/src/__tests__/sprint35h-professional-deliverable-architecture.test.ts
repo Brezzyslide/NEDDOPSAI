@@ -99,6 +99,10 @@ function keywordCandidatesForTest(value: string): string[] {
     .filter((word) => !["contains", "template", "provisions", "professional"].includes(word));
 }
 
+function wordCountForTest(value: string): number {
+  return value.trim().match(/\b[\p{L}\p{N}'-]+\b/gu)?.length ?? 0;
+}
+
 function coveredServiceAgreementMarkdown(options: {
   omitServicePeriod?: boolean;
   totalMode?: "line_and_agreement" | "line_only";
@@ -1844,6 +1848,59 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-goals")?.failureReason ?? "").not.toContain("three personal goal rows");
     expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-support-delivery-client-safety")?.failureReason ?? "").not.toContain("support type list");
     expect(mechanicalDetails).not.toContainEqual(expect.stringContaining("care_plan_selected_supports_described"));
+  });
+
+  it("proves standard reusable care plan assembly has zero surviving model-generated words", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a standard reusable NDIS care plan template.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+    const assembly = assembleDeterministicTemplateDeliverableSections({
+      requirements: profile.requirements,
+      blueprintSections: contract.sections,
+      modelSections: [],
+    });
+    const modelWordCounts = assembly.modelGeneratedSections.map((section) => ({
+      requirementId: section.requirementId,
+      heading: section.heading,
+      wordCount: wordCountForTest(section.content),
+    }));
+
+    expect(professionalContext.specificity).toBe("STANDARD_NON_PARTICIPANT_SPECIFIC");
+    expect(professionalContext.deliverable.standardisation).toBe("standard_reusable");
+    expect(assembly.sections).toHaveLength(14);
+    expect(modelWordCounts).toHaveLength(14);
+    expect(modelWordCounts.every((section) => section.wordCount === 0)).toBe(true);
+    expect(modelWordCounts.reduce((sum, section) => sum + section.wordCount, 0)).toBe(0);
+  });
+
+  it("routes deterministic standard reusable care plan rendering before any AI provider check", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+    const draftFunction = src.indexOf("private async generateTaskDraft(");
+    const renderCall = src.indexOf("const deterministicDraft = renderDeterministicStandardTemplateDraft(", draftFunction);
+    const providerCheck = src.indexOf('const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();', draftFunction);
+    const gatewayCall = src.indexOf("const response = await gateway.process({", draftFunction);
+
+    expect(draftFunction).toBeGreaterThan(-1);
+    expect(renderCall).toBeGreaterThan(-1);
+    expect(providerCheck).toBeGreaterThan(-1);
+    expect(gatewayCall).toBeGreaterThan(-1);
+    expect(renderCall).toBeLessThan(providerCheck);
+    expect(renderCall).toBeLessThan(gatewayCall);
+    expect(src).toContain('stage: "deterministic_template_render"');
+    expect(src).toContain("bypassedStage1: true");
+    expect(src).toContain("bypassedFinalSynthesis: true");
   });
 
   it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {

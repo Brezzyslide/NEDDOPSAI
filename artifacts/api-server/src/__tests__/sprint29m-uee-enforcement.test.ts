@@ -1137,11 +1137,7 @@ describe("D — care plan template full path uses declared Blueprint placeholder
       expect(result.workResult.blueprintCode).toBe("care_plan");
     }
 
-    expect(mockGatewayProcess).toHaveBeenCalledTimes(2);
-    expect(mockGatewayProcess.mock.calls.map(([payload]) => payload.runtimeProfile)).toEqual([
-      "professional_execution",
-      "final_synthesis",
-    ]);
+    expect(mockGatewayProcess).not.toHaveBeenCalled();
     expect(mockReviewDraft).toHaveBeenCalled();
     expect(mockCreateDraft).toHaveBeenCalledOnce();
     expect(mockGenerateCompletedWorkArtifacts).toHaveBeenCalledOnce();

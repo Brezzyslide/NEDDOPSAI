@@ -1752,7 +1752,10 @@ export class UnifiedExecutionEngine {
       deliverableSections,
       professionalWork,
     });
-    if (shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)) {
+    if (
+      latestModelTelemetry?.stage !== "deterministic_template_render" &&
+      shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)
+    ) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
         userRequest,
         manifest,
@@ -2457,6 +2460,13 @@ export class UnifiedExecutionEngine {
     blueprintContract?: BlueprintExecutionContract | null,
     professionalContext?: ProfessionalExecutionContext,
   ): Promise<GeneratedProfessionalDraft> {
+    const deterministicDraft = renderDeterministicStandardTemplateDraft(
+      blueprint,
+      blueprintContract,
+      professionalContext,
+    );
+    if (deterministicDraft) return deterministicDraft;
+
     const provider = (process.env.AI_PROVIDER ?? "internal").toLowerCase().trim();
 
     if (provider !== "openai") {
@@ -3769,6 +3779,93 @@ function assembleTemplateSectionsForContext(
     blueprintSections: contract.sections,
     modelSections,
   }).sections;
+}
+
+function renderDeterministicStandardTemplateDraft(
+  blueprint: WorkBlueprint | null,
+  contract: BlueprintExecutionContract | undefined | null,
+  professionalContext: ProfessionalExecutionContext | undefined,
+): GeneratedProfessionalDraft | null {
+  if (
+    professionalContext?.specificity !== "STANDARD_NON_PARTICIPANT_SPECIFIC" ||
+    professionalContext.deliverable.standardisation !== "standard_reusable" ||
+    contract?.blueprint?.code !== "care_plan" ||
+    blueprint?.code !== "care_plan" ||
+    !contract.sections.length
+  ) {
+    return null;
+  }
+
+  const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  const assembly = assembleDeterministicTemplateDeliverableSections({
+    requirements: coverageProfile.requirements,
+    blueprintSections: contract.sections,
+    modelSections: [],
+  });
+  const hasSurvivingModelContent = assembly.modelGeneratedSections.some((section) => section.content.trim());
+  const content = assembleDeliverableMarkdownFromSections(
+    assembly.sections,
+    requirementOrderForCoverageProfile(coverageProfile),
+  );
+
+  if (
+    hasSurvivingModelContent ||
+    !content ||
+    !assembly.deterministicCompleteness.fixedContentComplete ||
+    assembly.deterministicCompleteness.sectionCount !== coverageProfile.requirements.length
+  ) {
+    return null;
+  }
+
+  return {
+    content,
+    claims: [],
+    professionalWork: {
+      summary: "Deterministic standard reusable care plan template rendered without model synthesis.",
+      blueprint_completion: ["deterministic_template_render"],
+      requirement_to_deliverable_plan: coverageProfile.requirements.map((requirement) =>
+        `${requirement.id} -> ${requirement.requiredDeliverableRepresentation.location}`,
+      ),
+      evidence_map: [],
+      missing_information: [],
+    },
+    requirementCoverage: {
+      satisfied: coverageProfile.requirements.map((requirement) => requirement.id),
+      missing: [],
+    },
+    deliverable: {
+      sections: assembly.sections,
+    },
+    deliverableSections: assembly.sections,
+    completion: {
+      operation: professionalContext.operation,
+      unresolvedProfessionalContent: 0,
+      methodologyLeakage: false,
+      readyForCompletedWork: true,
+      deterministicTemplateRender: true,
+    },
+    modelTelemetry: {
+      stage: "deterministic_template_render",
+      configuredOutputBudget: 0,
+      actualInputTokens: 0,
+      actualOutputTokens: 0,
+      actualTotalTokens: 0,
+      cachedInputTokens: 0,
+      outputMode: "deterministic",
+      responseFormat: "server_rendered_template",
+      finishReason: "deterministic_template_complete",
+      model: null,
+      latencyMs: 0,
+      usedFallback: false,
+      runtimeProfile: "deterministic_template_render",
+      configuredTimeoutMs: 0,
+      retryCount: 0,
+      providerFailureKind: null,
+      deliverableLength: content.length,
+      bypassedStage1: true,
+      bypassedFinalSynthesis: true,
+    },
+  };
 }
 
 function shouldAttemptFinalDeliverableSynthesis(
