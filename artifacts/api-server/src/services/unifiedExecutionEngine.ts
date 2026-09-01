@@ -1605,6 +1605,7 @@ export class UnifiedExecutionEngine {
     let draftContent: string;
     let rawClaims: RawClaim[] = [];
     let deliverableSections: ParsedDeliverableSection[] | undefined;
+    let professionalWork: Record<string, unknown> | undefined;
     let latestModelTelemetry: Record<string, unknown> | null = null;
     try {
       const draftResult = await this.generateTaskDraft(
@@ -1617,6 +1618,7 @@ export class UnifiedExecutionEngine {
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
       deliverableSections = draftResult.deliverableSections;
+      professionalWork = draftResult.professionalWork;
       latestModelTelemetry = draftResult.modelTelemetry;
       await recordProfessionalSnapshot({
         organizationId,
@@ -1741,6 +1743,7 @@ export class UnifiedExecutionEngine {
       standardTemplateEvidence,
       professionalContext,
       deliverableSections,
+      professionalWork,
     });
     if (shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
@@ -1769,6 +1772,7 @@ export class UnifiedExecutionEngine {
         draftContent = synthesisResult.content;
         rawClaims = synthesisResult.claims;
         deliverableSections = synthesisResult.deliverableSections;
+        professionalWork = synthesisResult.professionalWork ?? professionalWork;
         latestModelTelemetry = synthesisResult.modelTelemetry;
         await recordProfessionalSnapshot({
           organizationId,
@@ -1825,6 +1829,7 @@ export class UnifiedExecutionEngine {
           standardTemplateEvidence,
           professionalContext,
           deliverableSections,
+          professionalWork,
         });
       }
     }
@@ -1864,6 +1869,7 @@ export class UnifiedExecutionEngine {
           draftContent = repairResult.content;
           rawClaims = repairResult.claims;
           deliverableSections = repairResult.deliverableSections;
+          professionalWork = repairResult.professionalWork ?? professionalWork;
           latestModelTelemetry = repairResult.modelTelemetry;
           await recordProfessionalSnapshot({
             organizationId,
@@ -1927,6 +1933,7 @@ export class UnifiedExecutionEngine {
             standardTemplateEvidence,
             professionalContext,
             deliverableSections,
+            professionalWork,
           });
           if (runtimeGate.passed) break;
         }
@@ -2177,6 +2184,7 @@ export class UnifiedExecutionEngine {
         standardTemplateEvidence,
         professionalContext,
         deliverableSections,
+        professionalWork,
       });
       if (!artifactGate.passed) {
         const blockingMessage = artifactGate.failures

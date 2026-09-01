@@ -43,7 +43,8 @@ export interface BlueprintRuntimeGateFailure {
     | "prohibited_deliverable"
     | "template_required"
     | "artifact_required"
-    | "approval_required";
+    | "approval_required"
+    | "care_plan_behaviour_safety";
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];
@@ -60,6 +61,7 @@ export interface BlueprintRuntimeValidationInput {
   deferApprovalGate?: boolean;
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
   professionalContext?: ProfessionalExecutionContext | null;
+  professionalWork?: Record<string, unknown> | null;
 }
 
 export interface BlueprintRuntimeValidationResult {
@@ -188,6 +190,13 @@ export function validateBlueprintRuntimeCompletion(
     input.contentMarkdown,
     input.deliverableSections,
   ));
+
+  failures.push(...validateCarePlanBehaviourSafety({
+    blueprintCode: blueprint.code,
+    contentMarkdown: input.contentMarkdown,
+    professionalContext: input.professionalContext,
+    professionalWork: input.professionalWork,
+  }));
 
   failures.push(...validateSections(
     contract.sections,
@@ -695,7 +704,7 @@ function extractMarkdownSections(contentMarkdown: string): Array<{ heading: stri
   let current: { heading: string; body: string[] } | null = null;
 
   for (const line of contentMarkdown.split(/\r?\n/)) {
-    const heading = line.match(/^#{1,6}\s+(.+?)\s*#*\s*$/);
+    const heading = line.match(/^#{1,2}\s+(.+?)\s*#*\s*$/);
     if (heading) {
       current = { heading: (heading[1] ?? "").trim(), body: [] };
       sections.push(current);
@@ -877,6 +886,164 @@ function mechanicalFailure(rule: string, detail: string): BlueprintRuntimeGateFa
     message: "Care Plan mechanical gate failed.",
     details: [`${rule}: ${detail}`],
   };
+}
+
+interface CarePlanBehaviourSafetyInput {
+  blueprintCode: string | null | undefined;
+  contentMarkdown: string;
+  professionalContext?: ProfessionalExecutionContext | null;
+  professionalWork?: Record<string, unknown> | null;
+}
+
+interface CarePlanRenderedStrategy {
+  fold: "proactive" | "reactive" | "protective";
+  trigger: string;
+  strategy: string;
+  workerActions: string;
+  bspSource: string;
+}
+
+interface CarePlanExtractedStrategy {
+  strategy: string;
+  bspSource: string;
+  authorisedRestrictivePracticeReference?: string | null;
+}
+
+function validateCarePlanBehaviourSafety(input: CarePlanBehaviourSafetyInput): BlueprintRuntimeGateFailure[] {
+  if (input.blueprintCode !== "care_plan") return [];
+  if (input.professionalContext?.specificity !== "PARTICIPANT_SPECIFIC") return [];
+
+  const behaviouralSection = extractMarkdownSections(input.contentMarkdown).find((section) =>
+    /\bbehavioural management\b/i.test(section.heading),
+  );
+  if (!behaviouralSection) return [];
+
+  const renderedStrategies = extractRenderedBehaviourStrategies(behaviouralSection.body);
+  if (renderedStrategies.length === 0) return [];
+
+  const extractedStrategies = extractCarePlanStrategyEvidence(input.professionalWork);
+  const failures: string[] = [];
+
+  for (const row of renderedStrategies) {
+    if (!hasSpecificQuotedBspSource(row.bspSource)) {
+      failures.push(`TRACEABILITY: ${row.fold} strategy "${row.strategy}" must include a specific quoted BSP source, not "${row.bspSource || "blank"}".`);
+    }
+  }
+
+  if (extractedStrategies.length === 0) {
+    failures.push("COUNT_IN_COUNT_OUT: BSP strategy extraction was not supplied; participant-specific behavioural strategies cannot be validated.");
+    failures.push("NO_INVENTION: BSP strategy extraction was not supplied; rendered strategies cannot be proven to originate in the BSP.");
+  } else {
+    const renderedDistinct = distinctNormalised(renderedStrategies.map((row) => row.strategy));
+    const extractedDistinct = distinctNormalised(extractedStrategies.map((row) => row.strategy));
+    if (renderedDistinct.size !== extractedDistinct.size) {
+      failures.push(`COUNT_IN_COUNT_OUT: BSP extracted ${extractedDistinct.size} distinct strategy(ies), but the care plan rendered ${renderedDistinct.size}.`);
+    }
+    for (const row of renderedStrategies) {
+      if (!extractedDistinct.has(normaliseStrategy(row.strategy))) {
+        failures.push(`NO_INVENTION: rendered strategy "${row.strategy}" does not match a BSP-extracted strategy.`);
+      }
+    }
+  }
+
+  const authorisedReferences = new Map(
+    extractedStrategies
+      .filter((row) => row.authorisedRestrictivePracticeReference?.trim())
+      .map((row) => [normaliseStrategy(row.strategy), row.authorisedRestrictivePracticeReference!.trim()]),
+  );
+  for (const row of renderedStrategies) {
+    if (!looksLikeRestrictivePractice(row.strategy, row.workerActions)) continue;
+    const reference = authorisedReferences.get(normaliseStrategy(row.strategy));
+    if (!reference) {
+      failures.push(`RESTRICTIVE_PRACTICE_CROSS_CHECK: strategy "${row.strategy}" appears to involve a restrictive practice but no authorised Restrictive Practices reference was supplied. BSP source: ${row.bspSource || "blank"}.`);
+    }
+  }
+
+  if (failures.length === 0) return [];
+  return [{
+    gate: "care_plan_behaviour_safety",
+    state: "validation",
+    message: "Participant-specific Behavioural Management safety gates failed.",
+    details: failures,
+  }];
+}
+
+function extractRenderedBehaviourStrategies(markdown: string): CarePlanRenderedStrategy[] {
+  const rows: CarePlanRenderedStrategy[] = [];
+  const foldBlocks = [
+    ["proactive", /(?:^|\n)#{1,6}\s+proactive strategies\s*\n([\s\S]*?)(?=\n#{1,6}\s+(?:reactive|protective) strategies\s*\n|$)/i],
+    ["reactive", /(?:^|\n)#{1,6}\s+reactive strategies\s*\n([\s\S]*?)(?=\n#{1,6}\s+protective strategies\s*\n|$)/i],
+    ["protective", /(?:^|\n)#{1,6}\s+protective strategies\s*\n([\s\S]*)$/i],
+  ] as const;
+
+  for (const [fold, pattern] of foldBlocks) {
+    const body = markdown.match(pattern)?.[1] ?? "";
+    const table = extractMarkdownTablesFromText(body).find((candidate) =>
+      ["behaviour or trigger", "strategy", "what the worker does", "bsp source"].every((required) =>
+        candidate.headers.some((header) => normaliseRuntimeText(header).includes(required)),
+      ),
+    );
+    for (const row of table?.rows ?? []) {
+      if (row.length < 4) continue;
+      if (row.some((cell) => /\[[A-Z0-9_]+\]/.test(cell))) continue;
+      rows.push({
+        fold,
+        trigger: row[0] ?? "",
+        strategy: row[1] ?? "",
+        workerActions: row[2] ?? "",
+        bspSource: row[3] ?? "",
+      });
+    }
+  }
+  return rows;
+}
+
+function extractCarePlanStrategyEvidence(professionalWork?: Record<string, unknown> | null): CarePlanExtractedStrategy[] {
+  const candidates = [
+    professionalWork?.["behaviourSupportStrategies"],
+    professionalWork?.["behaviouralManagementStrategies"],
+    professionalWork?.["carePlanBehaviourStrategies"],
+    (professionalWork?.["behaviouralManagement"] as Record<string, unknown> | undefined)?.["strategies"],
+  ];
+  const raw = candidates.find(Array.isArray);
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item): CarePlanExtractedStrategy[] => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const strategy = stringFromUnknown(record["strategy"] ?? record["strategyText"] ?? record["text"]);
+    const bspSource = stringFromUnknown(record["bspSource"] ?? record["source"] ?? record["quotedPassage"]);
+    if (!strategy) return [];
+    return [{
+      strategy,
+      bspSource: bspSource ?? "",
+      authorisedRestrictivePracticeReference: stringFromUnknown(record["authorisedRestrictivePracticeReference"] ?? record["restrictivePracticeReference"] ?? record["authorisationReference"]),
+    }];
+  });
+}
+
+function hasSpecificQuotedBspSource(value: string): boolean {
+  const source = value.trim();
+  if (!source) return false;
+  if (/^(?:the\s+)?(?:bsp|behaviour support plan)$/i.test(source)) return false;
+  if (!/["'“”‘’]/.test(source)) return false;
+  return /\b(?:page|p\.|section|paragraph|para|clause|line|dated|source|bsp|behaviour support plan)\b/i.test(source);
+}
+
+function looksLikeRestrictivePractice(strategy: string, workerActions: string): boolean {
+  const text = `${strategy} ${workerActions}`;
+  return /\b(?:physical contact|hold|holding|restrain|restrict(?:ion)? of movement|block(?:ing)? access|prevent(?:ing)? access|remove(?: items| property)?|locked|seclusion|chemical restraint|mechanical restraint|environmental restraint|physical restraint|medication to influence behaviour)\b/i.test(text);
+}
+
+function distinctNormalised(values: string[]): Set<string> {
+  return new Set(values.map(normaliseStrategy).filter(Boolean));
+}
+
+function normaliseStrategy(value: string): string {
+  return normaliseRuntimeText(value).replace(/\b(?:please|worker|staff|support worker|the participant)\b/g, "").replace(/\s+/g, " ").trim();
+}
+
+function stringFromUnknown(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function assembleCarePlanMechanicalContent(

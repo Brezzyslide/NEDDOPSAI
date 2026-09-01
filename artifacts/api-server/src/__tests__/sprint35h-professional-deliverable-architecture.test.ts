@@ -1845,6 +1845,107 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(mechanicalDetails).not.toContainEqual(expect.stringContaining("care_plan_selected_supports_described"));
   });
 
+  it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const contract = {
+      blueprint,
+      sections: blueprint.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Michael.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+    });
+    const participantContext = {
+      ...professionalContext,
+      specificity: "PARTICIPANT_SPECIFIC" as const,
+      deliverable: {
+        ...professionalContext.deliverable,
+        standardisation: "participant_specific" as const,
+      },
+    };
+    const behaviouralMarkdown = `## Behavioural Management
+
+The strategies below implement the participant's behaviour support plan.
+
+### Proactive strategies
+
+| Behaviour or trigger | Strategy | What the worker does | BSP source |
+| --- | --- | --- | --- |
+| Loud environment | Offer quiet space | Prompt Michael to move to the lounge | "Offer access to a quiet space" - BSP page 4 |
+
+### Reactive strategies
+
+| Behaviour or trigger | Strategy | What the worker does | BSP source |
+| --- | --- | --- | --- |
+
+### Protective strategies
+
+| Behaviour or trigger | Strategy | What the worker does | BSP source |
+| --- | --- | --- | --- |`;
+
+    const missingExtraction = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: behaviouralMarkdown,
+      professionalContext: participantContext,
+      deferApprovalGate: true,
+    });
+    expect(missingExtraction.failures.find((failure) => failure.gate === "care_plan_behaviour_safety")?.details).toEqual(expect.arrayContaining([
+      expect.stringContaining("BSP strategy extraction was not supplied"),
+    ]));
+
+    const genericSource = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: behaviouralMarkdown.replace("\"Offer access to a quiet space\" - BSP page 4", "the BSP"),
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          { strategy: "Offer quiet space", bspSource: "\"Offer access to a quiet space\" - BSP page 4" },
+        ],
+      },
+      deferApprovalGate: true,
+    });
+    expect(genericSource.failures.find((failure) => failure.gate === "care_plan_behaviour_safety")?.details).toEqual(expect.arrayContaining([
+      expect.stringContaining("TRACEABILITY"),
+    ]));
+
+    const rpWithoutReference = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: behaviouralMarkdown.replace("Prompt Michael to move to the lounge", "Block access to the kitchen until risk reduces"),
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          { strategy: "Offer quiet space", bspSource: "\"Offer access to a quiet space\" - BSP page 4" },
+        ],
+      },
+      deferApprovalGate: true,
+    });
+    expect(rpWithoutReference.failures.find((failure) => failure.gate === "care_plan_behaviour_safety")?.details).toEqual(expect.arrayContaining([
+      expect.stringContaining("RESTRICTIVE_PRACTICE_CROSS_CHECK"),
+    ]));
+
+    const proven = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: behaviouralMarkdown.replace("Prompt Michael to move to the lounge", "Block access to the kitchen until risk reduces"),
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          {
+            strategy: "Offer quiet space",
+            bspSource: "\"Offer access to a quiet space\" - BSP page 4",
+            authorisedRestrictivePracticeReference: "Restrictive Practices table row 1",
+          },
+        ],
+      },
+      deferApprovalGate: true,
+    });
+    expect(proven.failures.filter((failure) => failure.gate === "care_plan_behaviour_safety")).toHaveLength(0);
+  });
+
   it("merges targeted repair deltas into the existing 9-section deliverable", () => {
     const currentSections = carePlanDeliverableSections();
     const repairSections = [
