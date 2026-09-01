@@ -1096,7 +1096,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "Reactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
       "Protective strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source",
     ]);
-    expect(carePlan.sections[10].fixedContent).toContain("Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.");
+    expect(carePlan.sections[9].fixedContent.join("\n")).not.toContain("Non-applicability wording:");
+    expect(carePlan.sections[10].fixedContent.join("\n")).not.toContain("Non-applicability wording:");
+    expect(carePlan.sections[10].completionPrompt).toContain("use this paragraph instead of the strategy fields");
     expect(carePlan.sections[12].fixedContent.join("\n")).toContain("I have been involved in the development of this Care Plan.");
     expect(carePlan.sections[13].completionPrompt).toBe("Record the form ID, version and date. The review date must match the date recorded in the plan header.");
 
@@ -1778,6 +1780,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     const markdown = assembleDeliverableMarkdownFromSections(assembly.sections);
     expect(markdown.match(/^> \*Guidance:/gm)).toHaveLength(14);
+    expect(markdown).not.toContain("Non-applicability wording:");
     expect(markdown).not.toContain("\n\nRecord every person who attended the planning meeting");
   });
 

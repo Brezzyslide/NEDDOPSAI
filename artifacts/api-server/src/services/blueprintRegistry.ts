@@ -3376,19 +3376,17 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "Any regulated restrictive practice used with this participant must be authorised under applicable state or territory law, recorded in a current behaviour support plan, and listed below. Restrictive practices are used only as a last resort and for the shortest time necessary.",
       "Workers must use only the practices listed, only as described, and must record every use.",
       "Using a regulated restrictive practice that is not listed here, or using a listed practice differently from how it is described, is an unauthorised restrictive practice. It is a reportable incident and must be reported immediately.",
-      "Non-applicability wording: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
     ],
     fields: ["Table with columns Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement"],
-    completionPrompt: "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where none are in place, state so and name the source document.",
+    completionPrompt: "Name each authorised practice in plain language, state what the worker does and does not do, and record the authorisation reference from the behaviour support plan. Where none are in place, use this paragraph instead of the table: Based on [SOURCE_DOCUMENT] dated [DATE], no restrictive practices are authorised or in use for this participant. Workers must not use any restrictive practice. If a situation arises where one appears necessary, contact the on-call service manager.",
   },
   mealtimeManagementStrategy: {
     fixedContent: [
       "Mealtime supports are delivered as described in the participant's mealtime management risk assessment. Workers must follow the strategy exactly and must not modify food or drink texture, consistency or presentation except as recorded here.",
       "Assessment of swallowing, dysphagia risk and texture modification is made only by an appropriately credentialed professional. This plan carries the resulting strategy; it does not make the assessment.",
-      "Non-applicability wording: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
     ],
     fields: ["Source risk assessment and date", "Food texture", "Fluid consistency", "Positioning", "Supervision level", "Equipment", "Worker actions"],
-    completionPrompt: "Record the strategy exactly as set out in the mealtime management risk assessment. Where no hands-on strategy is required, state so and describe what support does apply.",
+    completionPrompt: "Record the strategy exactly as set out in the mealtime management risk assessment. Where no hands-on strategy is required, use this paragraph instead of the strategy fields: Based on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required for this participant. Support is limited to [SUPPORT_TYPE]. Workers should report any change in eating or drinking to the service manager.",
   },
   disasterManagementStrategy: {
     fixedContent: [
