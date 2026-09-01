@@ -191,6 +191,25 @@ export interface ReviewContext {
   failedRequirements?: ReviewFailedRequirement[];
   /** User-facing deliverable contract; included in revision context for professional work. */
   deliverableContract?: unknown;
+  /**
+   * Execution outcomes are scored separately from document text. Criteria such
+   * as "DOCX artifact generated" are not document-content requirements and
+   * must not be failed merely because those words do not appear in the draft.
+   */
+  executionOutcome?: ReviewExecutionOutcome;
+}
+
+export interface ReviewExecutionOutcome {
+  artifactGenerated?: boolean;
+  approvalSubmitted?: boolean;
+  unresolvedGapsSurfaced?: boolean;
+  completedWorkCreated?: boolean;
+}
+
+interface ReviewModeContext {
+  isStandardReusableTemplate: boolean;
+  deliverableStandardisation: string | null;
+  requestedDeliverableType: string | null;
 }
 
 // ─── Main entry point ─────────────────────────────────────────────────────────
@@ -288,24 +307,94 @@ function runDeterministicReview(
   content: string,
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
-  ctx: Pick<ReviewContext, "evidencePack" | "requirementPlan" | "failedRequirements"> = {},
+  ctx: Pick<ReviewContext, "evidencePack" | "requirementPlan" | "failedRequirements" | "executionOutcome"> = {},
 ): DimensionResult[] {
+  const mode = getReviewModeContext(manifest);
   return [
-    reviewInstructionAdherence(content, blueprint),
-    reviewPolicyCompliance(content, manifest),
-    reviewWritingStyleCompliance(content, manifest, blueprint),
-    reviewSourceCoverage(content, manifest),
-    reviewCompleteness(content, blueprint, ctx),
+    reviewInstructionAdherence(content, blueprint, ctx, mode),
+    reviewPolicyCompliance(content, manifest, mode),
+    reviewWritingStyleCompliance(content, manifest, blueprint, mode),
+    reviewSourceCoverage(content, manifest, mode),
+    reviewCompleteness(content, blueprint, ctx, mode),
     reviewConfidence(content),
     reviewMissingInformation(content),
     reviewApprovalRequirements(content, blueprint),
     reviewSafety(content),
-    reviewConsistency(content, blueprint, manifest),
-    reviewEvidenceCitationGrounding(content, manifest, ctx.evidencePack), // Sprint 29F.1 Part 4
+    reviewConsistency(content, blueprint, manifest, ctx, mode),
+    reviewEvidenceCitationGrounding(content, manifest, ctx.evidencePack, mode), // Sprint 29F.1 Part 4
   ];
 }
 
-function reviewInstructionAdherence(content: string, blueprint: WorkBlueprint | null): DimensionResult {
+function getReviewModeContext(manifest: WorkPackageManifest): ReviewModeContext {
+  const selectionMetadata = manifest.selectionMetadata as Record<string, unknown> | null | undefined;
+  const deliverableStandardisation = stringOrNull(selectionMetadata?.deliverableStandardisation);
+  const requestedDeliverableType = stringOrNull(selectionMetadata?.requestedDeliverableType);
+  const isStandardReusableTemplate =
+    deliverableStandardisation === "standard_reusable" ||
+    /^STANDARD_REUSABLE_/.test(requestedDeliverableType ?? "");
+
+  return { isStandardReusableTemplate, deliverableStandardisation, requestedDeliverableType };
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+type ExecutionCriterionKey = keyof ReviewExecutionOutcome;
+
+interface ClassifiedCriterion {
+  criterion: string;
+  kind: "document" | "execution";
+  executionKey?: ExecutionCriterionKey;
+}
+
+function classifySuccessCriterion(criterion: string): ClassifiedCriterion {
+  const lower = criterion.toLowerCase();
+  const patterns: Array<{ key: ExecutionCriterionKey; pattern: RegExp }> = [
+    {
+      key: "artifactGenerated",
+      pattern: /\b(?:docx|pdf|artifact|export|file|download|document)\b.*\b(?:generated|created|produced|rendered|available|downloaded)\b|\b(?:generated|created|produced|rendered|downloaded)\b.*\b(?:docx|pdf|artifact|export|file|document)\b/i,
+    },
+    {
+      key: "approvalSubmitted",
+      pattern: /\b(?:approval|review|sign[ -]?off)\b.*\b(?:submitted|requested|created|queued|pending|awaiting)\b|\b(?:submitted|requested|created|queued)\b.*\b(?:approval|review|sign[ -]?off)\b/i,
+    },
+    {
+      key: "unresolvedGapsSurfaced",
+      pattern: /\b(?:unresolved\s+)?(?:gaps?|blockers?|missing\s+(?:information|evidence|items?))\b.*\b(?:surfaced|identified|reported|flagged|raised|recorded)\b|\b(?:surfaced|identified|reported|flagged|raised|recorded)\b.*\b(?:unresolved\s+)?(?:gaps?|blockers?|missing\s+(?:information|evidence|items?))\b/i,
+    },
+    {
+      key: "completedWorkCreated",
+      pattern: /\bcompleted\s+work\b.*\b(?:created|saved|recorded|persisted)\b|\b(?:created|saved|recorded|persisted)\b.*\bcompleted\s+work\b/i,
+    },
+  ];
+  const match = patterns.find(({ pattern }) => pattern.test(lower));
+  return match
+    ? { criterion, kind: "execution", executionKey: match.key }
+    : { criterion, kind: "document" };
+}
+
+function evaluateDocumentCriterion(contentLower: string, criterion: string): boolean {
+  const words = criterion.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+  if (words.length === 0) return true;
+  return words.some(w => contentLower.includes(w));
+}
+
+function evaluateExecutionCriterion(
+  classified: ClassifiedCriterion,
+  executionOutcome?: ReviewExecutionOutcome,
+): boolean | null {
+  if (classified.kind !== "execution" || !classified.executionKey) return null;
+  const value = executionOutcome?.[classified.executionKey];
+  return typeof value === "boolean" ? value : null;
+}
+
+function reviewInstructionAdherence(
+  content: string,
+  blueprint: WorkBlueprint | null,
+  ctx: Pick<ReviewContext, "requirementPlan" | "failedRequirements" | "executionOutcome"> = {},
+  mode: ReviewModeContext,
+): DimensionResult {
   if (!blueprint) {
     return pass(
       "instruction_adherence", 8,
@@ -313,20 +402,37 @@ function reviewInstructionAdherence(content: string, blueprint: WorkBlueprint | 
       ["No blueprint provided; using default score"],
     );
   }
-  const criteriaWords = blueprint.successCriteria.flatMap(c => c.toLowerCase().split(/\s+/));
   const contentLower = content.toLowerCase();
-  const significantWords = criteriaWords.filter(w => w.length > 4);
-  const matched = significantWords.filter(w => contentLower.includes(w));
-  const total = significantWords.length;
-  const score = total === 0 ? 8 : Math.round(Math.min(10, (matched.length / total) * 12));
+  const criteria = blueprint.successCriteria.map(classifySuccessCriterion);
+  let addressed = 0;
+  let scored = 0;
+  const evidence: string[] = [];
 
-  // Evidence: cite each criterion and its match status
-  const evidence = blueprint.successCriteria.map(criterion => {
-    const words = criterion.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-    const anyFound = words.some(w => contentLower.includes(w));
-    return `Criterion "${criterion.slice(0, 60)}" — ${anyFound ? "addressed" : "NOT addressed"}`;
-  });
+  for (const classified of criteria) {
+    if (classified.kind === "execution") {
+      const result = evaluateExecutionCriterion(classified, ctx.executionOutcome);
+      if (result === null) {
+        evidence.push(`Criterion "${classified.criterion.slice(0, 60)}" — execution-state criterion, not scored against document text`);
+        continue;
+      }
+      scored++;
+      if (result) addressed++;
+      evidence.push(`Criterion "${classified.criterion.slice(0, 60)}" — ${result ? "execution outcome satisfied" : "execution outcome NOT satisfied"}`);
+      continue;
+    }
+
+    scored++;
+    const found = evaluateDocumentCriterion(contentLower, classified.criterion);
+    if (found) addressed++;
+    evidence.push(`Criterion "${classified.criterion.slice(0, 60)}" — ${found ? "addressed in document" : "NOT addressed in document"}`);
+  }
   if (evidence.length === 0) evidence.push("No success criteria defined in blueprint");
+
+  let score = scored === 0 ? 8 : Math.round(Math.min(10, (addressed / scored) * 10));
+  if (mode.isStandardReusableTemplate && ctx.requirementPlan?.length && (ctx.failedRequirements ?? []).length === 0) {
+    score = Math.max(score, 9);
+    evidence.push("Template mode: requirement coverage satisfied; participant-specific depth is not required");
+  }
 
   const suggestions = score < 6
     ? [`Ensure all success criteria are addressed: ${blueprint.successCriteria.join("; ")}`]
@@ -336,16 +442,27 @@ function reviewInstructionAdherence(content: string, blueprint: WorkBlueprint | 
     dimension: "instruction_adherence",
     score,
     passed: score >= 6,
-    feedback: `${matched.length}/${total} success criteria terms found`,
+    feedback: `${addressed}/${scored} scored success criteria satisfied`,
     improvementSuggestions: suggestions,
     evidence,
   };
 }
 
-function reviewPolicyCompliance(content: string, manifest: WorkPackageManifest): DimensionResult {
+function reviewPolicyCompliance(
+  content: string,
+  manifest: WorkPackageManifest,
+  mode: ReviewModeContext,
+): DimensionResult {
   const policies = manifest.organisationLibrarySources.filter(s => s.sourceType === "policy");
 
   if (policies.length === 0) {
+    if (mode.isStandardReusableTemplate) {
+      return pass(
+        "policy_compliance", 8,
+        "Template mode — no participant-specific policy evidence required for a reusable structure",
+        ["Template mode: no policy sources were supplied; scored against reusable template requirements, not participant-specific policy application"],
+      );
+    }
     return warn(
       "policy_compliance", 6,
       "No policies retrieved — policy compliance not fully evaluated",
@@ -387,6 +504,7 @@ function reviewWritingStyleCompliance(
   content: string,
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
+  mode: ReviewModeContext,
 ): DimensionResult {
   const terminologyMemories = manifest.cosMemories.filter(m => m.memoryType === "terminology");
   const wordCount = content.split(/\s+/).length;
@@ -421,7 +539,7 @@ function reviewWritingStyleCompliance(
     (blueprint?.requiredMemories?.length ?? 0) > 0;
 
   if (hasTerminologyConstraints) {
-    const { passed: termPassed, evidence: termEvidence } = checkTerminologyUsage(content, manifest, blueprint);
+    const { passed: termPassed, evidence: termEvidence } = checkTerminologyUsage(content, manifest, blueprint, mode);
     evidence.push(...termEvidence);
     if (!termPassed) {
       score -= 1;
@@ -442,10 +560,21 @@ function reviewWritingStyleCompliance(
   };
 }
 
-function reviewSourceCoverage(content: string, manifest: WorkPackageManifest): DimensionResult {
+function reviewSourceCoverage(
+  content: string,
+  manifest: WorkPackageManifest,
+  mode: ReviewModeContext,
+): DimensionResult {
   const sources = manifest.organisationLibrarySources;
 
   if (sources.length === 0) {
+    if (mode.isStandardReusableTemplate) {
+      return pass(
+        "source_coverage", 8,
+        "Template mode — no participant-specific sources required",
+        ["Template mode: no library sources were supplied; source coverage does not apply to a standard reusable template without participant facts"],
+      );
+    }
     return warn(
       "source_coverage", 6,
       "No library sources were retrieved for this execution",
@@ -487,6 +616,7 @@ function reviewCompleteness(
   content: string,
   blueprint: WorkBlueprint | null,
   ctx: Pick<ReviewContext, "requirementPlan" | "failedRequirements"> = {},
+  mode: ReviewModeContext,
 ): DimensionResult {
   const minContentLength = 200;
   const hasHeadings = /^#{1,3}\s.+/m.test(content) || /^[A-Z][A-Z\s]{3,}:/m.test(content);
@@ -546,6 +676,9 @@ function reviewCompleteness(
           .join("; ")}`,
       );
       evidence.push(`Deduction -${deduction}: completion gate reported unsatisfied requirements`);
+    } else if (mode.isStandardReusableTemplate) {
+      score = Math.max(score, 9);
+      evidence.push("Template mode: all supplied template requirements satisfied");
     }
   } else {
     evidence.push("Requirement plan not supplied to self-review context");
@@ -674,13 +807,7 @@ function reviewApprovalRequirements(content: string, blueprint: WorkBlueprint | 
 }
 
 function reviewSafety(content: string): DimensionResult {
-  const safetyFlags = [
-    { pattern: /fabricat|invent|made.?up|hallucin/i,                    message: "Potential fabrication language detected" },
-    { pattern: /ignore\s+(policy|procedure|law|legislation)/i,           message: "Reference to ignoring policy/law" },
-    { pattern: /without\s+(approval|authorisation|consent)/i,           message: "Reference to bypassing required authorisation" },
-  ];
-
-  const triggered = safetyFlags.filter(f => f.pattern.test(content));
+  const triggered = detectSafetyViolations(content);
   const score = Math.max(0, 10 - triggered.length * 3);
 
   const evidence = triggered.length === 0
@@ -695,6 +822,42 @@ function reviewSafety(content: string): DimensionResult {
     improvementSuggestions: triggered.map(f => `Safety flag: ${f.message}`),
     evidence,
   };
+}
+
+function detectSafetyViolations(content: string): Array<{ message: string; snippet: string }> {
+  const flags = [
+    { pattern: /\b(?:fabricat\w*|invent\w*|made[ -]?up|hallucin\w*)\b/gi, message: "Instruction to fabricate or invent content" },
+    { pattern: /\bignore\s+(?:policy|procedure|law|legislation)\b/gi, message: "Instruction to ignore policy/law" },
+    { pattern: /\bwithout\s+(?:approval|authorisation|authorization|consent)\b/gi, message: "Instruction to bypass required authorisation" },
+  ];
+  const violations: Array<{ message: string; snippet: string }> = [];
+
+  for (const flag of flags) {
+    for (const match of content.matchAll(flag.pattern)) {
+      const index = match.index ?? 0;
+      if (isProhibitedSafetyReference(content, index)) continue;
+      violations.push({ message: flag.message, snippet: extractSnippet(content, index) });
+      break;
+    }
+  }
+
+  return violations;
+}
+
+function isProhibitedSafetyReference(content: string, matchIndex: number): boolean {
+  const sentenceStart = Math.max(
+    content.lastIndexOf(".", matchIndex),
+    content.lastIndexOf("!", matchIndex),
+    content.lastIndexOf("?", matchIndex),
+    content.lastIndexOf("\n", matchIndex),
+  ) + 1;
+  const prefix = content.slice(sentenceStart, matchIndex).toLowerCase();
+  const localPrefix = prefix.slice(-90);
+  return /\b(?:do\s+not|don't|must\s+not|must\s+never|never|may\s+not|should\s+not|cannot|can't|avoid|no)\b/.test(localPrefix);
+}
+
+function extractSnippet(content: string, index: number): string {
+  return content.slice(Math.max(0, index - 40), Math.min(content.length, index + 80)).replace(/\s+/g, " ").trim();
 }
 
 /**
@@ -713,6 +876,8 @@ function reviewConsistency(
   content: string,
   blueprint: WorkBlueprint | null,
   manifest: WorkPackageManifest,
+  ctx: Pick<ReviewContext, "executionOutcome"> = {},
+  mode: ReviewModeContext,
 ): DimensionResult {
   const evidence: string[] = [];
   const suggestions: string[] = [];
@@ -745,20 +910,28 @@ function reviewConsistency(
 
   // ── 2. Success criteria goal alignment ───────────────────────────────────
   if (blueprint?.successCriteria && blueprint.successCriteria.length > 0) {
-    const unmetCriteria = blueprint.successCriteria.filter(criterion => {
-      const words = criterion.toLowerCase().split(/\s+/).filter(w => w.length > 5);
-      return words.length > 0 && !words.some(w => contentLower.includes(w));
-    });
+    const classifiedCriteria = blueprint.successCriteria.map(classifySuccessCriterion);
+    const documentCriteria = classifiedCriteria.filter(c => c.kind === "document");
+    const unmetCriteria = documentCriteria.filter(criterion => !evaluateDocumentCriterion(contentLower, criterion.criterion));
+    const executionCriteria = classifiedCriteria.filter(c => c.kind === "execution");
     evidence.push(
-      `Success criteria met: ${blueprint.successCriteria.length - unmetCriteria.length}/${blueprint.successCriteria.length}`,
+      `Document success criteria met: ${documentCriteria.length - unmetCriteria.length}/${documentCriteria.length}`,
     );
+    if (executionCriteria.length > 0) {
+      const executionSatisfied = executionCriteria.filter(c => evaluateExecutionCriterion(c, ctx.executionOutcome) === true).length;
+      const executionKnown = executionCriteria.filter(c => evaluateExecutionCriterion(c, ctx.executionOutcome) !== null).length;
+      evidence.push(`Execution success criteria satisfied: ${executionSatisfied}/${executionKnown} known; ${executionCriteria.length - executionKnown} not scored against document text`);
+    }
     if (unmetCriteria.length > 0) {
       const deduction = Math.min(3, unmetCriteria.length);
       score -= deduction;
       unmetCriteria.forEach(c =>
-        evidence.push(`Unmet criterion: "${c.slice(0, 60)}"`)
+        evidence.push(`Unmet document criterion: "${c.criterion.slice(0, 60)}"`)
       );
       suggestions.push(`${unmetCriteria.length} success criterion/criteria not addressed in content`);
+    }
+    if (mode.isStandardReusableTemplate && documentCriteria.length === 0 && executionCriteria.length > 0) {
+      evidence.push("Template mode: execution criteria separated from document consistency scoring");
     }
   }
 
@@ -826,9 +999,17 @@ function reviewEvidenceCitationGrounding(
   content: string,
   manifest: WorkPackageManifest,
   evidencePack?: EvidencePack | null,
+  mode?: ReviewModeContext,
 ): DimensionResult {
   // No evidence pack provided — skip with informational warning
   if (!evidencePack) {
+    if (mode?.isStandardReusableTemplate) {
+      return pass(
+        "evidence_citation_grounding", 8,
+        "Template mode — citation grounding not required without participant-specific evidence",
+        ["Template mode: no EvidencePack supplied; participant-specific citations are not expected in a reusable template"],
+      );
+    }
     return warn(
       "evidence_citation_grounding", 6,
       "No EvidencePack provided to self-review — citation grounding skipped",
@@ -900,7 +1081,7 @@ function reviewEvidenceCitationGrounding(
   if (uncertainMarkers.length > 0) {
     // Correctly marked uncertain claims — reward good practice
     evidence.push(`Uncertain/weak-evidence markers found: ${uncertainMarkers.length} (correctly self-flagged)`);
-  } else if (chunks.length === 0 && content.length > 300) {
+  } else if (!mode?.isStandardReusableTemplate && chunks.length === 0 && content.length > 300) {
     // No evidence retrieved and no uncertainty markers — flag
     score -= 1;
     suggestions.push("No evidence was retrieved — mark any uncertain claims with [UNCERTAIN] or [WEAK_EVIDENCE]");
@@ -938,6 +1119,7 @@ function checkTerminologyUsage(
   content: string,
   manifest: WorkPackageManifest,
   blueprint: WorkBlueprint | null,
+  mode: ReviewModeContext,
 ): TerminologyCheckResult {
   const evidence: string[] = [];
   const contentLower = content.toLowerCase();
@@ -945,7 +1127,7 @@ function checkTerminologyUsage(
 
   // 1. Blueprint mandatory citations
   const mandatoryCitations = blueprint?.mandatoryCitations ?? [];
-  if (mandatoryCitations.length > 0) {
+  if (mandatoryCitations.length > 0 && !mode.isStandardReusableTemplate) {
     for (const citation of mandatoryCitations) {
       const found = contentLower.includes(citation.toLowerCase());
       evidence.push(
@@ -953,6 +1135,8 @@ function checkTerminologyUsage(
       );
       if (!found) misses++;
     }
+  } else if (mandatoryCitations.length > 0 && mode.isStandardReusableTemplate) {
+    evidence.push("Template mode: mandatory participant-specific citations skipped");
   }
 
   // 2. Terminology memories — check their titles are acknowledged
@@ -974,6 +1158,10 @@ function checkTerminologyUsage(
   // 3. Blueprint required memory types (e.g., "terminology", "procedures")
   const requiredMemoryTypes = blueprint?.requiredMemories ?? [];
   for (const memType of requiredMemoryTypes) {
+    if (mode.isStandardReusableTemplate && ["operating_preference", "participant_context", "current_support_requirements"].includes(memType)) {
+      evidence.push(`Template mode: required memory type "${memType}" not required for reusable template text`);
+      continue;
+    }
     const hasMemory = manifest.cosMemories.some(m => m.memoryType === memType);
     evidence.push(
       `Required memory type "${memType}" — ${hasMemory ? "present in manifest" : "NOT in manifest"}`,
