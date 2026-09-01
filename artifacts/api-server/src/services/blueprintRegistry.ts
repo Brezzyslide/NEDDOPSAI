@@ -3190,13 +3190,16 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
   {
     id: "care-plan-behavioural-management",
     sectionCode: "BEHAVIOURAL_MANAGEMENT",
-    requirementText: "Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.",
+    requirementText: "Behavioural Management section contains three BSP-derived strategy folds: Proactive strategies, Reactive strategies and Protective strategies, each with behaviour or trigger, strategy, worker action and BSP source.",
     classification: "CONDITIONAL" as const,
     targetLocation: "Behavioural Management",
     adequacyCriteria: [
-      "Each row has all three columns",
-      "Redirection strategies are drawn from the BSP, not invented",
-      "Strategies are written for a support worker to execute",
+      "Template mode includes all three fold headings and their four-column tables",
+      "Participant-specific mode: every rendered strategy has a non-empty, specific BSP source containing the quoted passage and location",
+      "Participant-specific mode: distinct strategies extracted from the BSP equal distinct strategies rendered across the three folds",
+      "Participant-specific mode: no strategy flagged by the restrictive practice cross-check appears unless it is on the authorised Restrictive Practices list",
+      "Participant-specific mode: protective strategies are APO confirmed before approval",
+      "No strategy exists that cannot be traced to a BSP passage",
     ],
     conditionalApplicability: {
       appliesWhen: ["BSP exists", "behaviours of concern are recorded", "any goal references behaviour"],
@@ -3206,13 +3209,15 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
   {
     id: "care-plan-restrictive-practices",
     sectionCode: "RESTRICTIVE_PRACTICES",
-    requirementText: "Restrictive Practices section contains a support-worker-friendly statement of what restrictive practices are in place.",
+    requirementText: "Restrictive Practices section contains a six-column table for practice type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement.",
     classification: "CONDITIONAL" as const,
     targetLocation: "Restrictive Practices",
     adequacyCriteria: [
-      "Each practice named in plain language a support worker understands",
-      "What the worker does, and does not do",
-      "Authorisation status stated as recorded in the BSP, never determined here",
+      "Template mode includes the Restrictive Practices table with all six columns",
+      "Participant-specific mode: every restrictive practice row has an authorisation status and reference",
+      "Each practice is named in plain language a support worker understands",
+      "Each row states what the worker does, what the worker must not do and the recording requirement",
+      "Authorisation status is stated as recorded in the BSP or authorisation source, never determined here",
     ],
     conditionalApplicability: {
       appliesWhen: ["any restrictive practice is in place"],

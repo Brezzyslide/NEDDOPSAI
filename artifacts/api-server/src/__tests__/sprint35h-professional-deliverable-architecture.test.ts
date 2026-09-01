@@ -1275,8 +1275,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(prompt).toContain("    - All authored fixedContent paragraphs are emitted verbatim.");
     expect(prompt).toContain("    - All declared template fields are present and labelled.");
     expect(prompt).toContain("    - Every field present and labelled");
-    expect(prompt).toContain("Requirement: Behavioural Management section contains a table with behaviour, possible trigger, and redirection strategy.");
-    expect(prompt).toContain("    - Redirection strategies are drawn from the BSP, not invented");
+    expect(prompt).toContain("Requirement: Behavioural Management section contains three BSP-derived strategy folds: Proactive strategies, Reactive strategies and Protective strategies, each with behaviour or trigger, strategy, worker action and BSP source.");
+    expect(prompt).toContain("    - Participant-specific mode: distinct strategies extracted from the BSP equal distinct strategies rendered across the three folds");
+    expect(prompt).toContain("Requirement: Restrictive Practices section contains a six-column table for practice type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement.");
     expect(prompt).not.toContain("Participant criteria: DERIVED_FALLBACK_HEURISTIC");
   });
 
