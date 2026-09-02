@@ -217,6 +217,19 @@ describe("Sprint 39 integration release readiness", () => {
     expect(templateValidation.missingItems).toContain("Participant Document");
   });
 
+  it("runs participant evidence preflight before claiming execution", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+    const dispatchBody = coordinator.slice(
+      coordinator.indexOf("export async function dispatchWorkExecution"),
+      coordinator.indexOf("/**", coordinator.indexOf("export async function resumeFromCheckpoint")),
+    );
+
+    expect(dispatchBody.indexOf("evaluateParticipantEvidencePreflight")).toBeGreaterThan(-1);
+    expect(dispatchBody.indexOf("evaluateParticipantEvidencePreflight")).toBeLessThan(dispatchBody.indexOf("claimTaskForExecution"));
+    expect(dispatchBody).toContain('transitionTaskState(input.taskId!, input.organizationId, "evidence_required")');
+    expect(dispatchBody).toContain("execution_coordinator.participant_evidence_required");
+  });
+
   it("runs completion gates to terminal pass/fail outcomes after task creation", () => {
     const serviceAgreement = runGate({
       request: "Create a standard NDIS Service Agreement",

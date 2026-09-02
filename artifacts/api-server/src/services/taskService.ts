@@ -54,7 +54,7 @@ export interface TaskWithPlan {
 const VALID_TRANSITIONS: Record<TaskState, TaskState[]> = {
   draft: ["queued", "cancelled"],
   queued: ["planning", "executing", "cancelled"],
-  planning: ["awaiting_approval", "approved", "cancelled"],
+  planning: ["awaiting_approval", "approved", "evidence_required", "cancelled"],
   awaiting_approval: ["planning", "approved", "cancelled", "failed"],
   evidence_required: ["planning", "queued", "cancelled", "failed"],
   approved: ["planning", "awaiting_approval", "executing", "cancelled"],

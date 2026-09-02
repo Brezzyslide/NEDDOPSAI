@@ -43,8 +43,12 @@ import {
   getActiveCheckpointByConversation,
 } from "./executionCheckpointService.js";
 import type { ActiveCheckpoint } from "./executionCheckpointService.js";
+import { resolveCanonicalBlueprint } from "./workBlueprintService.js";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
+import { resolveEvidence, type EvidencePack } from "./knowledgeResolutionService.js";
+import { validateWorkPackage, type ValidationResult } from "./workValidationService.js";
+import { classifyStandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
 import {
   claimTaskForExecution,
   getTaskPlan,
@@ -54,6 +58,7 @@ import {
   transitionTaskState,
 } from "./taskService.js";
 import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +82,14 @@ export interface DispatchWorkExecutionInput {
    * the classifier's decision, not just the blueprint's declared output type.
    */
   laneContext?: import("./unifiedExecutionEngine.js").ExecutionLaneContext;
+}
+
+interface ParticipantEvidencePreflightResult {
+  shouldBlock: boolean;
+  subjectParticipantIds: string[];
+  blueprint: WorkBlueprint | null;
+  evidencePack: EvidencePack | null;
+  validationResult: ValidationResult | null;
 }
 
 export interface ResumeFromCheckpointInput {
@@ -210,6 +223,61 @@ export async function dispatchWorkExecution(
     } catch (err) {
       console.warn("[ExecutionCoordinator] Could not resolve workroom conversation (non-fatal):", (err as Error)?.message);
     }
+  }
+
+  const participantPreflight = input.taskId
+    ? await evaluateParticipantEvidencePreflight({
+        organizationId: input.organizationId,
+        requesterId: input.requesterId,
+        taskId: input.taskId,
+        taskTitle: input.taskTitle,
+        userRequest: input.taskDescription ?? input.taskTitle,
+        conversationId,
+        correlationId,
+      }).catch((err): ParticipantEvidencePreflightResult | null => {
+        console.warn("[ExecutionCoordinator] Participant evidence preflight failed open:", err?.message);
+        return null;
+      })
+    : null;
+
+  if (participantPreflight?.shouldBlock && participantPreflight.validationResult) {
+    const questions = participantPreflight.validationResult.missingItems.map(
+      label => `Please link or upload the required ${label} for the task participant.`,
+    );
+    await transitionTaskState(input.taskId!, input.organizationId, "evidence_required").catch(err =>
+      console.warn("[ExecutionCoordinator] Failed to mark participant task evidence_required:", err?.message),
+    );
+    if (conversationId) {
+      emitExecutionEvent(conversationId, {
+        type: "execution_clarification_required",
+        conversationId,
+        correlationId,
+        organizationId: input.organizationId,
+        humanLabel: "Participant evidence is required before this work can start.",
+        clarificationQuestions: questions,
+      });
+      await postClarificationRequestToConversation(
+        input.organizationId,
+        conversationId,
+        input.taskId!,
+        questions,
+        correlationId,
+      ).catch(() => {});
+    }
+    await logOrgEvent({
+      eventType: "execution_coordinator.participant_evidence_required",
+      organizationId: input.organizationId,
+      actorType: "system",
+      resourceType: "task",
+      resourceId: input.taskId,
+      metadata: {
+        correlationId,
+        subjectParticipantIds: participantPreflight.subjectParticipantIds,
+        blueprintCode: participantPreflight.blueprint?.code ?? null,
+        missingItems: participantPreflight.validationResult.missingItems,
+      },
+    }).catch(() => {});
+    return;
   }
 
   if (input.taskId) {
@@ -445,6 +513,86 @@ export async function recoverOrphanedExecutions(organizationId?: string): Promis
   }
 
   return recovered;
+}
+
+async function evaluateParticipantEvidencePreflight(input: {
+  organizationId: string;
+  requesterId: string;
+  taskId: string;
+  taskTitle: string;
+  userRequest: string;
+  conversationId?: string;
+  correlationId: string;
+}): Promise<ParticipantEvidencePreflightResult | null> {
+  const subjectParticipantIds = await getRetrievalSubjectParticipantIdsForTask(input.organizationId, input.taskId);
+  if (subjectParticipantIds.length === 0) return null;
+
+  const plan = await getTaskPlan(input.taskId, input.organizationId).catch(() => null);
+  const canonicalIntent =
+    deriveProfessionalIntentKey(input.userRequest, plan?.intent ?? null) ??
+    plan?.intent ??
+    null;
+  const blueprintSelection = await resolveCanonicalBlueprint(canonicalIntent, input.organizationId).catch(() => null);
+  const blueprint = blueprintSelection?.blueprint ?? null;
+  if (!blueprint) {
+    return {
+      shouldBlock: false,
+      subjectParticipantIds,
+      blueprint: null,
+      evidencePack: null,
+      validationResult: null,
+    };
+  }
+
+  const manifest: WorkPackageManifest = {
+    id: `participant-preflight:${input.taskId}`,
+    organizationId: input.organizationId,
+    completedWorkId: null,
+    executionId: `participant-preflight:${input.correlationId}`,
+    taskId: input.taskId,
+    blueprintId: blueprint.id,
+    blueprintVersion: blueprint.version,
+    canonicalIntent,
+    blueprintFamily: blueprint.blueprintFamily,
+    blueprintMode: blueprint.supportedModes[0] ?? "create",
+    templateId: null,
+    templateVersion: null,
+    contractSnapshot: null,
+    primarySpecialist: plan?.primarySpecialist ?? blueprint.primarySpecialist,
+    supportingSpecialists: blueprint.supportingSpecialists ?? [],
+    organisationLibrarySources: [],
+    cosMemories: [],
+    specialistMemories: [],
+    entityKnowledge: {},
+    taskUploads: [],
+    selectionMetadata: { deliverableStandardisation: "participant_specific" },
+    modelVersion: null,
+    promptVersion: "participant-evidence-preflight",
+    assembledAt: new Date(),
+    requesterId: input.requesterId,
+    createdAt: new Date(),
+  };
+
+  const evidencePack = await resolveEvidence({
+    organisationId: input.organizationId,
+    specialistCode: manifest.primarySpecialist,
+    blueprint,
+    workPackage: manifest,
+    userRequest: input.userRequest,
+    entityIds: subjectParticipantIds,
+  });
+  const validationResult = validateWorkPackage(manifest, blueprint, evidencePack, {
+    standardTemplateEvidence: classifyStandardTemplateEvidenceContext(input.userRequest),
+    participantSpecificMode: true,
+  });
+
+  return {
+    shouldBlock: !validationResult.passed,
+    subjectParticipantIds,
+    blueprint,
+    evidencePack,
+    validationResult,
+  };
 }
 
 // ─── Background runner ────────────────────────────────────────────────────────
