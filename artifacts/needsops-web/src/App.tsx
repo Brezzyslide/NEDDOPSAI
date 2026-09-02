@@ -40,6 +40,7 @@ import GovernanceTimelinePage from "@/pages/app/GovernanceTimelinePage";
 import CompletedWorkPortal from "@/pages/app/CompletedWorkPortal";
 import CompletedWorkViewer from "@/pages/app/CompletedWorkViewer";
 import TeamPage from "@/pages/app/TeamPage";
+import ParticipantsPage from "@/pages/app/ParticipantsPage";
 import OrgSettings from "@/pages/app/OrgSettings";
 import AuditPage from "@/pages/app/AuditPage";
 import AccountSettings from "@/pages/app/AccountSettings";
@@ -312,6 +313,7 @@ function AppRouter() {
             <Route path="/app/:slug/tasks/:taskId" component={TaskWorkroomPage} />
             <Route path="/app/:slug/tasks" component={TaskCentrePage} />
             <Route path="/app/:slug/approvals" component={ApprovalsPage} />
+            <Route path="/app/:slug/participants" component={ParticipantsPage} />
             <Route path="/app/:slug/team" component={TeamPage} />
             <Route path="/app/:slug/plan" component={PlanPage} />
             <Route path="/app/:slug/usage" component={UsagePage} />

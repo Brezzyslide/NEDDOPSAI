@@ -8,6 +8,7 @@ import invitationAcceptRouter from "./invitationAccept.js";
 import adminRouter from "./admin.js";
 import workforceRouter from "./workforce.js";
 import tasksRouter from "./tasks.js";
+import participantsRouter from "./participants.js";
 import approvalsRouter from "./approvalRoutes.js";
 // Sprint 8: Execution lifecycle routes
 import executionRouter from "./execution.js";
@@ -41,6 +42,7 @@ router.use("/organisations/:slug/members", orgMembersRouter);
 router.use("/organisations/:slug/invitations", orgInvitationsRouter);
 router.use("/organisations/:slug/audit", orgAuditRouter);
 router.use("/organisations/:slug/tasks", tasksRouter);
+router.use("/organisations/:slug/participants", participantsRouter);
 router.use("/organisations/:slug/approvals", approvalsRouter);
 // Sprint 8: Task execution sessions
 router.use("/organisations/:slug/tasks/:taskId/execution", executionRouter);

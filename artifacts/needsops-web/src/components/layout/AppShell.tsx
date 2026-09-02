@@ -49,6 +49,7 @@ const AUDIT_NAV = [
 
 // ── Organisation admin (owner + administrator only) ───────────────────────────
 const ORG_NAV = [
+  { label: "Participants", icon: "◉", path: "/participants" },
   { label: "Team",     icon: "👥", path: "/team" },
   { label: "Plan",     icon: "💎", path: "/plan" },
   { label: "Usage",    icon: "📊", path: "/usage" },
