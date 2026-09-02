@@ -106,7 +106,7 @@ const mockDbInsertFn = vi.hoisted(() => vi.fn());
 vi.mock("@workspace/db", async (importOriginal) => {
   // Spread the real module so the table objects stay intact for the schema-
   // contract tests above; we only replace `db`.
-  const actual = await importOriginal<typeof import("@workspace/db")>();
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
 
   const makeSelectChain = (rows: unknown[] = []) => ({
     from: () => ({

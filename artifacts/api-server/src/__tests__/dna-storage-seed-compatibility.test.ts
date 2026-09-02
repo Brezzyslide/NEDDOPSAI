@@ -31,7 +31,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@workspace/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@workspace/db")>();
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
 
   function selectedRows(table: unknown, selection?: Record<string, unknown>) {
     if (table === actual.specialistDnaProfilesTable) {

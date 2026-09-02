@@ -42,7 +42,7 @@ const { mockDb, selectChain, insertChain, updateChain } = vi.hoisted(() => {
 });
 
 vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual<any>("@workspace/db");
+  const actual = await vi.importActual<any>("@workspace/db/schema");
   return { ...actual, db: mockDb };
 });
 

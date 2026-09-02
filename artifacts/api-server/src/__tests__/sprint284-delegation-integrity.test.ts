@@ -80,7 +80,7 @@ vi.mock("../services/entitlementService.js", () => ({
 // Mock DB queries for action state resolver.
 // The chain mock returns itself from all builder methods; only .limit() resolves.
 vi.mock("@workspace/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@workspace/db")>();
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
   return { ...actual, db: mocks.dbChain };
 });
 

@@ -56,7 +56,7 @@ const mockDb = {
 };
 
 vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual<any>("@workspace/db");
+  const actual = await vi.importActual<any>("@workspace/db/schema");
   return { ...actual, db: mockDb };
 });
 

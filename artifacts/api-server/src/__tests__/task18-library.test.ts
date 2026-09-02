@@ -23,7 +23,7 @@ const mockLogOrgEvent   = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const mockTriggerIngest = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual<typeof import("@workspace/db")>("@workspace/db");
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
   return {
     ...actual,
     db: mockDb,

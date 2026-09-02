@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── Module mocks must be hoisted before imports ─────────────────────────────
 
 vi.mock("@workspace/db", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@workspace/db")>();
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
   const { mockDb } = await import("./helpers/sprint92Helpers.js");
   return { ...actual, db: mockDb };
 });

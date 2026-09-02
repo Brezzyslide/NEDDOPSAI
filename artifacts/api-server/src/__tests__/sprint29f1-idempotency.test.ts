@@ -28,6 +28,20 @@ vi.mock("../services/connectorSessionManagerService.js", () => ({
 }));
 vi.mock("../services/auditService.js", () => ({ logOrgEvent: mockAudit }));
 
+vi.mock("../services/deviceRelayService.js", async () => {
+  const { EventEmitter } = await import("events");
+  return {
+    opEvents: new EventEmitter(),
+    sendConnectorOpRequest: vi.fn(),
+    getConnectedDevicesForOrg: vi.fn().mockResolvedValue([]),
+  };
+});
+
+vi.mock("../services/connectorBridgeService.js", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../services/connectorBridgeService.js")>();
+  return { ...orig, submitConnectorOperation: mockSubmit };
+});
+
 // Lifecycle mocks (fire-and-forget)
 const { mockLifecycleExecuting, mockLifecycleCompleted, mockLifecycleFailed, mockLifecycleCancelled } = vi.hoisted(() => ({
   mockLifecycleExecuting:  vi.fn().mockResolvedValue(undefined),
@@ -209,10 +223,6 @@ describe("Deliverable C — Dispatcher duplicate write prevention", () => {
 
   it("dispatches to bridge on first call (no duplicate)", async () => {
     mockSubmit.mockResolvedValue({ success: true, requestId: "r1", latencyMs: 5, data: {} });
-    vi.mock("../services/connectorBridgeService.js", async (importOriginal) => {
-      const orig = await importOriginal<typeof import("../services/connectorBridgeService.js")>();
-      return { ...orig, submitConnectorOperation: mockSubmit };
-    });
 
     // We can't easily re-mock mid-test, so verify through idempotency store state
     // First call begins a record
