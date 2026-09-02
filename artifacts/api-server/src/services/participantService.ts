@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { and, asc, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   knowledgeSourceScopesTable,
@@ -18,6 +18,7 @@ import {
 
 export type ParticipantStatus = "active" | "inactive" | "archived";
 const PARTICIPANT_STATUSES: ParticipantStatus[] = ["active", "inactive", "archived"];
+const DEFAULT_LIST_STATUSES: ParticipantStatus[] = ["active", "inactive"];
 
 export interface ParticipantInput {
   displayName: string;
@@ -130,6 +131,8 @@ export async function listParticipants(input: {
   ];
   if (input.status && PARTICIPANT_STATUSES.includes(input.status as ParticipantStatus)) {
     filters.push(eq(participantsTable.status, input.status));
+  } else {
+    filters.push(inArray(participantsTable.status, DEFAULT_LIST_STATUSES));
   }
   const query = cleanText(input.query);
   if (query) {
@@ -288,7 +291,7 @@ export async function softDeleteParticipant(
 }> {
   const [participant] = await db
     .update(participantsTable)
-    .set({ status: "archived", deletedAt: new Date(), updatedAt: new Date() })
+    .set({ status: "archived", updatedAt: new Date() })
     .where(and(
       eq(participantsTable.id, participantId),
       eq(participantsTable.organizationId, organizationId),

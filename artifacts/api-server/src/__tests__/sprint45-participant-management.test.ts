@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const state = vi.hoisted(() => ({
   participants: [] as any[],
@@ -61,6 +63,7 @@ function matches(row: any, expr: any): boolean {
   if (expr.op === "and") return expr.args.every((arg: any) => matches(row, arg));
   if (expr.op === "or") return expr.args.some((arg: any) => matches(row, arg));
   if (expr.op === "eq") return getValue(row, expr.args[0]) === expr.args[1];
+  if (expr.op === "inArray") return expr.args[1].includes(getValue(row, expr.args[0]));
   if (expr.op === "isNull") return getValue(row, expr.arg) == null;
   if (expr.op === "ilike") {
     const value = String(getValue(row, expr.args[0]) ?? "").toLowerCase();
@@ -92,6 +95,7 @@ vi.mock("drizzle-orm", () => ({
   desc: vi.fn((value: unknown) => ({ op: "desc", value })),
   eq: vi.fn((...args: unknown[]) => ({ op: "eq", args })),
   ilike: vi.fn((...args: unknown[]) => ({ op: "ilike", args })),
+  inArray: vi.fn((...args: unknown[]) => ({ op: "inArray", args })),
   isNull: vi.fn((arg: unknown) => ({ op: "isNull", arg })),
   or: vi.fn((...args: unknown[]) => ({ op: "or", args })),
   sql: vi.fn(() => ({ op: "sql" })),
@@ -259,7 +263,65 @@ describe("participant management", () => {
     const deleted = await softDeleteParticipant("org-a", "participant-a");
 
     expect(deleted.boundTasks).toEqual([{ taskId: "task-001", role: "subject" }]);
+    expect(deleted.participant).toMatchObject({ status: "archived", deletedAt: null });
     await expect(searchParticipants("org-a", "Michael")).resolves.toEqual([]);
+  });
+
+  it("c1. a newly created participant appears in the default current list", async () => {
+    const { createParticipant, listParticipants } = await import("../services/participantService.js");
+
+    const participant = await createParticipant("org-a", { displayName: "Micheal Rocca" });
+    const listed = await listParticipants({ organizationId: "org-a" });
+
+    expect(participant).toMatchObject({ displayName: "Micheal Rocca", status: "active" });
+    expect(listed.participants.map(row => row.id)).toContain(participant.id);
+  });
+
+  it("c2. inactive participants stay in the default current list", async () => {
+    const { createParticipant, listParticipants, updateParticipant } = await import("../services/participantService.js");
+
+    const participant = await createParticipant("org-a", { displayName: "Micheal Rocca" });
+    const updated = await updateParticipant("org-a", participant.id, { status: "inactive" });
+    const listed = await listParticipants({ organizationId: "org-a" });
+
+    expect(updated.status).toBe("inactive");
+    expect(listed.participants).toEqual([
+      expect.objectContaining({ id: participant.id, status: "inactive" }),
+    ]);
+  });
+
+  it("c3. archived participants are hidden by default and retrievable with an archived filter", async () => {
+    const { createParticipant, listParticipants, softDeleteParticipant } = await import("../services/participantService.js");
+
+    const participant = await createParticipant("org-a", { displayName: "Micheal Rocca" });
+    await softDeleteParticipant("org-a", participant.id);
+
+    await expect(listParticipants({ organizationId: "org-a" })).resolves.toMatchObject({ participants: [] });
+    await expect(listParticipants({ organizationId: "org-a", status: "archived" })).resolves.toMatchObject({
+      participants: [expect.objectContaining({ id: participant.id, status: "archived", deletedAt: null })],
+    });
+  });
+
+  it("c4. archived participants do not appear in picker search results", async () => {
+    state.participants.push(
+      { id: "archived", organizationId: "org-a", displayName: "Micheal Rocca", status: "archived", deletedAt: null },
+      { id: "deleted", organizationId: "org-a", displayName: "Micheal Deleted", status: "active", deletedAt: new Date() },
+    );
+
+    const { searchParticipants } = await import("../services/participantService.js");
+
+    await expect(searchParticipants("org-a", "Micheal")).resolves.toEqual([]);
+  });
+
+  it("c5. the participants page defaults to current participants instead of active-only", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "../needsops-web/src/pages/app/ParticipantsPage.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("");');
+    expect(source).toContain('if (status) params.set("status", status);');
+    expect(source).toContain("active + inactive");
   });
 
   it("d. search returns exact matches before fuzzy and marks fuzzy rows as suggestions", async () => {

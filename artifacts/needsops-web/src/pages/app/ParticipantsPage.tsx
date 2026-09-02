@@ -26,7 +26,7 @@ type DuplicateWarning = {
   similarity: number;
 };
 
-const STATUS_OPTIONS = ["active", "inactive", "archived"] as const;
+const STATUS_OPTIONS = ["", "active", "inactive", "archived"] as const;
 
 function sourceLabel(source: ParticipantSource) {
   return source.title || source.originalFileName || source.id;
@@ -38,7 +38,7 @@ export default function ParticipantsPage() {
   const qc = useQueryClient();
   const { isKnowledgeAdmin } = useOrgRole(slug);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("active");
+  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     displayName: "",
@@ -215,7 +215,11 @@ export default function ParticipantsPage() {
                     onChange={event => setStatus(event.target.value)}
                     className="bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] outline-none focus:border-[#00D4FF]"
                   >
-                    {STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                    {STATUS_OPTIONS.map(option => (
+                      <option key={option || "current"} value={option}>
+                        {option || "active + inactive"}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
