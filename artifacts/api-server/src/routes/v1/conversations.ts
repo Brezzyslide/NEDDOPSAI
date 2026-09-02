@@ -401,6 +401,7 @@ router.post("/:conversationId/messages", requireAuth, resolveTenantFromSlug, asy
             ? "Revision of previous work"
             : "Rerun of previous work",
           taskDescription: `${ad.action === "revise_existing" ? "Revision" : "Rerun"} requested: ${content.trim()}${ad.completedWorkId ? ` (source: ${ad.completedWorkId})` : ""}`,
+          sourceUserRequest: content.trim(),
           requesterId: user.id,
           conversationId: rerunConvId,
         })
@@ -569,6 +570,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
         taskId: result.task.id,
         taskTitle: result.task.title,
         taskDescription: description,
+        sourceUserRequest,
         requesterId: user.id,
         conversationId: workroomConversationId,   // ← workroom, not general chat
       }).catch(err =>

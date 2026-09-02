@@ -230,6 +230,20 @@ describe("Sprint 39 integration release readiness", () => {
     expect(dispatchBody).toContain("execution_coordinator.participant_evidence_required");
   });
 
+  it("dispatches execution from the original user request instead of generated descriptions", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+    const conversations = source("routes/v1/conversations.ts");
+    const tasks = source("routes/v1/tasks.ts");
+    const autoDispatch = source("services/autoDispatchService.ts");
+
+    expect(coordinator).toContain("sourceUserRequest?: string");
+    expect(coordinator).toContain("userRequest: input.sourceUserRequest?.trim() || input.taskTitle");
+    expect(coordinator).not.toContain("userRequest: input.taskDescription ?? input.taskTitle");
+    expect(conversations).toContain("sourceUserRequest,");
+    expect(tasks).toContain("sourceUserRequest,");
+    expect(autoDispatch).toContain("sourceUserRequest: proposedTask.sourceUserRequest");
+  });
+
   it("runs completion gates to terminal pass/fail outcomes after task creation", () => {
     const serviceAgreement = runGate({
       request: "Create a standard NDIS Service Agreement",

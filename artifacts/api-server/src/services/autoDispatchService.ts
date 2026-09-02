@@ -189,6 +189,7 @@ export async function autoCreateAndDispatch(
     taskId:          task.id,
     taskTitle:       task.title,
     taskDescription: description,
+    sourceUserRequest: proposedTask.sourceUserRequest,
     requesterId,
     conversationId:  workroomConversationId,   // ← workroom, not general chat
     laneContext:     laneContext ?? undefined,

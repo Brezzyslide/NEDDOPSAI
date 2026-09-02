@@ -73,6 +73,7 @@ export interface DispatchWorkExecutionInput {
   taskId?: string;
   taskTitle: string;
   taskDescription?: string;
+  sourceUserRequest?: string;
   requesterId: string;
   conversationId?: string;
   correlationId?: string;
@@ -185,7 +186,11 @@ export async function coordinateIntentApproval(
     .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
     .where(eq(executionIntentsTable.id, intentId));
 
-  const userRequest = task?.description ?? task?.title ?? intent.description;
+  const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
+  const originalRequest = typeof taskCreation?.sourceUserRequest === "string"
+    ? taskCreation.sourceUserRequest.trim()
+    : "";
+  const userRequest = originalRequest || (task?.title ?? intent.description);
   runExecutionInBackground({
     organizationId,
     requesterId: approvedBy,
@@ -231,7 +236,7 @@ export async function dispatchWorkExecution(
         requesterId: input.requesterId,
         taskId: input.taskId,
         taskTitle: input.taskTitle,
-        userRequest: input.taskDescription ?? input.taskTitle,
+        userRequest: input.sourceUserRequest?.trim() || input.taskTitle,
         conversationId,
         correlationId,
       }).catch((err): ParticipantEvidencePreflightResult | null => {
@@ -345,7 +350,7 @@ export async function dispatchWorkExecution(
     organizationId: input.organizationId,
     requesterId: input.requesterId,
     taskId: input.taskId,
-    userRequest: input.taskDescription ?? input.taskTitle,
+    userRequest: input.sourceUserRequest?.trim() || input.taskTitle,
     conversationId,
     correlationId,
     intentId: undefined,
@@ -478,7 +483,11 @@ export async function recoverOrphanedExecutions(organizationId?: string): Promis
         .limit(1);
 
       const correlationId = randomUUID();
-      const userRequest = task?.description ?? task?.title ?? intent.description;
+      const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
+      const originalRequest = typeof taskCreation?.sourceUserRequest === "string"
+        ? taskCreation.sourceUserRequest.trim()
+        : "";
+      const userRequest = originalRequest || (task?.title ?? intent.description);
 
       if (conversationId) {
         emitExecutionEvent(conversationId, {

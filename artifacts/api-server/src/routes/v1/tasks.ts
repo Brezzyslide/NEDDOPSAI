@@ -206,6 +206,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       taskId: result.task.id,
       taskTitle: result.task.title,
       taskDescription: description,
+      sourceUserRequest,
       requesterId: user.id,
       conversationId: undefined,
     }).catch(err =>

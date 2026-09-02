@@ -874,11 +874,16 @@ export async function resolveSingleApproval(input: {
     if (input.action === "approved") {
       const task = await getTaskById(approval.taskId, input.organizationId);
       if (task) {
+        const taskCreation = (task.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
+        const sourceUserRequest = typeof taskCreation?.sourceUserRequest === "string"
+          ? taskCreation.sourceUserRequest
+          : undefined;
         dispatchWorkExecution({
           organizationId: input.organizationId,
           taskId: task.id,
           taskTitle: task.title,
           taskDescription: task.description ?? undefined,
+          sourceUserRequest,
           requesterId: input.actorUserId,
         }).catch(err =>
           console.warn("[conversationControl] Post-approval dispatch failed (non-fatal):", err?.message),
