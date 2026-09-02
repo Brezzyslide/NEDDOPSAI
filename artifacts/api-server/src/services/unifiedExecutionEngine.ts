@@ -1434,6 +1434,7 @@ export class UnifiedExecutionEngine {
     const t4 = Date.now();
     const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined, {
       standardTemplateEvidence,
+      participantSpecificMode: subjectParticipantIds.length > 0,
     });
     tValidationMs = Date.now() - t4;
 

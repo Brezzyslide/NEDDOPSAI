@@ -101,6 +101,7 @@ export interface ValidationResult {
 
 export interface WorkPackageValidationOptions {
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
+  participantSpecificMode?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ export function validateWorkPackage(
   options: WorkPackageValidationOptions = {},
 ): ValidationResult {
   const evidenceSearched = evidencePack != null;
+  const participantSpecificMode = options.participantSpecificMode === true;
 
   if (!blueprint) {
     return {
@@ -188,7 +190,8 @@ export function validateWorkPackage(
 
   // ── Run blueprint validation rules ────────────────────────────────────────
   for (const rule of blueprint.validationRules) {
-    const standardReusableRelaxed = isStandardReusableTemplateRule(rule.rule, manifest, options.standardTemplateEvidence);
+    const standardReusableRelaxed = !participantSpecificMode &&
+      isStandardReusableTemplateRule(rule.rule, manifest, options.standardTemplateEvidence);
     const evalResult = evaluateRule(
       rule.rule,
       retrievedHighConfTypes,
@@ -282,23 +285,23 @@ export function validateWorkPackage(
   }
 
   // ── Check required library knowledge ─────────────────────────────────────
-  // These generate warnings only. Only validationRules with required:true can block.
+  // Standard reusable templates surface missing organisation evidence as
+  // warnings. Participant-specific work treats declared evidence as blocking.
   for (const rawType of blueprint.requiredLibraryKnowledge) {
     const canonical = canonicaliseSourceType(rawType);
     if (!retrievedAllTypes.has(canonical)) {
       const isTrusted = isTrustedProviderSource(canonical);
+      const effectiveRequired = participantSpecificMode && !isTrusted;
       const searchOutcome = isTrusted
         ? "trusted_source_unavailable"
         : evidenceSearched
         ? "not_found"
         : "not_searched";
-      const suggestedAction = isTrusted ? "platform_limitation" : "approve_existing";
+      const suggestedAction = isTrusted ? "platform_limitation" : participantSpecificMode ? "upload_document" : "approve_existing";
 
-      // Never a blocker — required library knowledge is recommended evidence.
-      // Required blockers come only from named validationRules with required:true.
       issues.push({
         rule: "required_library_knowledge",
-        level: "warning",
+        level: effectiveRequired ? "error" : "warning",
         message: isTrusted
           ? `${sourceTypeDisplayLabel(canonical)} is sourced by the platform — retrieval not yet available for this work type`
           : evidenceSearched
@@ -310,7 +313,7 @@ export function validateWorkPackage(
       upsertMissing({
         canonicalType: canonical,
         displayLabel: sourceTypeDisplayLabel(canonical),
-        required: false,
+        required: effectiveRequired,
         reason: `Blueprint recommends a ${sourceTypeDisplayLabel(canonical)} for this type of work`,
         searched: evidenceSearched,
         searchOutcome,
@@ -328,7 +331,7 @@ export function validateWorkPackage(
     if (!memoryTypes.has(rawType) && !memoryTypes.has(canonical)) {
       issues.push({
         rule: "required_memory",
-        level: "warning",
+        level: participantSpecificMode ? "error" : "warning",
         message: `No approved ${memoryTypeDisplayLabel(rawType)} memory found for this work.`,
         details: [memoryTypeDisplayLabel(rawType)],
       });
@@ -336,11 +339,59 @@ export function validateWorkPackage(
       upsertMissing({
         canonicalType: `memory:${canonical}`,
         displayLabel: memoryTypeDisplayLabel(rawType),
-        required: false,
+        required: participantSpecificMode,
         reason: `Blueprint recommends approved ${memoryTypeDisplayLabel(rawType)} memory for this type of work`,
         searched: true,
         searchOutcome: "not_found",
-        suggestedAction: "proceed_without",
+        suggestedAction: participantSpecificMode ? "upload_document" : "proceed_without",
+      });
+    }
+  }
+
+  if (participantSpecificMode) {
+    const minimumEvidenceCount = blueprint.evidenceContract?.minimumEvidenceCount ?? 0;
+    const retrievedEvidenceCount = evidencePack?.chunks.length ?? 0;
+    if (minimumEvidenceCount > 0 && retrievedEvidenceCount < minimumEvidenceCount) {
+      issues.push({
+        rule: "minimum_evidence_count",
+        level: "error",
+        message: `Participant-specific work requires at least ${minimumEvidenceCount} relevant evidence item(s).`,
+        details: [`Retrieved ${retrievedEvidenceCount}.`],
+      });
+      upsertMissing({
+        canonicalType: "minimum_evidence_count",
+        displayLabel: `${minimumEvidenceCount} Relevant Evidence Items`,
+        required: true,
+        reason: `Blueprint requires at least ${minimumEvidenceCount} relevant evidence item(s) before participant-specific work can proceed`,
+        searched: evidenceSearched,
+        searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+        suggestedAction: "upload_document",
+      });
+    }
+
+    const participantEntityRequired =
+      blueprint.requiredEntityKnowledge?.participant === true ||
+      blueprint.evidenceContract?.requiredEntityTypes?.includes("participant") === true;
+    const participantEvidencePresent =
+      retrievedAllTypes.has("participant_document") ||
+      retrievedAllTypes.has("participant_record") ||
+      retrievedAllTypes.has("entity_knowledge") ||
+      manifest.entityKnowledge?.participant != null;
+    if (participantEntityRequired && !participantEvidencePresent) {
+      issues.push({
+        rule: "required_participant_entity_knowledge",
+        level: "error",
+        message: "No linked participant evidence was found for this participant-specific work.",
+        details: ["Link or upload participant documents for the task subject before dispatch."],
+      });
+      upsertMissing({
+        canonicalType: "participant_document",
+        displayLabel: "Participant Document",
+        required: true,
+        reason: "Blueprint requires participant-specific evidence linked to the task subject",
+        searched: evidenceSearched,
+        searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+        suggestedAction: "upload_document",
       });
     }
   }

@@ -9,6 +9,7 @@ import {
   validateBlueprintRuntimeCompletion,
 } from "../services/blueprintRuntimeValidationService";
 import { compileProfessionalExecutionContext } from "../services/professionalExecutionContextService";
+import { validateWorkPackage } from "../services/workValidationService";
 import type { BlueprintExecutionContract, WorkBlueprint } from "../services/workBlueprintService";
 import type { EvidencePack } from "../services/knowledgeResolutionService";
 import type { WorkPackageManifest } from "../services/workPackageService";
@@ -175,6 +176,45 @@ describe("Sprint 39 integration release readiness", () => {
 
     expect(renderFunction).toContain("(professionalContext.subjectParticipantIds?.length ?? 0) > 0");
     expect(assembleFunction).toContain("(professionalContext.subjectParticipantIds?.length ?? 0) > 0");
+  });
+
+  it("blocks participant-specific care plans with zero evidence but keeps template mode non-blocking", () => {
+    const intent = resolveIntent("care_plan.create");
+    expect(intent).toBeTruthy();
+    const blueprint = getRegistryEntry(intent!.code);
+    expect(blueprint).toBeTruthy();
+    const baseManifest = manifest({
+      blueprintId: intent!.code,
+      canonicalIntent: "care_plan.create",
+      blueprintFamily: intent!.family,
+      blueprintMode: intent!.mode,
+      primarySpecialist: blueprint!.primarySpecialist,
+      selectionMetadata: { deliverableStandardisation: "standard_reusable" },
+    });
+    const emptyPack = emptyEvidencePack();
+
+    const participantValidation = validateWorkPackage(baseManifest, blueprint!, emptyPack, {
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Create a standard comprehensive NDIS Care Plan template"),
+      participantSpecificMode: true,
+    });
+    expect(participantValidation.passed).toBe(false);
+    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "required_participant_entity_knowledge")).toBe(true);
+    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "minimum_evidence_count")).toBe(true);
+    expect(participantValidation.missingItems).toEqual(expect.arrayContaining([
+      "Participant Document",
+      "Care Plan",
+      "Behaviour Support Plan",
+      "Risk Assessment",
+      "5 Relevant Evidence Items",
+    ]));
+    expect(participantValidation.clarificationMessage).toContain("Please upload or approve these documents");
+
+    const templateValidation = validateWorkPackage(baseManifest, blueprint!, emptyPack, {
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Create a standard comprehensive NDIS Care Plan template"),
+    });
+    expect(templateValidation.passed).toBe(true);
+    expect(templateValidation.issues.some(issue => issue.level === "error")).toBe(false);
+    expect(templateValidation.missingItems).toContain("Participant Document");
   });
 
   it("runs completion gates to terminal pass/fail outcomes after task creation", () => {
