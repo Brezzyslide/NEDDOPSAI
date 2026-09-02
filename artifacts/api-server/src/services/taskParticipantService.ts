@@ -14,6 +14,7 @@ import {
   taskParticipantsTable,
   usersTable,
 } from "@workspace/db";
+import { searchParticipants } from "./participantService.js";
 
 export type TaskParticipantRole = "subject" | "related" | "guardian_context";
 
@@ -29,6 +30,9 @@ export interface ParticipantResolutionCandidate {
   displayName: string;
   preferredName: string | null;
   externalParticipantId: string | null;
+  matchType?: string;
+  isSuggestion?: boolean;
+  similarity?: number;
 }
 
 export interface ParticipantResolutionResult {
@@ -36,6 +40,7 @@ export interface ParticipantResolutionResult {
   subjectParticipantIds: string[];
   candidates: ParticipantResolutionCandidate[];
   staffConflicts: string[];
+  requestedName?: string;
   clarifyingQuestion?: string;
 }
 
@@ -148,21 +153,9 @@ export async function resolveSubjectParticipantForTaskRequest(
   }
 
   const text = `${input.title}\n${input.description ?? ""}`;
-  const normalizedText = normalizeName(text);
-  const [participants, staffRows] = await Promise.all([
-    db
-      .select({
-        id: participantsTable.id,
-        displayName: participantsTable.displayName,
-        preferredName: participantsTable.preferredName,
-        externalParticipantId: participantsTable.externalParticipantId,
-      })
-      .from(participantsTable)
-      .where(and(
-        eq(participantsTable.organizationId, input.organizationId),
-        eq(participantsTable.status, "active"),
-        isNull(participantsTable.deletedAt),
-      )),
+  const inferredName = normalizeName(text.match(NAME_AFTER_FOR_PATTERN)?.[1]);
+  const [participantMatches, staffRows] = await Promise.all([
+    inferredName ? searchParticipants(input.organizationId, inferredName, 10) : Promise.resolve([]),
     db
       .select({
         displayName: usersTable.displayName,
@@ -178,16 +171,15 @@ export async function resolveSubjectParticipantForTaskRequest(
       )),
   ]);
 
-  const candidates = participants.filter(participant => {
-    const names = [
-      participant.displayName,
-      participant.preferredName,
-      participant.externalParticipantId,
-    ].map(normalizeName).filter(Boolean);
-    return names.some(name => containsName(normalizedText, name));
-  });
-
-  const inferredName = normalizeName(text.match(NAME_AFTER_FOR_PATTERN)?.[1]);
+  const candidates = participantMatches.map(match => ({
+    id: match.participant.id,
+    displayName: match.participant.displayName,
+    preferredName: match.participant.preferredName,
+    externalParticipantId: match.participant.externalParticipantId,
+    matchType: match.matchType,
+    isSuggestion: match.isSuggestion,
+    similarity: match.similarity,
+  }));
   const staffConflicts = staffRows
     .map(staff => staff.displayName ?? ([staff.firstName, staff.lastName].filter(Boolean).join(" ") || staff.email))
     .filter((name): name is string => Boolean(name))
@@ -207,6 +199,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       subjectParticipantIds: [],
       candidates,
       staffConflicts,
+      requestedName: inferredName || undefined,
       clarifyingQuestion: "Please confirm this is the participant for the task before I retrieve participant documents.",
     };
   }
@@ -217,6 +210,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       subjectParticipantIds: [],
       candidates,
       staffConflicts,
+      requestedName: inferredName || undefined,
       clarifyingQuestion: "Please confirm which participant this task is for before I retrieve participant documents.",
     };
   }
@@ -227,6 +221,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       subjectParticipantIds: [],
       candidates: [],
       staffConflicts: [],
+      requestedName: inferredName,
       clarifyingQuestion: `I could not find a participant matching "${inferredName}". Please select the participant before I retrieve participant documents.`,
     };
   }

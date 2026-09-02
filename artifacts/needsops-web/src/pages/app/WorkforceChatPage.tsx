@@ -63,10 +63,14 @@ interface ParticipantResolutionCandidate {
   displayName?: string | null;
   preferredName?: string | null;
   externalParticipantId?: string | null;
+  matchType?: string;
+  isSuggestion?: boolean;
+  similarity?: number;
 }
 
 interface ParticipantResolutionState {
   status: "confirmation_required" | "ambiguous" | "unresolved";
+  requestedName?: string;
   clarifyingQuestion?: string;
   candidates?: ParticipantResolutionCandidate[];
 }
@@ -112,6 +116,7 @@ function TaskProposalCard({
   creating,
   existingTaskId,
   participantResolution,
+  orgSlug,
 }: {
   data: TaskProposalData;
   onCreateTask: (title: string, summary: string, subjectParticipantId?: string) => void;
@@ -119,8 +124,63 @@ function TaskProposalCard({
   creating: boolean;
   existingTaskId?: string | null;
   participantResolution?: ParticipantResolutionState;
+  orgSlug?: string;
 }) {
+  const apiFetch = useAuthFetch();
   const participantCandidates = participantResolution?.candidates ?? [];
+  const requestedName = participantResolution?.requestedName?.trim() ?? "";
+  const [newParticipantName, setNewParticipantName] = useState(requestedName);
+  const [duplicateWarnings, setDuplicateWarnings] = useState<ParticipantResolutionCandidate[]>([]);
+  const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
+  const [createParticipantError, setCreateParticipantError] = useState<string | null>(null);
+  const [creatingParticipant, setCreatingParticipant] = useState(false);
+
+  useEffect(() => {
+    setNewParticipantName(requestedName);
+    setDuplicateWarnings([]);
+    setDuplicateAcknowledged(false);
+    setCreateParticipantError(null);
+  }, [requestedName]);
+
+  const handleCreateParticipantFromCard = async () => {
+    if (!orgSlug || creatingParticipant || creating) return;
+    const displayName = newParticipantName.trim();
+    if (displayName.length < 2) {
+      setCreateParticipantError("Enter a participant name first.");
+      return;
+    }
+    setCreateParticipantError(null);
+    setCreatingParticipant(true);
+    try {
+      if (!duplicateAcknowledged) {
+        const warningRes = await apiFetch(
+          `/v1/organisations/${orgSlug}/participants/duplicate-warnings?q=${encodeURIComponent(displayName)}&limit=5`,
+        );
+        const warningBody = await warningRes.json().catch(() => ({}));
+        const warnings = (warningBody?.warnings ?? []) as Array<{ participant: ParticipantResolutionCandidate }>;
+        if (warningRes.ok && warnings.length > 0) {
+          setDuplicateWarnings(warnings.map(warning => warning.participant));
+          setDuplicateAcknowledged(true);
+          return;
+        }
+      }
+
+      const res = await apiFetch(`/v1/organisations/${orgSlug}/participants`, {
+        method: "POST",
+        body: JSON.stringify({ displayName }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body?.participant?.id) {
+        setCreateParticipantError(body?.error?.message ?? "Could not create participant.");
+        return;
+      }
+      onCreateTask(data.title, data.summary, body.participant.id);
+    } catch {
+      setCreateParticipantError("Could not create participant.");
+    } finally {
+      setCreatingParticipant(false);
+    }
+  };
 
   return (
     <div className="mt-3 bg-[#0B1829] border border-[#00D4FF]/30 rounded-xl p-4 space-y-3">
@@ -195,15 +255,55 @@ function TaskProposalCard({
                     className="w-full text-left px-3 py-2 rounded-lg border border-[#1E3A5F] bg-[#112033] hover:border-[#00D4FF]/40 disabled:opacity-50 transition-colors"
                   >
                     <span className="block text-sm font-semibold text-[#E2E8F0]">{label}</span>
-                    {detail && <span className="block text-xs text-[#64748B] mt-0.5">{detail}</span>}
+                    <span className="block text-xs text-[#64748B] mt-0.5">
+                      {[detail, candidate.isSuggestion ? "Suggested match" : null].filter(Boolean).join(" · ")}
+                    </span>
                   </button>
                 );
               })}
             </div>
           ) : (
-            <p className="text-[#94A3B8] text-xs">
-              No matching participant was found. Continue discussing so the Chief of Staff can clarify.
-            </p>
+            <div className="space-y-2">
+              <p className="text-[#94A3B8] text-xs">
+                {requestedName
+                  ? `No participant found matching "${requestedName}". Create one?`
+                  : "No matching participant was found. Create one before opening the task."}
+              </p>
+              <input
+                value={newParticipantName}
+                onChange={event => {
+                  setNewParticipantName(event.target.value);
+                  setDuplicateWarnings([]);
+                  setDuplicateAcknowledged(false);
+                }}
+                placeholder="Participant name"
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-sm text-[#E2E8F0] placeholder:text-[#64748B] outline-none focus:border-[#00D4FF]"
+              />
+              {duplicateWarnings.length > 0 && (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
+                  <p className="text-amber-300 text-xs font-semibold">Possible existing participant</p>
+                  {duplicateWarnings.map(warning => (
+                    <p key={warning.id} className="text-[#CBD5E1] text-xs mt-1">
+                      {warning.displayName ?? warning.preferredName ?? warning.id}
+                      {warning.externalParticipantId ? ` · ID ${warning.externalParticipantId}` : ""}
+                    </p>
+                  ))}
+                  <p className="text-[#94A3B8] text-xs mt-1">Create a new identity only if this is a different person.</p>
+                </div>
+              )}
+              {createParticipantError && <p className="text-red-400 text-xs">{createParticipantError}</p>}
+              <button
+                onClick={handleCreateParticipantFromCard}
+                disabled={creatingParticipant || creating || newParticipantName.trim().length < 2}
+                className="w-full px-3 py-2 rounded-lg bg-[#00D4FF] text-[#0B1829] text-xs font-semibold hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
+              >
+                {creatingParticipant
+                  ? "Creating..."
+                  : duplicateWarnings.length > 0
+                    ? "Create new participant anyway"
+                    : "Create participant and task"}
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -387,6 +487,7 @@ function MessageBubble({
               creating={creatingTask}
               existingTaskId={existingTaskId}
               participantResolution={participantResolution}
+              orgSlug={slug}
             />
           )}
           {isClarification && (

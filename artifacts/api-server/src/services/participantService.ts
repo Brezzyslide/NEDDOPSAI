@@ -12,6 +12,8 @@ import { assignScope, getKnowledgeSource, removeScope } from "./knowledgeSourceS
 
 export type ParticipantStatus = "active" | "inactive" | "archived";
 const PARTICIPANT_STATUSES: ParticipantStatus[] = ["active", "inactive", "archived"];
+const PICKER_FUZZY_THRESHOLD = 0.72;
+const DUPLICATE_WARNING_THRESHOLD = 0.62;
 
 export interface ParticipantInput {
   displayName: string;
@@ -25,6 +27,12 @@ export interface ParticipantSearchResult {
   matchType: "external_id_exact" | "display_name_exact" | "fuzzy_suggestion";
   isSuggestion: boolean;
   rank: number;
+  similarity?: number;
+}
+
+export interface ParticipantDuplicateWarning {
+  participant: Participant;
+  similarity: number;
 }
 
 export class ParticipantServiceError extends Error {
@@ -46,6 +54,86 @@ function normalizeStatus(value: unknown): ParticipantStatus {
   return PARTICIPANT_STATUSES.includes(value as ParticipantStatus)
     ? value as ParticipantStatus
     : "active";
+}
+
+function normalizeName(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenSort(value: string): string {
+  return normalizeName(value).split(" ").filter(Boolean).sort().join(" ");
+}
+
+function bigrams(value: string): string[] {
+  const normalized = normalizeName(value).replace(/\s+/g, "");
+  if (normalized.length <= 1) return normalized ? [normalized] : [];
+  const grams: string[] = [];
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    grams.push(normalized.slice(index, index + 2));
+  }
+  return grams;
+}
+
+function diceCoefficient(left: string, right: string): number {
+  const a = bigrams(left);
+  const b = bigrams(right);
+  if (a.length === 0 || b.length === 0) return 0;
+  const counts = new Map<string, number>();
+  for (const gram of a) counts.set(gram, (counts.get(gram) ?? 0) + 1);
+  let overlap = 0;
+  for (const gram of b) {
+    const count = counts.get(gram) ?? 0;
+    if (count > 0) {
+      overlap += 1;
+      counts.set(gram, count - 1);
+    }
+  }
+  return (2 * overlap) / (a.length + b.length);
+}
+
+function editDistance(left: string, right: string): number {
+  const a = normalizeName(left);
+  const b = normalizeName(right);
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(previous[j]! + 1, current[j - 1]! + 1, previous[j - 1]! + cost);
+    }
+    for (let j = 0; j <= b.length; j += 1) previous[j] = current[j]!;
+  }
+  return previous[b.length]!;
+}
+
+function editSimilarity(left: string, right: string): number {
+  const a = normalizeName(left);
+  const b = normalizeName(right);
+  if (!a || !b) return 0;
+  return 1 - editDistance(a, b) / Math.max(a.length, b.length);
+}
+
+export function participantNameSimilarity(
+  query: string,
+  candidate: Pick<Participant, "displayName" | "preferredName">,
+): number {
+  const q = normalizeName(query);
+  if (!q) return 0;
+  const names = [candidate.displayName, candidate.preferredName].map(normalizeName).filter(Boolean);
+  return Math.max(0, ...names.flatMap(name => [
+    diceCoefficient(q, name),
+    diceCoefficient(tokenSort(q), tokenSort(name)),
+    editSimilarity(q, name),
+    editSimilarity(tokenSort(q), tokenSort(name)),
+  ]));
 }
 
 function normalizeLimit(value: unknown): number {
@@ -148,7 +236,6 @@ export async function searchParticipants(
   const query = cleanText(rawQuery);
   if (!query) return [];
   const limit = normalizeLimit(limitInput);
-  const like = `%${query.replace(/[%_]/g, "\\$&")}%`;
   const rows = await db
     .select()
     .from(participantsTable)
@@ -156,19 +243,12 @@ export async function searchParticipants(
       eq(participantsTable.organizationId, organizationId),
       eq(participantsTable.status, "active"),
       isNull(participantsTable.deletedAt),
-      or(
-        ilike(participantsTable.externalParticipantId, query),
-        ilike(participantsTable.displayName, query),
-        ilike(participantsTable.preferredName, query),
-        ilike(participantsTable.displayName, like),
-        ilike(participantsTable.preferredName, like),
-      ),
     ))
-    .limit(100);
+    .limit(500);
 
   const normalized = query.toLowerCase();
   return rows
-    .map((participant): ParticipantSearchResult => {
+    .map((participant): ParticipantSearchResult | null => {
       const external = participant.externalParticipantId?.toLowerCase() ?? "";
       const display = participant.displayName.toLowerCase();
       const preferred = participant.preferredName?.toLowerCase() ?? "";
@@ -182,9 +262,53 @@ export async function searchParticipants(
         return { participant, matchType: "display_name_exact", isSuggestion: false, rank: 2 };
       }
       const starts = display.startsWith(normalized) || preferred.startsWith(normalized);
-      return { participant, matchType: "fuzzy_suggestion", isSuggestion: true, rank: starts ? 10 : 20 };
+      const contains = display.includes(normalized) || preferred.includes(normalized);
+      const similarity = participantNameSimilarity(query, participant);
+      if (!starts && !contains && similarity < PICKER_FUZZY_THRESHOLD) return null;
+      return {
+        participant,
+        matchType: "fuzzy_suggestion",
+        isSuggestion: true,
+        rank: starts ? 10 : contains ? 15 : 20,
+        similarity: Number(similarity.toFixed(3)),
+      };
     })
+    .filter((result): result is ParticipantSearchResult => Boolean(result))
     .sort((a, b) => a.rank - b.rank || a.participant.displayName.localeCompare(b.participant.displayName))
+    .slice(0, limit);
+}
+
+export async function findParticipantDuplicateWarnings(
+  organizationId: string,
+  rawDisplayName: string,
+  limitInput?: unknown,
+): Promise<ParticipantDuplicateWarning[]> {
+  const query = cleanText(rawDisplayName);
+  if (!query) return [];
+  const limit = normalizeLimit(limitInput);
+  const normalized = normalizeName(query);
+  const rows = await db
+    .select()
+    .from(participantsTable)
+    .where(and(
+      eq(participantsTable.organizationId, organizationId),
+      eq(participantsTable.status, "active"),
+      isNull(participantsTable.deletedAt),
+    ))
+    .limit(500);
+
+  return rows
+    .map((participant): ParticipantDuplicateWarning | null => {
+      const candidateNames = [participant.displayName, participant.preferredName].map(normalizeName).filter(Boolean);
+      if (candidateNames.some(name => name === normalized)) {
+        return { participant, similarity: 1 };
+      }
+      const similarity = participantNameSimilarity(query, participant);
+      if (similarity < DUPLICATE_WARNING_THRESHOLD) return null;
+      return { participant, similarity: Number(similarity.toFixed(3)) };
+    })
+    .filter((warning): warning is ParticipantDuplicateWarning => Boolean(warning))
+    .sort((a, b) => b.similarity - a.similarity || a.participant.displayName.localeCompare(b.participant.displayName))
     .slice(0, limit);
 }
 

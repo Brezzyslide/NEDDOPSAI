@@ -3,6 +3,7 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import { requireOwnerOrAdmin } from "../../middlewares/requireOrgRole.js";
 import {
   createParticipant,
+  findParticipantDuplicateWarnings,
   linkParticipantSource,
   listParticipantSources,
   listParticipants,
@@ -49,6 +50,17 @@ router.get("/search", requireAuth, resolveTenantFromSlug, async (req, res, next)
     const { q, limit } = req.query as Record<string, string>;
     const results = await searchParticipants(ctx.tenantId, q ?? "", limit);
     res.json({ results });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/duplicate-warnings", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const { q, limit } = req.query as Record<string, string>;
+    const warnings = await findParticipantDuplicateWarnings(ctx.tenantId, q ?? "", limit);
+    res.json({ warnings });
   } catch (err) {
     next(err);
   }

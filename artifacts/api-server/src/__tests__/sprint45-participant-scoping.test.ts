@@ -76,7 +76,10 @@ function selectChain() {
     from(table: unknown) {
       if (table === tables.participantsTable) {
         return {
-          where: vi.fn().mockResolvedValue(state.participants),
+          where: vi.fn().mockImplementation(() => ({
+            limit: vi.fn().mockResolvedValue(state.participants),
+            then: (resolve: (value: typeof state.participants) => void) => resolve(state.participants),
+          })),
         };
       }
       if (table === tables.membershipsTable) {

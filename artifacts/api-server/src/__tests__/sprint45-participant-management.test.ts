@@ -277,6 +277,81 @@ describe("participant management", () => {
     expect(results.at(-1)?.isSuggestion).toBe(true);
   });
 
+  it("d1. John Deo returns John Doe as a fuzzy suggestion, not an auto-selected match", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { searchParticipants } = await import("../services/participantService.js");
+    const results = await searchParticipants("org-a", "John Deo");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      participant: { id: "john", displayName: "John Doe" },
+      matchType: "fuzzy_suggestion",
+      isSuggestion: true,
+    });
+  });
+
+  it("d2. Doe John returns John Doe as a fuzzy suggestion when name order is reversed", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { searchParticipants } = await import("../services/participantService.js");
+    const results = await searchParticipants("org-a", "Doe John");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      participant: { id: "john", displayName: "John Doe" },
+      matchType: "fuzzy_suggestion",
+      isSuggestion: true,
+    });
+  });
+
+  it("d3. JOHN DOE returns John Doe as a case-insensitive exact match", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { searchParticipants } = await import("../services/participantService.js");
+    const results = await searchParticipants("org-a", "JOHN DOE");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      participant: { id: "john", displayName: "John Doe" },
+      matchType: "display_name_exact",
+      isSuggestion: false,
+    });
+  });
+
+  it("d4. Jon Doe returns John Doe as a fuzzy suggestion when a letter is missing", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { searchParticipants } = await import("../services/participantService.js");
+    const results = await searchParticipants("org-a", "Jon Doe");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      participant: { id: "john", displayName: "John Doe" },
+      matchType: "fuzzy_suggestion",
+      isSuggestion: true,
+    });
+  });
+
+  it("d5. a name matching nothing returns zero candidates", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { searchParticipants } = await import("../services/participantService.js");
+
+    await expect(searchParticipants("org-a", "Zachary Unknown")).resolves.toEqual([]);
+  });
+
+  it("d6. near-duplicate warnings use a lower threshold than picker suggestions", async () => {
+    state.participants.push({ id: "john", organizationId: "org-a", displayName: "John Doe", status: "active", deletedAt: null });
+
+    const { findParticipantDuplicateWarnings } = await import("../services/participantService.js");
+    const warnings = await findParticipantDuplicateWarnings("org-a", "John Do");
+
+    expect(warnings).toEqual([
+      expect.objectContaining({ participant: expect.objectContaining({ id: "john" }) }),
+    ]);
+  });
+
   it("e. duplicate external_participant_id is rejected in the same org and allowed in another org", async () => {
     const { createParticipant } = await import("../services/participantService.js");
 

@@ -21,6 +21,11 @@ type ParticipantSource = {
   status?: string;
 };
 
+type DuplicateWarning = {
+  participant: Participant;
+  similarity: number;
+};
+
 const STATUS_OPTIONS = ["active", "inactive", "archived"] as const;
 
 function sourceLabel(source: ParticipantSource) {
@@ -41,6 +46,8 @@ export default function ParticipantsPage() {
     externalParticipantId: "",
     status: "active",
   });
+  const [duplicateWarnings, setDuplicateWarnings] = useState<DuplicateWarning[]>([]);
+  const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
 
   const participantsQuery = useQuery({
     queryKey: ["participants", slug, query, status],
@@ -74,10 +81,22 @@ export default function ParticipantsPage() {
 
   const createParticipant = useMutation({
     mutationFn: async () => {
+      const displayName = form.displayName.trim();
+      if (!duplicateAcknowledged) {
+        const warningRes = await apiFetch(
+          `/v1/organisations/${slug}/participants/duplicate-warnings?q=${encodeURIComponent(displayName)}&limit=5`,
+        );
+        const warningBody = await warningRes.json().catch(() => ({}));
+        if (warningRes.ok && (warningBody?.warnings?.length ?? 0) > 0) {
+          setDuplicateWarnings(warningBody.warnings);
+          setDuplicateAcknowledged(true);
+          return { warned: true };
+        }
+      }
       const res = await apiFetch(`/v1/organisations/${slug}/participants`, {
         method: "POST",
         body: JSON.stringify({
-          displayName: form.displayName,
+          displayName,
           preferredName: form.preferredName || null,
           externalParticipantId: form.externalParticipantId || null,
           status: form.status,
@@ -88,9 +107,12 @@ export default function ParticipantsPage() {
       return body;
     },
     onSuccess: (body) => {
+      if (body.warned) return;
       qc.invalidateQueries({ queryKey: ["participants", slug] });
       setSelectedId(body.participant.id);
       setForm({ displayName: "", preferredName: "", externalParticipantId: "", status: "active" });
+      setDuplicateWarnings([]);
+      setDuplicateAcknowledged(false);
     },
   });
 
@@ -241,7 +263,11 @@ export default function ParticipantsPage() {
                   >
                     <input
                       value={form.displayName}
-                      onChange={event => setForm(prev => ({ ...prev, displayName: event.target.value }))}
+                      onChange={event => {
+                        setForm(prev => ({ ...prev, displayName: event.target.value }));
+                        setDuplicateWarnings([]);
+                        setDuplicateAcknowledged(false);
+                      }}
                       placeholder="Display name"
                       className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] placeholder:text-[#64748B] outline-none focus:border-[#00D4FF]"
                     />
@@ -262,8 +288,24 @@ export default function ParticipantsPage() {
                       disabled={createParticipant.isPending || form.displayName.trim().length < 2}
                       className="w-full px-3 py-2 rounded-lg bg-[#00D4FF] text-[#0B1829] text-sm font-semibold hover:bg-[#00B8D9] disabled:opacity-50"
                     >
-                      {createParticipant.isPending ? "Adding..." : "Add participant"}
+                      {createParticipant.isPending
+                        ? "Adding..."
+                        : duplicateWarnings.length > 0
+                          ? "Create new participant anyway"
+                          : "Add participant"}
                     </button>
+                    {duplicateWarnings.length > 0 && (
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-3">
+                        <p className="text-amber-300 text-xs font-semibold">Possible existing participant</p>
+                        {duplicateWarnings.map(warning => (
+                          <p key={warning.participant.id} className="text-[#CBD5E1] text-xs mt-1">
+                            {warning.participant.displayName}
+                            {warning.participant.externalParticipantId ? ` · ID ${warning.participant.externalParticipantId}` : ""}
+                          </p>
+                        ))}
+                        <p className="text-[#94A3B8] text-xs mt-1">Create a new identity only if this is a different person.</p>
+                      </div>
+                    )}
                     {createParticipant.error && (
                       <p className="text-red-400 text-xs">{createParticipant.error.message}</p>
                     )}
