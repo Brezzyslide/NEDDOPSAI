@@ -162,6 +162,21 @@ describe("Sprint 39 integration release readiness", () => {
     expect(ctx.specificity).toBe("PARTICIPANT_SPECIFIC");
   });
 
+  it("blocks deterministic template bypass when a subject participant is bound", () => {
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const renderFunction = uee.slice(
+      uee.indexOf("function renderDeterministicStandardTemplateDraft"),
+      uee.indexOf("function fallbackDraft", uee.indexOf("function renderDeterministicStandardTemplateDraft")),
+    );
+    const assembleFunction = uee.slice(
+      uee.indexOf("function assembleTemplateSectionsForContext"),
+      uee.indexOf("function renderDeterministicStandardTemplateDraft"),
+    );
+
+    expect(renderFunction).toContain("(professionalContext.subjectParticipantIds?.length ?? 0) > 0");
+    expect(assembleFunction).toContain("(professionalContext.subjectParticipantIds?.length ?? 0) > 0");
+  });
+
   it("runs completion gates to terminal pass/fail outcomes after task creation", () => {
     const serviceAgreement = runGate({
       request: "Create a standard NDIS Service Agreement",

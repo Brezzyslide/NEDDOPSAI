@@ -3774,6 +3774,7 @@ function assembleTemplateSectionsForContext(
 ): ParsedDeliverableSection[] | undefined {
   if (
     professionalContext?.deliverable.standardisation !== "standard_reusable" ||
+    (professionalContext.subjectParticipantIds?.length ?? 0) > 0 ||
     contract?.blueprint?.code !== "care_plan" ||
     !contract.sections.length
   ) {
@@ -3794,6 +3795,7 @@ function renderDeterministicStandardTemplateDraft(
 ): GeneratedProfessionalDraft | null {
   if (
     professionalContext?.specificity !== "STANDARD_NON_PARTICIPANT_SPECIFIC" ||
+    (professionalContext.subjectParticipantIds?.length ?? 0) > 0 ||
     professionalContext.deliverable.standardisation !== "standard_reusable" ||
     contract?.blueprint?.code !== "care_plan" ||
     blueprint?.code !== "care_plan" ||
