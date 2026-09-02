@@ -208,6 +208,7 @@ vi.mock("../services/specialistContextService.js", () => ({
 }));
 
 vi.mock("../lib/workforceRegistry.js", () => ({
+  SPECIALISTS: [],
   getSpecialistByCode: mockGetSpecialistByCode,
 }));
 

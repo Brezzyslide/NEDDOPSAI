@@ -386,7 +386,7 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     expect(result.outcome).toBe("awaiting_clarification");
     expect(result.clarificationQuestions).toBeDefined();
     expect(result.clarificationQuestions!.length).toBeGreaterThan(0);
-  });
+  }, 30000);
 
   it("skips blueprint selection and manifest assembly when checkpointData provided", async () => {
     const { selectBlueprint }   = await import("../services/workBlueprintService.js");

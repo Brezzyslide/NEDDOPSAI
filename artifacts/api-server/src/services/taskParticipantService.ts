@@ -14,7 +14,11 @@ import {
   taskParticipantsTable,
   usersTable,
 } from "@workspace/db";
-import { searchParticipants } from "./participantService.js";
+import {
+  normalizeParticipantName,
+  participantNameSimilarity,
+  PICKER_FUZZY_THRESHOLD,
+} from "./participantMatchingService.js";
 
 export type TaskParticipantRole = "subject" | "related" | "guardian_context";
 
@@ -65,11 +69,7 @@ function normalizeIdList(ids: string[] | undefined): string[] {
 }
 
 function normalizeName(value: string | null | undefined): string {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeParticipantName(value);
 }
 
 function containsName(text: string, name: string): boolean {
@@ -154,8 +154,20 @@ export async function resolveSubjectParticipantForTaskRequest(
 
   const text = `${input.title}\n${input.description ?? ""}`;
   const inferredName = normalizeName(text.match(NAME_AFTER_FOR_PATTERN)?.[1]);
-  const [participantMatches, staffRows] = await Promise.all([
-    inferredName ? searchParticipants(input.organizationId, inferredName, 10) : Promise.resolve([]),
+  const [participants, staffRows] = await Promise.all([
+    db
+      .select({
+        id: participantsTable.id,
+        displayName: participantsTable.displayName,
+        preferredName: participantsTable.preferredName,
+        externalParticipantId: participantsTable.externalParticipantId,
+      })
+      .from(participantsTable)
+      .where(and(
+        eq(participantsTable.organizationId, input.organizationId),
+        eq(participantsTable.status, "active"),
+        isNull(participantsTable.deletedAt),
+      )),
     db
       .select({
         displayName: usersTable.displayName,
@@ -171,15 +183,52 @@ export async function resolveSubjectParticipantForTaskRequest(
       )),
   ]);
 
-  const candidates = participantMatches.map(match => ({
-    id: match.participant.id,
-    displayName: match.participant.displayName,
-    preferredName: match.participant.preferredName,
-    externalParticipantId: match.participant.externalParticipantId,
-    matchType: match.matchType,
-    isSuggestion: match.isSuggestion,
-    similarity: match.similarity,
-  }));
+  const candidates = inferredName
+    ? participants
+        .map(participant => {
+          const external = normalizeName(participant.externalParticipantId);
+          const display = normalizeName(participant.displayName);
+          const preferred = normalizeName(participant.preferredName);
+          if (external === inferredName) {
+            return { participant, matchType: "external_id_exact", isSuggestion: false, rank: 0, similarity: 1 };
+          }
+          if (display === inferredName) {
+            return { participant, matchType: "display_name_exact", isSuggestion: false, rank: 1, similarity: 1 };
+          }
+          if (preferred === inferredName) {
+            return { participant, matchType: "display_name_exact", isSuggestion: false, rank: 2, similarity: 1 };
+          }
+          const starts = display.startsWith(inferredName) || preferred.startsWith(inferredName);
+          const contains = display.includes(inferredName) || preferred.includes(inferredName);
+          const similarity = participantNameSimilarity(inferredName, participant);
+          if (!starts && !contains && similarity < PICKER_FUZZY_THRESHOLD) return null;
+          return {
+            participant,
+            matchType: "fuzzy_suggestion",
+            isSuggestion: true,
+            rank: starts ? 10 : contains ? 15 : 20,
+            similarity: Number(similarity.toFixed(3)),
+          };
+        })
+        .filter((match): match is {
+          participant: typeof participants[number];
+          matchType: string;
+          isSuggestion: boolean;
+          rank: number;
+          similarity: number;
+        } => Boolean(match))
+        .sort((a, b) => a.rank - b.rank || a.participant.displayName.localeCompare(b.participant.displayName))
+        .slice(0, 10)
+        .map(match => ({
+          id: match.participant.id,
+          displayName: match.participant.displayName,
+          preferredName: match.participant.preferredName,
+          externalParticipantId: match.participant.externalParticipantId,
+          matchType: match.matchType,
+          isSuggestion: match.isSuggestion,
+          similarity: match.similarity,
+        }))
+    : [];
   const staffConflicts = staffRows
     .map(staff => staff.displayName ?? ([staff.firstName, staff.lastName].filter(Boolean).join(" ") || staff.email))
     .filter((name): name is string => Boolean(name))
