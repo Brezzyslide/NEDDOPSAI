@@ -21,6 +21,7 @@ import {
 } from "./participantMatchingService.js";
 
 export type TaskParticipantRole = "subject" | "related" | "guardian_context";
+const SELECTABLE_PARTICIPANT_STATUSES = ["active", "inactive"] as const;
 
 export interface ParticipantResolutionInput {
   organizationId: string;
@@ -190,6 +191,7 @@ export async function assertParticipantsBelongToOrganisation(
     .where(and(
       eq(participantsTable.organizationId, organizationId),
       isNull(participantsTable.deletedAt),
+      inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
       inArray(participantsTable.id, ids),
     ));
 
@@ -251,7 +253,7 @@ export async function resolveSubjectParticipantForTaskRequest(
       .from(participantsTable)
       .where(and(
         eq(participantsTable.organizationId, input.organizationId),
-        eq(participantsTable.status, "active"),
+        inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
         isNull(participantsTable.deletedAt),
       )),
     db

@@ -302,15 +302,19 @@ describe("participant management", () => {
     });
   });
 
-  it("c4. archived participants do not appear in picker search results", async () => {
+  it("c4. inactive participants appear in picker search results, archived and deleted participants do not", async () => {
     state.participants.push(
       { id: "archived", organizationId: "org-a", displayName: "Micheal Rocca", status: "archived", deletedAt: null },
+      { id: "inactive", organizationId: "org-a", displayName: "Micheal Review", status: "inactive", deletedAt: null },
       { id: "deleted", organizationId: "org-a", displayName: "Micheal Deleted", status: "active", deletedAt: new Date() },
     );
 
     const { searchParticipants } = await import("../services/participantService.js");
 
-    await expect(searchParticipants("org-a", "Micheal")).resolves.toEqual([]);
+    const results = await searchParticipants("org-a", "Micheal");
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.participant).toMatchObject({ id: "inactive", status: "inactive" });
   });
 
   it("c5. the participants page defaults to current participants instead of active-only", () => {
@@ -412,6 +416,18 @@ describe("participant management", () => {
     expect(warnings).toEqual([
       expect.objectContaining({ participant: expect.objectContaining({ id: "john" }) }),
     ]);
+  });
+
+  it("d7. duplicate warnings include inactive records but not archived records", async () => {
+    state.participants.push(
+      { id: "inactive", organizationId: "org-a", displayName: "John Doe", status: "inactive", deletedAt: null },
+      { id: "archived", organizationId: "org-a", displayName: "John Dough", status: "archived", deletedAt: null },
+    );
+
+    const { findParticipantDuplicateWarnings } = await import("../services/participantService.js");
+    const warnings = await findParticipantDuplicateWarnings("org-a", "John Do");
+
+    expect(warnings.map(warning => warning.participant.id)).toEqual(["inactive"]);
   });
 
   it("e. duplicate external_participant_id is rejected in the same org and allowed in another org", async () => {

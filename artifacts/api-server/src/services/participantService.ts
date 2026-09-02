@@ -19,6 +19,7 @@ import {
 export type ParticipantStatus = "active" | "inactive" | "archived";
 const PARTICIPANT_STATUSES: ParticipantStatus[] = ["active", "inactive", "archived"];
 const DEFAULT_LIST_STATUSES: ParticipantStatus[] = ["active", "inactive"];
+const SELECTABLE_PARTICIPANT_STATUSES: ParticipantStatus[] = ["active", "inactive"];
 
 export interface ParticipantInput {
   displayName: string;
@@ -168,7 +169,7 @@ export async function searchParticipants(
     .from(participantsTable)
     .where(and(
       eq(participantsTable.organizationId, organizationId),
-      eq(participantsTable.status, "active"),
+      inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
       isNull(participantsTable.deletedAt),
     ))
     .limit(500);
@@ -219,7 +220,7 @@ export async function findParticipantDuplicateWarnings(
     .from(participantsTable)
     .where(and(
       eq(participantsTable.organizationId, organizationId),
-      eq(participantsTable.status, "active"),
+      inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
       isNull(participantsTable.deletedAt),
     ))
     .limit(500);
@@ -332,7 +333,7 @@ export async function linkParticipantSource(input: {
   sourceId: string;
   actorUserId: string;
 }) {
-  await assertParticipantActive(input.organizationId, input.participantId);
+  await assertParticipantSelectable(input.organizationId, input.participantId);
   const source = await getKnowledgeSource(input.sourceId, input.organizationId);
   if (!source) throw new ParticipantServiceError("Knowledge source not found.", "SOURCE_NOT_FOUND");
   if (source.sourceType !== "participant_document") {
@@ -415,16 +416,16 @@ async function assertParticipantExists(organizationId: string, participantId: st
   if (!rows[0]) throw new ParticipantServiceError("Participant not found.", "NOT_FOUND");
 }
 
-async function assertParticipantActive(organizationId: string, participantId: string): Promise<void> {
+async function assertParticipantSelectable(organizationId: string, participantId: string): Promise<void> {
   const rows = await db
     .select({ id: participantsTable.id })
     .from(participantsTable)
     .where(and(
       eq(participantsTable.id, participantId),
       eq(participantsTable.organizationId, organizationId),
-      eq(participantsTable.status, "active"),
+      inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
       isNull(participantsTable.deletedAt),
     ))
     .limit(1);
-  if (!rows[0]) throw new ParticipantServiceError("Participant not found or inactive.", "NOT_FOUND");
+  if (!rows[0]) throw new ParticipantServiceError("Participant not found or archived.", "NOT_FOUND");
 }

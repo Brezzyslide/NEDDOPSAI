@@ -52,7 +52,7 @@ import {
   type KnowledgeSourceStatus,
   type KnowledgeScopeType,
 } from "@workspace/db";
-import { eq, and, desc, isNull, ne, not } from "drizzle-orm";
+import { eq, and, desc, inArray, isNull, ne, not } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
 import { getIngestionQueue } from "../lib/ingestionQueue/index.js";
@@ -164,6 +164,7 @@ async function assertParticipantsBelongToOrganisation(
     .from(participantsTable)
     .where(and(
       eq(participantsTable.organizationId, organizationId),
+      inArray(participantsTable.status, ["active", "inactive"]),
       isNull(participantsTable.deletedAt),
     ));
   const allowed = new Set(rows.map(row => row.id));
