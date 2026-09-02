@@ -137,6 +137,31 @@ describe("Sprint 39 integration release readiness", () => {
     });
   });
 
+  it("derives participant-specific mode from bound subject participants before text", () => {
+    const intent = resolveIntent("care_plan.create");
+    expect(intent).toBeTruthy();
+    const blueprint = getRegistryEntry(intent!.code);
+    expect(blueprint).toBeTruthy();
+    const ctx = compileProfessionalExecutionContext({
+      userRequest: "Develop a comprehensive care plan tailored for John Deo",
+      subjectParticipantIds: ["participant-john-doe"],
+      manifest: manifest({
+        blueprintId: intent!.code,
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: intent!.family,
+        blueprintMode: intent!.mode,
+        primarySpecialist: blueprint!.primarySpecialist,
+        selectionMetadata: { deliverableStandardisation: "standard_reusable" },
+      }),
+      blueprint: blueprint!,
+      blueprintContract: contract(blueprint!, intent!.mode),
+    });
+
+    expect(ctx.subjectParticipantIds).toEqual(["participant-john-doe"]);
+    expect(ctx.deliverable.standardisation).toBe("participant_specific");
+    expect(ctx.specificity).toBe("PARTICIPANT_SPECIFIC");
+  });
+
   it("runs completion gates to terminal pass/fail outcomes after task creation", () => {
     const serviceAgreement = runGate({
       request: "Create a standard NDIS Service Agreement",

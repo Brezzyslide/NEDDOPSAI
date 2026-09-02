@@ -173,6 +173,7 @@ export interface KnowledgeResolutionInput {
   blueprint: WorkBlueprint | null;
   workPackage: WorkPackageManifest;
   userRequest: string;
+  entityIds?: string[];
 }
 
 // ─── In-process execution cache ───────────────────────────────────────────────
@@ -495,6 +496,7 @@ export async function resolveEvidence(
   input: KnowledgeResolutionInput,
 ): Promise<EvidencePack> {
   const { organisationId, workPackage, userRequest } = input;
+  const entityIds = input.entityIds ?? [];
   const executionId = workPackage.executionId;
 
   // ── Cache check ────────────────────────────────────────────────────────────
@@ -568,7 +570,33 @@ export async function resolveEvidence(
     }
   }
 
-  // ── Step 2: Specialist-scoped knowledge ────────────────────────────────────
+  // ── Step 2: Participant/entity-scoped knowledge ────────────────────────────
+  if (entityIds.length > 0) {
+    queryCount++;
+    const entityRaw = await retrieveChunks({
+      organisationId,
+      query:          userRequest,
+      queryEmbedding,
+      scopeMode:      "entity_scoped",
+      entityIds,
+      limit:          MAX_LIBRARY_CHUNKS,
+      excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
+    });
+    totalCandidates += entityRaw.length;
+
+    const versionIds = [...new Set(entityRaw.map(c => c.sourceVersionId))];
+    const versionLabels = await getVersionLabels(versionIds, organisationId);
+
+    for (const raw of entityRaw) {
+      if (raw.baseScore < MIN_CONFIDENCE) continue;
+      if (seenChunkIds.has(raw.id)) continue;
+      seenChunkIds.add(raw.id);
+      const vLabel = versionLabels.get(raw.sourceVersionId) ?? null;
+      allEvidenceChunks.push(mapRawChunk(raw, vLabel, "entity_knowledge"));
+    }
+  }
+
+  // ── Step 3: Specialist-scoped knowledge ────────────────────────────────────
   if (input.specialistCode && workPackage.specialistMemories.length > 0) {
     queryCount++;
     const specialistRaw = await retrieveChunks({
@@ -594,7 +622,7 @@ export async function resolveEvidence(
     }
   }
 
-  // ── Step 3: Task upload chunks (direct query by source ID) ─────────────────
+  // ── Step 4: Task upload chunks (direct query by source ID) ─────────────────
   if (workPackage.taskUploads.length > 0) {
     queryCount++;
     const uploadSourceIds = workPackage.taskUploads.map(u => u.sourceId);
@@ -656,7 +684,7 @@ export async function resolveEvidence(
     blueprint: input.blueprint,
   });
 
-  // ── Step 4: Sort all chunks — authority > confidence, then by type priority ──
+  // ── Step 5: Sort all chunks — authority > confidence, then by type priority ──
   const TYPE_PRIORITY: Record<string, number> = {
     legislation: 0,
     legislation_reference: 1,
@@ -664,8 +692,9 @@ export async function resolveEvidence(
     procedure: 3,
     standards: 4,
     template: 5,
-    task_upload: 6,
-    reference: 7,
+    entity_knowledge: 6,
+    task_upload: 7,
+    reference: 8,
   };
 
   allEvidenceChunks.sort((a, b) => {

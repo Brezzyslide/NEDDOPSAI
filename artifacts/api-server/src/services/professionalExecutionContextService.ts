@@ -35,6 +35,7 @@ export interface PromptTokenBudgetTelemetry {
 
 export interface ProfessionalExecutionContext {
   userRequest: string;
+  subjectParticipantIds: string[];
   operation: ProfessionalOperation;
   deliverable: ProfessionalDeliverableContract;
   primarySpecialist: string;
@@ -163,11 +164,13 @@ export function deriveProfessionalIntentKey(userRequest: string, canonicalIntent
 
 export function compileProfessionalExecutionContext(input: {
   userRequest: string;
+  subjectParticipantIds?: string[];
   manifest: WorkPackageManifest;
   blueprint: WorkBlueprint | null;
   blueprintContract?: BlueprintExecutionContract | null;
   evidencePack?: EvidencePack | null;
 }): ProfessionalExecutionContext {
+  const subjectParticipantIds = input.subjectParticipantIds ?? [];
   const operation = deriveProfessionalOperation(input.userRequest, input.manifest.canonicalIntent);
   const requestedDeliverableType = deriveDeliverableType(input.userRequest, operation, input.blueprint);
   const standardisation = resolveDeliverableStandardisation(
@@ -175,6 +178,7 @@ export function compileProfessionalExecutionContext(input: {
     operation,
     requestedDeliverableType,
     input.manifest.selectionMetadata?.deliverableStandardisation,
+    subjectParticipantIds.length > 0,
   );
   const mandatoryProfessionalContent = deriveMandatoryProfessionalContent(input.userRequest, requestedDeliverableType, operation, input.blueprintContract);
   const allowedFactualPlaceholders = deriveAllowedFactualPlaceholders(
@@ -203,6 +207,7 @@ export function compileProfessionalExecutionContext(input: {
 
   return {
     userRequest: input.userRequest,
+    subjectParticipantIds,
     operation,
     deliverable,
     primarySpecialist: input.manifest.primarySpecialist,
@@ -237,7 +242,7 @@ export function compileProfessionalExecutionContext(input: {
     canonicalIntent: input.manifest.canonicalIntent ?? null,
     blueprintCode: input.blueprint?.code ?? null,
     professionalDomain: input.blueprint?.blueprintFamily ?? deriveProfessionalDomain(input.userRequest, requestedDeliverableType),
-    specificity: deriveSpecificity(standardisation),
+    specificity: deriveSpecificity(standardisation, subjectParticipantIds.length > 0),
     outputDepth: deriveOutputDepth(requestedDeliverableType, operation, mandatoryProfessionalContent),
     telemetry: estimateProfessionalContextTokens(input, mandatoryProfessionalContent, allowedFactualPlaceholders),
   };
@@ -370,7 +375,9 @@ function deriveProfessionalDomain(userRequest: string, deliverableType: string):
 
 function deriveSpecificity(
   standardisation: ProfessionalDeliverableContract["standardisation"],
+  hasSubjectParticipantBinding = false,
 ): ProfessionalExecutionContext["specificity"] {
+  if (hasSubjectParticipantBinding) return "PARTICIPANT_SPECIFIC";
   if (standardisation === "standard_reusable") return "STANDARD_NON_PARTICIPANT_SPECIFIC";
   if (standardisation === "organisation_tailored") return "ORGANISATION_SPECIFIC";
   if (standardisation === "participant_specific") return "PARTICIPANT_SPECIFIC";
@@ -418,8 +425,10 @@ function resolveDeliverableStandardisation(
   operation: ProfessionalOperation,
   requestedDeliverableType: string,
   manifestStandardisation?: string | null,
+  hasSubjectParticipantBinding = false,
 ): ProfessionalDeliverableContract["standardisation"] {
   const text = userRequest.toLowerCase();
+  if (hasSubjectParticipantBinding) return "participant_specific";
   const explicitParticipantSpecific = isExplicitParticipantSpecificRequest(text);
   if (explicitParticipantSpecific) return "participant_specific";
   if (/^STANDARD_REUSABLE_/.test(requestedDeliverableType)) return "standard_reusable";

@@ -86,6 +86,7 @@ export class ResourceRegistry {
     blueprint: WorkBlueprint | null;
     workPackage: WorkPackageManifest;
     userRequest: string;
+    entityIds?: string[];
     preferredProviders?: string[];
   }): Promise<EvidencePack> {
     // Stage 1: KRS (P1–P5)

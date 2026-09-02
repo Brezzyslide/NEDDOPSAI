@@ -149,6 +149,7 @@ import {
   mapConnectorCategoryToChannel,
   mapExecutionChannelToSession,
 } from "./writeTargetResolverService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 
 // Type-only imports — break circular runtime dependency.
 // specialistIntelligenceService will import createUnifiedExecutionEngine from here.
@@ -909,6 +910,9 @@ export class UnifiedExecutionEngine {
     const userRequest = request.checkpointData
       ? `${request.userRequest}\n\nClarification provided: ${request.checkpointData.clarificationAnswer}`
       : request.userRequest;
+    const subjectParticipantIds = request.taskId
+      ? await getRetrievalSubjectParticipantIdsForTask(organizationId, request.taskId).catch(() => [])
+      : [];
     const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(
       [request.title ?? "", userRequest].filter(Boolean).join("\n"),
     );
@@ -1226,6 +1230,7 @@ export class UnifiedExecutionEngine {
         blueprint,
         workPackage: manifest,
         userRequest,
+        entityIds: subjectParticipantIds,
       })
       .catch(() => null);
 
@@ -1469,6 +1474,7 @@ export class UnifiedExecutionEngine {
     await progress("retrieving_examples");
     const professionalContext = compileProfessionalExecutionContext({
       userRequest,
+      subjectParticipantIds,
       manifest,
       blueprint,
       blueprintContract,
