@@ -461,6 +461,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       priority,
       idempotencyKey,
       allowDuplicate,
+      sourceUserRequest,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,
@@ -470,6 +471,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       priority?: string;
       idempotencyKey?: string;
       allowDuplicate?: boolean;
+      sourceUserRequest?: string;
       subjectParticipantIds?: string[];
       relatedParticipantIds?: string[];
       guardianContextParticipantIds?: string[];
@@ -512,6 +514,7 @@ router.post("/:conversationId/create-task", requireAuth, resolveTenantFromSlug, 
       conversationId: conv.id,
       idempotencyKey: requestIdempotencyKey,
       allowDuplicate: allowDuplicate === true,
+      sourceUserRequest,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,

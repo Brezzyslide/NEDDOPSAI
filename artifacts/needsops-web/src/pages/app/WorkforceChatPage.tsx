@@ -45,6 +45,7 @@ interface Conversation {
 interface TaskProposalData {
   title: string;
   summary: string;
+  sourceUserRequest?: string;
   priority: string;
   suggestedRoles: string[];
   primaryProfessionalOwner?: string;
@@ -119,7 +120,7 @@ function TaskProposalCard({
   orgSlug,
 }: {
   data: TaskProposalData;
-  onCreateTask: (title: string, summary: string, subjectParticipantId?: string) => void;
+  onCreateTask: (title: string, summary: string, subjectParticipantId?: string, sourceUserRequest?: string) => void;
   onContinue: () => void;
   creating: boolean;
   existingTaskId?: string | null;
@@ -174,7 +175,7 @@ function TaskProposalCard({
         setCreateParticipantError(body?.error?.message ?? "Could not create participant.");
         return;
       }
-      onCreateTask(data.title, data.summary, body.participant.id);
+      onCreateTask(data.title, data.summary, body.participant.id, data.sourceUserRequest);
     } catch {
       setCreateParticipantError("Could not create participant.");
     } finally {
@@ -242,7 +243,7 @@ function TaskProposalCard({
           <p className="text-[#CBD5E1] text-xs">
             {participantResolution.clarifyingQuestion ?? "Select the participant before creating this task."}
           </p>
-          {participantCandidates.length > 0 ? (
+          {participantCandidates.length > 0 && (
             <div className="flex flex-col gap-2">
               {participantCandidates.map(candidate => {
                 const label = candidate.displayName ?? candidate.preferredName ?? "Unnamed participant";
@@ -250,7 +251,7 @@ function TaskProposalCard({
                 return (
                   <button
                     key={candidate.id}
-                    onClick={() => onCreateTask(data.title, data.summary, candidate.id)}
+                    onClick={() => onCreateTask(data.title, data.summary, candidate.id, data.sourceUserRequest)}
                     disabled={creating}
                     className="w-full text-left px-3 py-2 rounded-lg border border-[#1E3A5F] bg-[#112033] hover:border-[#00D4FF]/40 disabled:opacity-50 transition-colors"
                   >
@@ -259,57 +260,61 @@ function TaskProposalCard({
                       {[detail, candidate.isSuggestion ? "Suggested match" : null].filter(Boolean).join(" · ")}
                     </span>
                   </button>
-                );
-              })}
+                  );
+                })}
             </div>
-          ) : (
-            <div className="space-y-2">
+          )}
+          <div className="space-y-2">
+            {participantCandidates.length > 0 && (
+              <p className="text-[#94A3B8] text-xs">Or create a new participant identity instead.</p>
+            )}
+            {participantCandidates.length === 0 && (
               <p className="text-[#94A3B8] text-xs">
                 {requestedName
                   ? `No participant found matching "${requestedName}". Create one?`
                   : "No matching participant was found. Create one before opening the task."}
               </p>
-              <input
-                value={newParticipantName}
-                onChange={event => {
-                  setNewParticipantName(event.target.value);
-                  setDuplicateWarnings([]);
-                  setDuplicateAcknowledged(false);
-                }}
-                placeholder="Participant name"
-                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-sm text-[#E2E8F0] placeholder:text-[#64748B] outline-none focus:border-[#00D4FF]"
-              />
-              {duplicateWarnings.length > 0 && (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
-                  <p className="text-amber-300 text-xs font-semibold">Possible existing participant</p>
-                  {duplicateWarnings.map(warning => (
-                    <p key={warning.id} className="text-[#CBD5E1] text-xs mt-1">
-                      {warning.displayName ?? warning.preferredName ?? warning.id}
-                      {warning.externalParticipantId ? ` · ID ${warning.externalParticipantId}` : ""}
-                    </p>
-                  ))}
-                  <p className="text-[#94A3B8] text-xs mt-1">Create a new identity only if this is a different person.</p>
-                </div>
-              )}
-              {createParticipantError && <p className="text-red-400 text-xs">{createParticipantError}</p>}
-              <button
-                onClick={handleCreateParticipantFromCard}
-                disabled={creatingParticipant || creating || newParticipantName.trim().length < 2}
-                className="w-full px-3 py-2 rounded-lg bg-[#00D4FF] text-[#0B1829] text-xs font-semibold hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
-              >
-                {creatingParticipant
-                  ? "Creating..."
-                  : duplicateWarnings.length > 0
-                    ? "Create new participant anyway"
-                    : "Create participant and task"}
-              </button>
-            </div>
-          )}
+            )}
+            <input
+              value={newParticipantName}
+              onChange={event => {
+                setNewParticipantName(event.target.value);
+                setDuplicateWarnings([]);
+                setDuplicateAcknowledged(false);
+              }}
+              placeholder="Participant name"
+              className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-sm text-[#E2E8F0] placeholder:text-[#64748B] outline-none focus:border-[#00D4FF]"
+            />
+            {duplicateWarnings.length > 0 && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
+                <p className="text-amber-300 text-xs font-semibold">Possible existing participant</p>
+                {duplicateWarnings.map(warning => (
+                  <p key={warning.id} className="text-[#CBD5E1] text-xs mt-1">
+                    {warning.displayName ?? warning.preferredName ?? warning.id}
+                    {warning.externalParticipantId ? ` · ID ${warning.externalParticipantId}` : ""}
+                  </p>
+                ))}
+                <p className="text-[#94A3B8] text-xs mt-1">Create a new identity only if this is a different person.</p>
+              </div>
+            )}
+            {createParticipantError && <p className="text-red-400 text-xs">{createParticipantError}</p>}
+            <button
+              onClick={handleCreateParticipantFromCard}
+              disabled={creatingParticipant || creating || newParticipantName.trim().length < 2}
+              className="w-full px-3 py-2 rounded-lg bg-[#00D4FF] text-[#0B1829] text-xs font-semibold hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
+            >
+              {creatingParticipant
+                ? "Creating..."
+                : duplicateWarnings.length > 0
+                  ? "Create new participant anyway"
+                  : "Create participant and task"}
+            </button>
+          </div>
         </div>
       )}
       <div className="flex gap-2 pt-1">
         <button
-          onClick={() => onCreateTask(data.title, data.summary)}
+          onClick={() => onCreateTask(data.title, data.summary, undefined, data.sourceUserRequest)}
           disabled={creating}
           className="px-3 py-1.5 bg-[#00D4FF] text-[#0B1829] text-xs font-semibold rounded-lg hover:bg-[#00D4FF]/90 disabled:opacity-50 transition-colors"
         >
@@ -739,7 +744,7 @@ export default function WorkforceChatPage() {
     }
   };
 
-  const handleCreateTask = async (title: string, summary: string, subjectParticipantId?: string) => {
+  const handleCreateTask = async (title: string, summary: string, subjectParticipantId?: string, sourceUserRequest?: string) => {
     if (!conversationId || !slug || creatingTask) return;
 
     // If a task is already linked to this conversation, navigate there directly
@@ -760,6 +765,7 @@ export default function WorkforceChatPage() {
           body: JSON.stringify({
             title,
             description: summary,
+            sourceUserRequest,
             idempotencyKey,
             subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined,
           }),

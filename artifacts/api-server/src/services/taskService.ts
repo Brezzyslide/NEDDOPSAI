@@ -247,6 +247,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     organizationId: input.organizationId,
     title: input.title,
     description: input.description,
+    sourceUserRequest: input.sourceUserRequest,
     explicitSubjectParticipantIds: input.subjectParticipantIds,
   });
 

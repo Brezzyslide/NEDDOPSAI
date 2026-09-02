@@ -683,6 +683,7 @@ export function buildTaskProposalCard(understanding: ConversationUnderstanding):
       priority: understanding.proposedTask.priority,
       requestedOutcome: understanding.proposedTask.requestedOutcome,
       knownConstraints: understanding.proposedTask.knownConstraints,
+      sourceUserRequest: understanding.proposedTask.sourceUserRequest,
       suggestedRoles: understanding.relatedWorkforceRoles,
       actions: ["create_task", "continue_discussing"],
     },

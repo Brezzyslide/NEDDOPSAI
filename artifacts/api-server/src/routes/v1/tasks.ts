@@ -56,6 +56,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       conversationId,
       idempotencyKey,
       allowDuplicate,
+      sourceUserRequest,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,
@@ -67,6 +68,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       conversationId?: string;
       idempotencyKey?: string;
       allowDuplicate?: boolean;
+      sourceUserRequest?: string;
       subjectParticipantIds?: string[];
       relatedParticipantIds?: string[];
       guardianContextParticipantIds?: string[];
@@ -150,6 +152,7 @@ router.post("/", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
       conversationId,
       idempotencyKey: requestIdempotencyKey,
       allowDuplicate: allowDuplicate === true,
+      sourceUserRequest,
       subjectParticipantIds,
       relatedParticipantIds,
       guardianContextParticipantIds,

@@ -259,6 +259,107 @@ describe("participant-scoped knowledge retrieval", () => {
     expect(result.candidates.map(candidate => candidate.id)).toEqual(["participant-a"]);
   });
 
+  it("d3. exact live payload extracts John Deo from original user wording, not generated description text", async () => {
+    const { extractRequestedParticipantName } = await import("../services/taskParticipantService.js");
+
+    expect(extractRequestedParticipantName({
+      title: "Complete Care Plan for John Deo",
+      description: "Develop a comprehensive care plan tailored for John Deo, ensuring all relevant needs and supports are addressed.",
+      sourceUserRequest: "complete a care plan for John Deo",
+    })).toBe("john deo");
+  });
+
+  it("d4. title fallback does not cross into generated description text", async () => {
+    const { extractRequestedParticipantName } = await import("../services/taskParticipantService.js");
+
+    expect(extractRequestedParticipantName({
+      title: "Complete Care Plan for John Deo",
+      description: "Develop a comprehensive care plan tailored for John Deo, ensuring all relevant needs and supports are addressed.",
+    })).toBe("john deo");
+  });
+
+  it.each([
+    ["for X", "complete a care plan for John Deo"],
+    ["for participant X", "complete a care plan for participant John Deo"],
+    ["X's care plan", "complete John Deo's care plan"],
+    ["care plan for X", "care plan for John Deo"],
+    ["complete X's plan", "complete John Deo's plan"],
+  ])("d5. extracts participant name from phrasing: %s", async (_label, sourceUserRequest) => {
+    const { extractRequestedParticipantName } = await import("../services/taskParticipantService.js");
+
+    expect(extractRequestedParticipantName({
+      title: "Generated task title",
+      sourceUserRequest,
+    })).toBe("john deo");
+  });
+
+  it("d6. stops participant name extraction at punctuation, conjunctions and a second for", async () => {
+    const { extractRequestedParticipantName } = await import("../services/taskParticipantService.js");
+
+    expect(extractRequestedParticipantName({
+      title: "Complete a care plan for John Doe for the June review",
+    })).toBe("john doe");
+    expect(extractRequestedParticipantName({
+      title: "Complete a care plan for John Doe, including goals",
+    })).toBe("john doe");
+    expect(extractRequestedParticipantName({
+      title: "Complete a care plan for John Doe and include ADLs",
+    })).toBe("john doe");
+  });
+
+  it("d7. complete a care plan for John Deo resolves to John Doe as a fuzzy suggestion, not auto-selected", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const { resolveSubjectParticipantForTaskRequest } = await import("../services/taskParticipantService.js");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Complete Care Plan for John Deo",
+      description: "Develop a comprehensive care plan tailored for John Deo, ensuring all relevant needs and supports are addressed.",
+      sourceUserRequest: "complete a care plan for John Deo",
+    });
+
+    expect(result.status).toBe("confirmation_required");
+    expect(result.requestedName).toBe("john deo");
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toMatchObject([{
+      id: "participant-a",
+      displayName: "John Doe",
+      matchType: "fuzzy_suggestion",
+      isSuggestion: true,
+    }]);
+  });
+
+  it("d8. participant-specific requests with no extracted name fail closed and still return picker candidates", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const { resolveSubjectParticipantForTaskRequest } = await import("../services/taskParticipantService.js");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Complete a care plan",
+    });
+
+    expect(result.status).toBe("unresolved");
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toMatchObject([{
+      id: "participant-a",
+      displayName: "John Doe",
+      matchType: "available_participant",
+      isSuggestion: true,
+    }]);
+  });
+
   it("e. an entity scope pointing at a participant in another org is rejected at assignment", async () => {
     state.sources = [{
       id: "source-001",

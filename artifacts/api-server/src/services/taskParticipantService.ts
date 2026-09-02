@@ -26,6 +26,7 @@ export interface ParticipantResolutionInput {
   organizationId: string;
   title: string;
   description?: string;
+  sourceUserRequest?: string;
   explicitSubjectParticipantIds?: string[];
 }
 
@@ -62,7 +63,45 @@ export interface TaskParticipantBinding {
 }
 
 const PARTICIPANT_SPECIFIC_TERMS = /\b(care plan|risk assessment|behaviour support plan|bsp|cbsp|intake|home safety|participant|client|resident|person)\b/i;
-const NAME_AFTER_FOR_PATTERN = /\bfor\s+([a-z][a-z'-]*(?:\s+[a-z][a-z'-]*){0,2})\b/i;
+const NAME_AFTER_FOR_PATTERN = /\bfor[ \t]+(?:participant[ \t]+|client[ \t]+|resident[ \t]+|person[ \t]+)?([a-z][a-z'-]*(?:[ \t]+[a-z][a-z'-]*){0,4})\b/i;
+const POSSESSIVE_PLAN_PATTERN = /\b([a-z][a-z'-]*(?:[ \t]+[a-z][a-z'-]*){0,4})['’]s[ \t]+(?:care[ \t]+plan|plan|risk[ \t]+assessment|behaviour[ \t]+support[ \t]+plan|bsp|cbsp)\b/i;
+const NAME_STOP_WORDS = new Set([
+  "a",
+  "about",
+  "and",
+  "based",
+  "because",
+  "but",
+  "complete",
+  "covering",
+  "create",
+  "develop",
+  "draft",
+  "for",
+  "from",
+  "including",
+  "prepare",
+  "regarding",
+  "review",
+  "the",
+  "to",
+  "update",
+  "using",
+  "when",
+  "where",
+  "while",
+  "with",
+  "without",
+]);
+const LEADING_NAME_STOP_WORDS = new Set([
+  "complete",
+  "create",
+  "develop",
+  "draft",
+  "prepare",
+  "review",
+  "update",
+]);
 
 function normalizeIdList(ids: string[] | undefined): string[] {
   return Array.from(new Set((ids ?? []).map(id => id.trim()).filter(Boolean)));
@@ -80,6 +119,50 @@ function containsName(text: string, name: string): boolean {
 
 function isParticipantSpecificRequest(title: string, description?: string): boolean {
   return PARTICIPANT_SPECIFIC_TERMS.test(`${title}\n${description ?? ""}`);
+}
+
+function truncateCandidateName(value: string | undefined): string {
+  const raw = (value ?? "")
+    .split(/[.,;:!?()[\]{}]/)[0]
+    ?.trim() ?? "";
+  const tokens = raw
+    .split(/[ \t]+/)
+    .map(token => token.replace(/^['"“”‘’]+|['"“”‘’]+$/g, ""))
+    .filter(Boolean);
+  while (tokens.length > 0 && LEADING_NAME_STOP_WORDS.has(tokens[0]!.toLowerCase())) {
+    tokens.shift();
+  }
+  const nameTokens: string[] = [];
+  for (const token of tokens) {
+    const normalized = token.toLowerCase();
+    if (NAME_STOP_WORDS.has(normalized)) break;
+    nameTokens.push(token);
+    if (nameTokens.length >= 3) break;
+  }
+  return nameTokens.join(" ");
+}
+
+export function extractRequestedParticipantName(input: {
+  title: string;
+  description?: string;
+  sourceUserRequest?: string;
+}): string {
+  const sourceText = (input.sourceUserRequest?.trim() || input.title.trim())
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (const line of sourceText) {
+    const possessive = truncateCandidateName(line.match(POSSESSIVE_PLAN_PATTERN)?.[1]);
+    if (possessive) return normalizeName(possessive);
+  }
+
+  for (const line of sourceText) {
+    const afterFor = truncateCandidateName(line.match(NAME_AFTER_FOR_PATTERN)?.[1]);
+    if (afterFor) return normalizeName(afterFor);
+  }
+
+  return "";
 }
 
 export function deriveRetrievalEntityIdsFromTaskParticipants(
@@ -152,8 +235,11 @@ export async function resolveSubjectParticipantForTaskRequest(
     };
   }
 
-  const text = `${input.title}\n${input.description ?? ""}`;
-  const inferredName = normalizeName(text.match(NAME_AFTER_FOR_PATTERN)?.[1]);
+  const inferredName = extractRequestedParticipantName({
+    title: input.title,
+    description: input.description,
+    sourceUserRequest: input.sourceUserRequest,
+  });
   const [participants, staffRows] = await Promise.all([
     db
       .select({
@@ -276,10 +362,22 @@ export async function resolveSubjectParticipantForTaskRequest(
   }
 
   return {
-    status: "not_applicable",
+    status: "unresolved",
     subjectParticipantIds: [],
-    candidates: [],
+    candidates: participants
+      .slice()
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+      .slice(0, 10)
+      .map(participant => ({
+        id: participant.id,
+        displayName: participant.displayName,
+        preferredName: participant.preferredName,
+        externalParticipantId: participant.externalParticipantId,
+        matchType: "available_participant",
+        isSuggestion: true,
+      })),
     staffConflicts: [],
+    clarifyingQuestion: "Please select or create the participant before I retrieve participant documents.",
   };
 }
 
