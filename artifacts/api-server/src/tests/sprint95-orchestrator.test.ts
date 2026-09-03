@@ -109,8 +109,7 @@ vi.mock("../services/auditService.js", () => ({
   logOrgEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual("@workspace/db");
+vi.mock("@workspace/db", () => {
   const mockDb = {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -156,7 +155,6 @@ vi.mock("@workspace/db", async () => {
   };
 
   return {
-    ...(actual as Record<string, unknown>),
     db: mockDb,
     specialistRunsTable: { id: null, status: null, organizationId: null },
     specialistConflictsTable: {
@@ -164,6 +162,20 @@ vi.mock("@workspace/db", async () => {
       specialistRunIds: null, conflictingPositions: null,
       evidenceReferences: null, risk: null, chiefOfStaffRecommendation: null,
       resolutionRequired: null,
+    },
+    conversationsTable: {
+      id: null,
+      organizationId: null,
+      primaryTaskId: null,
+      conversationType: null,
+    },
+    taskExecutionPlansTable: {
+      id: null,
+      taskId: null,
+    },
+    tasksTable: {
+      id: null,
+      organizationId: null,
     },
   };
 });

@@ -1,0 +1,212 @@
+[
+  {
+    "file": "src/tests/sprint95-specialist-reasoning.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/tests/task16-embedding.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/canonical-workforce-dna-foundation.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint-srm.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint-task-execution-contract.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint282-knowledge-first-cos.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint283-workforce-context.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29g1-document-identity.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29h2-action-state-decision-contract.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29h3-entitlement-probe.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29h3-fix-verification.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29h3-verification.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29h6.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29m-auth-guards.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint29m-routing-acceptance.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint3-entitlements.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint30-production-blueprint-foundation.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33e-runtime-authority-parity.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33f-service-delivery-coordinator.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33g-workforce-rostering-coordinator.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33k-workforce-compliance-specialist.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33l-payroll-workforce-cost-officer.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33m-people-culture-manager.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33n-talent-learning-specialist.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33o-process-asset-coordinator.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33p-finance-officer.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33q-financial-planning-reporting-manager.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33r-marketing-communications-manager.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint33s-knowledge-documentation-specialist.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint4-platform-console.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint43-blueprint-provenance-hash.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint5-isolation.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint6-org-db.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-ai-gateway.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-backup-restore.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-database-isolation.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-migration.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-rls-safety.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint7-secrets.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint71-acceptance.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint8-openclaw.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  },
+  {
+    "file": "src/__tests__/sprint91-openai-provider.test.ts",
+    "category": "DB-env",
+    "reason": "Requires PostgreSQL connection via DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD."
+  }
+]

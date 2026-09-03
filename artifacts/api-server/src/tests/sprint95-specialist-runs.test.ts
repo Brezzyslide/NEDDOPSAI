@@ -18,10 +18,8 @@ import {
 } from "../services/specialistWorkPackageService.js";
 
 // Mock DB for unit tests
-vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual("@workspace/db");
+vi.mock("@workspace/db", () => {
   return {
-    ...(actual as Record<string, unknown>),
     db: {
       select: vi.fn().mockReturnValue({
         from: vi.fn().mockReturnValue({
@@ -48,6 +46,14 @@ vi.mock("@workspace/db", async () => {
           }),
         }),
       }),
+    },
+    specialistRunsTable: {
+      id: null,
+      organizationId: null,
+      taskId: null,
+      idempotencyKey: null,
+      status: null,
+      createdAt: null,
     },
   };
 });

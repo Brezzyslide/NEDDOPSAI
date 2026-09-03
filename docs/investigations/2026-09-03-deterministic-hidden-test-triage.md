@@ -304,3 +304,101 @@ Deterministic-gate timeline:
 - `9d90cdc` (`2026-09-02 21:24:27 +1000`) changed the mocks to import `@workspace/db/schema`, allowing these files to collect and exposing the 21 assertion failures.
 
 Conclusion: the files were blind to assertion-level execution in the deterministic gate from the moment the deterministic config existed on `2026-08-17` until `9d90cdc` on `2026-09-02`. The underlying risky mock pattern predates the deterministic config in all three files.
+
+## 2026-09-03 Gate Blind Spot Follow-Up
+
+### Zero-Collected Handling
+
+The deterministic compare script previously only failed when a file collected zero tests in
+the current report after collecting at least one assertion in the parent report. That left
+the gate blind when the same file collected zero tests in both parent and current.
+
+The gate now fails on any non-excluded zero-collected file in either parent or current.
+The explicit exclusion list is `artifacts/api-server/scripts/deterministic-zero-collected-exclusions.json`.
+
+Current deterministic run after the remaining DB-mock collection fixes:
+
+```text
+total:   6449
+passed:  6379
+failed:  68
+skipped: 2
+zero-collected: 42, all explicitly excluded DB-env files
+```
+
+Three non-DB collection failures were fixed and now run:
+
+```text
+src/tests/sprint95-orchestrator.test.ts       10 passed
+src/tests/sprint95-specialist-runs.test.ts    44 passed
+src/tests/task16-ingestion.test.ts            16 passed
+```
+
+The remaining 42 zero-collected files are DB-env exclusions. Each fails collection with:
+
+```text
+DATABASE_URL or DB_HOST/DB_NAME/DB_USERNAME/DB_PASSWORD must be set.
+```
+
+Those files are not considered covered by the deterministic gate until they run against a
+throwaway Postgres target or a separate DB-backed gate. The exclusion is explicit so any
+new accidental zero-collection file fails the release gate.
+
+### Positional Mock Risk
+
+Once-style mock sequencing is still widespread:
+
+```text
+56 files total
+52 api-server files
+4 desktop-connector files
+```
+
+High-risk files recommended for table-aware fixtures first: 35.
+
+These guard isolation/auth, execution boundaries, gates/validation, provenance/integrity,
+knowledge/evidence/memory, connector/device/runtime, and workforce/delegation behaviour:
+
+```text
+artifacts/api-server/src/__tests__/canonical-workforce-dna-foundation.test.ts
+artifacts/api-server/src/__tests__/regression-execution-column-contracts.test.ts
+artifacts/api-server/src/__tests__/sprint-completed-work-persistence.test.ts
+artifacts/api-server/src/__tests__/sprint-knowledge-bridge.test.ts
+artifacts/api-server/src/__tests__/sprint-knowledge-ingestion.test.ts
+artifacts/api-server/src/__tests__/sprint-knowledge-retrieval.test.ts
+artifacts/api-server/src/__tests__/sprint-srm-hardening.test.ts
+artifacts/api-server/src/__tests__/sprint22-work-execution.test.ts
+artifacts/api-server/src/__tests__/sprint25-hardening.test.ts
+artifacts/api-server/src/__tests__/sprint26-workforce-ops.test.ts
+artifacts/api-server/src/__tests__/sprint27-execution-loop.test.ts
+artifacts/api-server/src/__tests__/sprint271-execution-experience.test.ts
+artifacts/api-server/src/__tests__/sprint273-knowledge-resolution.test.ts
+artifacts/api-server/src/__tests__/sprint274-execution-inspector.test.ts
+artifacts/api-server/src/__tests__/sprint283-workforce-context.test.ts
+artifacts/api-server/src/__tests__/sprint284-delegation-integrity.test.ts
+artifacts/api-server/src/__tests__/sprint29b-unified-execution-engine.test.ts
+artifacts/api-server/src/__tests__/sprint29c-canonical-context.test.ts
+artifacts/api-server/src/__tests__/sprint29f-connector-execution.test.ts
+artifacts/api-server/src/__tests__/sprint29i-execution-ownership.test.ts
+artifacts/api-server/src/__tests__/sprint29k2-durable-evidence.test.ts
+artifacts/api-server/src/__tests__/sprint29k4-claim-integrity.test.ts
+artifacts/api-server/src/__tests__/task15-knowledge-schema.test.ts
+artifacts/api-server/src/__tests__/task15-knowledge-upload.test.ts
+artifacts/api-server/src/__tests__/task17-knowledge-orchestration.test.ts
+artifacts/api-server/src/__tests__/task34-platform-devices.test.ts
+artifacts/api-server/src/__tests__/task37-mobile-org-context.test.ts
+artifacts/api-server/src/__tests__/task38-runtime-context-permissions.test.ts
+artifacts/api-server/src/__tests__/task39-self-review-evidence.test.ts
+artifacts/api-server/src/services/__tests__/deviceService.test.ts
+artifacts/api-server/src/tests/sprint285-conversation-context-builder.test.ts
+artifacts/desktop-connector/src/__tests__/liveAdapter.test.ts
+artifacts/desktop-connector/src/__tests__/relayAuth.test.ts
+artifacts/desktop-connector/src/__tests__/sprint34-cross-platform.test.ts
+artifacts/desktop-connector/src/__tests__/webhookDelivery.test.ts
+```
+
+The remaining once-style files should be left alone for now. They are lower priority or
+use narrow one-off sequencing where table-aware fixtures would cost more than the current
+risk. The systemic rule for future high-risk tests: avoid positional `.mockResolvedValueOnce`
+chains for DB reads; prefer query-aware or table-aware fixtures so query order changes do
+not silently invalidate coverage.

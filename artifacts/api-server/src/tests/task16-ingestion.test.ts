@@ -28,16 +28,68 @@ const mockDb = vi.hoisted(() => {
   return chain;
 });
 
-vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual<typeof import("@workspace/db")>("@workspace/db");
+vi.mock("@workspace/db", () => {
+  const INGESTION_JOB_STATUSES = [
+    "queued",
+    "fetching",
+    "extracting",
+    "normalising",
+    "chunking",
+    "embedding",
+    "review_required",
+    "approved",
+    "failed",
+    "dead_lettered",
+    "cancelling",
+    "cancelled",
+    "revoked",
+  ] as const;
+  const INGESTION_TERMINAL_STATUSES = ["approved", "dead_lettered", "cancelled", "revoked"];
+  const INGESTION_ACTIVE_STATUSES = INGESTION_JOB_STATUSES.filter(
+    (s) => !INGESTION_TERMINAL_STATUSES.includes(s) && s !== "failed",
+  );
+  const INGESTION_JOB_TRANSITIONS = {
+    queued:           ["fetching", "cancelled", "cancelling"],
+    fetching:         ["extracting", "failed", "cancelling"],
+    extracting:       ["normalising", "failed", "cancelling"],
+    normalising:      ["chunking", "failed", "cancelling"],
+    chunking:         ["embedding", "failed", "cancelling"],
+    embedding:        ["review_required", "failed", "cancelling"],
+    review_required:  ["approved", "failed"],
+    approved:         [],
+    failed:           ["queued", "dead_lettered"],
+    dead_lettered:    [],
+    cancelling:       ["cancelled"],
+    cancelled:        [],
+    revoked:          [],
+  };
   return {
-    ...actual,
     db: {
       select: () => mockDb,
       insert: () => mockDb,
       update: () => mockDb,
       execute: mockDb.execute,
     },
+    ingestionJobsTable: {
+      id: null,
+      organizationId: null,
+      knowledgeSourceId: null,
+      sourceVersionId: null,
+      status: null,
+      attemptCount: null,
+      maxAttempts: null,
+      nextAttemptAt: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: null,
+      createdAt: null,
+    },
+    INGESTION_JOB_STATUSES,
+    INGESTION_JOB_TRANSITIONS,
+    INGESTION_TERMINAL_STATUSES,
+    INGESTION_ACTIVE_STATUSES,
   };
 });
 
