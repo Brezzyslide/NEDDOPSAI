@@ -35,6 +35,17 @@ export function validateProfessionalExecutionPreflight(
   const applicableRequirements = requirementPlan.filter((item) => item.applicability === "applicable");
   const primaryOwner = manifest.primarySpecialist || professionalContext.primarySpecialist;
   const isGenericDeliverable = professionalContext.deliverable.requestedDeliverableType === "PROFESSIONAL_DELIVERABLE";
+  const requirementPlanRequired = requiresRequirementPlan(input);
+  const capabilityResolved = Boolean(
+    manifest.canonicalIntent ||
+    professionalContext.canonicalIntent ||
+    (blueprint && professionalContext.blueprintCode),
+  );
+  const operationSupported = Boolean(
+    manifest.blueprintMode ||
+    manifest.selectionMetadata?.blueprintMode ||
+    (blueprint && professionalContext.operation),
+  );
   const declaredFactualPlaceholders = collectDeclaredFactualPlaceholders(input);
   const undeclaredFactualPlaceholders = declaredFactualPlaceholders.size === 0
     ? []
@@ -47,8 +58,8 @@ export function validateProfessionalExecutionPreflight(
       }));
 
   if (!blueprint) failedChecks.push("BLUEPRINT_RESOLVED");
-  if (!manifest.canonicalIntent) failedChecks.push("CAPABILITY_RESOLVED");
-  if (!manifest.blueprintMode && !manifest.selectionMetadata?.blueprintMode) failedChecks.push("OPERATION_SUPPORTED");
+  if (!capabilityResolved) failedChecks.push("CAPABILITY_RESOLVED");
+  if (!operationSupported) failedChecks.push("OPERATION_SUPPORTED");
   if (isGenericDeliverable) failedChecks.push("DELIVERABLE_RESOLVED");
   if (!primaryOwner || primaryOwner === "chief_of_staff") failedChecks.push("PROFESSIONAL_OWNER_RESOLVED");
   if (blueprint?.primarySpecialist && primaryOwner && primaryOwner !== blueprint.primarySpecialist && !(manifest.supportingSpecialists ?? []).includes(primaryOwner)) {
@@ -57,7 +68,7 @@ export function validateProfessionalExecutionPreflight(
   if (blueprint && professionalContext.blueprintCode && professionalContext.blueprintCode !== blueprint.code) {
     failedChecks.push("DOMAIN_CONSISTENT");
   }
-  if (coverageProfile.requirements.length === 0 || applicableRequirements.length === 0) {
+  if (requirementPlanRequired && (coverageProfile.requirements.length === 0 || applicableRequirements.length === 0)) {
     failedChecks.push("REQUIREMENT_PLAN_RESOLVED");
   }
   if (!schemaCheck.passed) failedChecks.push("DELIVERABLE_SCHEMA_RESOLVED");
@@ -69,19 +80,36 @@ export function validateProfessionalExecutionPreflight(
     requirementPlanStatus: coverageProfile.requirements.length > 0 && applicableRequirements.length > 0 ? "RESOLVED" : "UNRESOLVED",
     details: {
       blueprintCode: blueprint?.code ?? null,
-      canonicalIntent: manifest.canonicalIntent ?? null,
-      blueprintMode: manifest.blueprintMode ?? manifest.selectionMetadata?.blueprintMode ?? null,
+      canonicalIntent: manifest.canonicalIntent ?? professionalContext.canonicalIntent ?? blueprint?.code ?? null,
+      blueprintMode: manifest.blueprintMode ?? manifest.selectionMetadata?.blueprintMode ?? professionalContext.operation ?? null,
       deliverableType: professionalContext.deliverable.requestedDeliverableType,
       professionalDomain: professionalContext.professionalDomain,
       primaryOwner,
       blueprintPrimarySpecialist: blueprint?.primarySpecialist ?? null,
       requirementCount: coverageProfile.requirements.length,
       applicableRequirementCount: applicableRequirements.length,
+      requirementPlanRequired,
       declaredFactualPlaceholderCount: declaredFactualPlaceholders.size,
       factualPlaceholderDeclarationCheckSkipped: declaredFactualPlaceholders.size === 0,
       undeclaredFactualPlaceholders,
     },
   };
+}
+
+function requiresRequirementPlan(input: ProfessionalExecutionPreflightInput): boolean {
+  const { blueprint, professionalContext, coverageProfile } = input;
+  if (coverageProfile.requirements.length > 0) return true;
+  if (professionalContext.deliverable.mandatoryProfessionalContent.length > 0) return true;
+
+  const deliverableContract = blueprint?.deliverableContract as Record<string, unknown> | null | undefined;
+  if (deliverableContract) {
+    const authored = deliverableContract.requirementPlan ??
+      deliverableContract.requirements ??
+      deliverableContract.deliverableRequirements;
+    if (Array.isArray(authored) && authored.length > 0) return true;
+  }
+
+  return false;
 }
 
 function collectDeclaredFactualPlaceholders(input: ProfessionalExecutionPreflightInput): Set<string> {

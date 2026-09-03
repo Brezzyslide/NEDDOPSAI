@@ -63,7 +63,34 @@ const mocks = vi.hoisted(() => {
   const buildStyleGuidance = vi.fn().mockResolvedValue({ guidanceBlock: "" });
   const reviewDraft        = vi.fn().mockResolvedValue({ qualityScore: 0.9, finalContent: "Final content.", reviewPassed: true, dimensionScores: {} });
   const createDraft        = vi.fn().mockResolvedValue({ id: "cw-001" });
+  const submitForApproval  = vi.fn().mockImplementation(async (completedWorkId: string) => ({ id: completedWorkId, status: "awaiting_approval" }));
   const buildSystemInstructionForEmployee = vi.fn().mockReturnValue("SPECIALIST SYSTEM PROMPT");
+  const resolveAndCompileManifest = vi.fn().mockResolvedValue({
+    specialistId: "operations_manager",
+    workforceRole: "operations_manager",
+    displayName: "Operations Manager",
+    domain: "Operations",
+    dnaProfileId: "operations_manager",
+    dnaVersion: "1.0.0",
+    dnaVersionHash: "hash-operations-manager",
+    manifestVersion: 1,
+    mission: "Deliver operational work safely.",
+    objectives: ["Review operational work"],
+    responsibilities: ["Prepare work outputs"],
+    operatingPrinciples: ["Use approved evidence"],
+    communicationStyle: {
+      tone: "professional",
+      detailLevel: "concise",
+      language: "Operations Manager",
+    },
+    competencies: [],
+    escalationRules: [],
+    prohibitedBehaviours: [],
+    memoryPolicy: { allowedScopes: [], prohibitedScopes: [] },
+    manifestHash: "manifest-hash-operations-manager",
+    generatedAt: "2026-09-03T00:00:00.000Z",
+    dnaSource: "database",
+  });
   const updateManifestObservability = vi.fn().mockResolvedValue(undefined);
 
   return {
@@ -85,7 +112,9 @@ const mocks = vi.hoisted(() => {
     buildStyleGuidance,
     reviewDraft,
     createDraft,
+    submitForApproval,
     buildSystemInstructionForEmployee,
+    resolveAndCompileManifest,
     updateManifestObservability,
   };
 });
@@ -120,7 +149,13 @@ vi.mock("../services/knowledgeResolutionService.js", () => ({ resolveEvidence: m
 vi.mock("../services/workValidationService.js", () => ({ validateWorkPackage: mocks.validateWorkPackage }));
 vi.mock("../services/approvedExampleService.js", () => ({ retrieveApprovedExamples: mocks.retrieveApprovedExamples, buildStyleGuidance: mocks.buildStyleGuidance }));
 vi.mock("../services/selfReviewService.js", () => ({ reviewDraft: mocks.reviewDraft }));
-vi.mock("../services/completedWorkService.js", () => ({ createDraft: mocks.createDraft }));
+vi.mock("../services/completedWorkService.js", () => ({
+  createDraft: mocks.createDraft,
+  submitForApproval: mocks.submitForApproval,
+}));
+vi.mock("../services/specialistRuntimeManifestService.js", () => ({
+  resolveAndCompileManifest: mocks.resolveAndCompileManifest,
+}));
 vi.mock("@workspace/workforce-dna", () => ({ buildSystemInstructionForEmployee: mocks.buildSystemInstructionForEmployee }));
 
 // ─── Subject under test ────────────────────────────────────────────────────────
@@ -204,6 +239,33 @@ function setupPipelineMocks(role = "administrator") {
   mocks.buildStyleGuidance.mockResolvedValue({ guidanceBlock: "" });
   mocks.reviewDraft.mockResolvedValue({ qualityScore: 0.9, finalContent: "Final content.", reviewPassed: true, dimensionScores: {} });
   mocks.createDraft.mockResolvedValue({ id: "cw-001" });
+  mocks.submitForApproval.mockImplementation(async (completedWorkId: string) => ({ id: completedWorkId, status: "awaiting_approval" }));
+  mocks.resolveAndCompileManifest.mockResolvedValue({
+    specialistId: "operations_manager",
+    workforceRole: "operations_manager",
+    displayName: "Operations Manager",
+    domain: "Operations",
+    dnaProfileId: "operations_manager",
+    dnaVersion: "1.0.0",
+    dnaVersionHash: "hash-operations-manager",
+    manifestVersion: 1,
+    mission: "Deliver operational work safely.",
+    objectives: ["Review operational work"],
+    responsibilities: ["Prepare work outputs"],
+    operatingPrinciples: ["Use approved evidence"],
+    communicationStyle: {
+      tone: "professional",
+      detailLevel: "concise",
+      language: "Operations Manager",
+    },
+    competencies: [],
+    escalationRules: [],
+    prohibitedBehaviours: [],
+    memoryPolicy: { allowedScopes: [], prohibitedScopes: [] },
+    manifestHash: "manifest-hash-operations-manager",
+    generatedAt: "2026-09-03T00:00:00.000Z",
+    dnaSource: "database",
+  });
   mocks.updateManifestObservability.mockResolvedValue(undefined);
   process.env.AI_PROVIDER = "openai";
 }

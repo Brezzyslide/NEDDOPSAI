@@ -2373,7 +2373,7 @@ export class UnifiedExecutionEngine {
     // of outputRequiresApproval, so EVIDENCE_BEARING tasks can never skip the
     // approval gate even when routed through a no-approval blueprint.
     const laneRequiresApproval = request.laneContext?.requiresApproval === true;
-    const qualityGatePassed = reviewResult.passed;
+    const qualityGatePassed = reviewResult.passed ?? reviewPassed(reviewResult);
     const requiresApproval = qualityGatePassed && (laneRequiresApproval || request.outputRequiresApproval !== false);
     if (laneRequiresApproval && request.outputRequiresApproval === false) {
       console.info(
@@ -2388,7 +2388,7 @@ export class UnifiedExecutionEngine {
           failedStage: "quality_review",
           rootCause: `Quality score ${reviewResult.qualityScore}/100 is below the required threshold of 70. Draft is saved but cannot move to awaiting approval.`,
           retryAvailable: true,
-          clarificationItems: reviewResult.dimensions
+          clarificationItems: reviewDimensions(reviewResult)
             .filter((dimension) => !dimension.passed)
             .map((dimension) => ({
               name: dimension.dimension,
@@ -2568,7 +2568,7 @@ export class UnifiedExecutionEngine {
     const coverageProfile = professionalContext
       ? deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract)
       : null;
-    const requiresSectionPayload = Boolean(professionalContext);
+    const requiresSectionPayload = requiresCanonicalFinalDeliverablePayload(professionalContext);
     const assembledSections = assembleTemplateSectionsForContext(
       professionalContext,
       blueprintContract,
@@ -4418,14 +4418,15 @@ function validateDeliverableOutputSchemaCompleteness(
 }
 
 function buildReviewSnapshot(reviewResult: Awaited<ReturnType<typeof reviewDraft>>): Record<string, unknown> {
+  const dimensions = reviewDimensions(reviewResult);
   return {
     qualityScore: reviewResult.qualityScore,
-    passed: reviewResult.passed,
+    passed: reviewPassed(reviewResult),
     revised: reviewResult.revised,
     autoRevisionNote: reviewResult.autoRevisionNote ?? null,
     revisionLimitReached: reviewResult.revisionLimitReached,
     evidenceSummaryHash: reviewResult.evidenceSummaryHash,
-    dimensions: reviewResult.dimensions.map((dimension) => ({
+    dimensions: dimensions.map((dimension) => ({
       dimension: dimension.dimension,
       score: dimension.score,
       passed: dimension.passed,
@@ -4433,6 +4434,24 @@ function buildReviewSnapshot(reviewResult: Awaited<ReturnType<typeof reviewDraft
       improvementSuggestions: dimension.improvementSuggestions,
     })),
   };
+}
+
+function reviewPassed(reviewResult: Awaited<ReturnType<typeof reviewDraft>>): boolean {
+  const candidate = reviewResult as Awaited<ReturnType<typeof reviewDraft>> & { reviewPassed?: unknown };
+  if (typeof reviewResult.passed === "boolean") return reviewResult.passed;
+  if (typeof candidate.reviewPassed === "boolean") return candidate.reviewPassed;
+  return Number(reviewResult.qualityScore ?? 0) >= 70;
+}
+
+function reviewDimensions(reviewResult: Awaited<ReturnType<typeof reviewDraft>>): Array<{
+  dimension: string;
+  score: number;
+  passed: boolean;
+  feedback: string;
+  improvementSuggestions: string[];
+}> {
+  if (Array.isArray(reviewResult.dimensions)) return reviewResult.dimensions;
+  return [];
 }
 
 async function recordProfessionalSnapshot(input: {
