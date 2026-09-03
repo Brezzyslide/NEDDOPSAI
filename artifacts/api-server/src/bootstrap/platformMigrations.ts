@@ -156,6 +156,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds first-class participants and task participant bindings for participant-scoped knowledge retrieval.",
   },
+  {
+    id: "0046-rls-policy-normalisation",
+    file: "0046_rls_policy_normalisation.sql",
+    transactional: true,
+    notes: "Normalises RLS setting names, closes permissive tenant policies, and adds missing policy coverage before restricted app-role rollout.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {
