@@ -1,136 +1,158 @@
 # Organisation Memory Write-Back Investigation
 
 Date: 2026-09-03
-Scope: read-only source inspection plus unauthenticated live endpoint checks against `https://d2y3hd4ltf3qdv.cloudfront.net`.
 
-## Live verification attempted
+Scope: read-only investigation of `organisation_memory`, behaviour-strategy measurement logging, approved examples, Completed Work reuse, retrieval, provenance, and supersession.
+
+## Verification Boundaries
 
 Observed:
 
-- `GET /api/health` returned `404 Cannot GET /api/health`.
-- `GET /v1/organisations/test/memory` returned `401` with `AUTHENTICATION_REQUIRED`.
-- `GET /api/v1/organisations/test/memory` returned `404 Cannot GET /api/v1/organisations/test/memory`.
-- The local shell environment has no `DATABASE_URL`, `DB_HOST`, `DB_NAME`, `DB_USERNAME`, `PGHOST`, `PGDATABASE`, or `PGUSER` set.
+- Dev edge was reachable: `GET https://d2y3hd4ltf3qdv.cloudfront.net/api/healthz` returned HTTP 200 with `{"status":"ok"}`.
+- Source inspection was completed in `/Users/tayephilipajao/Development/NEDDOPSAI`.
+- No code, database records, AWS resources, Terraform state, or source files were changed.
 
-Conclusion: the live `/v1/organisations/:slug/memory` route is present behind authentication, but live row-level verification was not possible from this session without credentials. The findings below are source-observed unless explicitly labelled inferred.
+Not verified live:
 
-## 1. Every write path into `organisation_memory`
+- I could not verify live `organisation_memory` rows or `care_plan_behaviour_strategy_measurements` row counts because this shell did not expose database credentials, and the RDS instance is private. I did not retrieve secrets.
 
-Observed storage contract: `organisation_memory` has `source_type` and `source_id`, but no page/chunk/passage columns. The schema comment says "Only 'approved' records enter AI context" and the lifecycle is "proposed -> approved -> superseded/expired" (`lib/db/src/schema/organisationMemory.ts:1-7`). The actual columns are `sourceType`, `sourceId`, `status`, effective dates, `expiresAt`, and `supersededBy` (`lib/db/src/schema/organisationMemory.ts:12-40`).
+## 1. Every Write Path Into `organisation_memory`
 
-All create paths converge on `proposeOrganisationMemory`. The input permits `sourceType: "conversation" | "manual" | "ai_proposed" | "import"` (`artifacts/api-server/src/services/organisationMemoryService.ts:29-42`). The insert writes title/content, structured content, source type/id, confidence, importance, dates, creator, and either `approved` or `proposed` status (`artifacts/api-server/src/services/organisationMemoryService.ts:91-109`).
+Observed: `organisation_memory` is tenant-scoped. The schema comment says: "Only 'approved' records enter AI context" and "Soft lifecycle: proposed -> approved -> superseded/expired (never hard-deleted)." The stored fields include `sourceType`, `sourceId`, `status`, `effectiveFrom`, `effectiveTo`, `expiresAt`, `specialistId`, `approvedBy`, `approvedAt`, and `supersededBy` (`lib/db/src/schema/organisationMemory.ts:1-40`).
 
-Auto-approval is implemented. The service says system-originated high-confidence low-risk records are auto-approved (`artifacts/api-server/src/services/organisationMemoryService.ts:50-62`). The code allows auto-adoption for only `ai_proposed` or `import`, confidence >= 0.8, selected memory types, and no detected conflicts (`artifacts/api-server/src/services/organisationMemoryService.ts:64-77`). That means not all records require human approval before retrieval.
+All record creation goes through `proposeOrganisationMemory(...)`. It inserts `organisationMemoryTable` rows, slices title/content, stores `structuredContent`, `sourceType`, `sourceId`, dates, confidence, importance, and `createdBy` (`artifacts/api-server/src/services/organisationMemoryService.ts:81-110`).
 
-### Manual entry
+Important approval behavior: the service auto-approves `sourceType` `"ai_proposed"` or `"import"` records when confidence is at least `0.8`, the type is one of `operating_preference`, `system_information`, `terminology`, or `organisation_profile`, and no conflict is detected (`organisationMemoryService.ts:50-77`). Otherwise the row is created as `proposed` (`organisationMemoryService.ts:100-103`). This conflicts with older comments in curation/conversation learning that say memory is never activated automatically.
 
-Trigger: authenticated owner/admin POST to `/organisations/:slug/memory` (`artifacts/api-server/src/routes/v1/organisationMemory.ts:64-69`).
+Manual entry:
 
-Writes: memory type, title, content, structured content, source id, confidence, importance, dates, creator. The public route forcibly sets `sourceType: "manual"` (`artifacts/api-server/src/routes/v1/organisationMemory.ts:80-97`).
+- Trigger: authenticated owner/admin posts to `POST /organisations/:slug/memory` (`artifacts/api-server/src/routes/v1/organisationMemory.ts:64-69`).
+- Write: title, content, memory type, optional structured content, source ID, confidence, importance, dates, and creator. The route forces `sourceType: "manual"` regardless of caller body (`organisationMemory.ts:80-96`).
+- Approval before retrieval: yes. Manual rows cannot auto-adopt because auto-adoption excludes `"manual"` (`organisationMemoryService.ts:71-76`).
 
-Approval before retrieval: yes. The route comment says public callers are always manual and "no auto-adoption" (`artifacts/api-server/src/routes/v1/organisationMemory.ts:80-90`). Because manual is not eligible for auto-adoption, the service writes `status: "proposed"` (`artifacts/api-server/src/services/organisationMemoryService.ts:100-103`).
+Curation from knowledge chunks:
 
-### Conversation capture
+- Trigger: Organisation Library document events. The curation service lists `uploaded`, `approved`, `superseded`, `archived`, and `version_changed` events (`artifacts/api-server/src/services/knowledgeCurationService.ts:7-16`). Upload/ingestion completion enqueues `triggerEvent: "uploaded"` (`ingestionPipelineService.ts:484-491`). Source approval enqueues `triggerEvent: "approved"` (`knowledgeSourceService.ts:516-525`). Supersession enqueues `triggerEvent: "superseded"` (`knowledgeSourceService.ts:663-675`).
+- Write: curation reads `knowledge_chunks` including `sectionTitle`, `pageNumber`, and `chunkIndex` (`knowledgeCurationService.ts:214-229`), calls an LLM or fallback (`knowledgeCurationService.ts:270-292`), then creates memory rows with proposed memory type/title/content, `structuredContent.rationale`, `pageReference`, `section`, `affectedSpecialists`, `suggestedAction`, `sourceVersionId`, and `curationJobId`; it stores `sourceType: "ai_proposed"` and `sourceId: params.knowledgeSourceId` (`knowledgeCurationService.ts:294-320`).
+- Approval before retrieval: usually required by design, but not guaranteed in code because safe high-confidence `ai_proposed` records can auto-approve (`organisationMemoryService.ts:50-77`).
 
-Trigger: after the conversation service stores a Chief of Staff response, it calls `detectAndProposeConversationKnowledge` fire-and-forget (`artifacts/api-server/src/services/conversationService.ts:740-759`).
+Conversation capture:
 
-Writes: detected candidate memory title/summary/type plus structured content with rationale, blank `pageReference`, `affectedSpecialists`, conversation id, and detected pattern. It uses `sourceType: "ai_proposed"` and `sourceId: conversationId` (`artifacts/api-server/src/services/conversationLearningService.ts:149-168`).
+- Trigger: after a Chief of Staff response is stored, `processUserMessage` calls `detectAndProposeConversationKnowledge(...)` fire-and-forget with the user's message and conversation ID (`artifacts/api-server/src/services/conversationService.ts:740-759`).
+- Write: conversation learning extracts candidate patterns from user text, then writes `memoryType`, title, summary content, `structuredContent` including `"Detected in conversation"`, `conversationId`, and `detectedPattern`; it uses `sourceType: "ai_proposed"` and `sourceId: conversationId` (`artifacts/api-server/src/services/conversationLearningService.ts:124-168`).
+- Approval before retrieval: not always. The file comment says "Proposals only. Memory is NEVER activated automatically" (`conversationLearningService.ts:7-10`), but the central memory service can auto-approve safe high-confidence `ai_proposed` records (`organisationMemoryService.ts:50-77`).
 
-Approval before retrieval: sometimes no. The service header says "Memory is NEVER activated automatically" (`artifacts/api-server/src/services/conversationLearningService.ts:7-10`), but the called memory service auto-approves eligible `ai_proposed` records (`artifacts/api-server/src/services/organisationMemoryService.ts:71-77`). This is an observed implementation mismatch.
+Import:
 
-### Curation from document chunks
+- Observed: the service accepts `sourceType: "import"` in `CreateMemoryInput` and allows auto-adoption for safe high-confidence imports (`organisationMemoryService.ts:29-41`, `organisationMemoryService.ts:50-77`).
+- Not observed: I found no application call site that creates imported memory records. This is a supported service capability, not a wired path I could prove from source.
 
-Trigger: Organisation Library document events: uploaded, approved, superseded, archived, version_changed (`artifacts/api-server/src/services/knowledgeCurationService.ts:7-16`, `artifacts/api-server/src/services/knowledgeCurationService.ts:46-48`).
+Lifecycle writes:
 
-Writes: curation reads `knowledge_chunks` text, section title, page number, and chunk index (`artifacts/api-server/src/services/knowledgeCurationService.ts:214-229`), then creates memory proposals with title, summary, rationale, `pageReference`, section, affected specialists, source version id, curation job id, `sourceType: "ai_proposed"`, and `sourceId: knowledgeSourceId` (`artifacts/api-server/src/services/knowledgeCurationService.ts:302-320`).
+- Approval changes proposed rows to approved (`organisationMemoryService.ts:122-128`).
+- Supersession sets `status: "superseded"` and `supersededBy: newId` (`organisationMemoryService.ts:150-160`).
+- Rejection, update, and merge also mutate existing rows; they do not create records.
 
-Approval before retrieval: sometimes no. The curation header says all proposals require human approval before context (`artifacts/api-server/src/services/knowledgeCurationService.ts:18-21`), but these records are `ai_proposed`, so the shared auto-adoption rule can approve eligible records immediately.
+Completed Work as memory source: no direct path found. Completed Work can be promoted into the Organisation Library, but I found no code path that writes a Completed Work item directly into `organisation_memory`. The Completed Work promotion route calls `promoteToLibrary(...)`, not `proposeOrganisationMemory(...)` (`artifacts/api-server/src/routes/v1/completedWork.ts:276-290`). Inferred caveat: after Completed Work is promoted to the Organisation Library and later approved/ingested, curation can propose memory from its chunks indirectly.
 
-### Import
+## 2. The Measurement Log
 
-Observed: `import` is part of the service input type and is auto-adoption eligible (`artifacts/api-server/src/services/organisationMemoryService.ts:34`, `artifacts/api-server/src/services/organisationMemoryService.ts:71-77`). I did not find a route or service caller that imports organisation memory directly. This appears to be an internal/service-level capability with no wired API path found in this pass.
+Observed schema: migration 0044 is represented by `care_plan_behaviour_strategy_measurements`, with fields for `strategyText`, `bspSourceQuote`, `modelFolds`, `apoFolds`, `confirmationStatus`, `actorUserId`, timestamps, and metadata (`lib/db/src/schema/carePlanBehaviourStrategyMeasurements.ts:13-38`).
 
-### Approval, rejection, supersession, merge, and update
+Observed writer exists: `recordCarePlanBehaviourStrategyMeasurement(...)` computes a fingerprint and inserts a row with model folds, APO folds, confirmation status, actor, confirmation/correction timestamps, and metadata (`artifacts/api-server/src/services/carePlanBehaviourStrategyService.ts:27-54`).
 
-These mutate existing memory records but do not create new ones. Approval changes proposed records to approved (`artifacts/api-server/src/services/organisationMemoryService.ts:122-129`). Rejection sets rejected (`artifacts/api-server/src/services/organisationMemoryService.ts:136-143`). Supersession sets `status: "superseded"` and `supersededBy` (`artifacts/api-server/src/services/organisationMemoryService.ts:150-160`). The routes require owner/admin for approve/reject/supersede (`artifacts/api-server/src/routes/v1/organisationMemory.ts:144-231`).
+Observed application wiring: not confirmed. Source search found the function definition only, and no source call site invoking `recordCarePlanBehaviourStrategyMeasurement`. I therefore cannot honestly confirm production behavior is writing this table.
 
-### Is Completed Work a source of memory records?
+Observed feedback: no feedback loop found. The only references to `carePlanBehaviourStrategyMeasurementsTable` in source are the schema and the insert function. No prompt builder, retrieval provider, training pipeline, or context service reads the table.
 
-No. Observed: the only source callers of `proposeOrganisationMemory` are the manual memory route, conversation learning, and knowledge curation. Completed Work does not call it. Completed Work has a separate promotion path into `knowledge_sources`, not `organisation_memory` (`artifacts/api-server/src/services/completedWorkService.ts:724-795`).
+What would consume it if used: a future calibration or quality analytics service comparing `modelFolds` with `apoFolds` by `strategyFingerprint`, organisation, Completed Work, participant, actor, and timestamp. Existing protective-strategy gates read completed markdown for unconfirmed markers; they do not consume the measurement table.
 
-## 2. Measurement log
+## 3. Approved Examples
 
-Observed schema: migration 0044 creates `care_plan_behaviour_strategy_measurements` as append-only records for Behavioural Management strategy classification and APO confirmation/correction events (`lib/db/migrations/0044_care_plan_behaviour_strategy_measurement.sql:1-5`). It stores model folds, APO folds, confirmation status, actor, timestamps, completed work ids, and strategy fingerprint (`lib/db/migrations/0044_care_plan_behaviour_strategy_measurement.sql:5-23`). The Drizzle schema mirrors this (`lib/db/src/schema/carePlanBehaviourStrategyMeasurements.ts:13-38`).
+Observed: Approved examples are implemented as Organisation Library sources with `sourceType: "approved_example"` and `sourceScope: "library"`. `retrieveApprovedExamples(...)` selects approved library sources of that type (`artifacts/api-server/src/services/approvedExampleService.ts:64-95`).
 
-Observed writer helper: `recordCarePlanBehaviourStrategyMeasurement` inserts those fields into the table (`artifacts/api-server/src/services/carePlanBehaviourStrategyService.ts:27-54`).
+Observed: Completed Work can be promoted as an approved example. The route accepts `documentType` and documents the allowed values as `approved_example`, `template`, `policy`, or `procedure` (`artifacts/api-server/src/routes/v1/completedWork.ts:285-287`). The service requires the Completed Work status to be `"approved"` (`artifacts/api-server/src/services/completedWorkService.ts:730-736`), then allows those four promotable types (`completedWorkService.ts:739-745`) and creates a `knowledge_sources` row with `sourceType: documentType`, `sourceScope: "library"`, `status: "review_required"`, and `authorityLevel: "authoritative"` (`completedWorkService.ts:757-775`).
 
-Observed wiring: I did not find a production caller of `recordCarePlanBehaviourStrategyMeasurement`. Repository search found the schema and writer definition only. Therefore I cannot confirm it is currently being written; source evidence indicates it is not wired into runtime.
+Observed style-only path: the approved-example service says examples "teach: writing style, level of detail, preferred terminology, formatting conventions, section ordering, and professional tone" and are "style signals only" (`approvedExampleService.ts:1-13`). It retrieves only a sample of chunks and extracts style signals (`approvedExampleService.ts:98-148`), then emits a prompt block labelled "APPROVED EXAMPLE STYLE GUIDANCE (influence only - never reproduce examples)" (`approvedExampleService.ts:214-219`).
 
-Observed feedback: no source hit showed the measurement table or writer feeding prompts, retrieval, or training. Current care-plan runtime validation imports `findUnconfirmedCarePlanProtectiveStrategies`, not the measurement writer. This supports the conclusion that the table feeds back nowhere today.
+Observed pack distinction: `completed_work_assets` has `assetType: "example"` for "an approved example that influenced style" and `role: "style"` for "influenced writing style only" (`lib/db/src/schema/completedWorkAssets.ts:13-56`).
 
-Inferred future consumer if used: the likely consumers would be care-plan approval/runtime validation, behaviour strategy quality analytics, prompt calibration, or specialist training/evaluation. None is wired in the inspected code.
+Conclusion: approved Completed Work as an approved example is wired, not just design intent. But the style-only guarantee is local to the approved-example service and asset-role modelling; the broader library retrieval path does not enforce that exclusion.
 
-## 3. Approved examples
+## 4. Can A Completed Document Become Evidence?
 
-Observed: approved examples are wired for style guidance. The service states they are "style/tone/terminology guidance" and "never copied or reproduced" (`artifacts/api-server/src/services/approvedExampleService.ts:1-13`).
-
-It retrieves only `knowledge_sources` where status is approved, source type is `approved_example`, and scope is library (`artifacts/api-server/src/services/approvedExampleService.ts:64-87`). It then reads at most two chunks per source to extract style signals (`artifacts/api-server/src/services/approvedExampleService.ts:103-148`).
-
-The pack distinguishes style reference from evidence by placing extracted signals in a separate guidance block: `APPROVED EXAMPLE STYLE GUIDANCE` with "influence only" wording (`artifacts/api-server/src/services/approvedExampleService.ts:228-230`). Unified execution passes `styleGuidance.guidanceBlock` separately from the evidence pack into draft generation (`artifacts/api-server/src/services/unifiedExecutionEngine.ts:1613-1629`).
-
-Completed Work can become an approved example only through explicit promotion with `documentType: "approved_example"`, followed by library approval. That is implemented, not just design intent (`artifacts/api-server/src/routes/v1/completedWork.ts:275-291`; `artifacts/api-server/src/services/completedWorkService.ts:739-765`).
-
-## 4. Can a completed document become evidence later?
-
-Yes, with an approval step.
+Answer: yes, there is a path. That is a defect candidate.
 
 Observed path:
 
-1. Owner/admin calls `/organisations/:slug/completed-work/:id/promote` with a document type (`artifacts/api-server/src/routes/v1/completedWork.ts:275-291`).
-2. `promoteToLibrary` allows approved Completed Work only (`artifacts/api-server/src/services/completedWorkService.ts:730-736`).
-3. It accepts `approved_example`, `template`, `policy`, or `procedure` (`artifacts/api-server/src/services/completedWorkService.ts:739-744`).
-4. It inserts a `knowledge_sources` row with `sourceScope: "library"`, `sourceType: documentType`, `authorityLevel: "authoritative"`, and `isCurrent: true` (`artifacts/api-server/src/services/completedWorkService.ts:757-780`).
-5. Initial source status is `review_required`, so it is not immediately retrievable as evidence (`artifacts/api-server/src/services/completedWorkService.ts:773`).
-6. The retrieval engine later accepts approved/current library sources: `ks.status = 'approved'`, `ks.is_current = true`, current approved source version, complete ingestion, and `scopeMode: "org_library"` (`artifacts/api-server/src/services/hybridRetrievalService.ts:191-205`; `artifacts/api-server/src/services/hybridRetrievalService.ts:268-283`).
-7. The evidence resolver always queries organisation library evidence for task execution (`artifacts/api-server/src/services/knowledgeResolutionService.ts:521-540`) and formats it under `AUTHORITATIVE EVIDENCE` (`artifacts/api-server/src/services/knowledgeResolutionService.ts:883-917`).
+1. An approved Completed Work item can be promoted to the Organisation Library as `policy` or `procedure`, not just `approved_example` (`completedWorkService.ts:730-745`).
+2. Promotion creates a library source with `sourceType: documentType` and `authorityLevel: "authoritative"` (`completedWorkService.ts:757-775`).
+3. Once the promoted source becomes approved/current/ingested, `OrganisationLibraryProvider` retrieves approved Organisation Library chunks as knowledge items with the chunk's source title, page number, content, and authority level (`artifacts/api-server/src/lib/knowledge/providers/OrganisationLibraryProvider.ts:27-66`).
+4. The underlying hybrid retrieval only requires `ks.status = 'approved'`, current source/version, complete ingestion, freshness, sensitivity, and the scope clause (`artifacts/api-server/src/services/hybridRetrievalService.ts:191-205`). The `org_library` scope clause excludes `participant_document` only; it does not exclude promoted Completed Work, `approved_example`, `policy`, or `procedure` (`hybridRetrievalService.ts:268-282`).
 
-Conclusion: a completed document promoted as `policy`, `procedure`, or `template`, then approved and ingested as a current library source, can become evidence for later deliverables. This is not an `organisation_memory` path. It is a `completed_work -> knowledge_sources -> knowledge_chunks -> evidence pack` path.
+Observed stronger concern: even `approved_example` sources are not excluded by the broad Organisation Library retrieval filter. The approved-example service treats examples as style-only, but `OrganisationLibraryProvider` can still retrieve any approved/current library chunks matching the scope filter unless upstream source typing or scopes prevent it.
 
-Risk classification: this matches the defect described in the prompt if the promoted Completed Work is a system-authored deliverable rather than an externally authoritative organisational source. The code has no observed guard that prevents self-authored Completed Work promoted as `policy`, `procedure`, or `template` from being cited as authoritative evidence after library approval.
+Inference: if a completed document is promoted as `policy` or `procedure`, approved, versioned, and ingested, it can become substantive evidence for later deliverables. If an `approved_example` source is approved/current/ingested and has no excluding scope, it may also be retrievable as library evidence through the broad provider. That allows system output to re-enter the evidence chain with clean-looking provenance.
 
-## 5. Retrieval from memory
+## 5. Retrieval From Memory
 
-Document generation: yes, approved memory is available to generation context. `OrgMemoryProvider` retrieves approved, non-superseded, effective, non-expired records and maps them into knowledge items with `sourceOrigin: "memory"` (`artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:45-69`, `artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:88-127`). The orchestration engine registers this provider (`artifacts/api-server/src/services/knowledgeOrchestrationEngine.ts:75-85`) and allocates a 20% layer budget to `org_memory` (`artifacts/api-server/src/services/knowledgeOrchestrationEngine.ts:180-186`).
+Chat: yes. `classifyMessageLLM(...)` builds conversation context before responding (`artifacts/api-server/src/services/chiefOfStaffLLMService.ts:515-525`). The conversation context builder calls `buildChiefOfStaffContext(...)`, whose parallel reads include `fetchApprovedOrgMemory(...)` (`artifacts/api-server/src/services/contextSelectionService.ts:164-170`). The CoS prompt then injects approved organisation memory under `=== APPROVED ORGANISATION MEMORY (authoritative) ===` (`chiefOfStaffLLMService.ts:688-693`).
 
-Chat question answering: not consistently wired. The older conversation evidence resolver searches organisation library and specialist-scoped document chunks only; it does not retrieve `organisation_memory` (`artifacts/api-server/src/services/knowledgeResolutionService.ts:933-1032`). The specialist context path can call `orchestrateKnowledge` when `knowledgeOptions.query` is supplied (`artifacts/api-server/src/services/specialistContextService.ts:181-190`), which would include `OrgMemoryProvider`.
+Document generation: yes. The dedicated `OrgMemoryProvider` retrieves approved memory for knowledge orchestration (`artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:45-72`) and maps it into `KnowledgeItem` records with `authorityLevel: "primary"` (`OrgMemoryProvider.ts:88-115`). Work package/runtime paths also read approved memory into execution context (`artifacts/api-server/src/services/workPackageService.ts:238-256`, `artifacts/api-server/src/services/runtimeContextService.ts:222-243`).
 
-Answer to "Can a user ask in chat and get an answer from organisation_memory?": source evidence shows memory can be included in orchestrated specialist context, but the inspected conversation evidence path itself does not query memory. I could not verify live chat behavior without authentication.
+What is needed for "what is our on-call escalation process?" to be answered from memory:
 
-Needed for "what is our on-call escalation process?": an approved memory row containing that fact, a chat route/path that calls `orchestrateKnowledge` or `OrgMemoryProvider` for user questions, prompt wiring that includes the returned memory item, and a response/citation format that cites the memory record and any underlying source.
+- An approved `organisation_memory` row whose content says the on-call escalation process.
+- Its `memoryType` should probably be `reporting_line`, `operating_preference`, `policy_reference`, or a more specific escalation type if added.
+- The row must not be expired/superseded and must be effective now in retrieval paths that respect those fields.
+- Chat prompt retrieval already injects approved memory, so no document search is required if the fact exists in approved memory. Better answer quality would require passage-level provenance back to the source document or conversation.
 
-## 6. Provenance on memory records
+## 6. Provenance On Memory Records
 
-Observed stored provenance: top-level memory rows store only `sourceType` and `sourceId` as source provenance (`lib/db/src/schema/organisationMemory.ts:20-21`). They also store lifecycle metadata, dates, creator, approver, and supersession pointer (`lib/db/src/schema/organisationMemory.ts:22-40`).
+Observed stored provenance: first-class columns are `sourceType` and `sourceId` (`lib/db/src/schema/organisationMemory.ts:20-21`). There are no first-class page, passage, chunk, quote, offset, or source-version columns in `organisation_memory` (`organisationMemory.ts:12-40`).
 
-Curation stores additional provenance inside JSON structured content: `pageReference`, `section`, `sourceVersionId`, and `curationJobId` (`artifacts/api-server/src/services/knowledgeCurationService.ts:306-314`). Conversation capture stores blank `pageReference` and a conversation id/pattern (`artifacts/api-server/src/services/conversationLearningService.ts:154-164`). The fallback extractor emits blank page and section fields (`artifacts/api-server/src/services/knowledgeCurationService.ts:596-599`).
+Observed curation provenance: curation stores `pageReference`, `section`, `sourceVersionId`, and `curationJobId` inside `structuredContent`, while the first-class `sourceId` is only the knowledge source ID (`artifacts/api-server/src/services/knowledgeCurationService.ts:302-317`).
 
-Retrieval loses passage-level provenance for memory. `OrgMemoryProvider` maps memory with `sourceId: row.id`, `chunkId: null`, `pageNumber: null`, and provenance identifiers equal to the memory row id (`artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:91-115`).
+Observed retrieval provenance: `OrgMemoryProvider` maps memory to a `KnowledgeItem` with `sourceId: row.id`, `versionId: null`, `chunkId: null`, `pageNumber: null`, and provenance identifiers both set to the memory row ID (`artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:88-115`). This loses passage-level traceability at retrieval time.
 
-Passage-level provenance would require first-class fields or a linked provenance table that stores source document id, version id, chunk id, page number, section/heading, excerpt/hash, extraction timestamp, and extraction method. Retrieval would then need to carry those fields through `OrgMemoryProvider` into citations instead of citing only the memory record.
+What passage-level provenance would require:
+
+- First-class source references on memory rows or a child provenance table: `knowledgeSourceId`, `sourceVersionId`, `chunkId`, `pageNumber`, `sectionTitle`, exact quote/passage, and optionally character offsets.
+- Support for multiple source passages per memory fact, because one organisational fact may be synthesized from several documents or conversations.
+- Retrieval providers and citation builders must project those provenance fields into `KnowledgeItem.provenance` and completed-work assets/citations.
+- Manual and conversation-created memories need equivalent provenance: message IDs and exact quoted spans, not only conversation/source IDs.
 
 ## 7. Supersession
 
-Observed model: `supersededBy`, `effectiveFrom`, `effectiveTo`, and `expiresAt` exist on the memory table (`lib/db/src/schema/organisationMemory.ts:25-38`).
+Observed model: `supersededBy`, effective dates, and expiry dates exist (`lib/db/src/schema/organisationMemory.ts:25-38`). The service can explicitly supersede a row by setting `status: "superseded"` and `supersededBy` (`artifacts/api-server/src/services/organisationMemoryService.ts:150-160`).
 
-Observed usage in retrieval:
+Observed use: `OrgMemoryProvider` filters to approved rows, `supersededBy IS NULL`, effective-from is now or earlier, effective-to is future, and expiry is future (`OrgMemoryProvider.ts:45-69`).
 
-- `OrgMemoryProvider` excludes records with `supersededBy`, future effective dates, past effective end dates, and expiry (`artifacts/api-server/src/lib/knowledge/providers/OrgMemoryProvider.ts:45-69`).
-- `specialistContextService.loadApprovedMemory` filters out superseded, expired, not-yet-effective, and past-end-date records in process (`artifacts/api-server/src/services/specialistContextService.ts:300-356`).
+Observed gaps:
 
-Observed management behavior:
+- `listOrganisationMemory(...)` only filters by status/type and expiry unless callers supply status; it does not exclude superseded rows generally (`organisationMemoryService.ts:193-224`).
+- Chief of Staff chat context fetches only `status = "approved"` and filters expiry/effective-to, but it does not filter `supersededBy` or `effectiveFrom` (`artifacts/api-server/src/services/contextSelectionService.ts:253-270`).
+- Work package and runtime context paths select `status = "approved"` only, with no supersession/effective-date filtering in the observed queries (`workPackageService.ts:247-256`, `runtimeContextService.ts:225-236`).
+- Conflict detection only reports similar approved titles and says to "consider superseding it"; it does not automatically supersede (`organisationMemoryService.ts:232-249`).
 
-- Supersession is manual owner/admin action via `/memory/:memoryId/supersede` (`artifacts/api-server/src/routes/v1/organisationMemory.ts:209-231`).
-- New memory conflict detection only reports similar approved records and says to "Consider superseding it"; it does not supersede automatically (`artifacts/api-server/src/services/organisationMemoryService.ts:232-253`).
-- The management list route defaults to proposed, approved, rejected, superseded, and expired statuses (`artifacts/api-server/src/routes/v1/organisationMemory.ts:39-58`), and `listOrganisationMemory` filters expiry by date but does not automatically convert expired rows to `status = "expired"` (`artifacts/api-server/src/services/organisationMemoryService.ts:193-227`).
+Conclusion: when a fact changes today, a new memory row does not automatically supersede the old one. If a human explicitly uses supersede/merge, the old row becomes `status = "superseded"` and most status-approved paths stop seeing it. If no one supersedes it, both facts remain approved and compete. Some retrieval surfaces are stricter than others, so effective dates and supersession are not consistently enforced across all memory consumers.
 
-Conclusion: dates and supersession are partially used at retrieval time, but changes do not automatically supersede old facts. If a fact changes and the old record is not manually superseded or date-bounded, both approved records remain eligible and compete by importance/relevance.
+## Risk Summary
+
+High risk: Completed Work can be promoted into Organisation Library as authoritative `policy`/`procedure`, and broad library retrieval can later use approved/current/ingested library chunks as evidence. This creates a path for model-generated output to become future evidence.
+
+Medium risk: auto-adoption behavior means some `ai_proposed` memory records from curation or conversation capture can enter retrieval without human approval, despite comments saying proposals only.
+
+Medium risk: supersession/effective-date filtering is inconsistent across memory consumers, so stale approved facts may remain available outside the strict `OrgMemoryProvider`.
+
+Low-to-medium risk: measurement logging is modelled and has a writer function, but no source call site was found; if the intent is to record model-vs-APO fold decisions, that implementation appears incomplete or not wired in this source tree.
+
+## Recommendations
+
+1. Block promoted Completed Work from entering evidence by default. Treat `completed_work/*` library sources and `sourceType = approved_example` as style/template-only unless a human explicitly re-attests them as independent organisational policy evidence.
+2. Add retrieval filters so `OrganisationLibraryProvider` excludes `approved_example` and any promoted Completed Work sources unless the retrieval mode is explicitly style/template.
+3. Separate style references from evidence in source metadata, not only in `completed_work_assets`.
+4. Align comments and behavior for memory auto-adoption. Either disable auto-approval for curation/conversation learning or document the safe-type auto-adopt rule plainly.
+5. Make supersession/effective-date filtering consistent across CoS chat, work packages, runtime context, and knowledge orchestration.
+6. Add first-class passage-level provenance for memory facts before relying on memory as evidence in regulated documents.
+7. Wire or remove the behaviour-strategy measurement writer. If it is meant to be deliberately non-feedback analytics, keep it read-only for reporting/calibration and do not inject it into prompts or retrieval.
