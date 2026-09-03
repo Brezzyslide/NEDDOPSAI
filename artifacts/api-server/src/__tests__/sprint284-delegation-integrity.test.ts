@@ -35,10 +35,80 @@ const mocks = vi.hoisted(() => {
   // All chaining methods return the same `dbChain` object; only `.limit()` resolves.
   // Sprint 29H.2: leftJoin added so the completedWork query chain doesn't crash.
   const dbLimitFn = vi.fn().mockResolvedValue([]);
-  const dbChain: any = { limit: dbLimitFn };
-  (["select", "from", "where", "orderBy", "leftJoin"] as const).forEach(m => {
-    dbChain[m] = vi.fn(() => dbChain);
-  });
+  const tableRows = new Map<string, Array<Record<string, unknown>>>();
+  let activeTable: string | null = null;
+  let activeWhereValues = new Set<unknown>();
+
+  const tableName = (table: unknown): string => {
+    if (!table || typeof table !== "object") return "";
+    const nameSymbol = Object.getOwnPropertySymbols(table)
+      .find(s => s.toString() === "Symbol(drizzle:Name)");
+    return nameSymbol ? String((table as Record<symbol, unknown>)[nameSymbol]) : "";
+  };
+
+  const collectValues = (node: unknown, values = new Set<unknown>(), seen = new WeakSet<object>()) => {
+    if (!node || typeof node !== "object") return values;
+    if (seen.has(node)) return values;
+    seen.add(node);
+
+    if ((node as { constructor?: { name?: string } }).constructor?.name === "Param") {
+      values.add((node as { value?: unknown }).value);
+      return values;
+    }
+
+    if (Array.isArray(node)) {
+      for (const item of node) collectValues(item, values, seen);
+      return values;
+    }
+
+    for (const value of Object.values(node as Record<string, unknown>)) {
+      collectValues(value, values, seen);
+    }
+    return values;
+  };
+
+  const fixtureHasAny = (rows: Array<Record<string, unknown>>, key: string, values: Set<unknown>) =>
+    rows.some(row => values.has(row[key]));
+
+  const filterRows = (rows: Array<Record<string, unknown>>) => {
+    let out = rows;
+    for (const key of ["id", "taskId", "conversationId", "organizationId"]) {
+      if (fixtureHasAny(rows, key, activeWhereValues)) {
+        out = out.filter(row => activeWhereValues.has(row[key]));
+      }
+    }
+    return out;
+  };
+
+  const dbChain: any = {};
+  const resetDbMock = () => {
+    dbLimitFn.mockReset();
+    dbLimitFn.mockResolvedValue([]);
+    tableRows.clear();
+    activeTable = null;
+    activeWhereValues = new Set();
+    dbChain.limit = vi.fn(async (...args: unknown[]) => {
+      const rows = activeTable ? tableRows.get(activeTable) : undefined;
+      if (rows) return filterRows(rows);
+      return dbLimitFn(...args);
+    });
+    dbChain.select = vi.fn(() => {
+      activeTable = null;
+      activeWhereValues = new Set();
+      return dbChain;
+    });
+    dbChain.from = vi.fn((table: unknown) => {
+      activeTable = tableName(table);
+      return dbChain;
+    });
+    dbChain.where = vi.fn((expr: unknown) => {
+      activeWhereValues = collectValues(expr);
+      return dbChain;
+    });
+    dbChain.orderBy = vi.fn(() => dbChain);
+    dbChain.leftJoin = vi.fn(() => dbChain);
+  };
+  resetDbMock();
 
   return {
     createAIGateway,
@@ -53,6 +123,8 @@ const mocks = vi.hoisted(() => {
     tenantCanUseSpecialist,
     dbChain,
     dbLimitFn,
+    tableRows,
+    resetDbMock,
   };
 });
 
@@ -199,6 +271,7 @@ describe("resolveConversationActionState", () => {
     // does not short-circuit level resolution. Level is determined from the
     // current execution state (task + specialists + execution intent) only.
     mocks.dbLimitFn
+      .mockResolvedValueOnce([{ currentState: "approved" }]) // task state
       .mockResolvedValueOnce([])                  // specialists → none → task_created
       .mockResolvedValueOnce([])                  // execution intents → none
       .mockResolvedValueOnce([{                   // completed work found
@@ -526,6 +599,7 @@ describe("classifyMessageLLM — action state enforcement", () => {
   beforeEach(() => {
     _clearWorkforceCache();
     vi.resetAllMocks();
+    mocks.resetDbMock();
     mocks.dbLimitFn.mockResolvedValue([]); // reset DB to return [] by default
     mocks.buildSystemInstructionForEmployee.mockReturnValue("SYSTEM");
     mocks.buildChiefOfStaffContext.mockResolvedValue(null);
@@ -659,8 +733,9 @@ describe("classifyMessageLLM — action state enforcement", () => {
       currentTaskState: "approved",
     };
 
-    // DB mock: specialists → OM found, intents → none, completedWork → none
+    // DB mock: task state, specialists → OM found, intents → none, completedWork → none
     mocks.dbLimitFn
+      .mockResolvedValueOnce([{ currentState: "approved" }])             // tasks
       .mockResolvedValueOnce([{ specialistId: "operations_manager" }]) // task_specialists
       .mockResolvedValueOnce([])                                        // execution_intents
       .mockResolvedValueOnce([]);                                       // completed_work
@@ -677,6 +752,7 @@ describe("deterministic fallback — same integrity enforcement", () => {
   beforeEach(() => {
     _clearWorkforceCache();
     vi.resetAllMocks();
+    mocks.resetDbMock();
     mocks.dbLimitFn.mockResolvedValue([]);
     mocks.buildMessageContext.mockResolvedValue({
       conversationId: CONV_ID, organizationId: ORG_A,
@@ -797,11 +873,12 @@ describe("tenant isolation", () => {
     expect(stateB.level).toBe("informational");
   });
 
-  it("execution status from org B does not leak into org A response", async () => {
+  it("resolves org A execution status with current action-state query order", async () => {
     mocks.dbLimitFn
-      .mockResolvedValueOnce([])                              // specialists org A
+      .mockResolvedValueOnce([{ currentState: "approved" }]) // task org A
+      .mockResolvedValueOnce([])                             // specialists org A
       .mockResolvedValueOnce([{ status: "dispatched" }])     // intent org A
-      .mockResolvedValueOnce([]);                             // completed work org A
+      .mockResolvedValueOnce([]);                            // completed work org A
 
     const stateA = await resolveConversationActionState({
       organisationId: ORG_A, conversationId: "conv-a", recentMessages: [], taskId: "task-a",
@@ -809,6 +886,58 @@ describe("tenant isolation", () => {
 
     expect(stateA.executionStatus).toBe("dispatched");
     expect(stateA.level).toBe("execution_started"); // dispatched maps to execution_started
+  });
+
+  it("org B task, specialist, execution intent, and completed work rows do not leak into org A action state", async () => {
+    mocks.tableRows.set("tasks", [
+      { id: "task-a", organizationId: ORG_B, currentState: "completed" },
+      { id: "task-a", organizationId: ORG_A, currentState: "approved" },
+    ]);
+    mocks.tableRows.set("task_specialists", [
+      { taskId: "task-a", organizationId: ORG_B, specialistId: "compliance_quality_manager" },
+      { taskId: "task-a", organizationId: ORG_A, specialistId: "operations_manager" },
+    ]);
+    mocks.tableRows.set("execution_intents", [
+      { taskId: "task-a", organizationId: ORG_B, status: "completed" },
+      { taskId: "task-a", organizationId: ORG_A, status: "dispatched" },
+    ]);
+    mocks.tableRows.set("completed_work", [
+      {
+        id: "cw-org-b",
+        organizationId: ORG_B,
+        conversationId: "conv-a",
+        status: "approved",
+        title: "Org B work",
+        primarySpecialist: "compliance_quality_manager",
+        createdAt: new Date("2026-08-07T02:30:00Z"),
+        approvedAt: new Date("2026-08-07T02:35:00Z"),
+        qualityScore: 99,
+      },
+      {
+        id: "cw-org-a",
+        organizationId: ORG_A,
+        conversationId: "conv-a",
+        status: "awaiting_approval",
+        title: "Org A work",
+        primarySpecialist: "operations_manager",
+        createdAt: new Date("2026-08-07T02:24:00Z"),
+        approvedAt: null,
+        qualityScore: 80,
+      },
+    ]);
+
+    const stateA = await resolveConversationActionState({
+      organisationId: ORG_A, conversationId: "conv-a", recentMessages: [], taskId: "task-a",
+    });
+
+    expect(stateA.taskState).toBe("approved");
+    expect(stateA.assignedSpecialists).toEqual(["operations_manager"]);
+    expect(stateA.assignedSpecialists).not.toContain("compliance_quality_manager");
+    expect(stateA.executionStatus).toBe("dispatched");
+    expect(stateA.level).toBe("execution_started");
+    expect(stateA.completedWorkId).toBe("cw-org-a");
+    expect(stateA.completedWork?.title).toBe("Org A work");
+    expect(stateA.completedWork?.primarySpecialist).toBe("operations_manager");
   });
 });
 
@@ -818,6 +947,7 @@ describe("regression — Medication Management Policy conversation arc", () => {
   beforeEach(() => {
     _clearWorkforceCache();
     vi.resetAllMocks();
+    mocks.resetDbMock();
     mocks.dbLimitFn.mockResolvedValue([]);
     mocks.buildMessageContext.mockResolvedValue({
       conversationId: CONV_ID, organizationId: ORG_A,
@@ -939,8 +1069,9 @@ describe("regression — Medication Management Policy conversation arc", () => {
       currentTaskState: "approved",
     };
 
-    // DB: task_specialists → OM found → state = specialist_assigned
+    // DB: task state, task_specialists → OM found → state = specialist_assigned
     mocks.dbLimitFn
+      .mockResolvedValueOnce([{ currentState: "approved" }])             // tasks
       .mockResolvedValueOnce([{ specialistId: "operations_manager" }]) // task_specialists
       .mockResolvedValueOnce([])                                        // execution_intents
       .mockResolvedValueOnce([]);                                       // completed_work
@@ -968,8 +1099,9 @@ describe("regression — Medication Management Policy conversation arc", () => {
       currentTaskState: "executing",
     };
 
-    // DB: specialists → OM, execution intent → dispatched → state = execution_started
+    // DB: task state, specialists → OM, execution intent → dispatched → state = execution_started
     mocks.dbLimitFn
+      .mockResolvedValueOnce([{ currentState: "executing" }])            // tasks
       .mockResolvedValueOnce([{ specialistId: "operations_manager" }]) // task_specialists
       .mockResolvedValueOnce([{ status: "dispatched" }])               // execution_intents
       .mockResolvedValueOnce([]);                                       // completed_work
