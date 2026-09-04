@@ -16,6 +16,7 @@ import {
   workforcePacksTable,
   workforcePackAccessRequestsTable,
   tenantWorkforcePacksTable,
+  withTenantContext,
 } from "@workspace/db";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import { requirePermission } from "../../middlewares/requirePermission.js";
@@ -43,28 +44,37 @@ tenantPackRequestsRouter.post(
         return;
       }
 
-      // Load pack
-      const [pack] = await db
-        .select()
-        .from(workforcePacksTable)
-        .where(eq(workforcePacksTable.code, packCode.toLowerCase()))
-        .limit(1);
+      const normalizedPackCode = packCode.toLowerCase();
+
+      const { pack, existing } = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "pack_access_request.create_preflight" },
+        async (tx) => {
+          // Load pack
+          const [packRow] = await tx
+            .select()
+            .from(workforcePacksTable)
+            .where(eq(workforcePacksTable.code, normalizedPackCode))
+            .limit(1);
+
+          // Check for existing pending request
+          const existingRows = await tx
+            .select({ id: workforcePackAccessRequestsTable.id })
+            .from(workforcePackAccessRequestsTable)
+            .where(and(
+              eq(workforcePackAccessRequestsTable.organizationId, ctx.tenantId),
+              eq(workforcePackAccessRequestsTable.packCode, normalizedPackCode),
+              eq(workforcePackAccessRequestsTable.status, "pending"),
+            ))
+            .limit(1);
+
+          return { pack: packRow, existing: existingRows };
+        },
+      );
 
       if (!pack || pack.status === "archived") {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found or unavailable." } });
         return;
       }
-
-      // Check for existing pending request
-      const existing = await db
-        .select({ id: workforcePackAccessRequestsTable.id })
-        .from(workforcePackAccessRequestsTable)
-        .where(and(
-          eq(workforcePackAccessRequestsTable.organizationId, ctx.tenantId),
-          eq(workforcePackAccessRequestsTable.packCode, packCode.toLowerCase()),
-          eq(workforcePackAccessRequestsTable.status, "pending"),
-        ))
-        .limit(1);
 
       if (existing.length) {
         res.status(409).json({
@@ -74,15 +84,18 @@ tenantPackRequestsRouter.post(
         return;
       }
 
-      const request = (await db.insert(workforcePackAccessRequestsTable).values({
-        id:              `par_${randomUUID()}`,
-        organizationId:  ctx.tenantId,
-        workforcePackId: pack.id,
-        packCode:        packCode.toLowerCase(),
-        requestedBy:     user.id,
-        status:          "pending",
-        source:          "plan_page",
-      }).returning())[0];
+      const request = (await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "pack_access_request.create" },
+        (tx) => tx.insert(workforcePackAccessRequestsTable).values({
+          id:              `par_${randomUUID()}`,
+          organizationId:  ctx.tenantId,
+          workforcePackId: pack.id,
+          packCode:        normalizedPackCode,
+          requestedBy:     user.id,
+          status:          "pending",
+          source:          "plan_page",
+        }).returning(),
+      ))[0];
 
       await auditService.writeAuditEvent({
         organizationId: ctx.tenantId,
@@ -111,11 +124,13 @@ tenantPackRequestsRouter.get(
   async (req, res, next) => {
     try {
       const ctx = req.tenantContext!;
-      const requests = await db
-        .select()
-        .from(workforcePackAccessRequestsTable)
-        .where(eq(workforcePackAccessRequestsTable.organizationId, ctx.tenantId))
-        .orderBy(desc(workforcePackAccessRequestsTable.requestedAt));
+      const requests = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "pack_access_request.list" },
+        (tx) => tx.select()
+          .from(workforcePackAccessRequestsTable)
+          .where(eq(workforcePackAccessRequestsTable.organizationId, ctx.tenantId))
+          .orderBy(desc(workforcePackAccessRequestsTable.requestedAt)),
+      );
       res.json({ requests });
     } catch (err) {
       next(err);
