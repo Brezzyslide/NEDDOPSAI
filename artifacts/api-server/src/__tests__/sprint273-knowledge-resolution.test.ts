@@ -95,6 +95,12 @@ vi.mock("@workspace/db", () => {
       update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
       transaction: mocks.dbTransaction,
     },
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+      select: selectFn,
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
+      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) }),
+      transaction: mocks.dbTransaction,
+    })),
     knowledgeChunksTable: {
       id: "id", organizationId: "organization_id", knowledgeSourceId: "knowledge_source_id",
       sourceVersionId: "source_version_id", chunkIndex: "chunk_index", sectionTitle: "section_title",

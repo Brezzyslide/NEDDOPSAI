@@ -27,6 +27,7 @@ vi.mock("@workspace/db", async () => {
   return {
     ...actual,
     db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   };
 });
 

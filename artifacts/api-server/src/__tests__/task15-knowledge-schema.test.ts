@@ -50,7 +50,11 @@ const { mockDb, selectChain, insertChain, updateChain, deleteChain, txMock } = v
 
 vi.mock("@workspace/db", async () => {
   const actual = await vi.importActual<any>("@workspace/db/schema");
-  return { ...actual, db: mockDb };
+  return {
+    ...actual,
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
+  };
 });
 
 const {

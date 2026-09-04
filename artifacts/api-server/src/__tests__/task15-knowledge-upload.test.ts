@@ -57,7 +57,11 @@ const mockDb = {
 
 vi.mock("@workspace/db", async () => {
   const actual = await vi.importActual<any>("@workspace/db/schema");
-  return { ...actual, db: mockDb };
+  return {
+    ...actual,
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
+  };
 });
 
 const {
@@ -442,7 +446,10 @@ describe("Task #15 — completeUpload", () => {
     expect(result.isDuplicate).toBe(false);
     expect(result.source.id).toBe("src-new-001");
     expect(result.version.id).toBe("ver-new-001");
-    expect(mockDb.insert).toHaveBeenCalledTimes(2); // source + version
+    const { knowledgeSourcesTable, knowledgeSourceVersionsTable } = await import("@workspace/db");
+    const insertedTables = mockDb.insert.mock.calls.map(([table]) => table);
+    expect(insertedTables).toContain(knowledgeSourcesTable);
+    expect(insertedTables).toContain(knowledgeSourceVersionsTable);
   });
 
   it("rejects invalid sourceType with INVALID_SOURCE_TYPE", async () => {

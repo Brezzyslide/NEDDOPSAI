@@ -34,7 +34,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   knowledgeSourcesTable,
   knowledgeSourceScopesTable,
@@ -56,6 +56,8 @@ import { eq, and, desc, inArray, isNull, ne, not } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
 import { getIngestionQueue } from "../lib/ingestionQueue/index.js";
+
+type DbClient = typeof db;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,9 +159,10 @@ function uniqueCleanIds(ids: unknown[]): string[] {
 async function assertParticipantsBelongToOrganisation(
   organizationId: string,
   participantIds: string[],
+  client: DbClient = db,
 ): Promise<void> {
   if (participantIds.length === 0) return;
-  const rows = await db
+  const rows = await client
     .select({ id: participantsTable.id })
     .from(participantsTable)
     .where(and(
@@ -177,6 +180,17 @@ async function assertParticipantsBelongToOrganisation(
   }
 }
 
+function withKnowledgeSourceTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "knowledge_source_service", purpose },
+    fn,
+  );
+}
+
 // ─── Duplicate checksum detection ────────────────────────────────────────────
 
 export async function findDuplicateChecksum(
@@ -184,7 +198,8 @@ export async function findDuplicateChecksum(
   checksum: string,
   excludeSourceId?: string,
 ): Promise<KnowledgeSource | null> {
-  const rows = await db
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.duplicate_checksum", async (client) => {
+  const rows = await client
     .select()
     .from(knowledgeSourcesTable)
     .where(
@@ -197,6 +212,7 @@ export async function findDuplicateChecksum(
     )
     .limit(1);
   return rows[0] ?? null;
+  });
 }
 
 // ─── Complete upload (create source + initial version) ───────────────────────
@@ -214,6 +230,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   version: KnowledgeSourceVersion;
   isDuplicate: boolean;
 }> {
+  return withKnowledgeSourceTenant(input.organizationId, "knowledge_source.complete_upload", async (client) => {
   // Validate inputs
   validateSourceType(input.sourceType);
 
@@ -232,7 +249,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
     : "library";
   const participantIds = uniqueCleanIds(input.participantIds ?? []);
   if (participantIds.length > 0) {
-    await assertParticipantsBelongToOrganisation(input.organizationId, participantIds);
+    await assertParticipantsBelongToOrganisation(input.organizationId, participantIds, client);
   }
 
   // Duplicate detection
@@ -254,7 +271,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   const versionLabel = input.versionLabel ?? "v1";
 
   // Create source record
-  const [source] = await db
+  const [source] = await client
     .insert(knowledgeSourcesTable)
     .values({
       id: input.sourceId,
@@ -283,7 +300,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
     .returning();
 
   // Create initial version record
-  const [version] = await db
+  const [version] = await client
     .insert(knowledgeSourceVersionsTable)
     .values({
       id: versionId,
@@ -306,7 +323,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
 
   if (input.sourceType === "participant_document") {
     for (const participantId of participantIds) {
-      await db
+      await client
         .insert(knowledgeSourceScopesTable)
         .values({
           id: randomUUID(),
@@ -338,6 +355,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   }).catch(() => {});
 
   return { source: source!, version: version!, isDuplicate: false };
+  });
 }
 
 // ─── List ─────────────────────────────────────────────────────────────────────
@@ -356,6 +374,7 @@ export interface ListSourcesParams {
 export async function listKnowledgeSources(
   params: ListSourcesParams,
 ): Promise<{ sources: KnowledgeSource[]; total: number }> {
+  return withKnowledgeSourceTenant(params.organizationId, "knowledge_source.list", async (client) => {
   const {
     organizationId,
     sourceScope,
@@ -374,7 +393,7 @@ export async function listKnowledgeSources(
   if (taskId) conditions.push(eq(knowledgeSourcesTable.taskId!, taskId));
   if (sourceType) conditions.push(eq(knowledgeSourcesTable.sourceType, sourceType));
 
-  const rows = await db
+  const rows = await client
     .select()
     .from(knowledgeSourcesTable)
     .where(and(...conditions))
@@ -386,6 +405,7 @@ export async function listKnowledgeSources(
   const filtered = status?.length ? rows.filter((r) => status.includes(r.status as KnowledgeSourceStatus)) : rows;
 
   return { sources: filtered, total: filtered.length };
+  });
 }
 
 // ─── Get single source ────────────────────────────────────────────────────────
@@ -394,7 +414,8 @@ export async function getKnowledgeSource(
   sourceId: string,
   organizationId: string,
 ): Promise<KnowledgeSource | null> {
-  const [row] = await db
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.get", async (client) => {
+  const [row] = await client
     .select()
     .from(knowledgeSourcesTable)
     .where(
@@ -405,6 +426,7 @@ export async function getKnowledgeSource(
     )
     .limit(1);
   return row ?? null;
+  });
 }
 
 // ─── Update metadata ──────────────────────────────────────────────────────────
@@ -415,6 +437,7 @@ export async function updateSourceMetadata(
   actorUserId: string,
   input: UpdateSourceMetadataInput,
 ): Promise<KnowledgeSource> {
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.update_metadata", async (client) => {
   const source = await getKnowledgeSource(sourceId, organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.deletedAt) throw new KnowledgeSourceError("Cannot update a deleted source.", "DELETED");
@@ -441,7 +464,7 @@ export async function updateSourceMetadata(
   if (input.effectiveTo !== undefined) updates.effectiveTo = input.effectiveTo;
   if (input.versionLabel) updates.versionLabel = input.versionLabel;
 
-  const [updated] = await db
+  const [updated] = await client
     .update(knowledgeSourcesTable)
     .set(updates)
     .where(
@@ -462,6 +485,7 @@ export async function updateSourceMetadata(
   }).catch(() => {});
 
   return updated!;
+  });
 }
 
 // ─── Approve ──────────────────────────────────────────────────────────────────
@@ -471,13 +495,14 @@ export async function approveKnowledgeSource(
   organizationId: string,
   approvedByUserId: string,
 ): Promise<KnowledgeSource> {
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.approve", async (client) => {
   const source = await getKnowledgeSource(sourceId, organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.deletedAt) throw new KnowledgeSourceError("Cannot approve a deleted source.", "DELETED");
   if (source.status === "revoked")
     throw new KnowledgeSourceError("Cannot approve a revoked source.", "REVOKED");
 
-  const [updated] = await db
+  const [updated] = await client
     .update(knowledgeSourcesTable)
     .set({
       status: "approved",
@@ -494,7 +519,7 @@ export async function approveKnowledgeSource(
     .returning();
 
   // Mirror approval on the current version
-  await db
+  await client
     .update(knowledgeSourceVersionsTable)
     .set({ status: "approved", approvedByUserId, approvedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -527,6 +552,7 @@ export async function approveKnowledgeSource(
   }).catch(() => {});
 
   return updated!;
+  });
 }
 
 // ─── Revoke ───────────────────────────────────────────────────────────────────
@@ -537,12 +563,13 @@ export async function revokeKnowledgeSource(
   actorUserId: string,
   reason?: string,
 ): Promise<KnowledgeSource> {
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.revoke", async (client) => {
   const source = await getKnowledgeSource(sourceId, organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.status === "revoked")
     throw new KnowledgeSourceError("Source is already revoked.", "ALREADY_REVOKED");
 
-  const [updated] = await db
+  const [updated] = await client
     .update(knowledgeSourcesTable)
     .set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -577,6 +604,7 @@ export async function revokeKnowledgeSource(
   }).catch(() => {});
 
   return updated!;
+  });
 }
 
 // ─── Soft delete ──────────────────────────────────────────────────────────────
@@ -586,11 +614,12 @@ export async function deleteKnowledgeSource(
   organizationId: string,
   actorUserId: string,
 ): Promise<void> {
+  await withKnowledgeSourceTenant(organizationId, "knowledge_source.delete", async (client) => {
   const source = await getKnowledgeSource(sourceId, organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.deletedAt) throw new KnowledgeSourceError("Source is already deleted.", "ALREADY_DELETED");
 
-  await db
+  await client
     .update(knowledgeSourcesTable)
     .set({ deletedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -608,6 +637,7 @@ export async function deleteKnowledgeSource(
     resourceId: sourceId,
     isSensitive: true,
   }).catch(() => {});
+  });
 }
 
 // ─── Supersede ────────────────────────────────────────────────────────────────
@@ -622,6 +652,7 @@ export async function supersedeKnowledgeSource(
   organizationId: string,
   actorUserId: string,
 ): Promise<void> {
+  await withKnowledgeSourceTenant(organizationId, "knowledge_source.supersede", async (client) => {
   const [oldSource, newSource] = await Promise.all([
     getKnowledgeSource(oldSourceId, organizationId),
     getKnowledgeSource(newSourceId, organizationId),
@@ -636,7 +667,7 @@ export async function supersedeKnowledgeSource(
   if (oldSourceId === newSourceId)
     throw new KnowledgeSourceError("A source cannot supersede itself.", "SELF_SUPERSEDE");
 
-  await db
+  await client
     .update(knowledgeSourcesTable)
     .set({
       status: "superseded",
@@ -690,6 +721,7 @@ export async function supersedeKnowledgeSource(
       }
     }).catch(() => {});
   }).catch(() => {});
+  });
 }
 
 // ─── Version management ───────────────────────────────────────────────────────
@@ -698,7 +730,8 @@ export async function getCurrentVersion(
   knowledgeSourceId: string,
   organizationId: string,
 ): Promise<KnowledgeSourceVersion | null> {
-  const [row] = await db
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.version.current", async (client) => {
+  const [row] = await client
     .select()
     .from(knowledgeSourceVersionsTable)
     .where(
@@ -710,13 +743,15 @@ export async function getCurrentVersion(
     )
     .limit(1);
   return row ?? null;
+  });
 }
 
 export async function listVersionHistory(
   knowledgeSourceId: string,
   organizationId: string,
 ): Promise<KnowledgeSourceVersion[]> {
-  return db
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.version.history", async (client) => {
+  return client
     .select()
     .from(knowledgeSourceVersionsTable)
     .where(
@@ -726,6 +761,7 @@ export async function listVersionHistory(
       ),
     )
     .orderBy(desc(knowledgeSourceVersionsTable.createdAt));
+  });
 }
 
 /**
@@ -736,6 +772,7 @@ export async function listVersionHistory(
 export async function replaceSourceVersion(
   input: ReplaceVersionInput & { actorUserId: string },
 ): Promise<{ newVersion: KnowledgeSourceVersion; oldVersion: KnowledgeSourceVersion | null }> {
+  return withKnowledgeSourceTenant(input.organizationId, "knowledge_source.version.replace", async (client) => {
   const source = await getKnowledgeSource(input.knowledgeSourceId, input.organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.deletedAt) throw new KnowledgeSourceError("Cannot version a deleted source.", "DELETED");
@@ -754,7 +791,7 @@ export async function replaceSourceVersion(
   }
 
   // Transactional version swap
-  await db.transaction(async (tx) => {
+  await client.transaction(async (tx) => {
     // 1. Demote old current version
     if (oldVersion) {
       await tx
@@ -818,7 +855,7 @@ export async function replaceSourceVersion(
       );
   });
 
-  const [newVersion] = await db
+  const [newVersion] = await client
     .select()
     .from(knowledgeSourceVersionsTable)
     .where(eq(knowledgeSourceVersionsTable.id, newVersionId))
@@ -859,6 +896,7 @@ export async function replaceSourceVersion(
   });
 
   return { newVersion: newVersion!, oldVersion };
+  });
 }
 
 /**
@@ -870,16 +908,17 @@ export async function markVersionForReprocess(
   organizationId: string,
   actorUserId: string,
 ): Promise<void> {
+  await withKnowledgeSourceTenant(organizationId, "knowledge_source.version.reprocess", async (client) => {
   const current = await getCurrentVersion(knowledgeSourceId, organizationId);
   if (!current) throw new KnowledgeSourceError("No current version found.", "NO_CURRENT_VERSION");
 
-  await db
+  await client
     .update(knowledgeSourceVersionsTable)
     .set({ ingestionStatus: "pending", ingestionMetadata: {}, updatedAt: new Date() })
     .where(eq(knowledgeSourceVersionsTable.id, current.id));
 
   // Reset the parent source status to uploaded so it re-enters the pipeline
-  await db
+  await client
     .update(knowledgeSourcesTable)
     .set({ status: "uploaded", updatedAt: new Date() })
     .where(
@@ -897,11 +936,13 @@ export async function markVersionForReprocess(
     resourceId: knowledgeSourceId,
     metadata: { versionId: current.id },
   }).catch(() => {});
+  });
 }
 
 // ─── Scope management ─────────────────────────────────────────────────────────
 
 export async function assignScope(input: AssignScopeInput): Promise<KnowledgeSourceScopeRecord> {
+  return withKnowledgeSourceTenant(input.organizationId, "knowledge_source.scope.assign", async (client) => {
   const source = await getKnowledgeSource(input.knowledgeSourceId, input.organizationId);
   if (!source) throw new KnowledgeSourceError("Knowledge source not found.", "NOT_FOUND");
   if (source.sourceScope === "task") {
@@ -919,11 +960,11 @@ export async function assignScope(input: AssignScopeInput): Promise<KnowledgeSou
     );
   }
   if (input.scopeType === "entity") {
-    await assertParticipantsBelongToOrganisation(input.organizationId, [input.scopeId]);
+    await assertParticipantsBelongToOrganisation(input.organizationId, [input.scopeId], client);
   }
 
   // Upsert: if duplicate, return existing
-  const existing = await db
+  const existing = await client
     .select()
     .from(knowledgeSourceScopesTable)
     .where(
@@ -937,7 +978,7 @@ export async function assignScope(input: AssignScopeInput): Promise<KnowledgeSou
 
   if (existing[0]) return existing[0];
 
-  const [scope] = await db
+  const [scope] = await client
     .insert(knowledgeSourceScopesTable)
     .values({
       id: randomUUID(),
@@ -958,6 +999,7 @@ export async function assignScope(input: AssignScopeInput): Promise<KnowledgeSou
   }).catch(() => {});
 
   return scope!;
+  });
 }
 
 export async function removeScope(
@@ -967,9 +1009,10 @@ export async function removeScope(
   scopeId: string,
   actorUserId: string,
 ): Promise<void> {
+  await withKnowledgeSourceTenant(organizationId, "knowledge_source.scope.remove", async (client) => {
   validateScopeType(scopeType);
 
-  await db
+  await client
     .delete(knowledgeSourceScopesTable)
     .where(
       and(
@@ -988,13 +1031,15 @@ export async function removeScope(
     resourceId: knowledgeSourceId,
     metadata: { scopeType, scopeId },
   }).catch(() => {});
+  });
 }
 
 export async function listScopes(
   knowledgeSourceId: string,
   organizationId: string,
 ): Promise<KnowledgeSourceScopeRecord[]> {
-  return db
+  return withKnowledgeSourceTenant(organizationId, "knowledge_source.scope.list", async (client) => {
+  return client
     .select()
     .from(knowledgeSourceScopesTable)
     .where(
@@ -1003,4 +1048,5 @@ export async function listScopes(
         eq(knowledgeSourceScopesTable.organizationId, organizationId),
       ),
     );
+  });
 }
