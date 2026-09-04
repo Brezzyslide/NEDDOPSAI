@@ -28,10 +28,10 @@ import {
   listOrganisationMemory,
 }                                            from "../../services/organisationMemoryService.js";
 import { getKnowledgeHealthMetrics }         from "../../services/knowledgeHealthService.js";
-import { db }                                from "@workspace/db";
 import {
   knowledgeCurationJobsTable,
   organisationMemoryTable,
+  withTenantContext,
 }                                            from "@workspace/db";
 import { eq, and, desc, sql }                from "drizzle-orm";
 import { logOrgEvent }                       from "../../services/auditService.js";
@@ -112,18 +112,26 @@ router.post(
       }
 
       // Increment curation job proposalsAccepted counter if linked
-      const [proposal] = await db.select({ structuredContent: organisationMemoryTable.structuredContent })
-        .from(organisationMemoryTable)
-        .where(and(
-          eq(organisationMemoryTable.organizationId, ctx.tenantId),
-          eq(organisationMemoryTable.id, proposalId),
-        ));
+      const [proposal] = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "knowledge_curation.proposal_approve_lookup" },
+        (tx) => tx.select({ structuredContent: organisationMemoryTable.structuredContent })
+          .from(organisationMemoryTable)
+          .where(and(
+            eq(organisationMemoryTable.organizationId, ctx.tenantId),
+            eq(organisationMemoryTable.id, proposalId),
+          )),
+      );
       const jobId = (proposal?.structuredContent as any)?.curationJobId;
       if (jobId) {
-        await db.update(knowledgeCurationJobsTable)
-          .set({ proposalsAccepted: sql`proposals_accepted + 1` })
-          .where(eq(knowledgeCurationJobsTable.id, jobId))
-          .catch(() => {});
+        await withTenantContext(
+          { tenantId: ctx.tenantId, userId: user.id, purpose: "knowledge_curation.proposal_accept_count" },
+          (tx) => tx.update(knowledgeCurationJobsTable)
+            .set({ proposalsAccepted: sql`proposals_accepted + 1` })
+            .where(and(
+              eq(knowledgeCurationJobsTable.organizationId, ctx.tenantId),
+              eq(knowledgeCurationJobsTable.id, jobId),
+            )),
+        ).catch(() => {});
       }
 
       await logOrgEvent({
@@ -212,22 +220,25 @@ router.get(
       const ctx      = req.tenantContext!;
       const { sourceId } = req.params;
 
-      const jobs = await db.select({
-        id:            knowledgeCurationJobsTable.id,
-        triggerEvent:  knowledgeCurationJobsTable.triggerEvent,
-        status:        knowledgeCurationJobsTable.status,
-        versionSummary: knowledgeCurationJobsTable.versionSummary,
-        proposalsGenerated: knowledgeCurationJobsTable.proposalsGenerated,
-        createdAt:     knowledgeCurationJobsTable.createdAt,
-        completedAt:   knowledgeCurationJobsTable.completedAt,
-      })
-        .from(knowledgeCurationJobsTable)
-        .where(and(
-          eq(knowledgeCurationJobsTable.organizationId, ctx.tenantId),
-          eq(knowledgeCurationJobsTable.knowledgeSourceId, sourceId),
-        ))
-        .orderBy(desc(knowledgeCurationJobsTable.createdAt))
-        .limit(10);
+      const jobs = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "knowledge_curation.version_intelligence" },
+        (tx) => tx.select({
+          id:            knowledgeCurationJobsTable.id,
+          triggerEvent:  knowledgeCurationJobsTable.triggerEvent,
+          status:        knowledgeCurationJobsTable.status,
+          versionSummary: knowledgeCurationJobsTable.versionSummary,
+          proposalsGenerated: knowledgeCurationJobsTable.proposalsGenerated,
+          createdAt:     knowledgeCurationJobsTable.createdAt,
+          completedAt:   knowledgeCurationJobsTable.completedAt,
+        })
+          .from(knowledgeCurationJobsTable)
+          .where(and(
+            eq(knowledgeCurationJobsTable.organizationId, ctx.tenantId),
+            eq(knowledgeCurationJobsTable.knowledgeSourceId, sourceId),
+          ))
+          .orderBy(desc(knowledgeCurationJobsTable.createdAt))
+          .limit(10),
+      );
 
       const versionJob = jobs.find(j => j.versionSummary && j.triggerEvent !== "uploaded");
 
@@ -261,22 +272,25 @@ router.get(
         conditions.push(eq(knowledgeCurationJobsTable.status, status));
       }
 
-      const jobs = await db.select({
-        id:                 knowledgeCurationJobsTable.id,
-        knowledgeSourceId:  knowledgeCurationJobsTable.knowledgeSourceId,
-        triggerEvent:       knowledgeCurationJobsTable.triggerEvent,
-        status:             knowledgeCurationJobsTable.status,
-        proposalsGenerated: knowledgeCurationJobsTable.proposalsGenerated,
-        proposalsAccepted:  knowledgeCurationJobsTable.proposalsAccepted,
-        errorMessage:       knowledgeCurationJobsTable.errorMessage,
-        createdAt:          knowledgeCurationJobsTable.createdAt,
-        completedAt:        knowledgeCurationJobsTable.completedAt,
-      })
-        .from(knowledgeCurationJobsTable)
-        .where(and(...conditions))
-        .orderBy(desc(knowledgeCurationJobsTable.createdAt))
-        .limit(Math.min(parseInt(limit ?? "50", 10), 100))
-        .offset(parseInt(offset ?? "0", 10));
+      const jobs = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "knowledge_curation.jobs_list" },
+        (tx) => tx.select({
+          id:                 knowledgeCurationJobsTable.id,
+          knowledgeSourceId:  knowledgeCurationJobsTable.knowledgeSourceId,
+          triggerEvent:       knowledgeCurationJobsTable.triggerEvent,
+          status:             knowledgeCurationJobsTable.status,
+          proposalsGenerated: knowledgeCurationJobsTable.proposalsGenerated,
+          proposalsAccepted:  knowledgeCurationJobsTable.proposalsAccepted,
+          errorMessage:       knowledgeCurationJobsTable.errorMessage,
+          createdAt:          knowledgeCurationJobsTable.createdAt,
+          completedAt:        knowledgeCurationJobsTable.completedAt,
+        })
+          .from(knowledgeCurationJobsTable)
+          .where(and(...conditions))
+          .orderBy(desc(knowledgeCurationJobsTable.createdAt))
+          .limit(Math.min(parseInt(limit ?? "50", 10), 100))
+          .offset(parseInt(offset ?? "0", 10)),
+      );
 
       res.json({ jobs, count: jobs.length });
     } catch (err) {
