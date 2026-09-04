@@ -13,8 +13,11 @@
 
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
-import { db } from "@workspace/db";
-import { knowledgeSourcesTable, knowledgeSourceVersionsTable } from "@workspace/db";
+import {
+  knowledgeSourcesTable,
+  knowledgeSourceVersionsTable,
+  withTenantContext,
+} from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logOrgEvent } from "../../services/auditService.js";
@@ -50,51 +53,56 @@ router.post(
       const versionId = randomUUID();
       const now       = new Date();
 
-      await db.insert(knowledgeSourcesTable).values({
-        id:                     sourceId,
-        organizationId:         ctx.tenantId,
-        sourceScope:            "task",
-        taskId:                 conversationId,
-        title,
-        description:            description ?? null,
-        sourceType:             "task_upload",
-        originalFileName:       originalFileName ?? null,
-        mimeType:               mimeType ?? null,
-        storageProvider:        "local",
-        storageKey:             storageKey ?? null,
-        checksum:               null,
-        fileSize:               null,
-        language:               "en",
-        status:                 "approved",
-        authorityLevel:         "supporting",
-        sensitivityClassification: "internal",
-        effectiveFrom:          null,
-        effectiveTo:            null,
-        versionLabel:           "1.0",
-        isCurrent:              true,
-        uploadedByUserId:       user.id,
-        createdAt:              now,
-        updatedAt:              now,
-      });
+      await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "task_upload.create" },
+        async (tx) => {
+          await tx.insert(knowledgeSourcesTable).values({
+            id:                     sourceId,
+            organizationId:         ctx.tenantId,
+            sourceScope:            "task",
+            taskId:                 conversationId,
+            title,
+            description:            description ?? null,
+            sourceType:             "task_upload",
+            originalFileName:       originalFileName ?? null,
+            mimeType:               mimeType ?? null,
+            storageProvider:        "local",
+            storageKey:             storageKey ?? null,
+            checksum:               null,
+            fileSize:               null,
+            language:               "en",
+            status:                 "approved",
+            authorityLevel:         "supporting",
+            sensitivityClassification: "internal",
+            effectiveFrom:          null,
+            effectiveTo:            null,
+            versionLabel:           "1.0",
+            isCurrent:              true,
+            uploadedByUserId:       user.id,
+            createdAt:              now,
+            updatedAt:              now,
+          });
 
-      await db.insert(knowledgeSourceVersionsTable).values({
-        id:               versionId,
-        knowledgeSourceId: sourceId,
-        organizationId:   ctx.tenantId,
-        versionLabel:     "1.0",
-        checksum:         null,
-        storageKey:       storageKey ?? null,
-        storageProvider:  "local",
-        fileSize:         null,
-        mimeType:         mimeType ?? null,
-        originalFileName: originalFileName ?? null,
-        isCurrent:        true,
-        status:           "approved",
-        uploadedByUserId: user.id,
-        ingestionStatus:  "pending",
-        createdAt:        now,
-        updatedAt:        now,
-      } as never);
+          await tx.insert(knowledgeSourceVersionsTable).values({
+            id:               versionId,
+            knowledgeSourceId: sourceId,
+            organizationId:   ctx.tenantId,
+            versionLabel:     "1.0",
+            checksum:         null,
+            storageKey:       storageKey ?? null,
+            storageProvider:  "local",
+            fileSize:         null,
+            mimeType:         mimeType ?? null,
+            originalFileName: originalFileName ?? null,
+            isCurrent:        true,
+            status:           "approved",
+            uploadedByUserId: user.id,
+            ingestionStatus:  "pending",
+            createdAt:        now,
+            updatedAt:        now,
+          } as never);
+        },
+      );
 
       await logOrgEvent({
         organizationId: ctx.tenantId,
@@ -121,8 +129,9 @@ router.get(
       const ctx              = req.tenantContext!;
       const { conversationId } = req.params as { conversationId: string };
 
-      const uploads = await db
-        .select({
+      const uploads = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "task_upload.list" },
+        (tx) => tx.select({
           id:               knowledgeSourcesTable.id,
           title:            knowledgeSourcesTable.title,
           sourceType:       knowledgeSourcesTable.sourceType,
@@ -132,15 +141,16 @@ router.get(
           status:           knowledgeSourcesTable.status,
           createdAt:        knowledgeSourcesTable.createdAt,
         })
-        .from(knowledgeSourcesTable)
-        .where(
-          and(
-            eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
-            eq(knowledgeSourcesTable.sourceScope, "task"),
-            eq(knowledgeSourcesTable.taskId, conversationId),
-            isNull(knowledgeSourcesTable.deletedAt),
-          )
-        );
+          .from(knowledgeSourcesTable)
+          .where(
+            and(
+              eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
+              eq(knowledgeSourcesTable.sourceScope, "task"),
+              eq(knowledgeSourcesTable.taskId, conversationId),
+              isNull(knowledgeSourcesTable.deletedAt),
+            )
+          ),
+      );
 
       res.json({ taskUploads: uploads });
     } catch (err) { next(err); }
@@ -160,18 +170,20 @@ router.post(
       const user             = req.appUser!;
       const { conversationId, sourceId } = req.params as { conversationId: string; sourceId: string };
 
-      const rows = await db
-        .select()
-        .from(knowledgeSourcesTable)
-        .where(
-          and(
-            eq(knowledgeSourcesTable.id, sourceId),
-            eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
-            eq(knowledgeSourcesTable.sourceScope, "task"),
-            eq(knowledgeSourcesTable.taskId, conversationId),
+      const rows = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "task_upload.promote_lookup" },
+        (tx) => tx.select()
+          .from(knowledgeSourcesTable)
+          .where(
+            and(
+              eq(knowledgeSourcesTable.id, sourceId),
+              eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
+              eq(knowledgeSourcesTable.sourceScope, "task"),
+              eq(knowledgeSourcesTable.taskId, conversationId),
+            )
           )
-        )
-        .limit(1);
+          .limit(1),
+      );
 
       const source = rows[0];
       if (!source) { res.status(404).json({ error: "Task upload not found" }); return; }
@@ -179,17 +191,22 @@ router.post(
       const { documentType, authorityLevel } = req.body as { documentType?: string; authorityLevel?: string };
       if (!documentType) { res.status(400).json({ error: "documentType is required for Library promotion" }); return; }
 
-      await db
-        .update(knowledgeSourcesTable)
-        .set({
-          sourceScope:    "library",
-          taskId:         null,
-          sourceType:     documentType,
-          authorityLevel: authorityLevel ?? source.authorityLevel ?? "supporting",
-          status:         "review_required",
-          updatedAt:      new Date(),
-        } as never)
-        .where(eq(knowledgeSourcesTable.id, sourceId));
+      await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "task_upload.promote" },
+        (tx) => tx.update(knowledgeSourcesTable)
+          .set({
+            sourceScope:    "library",
+            taskId:         null,
+            sourceType:     documentType,
+            authorityLevel: authorityLevel ?? source.authorityLevel ?? "supporting",
+            status:         "review_required",
+            updatedAt:      new Date(),
+          } as never)
+          .where(and(
+            eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
+            eq(knowledgeSourcesTable.id, sourceId),
+          )),
+      );
 
       await logOrgEvent({
         organizationId: ctx.tenantId,
