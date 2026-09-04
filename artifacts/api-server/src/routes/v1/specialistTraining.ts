@@ -41,10 +41,10 @@ import {
 } from "../../services/specialistConfigService.js";
 import { orchestrateKnowledge } from "../../services/knowledgeOrchestrationEngine.js";
 import { TRAINING_STATUSES } from "@workspace/db";
-import { db } from "@workspace/db";
 import {
   knowledgeSourcesTable,
   knowledgeSourceScopesTable,
+  withTenantContext,
 } from "@workspace/db";
 import { eq, and, or, isNull, inArray } from "drizzle-orm";
 
@@ -303,47 +303,58 @@ router.get(
       const ctx = req.tenantContext!;
       const { specialistId } = req.params;
 
-      // Find all scope records that include this specialist
-      const scopes = await db
-        .select()
-        .from(knowledgeSourceScopesTable)
-        .where(
-          and(
-            eq(knowledgeSourceScopesTable.organizationId, ctx.tenantId),
-            or(
+      const { scopes, sources } = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "specialist_training.knowledge" },
+        async (tx) => {
+          // Find all scope records that include this specialist
+          const scopedRows = await tx
+            .select()
+            .from(knowledgeSourceScopesTable)
+            .where(
               and(
-                eq(knowledgeSourceScopesTable.scopeType, "organisation"),
-                eq(knowledgeSourceScopesTable.scopeId, "all"),
+                eq(knowledgeSourceScopesTable.organizationId, ctx.tenantId),
+                or(
+                  and(
+                    eq(knowledgeSourceScopesTable.scopeType, "organisation"),
+                    eq(knowledgeSourceScopesTable.scopeId, "all"),
+                  ),
+                  and(
+                    eq(knowledgeSourceScopesTable.scopeType, "workforce"),
+                    eq(knowledgeSourceScopesTable.scopeId, "all"),
+                  ),
+                  and(
+                    eq(knowledgeSourceScopesTable.scopeType, "specialist"),
+                    eq(knowledgeSourceScopesTable.scopeId, specialistId),
+                  ),
+                ),
               ),
+            );
+
+          if (scopedRows.length === 0) {
+            return { scopes: scopedRows, sources: [] };
+          }
+
+          const sourceIds = [...new Set(scopedRows.map(s => s.knowledgeSourceId))];
+
+          const sourceRows = await tx
+            .select()
+            .from(knowledgeSourcesTable)
+            .where(
               and(
-                eq(knowledgeSourceScopesTable.scopeType, "workforce"),
-                eq(knowledgeSourceScopesTable.scopeId, "all"),
+                eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
+                isNull(knowledgeSourcesTable.deletedAt),
+                inArray(knowledgeSourcesTable.id, sourceIds),
               ),
-              and(
-                eq(knowledgeSourceScopesTable.scopeType, "specialist"),
-                eq(knowledgeSourceScopesTable.scopeId, specialistId),
-              ),
-            ),
-          ),
-        );
+            );
+
+          return { scopes: scopedRows, sources: sourceRows };
+        },
+      );
 
       if (scopes.length === 0) {
         res.json({ sources: [], total: 0 });
         return;
       }
-
-      const sourceIds = [...new Set(scopes.map(s => s.knowledgeSourceId))];
-
-      const sources = await db
-        .select()
-        .from(knowledgeSourcesTable)
-        .where(
-          and(
-            eq(knowledgeSourcesTable.organizationId, ctx.tenantId),
-            isNull(knowledgeSourcesTable.deletedAt),
-            inArray(knowledgeSourcesTable.id, sourceIds),
-          ),
-        );
 
       // Attach scope type to each source
       const sourcesWithScope = sources.map(s => ({
