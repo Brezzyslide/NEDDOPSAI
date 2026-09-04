@@ -46,6 +46,9 @@ vi.mock("@workspace/db", () => ({
     }),
     insert:   vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) }),
   },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    execute: mockDbExecute,
+  })),
   knowledgeChunksTable:        { id: "id", organizationId: "organization_id", knowledgeSourceId: "knowledge_source_id", sourceVersionId: "source_version_id", chunkIndex: "chunk_index", sectionTitle: "section_title", pageNumber: "page_number", text: "text", tokenCount: "token_count", embedding: "embedding" },
   knowledgeSourcesTable:       { id: "id", organizationId: "organization_id", title: "title", sourceType: "source_type", status: "status", isCurrent: "is_current", sensitivityClassification: "sensitivity_classification", authorityLevel: "authority_level", effectiveFrom: "effective_from", effectiveTo: "effective_to", deletedAt: "deleted_at" },
   knowledgeSourceVersionsTable: { id: "id", organizationId: "organization_id", versionLabel: "version_label" },
