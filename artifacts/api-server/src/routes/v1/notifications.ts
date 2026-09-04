@@ -27,10 +27,10 @@
 
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
-import { db } from "@workspace/db";
 import {
   conversationMessagesTable,
   messageReadsTable,
+  withTenantContext,
 } from "@workspace/db";
 import { eq, and, sql, isNull } from "drizzle-orm";
 import * as notificationReadsService from "../../services/notificationReadsService.js";
@@ -46,24 +46,27 @@ router.get("/unread-count", requireAuth, resolveTenantFromSlug, async (req, res,
     const user = req.appUser!;
 
     // Count non-self messages that do NOT have a message_reads row for this user
-    const result = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(conversationMessagesTable)
-      .leftJoin(
-        messageReadsTable,
-        and(
-          eq(messageReadsTable.messageId, conversationMessagesTable.id),
-          eq(messageReadsTable.userId, user.id),
-          eq(messageReadsTable.organizationId, ctx.tenantId),
+    const result = await withTenantContext(
+      { tenantId: ctx.tenantId, userId: user.id, purpose: "notifications.unread_count" },
+      (tx) => tx
+        .select({ count: sql<number>`count(*)` })
+        .from(conversationMessagesTable)
+        .leftJoin(
+          messageReadsTable,
+          and(
+            eq(messageReadsTable.messageId, conversationMessagesTable.id),
+            eq(messageReadsTable.userId, user.id),
+            eq(messageReadsTable.organizationId, ctx.tenantId),
+          ),
+        )
+        .where(
+          and(
+            eq(conversationMessagesTable.organizationId, ctx.tenantId),
+            sql`${conversationMessagesTable.senderUserId} IS DISTINCT FROM ${user.id}`,
+            isNull(messageReadsTable.id),
+          ),
         ),
-      )
-      .where(
-        and(
-          eq(conversationMessagesTable.organizationId, ctx.tenantId),
-          sql`${conversationMessagesTable.senderUserId} IS DISTINCT FROM ${user.id}`,
-          isNull(messageReadsTable.id),
-        ),
-      );
+    );
 
     res.json({ unreadCount: Number(result[0]?.count ?? 0) });
   } catch (err) { next(err); }
