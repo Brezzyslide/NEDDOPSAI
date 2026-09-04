@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   knowledgeSourceScopesTable,
   knowledgeSourcesTable,
@@ -15,6 +15,8 @@ import {
   PICKER_FUZZY_THRESHOLD,
   normalizeParticipantName,
 } from "./participantMatchingService.js";
+
+type DbClient = typeof db;
 
 export type ParticipantStatus = "active" | "inactive" | "archived";
 const PARTICIPANT_STATUSES: ParticipantStatus[] = ["active", "inactive", "archived"];
@@ -87,13 +89,25 @@ function assertParticipantInput(input: ParticipantInput): Required<ParticipantIn
   };
 }
 
+function withParticipantTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "participant_service", purpose },
+    fn,
+  );
+}
+
 export async function createParticipant(
   organizationId: string,
   input: ParticipantInput,
 ): Promise<Participant> {
+  return withParticipantTenant(organizationId, "participant.create", async (client) => {
   const values = assertParticipantInput(input);
   try {
-    const [participant] = await db
+    const [participant] = await client
       .insert(participantsTable)
       .values({
         id: randomUUID(),
@@ -115,6 +129,7 @@ export async function createParticipant(
     }
     throw err;
   }
+  });
 }
 
 export async function listParticipants(input: {
@@ -124,6 +139,7 @@ export async function listParticipants(input: {
   limit?: unknown;
   offset?: unknown;
 }): Promise<{ participants: Participant[]; pagination: { limit: number; offset: number } }> {
+  return withParticipantTenant(input.organizationId, "participant.list", async (client) => {
   const limit = normalizeLimit(input.limit);
   const offset = normalizeOffset(input.offset);
   const filters = [
@@ -145,7 +161,7 @@ export async function listParticipants(input: {
     )!);
   }
 
-  const participants = await db
+  const participants = await client
     .select()
     .from(participantsTable)
     .where(and(...filters))
@@ -154,6 +170,7 @@ export async function listParticipants(input: {
     .offset(offset);
 
   return { participants, pagination: { limit, offset } };
+  });
 }
 
 export async function searchParticipants(
@@ -161,10 +178,11 @@ export async function searchParticipants(
   rawQuery: string,
   limitInput?: unknown,
 ): Promise<ParticipantSearchResult[]> {
+  return withParticipantTenant(organizationId, "participant.search", async (client) => {
   const query = cleanText(rawQuery);
   if (!query) return [];
   const limit = normalizeLimit(limitInput);
-  const rows = await db
+  const rows = await client
     .select()
     .from(participantsTable)
     .where(and(
@@ -204,6 +222,7 @@ export async function searchParticipants(
     .filter((result): result is ParticipantSearchResult => Boolean(result))
     .sort((a, b) => a.rank - b.rank || a.participant.displayName.localeCompare(b.participant.displayName))
     .slice(0, limit);
+  });
 }
 
 export async function findParticipantDuplicateWarnings(
@@ -211,11 +230,12 @@ export async function findParticipantDuplicateWarnings(
   rawDisplayName: string,
   limitInput?: unknown,
 ): Promise<ParticipantDuplicateWarning[]> {
+  return withParticipantTenant(organizationId, "participant.duplicate_warnings", async (client) => {
   const query = cleanText(rawDisplayName);
   if (!query) return [];
   const limit = normalizeLimit(limitInput);
   const normalized = normalizeParticipantName(query);
-  const rows = await db
+  const rows = await client
     .select()
     .from(participantsTable)
     .where(and(
@@ -238,6 +258,7 @@ export async function findParticipantDuplicateWarnings(
     .filter((warning): warning is ParticipantDuplicateWarning => Boolean(warning))
     .sort((a, b) => b.similarity - a.similarity || a.participant.displayName.localeCompare(b.participant.displayName))
     .slice(0, limit);
+  });
 }
 
 export async function updateParticipant(
@@ -245,6 +266,7 @@ export async function updateParticipant(
   participantId: string,
   input: Partial<ParticipantInput>,
 ): Promise<Participant> {
+  return withParticipantTenant(organizationId, "participant.update", async (client) => {
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (input.displayName !== undefined) {
     const displayName = cleanText(input.displayName);
@@ -259,7 +281,7 @@ export async function updateParticipant(
 
   let updated: Participant | undefined;
   try {
-    [updated] = await db
+    [updated] = await client
       .update(participantsTable)
       .set(patch)
       .where(and(
@@ -280,6 +302,7 @@ export async function updateParticipant(
 
   if (!updated) throw new ParticipantServiceError("Participant not found.", "NOT_FOUND");
   return updated;
+  });
 }
 
 export async function softDeleteParticipant(
@@ -290,7 +313,8 @@ export async function softDeleteParticipant(
   boundTasks: Array<{ taskId: string; role: string }>;
   linkedSources: Array<{ sourceId: string; title: string | null; originalFileName: string | null }>;
 }> {
-  const [participant] = await db
+  return withParticipantTenant(organizationId, "participant.archive", async (client) => {
+  const [participant] = await client
     .update(participantsTable)
     .set({ status: "archived", updatedAt: new Date() })
     .where(and(
@@ -301,7 +325,7 @@ export async function softDeleteParticipant(
     .returning();
   if (!participant) throw new ParticipantServiceError("Participant not found.", "NOT_FOUND");
 
-  const boundTasks = await db
+  const boundTasks = await client
     .select({ taskId: taskParticipantsTable.taskId, role: taskParticipantsTable.role })
     .from(taskParticipantsTable)
     .where(and(
@@ -309,7 +333,7 @@ export async function softDeleteParticipant(
       eq(taskParticipantsTable.participantId, participantId),
     ));
 
-  const linkedSources = await db
+  const linkedSources = await client
     .select({
       sourceId: knowledgeSourcesTable.id,
       title: knowledgeSourcesTable.title,
@@ -325,6 +349,7 @@ export async function softDeleteParticipant(
     ));
 
   return { participant, boundTasks, linkedSources };
+  });
 }
 
 export async function linkParticipantSource(input: {
@@ -333,7 +358,8 @@ export async function linkParticipantSource(input: {
   sourceId: string;
   actorUserId: string;
 }) {
-  await assertParticipantSelectable(input.organizationId, input.participantId);
+  return withParticipantTenant(input.organizationId, "participant.link_source", async (client) => {
+  await assertParticipantSelectable(input.organizationId, input.participantId, client);
   const source = await getKnowledgeSource(input.sourceId, input.organizationId);
   if (!source) throw new ParticipantServiceError("Knowledge source not found.", "SOURCE_NOT_FOUND");
   if (source.sourceType !== "participant_document") {
@@ -346,6 +372,7 @@ export async function linkParticipantSource(input: {
     scopeId: input.participantId,
     actorUserId: input.actorUserId,
   });
+  });
 }
 
 export async function unlinkParticipantSource(input: {
@@ -354,12 +381,15 @@ export async function unlinkParticipantSource(input: {
   sourceId: string;
   actorUserId: string;
 }): Promise<void> {
-  await removeScope(input.sourceId, input.organizationId, "entity", input.participantId, input.actorUserId);
+  await withParticipantTenant(input.organizationId, "participant.unlink_source", async () => {
+    await removeScope(input.sourceId, input.organizationId, "entity", input.participantId, input.actorUserId);
+  });
 }
 
 export async function listParticipantSources(organizationId: string, participantId: string) {
-  await assertParticipantExists(organizationId, participantId);
-  return db
+  return withParticipantTenant(organizationId, "participant.sources.list", async (client) => {
+  await assertParticipantExists(organizationId, participantId, client);
+  return client
     .select({
       id: knowledgeSourcesTable.id,
       title: knowledgeSourcesTable.title,
@@ -377,10 +407,12 @@ export async function listParticipantSources(organizationId: string, participant
       isNull(knowledgeSourcesTable.deletedAt),
     ))
     .orderBy(desc(knowledgeSourcesTable.createdAt));
+  });
 }
 
 export async function listUnlinkedParticipantSources(organizationId: string) {
-  return db
+  return withParticipantTenant(organizationId, "participant.sources.unlinked", async (client) => {
+  return client
     .select({
       id: knowledgeSourcesTable.id,
       title: knowledgeSourcesTable.title,
@@ -401,10 +433,11 @@ export async function listUnlinkedParticipantSources(organizationId: string) {
       )`,
     ))
     .orderBy(desc(knowledgeSourcesTable.createdAt));
+  });
 }
 
-async function assertParticipantExists(organizationId: string, participantId: string): Promise<void> {
-  const rows = await db
+async function assertParticipantExists(organizationId: string, participantId: string, client: DbClient = db): Promise<void> {
+  const rows = await client
     .select({ id: participantsTable.id })
     .from(participantsTable)
     .where(and(
@@ -416,8 +449,8 @@ async function assertParticipantExists(organizationId: string, participantId: st
   if (!rows[0]) throw new ParticipantServiceError("Participant not found.", "NOT_FOUND");
 }
 
-async function assertParticipantSelectable(organizationId: string, participantId: string): Promise<void> {
-  const rows = await db
+async function assertParticipantSelectable(organizationId: string, participantId: string, client: DbClient = db): Promise<void> {
+  const rows = await client
     .select({ id: participantsTable.id })
     .from(participantsTable)
     .where(and(

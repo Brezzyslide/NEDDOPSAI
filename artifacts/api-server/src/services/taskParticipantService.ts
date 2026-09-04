@@ -12,6 +12,7 @@ import {
   membershipsTable,
   participantsTable,
   taskParticipantsTable,
+  withSystemTenantContext,
   usersTable,
 } from "@workspace/db";
 import {
@@ -22,6 +23,7 @@ import {
 
 export type TaskParticipantRole = "subject" | "related" | "guardian_context";
 const SELECTABLE_PARTICIPANT_STATUSES = ["active", "inactive"] as const;
+type DbClient = typeof db;
 
 export interface ParticipantResolutionInput {
   organizationId: string;
@@ -192,10 +194,21 @@ export function deriveRetrievalEntityIdsFromTaskParticipants(
   ));
 }
 
+function withTaskParticipantTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "task_participant_service", purpose },
+    fn,
+  );
+}
+
 export async function assertParticipantsBelongToOrganisation(
   organizationId: string,
   participantIds: string[],
-  client: typeof db = db,
+  client: DbClient = db,
 ): Promise<void> {
   const ids = normalizeIdList(participantIds);
   if (ids.length === 0) return;
@@ -223,6 +236,7 @@ export async function assertParticipantsBelongToOrganisation(
 export async function resolveSubjectParticipantForTaskRequest(
   input: ParticipantResolutionInput,
 ): Promise<ParticipantResolutionResult> {
+  return withTaskParticipantTenant(input.organizationId, "task_participant.resolve_subject", async (client) => {
   const explicitIds = normalizeIdList(input.explicitSubjectParticipantIds);
   if (explicitIds.length > 0) {
     if (explicitIds.length > 1) {
@@ -234,7 +248,7 @@ export async function resolveSubjectParticipantForTaskRequest(
         clarifyingQuestion: "Please select exactly one subject participant for this task.",
       };
     }
-    await assertParticipantsBelongToOrganisation(input.organizationId, explicitIds);
+    await assertParticipantsBelongToOrganisation(input.organizationId, explicitIds, client);
     return {
       status: "resolved",
       subjectParticipantIds: explicitIds,
@@ -263,7 +277,7 @@ export async function resolveSubjectParticipantForTaskRequest(
   }
 
   const [participants, staffRows] = await Promise.all([
-    db
+    client
       .select({
         id: participantsTable.id,
         displayName: participantsTable.displayName,
@@ -276,7 +290,7 @@ export async function resolveSubjectParticipantForTaskRequest(
         inArray(participantsTable.status, SELECTABLE_PARTICIPANT_STATUSES),
         isNull(participantsTable.deletedAt),
       )),
-    db
+    client
       .select({
         displayName: usersTable.displayName,
         firstName: usersTable.firstName,
@@ -401,11 +415,12 @@ export async function resolveSubjectParticipantForTaskRequest(
     staffConflicts: [],
     clarifyingQuestion: "Please select or create the participant before I retrieve participant documents.",
   };
+  });
 }
 
 export async function persistTaskParticipants(
   input: PersistTaskParticipantsInput,
-  client: typeof db = db,
+  client: DbClient = db,
 ): Promise<void> {
   const subjectIds = normalizeIdList(input.subjectParticipantIds);
   const relatedIds = normalizeIdList(input.relatedParticipantIds);
@@ -448,7 +463,8 @@ export async function getTaskParticipantBindings(
   organizationId: string,
   taskId: string,
 ): Promise<TaskParticipantBinding[]> {
-  const rows = await db
+  return withTaskParticipantTenant(organizationId, "task_participant.bindings.get", async (client) => {
+  const rows = await client
     .select({
       role: taskParticipantsTable.role,
       participantId: taskParticipantsTable.participantId,
@@ -463,6 +479,7 @@ export async function getTaskParticipantBindings(
     role: row.role as TaskParticipantRole,
     participantId: row.participantId,
   }));
+  });
 }
 
 export async function getRetrievalSubjectParticipantIdsForTask(

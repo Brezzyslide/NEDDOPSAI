@@ -129,22 +129,25 @@ vi.mock("drizzle-orm", () => ({
   },
 }));
 
-vi.mock("@workspace/db", () => ({
-  db: {
-    execute: state.execute,
-    select: vi.fn(selectChain),
-    insert: vi.fn().mockReturnValue({
-      values: vi.fn().mockReturnValue({
-        returning: vi.fn().mockResolvedValue([{
-          id: "scope-001",
-          knowledgeSourceId: "source-001",
-          organizationId: "org-a",
-          scopeType: "entity",
-          scopeId: "participant-a",
-        }]),
-      }),
+const mockDb = vi.hoisted(() => ({
+  execute: state.execute,
+  select: vi.fn(selectChain),
+  insert: vi.fn().mockReturnValue({
+    values: vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{
+        id: "scope-001",
+        knowledgeSourceId: "source-001",
+        organizationId: "org-a",
+        scopeType: "entity",
+        scopeId: "participant-a",
+      }]),
     }),
-  },
+  }),
+}));
+
+vi.mock("@workspace/db", () => ({
+  db: mockDb,
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   KNOWLEDGE_SOURCE_STATUSES: ["uploaded", "processing", "review_required", "approved", "revoked", "superseded", "archived", "failed"],
   KNOWLEDGE_SOURCE_TYPES: ["policy", "procedure", "participant_document"],
   KNOWLEDGE_AUTHORITY_LEVELS: ["mandatory", "authoritative", "primary", "supporting", "reference"],

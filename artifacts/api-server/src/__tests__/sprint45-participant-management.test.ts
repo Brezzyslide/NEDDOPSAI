@@ -89,6 +89,78 @@ function project(row: any, shape: any) {
   return out;
 }
 
+const mockDb = vi.hoisted(() => ({
+  select: vi.fn((shape?: any) => ({
+    from: (table: unknown) => ({
+      where: (expr: any) => ({
+        orderBy: () => ({
+          limit: (limit: number) => ({
+            offset: (offset: number) => Promise.resolve(rowsFor(table).filter(row => matches(row, expr)).slice(offset, offset + limit).map(row => project(row, shape))),
+          }),
+        }),
+        limit: (limit: number) => Promise.resolve(rowsFor(table).filter(row => matches(row, expr)).slice(0, limit).map(row => project(row, shape))),
+        then: (resolve: (value: any[]) => void) => resolve(rowsFor(table).filter(row => matches(row, expr)).map(row => project(row, shape))),
+      }),
+      innerJoin: (_joinTable: unknown) => ({
+        where: (expr: any) => {
+          const joined = state.scopes
+            .map(scope => {
+              const source = state.sources.find(s => s.id === scope.knowledgeSourceId);
+              return source ? { ...source, ...scope, sourceId: source.id } : null;
+            })
+            .filter(Boolean);
+          return Promise.resolve(joined.filter(row => matches(row, expr)).map(row => project(row, shape)));
+        },
+      }),
+    }),
+  })),
+  insert: vi.fn((table: unknown) => ({
+    values: (value: any) => ({
+      returning: () => {
+        if (table === tables.participantsTable) {
+          const duplicate = value.externalParticipantId && state.participants.some(row =>
+            row.organizationId === value.organizationId &&
+            row.externalParticipantId === value.externalParticipantId &&
+            row.deletedAt == null,
+          );
+          if (duplicate) {
+            const error = Object.assign(new Error("duplicate"), { code: "23505" });
+            return Promise.reject(error);
+          }
+          const row = { ...value, createdAt: new Date(), deletedAt: null };
+          state.participants.push(row);
+          return Promise.resolve([row]);
+        }
+        if (table === tables.knowledgeSourceScopesTable) {
+          const row = { ...value, createdAt: new Date(), updatedAt: new Date() };
+          state.scopes.push(row);
+          return Promise.resolve([row]);
+        }
+        return Promise.resolve([value]);
+      },
+    }),
+  })),
+  update: vi.fn((table: unknown) => ({
+    set: (patch: any) => ({
+      where: (expr: any) => ({
+        returning: () => {
+          const rows = rowsFor(table).filter(row => matches(row, expr));
+          rows.forEach(row => Object.assign(row, patch));
+          return Promise.resolve(rows);
+        },
+      }),
+    }),
+  })),
+  delete: vi.fn((table: unknown) => ({
+    where: (expr: any) => {
+      if (table === tables.knowledgeSourceScopesTable) {
+        state.scopes = state.scopes.filter(row => !matches(row, expr));
+      }
+      return Promise.resolve();
+    },
+  })),
+}));
+
 vi.mock("drizzle-orm", () => ({
   and: vi.fn((...args: unknown[]) => ({ op: "and", args })),
   asc: vi.fn((value: unknown) => ({ op: "asc", value })),
@@ -102,77 +174,8 @@ vi.mock("drizzle-orm", () => ({
 }));
 
 vi.mock("@workspace/db", () => ({
-  db: {
-    select: vi.fn((shape?: any) => ({
-      from: (table: unknown) => ({
-        where: (expr: any) => ({
-          orderBy: () => ({
-            limit: (limit: number) => ({
-              offset: (offset: number) => Promise.resolve(rowsFor(table).filter(row => matches(row, expr)).slice(offset, offset + limit).map(row => project(row, shape))),
-            }),
-          }),
-          limit: (limit: number) => Promise.resolve(rowsFor(table).filter(row => matches(row, expr)).slice(0, limit).map(row => project(row, shape))),
-          then: (resolve: (value: any[]) => void) => resolve(rowsFor(table).filter(row => matches(row, expr)).map(row => project(row, shape))),
-        }),
-        innerJoin: (_joinTable: unknown) => ({
-          where: (expr: any) => {
-            const joined = state.scopes
-              .map(scope => {
-                const source = state.sources.find(s => s.id === scope.knowledgeSourceId);
-                return source ? { ...source, ...scope, sourceId: source.id } : null;
-              })
-              .filter(Boolean);
-            return Promise.resolve(joined.filter(row => matches(row, expr)).map(row => project(row, shape)));
-          },
-        }),
-      }),
-    })),
-    insert: vi.fn((table: unknown) => ({
-      values: (value: any) => ({
-        returning: () => {
-          if (table === tables.participantsTable) {
-            const duplicate = value.externalParticipantId && state.participants.some(row =>
-              row.organizationId === value.organizationId &&
-              row.externalParticipantId === value.externalParticipantId &&
-              row.deletedAt == null,
-            );
-            if (duplicate) {
-              const error = Object.assign(new Error("duplicate"), { code: "23505" });
-              return Promise.reject(error);
-            }
-            const row = { ...value, createdAt: new Date(), deletedAt: null };
-            state.participants.push(row);
-            return Promise.resolve([row]);
-          }
-          if (table === tables.knowledgeSourceScopesTable) {
-            const row = { ...value, createdAt: new Date(), updatedAt: new Date() };
-            state.scopes.push(row);
-            return Promise.resolve([row]);
-          }
-          return Promise.resolve([value]);
-        },
-      }),
-    })),
-    update: vi.fn((table: unknown) => ({
-      set: (patch: any) => ({
-        where: (expr: any) => ({
-          returning: () => {
-            const rows = rowsFor(table).filter(row => matches(row, expr));
-            rows.forEach(row => Object.assign(row, patch));
-            return Promise.resolve(rows);
-          },
-        }),
-      }),
-    })),
-    delete: vi.fn((table: unknown) => ({
-      where: (expr: any) => {
-        if (table === tables.knowledgeSourceScopesTable) {
-          state.scopes = state.scopes.filter(row => !matches(row, expr));
-        }
-        return Promise.resolve();
-      },
-    })),
-  },
+  db: mockDb,
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   KNOWLEDGE_SCOPE_TYPES: ["organisation", "workforce", "specialist", "department", "location", "task_type", "entity"],
   KNOWLEDGE_SOURCE_STATUSES: ["uploaded", "processing", "review_required", "approved", "revoked", "superseded", "archived", "failed"],
   KNOWLEDGE_SOURCE_TYPES: ["policy", "procedure", "participant_document"],
