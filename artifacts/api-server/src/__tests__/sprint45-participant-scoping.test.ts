@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -19,6 +21,8 @@ const state = vi.hoisted(() => ({
   sources: [] as Array<Record<string, unknown>>,
   scopes: [] as Array<Record<string, unknown>>,
 }));
+
+const webRoot = resolve(__dirname, "../../../needsops-web/src");
 
 const tables = vi.hoisted(() => ({
   knowledgeChunksTable: { id: "kc.id" },
@@ -399,6 +403,17 @@ describe("participant-scoped knowledge retrieval", () => {
     expect(result.status).toBe("not_applicable");
     expect(result.subjectParticipantIds).toEqual([]);
     expect(result.candidates).toEqual([]);
+  });
+
+  it("d11. library upload does not assign organisation scopes to participant documents", () => {
+    const src = readFileSync(resolve(webRoot, "pages/app/OrgLibraryPage.tsx"), "utf8");
+
+    expect(src).toContain('upload.category === "participant_document" || upload.scope.length > 0');
+    expect(src).toContain('const isParticipantDocumentUpload = upload.category === "participant_document"');
+    expect(src).toContain('const [scopeType, scopeId] = isParticipantDocumentUpload ? [] : upload.scope.split(":")');
+    expect(src).toContain("if (!isParticipantDocumentUpload && scopeType && scopeId)");
+    expect(src).toContain("Participant link required");
+    expect(src).not.toContain(").catch(() => {}); // Non-fatal if scope assignment fails");
   });
 
   it("e. an entity scope pointing at a participant in another org is rejected at assignment", async () => {

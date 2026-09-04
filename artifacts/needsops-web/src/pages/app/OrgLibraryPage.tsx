@@ -333,7 +333,7 @@ export default function OrgLibraryPage() {
     1: !!upload.file,
     2: upload.title.trim().length > 0,
     3: upload.category.length > 0,
-    4: upload.scope.length > 0,
+    4: upload.category === "participant_document" || upload.scope.length > 0,
     5: true,
     6: true,
   };
@@ -386,7 +386,8 @@ export default function OrgLibraryPage() {
       }
 
       // Step 3 — confirm with metadata
-      const [scopeType, scopeId] = upload.scope.split(":");
+      const isParticipantDocumentUpload = upload.category === "participant_document";
+      const [scopeType, scopeId] = isParticipantDocumentUpload ? [] : upload.scope.split(":");
       const completeRes = await authFetch(
         `/v1/organisations/${slug}/knowledge/sources/${sourceId}/complete-upload`,
         {
@@ -417,15 +418,19 @@ export default function OrgLibraryPage() {
       const { source: newSource } = await completeRes.json();
 
       // Step 4 — assign scope
-      if (scopeType && scopeId) {
-        await authFetch(
+      if (!isParticipantDocumentUpload && scopeType && scopeId) {
+        const scopeRes = await authFetch(
           `/v1/organisations/${slug}/knowledge/sources/${newSource.id}/scopes`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ scopeType, scopeId }),
           },
-        ).catch(() => {}); // Non-fatal if scope assignment fails
+        );
+        if (!scopeRes.ok) {
+          const err = await scopeRes.json().catch(() => ({}));
+          throw new Error(err?.error?.message ?? "Scope assignment failed");
+        }
       }
 
       queryClient.invalidateQueries({ queryKey: ["library-sources", slug] });
@@ -762,7 +767,11 @@ export default function OrgLibraryPage() {
                     {DOCUMENT_CATEGORIES.map(cat => (
                       <button
                         key={cat.value}
-                        onClick={() => setUpload(p => ({ ...p, category: cat.value }))}
+                        onClick={() => setUpload(p => ({
+                          ...p,
+                          category: cat.value,
+                          scope: cat.value === "participant_document" ? "" : p.scope || INITIAL_UPLOAD.scope,
+                        }))}
                         className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
                           upload.category === cat.value
                             ? "border-indigo-500 bg-indigo-50 text-indigo-700 font-medium"
@@ -784,20 +793,26 @@ export default function OrgLibraryPage() {
                   <p className="text-xs text-slate-400 mb-3">
                     You can assign to specific specialists later from the document detail page.
                   </p>
-                  <div className="space-y-2">
-                    {SCOPE_OPTIONS.map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => setUpload(p => ({ ...p, scope: opt.value }))}
-                        className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-colors ${
-                          upload.scope === opt.value
-                            ? "border-indigo-500 bg-indigo-50 text-indigo-700"
-                            : "border-slate-200 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30"
-                        }`}>
-                        <p className="font-medium">{opt.label}</p>
-                      </button>
-                    ))}
-                  </div>
+                  {upload.category === "participant_document" ? (
+                    <div className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700">
+                      <p className="font-medium">Participant link required</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {SCOPE_OPTIONS.map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setUpload(p => ({ ...p, scope: opt.value }))}
+                          className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-colors ${
+                            upload.scope === opt.value
+                              ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30"
+                          }`}>
+                          <p className="font-medium">{opt.label}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -861,7 +876,9 @@ export default function OrgLibraryPage() {
                     <div className="flex justify-between">
                       <span className="text-slate-500">Scope</span>
                       <span className="text-slate-900 font-medium">
-                        {SCOPE_OPTIONS.find(o => o.value === upload.scope)?.label?.split(" — ")[0] ?? upload.scope}
+                        {upload.category === "participant_document"
+                          ? "Participant link required"
+                          : SCOPE_OPTIONS.find(o => o.value === upload.scope)?.label?.split(" — ")[0] ?? upload.scope}
                       </span>
                     </div>
                     <div className="flex justify-between">
