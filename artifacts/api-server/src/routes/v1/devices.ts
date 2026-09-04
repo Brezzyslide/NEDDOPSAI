@@ -17,7 +17,7 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import { requirePermission } from "../../middlewares/requirePermission.js";
 import * as deviceService from "../../services/deviceService.js";
 import * as auditService from "../../services/auditService.js";
-import { db, devicesTable, membershipsTable } from "@workspace/db";
+import { db, devicesTable, withTenantContext } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
@@ -54,16 +54,19 @@ router.post(
       const { reason } = req.body as { reason?: string };
 
       // Check: members can only revoke their own device; admins/owners can revoke any
-      const [device] = await db
-        .select()
-        .from(devicesTable)
-        .where(
-          and(
-            eq(devicesTable.id, deviceId),
-            eq(devicesTable.organizationId, ctx.tenantId),
-          ),
-        )
-        .limit(1);
+      const [device] = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "device.revoke.lookup" },
+        (tx) => tx
+          .select()
+          .from(devicesTable)
+          .where(
+            and(
+              eq(devicesTable.id, deviceId),
+              eq(devicesTable.organizationId, ctx.tenantId),
+            ),
+          )
+          .limit(1),
+      );
 
       if (!device) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Device not found." } });
@@ -103,16 +106,19 @@ router.patch(
         return;
       }
 
-      const [device] = await db
-        .select()
-        .from(devicesTable)
-        .where(
-          and(
-            eq(devicesTable.id, deviceId),
-            eq(devicesTable.organizationId, ctx.tenantId),
-          ),
-        )
-        .limit(1);
+      const [device] = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "device.rename.lookup" },
+        (tx) => tx
+          .select()
+          .from(devicesTable)
+          .where(
+            and(
+              eq(devicesTable.id, deviceId),
+              eq(devicesTable.organizationId, ctx.tenantId),
+            ),
+          )
+          .limit(1),
+      );
 
       if (!device) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Device not found." } });
@@ -125,10 +131,18 @@ router.patch(
         return;
       }
 
-      await db
-        .update(devicesTable)
-        .set({ displayName: displayName.trim(), updatedAt: new Date() })
-        .where(eq(devicesTable.id, deviceId));
+      await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "device.rename" },
+        (tx) => tx
+          .update(devicesTable)
+          .set({ displayName: displayName.trim(), updatedAt: new Date() })
+          .where(
+            and(
+              eq(devicesTable.id, deviceId),
+              eq(devicesTable.organizationId, ctx.tenantId),
+            ),
+          ),
+      );
 
       res.json({ ok: true, displayName: displayName.trim() });
     } catch (err) {
