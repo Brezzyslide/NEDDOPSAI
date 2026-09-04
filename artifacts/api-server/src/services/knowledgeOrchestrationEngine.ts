@@ -37,7 +37,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { withSystemTenantContext } from "@workspace/db";
 import { retrievalAuditEventsTable } from "@workspace/db";
 
 import type {
@@ -536,7 +536,9 @@ async function writeRetrievalAudit(params: {
 
     const id = randomUUID();
 
-    await db.insert(retrievalAuditEventsTable).values({
+    await withSystemTenantContext(
+      { tenantId: organisationId, serviceIdentity: "knowledge_orchestration_engine", purpose: "knowledge_orchestration.audit.write" },
+      (client) => client.insert(retrievalAuditEventsTable).values({
       id,
       organizationId:       organisationId,
       specialistId,
@@ -554,7 +556,8 @@ async function writeRetrievalAudit(params: {
       conflictCount:        conflicts.length,
       tokenCount:           tokenBudgetUsed,
       retrievalDurationMs,
-    });
+      }),
+    );
 
     return id;
   } catch (err) {

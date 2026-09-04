@@ -25,7 +25,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { withSystemTenantContext } from "@workspace/db";
 import { knowledgeChunksTable, knowledgeSourcesTable, knowledgeSourceVersionsTable, retrievalAuditEventsTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 
@@ -376,26 +376,29 @@ async function retrieveTaskUploadChunks(
 ): Promise<TaskUploadChunkRow[]> {
   if (sourceIds.length === 0) return [];
 
-  return db
-    .select({
-      id:               knowledgeChunksTable.id,
-      knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId,
-      sourceVersionId:  knowledgeChunksTable.sourceVersionId,
-      chunkIndex:       knowledgeChunksTable.chunkIndex,
-      sectionTitle:     knowledgeChunksTable.sectionTitle,
-      pageNumber:       knowledgeChunksTable.pageNumber,
-      text:             knowledgeChunksTable.text,
-      tokenCount:       knowledgeChunksTable.tokenCount,
-    })
-    .from(knowledgeChunksTable)
-    .where(
-      and(
-        eq(knowledgeChunksTable.organizationId, organisationId),
-        inArray(knowledgeChunksTable.knowledgeSourceId, sourceIds),
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "knowledge_resolution_service", purpose: "krs.task_upload_chunks" },
+    (client) => client
+      .select({
+        id:               knowledgeChunksTable.id,
+        knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId,
+        sourceVersionId:  knowledgeChunksTable.sourceVersionId,
+        chunkIndex:       knowledgeChunksTable.chunkIndex,
+        sectionTitle:     knowledgeChunksTable.sectionTitle,
+        pageNumber:       knowledgeChunksTable.pageNumber,
+        text:             knowledgeChunksTable.text,
+        tokenCount:       knowledgeChunksTable.tokenCount,
+      })
+      .from(knowledgeChunksTable)
+      .where(
+        and(
+          eq(knowledgeChunksTable.organizationId, organisationId),
+          inArray(knowledgeChunksTable.knowledgeSourceId, sourceIds),
+        )
       )
-    )
-    .orderBy(knowledgeChunksTable.chunkIndex)
-    .limit(limit);
+      .orderBy(knowledgeChunksTable.chunkIndex)
+      .limit(limit),
+  );
 }
 
 // ─── Version label lookup ─────────────────────────────────────────────────────
@@ -406,19 +409,22 @@ async function getVersionLabels(
 ): Promise<Map<string, string>> {
   if (sourceVersionIds.length === 0) return new Map();
 
-  const rows = await db
-    .select({
-      id:           knowledgeSourceVersionsTable.id,
-      versionLabel: knowledgeSourceVersionsTable.versionLabel,
-    })
-    .from(knowledgeSourceVersionsTable)
-    .where(
-      and(
-        inArray(knowledgeSourceVersionsTable.id, sourceVersionIds),
-        eq(knowledgeSourceVersionsTable.organizationId, organisationId),
+  const rows = await withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "knowledge_resolution_service", purpose: "krs.version_labels" },
+    (client) => client
+      .select({
+        id:           knowledgeSourceVersionsTable.id,
+        versionLabel: knowledgeSourceVersionsTable.versionLabel,
+      })
+      .from(knowledgeSourceVersionsTable)
+      .where(
+        and(
+          inArray(knowledgeSourceVersionsTable.id, sourceVersionIds),
+          eq(knowledgeSourceVersionsTable.organizationId, organisationId),
+        )
       )
-    )
-    .limit(500); // safety cap; batch of version IDs is always bounded by MAX_LIBRARY_CHUNKS
+      .limit(500), // safety cap; batch of version IDs is always bounded by MAX_LIBRARY_CHUNKS
+  );
 
   return new Map(rows.map(r => [r.id, r.versionLabel]));
 }
@@ -431,19 +437,22 @@ async function getSourceTypes(
 ): Promise<Map<string, string>> {
   if (sourceIds.length === 0) return new Map();
 
-  const rows = await db
-    .select({
-      id:         knowledgeSourcesTable.id,
-      sourceType: knowledgeSourcesTable.sourceType,
-    })
-    .from(knowledgeSourcesTable)
-    .where(
-      and(
-        inArray(knowledgeSourcesTable.id, sourceIds),
-        eq(knowledgeSourcesTable.organizationId, organisationId),
+  const rows = await withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "knowledge_resolution_service", purpose: "krs.source_types" },
+    (client) => client
+      .select({
+        id:         knowledgeSourcesTable.id,
+        sourceType: knowledgeSourcesTable.sourceType,
+      })
+      .from(knowledgeSourcesTable)
+      .where(
+        and(
+          inArray(knowledgeSourcesTable.id, sourceIds),
+          eq(knowledgeSourcesTable.organizationId, organisationId),
+        )
       )
-    )
-    .limit(200); // safety cap; source IDs are always bounded by MAX_LIBRARY_CHUNKS
+      .limit(200), // safety cap; source IDs are always bounded by MAX_LIBRARY_CHUNKS
+  );
 
   return new Map(rows.map(r => [r.id, r.sourceType]));
 }
@@ -828,7 +837,9 @@ async function writeKrsRetrievalAudit(
   const topScore  = scores.length > 0 ? Math.max(...scores)                                 : 0;
   const meanScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length  : 0;
 
-  await db.insert(retrievalAuditEventsTable).values({
+  await withSystemTenantContext(
+    { tenantId: pack.organisationId, serviceIdentity: "knowledge_resolution_service", purpose: "krs.retrieval_audit.write" },
+    (client) => client.insert(retrievalAuditEventsTable).values({
     id,
     organizationId:      pack.organisationId,
     specialistId:        specialistCode,
@@ -846,7 +857,8 @@ async function writeKrsRetrievalAudit(
     conflictCount:       0,
     tokenCount:          0, // EvidenceChunk interface does not expose tokenCount
     retrievalDurationMs: pack.retrievalMetrics.retrievalMs,
-  });
+    }),
+  );
 }
 
 // ─── Cache invalidation ───────────────────────────────────────────────────────

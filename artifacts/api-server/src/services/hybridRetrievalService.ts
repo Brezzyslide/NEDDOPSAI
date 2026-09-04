@@ -16,7 +16,7 @@
  * SUPERSEDED: Only current source versions can be returned for active retrieval.
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import type { SensitivityLevel, AuthorityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
 
@@ -208,7 +208,10 @@ export async function retrieveChunks(params: ChunkRetrievalParams): Promise<RawC
   `;
 
   try {
-    const result = await db.execute(sql.raw(rawSql));
+    const result = await withSystemTenantContext(
+      { tenantId: organisationId, serviceIdentity: "hybrid_retrieval_service", purpose: "knowledge.retrieve_chunks" },
+      (client) => client.execute(sql.raw(rawSql)),
+    );
     return (result.rows as RawChunk[]).map(row => ({
       ...row,
       semanticScore: Number(row.semanticScore ?? 0),
