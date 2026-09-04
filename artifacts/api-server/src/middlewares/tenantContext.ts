@@ -20,19 +20,31 @@ import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import {
   usersTable,
-  organizationsTable,
-  membershipsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   MembershipRequired,
-  MembershipSuspended,
-  TenantInactive,
   TenantNotFound,
   AuthenticationRequired,
 } from "../lib/errors.js";
 import { ROLE_PERMISSIONS } from "@workspace/permissions";
 import type { TenantContext } from "@workspace/auth";
+
+type ResolvedAuthTenantContext = {
+  user_id: string;
+  user_external_id: string;
+  user_email: string;
+  user_first_name: string | null;
+  user_last_name: string | null;
+  user_display_name: string | null;
+  user_status: "pending_verification" | "active" | "suspended" | "deactivated";
+  organization_id: string;
+  organization_slug: string;
+  organization_status: string;
+  membership_id: string;
+  membership_role: keyof typeof ROLE_PERMISSIONS;
+  membership_status: string;
+};
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
 
@@ -56,7 +68,16 @@ export async function requireAuth(
       throw new AuthenticationRequired();
     }
 
-    // Look up existing DB user
+    (req as any).authExternalUserId = externalUserId;
+
+    if (req.params.slug) {
+      next();
+      return;
+    }
+
+    // Legacy non-tenant/platform route lookup. Slugged tenant routes resolve
+    // through resolve_auth_tenant_context() so needsops_app does not need direct
+    // table access before app.current_organization_id is set.
     let [user] = await db
       .select()
       .from(usersTable)
@@ -125,52 +146,40 @@ export async function resolveTenantFromSlug(
 ): Promise<void> {
   try {
     const slug = String(req.params.slug);
-    const user = req.appUser;
+    const externalUserId =
+      ((req as any).authExternalUserId as string | undefined) ?? req.appUser?.externalId;
 
-    if (!user) throw new AuthenticationRequired();
+    if (!externalUserId) throw new AuthenticationRequired();
     if (!slug) throw new TenantNotFound();
 
-    // 1. Look up org by slug
-    const [org] = await db
-      .select()
-      .from(organizationsTable)
-      .where(eq(organizationsTable.slug, slug))
-      .limit(1);
+    const resolved = await db.execute<ResolvedAuthTenantContext>(sql`
+      SELECT *
+      FROM public.resolve_auth_tenant_context(${externalUserId}, ${slug})
+      LIMIT 1
+    `);
+    const row = resolved.rows[0];
 
-    if (!org) throw new TenantNotFound();
-
-    // 2. Check org is accessible
-    if (org.status === "closed" || org.status === "suspended") {
-      throw new TenantInactive();
-    }
-
-    // 3. Verify active membership — use org UUID (never slug) as the boundary
-    const [membership] = await db
-      .select()
-      .from(membershipsTable)
-      .where(
-        and(
-          eq(membershipsTable.organizationId, org.id),
-          eq(membershipsTable.userId, user.id),
-        ),
-      )
-      .limit(1);
-
-    if (!membership) throw new MembershipRequired();
-    if (membership.status === "suspended") throw new MembershipSuspended();
-    if (membership.status === "revoked") throw new MembershipRequired();
-    if (membership.status === "invited") throw new MembershipRequired();
+    if (!row) throw new MembershipRequired();
 
     const tenantContext: TenantContext = {
-      userId: user.id,
-      externalUserId: user.externalId,
-      tenantId: org.id,   // UUID — the real security boundary
-      tenantSlug: org.slug,
-      membershipId: membership.id,
-      role: membership.role as TenantContext["role"],
-      permissions: ROLE_PERMISSIONS[membership.role as keyof typeof ROLE_PERMISSIONS] ?? [],
+      userId: row.user_id,
+      externalUserId: row.user_external_id,
+      tenantId: row.organization_id,   // UUID — the real security boundary
+      tenantSlug: row.organization_slug,
+      membershipId: row.membership_id,
+      role: row.membership_role as TenantContext["role"],
+      permissions: ROLE_PERMISSIONS[row.membership_role] ?? [],
     };
 
+    req.appUser = {
+      id: row.user_id,
+      externalId: row.user_external_id,
+      email: row.user_email,
+      firstName: row.user_first_name,
+      lastName: row.user_last_name,
+      displayName: row.user_display_name,
+      status: row.user_status,
+    };
     req.tenantContext = tenantContext;
     next();
   } catch (err) {
@@ -178,11 +187,7 @@ export async function resolveTenantFromSlug(
       res.status(404).json({ error: { code: err.code, message: err.message } });
       return;
     }
-    if (
-      err instanceof TenantInactive ||
-      err instanceof MembershipRequired ||
-      err instanceof MembershipSuspended
-    ) {
+    if (err instanceof MembershipRequired) {
       res.status(403).json({ error: { code: err.code, message: err.message } });
       return;
     }

@@ -162,6 +162,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Normalises RLS setting names, closes permissive tenant policies, and adds missing policy coverage before restricted app-role rollout.",
   },
+  {
+    id: "0047-auth-tenant-resolver",
+    file: "0047_auth_tenant_resolver.sql",
+    transactional: true,
+    notes: "Adds narrow SECURITY DEFINER auth resolver for pre-tenant user, org slug, and membership resolution.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {
