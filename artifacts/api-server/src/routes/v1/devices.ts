@@ -237,10 +237,15 @@ router.patch("/devices/:id/tunnel-url", requireDeviceAuth, async (req, res, next
       return;
     }
 
-    await db
-      .update(devicesTable)
-      .set({ tunnelUrl, updatedAt: new Date() })
-      .where(eq(devicesTable.id, device.id));
+    await withTenantContext(
+      { tenantId: device.organizationId, userId: device.userId, purpose: "device.tunnel_url" },
+      (tx) => tx.update(devicesTable)
+        .set({ tunnelUrl, updatedAt: new Date() })
+        .where(and(
+          eq(devicesTable.organizationId, device.organizationId),
+          eq(devicesTable.id, device.id),
+        )),
+    );
 
     res.json({ ok: true });
   } catch (err) {
@@ -313,21 +318,28 @@ router.get("/devices/:id/config", requireDeviceAuth, async (req, res, next) => {
     const { orgCompanyProfileTable, agentConfigurationsTable, orgApprovalRulesDiscoveryTable } =
       await import("@workspace/db");
 
-    const [profile] = await db
-      .select()
-      .from(orgCompanyProfileTable)
-      .where(eq(orgCompanyProfileTable.organizationId, device.organizationId))
-      .limit(1);
+    const { profile, agents, approvalRules } = await withTenantContext(
+      { tenantId: device.organizationId, userId: device.userId, purpose: "device.config" },
+      async (tx) => {
+        const [profileRow] = await tx
+          .select()
+          .from(orgCompanyProfileTable)
+          .where(eq(orgCompanyProfileTable.organizationId, device.organizationId))
+          .limit(1);
 
-    const agents = await db
-      .select()
-      .from(agentConfigurationsTable)
-      .where(eq(agentConfigurationsTable.organizationId, device.organizationId));
+        const agentRows = await tx
+          .select()
+          .from(agentConfigurationsTable)
+          .where(eq(agentConfigurationsTable.organizationId, device.organizationId));
 
-    const approvalRules = await db
-      .select()
-      .from(orgApprovalRulesDiscoveryTable)
-      .where(eq(orgApprovalRulesDiscoveryTable.organizationId, device.organizationId));
+        const approvalRuleRows = await tx
+          .select()
+          .from(orgApprovalRulesDiscoveryTable)
+          .where(eq(orgApprovalRulesDiscoveryTable.organizationId, device.organizationId));
+
+        return { profile: profileRow, agents: agentRows, approvalRules: approvalRuleRows };
+      },
+    );
 
     res.json({
       organizationId: device.organizationId,
