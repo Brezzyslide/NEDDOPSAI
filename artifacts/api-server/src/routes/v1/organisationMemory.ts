@@ -29,8 +29,7 @@ import {
   type MemoryType,
   type CreateMemoryInput,
 } from "../../services/organisationMemoryService.js";
-import { db } from "@workspace/db";
-import { organisationMemoryTable } from "@workspace/db";
+import { organisationMemoryTable, withTenantContext } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
@@ -111,11 +110,13 @@ router.get(
     try {
       const ctx = req.tenantContext!;
       const { memoryId } = req.params as { memoryId: string };
-      const [row] = await db
-        .select()
-        .from(organisationMemoryTable)
-        .where(and(eq(organisationMemoryTable.organizationId, ctx.tenantId), eq(organisationMemoryTable.id, memoryId)))
-        .limit(1);
+      const [row] = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: req.appUser!.id, purpose: "organisation_memory.get" },
+        (tx) => tx.select()
+          .from(organisationMemoryTable)
+          .where(and(eq(organisationMemoryTable.organizationId, ctx.tenantId), eq(organisationMemoryTable.id, memoryId)))
+          .limit(1),
+      );
       if (!row) { res.status(404).json({ error: "Not found" }); return; }
       res.json({ memory: row });
     } catch (err) { next(err); }
@@ -156,11 +157,13 @@ router.post(
 
       // Sprint 29M.3 — Segregation of duties: block self-approval (RED-4 fix).
       // Fetch the memory record first to compare createdBy against the approver.
-      const [memRow] = await db
-        .select()
-        .from(organisationMemoryTable)
-        .where(and(eq(organisationMemoryTable.organizationId, ctx.tenantId), eq(organisationMemoryTable.id, memoryId)))
-        .limit(1);
+      const [memRow] = await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "organisation_memory.self_approval_lookup" },
+        (tx) => tx.select()
+          .from(organisationMemoryTable)
+          .where(and(eq(organisationMemoryTable.organizationId, ctx.tenantId), eq(organisationMemoryTable.id, memoryId)))
+          .limit(1),
+      );
 
       if (memRow && memRow.createdBy === user.id) {
         const isOwner = ctx.role === "owner";
