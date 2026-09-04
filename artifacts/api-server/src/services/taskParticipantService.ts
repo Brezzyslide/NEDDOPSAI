@@ -63,7 +63,8 @@ export interface TaskParticipantBinding {
   participantId: string;
 }
 
-const PARTICIPANT_SPECIFIC_TERMS = /\b(care plan|risk assessment|behaviour support plan|bsp|cbsp|intake|home safety|participant|client|resident|person)\b/i;
+const PERSON_REFERENCE_TERMS = /\b(participant|client|resident|person)\b/i;
+const EXPLICIT_TEMPLATE_TERMS = /\b(template|standard|reusable|blank)\b/i;
 const NAME_AFTER_FOR_PATTERN = /\bfor[ \t]+(?:participant[ \t]+|client[ \t]+|resident[ \t]+|person[ \t]+)?([a-z][a-z'-]*(?:[ \t]+[a-z][a-z'-]*){0,4})\b/i;
 const POSSESSIVE_PLAN_PATTERN = /\b([a-z][a-z'-]*(?:[ \t]+[a-z][a-z'-]*){0,4})['’]s[ \t]+(?:care[ \t]+plan|plan|risk[ \t]+assessment|behaviour[ \t]+support[ \t]+plan|bsp|cbsp)\b/i;
 const NAME_STOP_WORDS = new Set([
@@ -118,8 +119,22 @@ function containsName(text: string, name: string): boolean {
   return new RegExp(`(?:^|\\b)${escaped}(?:\\b|$)`, "i").test(text);
 }
 
-function isParticipantSpecificRequest(title: string, description?: string): boolean {
-  return PARTICIPANT_SPECIFIC_TERMS.test(`${title}\n${description ?? ""}`);
+function getParticipantResolutionText(input: {
+  title: string;
+  sourceUserRequest?: string;
+}): string {
+  return input.sourceUserRequest?.trim() || input.title.trim();
+}
+
+function shouldRunParticipantResolution(input: {
+  title: string;
+  sourceUserRequest?: string;
+  inferredName: string;
+}): boolean {
+  const text = getParticipantResolutionText(input);
+  if (EXPLICIT_TEMPLATE_TERMS.test(text)) return false;
+  if (input.inferredName) return true;
+  return PERSON_REFERENCE_TERMS.test(text);
 }
 
 function truncateCandidateName(value: string | undefined): string {
@@ -228,7 +243,17 @@ export async function resolveSubjectParticipantForTaskRequest(
     };
   }
 
-  if (!isParticipantSpecificRequest(input.title, input.description)) {
+  const inferredName = extractRequestedParticipantName({
+    title: input.title,
+    description: input.description,
+    sourceUserRequest: input.sourceUserRequest,
+  });
+
+  if (!shouldRunParticipantResolution({
+    title: input.title,
+    sourceUserRequest: input.sourceUserRequest,
+    inferredName,
+  })) {
     return {
       status: "not_applicable",
       subjectParticipantIds: [],
@@ -237,11 +262,6 @@ export async function resolveSubjectParticipantForTaskRequest(
     };
   }
 
-  const inferredName = extractRequestedParticipantName({
-    title: input.title,
-    description: input.description,
-    sourceUserRequest: input.sourceUserRequest,
-  });
   const [participants, staffRows] = await Promise.all([
     db
       .select({

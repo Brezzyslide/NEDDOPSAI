@@ -335,7 +335,7 @@ describe("participant-scoped knowledge retrieval", () => {
     }]);
   });
 
-  it("d8. participant-specific requests with no extracted name fail closed and still return picker candidates", async () => {
+  it("d8. explicit participant references with no extracted name fail closed and still return picker candidates", async () => {
     state.participants = [{
       id: "participant-a",
       displayName: "John Doe",
@@ -347,7 +347,7 @@ describe("participant-scoped knowledge retrieval", () => {
 
     const result = await resolveSubjectParticipantForTaskRequest({
       organizationId: "org-a",
-      title: "Complete a care plan",
+      title: "Complete a participant care plan",
     });
 
     expect(result.status).toBe("unresolved");
@@ -358,6 +358,47 @@ describe("participant-scoped knowledge retrieval", () => {
       matchType: "available_participant",
       isSuggestion: true,
     }]);
+  });
+
+  it("d9. standard reusable template wording does not trigger participant resolution", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const { resolveSubjectParticipantForTaskRequest } = await import("../services/taskParticipantService.js");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Create a standard NDIS care plan template",
+      sourceUserRequest: "Create a standard NDIS care plan template",
+    });
+
+    expect(result.status).toBe("not_applicable");
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toEqual([]);
+  });
+
+  it("d10. care plan alone names a deliverable and does not trigger the participant picker", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const { resolveSubjectParticipantForTaskRequest } = await import("../services/taskParticipantService.js");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Care plan",
+    });
+
+    expect(result.status).toBe("not_applicable");
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toEqual([]);
   });
 
   it("e. an entity scope pointing at a participant in another org is rejected at assignment", async () => {
