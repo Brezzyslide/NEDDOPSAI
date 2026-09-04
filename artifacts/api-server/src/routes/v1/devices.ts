@@ -17,7 +17,7 @@ import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantCont
 import { requirePermission } from "../../middlewares/requirePermission.js";
 import * as deviceService from "../../services/deviceService.js";
 import * as auditService from "../../services/auditService.js";
-import { db, devicesTable, withTenantContext } from "@workspace/db";
+import { devicesTable, withTenantContext } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
