@@ -47,9 +47,14 @@ import {
   getKnowledgeSource,
   getCurrentVersion,
 } from "../../services/knowledgeSourceService.js";
-import { db } from "@workspace/db";
-import { knowledgeChunksTable, knowledgeSourcesTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import {
+  ingestionJobsTable,
+  knowledgeChunksTable,
+  knowledgeSourcesTable,
+  knowledgeSourceVersionsTable,
+  withTenantContext,
+} from "@workspace/db";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { logOrgEvent } from "../../services/auditService.js";
 
 const router = Router({ mergeParams: true });
@@ -223,36 +228,38 @@ router.post(
       // The idempotency guard in enqueueIngestionJob checks for active jobs, so
       // we must NOT route through that path for dead_lettered (it would skip).
       if (existingJob.status === "dead_lettered") {
-        const { db: _db } = await import("@workspace/db");
-        const { ingestionJobsTable: _t, knowledgeSourceVersionsTable: _v } = await import("@workspace/db");
-        const { sql: _sql, eq: _eq, and: _and } = await import("drizzle-orm");
+        await withTenantContext(
+          { tenantId: orgId, userId, purpose: "ingestion.retry_dead_lettered" },
+          async (tx) => {
+            // Reset job to queued with cleared error + incremented max_attempts to allow another try
+            await tx.update(ingestionJobsTable)
+              .set({
+                status: "queued",
+                lastErrorCode: null,
+                lastErrorMessage: null,
+                deadLetteredAt: null,
+                nextAttemptAt: new Date(),
+                claimedBy: null,
+                leaseExpiresAt: null,
+                maxAttempts: sql`${ingestionJobsTable.attemptCount} + 3`,
+                metadata: sql`COALESCE(${ingestionJobsTable.metadata}, '{}'::jsonb) || '{"manualRetry": true}'::jsonb`,
+                updatedAt: new Date(),
+              } as never)
+              .where(and(
+                eq(ingestionJobsTable.id, jobId),
+                eq(ingestionJobsTable.organizationId, orgId),
+                eq(ingestionJobsTable.status, "dead_lettered"),
+              ));
 
-        // Reset job to queued with cleared error + incremented max_attempts to allow another try
-        await _db.execute(_sql`
-          UPDATE ingestion_jobs
-          SET
-            status              = 'queued',
-            last_error_code     = NULL,
-            last_error_message  = NULL,
-            dead_lettered_at    = NULL,
-            next_attempt_at     = NOW(),
-            claimed_by          = NULL,
-            lease_expires_at    = NULL,
-            max_attempts        = attempt_count + 3,
-            metadata            = COALESCE(metadata, '{}'::jsonb) || '{"manualRetry": true}'::jsonb,
-            updated_at          = NOW()
-          WHERE id               = ${jobId}
-            AND organization_id  = ${orgId}
-            AND status           = 'dead_lettered'
-        `);
-
-        // Reset version ingestion status so UI shows pending
-        await _db.execute(_sql`
-          UPDATE knowledge_source_versions
-          SET ingestion_status = 'pending', updated_at = NOW()
-          WHERE id             = ${existingJob.sourceVersionId}
-            AND organization_id = ${orgId}
-        `);
+            // Reset version ingestion status so UI shows pending
+            await tx.update(knowledgeSourceVersionsTable)
+              .set({ ingestionStatus: "pending", updatedAt: new Date() } as never)
+              .where(and(
+                eq(knowledgeSourceVersionsTable.id, existingJob.sourceVersionId),
+                eq(knowledgeSourceVersionsTable.organizationId, orgId),
+              ));
+          },
+        );
 
         logOrgEvent({
           eventType: "ingestion_job.retried",
@@ -304,8 +311,9 @@ router.get(
       const source = await getKnowledgeSource(sourceId, orgId);
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Source not found.", 404);
 
-      const chunks = await db
-        .select({
+      const chunks = await withTenantContext(
+        { tenantId: orgId, userId: req.appUser!.id, purpose: "ingestion.preview_chunks" },
+        (tx) => tx.select({
           id:             knowledgeChunksTable.id,
           chunkIndex:     knowledgeChunksTable.chunkIndex,
           sectionTitle:   knowledgeChunksTable.sectionTitle,
@@ -317,17 +325,18 @@ router.get(
           chunkingStrategy: knowledgeChunksTable.chunkingStrategy,
           hasEmbedding:   knowledgeChunksTable.embeddingModel,
         })
-        .from(knowledgeChunksTable)
-        .where(
-          and(
-            eq(knowledgeChunksTable.knowledgeSourceId, sourceId),
-            eq(knowledgeChunksTable.organizationId, orgId),
-            isNull(knowledgeChunksTable.deletedAt),
-          ),
-        )
-        .orderBy(knowledgeChunksTable.chunkIndex)
-        .limit(limit)
-        .offset(offset);
+          .from(knowledgeChunksTable)
+          .where(
+            and(
+              eq(knowledgeChunksTable.knowledgeSourceId, sourceId),
+              eq(knowledgeChunksTable.organizationId, orgId),
+              isNull(knowledgeChunksTable.deletedAt),
+            ),
+          )
+          .orderBy(knowledgeChunksTable.chunkIndex)
+          .limit(limit)
+          .offset(offset),
+      );
 
       res.json({ chunks, total: chunks.length });
     } catch (err) {
@@ -422,20 +431,22 @@ router.post(
       }
 
       // Approve the source
-      await db
-        .update(knowledgeSourcesTable)
-        .set({
-          status: "approved",
-          approvedByUserId: userId,
-          approvedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(knowledgeSourcesTable.id, sourceId),
-            eq(knowledgeSourcesTable.organizationId, orgId),
+      await withTenantContext(
+        { tenantId: orgId, userId, purpose: "ingestion.approve_source" },
+        (tx) => tx.update(knowledgeSourcesTable)
+          .set({
+            status: "approved",
+            approvedByUserId: userId,
+            approvedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(knowledgeSourcesTable.id, sourceId),
+              eq(knowledgeSourcesTable.organizationId, orgId),
+            ),
           ),
-        );
+      );
 
       logOrgEvent({
         eventType: "knowledge_hub.ingestion_approved",
@@ -478,27 +489,30 @@ router.post(
       if (!source) throw new ApiError("KNOWLEDGE_SOURCE_NOT_FOUND", "Source not found.", 404);
 
       // Soft-delete chunks
-      await db
-        .update(knowledgeChunksTable)
-        .set({ deletedAt: new Date() })
-        .where(
-          and(
-            eq(knowledgeChunksTable.knowledgeSourceId, sourceId),
-            eq(knowledgeChunksTable.organizationId, orgId),
-            isNull(knowledgeChunksTable.deletedAt),
-          ),
-        );
+      await withTenantContext(
+        { tenantId: orgId, userId, purpose: "ingestion.reject_source" },
+        async (tx) => {
+          await tx.update(knowledgeChunksTable)
+            .set({ deletedAt: new Date() })
+            .where(
+              and(
+                eq(knowledgeChunksTable.knowledgeSourceId, sourceId),
+                eq(knowledgeChunksTable.organizationId, orgId),
+                isNull(knowledgeChunksTable.deletedAt),
+              ),
+            );
 
-      // Reset source to uploaded
-      await db
-        .update(knowledgeSourcesTable)
-        .set({ status: "uploaded", updatedAt: new Date() })
-        .where(
-          and(
-            eq(knowledgeSourcesTable.id, sourceId),
-            eq(knowledgeSourcesTable.organizationId, orgId),
-          ),
-        );
+          // Reset source to uploaded
+          await tx.update(knowledgeSourcesTable)
+            .set({ status: "uploaded", updatedAt: new Date() })
+            .where(
+              and(
+                eq(knowledgeSourcesTable.id, sourceId),
+                eq(knowledgeSourcesTable.organizationId, orgId),
+              ),
+            );
+        },
+      );
 
       logOrgEvent({
         eventType: "knowledge_hub.ingestion_rejected",
