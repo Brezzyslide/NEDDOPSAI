@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const EXPECTED_TEST_FILE_COUNT = 256;
 
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg, index) => !(arg === "--" && index <= 1));
 
 if (args.length < 2 && args[0] !== "--run-current") {
   console.error([
