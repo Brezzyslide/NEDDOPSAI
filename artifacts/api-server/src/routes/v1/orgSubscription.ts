@@ -14,7 +14,7 @@
 
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
-import { db, tenantSubscriptionsTable, plansTable, planVersionsTable, planFeaturesTable, planWorkforcePacksTable, tenantEntitlementsTable, tenantWorkforcePacksTable } from "@workspace/db";
+import { tenantSubscriptionsTable, plansTable, planVersionsTable, planFeaturesTable, planWorkforcePacksTable, tenantEntitlementsTable, tenantWorkforcePacksTable, withTenantContext } from "@workspace/db";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import {
   tenantCanUseFeature,
@@ -37,21 +37,30 @@ const router = Router({ mergeParams: true });
 router.get("/subscription", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
     const orgId = req.tenantContext!.tenantId;
+    const userId = req.appUser!.id;
     const now = new Date();
 
-    const [sub] = await db
-      .select()
-      .from(tenantSubscriptionsTable)
-      .where(eq(tenantSubscriptionsTable.organizationId, orgId))
-      .limit(1);
+    const [sub] = await withTenantContext(
+      { tenantId: orgId, userId, purpose: "org_subscription.get_subscription" },
+      (tx) => tx.select()
+        .from(tenantSubscriptionsTable)
+        .where(eq(tenantSubscriptionsTable.organizationId, orgId))
+        .limit(1),
+    );
 
     if (!sub) {
       res.json({ subscription: null, message: "No subscription found. Contact support to activate." });
       return;
     }
 
-    const [plan] = await db.select().from(plansTable).where(eq(plansTable.id, sub.planId)).limit(1);
-    const [version] = await db.select().from(planVersionsTable).where(eq(planVersionsTable.id, sub.planVersionId)).limit(1);
+    const [plan, version] = await withTenantContext(
+      { tenantId: orgId, userId, purpose: "org_subscription.get_plan" },
+      async (tx) => {
+        const [planRow] = await tx.select().from(plansTable).where(eq(plansTable.id, sub.planId)).limit(1);
+        const [versionRow] = await tx.select().from(planVersionsTable).where(eq(planVersionsTable.id, sub.planVersionId)).limit(1);
+        return [planRow, versionRow] as const;
+      },
+    );
 
     const isTrialExpired = sub.status === "trial" && sub.trialEndAt && sub.trialEndAt < now;
     const daysUntilTrialEnd = sub.trialEndAt
@@ -75,40 +84,48 @@ router.get("/subscription", requireAuth, resolveTenantFromSlug, async (req, res,
 router.get("/entitlements", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
   try {
     const orgId = req.tenantContext!.tenantId;
+    const userId = req.appUser!.id;
     const now = new Date();
 
-    const [sub] = await db
-      .select()
-      .from(tenantSubscriptionsTable)
-      .where(eq(tenantSubscriptionsTable.organizationId, orgId))
-      .limit(1);
+    const [sub] = await withTenantContext(
+      { tenantId: orgId, userId, purpose: "org_subscription.get_entitlements_subscription" },
+      (tx) => tx.select()
+        .from(tenantSubscriptionsTable)
+        .where(eq(tenantSubscriptionsTable.organizationId, orgId))
+        .limit(1),
+    );
 
     if (!sub) {
       res.json({ entitlements: [], subscription: null });
       return;
     }
 
-    const [planFeatures, planPacks, overrides] = await Promise.all([
-      db.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, sub.planVersionId)),
-      db.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, sub.planVersionId)),
-      db.select().from(tenantEntitlementsTable).where(
-        and(
-          eq(tenantEntitlementsTable.organizationId, orgId),
-          eq(tenantEntitlementsTable.isCustomerVisible, true),
-          gt(tenantEntitlementsTable.expiresAt, now),
+    const [planFeatures, planPacks, overrides] = await withTenantContext(
+      { tenantId: orgId, userId, purpose: "org_subscription.get_entitlements" },
+      async (tx) => Promise.all([
+        tx.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, sub.planVersionId)),
+        tx.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, sub.planVersionId)),
+        tx.select().from(tenantEntitlementsTable).where(
+          and(
+            eq(tenantEntitlementsTable.organizationId, orgId),
+            eq(tenantEntitlementsTable.isCustomerVisible, true),
+            gt(tenantEntitlementsTable.expiresAt, now),
+          ),
         ),
-      ),
-    ]);
+      ]),
+    );
 
-    const activePacks = await db
-      .select()
-      .from(tenantWorkforcePacksTable)
-      .where(
-        and(
-          eq(tenantWorkforcePacksTable.organizationId, orgId),
-          isNull(tenantWorkforcePacksTable.revokedAt),
+    const activePacks = await withTenantContext(
+      { tenantId: orgId, userId, purpose: "org_subscription.get_active_packs" },
+      (tx) => tx.select()
+        .from(tenantWorkforcePacksTable)
+        .where(
+          and(
+            eq(tenantWorkforcePacksTable.organizationId, orgId),
+            isNull(tenantWorkforcePacksTable.revokedAt),
+          ),
         ),
-      );
+    );
 
     res.json({
       subscriptionStatus: sub.status,
@@ -150,15 +167,17 @@ router.get("/workforce", requireAuth, resolveTenantFromSlug, async (req, res, ne
   try {
     const orgId = req.tenantContext!.tenantId;
 
-    const activePacks = await db
-      .select()
-      .from(tenantWorkforcePacksTable)
-      .where(
-        and(
-          eq(tenantWorkforcePacksTable.organizationId, orgId),
-          isNull(tenantWorkforcePacksTable.revokedAt),
+    const activePacks = await withTenantContext(
+      { tenantId: orgId, userId: req.appUser!.id, purpose: "org_subscription.get_workforce_packs" },
+      (tx) => tx.select()
+        .from(tenantWorkforcePacksTable)
+        .where(
+          and(
+            eq(tenantWorkforcePacksTable.organizationId, orgId),
+            isNull(tenantWorkforcePacksTable.revokedAt),
+          ),
         ),
-      );
+    );
 
     const activePackCodes = new Set(activePacks.map(p => p.packCode));
 
