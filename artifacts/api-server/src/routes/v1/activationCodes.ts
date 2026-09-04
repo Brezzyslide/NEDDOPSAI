@@ -17,7 +17,7 @@ import { requirePermission } from "../../middlewares/requirePermission.js";
 import * as activationCodeService from "../../services/activationCodeService.js";
 import * as deviceService from "../../services/deviceService.js";
 import * as auditService from "../../services/auditService.js";
-import { deviceActivationTokensTable, withTenantContext } from "@workspace/db";
+import { deviceActivationTokensTable, withSystemTenantContext, withTenantContext } from "@workspace/db";
 import { and, eq, isNull } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
@@ -169,13 +169,20 @@ router.post("/activation-codes/redeem", async (req, res, next) => {
     }
 
     // Find the user who created the token (to associate with the device)
-    const { db, deviceActivationTokensTable } = await import("@workspace/db");
-    const { eq } = await import("drizzle-orm");
-    const [token] = await db
-      .select()
-      .from(deviceActivationTokensTable)
-      .where(eq(deviceActivationTokensTable.id, redeemResult.tokenId))
-      .limit(1);
+    const [token] = await withSystemTenantContext(
+      {
+        tenantId: redeemResult.organizationId,
+        serviceIdentity: "activation-code-redemption",
+        purpose: "activation_code.redeem_token_lookup",
+      },
+      (tx) => tx.select()
+        .from(deviceActivationTokensTable)
+        .where(and(
+          eq(deviceActivationTokensTable.organizationId, redeemResult.organizationId),
+          eq(deviceActivationTokensTable.id, redeemResult.tokenId),
+        ))
+        .limit(1),
+    );
 
     const registrationUserId = token?.createdByUserId ?? "system";
 
