@@ -18,12 +18,10 @@ import { listCompletedWork, getCompletedWork } from "../../services/completedWor
 import { listCompletedWorkGeneratedArtifacts } from "../../services/completedWorkArtifactService.js";
 import * as auditService from "../../services/auditService.js";
 import { handleIncomingMessage } from "../../services/messageIngressService.js";
-import { db } from "@workspace/db";
 import {
   approvalsTable,
-  taskExecutionPlansTable,
-  conversationMessagesTable,
   workArtifactsTable,
+  withTenantContext,
 } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import type { TaskState } from "@workspace/shared";
@@ -54,13 +52,15 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
     if (typeof executionCompletion?.completedWorkId === "string") completedWorkIds.add(executionCompletion.completedWorkId);
     if (typeof approvalGate?.completedWorkId === "string") completedWorkIds.add(approvalGate.completedWorkId);
 
-    const artifactLinks = await db
-      .select({ completedWorkId: workArtifactsTable.completedWorkId })
-      .from(workArtifactsTable)
-      .where(and(
-        eq(workArtifactsTable.organizationId, ctx.tenantId),
-        eq(workArtifactsTable.taskId, taskId),
-      ));
+    const artifactLinks = await withTenantContext(
+      { tenantId: ctx.tenantId, userId: user.id, purpose: "task_workroom.artifact_links" },
+      (tx) => tx.select({ completedWorkId: workArtifactsTable.completedWorkId })
+        .from(workArtifactsTable)
+        .where(and(
+          eq(workArtifactsTable.organizationId, ctx.tenantId),
+          eq(workArtifactsTable.taskId, taskId),
+        )),
+    );
     for (const link of artifactLinks) {
       if (link.completedWorkId) completedWorkIds.add(link.completedWorkId);
     }
@@ -82,11 +82,13 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
     );
 
     // Pending approval
-    const [approval] = await db
-      .select()
-      .from(approvalsTable)
-      .where(and(eq(approvalsTable.organizationId, ctx.tenantId), eq(approvalsTable.taskId, taskId), eq(approvalsTable.state, "pending")))
-      .limit(1);
+    const [approval] = await withTenantContext(
+      { tenantId: ctx.tenantId, userId: user.id, purpose: "task_workroom.pending_approval" },
+      (tx) => tx.select()
+        .from(approvalsTable)
+        .where(and(eq(approvalsTable.organizationId, ctx.tenantId), eq(approvalsTable.taskId, taskId), eq(approvalsTable.state, "pending")))
+        .limit(1),
+    );
 
     res.json({
       task,
@@ -366,15 +368,17 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
           return;
         }
         {
-          const [pendingApproval] = await db
-            .select({ id: approvalsTable.id })
-            .from(approvalsTable)
-            .where(and(
-              eq(approvalsTable.organizationId, ctx.tenantId),
-              eq(approvalsTable.taskId, taskId),
-              eq(approvalsTable.state, "pending"),
-            ))
-            .limit(1);
+          const [pendingApproval] = await withTenantContext(
+            { tenantId: ctx.tenantId, userId: user.id, purpose: "task_workroom.approve_plan_pending_approval" },
+            (tx) => tx.select({ id: approvalsTable.id })
+              .from(approvalsTable)
+              .where(and(
+                eq(approvalsTable.organizationId, ctx.tenantId),
+                eq(approvalsTable.taskId, taskId),
+                eq(approvalsTable.state, "pending"),
+              ))
+              .limit(1),
+          );
           if (pendingApproval) {
             res.status(409).json({
               error: {
