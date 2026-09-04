@@ -10,7 +10,8 @@
     "db:bootstrap": "tsx src/scripts/db-bootstrap.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run src/__tests__",
-    "test:gate:compare": "node scripts/compare-vitest-deterministic-gate.mjs"
+    "test:gate:compare": "node scripts/compare-vitest-deterministic-gate.mjs --run-current",
+    "test:gate:compare:reports": "node scripts/compare-vitest-deterministic-gate.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1114.0",

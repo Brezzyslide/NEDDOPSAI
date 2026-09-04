@@ -34,21 +34,34 @@ scripts/build-api-image.sh
 
 ## Release Test Gate
 
-The release-gate test command is the deterministic API suite that does not require a
-local PostgreSQL database:
+The release gate is the deterministic API suite that does not require a local PostgreSQL
+database. The gate script must invoke Vitest itself for the release candidate so no path
+filter can accidentally narrow the run:
 
 ```sh
 cd artifacts/api-server
-PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vitest run --config vitest.config.deterministic.ts
+PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm run test:gate:compare -- /absolute/path/to/parent-report.json
 ```
 
 Pinned config:
 
 - `artifacts/api-server/vitest.config.deterministic.ts`
 
-For a release candidate, run this exact command on the release SHA and on the parent
-SHA being replaced. The gate is the name-level failed-test diff between those two runs:
-no test may fail only on the release SHA.
+The script runs this exact candidate command internally:
+
+```sh
+PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm exec vitest run --config vitest.config.deterministic.ts --reporter=json --outputFile=<script-owned-output>
+```
+
+Do not append a path filter or test-name filter to the deterministic gate command. A path
+filter can produce plausible but invalid totals by excluding whole files. The gate asserts
+the expected deterministic file count as well as test counts and fails if the report does
+not include all 256 deterministic test files.
+
+For a release candidate, generate the parent report from the SHA being replaced using the
+same pinned config and then run `pnpm run test:gate:compare -- <parent-report>`. The gate
+is the name-level failed-test diff between those two runs: no test may fail only on the
+release SHA.
 
 Do not gate releases on a fixed historical failure count. Older preflight artifacts used
 an unpinned invocation that executed additional DB/auth/work-execution branches and
