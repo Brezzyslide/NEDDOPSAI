@@ -55,6 +55,8 @@ const {
 
 vi.mock("@workspace/db", () => ({
   db: { insert: mockDbInsert, update: mockDbUpdate, select: mockDbSelect },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) =>
+    fn({ insert: mockDbInsert, update: mockDbUpdate, select: mockDbSelect })),
   knowledgeCurationJobsTable:   {},
   knowledgeSourcesTable:        {},
   knowledgeSourceVersionsTable: {},

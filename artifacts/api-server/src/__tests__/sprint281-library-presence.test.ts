@@ -68,6 +68,8 @@ vi.mock("@workspace/db", () => ({
   db: {
     select: mocks.selectFn,
   },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) =>
+    fn({ select: mocks.selectFn })),
   knowledgeSourcesTable: {
     id:               "id",
     organizationId:   "organization_id",

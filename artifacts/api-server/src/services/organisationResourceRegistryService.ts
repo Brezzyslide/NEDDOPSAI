@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, orgResourcesTable } from "@workspace/db";
+import { db, orgResourcesTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { ResourceDescriptor } from "@workspace/organisation-resource";
 
@@ -52,6 +52,19 @@ export interface ResourceEntry {
   indexingStatus: string;
   lastVerified: string;
   auditEnabled: boolean;
+}
+
+type DbClient = typeof db;
+
+function withResourceRegistryTenant<T>(
+  organisationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "organisation_resource_registry_service", purpose },
+    fn,
+  );
 }
 
 // ResourceDescriptor is imported from @workspace/organisation-resource above.
@@ -88,8 +101,9 @@ export async function registerResource(
   organisationId: string,
   resource: ResourceEntry,
 ): Promise<void> {
+  await withResourceRegistryTenant(organisationId, "org_resource.register", async (client) => {
   // Check if record exists
-  const [existing] = await db
+  const [existing] = await client
     .select({ id: orgResourcesTable.id })
     .from(orgResourcesTable)
     .where(
@@ -101,7 +115,7 @@ export async function registerResource(
     .limit(1);
 
   if (existing) {
-    await db
+    await client
       .update(orgResourcesTable)
       .set({
         displayName: resource.displayName,
@@ -127,7 +141,7 @@ export async function registerResource(
         ),
       );
   } else {
-    await db.insert(orgResourcesTable).values({
+    await client.insert(orgResourcesTable).values({
       id: randomUUID(),
       organizationId: organisationId,
       resourceId: resource.resourceId,
@@ -147,6 +161,7 @@ export async function registerResource(
       isActive: true,
     });
   }
+  });
 }
 
 /**
@@ -157,7 +172,8 @@ export async function getResource(
   organisationId: string,
   resourceId: string,
 ): Promise<ResourceEntry | null> {
-  const [row] = await db
+  return withResourceRegistryTenant(organisationId, "org_resource.get", async (client) => {
+  const [row] = await client
     .select()
     .from(orgResourcesTable)
     .where(
@@ -169,6 +185,7 @@ export async function getResource(
     )
     .limit(1);
   return row ? mapRow(row) : null;
+  });
 }
 
 /**
@@ -179,7 +196,8 @@ export async function getResourcesForEmployee(
   organisationId: string,
   employeeRoleCode: string,
 ): Promise<ResourceEntry[]> {
-  const rows = await db
+  return withResourceRegistryTenant(organisationId, "org_resource.list_for_employee", async (client) => {
+  const rows = await client
     .select()
     .from(orgResourcesTable)
     .where(
@@ -198,6 +216,7 @@ export async function getResourcesForEmployee(
         r.readPermissions.includes(employeeRoleCode) ||
         r.writePermissions.includes(employeeRoleCode),
     );
+  });
 }
 
 /**
@@ -280,7 +299,8 @@ export function hasPermission(
  * Returns the full ResourceEntry array (internal use only).
  */
 export async function listResources(organisationId: string): Promise<ResourceEntry[]> {
-  const rows = await db
+  return withResourceRegistryTenant(organisationId, "org_resource.list", async (client) => {
+  const rows = await client
     .select()
     .from(orgResourcesTable)
     .where(
@@ -290,4 +310,5 @@ export async function listResources(organisationId: string): Promise<ResourceEnt
       ),
     );
   return rows.map(mapRow);
+  });
 }

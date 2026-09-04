@@ -22,7 +22,7 @@
  */
 
 import { randomUUID }             from "crypto";
-import { db }                     from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   knowledgeCurationJobsTable,
   knowledgeSourcesTable,
@@ -104,6 +104,19 @@ interface LLMCurationOutput {
   versionSummary?: VersionSummary;
 }
 
+type DbClient = typeof db;
+
+function withKnowledgeCurationTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "knowledge_curation_service", purpose },
+    fn,
+  );
+}
+
 // ─── Confidence Engine (Part 9) ───────────────────────────────────────────────
 
 /**
@@ -140,11 +153,12 @@ export function computeKnowledgeConfidence(params: ConfidenceParams): number {
  * Returns the new job ID.
  */
 export async function enqueueCurationJob(params: CurationJobParams): Promise<string> {
+  return withKnowledgeCurationTenant(params.organizationId, "knowledge_curation.enqueue", async (client) => {
   if (!VALID_TRIGGER_EVENTS.has(params.triggerEvent)) {
     throw new Error(`Invalid triggerEvent: ${params.triggerEvent}`);
   }
   const jobId = randomUUID();
-  await db.insert(knowledgeCurationJobsTable).values({
+  await client.insert(knowledgeCurationJobsTable).values({
     id:               jobId,
     organizationId:   params.organizationId,
     knowledgeSourceId: params.knowledgeSourceId,
@@ -156,6 +170,7 @@ export async function enqueueCurationJob(params: CurationJobParams): Promise<str
     createdAt:        new Date(),
   });
   return jobId;
+  });
 }
 
 /**
@@ -186,14 +201,15 @@ export async function processCurationJob(
   jobId:  string,
   params: CurationJobParams,
 ): Promise<CurationJobResult> {
+  return withKnowledgeCurationTenant(params.organizationId, "knowledge_curation.process", async (client) => {
   // Mark processing
-  await db.update(knowledgeCurationJobsTable)
+  await client.update(knowledgeCurationJobsTable)
     .set({ status: "processing" })
     .where(eq(knowledgeCurationJobsTable.id, jobId));
 
   try {
     // ── Fetch source metadata ──────────────────────────────────────────────
-    const [source] = await db.select()
+    const [source] = await client.select()
       .from(knowledgeSourcesTable)
       .where(and(
         eq(knowledgeSourcesTable.id, params.knowledgeSourceId),
@@ -203,7 +219,7 @@ export async function processCurationJob(
 
     if (!source) throw new Error(`Knowledge source ${params.knowledgeSourceId} not found`);
 
-    const [version] = await db.select()
+    const [version] = await client.select()
       .from(knowledgeSourceVersionsTable)
       .where(and(
         eq(knowledgeSourceVersionsTable.id, params.sourceVersionId),
@@ -212,7 +228,7 @@ export async function processCurationJob(
       .limit(1);
 
     // ── Read current version chunks ────────────────────────────────────────
-    const chunks = await db.select({
+    const chunks = await client.select({
       text:         knowledgeChunksTable.text,
       sectionTitle: knowledgeChunksTable.sectionTitle,
       pageNumber:   knowledgeChunksTable.pageNumber,
@@ -230,7 +246,7 @@ export async function processCurationJob(
 
     if (chunks.length === 0) {
       // Ingestion may not have run yet — record as completed with no proposals
-      await db.update(knowledgeCurationJobsTable)
+      await client.update(knowledgeCurationJobsTable)
         .set({ status: "completed", completedAt: new Date(), processingLog: { reason: "no_chunks_available" } })
         .where(eq(knowledgeCurationJobsTable.id, jobId));
       return { jobId, proposalsGenerated: 0, proposalIds: [] };
@@ -241,7 +257,7 @@ export async function processCurationJob(
     // ── Read previous version chunks (for version comparison) ─────────────
     let previousDocumentText: string | undefined;
     if (params.previousVersionId && (params.triggerEvent === "version_changed" || params.triggerEvent === "superseded")) {
-      const prevChunks = await db.select({
+      const prevChunks = await client.select({
         text:         knowledgeChunksTable.text,
         sectionTitle: knowledgeChunksTable.sectionTitle,
         pageNumber:   knowledgeChunksTable.pageNumber,
@@ -325,7 +341,7 @@ export async function processCurationJob(
     }
 
     // ── Mark completed ────────────────────────────────────────────────────
-    await db.update(knowledgeCurationJobsTable)
+    await client.update(knowledgeCurationJobsTable)
       .set({
         status:             "completed",
         proposalsGenerated: proposalIds.length,
@@ -355,7 +371,7 @@ export async function processCurationJob(
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message.slice(0, 500) : "Unknown error";
-    await db.update(knowledgeCurationJobsTable)
+    await client.update(knowledgeCurationJobsTable)
       .set({ status: "failed", errorMessage, completedAt: new Date() })
       .where(eq(knowledgeCurationJobsTable.id, jobId));
 
@@ -371,6 +387,7 @@ export async function processCurationJob(
 
     throw err;
   }
+  });
 }
 
 // ─── AI Curation Prompt ───────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
  *   - Overall Knowledge Health Score (0–100)
  */
 
-import { db }                         from "@workspace/db";
+import { withSystemTenantContext }      from "@workspace/db";
 import {
   knowledgeSourcesTable,
   organisationMemoryTable,
@@ -70,13 +70,16 @@ export interface KnowledgeHealthMetrics {
 export async function getKnowledgeHealthMetrics(
   organizationId: string,
 ): Promise<KnowledgeHealthMetrics> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "knowledge_health_service", purpose: "knowledge_health.metrics" },
+    async (client) => {
   const now        = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysAgo  = new Date(now.getTime() -  7 * 24 * 60 * 60 * 1000);
   const twelveMonthsAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
   // ── Library source metrics ─────────────────────────────────────────────
-  const sourceCounts = await db.select({
+  const sourceCounts = await client.select({
     status: knowledgeSourcesTable.status,
     count:  sql<number>`count(*)::int`,
   })
@@ -95,7 +98,7 @@ export async function getKnowledgeHealthMetrics(
   const reviewRequiredCount   = sourceByStatus["review_required"] ?? 0;
 
   // ── Memory metrics ─────────────────────────────────────────────────────
-  const memoryCounts = await db.select({
+  const memoryCounts = await client.select({
     status: organisationMemoryTable.status,
     count:  sql<number>`count(*)::int`,
   })
@@ -108,7 +111,7 @@ export async function getKnowledgeHealthMetrics(
   const pendingProposals  = memoryByStatus["proposed"]  ?? 0;
 
   // ── Conflict detection: proposed with same type+similar title as approved ─
-  const approvedTitles = await db.select({
+  const approvedTitles = await client.select({
     memoryType: organisationMemoryTable.memoryType,
     title:      organisationMemoryTable.title,
   })
@@ -119,7 +122,7 @@ export async function getKnowledgeHealthMetrics(
     ))
     .limit(200);
 
-  const proposedItems = await db.select({
+  const proposedItems = await client.select({
     memoryType: organisationMemoryTable.memoryType,
     title:      organisationMemoryTable.title,
   })
@@ -134,7 +137,7 @@ export async function getKnowledgeHealthMetrics(
   const duplicateKnowledge   = countDuplicates(approvedTitles);
 
   // ── Obsolete knowledge (approved > 12 months ago, never updated) ──────
-  const obsoleteRows = await db.select({ count: sql<number>`count(*)::int` })
+  const obsoleteRows = await client.select({ count: sql<number>`count(*)::int` })
     .from(organisationMemoryTable)
     .where(and(
       eq(organisationMemoryTable.organizationId, organizationId),
@@ -149,7 +152,7 @@ export async function getKnowledgeHealthMetrics(
     .filter(s => s.dnaStatus !== "archived" && s.dnaStatus !== "dna_pending")
     .map(s => s.code);
 
-  const specialistMemoryRows = await db.select({
+  const specialistMemoryRows = await client.select({
     specialistId: organisationMemoryTable.specialistId,
     count:        sql<number>`count(*)::int`,
   })
@@ -169,7 +172,7 @@ export async function getKnowledgeHealthMetrics(
     : 0;
 
   // ── Retraining recommendations (from recent curation job versionSummaries) ─
-  const recentJobs = await db.select({
+  const recentJobs = await client.select({
     versionSummary: knowledgeCurationJobsTable.versionSummary,
   })
     .from(knowledgeCurationJobsTable)
@@ -191,7 +194,7 @@ export async function getKnowledgeHealthMetrics(
   }
 
   // ── Recently changed policies ──────────────────────────────────────────
-  const recentlyChangedRows = await db.select({ count: sql<number>`count(*)::int` })
+  const recentlyChangedRows = await client.select({ count: sql<number>`count(*)::int` })
     .from(knowledgeCurationJobsTable)
     .where(and(
       eq(knowledgeCurationJobsTable.organizationId, organizationId),
@@ -201,7 +204,7 @@ export async function getKnowledgeHealthMetrics(
   const recentlyChangedPolicies = recentlyChangedRows[0]?.count ?? 0;
 
   // ── Recently approved knowledge ────────────────────────────────────────
-  const recentApprovedRows = await db.select({ count: sql<number>`count(*)::int` })
+  const recentApprovedRows = await client.select({ count: sql<number>`count(*)::int` })
     .from(organisationMemoryTable)
     .where(and(
       eq(organisationMemoryTable.organizationId, organizationId),
@@ -211,7 +214,7 @@ export async function getKnowledgeHealthMetrics(
   const recentlyApprovedKnowledge = recentApprovedRows[0]?.count ?? 0;
 
   // ── Failed curation jobs (last 7 days) ────────────────────────────────
-  const failedJobRows = await db.select({ count: sql<number>`count(*)::int` })
+  const failedJobRows = await client.select({ count: sql<number>`count(*)::int` })
     .from(knowledgeCurationJobsTable)
     .where(and(
       eq(knowledgeCurationJobsTable.organizationId, organizationId),
@@ -251,6 +254,8 @@ export async function getKnowledgeHealthMetrics(
     healthScore,
     computedAt: now.toISOString(),
   };
+    },
+  );
 }
 
 // ─── Health score computation ─────────────────────────────────────────────────

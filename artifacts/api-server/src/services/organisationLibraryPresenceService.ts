@@ -20,7 +20,12 @@
  * Target: <100ms. Results are cached for 30 seconds per (org, terms) pair.
  */
 
-import { db, knowledgeSourcesTable, knowledgeChunksTable, knowledgeSourceVersionsTable } from "@workspace/db";
+import {
+  knowledgeSourcesTable,
+  knowledgeChunksTable,
+  knowledgeSourceVersionsTable,
+  withSystemTenantContext,
+} from "@workspace/db";
 import { eq, and, or, isNull, inArray, ilike } from "drizzle-orm";
 import {
   isSourceEligible,
@@ -277,6 +282,10 @@ export async function checkOrganisationLibraryPresence(
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "organisation_library_presence_service", purpose: "library_presence.check" },
+    async (client) => {
+
   // ── Build expanded ILIKE terms ─────────────────────────────────────────────
   const expandedTerms = expandSearchTerms(searchTerms);
   const subPhrases    = generateSubPhrases(expandedTerms);
@@ -291,7 +300,7 @@ export async function checkOrganisationLibraryPresence(
     ilike(knowledgeSourcesTable.originalFileName, `%${t}%`),
   ]);
 
-  const sources = await db
+  const sources = await client
     .select({
       id:               knowledgeSourcesTable.id,
       title:            knowledgeSourcesTable.title,
@@ -321,7 +330,7 @@ export async function checkOrganisationLibraryPresence(
 
   // ── Query 2: chunk existence ───────────────────────────────────────────────
   const chunkRows = await (sourceIds.length > 0
-    ? db
+    ? client
         .select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
         .from(knowledgeChunksTable)
         .where(
@@ -337,7 +346,7 @@ export async function checkOrganisationLibraryPresence(
 
   // ── Query 3: ingestion status ──────────────────────────────────────────────
   const versionRows = await (sourceIds.length > 0
-    ? db
+    ? client
         .select({
           knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId,
           ingestionStatus:   knowledgeSourceVersionsTable.ingestionStatus,
@@ -440,7 +449,7 @@ export async function checkOrganisationLibraryPresence(
 
       if (matchedTypes.size > 0) {
         // Fetch approved+current library sources of the matching types
-        const fallbackSources = await db
+        const fallbackSources = await client
           .select({
             id:               knowledgeSourcesTable.id,
             title:            knowledgeSourcesTable.title,
@@ -471,11 +480,11 @@ export async function checkOrganisationLibraryPresence(
           const fallbackIds = fallbackSources.map(s => s.id);
 
           const [fallbackChunks, fallbackVersions] = await Promise.all([
-            db.select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
+            client.select({ knowledgeSourceId: knowledgeChunksTable.knowledgeSourceId })
               .from(knowledgeChunksTable)
               .where(and(inArray(knowledgeChunksTable.knowledgeSourceId, fallbackIds), isNull(knowledgeChunksTable.deletedAt)))
               .limit(MAX_CHUNKS),
-            db.select({ knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId, ingestionStatus: knowledgeSourceVersionsTable.ingestionStatus })
+            client.select({ knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId, ingestionStatus: knowledgeSourceVersionsTable.ingestionStatus })
               .from(knowledgeSourceVersionsTable)
               .where(and(inArray(knowledgeSourceVersionsTable.knowledgeSourceId, fallbackIds), eq(knowledgeSourceVersionsTable.isCurrent, true)))
               .limit(MAX_VERSIONS),
@@ -522,4 +531,6 @@ export async function checkOrganisationLibraryPresence(
 
   setCached(cacheKey, result);
   return result;
+    },
+  );
 }

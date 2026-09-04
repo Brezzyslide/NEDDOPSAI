@@ -180,6 +180,7 @@ vi.mock("@workspace/db", () => {
   // ── Simple passthrough mocks for other tables ─────────────────────────────
   return {
     db,
+    withSystemTenantContext: async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(db),
     eq,
     and,
     orgResourcesTable,
