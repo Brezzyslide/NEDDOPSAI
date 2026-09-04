@@ -11,7 +11,7 @@
 import { Router } from "express";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import { requirePermission } from "../../middlewares/requirePermission.js";
-import { db, orgAuditLogTable } from "@workspace/db";
+import { orgAuditLogTable, withTenantContext } from "@workspace/db";
 import { withOrgContext, OrgConnectionError } from "@workspace/org-db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 
@@ -67,13 +67,16 @@ router.get(
           if (from) conditions.push(gte(orgAuditLogTable.occurredAt, from));
           if (to) conditions.push(lte(orgAuditLogTable.occurredAt, to));
 
-          const events = await db
-            .select()
-            .from(orgAuditLogTable)
-            .where(and(...conditions))
-            .orderBy(desc(orgAuditLogTable.occurredAt))
-            .limit(limit)
-            .offset(offset);
+          const events = await withTenantContext(
+            { tenantId: ctx.tenantId, userId: ctx.userId, purpose: "audit_read_legacy_public" },
+            (tx) => tx
+              .select()
+              .from(orgAuditLogTable)
+              .where(and(...conditions))
+              .orderBy(desc(orgAuditLogTable.occurredAt))
+              .limit(limit)
+              .offset(offset),
+          );
 
           return res.json({ events, page, limit, source: "legacy_public" });
         }
