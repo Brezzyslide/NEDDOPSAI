@@ -17,6 +17,8 @@ import { requirePermission } from "../../middlewares/requirePermission.js";
 import * as activationCodeService from "../../services/activationCodeService.js";
 import * as deviceService from "../../services/deviceService.js";
 import * as auditService from "../../services/auditService.js";
+import { deviceActivationTokensTable, withTenantContext } from "@workspace/db";
+import { and, eq, isNull } from "drizzle-orm";
 
 const router = Router({ mergeParams: true });
 
@@ -72,19 +74,20 @@ router.delete(
     try {
       const ctx = req.tenantContext!;
       const user = req.appUser!;
-      const { db, deviceActivationTokensTable } = await import("@workspace/db");
-      const { eq, and } = await import("drizzle-orm");
 
-      await db
-        .update(deviceActivationTokensTable)
-        .set({ revokedAt: new Date() })
-        .where(
-          and(
-            eq(deviceActivationTokensTable.organizationId, ctx.tenantId),
-            eq(deviceActivationTokensTable.usedAt, null as any),
-            eq(deviceActivationTokensTable.revokedAt, null as any),
+      await withTenantContext(
+        { tenantId: ctx.tenantId, userId: user.id, purpose: "activation_code.revoke_current" },
+        (tx) => tx
+          .update(deviceActivationTokensTable)
+          .set({ revokedAt: new Date() })
+          .where(
+            and(
+              eq(deviceActivationTokensTable.organizationId, ctx.tenantId),
+              isNull(deviceActivationTokensTable.usedAt),
+              isNull(deviceActivationTokensTable.revokedAt),
+            ),
           ),
-        );
+      );
 
       res.json({ ok: true });
     } catch (err) {
