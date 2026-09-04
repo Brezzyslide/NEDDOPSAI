@@ -227,6 +227,7 @@ describe("Sprint 39 integration release readiness", () => {
     expect(dispatchBody.indexOf("evaluateParticipantEvidencePreflight")).toBeGreaterThan(-1);
     expect(dispatchBody.indexOf("evaluateParticipantEvidencePreflight")).toBeLessThan(dispatchBody.indexOf("claimTaskForExecution"));
     expect(dispatchBody).toContain('transitionTaskState(input.taskId!, input.organizationId, "evidence_required")');
+    expect(dispatchBody).not.toContain('Failed to mark participant task evidence_required');
     expect(dispatchBody).toContain("execution_coordinator.participant_evidence_required");
   });
 

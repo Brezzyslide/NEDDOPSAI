@@ -18,13 +18,14 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).not.toContain('"rejected" as unknown as TaskState');
   });
 
-  it("captures approval requirements at task creation without creating premature pending approvals", () => {
+  it("captures approval requirements at task creation without marking new tasks approved", () => {
     const src = source("services/taskService.ts");
 
     const createTaskBody = src.slice(src.indexOf("export async function createTask"), src.indexOf("export async function getTasksByOrg"));
     expect(createTaskBody).toContain("buildApprovalRequirement(plan)");
     expect(createTaskBody).toContain('const approvalState = plan.requiresApproval ? "required" : "not_required"');
-    expect(createTaskBody).toContain('const nextState: TaskState = "approved"');
+    expect(createTaskBody).toContain('const nextState: TaskState = "queued"');
+    expect(createTaskBody).not.toContain('const nextState: TaskState = "approved"');
     expect(createTaskBody).not.toContain("await createApproval({");
     expect(createTaskBody).not.toContain('currentState: "awaiting_approval"');
   });
@@ -261,7 +262,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   it("queued retry tasks are claimable for execution", () => {
     const src = source("services/taskService.ts");
 
-    expect(src).toContain('queued: ["planning", "executing", "cancelled"]');
+    expect(src).toContain('queued: ["planning", "executing", "evidence_required", "cancelled"]');
     expect(src).toContain('const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const');
   });
 
@@ -277,6 +278,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(shared).toContain('"evidence_required"');
     expect(dbSchema).toContain('"evidence_required"');
     expect(taskService).toContain('executing: ["awaiting_approval", "completed", "evidence_required", "failed", "cancelled"]');
+    expect(taskService).toContain('queued: ["planning", "executing", "evidence_required", "cancelled"]');
     expect(taskService).toContain('evidence_required: ["planning", "queued", "cancelled", "failed"]');
     expect(coordinator).toContain('transitionTaskState(taskId, organizationId, "evidence_required")');
     expect(activeExecutions).toContain('"evidence_required"');

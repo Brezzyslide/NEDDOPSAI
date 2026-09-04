@@ -249,9 +249,7 @@ export async function dispatchWorkExecution(
     const questions = participantPreflight.validationResult.missingItems.map(
       label => `Please link or upload the required ${label} for the task participant.`,
     );
-    await transitionTaskState(input.taskId!, input.organizationId, "evidence_required").catch(err =>
-      console.warn("[ExecutionCoordinator] Failed to mark participant task evidence_required:", err?.message),
-    );
+    await transitionTaskState(input.taskId!, input.organizationId, "evidence_required");
     if (conversationId) {
       emitExecutionEvent(conversationId, {
         type: "execution_clarification_required",

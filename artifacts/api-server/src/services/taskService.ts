@@ -53,7 +53,7 @@ export interface TaskWithPlan {
 
 const VALID_TRANSITIONS: Record<TaskState, TaskState[]> = {
   draft: ["queued", "cancelled"],
-  queued: ["planning", "executing", "cancelled"],
+  queued: ["planning", "executing", "evidence_required", "cancelled"],
   planning: ["awaiting_approval", "approved", "evidence_required", "cancelled"],
   awaiting_approval: ["planning", "approved", "cancelled", "failed"],
   evidence_required: ["planning", "queued", "cancelled", "failed"],
@@ -399,9 +399,10 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
         .returning();
     }
 
-    // Approval-required tasks are still dispatchable until the actual approval
-    // gate is reached. `awaiting_approval` means a real pending approval exists.
-    const nextState: TaskState = "approved";
+    // Planning is complete, but no human approval has occurred yet.
+    // `queued` means dispatch-ready; `awaiting_approval` means a real pending
+    // approval exists, and `approved` is reserved for approved work.
+    const nextState: TaskState = "queued";
     const [updatedTask] = await tx
       .update(tasksTable)
       .set({ currentState: nextState, updatedAt: new Date() })
