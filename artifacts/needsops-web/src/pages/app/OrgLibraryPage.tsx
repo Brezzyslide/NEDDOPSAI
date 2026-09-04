@@ -60,6 +60,13 @@ interface ScopeRecord {
   scopeId:   string;
 }
 
+interface ParticipantOption {
+  id: string;
+  displayName: string;
+  preferredName?: string | null;
+  status: string;
+}
+
 interface UploadUrlResponse {
   uploadUrl:       string | null;
   sourceId:        string;
@@ -218,6 +225,7 @@ interface UploadState {
   description:  string;
   category:     string;
   scope:        string;  // "organisation:all" | "workforce:all"
+  participantId: string;
   authorityLevel:           string;
   sensitivityClassification: string;
   versionLabel: string;
@@ -226,7 +234,7 @@ interface UploadState {
 
 const INITIAL_UPLOAD: UploadState = {
   file: null, title: "", description: "",
-  category: "policy", scope: "organisation:all",
+  category: "policy", scope: "organisation:all", participantId: "",
   authorityLevel: "supporting", sensitivityClassification: "internal",
   versionLabel: "", effectiveFrom: "",
 };
@@ -269,6 +277,17 @@ export default function OrgLibraryPage() {
       );
       return hasProcessing ? 8000 : false;
     },
+  });
+
+  const participantsQuery = useQuery({
+    queryKey: ["library-upload-participants", slug],
+    queryFn: async () => {
+      const res = await authFetch(`/v1/organisations/${slug}/participants?limit=200`);
+      if (!res.ok) throw new Error("Failed to load participants");
+      return res.json() as Promise<{ participants: ParticipantOption[]; total: number }>;
+    },
+    enabled: !!slug && slug !== "undefined" && showUpload && upload.category === "participant_document",
+    staleTime: 30_000,
   });
 
   // ── Source mutations ──────────────────────────────────────────────────────────
@@ -333,7 +352,7 @@ export default function OrgLibraryPage() {
     1: !!upload.file,
     2: upload.title.trim().length > 0,
     3: upload.category.length > 0,
-    4: upload.category === "participant_document" || upload.scope.length > 0,
+    4: upload.category === "participant_document" ? upload.participantId.length > 0 : upload.scope.length > 0,
     5: true,
     6: true,
   };
@@ -408,6 +427,7 @@ export default function OrgLibraryPage() {
             sensitivityClassification: upload.sensitivityClassification,
             versionLabel:             upload.versionLabel.trim() || undefined,
             effectiveFrom:            upload.effectiveFrom || undefined,
+            participantId:             isParticipantDocumentUpload ? upload.participantId : undefined,
           }),
         },
       );
@@ -771,6 +791,7 @@ export default function OrgLibraryPage() {
                           ...p,
                           category: cat.value,
                           scope: cat.value === "participant_document" ? "" : p.scope || INITIAL_UPLOAD.scope,
+                          participantId: cat.value === "participant_document" ? p.participantId : "",
                         }))}
                         className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
                           upload.category === cat.value
@@ -794,8 +815,37 @@ export default function OrgLibraryPage() {
                     You can assign to specific specialists later from the document detail page.
                   </p>
                   {upload.category === "participant_document" ? (
-                    <div className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700">
-                      <p className="font-medium">Participant link required</p>
+                    <div className="space-y-3">
+                      {participantsQuery.isLoading && (
+                        <div className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-500">
+                          Loading participants...
+                        </div>
+                      )}
+                      {participantsQuery.error && (
+                        <div className="w-full px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700">
+                          Could not load participants.
+                        </div>
+                      )}
+                      {!participantsQuery.isLoading && !participantsQuery.error && (participantsQuery.data?.participants?.length ?? 0) === 0 && (
+                        <div className="w-full px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-800">
+                          Create a participant before uploading this document.
+                        </div>
+                      )}
+                      {(participantsQuery.data?.participants ?? []).map(participant => (
+                        <button
+                          key={participant.id}
+                          onClick={() => setUpload(p => ({ ...p, participantId: participant.id }))}
+                          className={`w-full px-4 py-3 rounded-xl border text-sm text-left transition-colors ${
+                            upload.participantId === participant.id
+                              ? "border-indigo-500 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 text-slate-700 hover:border-indigo-200 hover:bg-indigo-50/30"
+                          }`}>
+                          <p className="font-medium">{participant.displayName}</p>
+                          {participant.preferredName && (
+                            <p className="text-xs text-slate-500 mt-0.5">Preferred: {participant.preferredName}</p>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -877,7 +927,7 @@ export default function OrgLibraryPage() {
                       <span className="text-slate-500">Scope</span>
                       <span className="text-slate-900 font-medium">
                         {upload.category === "participant_document"
-                          ? "Participant link required"
+                          ? participantsQuery.data?.participants?.find(p => p.id === upload.participantId)?.displayName ?? "Participant not selected"
                           : SCOPE_OPTIONS.find(o => o.value === upload.scope)?.label?.split(" — ")[0] ?? upload.scope}
                       </span>
                     </div>
