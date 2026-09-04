@@ -17,7 +17,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   ingestionJobsTable,
   INGESTION_JOB_STATUSES,
@@ -40,6 +40,19 @@ export class IngestionJobError extends Error {
   }
 }
 
+type DbClient = typeof db;
+
+function withIngestionJobTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "ingestion_job_service", purpose },
+    fn,
+  );
+}
+
 // ─── Enqueue ──────────────────────────────────────────────────────────────────
 
 export interface EnqueueIngestionJobInput {
@@ -57,6 +70,7 @@ export interface EnqueueIngestionJobInput {
 export async function enqueueIngestionJob(
   input: EnqueueIngestionJobInput,
 ): Promise<IngestionJob> {
+  return withIngestionJobTenant(input.organizationId, "ingestion_job.enqueue", async (client) => {
   // Check for existing active job
   const existing = await getActiveJobForVersion(
     input.sourceVersionId,
@@ -65,7 +79,7 @@ export async function enqueueIngestionJob(
   if (existing) return existing;
 
   const id = randomUUID();
-  const rows = await db
+  const rows = await client
     .insert(ingestionJobsTable)
     .values({
       id,
@@ -91,6 +105,7 @@ export async function enqueueIngestionJob(
   });
 
   return job;
+  });
 }
 
 // ─── Claim ────────────────────────────────────────────────────────────────────
@@ -159,6 +174,7 @@ export async function transitionIngestionJobStatus(
     metadata: Record<string, unknown>;
   }> = {},
 ): Promise<IngestionJob> {
+  return withIngestionJobTenant(organizationId, "ingestion_job.transition", async (client) => {
   const job = await getIngestionJob(id, organizationId);
   if (!job) throw new IngestionJobError("Ingestion job not found.", "NOT_FOUND");
 
@@ -177,7 +193,7 @@ export async function transitionIngestionJobStatus(
   if (newStatus === "approved") timestampUpdates.completedAt = now;
   if (newStatus === "cancelled") timestampUpdates.cancelledAt = now;
 
-  const rows = await db
+  const rows = await client
     .update(ingestionJobsTable)
     .set({
       status: newStatus,
@@ -196,6 +212,7 @@ export async function transitionIngestionJobStatus(
   const updated = rows[0];
   if (!updated) throw new IngestionJobError("Update failed.", "UPDATE_FAILED");
   return updated;
+  });
 }
 
 // ─── Heartbeat ────────────────────────────────────────────────────────────────
@@ -236,10 +253,11 @@ export interface CompleteIngestionJobInput {
 export async function completeIngestionJob(
   input: CompleteIngestionJobInput,
 ): Promise<IngestionJob> {
+  return withIngestionJobTenant(input.organizationId, "ingestion_job.complete", async (client) => {
   const job = await getIngestionJob(input.id, input.organizationId);
   if (!job) throw new IngestionJobError("Ingestion job not found.", "NOT_FOUND");
 
-  const rows = await db
+  const rows = await client
     .update(ingestionJobsTable)
     .set({
       status: "review_required",
@@ -268,6 +286,7 @@ export async function completeIngestionJob(
   const updated = rows[0];
   if (!updated) throw new IngestionJobError("Complete update failed.", "UPDATE_FAILED");
   return updated;
+  });
 }
 
 // ─── Fail ─────────────────────────────────────────────────────────────────────
@@ -282,7 +301,8 @@ export async function failIngestionJob(
   errorCode: string,
   safeErrorMessage: string, // must NOT contain document content
 ): Promise<IngestionJob> {
-  const rows = await db
+  return withIngestionJobTenant(organizationId, "ingestion_job.fail", async (client) => {
+  const rows = await client
     .update(ingestionJobsTable)
     .set({
       status: "failed",
@@ -301,6 +321,7 @@ export async function failIngestionJob(
   const updated = rows[0];
   if (!updated) throw new IngestionJobError("Fail update failed.", "UPDATE_FAILED");
   return updated;
+  });
 }
 
 // ─── Cancel ───────────────────────────────────────────────────────────────────
@@ -310,6 +331,7 @@ export async function cancelIngestionJob(
   organizationId: string,
   actorUserId: string,
 ): Promise<IngestionJob> {
+  return withIngestionJobTenant(organizationId, "ingestion_job.cancel", async (client) => {
   const job = await getIngestionJob(id, organizationId);
   if (!job) throw new IngestionJobError("Ingestion job not found.", "NOT_FOUND");
 
@@ -327,7 +349,7 @@ export async function cancelIngestionJob(
   }
 
   const newStatus = current === "queued" ? "cancelled" : "cancelling";
-  const rows = await db
+  const rows = await client
     .update(ingestionJobsTable)
     .set({
       status: newStatus,
@@ -354,6 +376,7 @@ export async function cancelIngestionJob(
   }).catch(() => {});
 
   return updated;
+  });
 }
 
 // ─── Revoke ───────────────────────────────────────────────────────────────────
@@ -366,7 +389,8 @@ export async function revokeIngestionJob(
   id: string,
   organizationId: string,
 ): Promise<void> {
-  await db
+  await withIngestionJobTenant(organizationId, "ingestion_job.revoke", async (client) => {
+  await client
     .update(ingestionJobsTable)
     .set({ status: "revoked", updatedAt: new Date() })
     .where(
@@ -375,6 +399,7 @@ export async function revokeIngestionJob(
         eq(ingestionJobsTable.organizationId, organizationId),
       ),
     );
+  });
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -383,7 +408,8 @@ export async function getIngestionJob(
   id: string,
   organizationId: string,
 ): Promise<IngestionJob | null> {
-  const rows = await db
+  return withIngestionJobTenant(organizationId, "ingestion_job.get", async (client) => {
+  const rows = await client
     .select()
     .from(ingestionJobsTable)
     .where(
@@ -394,13 +420,15 @@ export async function getIngestionJob(
     )
     .limit(1);
   return rows[0] ?? null;
+  });
 }
 
 export async function getActiveJobForVersion(
   sourceVersionId: string,
   organizationId: string,
 ): Promise<IngestionJob | null> {
-  const rows = await db
+  return withIngestionJobTenant(organizationId, "ingestion_job.active_for_version", async (client) => {
+  const rows = await client
     .select()
     .from(ingestionJobsTable)
     .where(
@@ -412,6 +440,7 @@ export async function getActiveJobForVersion(
     )
     .limit(1);
   return rows[0] ?? null;
+  });
 }
 
 export async function listIngestionJobs(
@@ -423,6 +452,7 @@ export async function listIngestionJobs(
     offset?: number;
   } = {},
 ): Promise<IngestionJob[]> {
+  return withIngestionJobTenant(organizationId, "ingestion_job.list", async (client) => {
   const limit = Math.min(opts.limit ?? 50, 200);
   const offset = opts.offset ?? 0;
 
@@ -434,11 +464,12 @@ export async function listIngestionJobs(
     conditions.push(eq(ingestionJobsTable.status, opts.status));
   }
 
-  return db
+  return client
     .select()
     .from(ingestionJobsTable)
     .where(and(...conditions))
     .orderBy(ingestionJobsTable.createdAt)
     .limit(limit)
     .offset(offset);
+  });
 }

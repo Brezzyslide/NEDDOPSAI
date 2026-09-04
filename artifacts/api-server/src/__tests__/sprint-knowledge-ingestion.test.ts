@@ -44,6 +44,7 @@ const mockEnqueueCuration = vi.hoisted(() => vi.fn().mockResolvedValue(undefined
 
 vi.mock("@workspace/db", () => ({
   db: mockDb,
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   ingestionJobsTable: {
     id: { name: "id" }, organizationId: { name: "organization_id" },
     knowledgeSourceId: { name: "knowledge_source_id" }, sourceVersionId: { name: "source_version_id" },

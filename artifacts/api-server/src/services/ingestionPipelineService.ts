@@ -36,7 +36,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   knowledgeChunksTable,
   knowledgeSourceVersionsTable,
@@ -118,6 +118,19 @@ export async function runPipelineForJob(
   await runPipeline(jobId, organizationId, knowledgeSourceId, sourceVersionId, workerId);
 }
 
+type DbClient = typeof db;
+
+function withIngestionPipelineTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "ingestion_pipeline_service", purpose },
+    fn,
+  );
+}
+
 /**
  * Legacy single-call entry: claim + run. Kept for backward compatibility.
  */
@@ -164,14 +177,18 @@ async function runPipeline(
     const job = await getIngestionJob(jobId, organizationId);
     if (!job) throw new PipelineError("Job not found after claim.", "JOB_NOT_FOUND", true);
 
-    const [sourceRows, versionRows] = await Promise.all([
-      db.select().from(knowledgeSourcesTable)
-        .where(and(eq(knowledgeSourcesTable.id, knowledgeSourceId), eq(knowledgeSourcesTable.organizationId, organizationId)))
-        .limit(1),
-      db.select().from(knowledgeSourceVersionsTable)
-        .where(and(eq(knowledgeSourceVersionsTable.id, sourceVersionId), eq(knowledgeSourceVersionsTable.organizationId, organizationId)))
-        .limit(1),
-    ]);
+    const [sourceRows, versionRows] = await withIngestionPipelineTenant(
+      organizationId,
+      "ingestion_pipeline.load_source_version",
+      (client) => Promise.all([
+        client.select().from(knowledgeSourcesTable)
+          .where(and(eq(knowledgeSourcesTable.id, knowledgeSourceId), eq(knowledgeSourcesTable.organizationId, organizationId)))
+          .limit(1),
+        client.select().from(knowledgeSourceVersionsTable)
+          .where(and(eq(knowledgeSourceVersionsTable.id, sourceVersionId), eq(knowledgeSourceVersionsTable.organizationId, organizationId)))
+          .limit(1),
+      ]),
+    );
 
     const source  = sourceRows[0];
     const version = versionRows[0];
@@ -186,11 +203,15 @@ async function runPipeline(
     // ── Stage 2: fetch from object storage ─────────────────────────────────
     currentStage = "fetching";
     await checkCancellation(jobId, organizationId);
-    const jobStateRows = await db
-      .select({ status: ingestionJobsTable.status })
-      .from(ingestionJobsTable)
-      .where(and(eq(ingestionJobsTable.id, jobId), eq(ingestionJobsTable.organizationId, organizationId)))
-      .limit(1);
+    const jobStateRows = await withIngestionPipelineTenant(
+      organizationId,
+      "ingestion_pipeline.read_job_state",
+      (client) => client
+        .select({ status: ingestionJobsTable.status })
+        .from(ingestionJobsTable)
+        .where(and(eq(ingestionJobsTable.id, jobId), eq(ingestionJobsTable.organizationId, organizationId)))
+        .limit(1),
+    );
     if (jobStateRows[0]?.status === "queued") {
       await _transition(jobId, organizationId, "fetching");
     }
@@ -321,43 +342,49 @@ async function runPipeline(
     currentStage = "persisting";
     await checkCancellation(jobId, organizationId);
 
-    await db
-      .update(knowledgeChunksTable)
-      .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(knowledgeChunksTable.sourceVersionId, sourceVersionId),
-          eq(knowledgeChunksTable.organizationId,  organizationId),
+    await withIngestionPipelineTenant(
+      organizationId,
+      "ingestion_pipeline.soft_delete_prior_chunks",
+      (client) => client
+        .update(knowledgeChunksTable)
+        .set({ deletedAt: new Date() })
+        .where(
+          and(
+            eq(knowledgeChunksTable.sourceVersionId, sourceVersionId),
+            eq(knowledgeChunksTable.organizationId,  organizationId),
+          ),
         ),
-      );
+    );
 
     const BATCH_SIZE = 100;
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       await checkCancellation(jobId, organizationId);
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      await db.insert(knowledgeChunksTable).values(
-        batch.map((c, batchIdx) => {
-          const globalIdx = i + batchIdx;
-          const vec = embeddingBatch[globalIdx];
-          return {
-            id:                     randomUUID(),
-            organizationId,
-            knowledgeSourceId,
-            sourceVersionId,
-            chunkIndex:             c.chunkIndex,
-            sectionTitle:           c.sectionTitle,
-            pageNumber:             c.pageNumber,
-            headingPath:            c.headingPath,
-            text:                   c.text,
-            tokenCount:             c.tokenCount,
-            embedding:              (vec && vec.length > 0 && vec.some((x) => x !== 0)) ? vec : null,
-            embeddingModel:         provider.isActive() ? provider.getModelName() : null,
-            embeddingDimensions:    provider.isActive() ? provider.getDimensions() : null,
-            contentHash:            c.contentHash,
-            chunkingStrategy:       c.chunkingStrategy,
-            chunkingStrategyVersion: c.chunkingStrategyVersion,
-          };
-        }),
+      await withIngestionPipelineTenant(organizationId, "ingestion_pipeline.insert_chunks", (client) =>
+        client.insert(knowledgeChunksTable).values(
+          batch.map((c, batchIdx) => {
+            const globalIdx = i + batchIdx;
+            const vec = embeddingBatch[globalIdx];
+            return {
+              id:                     randomUUID(),
+              organizationId,
+              knowledgeSourceId,
+              sourceVersionId,
+              chunkIndex:             c.chunkIndex,
+              sectionTitle:           c.sectionTitle,
+              pageNumber:             c.pageNumber,
+              headingPath:            c.headingPath,
+              text:                   c.text,
+              tokenCount:             c.tokenCount,
+              embedding:              (vec && vec.length > 0 && vec.some((x) => x !== 0)) ? vec : null,
+              embeddingModel:         provider.isActive() ? provider.getModelName() : null,
+              embeddingDimensions:    provider.isActive() ? provider.getDimensions() : null,
+              contentHash:            c.contentHash,
+              chunkingStrategy:       c.chunkingStrategy,
+              chunkingStrategyVersion: c.chunkingStrategyVersion,
+            };
+          }),
+        ),
       );
     }
 
@@ -412,29 +439,37 @@ async function runPipeline(
       try {
         // Check for an existing approved source with the same canonical title.
         // If one exists, a human must decide which is the current authority.
-        const sourceRow = await db
-          .select({ canonicalTitle: knowledgeSourcesTable.canonicalTitle })
-          .from(knowledgeSourcesTable)
-          .where(and(
-            eq(knowledgeSourcesTable.id,             knowledgeSourceId),
-            eq(knowledgeSourcesTable.organizationId, organizationId),
-          ))
-          .limit(1);
+        const sourceRow = await withIngestionPipelineTenant(
+          organizationId,
+          "ingestion_pipeline.auto_approval_source_identity",
+          (client) => client
+            .select({ canonicalTitle: knowledgeSourcesTable.canonicalTitle })
+            .from(knowledgeSourcesTable)
+            .where(and(
+              eq(knowledgeSourcesTable.id,             knowledgeSourceId),
+              eq(knowledgeSourcesTable.organizationId, organizationId),
+            ))
+            .limit(1),
+        );
 
         const canonicalTitle = sourceRow[0]?.canonicalTitle;
         let hasConflict = false;
 
         if (canonicalTitle) {
-          const conflicts = await db
-            .select({ id: knowledgeSourcesTable.id })
-            .from(knowledgeSourcesTable)
-            .where(and(
-              eq(knowledgeSourcesTable.organizationId,  organizationId),
-              eq(knowledgeSourcesTable.canonicalTitle,  canonicalTitle),
-              eq(knowledgeSourcesTable.status,          "approved"),
-              ne(knowledgeSourcesTable.id,              knowledgeSourceId),
-            ))
-            .limit(1);
+          const conflicts = await withIngestionPipelineTenant(
+            organizationId,
+            "ingestion_pipeline.auto_approval_conflict_check",
+            (client) => client
+              .select({ id: knowledgeSourcesTable.id })
+              .from(knowledgeSourcesTable)
+              .where(and(
+                eq(knowledgeSourcesTable.organizationId,  organizationId),
+                eq(knowledgeSourcesTable.canonicalTitle,  canonicalTitle),
+                eq(knowledgeSourcesTable.status,          "approved"),
+                ne(knowledgeSourcesTable.id,              knowledgeSourceId),
+              ))
+              .limit(1),
+          );
           hasConflict = conflicts.length > 0;
         }
 
@@ -447,26 +482,32 @@ async function runPipeline(
       }
     }
 
-    await db
-      .update(knowledgeSourcesTable)
-      .set({ status: finalSourceStatus, updatedAt: new Date() })
-      .where(
-        and(
-          eq(knowledgeSourcesTable.id,             knowledgeSourceId),
-          eq(knowledgeSourcesTable.organizationId, organizationId),
-        ),
-      );
+    await withIngestionPipelineTenant(
+      organizationId,
+      "ingestion_pipeline.update_source_status",
+      async (client) => {
+        await client
+          .update(knowledgeSourcesTable)
+          .set({ status: finalSourceStatus, updatedAt: new Date() })
+          .where(
+            and(
+              eq(knowledgeSourcesTable.id,             knowledgeSourceId),
+              eq(knowledgeSourcesTable.organizationId, organizationId),
+            ),
+          );
 
-    await db
-      .update(knowledgeSourceVersionsTable)
-      .set({ status: finalSourceStatus, updatedAt: new Date() })
-      .where(
-        and(
-          eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
-          eq(knowledgeSourceVersionsTable.organizationId, organizationId),
-          eq(knowledgeSourceVersionsTable.isCurrent,      true),
-        ),
-      );
+        await client
+          .update(knowledgeSourceVersionsTable)
+          .set({ status: finalSourceStatus, updatedAt: new Date() })
+          .where(
+            and(
+              eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
+              eq(knowledgeSourceVersionsTable.organizationId, organizationId),
+              eq(knowledgeSourceVersionsTable.isCurrent,      true),
+            ),
+          );
+      },
+    );
 
     logOrgEvent({
       eventType:      "knowledge_hub.ingestion_complete",
@@ -493,15 +534,19 @@ async function runPipeline(
   } catch (err) {
     // ── Cancellation — clean up partial chunks ──────────────────────────────
     if (err instanceof CancellationError) {
-      await db
-        .update(knowledgeChunksTable)
-        .set({ deletedAt: new Date() })
-        .where(
-          and(
-            eq(knowledgeChunksTable.sourceVersionId, sourceVersionId),
-            eq(knowledgeChunksTable.organizationId,  organizationId),
+      await withIngestionPipelineTenant(
+        organizationId,
+        "ingestion_pipeline.cancel_cleanup_chunks",
+        (client) => client
+          .update(knowledgeChunksTable)
+          .set({ deletedAt: new Date() })
+          .where(
+            and(
+              eq(knowledgeChunksTable.sourceVersionId, sourceVersionId),
+              eq(knowledgeChunksTable.organizationId,  organizationId),
+            ),
           ),
-        ).catch(() => {});
+      ).catch(() => {});
 
       await queue.finaliseCancellation(jobId, organizationId).catch(() => {});
       await updateVersionIngestionStatus(sourceVersionId, organizationId, "failed").catch(() => {});
@@ -571,7 +616,8 @@ async function _persistErrorDiagnostics(
   // Direct SQL update so it always reaches the DB even if queue.fail() is about
   // to fail or the row is in an unexpected state. No status change here — that
   // is left to queue.fail() / recoverStuck().
-  await db.execute(sql`
+  await withIngestionPipelineTenant(organizationId, "ingestion_pipeline.persist_error_diagnostics", (client) =>
+    client.execute(sql`
     UPDATE ingestion_jobs
     SET
       last_error_code    = LEFT(${diag.errorCode.slice(0, 100)}, 100),
@@ -584,7 +630,8 @@ async function _persistErrorDiagnostics(
       updated_at         = NOW()
     WHERE id              = ${jobId}
       AND organization_id = ${organizationId}
-  `);
+  `),
+  );
 }
 
 // ─── Stage transition helper ──────────────────────────────────────────────────

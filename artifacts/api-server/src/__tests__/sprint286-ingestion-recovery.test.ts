@@ -85,18 +85,20 @@ function makeSelectChain(rows: unknown[] = []) {
 }
 
 vi.mock("@workspace/db", async () => {
-  const actual = await vi.importActual<typeof import("@workspace/db")>("@workspace/db");
+  const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
+  const mockDb = {
+    select:    mockDbSelect,
+    insert:    mockDbInsert,
+    update:    mockDbUpdate,
+    execute:   mockDbExec,
+    transaction: vi.fn().mockImplementation(async (fn: (t: unknown) => unknown) => {
+      return fn({ select: mockDbSelect, insert: mockDbInsert, update: mockDbUpdate, execute: mockDbExec });
+    }),
+  };
   return {
     ...actual,
-    db: {
-      select:    mockDbSelect,
-      insert:    mockDbInsert,
-      update:    mockDbUpdate,
-      execute:   mockDbExec,
-      transaction: vi.fn().mockImplementation(async (fn: (t: unknown) => unknown) => {
-        return fn({ select: mockDbSelect, insert: mockDbInsert, update: mockDbUpdate, execute: mockDbExec });
-      }),
-    },
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   };
 });
 
