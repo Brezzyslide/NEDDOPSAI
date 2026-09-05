@@ -10,6 +10,7 @@
 import { eq, and, sql, inArray } from "drizzle-orm";
 import {
   db,
+  withSystemTenantContext,
   organizationsTable,
   organisationMemoryTable,
   executionIntentsTable,
@@ -35,6 +36,19 @@ import {
 } from "./entitlementService.js";
 import { logOrgEvent } from "./auditService.js";
 import type { WorkforcePackCode } from "@workspace/shared";
+
+type DbClient = typeof db;
+
+function withRuntimeTenant<T>(
+  organisationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "runtime_context_service", purpose },
+    fn,
+  );
+}
 
 // ─── Context Types ────────────────────────────────────────────────────────────
 
@@ -160,7 +174,10 @@ export async function assembleRuntimeContext(
   // this org before assembling any context. This prevents cross-tenant leakage
   // when the caller forwards an unverified org ID.
   if (options?.requestingUserId) {
-    const [membership] = await db
+    const [membership] = await withRuntimeTenant(
+      organisationId,
+      "runtime_context.verify_membership",
+      (client) => client
       .select({ id: membershipsTable.id })
       .from(membershipsTable)
       .where(
@@ -170,7 +187,8 @@ export async function assembleRuntimeContext(
           eq(membershipsTable.status, 'active'),
         ),
       )
-      .limit(1);
+      .limit(1),
+    );
 
     if (!membership) {
       const err = new Error(
@@ -182,11 +200,15 @@ export async function assembleRuntimeContext(
   }
 
   // ── 1. Organisation Identity ───────────────────────────────────────────────
-  const [org] = await db
+  const [org] = await withRuntimeTenant(
+    organisationId,
+    "runtime_context.org_identity",
+    (client) => client
     .select()
     .from(organizationsTable)
     .where(eq(organizationsTable.id, organisationId))
-    .limit(1);
+    .limit(1),
+  );
 
   if (!org) {
     throw new Error(`Organisation not found: ${organisationId}`);
@@ -224,7 +246,10 @@ export async function assembleRuntimeContext(
 
   if (includeMemory) {
     try {
-      const memoryRows = await db
+      const memoryRows = await withRuntimeTenant(
+        organisationId,
+        "runtime_context.memory",
+        (client) => client
         .select()
         .from(organisationMemoryTable)
         .where(
@@ -233,7 +258,8 @@ export async function assembleRuntimeContext(
             eq(organisationMemoryTable.status, 'approved'),
           ),
         )
-        .limit(maxMemoryEntries);
+        .limit(maxMemoryEntries),
+      );
 
       memoryEntries = memoryRows.map((m) => ({
         type: m.memoryType,
@@ -447,7 +473,10 @@ export async function assembleRuntimeContext(
   let pendingIntentCount = 0;
   try {
     const [activeRow, pendingRow] = await Promise.all([
-      db
+      withRuntimeTenant(
+        organisationId,
+        "runtime_context.active_intents",
+        (client) => client
         .select({ n: sql<number>`cast(count(*) as int)` })
         .from(executionIntentsTable)
         .where(
@@ -456,7 +485,11 @@ export async function assembleRuntimeContext(
             inArray(executionIntentsTable.status, ['approved', 'dispatched']),
           ),
         ),
-      db
+      ),
+      withRuntimeTenant(
+        organisationId,
+        "runtime_context.pending_intents",
+        (client) => client
         .select({ n: sql<number>`cast(count(*) as int)` })
         .from(executionIntentsTable)
         .where(
@@ -465,6 +498,7 @@ export async function assembleRuntimeContext(
             eq(executionIntentsTable.status, 'pending_approval'),
           ),
         ),
+      ),
     ]);
     activeGraphCount   = activeRow[0]?.n ?? 0;
     pendingIntentCount = pendingRow[0]?.n ?? 0;

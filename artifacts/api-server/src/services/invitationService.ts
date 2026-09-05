@@ -12,6 +12,7 @@
 import { randomUUID } from "crypto";
 import {
   db,
+  withSystemTenantContext,
   invitationsTable,
   membershipsTable,
   usersTable,
@@ -38,6 +39,8 @@ import type { EmailDeliveryResult } from "./email/index.js";
 
 export type { EmailDeliveryResult };
 
+type DbClient = typeof db;
+
 export interface CreateInvitationParams {
   organizationId: string;
   email: string;
@@ -54,8 +57,19 @@ export interface CreateInvitationResult {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-async function getOrgName(organizationId: string): Promise<string> {
-  const [org] = await db
+function withInvitationTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "invitation_service", purpose },
+    fn,
+  );
+}
+
+async function getOrgName(client: DbClient, organizationId: string): Promise<string> {
+  const [org] = await client
     .select({ name: organizationsTable.name })
     .from(organizationsTable)
     .where(eq(organizationsTable.id, organizationId))
@@ -63,8 +77,8 @@ async function getOrgName(organizationId: string): Promise<string> {
   return org?.name ?? "your organisation";
 }
 
-async function getInviterName(userId: string): Promise<string | null> {
-  const [user] = await db
+async function getInviterName(client: DbClient, userId: string): Promise<string | null> {
+  const [user] = await client
     .select({
       firstName: usersTable.firstName,
       lastName: usersTable.lastName,
@@ -80,10 +94,11 @@ async function getInviterName(userId: string): Promise<string | null> {
 }
 
 async function logEmailDelivery(
+  client: DbClient,
   invitationId: string,
   result: EmailDeliveryResult,
 ): Promise<void> {
-  await db.insert(emailDeliveryLogsTable).values({
+  await client.insert(emailDeliveryLogsTable).values({
     id: randomUUID(),
     invitationId,
     provider: result.provider,
@@ -101,15 +116,16 @@ async function logEmailDelivery(
 export async function createInvitation(
   params: CreateInvitationParams,
 ): Promise<CreateInvitationResult> {
+  return withInvitationTenant(params.organizationId, "invitation.create", async (client) => {
   // Check if there's already an active membership for this email
-  const [existingUser] = await db
+  const [existingUser] = await client
     .select({ id: usersTable.id })
     .from(usersTable)
     .where(eq(usersTable.email, params.email.toLowerCase()))
     .limit(1);
 
   if (existingUser) {
-    const [existingMembership] = await db
+    const [existingMembership] = await client
       .select({ id: membershipsTable.id, status: membershipsTable.status })
       .from(membershipsTable)
       .where(
@@ -127,7 +143,7 @@ export async function createInvitation(
 
   const { rawToken, tokenHash, expiresAt } = generateInvitationToken();
 
-  const [invitation] = await db
+  const [invitation] = await client
     .insert(invitationsTable)
     .values({
       id: randomUUID(),
@@ -146,8 +162,8 @@ export async function createInvitation(
 
   // Look up org name and inviter for the email
   const [orgName, inviterName] = await Promise.all([
-    getOrgName(params.organizationId),
-    getInviterName(params.invitedByUserId),
+    getOrgName(client, params.organizationId),
+    getInviterName(client, params.invitedByUserId),
   ]);
 
   // Send invitation email through the service abstraction
@@ -163,10 +179,10 @@ export async function createInvitation(
 
   // Persist delivery log and update invitation status — do not throw on failure
   await Promise.all([
-    logEmailDelivery(invitation!.id, deliveryResult).catch((err) =>
+    logEmailDelivery(client, invitation!.id, deliveryResult).catch((err) =>
       console.error("[invitationService] Failed to write delivery log:", err),
     ),
-    db
+    client
       .update(invitationsTable)
       .set({ emailDeliveryStatus: deliveryResult.state, updatedAt: new Date() })
       .where(eq(invitationsTable.id, invitation!.id))
@@ -176,7 +192,7 @@ export async function createInvitation(
   ]);
 
   // Fetch the updated invitation so the caller has the latest state
-  const [updated] = await db
+  const [updated] = await client
     .select()
     .from(invitationsTable)
     .where(eq(invitationsTable.id, invitation!.id))
@@ -192,15 +208,16 @@ export async function createInvitation(
     previewUrl,
     emailDelivery: deliveryResult,
   };
+  });
 }
 
 // ─── listInvitations ──────────────────────────────────────────────────────────
 
 export async function listInvitations(organizationId: string) {
-  return db
+  return withInvitationTenant(organizationId, "invitation.list", (client) => client
     .select()
     .from(invitationsTable)
-    .where(eq(invitationsTable.organizationId, organizationId));
+    .where(eq(invitationsTable.organizationId, organizationId)));
 }
 
 // ─── getInvitationByToken ─────────────────────────────────────────────────────
@@ -221,7 +238,8 @@ export async function revokeInvitation(
   organizationId: string,
   invitationId: string,
 ) {
-  const [invitation] = await db
+  return withInvitationTenant(organizationId, "invitation.revoke", async (client) => {
+  const [invitation] = await client
     .select()
     .from(invitationsTable)
     .where(
@@ -235,12 +253,13 @@ export async function revokeInvitation(
   if (!invitation) throw new ResourceNotFound("Invitation");
   if (invitation.status !== "pending") throw new InvitationAlreadyUsed();
 
-  const [updated] = await db
+  const [updated] = await client
     .update(invitationsTable)
     .set({ status: "revoked", revokedAt: new Date(), updatedAt: new Date() })
     .where(eq(invitationsTable.id, invitationId))
     .returning();
   return updated!;
+  });
 }
 
 // ─── resendInvitation ────────────────────────────────────────────────────────
@@ -250,7 +269,8 @@ export async function resendInvitation(
   invitationId: string,
   resendingUserId: string,
 ): Promise<CreateInvitationResult> {
-  const [invitation] = await db
+  return withInvitationTenant(organizationId, "invitation.resend", async (client) => {
+  const [invitation] = await client
     .select()
     .from(invitationsTable)
     .where(
@@ -269,7 +289,7 @@ export async function resendInvitation(
   // Expire the old token by replacing it with a fresh one
   const { rawToken, tokenHash, expiresAt } = generateInvitationToken();
 
-  await db
+  await client
     .update(invitationsTable)
     .set({ tokenHash, expiresAt, emailDeliveryStatus: "not_attempted", updatedAt: new Date() })
     .where(eq(invitationsTable.id, invitationId));
@@ -277,8 +297,8 @@ export async function resendInvitation(
   const acceptanceUrl = buildInvitationUrl(rawToken);
 
   const [orgName, inviterName] = await Promise.all([
-    getOrgName(organizationId),
-    getInviterName(resendingUserId),
+    getOrgName(client, organizationId),
+    getInviterName(client, resendingUserId),
   ]);
 
   const emailService = getEmailService();
@@ -292,10 +312,10 @@ export async function resendInvitation(
   });
 
   await Promise.all([
-    logEmailDelivery(invitationId, deliveryResult).catch((err) =>
+    logEmailDelivery(client, invitationId, deliveryResult).catch((err) =>
       console.error("[invitationService] Failed to write delivery log:", err),
     ),
-    db
+    client
       .update(invitationsTable)
       .set({ emailDeliveryStatus: deliveryResult.state, updatedAt: new Date() })
       .where(eq(invitationsTable.id, invitationId))
@@ -304,7 +324,7 @@ export async function resendInvitation(
       ),
   ]);
 
-  const [updated] = await db
+  const [updated] = await client
     .select()
     .from(invitationsTable)
     .where(eq(invitationsTable.id, invitationId))
@@ -320,6 +340,7 @@ export async function resendInvitation(
     previewUrl,
     emailDelivery: deliveryResult,
   };
+  });
 }
 
 // ─── acceptInvitation ────────────────────────────────────────────────────────
@@ -332,10 +353,10 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
   if (invitation.status === "revoked") throw new InvitationInvalid();
   if (invitation.status === "expired") throw new InvitationExpired();
   if (new Date() > invitation.expiresAt) {
-    await db
+    await withInvitationTenant(invitation.organizationId, "invitation.expire", (client) => client
       .update(invitationsTable)
       .set({ status: "expired", updatedAt: new Date() })
-      .where(eq(invitationsTable.id, invitation.id));
+      .where(eq(invitationsTable.id, invitation.id)));
     throw new InvitationExpired();
   }
 
@@ -345,7 +366,8 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
   }
 
   // Check for duplicate membership
-  const [existing] = await db
+  return withInvitationTenant(invitation.organizationId, "invitation.accept", async (client) => {
+  const [existing] = await client
     .select({ status: membershipsTable.status })
     .from(membershipsTable)
     .where(
@@ -358,8 +380,7 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
 
   if (existing?.status === "active") throw new DuplicateMembership();
 
-  return db.transaction(async (tx) => {
-    const [membership] = await tx
+    const [membership] = await client
       .insert(membershipsTable)
       .values({
         id: randomUUID(),
@@ -372,7 +393,7 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
       })
       .returning();
 
-    const [updated] = await tx
+    const [updated] = await client
       .update(invitationsTable)
       .set({ status: "accepted", acceptedAt: new Date(), updatedAt: new Date() })
       .where(eq(invitationsTable.id, invitation.id))
