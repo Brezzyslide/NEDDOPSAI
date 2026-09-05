@@ -15,12 +15,25 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { executionActionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import type { ExecutionAction } from "../types/canonicalExecutionContext.js";
 import type { ConnectorExecutionResult } from "./executionActionDispatcherService.js";
+
+type DbClient = typeof db;
+
+function withExecutionActionTenant<T>(
+  organisationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "execution_action_lifecycle_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,7 +74,7 @@ export async function recordActionProposed(
   ctx: ActionLifecycleContext,
 ): Promise<void> {
   try {
-    await db.insert(executionActionsTable).values({
+    await withExecutionActionTenant(ctx.organisationId, "execution_action.proposed", async (client) => client.insert(executionActionsTable).values({
       id:               action.actionId,
       executionId:      ctx.executionId,
       organisationId:   ctx.organisationId,
@@ -81,7 +94,7 @@ export async function recordActionProposed(
       proposedAt:       action.proposedAt ? new Date(action.proposedAt) : new Date(),
       correlationId:    buildCorrelationId(ctx.executionId, action.actionId),
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing());
   } catch (err) {
     logger.warn({ err, actionId: action.actionId }, "[action-lifecycle] Failed to record proposed action (non-fatal)");
   }
@@ -96,9 +109,9 @@ export async function recordActionAwaitingApproval(
   organisationId: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.awaiting_approval", async (client) => client.update(executionActionsTable)
       .set({ status: "awaiting_approval", updatedAt: new Date() })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record awaiting_approval (non-fatal)");
   }
@@ -114,14 +127,14 @@ export async function recordActionApproved(
   approvedBy: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.approved", async (client) => client.update(executionActionsTable)
       .set({
         status:     "approved",
         approvedBy,
         approvedAt: new Date(),
         updatedAt:  new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record approved (non-fatal)");
   }
@@ -137,14 +150,14 @@ export async function recordActionRejected(
   rejectedBy: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.rejected", async (client) => client.update(executionActionsTable)
       .set({
         status:     "rejected",
         rejectedBy,
         rejectedAt: new Date(),
         updatedAt:  new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record rejected (non-fatal)");
   }
@@ -188,7 +201,7 @@ export async function recordActionPreDispatch(
   },
 ): Promise<void> {
   // BLOCKING — do NOT wrap in try/catch here. Let the error propagate to block dispatch.
-  await db.insert(executionActionsTable)
+  await withExecutionActionTenant(ctx.organisationId, "execution_action.pre_dispatch", async (client) => client.insert(executionActionsTable)
     .values({
       id:               action.actionId,
       executionId:      ctx.executionId,
@@ -229,7 +242,7 @@ export async function recordActionPreDispatch(
         sessionId:              ctx.sessionId ?? null,
         updatedAt:              new Date(),
       },
-    });
+    }));
   // If the above throws, the error propagates to the caller which must abort dispatch.
 }
 
@@ -249,13 +262,13 @@ export async function recordReconciliationRequired(
   reason: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.reconciliation_required", async (client) => client.update(executionActionsTable)
       .set({
         reconciliationRequired: true,
         errorDetails: { reconciliationReason: reason, setAt: new Date().toISOString() },
         updatedAt: new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     // Nothing we can do — log as critical for operator attention
     logger.error(
@@ -276,7 +289,7 @@ export async function recordActionExecuting(
   sessionId: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.executing", async (client) => client.update(executionActionsTable)
       .set({
         status:             "executing",
         connectorDeviceId:  deviceId,
@@ -284,7 +297,7 @@ export async function recordActionExecuting(
         executionStartedAt: new Date(),
         updatedAt:          new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record executing (non-fatal)");
   }
@@ -300,7 +313,7 @@ export async function recordActionCompleted(
   result: ConnectorExecutionResult,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.completed", async (client) => client.update(executionActionsTable)
       .set({
         status:        "completed",
         completedAt:   new Date(),
@@ -312,7 +325,7 @@ export async function recordActionCompleted(
         },
         updatedAt: new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record completed (non-fatal)");
   }
@@ -328,14 +341,14 @@ export async function recordActionFailed(
   error: { code: string; message: string },
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.failed", async (client) => client.update(executionActionsTable)
       .set({
         status:       "failed",
         failedAt:     new Date(),
         errorDetails: error,
         updatedAt:    new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record failed state (non-fatal)");
   }
@@ -351,14 +364,14 @@ export async function recordActionCancelled(
   reason: string,
 ): Promise<void> {
   try {
-    await db.update(executionActionsTable)
+    await withExecutionActionTenant(organisationId, "execution_action.cancelled", async (client) => client.update(executionActionsTable)
       .set({
         status:       "cancelled",
         cancelledAt:  new Date(),
         errorDetails: { reason },
         updatedAt:    new Date(),
       })
-      .where(eq(executionActionsTable.id, actionId));
+      .where(and(eq(executionActionsTable.id, actionId), eq(executionActionsTable.organisationId, organisationId))));
   } catch (err) {
     logger.warn({ err, actionId }, "[action-lifecycle] Failed to record cancelled (non-fatal)");
   }

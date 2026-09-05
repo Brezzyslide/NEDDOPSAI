@@ -11,9 +11,22 @@
  * can return all three sources together with accurate in-flight semantics.
  */
 
-import { db, tasksTable, specialistRunsTable, executionIntentsTable } from "@workspace/db";
+import { db, tasksTable, specialistRunsTable, executionIntentsTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import { projectUserFacingWorkStatus } from "./workStatusProjectionService.js";
+
+type DbClient = typeof db;
+
+function withActiveExecutionsTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "active_executions_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,8 +77,11 @@ export async function getActiveExecutions(
   organizationId: string,
 ): Promise<GetActiveExecutionsResult> {
   // Run all three queries in parallel for minimum latency
-  const [tasks, runs, intents] = await Promise.all([
-    db
+  const [tasks, runs, intents] = await withActiveExecutionsTenant(
+    organizationId,
+    "active_executions.list",
+    async (client) => Promise.all([
+    client
       .select({
         id:           tasksTable.id,
         title:        tasksTable.title,
@@ -79,7 +95,7 @@ export async function getActiveExecutions(
         inArray(tasksTable.currentState, ACTIVE_TASK_STATES as unknown as string[]),
       )),
 
-    db
+    client
       .select({
         id:                specialistRunsTable.id,
         taskId:            specialistRunsTable.taskId,
@@ -95,7 +111,7 @@ export async function getActiveExecutions(
         inArray(specialistRunsTable.status, ACTIVE_RUN_STATUSES as unknown as string[]),
       )),
 
-    db
+    client
       .select({
         id:          executionIntentsTable.id,
         taskId:      executionIntentsTable.taskId,
@@ -108,7 +124,8 @@ export async function getActiveExecutions(
         eq(executionIntentsTable.organizationId, organizationId),
         eq(executionIntentsTable.status, "dispatched"),
       )),
-  ]);
+  ]),
+  );
 
   const activeExecutions: ActiveExecution[] = [
     ...tasks.map(t => ({

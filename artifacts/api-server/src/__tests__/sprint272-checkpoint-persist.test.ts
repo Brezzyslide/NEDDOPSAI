@@ -20,6 +20,13 @@ vi.mock("@workspace/db", () => ({
     update: (...a: unknown[]) => mockUpdate(...a),
     select: (...a: unknown[]) => mockSelect(...a),
   },
+  withSystemTenantContext: vi.fn((_context: unknown, fn: (client: unknown) => unknown) =>
+    fn({
+      insert: (...a: unknown[]) => mockInsert(...a),
+      update: (...a: unknown[]) => mockUpdate(...a),
+      select: (...a: unknown[]) => mockSelect(...a),
+    }),
+  ),
   executionCheckpointsTable: {
     id:              "id",
     organizationId:  "organizationId",
@@ -146,7 +153,7 @@ describe("executionCheckpointService", () => {
       mockSelect.mockReturnValue(makeSelectChain([]));
 
       const { getActiveCheckpointByConversation } = await import("../services/executionCheckpointService.js");
-      const result = await getActiveCheckpointByConversation("conv-99");
+      const result = await getActiveCheckpointByConversation("conv-99", "org-1");
       expect(result).toBeNull();
     });
 
@@ -155,7 +162,7 @@ describe("executionCheckpointService", () => {
       mockSelect.mockReturnValue(makeSelectChain([row]));
 
       const { getActiveCheckpointByConversation } = await import("../services/executionCheckpointService.js");
-      const result = await getActiveCheckpointByConversation("conv-2");
+      const result = await getActiveCheckpointByConversation("conv-2", "org-1");
 
       expect(result).not.toBeNull();
       expect(result?.conversationId).toBe("conv-2");
@@ -169,7 +176,7 @@ describe("executionCheckpointService", () => {
       mockUpdate.mockReturnValue(makeUpdateChain([]));
 
       const { getActiveCheckpointByConversation } = await import("../services/executionCheckpointService.js");
-      const result = await getActiveCheckpointByConversation("conv-1");
+      const result = await getActiveCheckpointByConversation("conv-1", "org-1");
 
       expect(result).toBeNull();
       // Should have updated the row to expired
@@ -184,13 +191,13 @@ describe("executionCheckpointService", () => {
     it("returns false when no checkpoint", async () => {
       mockSelect.mockReturnValue(makeSelectChain([]));
       const { hasActiveCheckpoint } = await import("../services/executionCheckpointService.js");
-      expect(await hasActiveCheckpoint("conv-x")).toBe(false);
+      expect(await hasActiveCheckpoint("conv-x", "org-1")).toBe(false);
     });
 
     it("returns true when a valid checkpoint exists", async () => {
       mockSelect.mockReturnValue(makeSelectChain([makeRow()]));
       const { hasActiveCheckpoint } = await import("../services/executionCheckpointService.js");
-      expect(await hasActiveCheckpoint("conv-1")).toBe(true);
+      expect(await hasActiveCheckpoint("conv-1", "org-1")).toBe(true);
     });
   });
 
@@ -200,7 +207,7 @@ describe("executionCheckpointService", () => {
     it("returns no_checkpoint when nothing found", async () => {
       mockSelect.mockReturnValue(makeSelectChain([]));
       const { beginResume } = await import("../services/executionCheckpointService.js");
-      const result = await beginResume("conv-empty");
+      const result = await beginResume("conv-empty", "org-1");
       expect(result.resumed).toBe(false);
       expect(result.reason).toBe("no_checkpoint");
     });
@@ -208,7 +215,7 @@ describe("executionCheckpointService", () => {
     it("returns already_resuming when checkpoint is already mid-resume", async () => {
       mockSelect.mockReturnValue(makeSelectChain([makeRow({ status: "resuming" })]));
       const { beginResume } = await import("../services/executionCheckpointService.js");
-      const result = await beginResume("conv-1");
+      const result = await beginResume("conv-1", "org-1");
       expect(result.resumed).toBe(false);
       expect(result.reason).toBe("already_resuming");
     });
@@ -220,7 +227,7 @@ describe("executionCheckpointService", () => {
       mockUpdate.mockReturnValue(makeUpdateChain([updatedRow]));
 
       const { beginResume } = await import("../services/executionCheckpointService.js");
-      const result = await beginResume("conv-1");
+      const result = await beginResume("conv-1", "org-1");
 
       expect(result.resumed).toBe(true);
       expect(result.checkpoint).toBeDefined();
@@ -234,7 +241,7 @@ describe("executionCheckpointService", () => {
       mockUpdate.mockReturnValue(makeUpdateChain([]));
 
       const { beginResume } = await import("../services/executionCheckpointService.js");
-      const result = await beginResume("conv-1");
+      const result = await beginResume("conv-1", "org-1");
 
       expect(result.resumed).toBe(false);
       expect(result.reason).toBe("already_resuming");
@@ -249,7 +256,7 @@ describe("executionCheckpointService", () => {
       mockUpdate.mockReturnValue(updateChain);
 
       const { recordClarificationAnswer } = await import("../services/executionCheckpointService.js");
-      await recordClarificationAnswer("cp-1", "Budget is $5000");
+      await recordClarificationAnswer("cp-1", "Budget is $5000", "org-1");
 
       expect(mockUpdate).toHaveBeenCalled();
       const setCall = (updateChain as any).set.mock.calls[0][0];
@@ -270,7 +277,7 @@ describe("executionCheckpointService", () => {
       mockUpdate.mockReturnValue(updateChain);
 
       const service = await import("../services/executionCheckpointService.js") as any;
-      await service[fn]("cp-abc");
+      await service[fn]("cp-abc", "org-1");
 
       const setCall = (updateChain as any).set.mock.calls[0][0];
       expect(setCall.status).toBe(expectedStatus);

@@ -38,6 +38,12 @@ vi.mock("@workspace/db", () => ({
     update:          vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
     insert:          vi.fn(() => ({ values: () => ({ returning: () => Promise.resolve([]) }) })),
   },
+  withSystemTenantContext: vi.fn((_context: unknown, fn: (client: unknown) => unknown) => fn({
+    select:          mockDbSelectFn,
+    selectDistinct:  mockDbSelectFn,
+    update:          vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
+    insert:          vi.fn(() => ({ values: () => ({ returning: () => Promise.resolve([]) }) })),
+  })),
   conversationMessagesTable:  { _: "conversationMessages" },
   conversationsTable:         { _: "conversations" },
   completedWorkTable:         { _: "completedWork" },

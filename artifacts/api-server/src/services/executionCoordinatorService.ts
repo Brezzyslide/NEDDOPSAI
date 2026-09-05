@@ -380,13 +380,13 @@ export async function resumeFromCheckpoint(
 ): Promise<void> {
   const { conversationId, organizationId, requesterId, clarificationAnswer } = input;
 
-  const checkpoint = await getActiveCheckpointByConversation(conversationId);
+  const checkpoint = await getActiveCheckpointByConversation(conversationId, organizationId);
   if (!checkpoint) {
     console.warn("[ExecutionCoordinator] resumeFromCheckpoint: no active checkpoint for conversation", conversationId);
     return;
   }
 
-  const resumeResult = await beginResume(conversationId);
+  const resumeResult = await beginResume(conversationId, organizationId);
   if (!resumeResult.resumed) {
     console.warn("[ExecutionCoordinator] resumeFromCheckpoint: already resuming or no checkpoint", resumeResult.reason);
     return;

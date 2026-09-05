@@ -21,6 +21,7 @@ import {
   taskExecutionPlansTable,
   executionSessionsTable,
   executionEventsTable,
+  withSystemTenantContext,
 } from "@workspace/db";
 import type {
   BlueprintExecutionContractSnapshot,
@@ -59,6 +60,19 @@ import {
 } from "./workBlueprintService.js";
 import { getRegistryEntry, resolveRegistryCodeForNewWork, resolveRegistryProfessionalOwner } from "./blueprintRegistry.js";
 
+type DbClient = typeof db;
+
+function withExecutionTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_service", purpose },
+    fn,
+  );
+}
+
 // ─── Singleton engine ─────────────────────────────────────────────────────────
 
 let _engine: OpenClawExecutionEngine | null = null;
@@ -92,11 +106,11 @@ export interface ExecutionSubmitResult {
 // ─── Pre-submission checks ────────────────────────────────────────────────────
 
 async function getTaskForExecutionSubmission(taskId: string, organizationId: string) {
-  const [task] = await db
+  const [task] = await withExecutionTenant(organizationId, "execution_submission.task.get", async (client) => client
     .select()
     .from(tasksTable)
     .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
-    .limit(1);
+    .limit(1));
 
   if (!task) {
     throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
@@ -107,7 +121,7 @@ async function getTaskForExecutionSubmission(taskId: string, organizationId: str
   }
 
   if (task.currentState === "executing") {
-    const [session] = await db
+    const [session] = await withExecutionTenant(organizationId, "execution_submission.pending_session.get", async (client) => client
       .select()
       .from(executionSessionsTable)
       .where(and(
@@ -115,7 +129,7 @@ async function getTaskForExecutionSubmission(taskId: string, organizationId: str
         eq(executionSessionsTable.organizationId, organizationId),
       ))
       .orderBy(desc(executionSessionsTable.createdAt))
-      .limit(1);
+      .limit(1));
 
     if (session?.currentStatus === "pending") {
       return task;
@@ -130,12 +144,12 @@ async function getTaskForExecutionSubmission(taskId: string, organizationId: str
   );
 }
 
-async function getTaskPlan(taskId: string) {
-  const [plan] = await db
+async function getTaskPlan(taskId: string, organizationId: string) {
+  const [plan] = await withExecutionTenant(organizationId, "execution_submission.plan.get", async (client) => client
     .select()
     .from(taskExecutionPlansTable)
-    .where(eq(taskExecutionPlansTable.taskId, taskId))
-    .limit(1);
+    .where(and(eq(taskExecutionPlansTable.taskId, taskId), eq(taskExecutionPlansTable.organizationId, organizationId)))
+    .limit(1));
 
   if (!plan) {
     throw Object.assign(
@@ -663,7 +677,7 @@ function requiresOpenClawRuntime(pkg: ExecutionPackage): boolean {
 }
 
 async function getLatestExecutionSession(taskId: string, organizationId: string) {
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_session.latest", async (client) => client
     .select()
     .from(executionSessionsTable)
     .where(and(
@@ -671,7 +685,7 @@ async function getLatestExecutionSession(taskId: string, organizationId: string)
       eq(executionSessionsTable.organizationId, organizationId),
     ))
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
   return session ?? null;
 }
 
@@ -682,7 +696,7 @@ async function persistExecutionEvent(input: {
   eventSource: string;
   payload: Record<string, unknown>;
 }) {
-  await db.insert(executionEventsTable).values({
+  await withExecutionTenant(input.organizationId, "execution_event.persist", async (client) => client.insert(executionEventsTable).values({
     id: randomUUID(),
     executionSessionId: input.executionSessionId,
     organizationId: input.organizationId,
@@ -690,7 +704,7 @@ async function persistExecutionEvent(input: {
     eventSource: input.eventSource,
     payload: input.payload,
     occurredAt: new Date(),
-  }).catch(() => {});
+  })).catch(() => {});
 }
 
 async function startAwsNativeExecution(input: {
@@ -705,7 +719,7 @@ async function startAwsNativeExecution(input: {
   const membership = await getMembershipForUser(input.task.organizationId, input.requestedByUserId);
   const requesterRole = membership?.role;
 
-  await db.insert(executionSessionsTable).values({
+  await withExecutionTenant(input.task.organizationId, "execution_session.aws_native.start", async (client) => client.insert(executionSessionsTable).values({
     id: input.pkg.executionId,
     taskId: input.task.id,
     organizationId: input.task.organizationId,
@@ -738,12 +752,12 @@ async function startAwsNativeExecution(input: {
       updatedAt: now,
       errorMessage: null,
     },
-  });
+  }));
 
-  await db
+  await withExecutionTenant(input.task.organizationId, "task.mark_executing", async (client) => client
     .update(tasksTable)
     .set({ currentState: "executing", updatedAt: now })
-    .where(eq(tasksTable.id, input.task.id));
+    .where(and(eq(tasksTable.id, input.task.id), eq(tasksTable.organizationId, input.task.organizationId))));
 
   await persistExecutionEvent({
     executionSessionId: input.pkg.executionId,
@@ -781,7 +795,7 @@ async function startAwsNativeExecution(input: {
           correlationId: input.pkg.executionId,
           requestedByUserId: input.requestedByUserId,
         });
-        await db
+        await withExecutionTenant(input.task.organizationId, "execution_session.aws_native.completed", async (client) => client
           .update(executionSessionsTable)
           .set({
             currentStatus: "completed",
@@ -800,7 +814,7 @@ async function startAwsNativeExecution(input: {
               blueprintCode: result.blueprintCode,
             },
           })
-          .where(eq(executionSessionsTable.id, input.pkg.executionId));
+          .where(and(eq(executionSessionsTable.id, input.pkg.executionId), eq(executionSessionsTable.organizationId, input.task.organizationId))));
         await persistExecutionEvent({
           executionSessionId: input.pkg.executionId,
           organizationId: input.task.organizationId,
@@ -827,7 +841,7 @@ async function startAwsNativeExecution(input: {
           failureMetadata: result.failureMetadata,
         });
       } else {
-        await db
+        await withExecutionTenant(input.task.organizationId, "task.execution_clarification.record", async (client) => client
           .update(tasksTable)
           .set({
             currentState: "planning",
@@ -848,9 +862,9 @@ async function startAwsNativeExecution(input: {
           .where(and(
             eq(tasksTable.id, input.task.id),
             eq(tasksTable.organizationId, input.task.organizationId),
-          ));
+          )));
       }
-      await db
+      await withExecutionTenant(input.task.organizationId, "execution_session.aws_native.terminal", async (client) => client
         .update(executionSessionsTable)
         .set({
           currentStatus: terminalStatus,
@@ -868,7 +882,7 @@ async function startAwsNativeExecution(input: {
             blueprintCode: result.blueprintCode,
           },
         })
-        .where(eq(executionSessionsTable.id, input.pkg.executionId));
+        .where(and(eq(executionSessionsTable.id, input.pkg.executionId), eq(executionSessionsTable.organizationId, input.task.organizationId))));
       await persistExecutionEvent({
         executionSessionId: input.pkg.executionId,
         organizationId: input.task.organizationId,
@@ -884,7 +898,7 @@ async function startAwsNativeExecution(input: {
         errorMessage: message,
         correlationId: input.pkg.executionId,
       }).catch(() => {});
-      await db
+      await withExecutionTenant(input.task.organizationId, "execution_session.aws_native.failed", async (client) => client
         .update(executionSessionsTable)
         .set({
           currentStatus: "failed",
@@ -892,7 +906,7 @@ async function startAwsNativeExecution(input: {
           errorMessage: message,
           updatedAt: new Date(),
         })
-        .where(eq(executionSessionsTable.id, input.pkg.executionId));
+        .where(and(eq(executionSessionsTable.id, input.pkg.executionId), eq(executionSessionsTable.organizationId, input.task.organizationId))));
       await persistExecutionEvent({
         executionSessionId: input.pkg.executionId,
         organizationId: input.task.organizationId,
@@ -918,7 +932,7 @@ export async function submitTaskExecution(
   //    only session is still pending runtime connection.
   const [task, planRow] = await Promise.all([
     getTaskForExecutionSubmission(input.taskId, input.organizationId),
-    getTaskPlan(input.taskId),
+    getTaskPlan(input.taskId, input.organizationId),
   ]);
 
   const existingPendingSession = task.currentState === "executing"
@@ -1042,7 +1056,7 @@ export async function submitTaskExecution(
   // 5. Check if desktop/runtime broker is configured for broker-required work.
   if (!isOpenClawConfigured(config)) {
     // Runtime not configured — create a pending session for when it connects
-    await db.insert(executionSessionsTable).values({
+    await withExecutionTenant(task.organizationId, "execution_session.openclaw.pending", async (client) => client.insert(executionSessionsTable).values({
       id: pkg.executionId,
       taskId: task.id,
       organizationId: task.organizationId,
@@ -1057,7 +1071,7 @@ export async function submitTaskExecution(
       },
       createdAt: new Date(),
       updatedAt: new Date(),
-    });
+    }));
 
     return {
       executionId: pkg.executionId,
@@ -1093,7 +1107,7 @@ export async function getTaskExecutionStatus(
   organizationId: string,
 ): Promise<ExecutionSessionInfo | null> {
   // Find the latest session for this task
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_status.session.get", async (client) => client
     .select()
     .from(executionSessionsTable)
     .where(
@@ -1103,7 +1117,7 @@ export async function getTaskExecutionStatus(
       ),
     )
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
 
   if (!session) return null;
 
@@ -1131,7 +1145,7 @@ export async function cancelTaskExecution(
   taskId: string,
   organizationId: string,
 ): Promise<void> {
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_control.cancel.session.get", async (client) => client
     .select()
     .from(executionSessionsTable)
     .where(
@@ -1141,7 +1155,7 @@ export async function cancelTaskExecution(
       ),
     )
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
 
   if (!session) {
     throw Object.assign(new Error("No active execution session found"), { code: "RESOURCE_NOT_FOUND" });
@@ -1155,7 +1169,7 @@ export async function pauseTaskExecution(
   taskId: string,
   organizationId: string,
 ): Promise<void> {
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_control.pause.session.get", async (client) => client
     .select()
     .from(executionSessionsTable)
     .where(
@@ -1165,7 +1179,7 @@ export async function pauseTaskExecution(
       ),
     )
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
 
   if (!session) {
     throw Object.assign(new Error("No active execution session found"), { code: "RESOURCE_NOT_FOUND" });
@@ -1179,7 +1193,7 @@ export async function resumeTaskExecution(
   taskId: string,
   organizationId: string,
 ): Promise<void> {
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_control.resume.session.get", async (client) => client
     .select()
     .from(executionSessionsTable)
     .where(
@@ -1189,7 +1203,7 @@ export async function resumeTaskExecution(
       ),
     )
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
 
   if (!session) {
     throw Object.assign(new Error("No active execution session found"), { code: "RESOURCE_NOT_FOUND" });
@@ -1206,7 +1220,7 @@ export async function getExecutionEvents(
   organizationId: string,
   limit = 50,
 ) {
-  const [session] = await db
+  const [session] = await withExecutionTenant(organizationId, "execution_events.session.get", async (client) => client
     .select({ id: executionSessionsTable.id })
     .from(executionSessionsTable)
     .where(
@@ -1216,11 +1230,11 @@ export async function getExecutionEvents(
       ),
     )
     .orderBy(desc(executionSessionsTable.createdAt))
-    .limit(1);
+    .limit(1));
 
   if (!session) return [];
 
-  return db
+  return withExecutionTenant(organizationId, "execution_events.list", async (client) => client
     .select()
     .from(executionEventsTable)
     .where(
@@ -1230,7 +1244,7 @@ export async function getExecutionEvents(
       ),
     )
     .orderBy(desc(executionEventsTable.occurredAt))
-    .limit(limit);
+    .limit(limit));
 }
 
 // ─── Platform monitoring ──────────────────────────────────────────────────────

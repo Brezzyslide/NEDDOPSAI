@@ -139,7 +139,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(src).toContain("cancelTask(input.taskId");
     expect(src).toContain("getActiveCheckpointByConversation");
-    expect(src).toContain("cancelCheckpoint(checkpoint.id)");
+    expect(src).toContain("cancelCheckpoint(checkpoint.id, input.organizationId)");
     expect(src).toContain("cancelTaskExecution(input.taskId");
   });
 
@@ -563,7 +563,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const src = source("services/messageIngressService.ts");
 
     expect(src).toContain("getActiveCheckpointByConversation");
-    expect(src).toContain("beginResume(conversationId)");
+    expect(src).toContain("beginResume(conversationId, organizationId)");
     expect(src).toContain("resumeFromCheckpointById");
   });
 
@@ -577,7 +577,7 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   it("conversation cancellation cancels any same-task checkpoint before runtime finalisation can resume", () => {
     const src = source("services/conversationControlService.ts");
 
-    const checkpointIndex = src.indexOf("cancelCheckpoint(checkpoint.id)");
+    const checkpointIndex = src.indexOf("cancelCheckpoint(checkpoint.id, input.organizationId)");
     const runtimeIndex = src.indexOf("cancelTaskExecution(input.taskId");
     expect(checkpointIndex).toBeGreaterThan(-1);
     expect(runtimeIndex).toBeGreaterThan(checkpointIndex);

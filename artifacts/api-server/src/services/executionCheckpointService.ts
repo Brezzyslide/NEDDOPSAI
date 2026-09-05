@@ -13,10 +13,23 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, lt, or, inArray } from "drizzle-orm";
-import { db, executionCheckpointsTable } from "@workspace/db";
+import { db, executionCheckpointsTable, withSystemTenantContext } from "@workspace/db";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import { logOrgEvent } from "./auditService.js";
+
+type DbClient = typeof db;
+
+function withExecutionCheckpointTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_checkpoint_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,15 +111,16 @@ export async function createCheckpoint(input: CreateCheckpointInput): Promise<Ac
   const id = randomUUID();
 
   // Cancel any previous active checkpoint for this conversation
-  await db
+  await withExecutionCheckpointTenant(input.organizationId, "execution_checkpoint.replace_active", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
     .where(and(
       eq(executionCheckpointsTable.conversationId, input.conversationId),
+      eq(executionCheckpointsTable.organizationId, input.organizationId),
       inArray(executionCheckpointsTable.status, [...ACTIVE_STATUSES]),
-    ));
+    )));
 
-  const [row] = await db
+  const [row] = await withExecutionCheckpointTenant(input.organizationId, "execution_checkpoint.create", async (client) => client
     .insert(executionCheckpointsTable)
     .values({
       id,
@@ -124,7 +138,7 @@ export async function createCheckpoint(input: CreateCheckpointInput): Promise<Ac
       createdAt:              now,
       updatedAt:              now,
     })
-    .returning();
+    .returning());
 
   await logOrgEvent({
     eventType: "checkpoint.created",
@@ -150,30 +164,32 @@ export async function createCheckpoint(input: CreateCheckpointInput): Promise<Ac
  */
 export async function getActiveCheckpointByConversation(
   conversationId: string,
+  organizationId: string,
 ): Promise<ActiveCheckpoint | null> {
-  const [row] = await db
+  const [row] = await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.active_by_conversation", async (client) => client
     .select()
     .from(executionCheckpointsTable)
     .where(and(
       eq(executionCheckpointsTable.conversationId, conversationId),
+      eq(executionCheckpointsTable.organizationId, organizationId),
       inArray(executionCheckpointsTable.status, [...ACTIVE_STATUSES]),
     ))
-    .limit(1);
+    .limit(1));
 
   if (!row) return null;
   if (isExpired(row)) {
-    await db
+    await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.mark_expired", async (client) => client
       .update(executionCheckpointsTable)
       .set({ status: "expired", updatedAt: new Date() })
-      .where(eq(executionCheckpointsTable.id, row.id));
+      .where(and(eq(executionCheckpointsTable.id, row.id), eq(executionCheckpointsTable.organizationId, organizationId))));
     return null;
   }
   return rowToCheckpoint(row);
 }
 
 /** Boolean helper — safe to call before every message. */
-export async function hasActiveCheckpoint(conversationId: string): Promise<boolean> {
-  const cp = await getActiveCheckpointByConversation(conversationId);
+export async function hasActiveCheckpoint(conversationId: string, organizationId: string): Promise<boolean> {
+  const cp = await getActiveCheckpointByConversation(conversationId, organizationId);
   return cp !== null;
 }
 
@@ -184,11 +200,12 @@ export async function hasActiveCheckpoint(conversationId: string): Promise<boole
 export async function recordClarificationAnswer(
   checkpointId: string,
   answer: string,
+  organizationId: string,
 ): Promise<void> {
-  await db
+  await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.clarification_answer.record", async (client) => client
     .update(executionCheckpointsTable)
     .set({ clarificationAnswer: answer, updatedAt: new Date() })
-    .where(eq(executionCheckpointsTable.id, checkpointId));
+    .where(and(eq(executionCheckpointsTable.id, checkpointId), eq(executionCheckpointsTable.organizationId, organizationId))));
 }
 
 /**
@@ -196,8 +213,8 @@ export async function recordClarificationAnswer(
  * Returns { resumed: false, reason } if the checkpoint is already being
  * resumed (prevents duplicate resumes from two simultaneous replies).
  */
-export async function beginResume(conversationId: string): Promise<BeginResumeResult> {
-  const existing = await getActiveCheckpointByConversation(conversationId);
+export async function beginResume(conversationId: string, organizationId: string): Promise<BeginResumeResult> {
+  const existing = await getActiveCheckpointByConversation(conversationId, organizationId);
   if (!existing) {
     return { resumed: false, reason: "no_checkpoint" };
   }
@@ -207,14 +224,15 @@ export async function beginResume(conversationId: string): Promise<BeginResumeRe
   }
 
   // Atomic update: only transitions if still awaiting_clarification
-  const updated = await db
+  const updated = await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.resume.begin", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "resuming", resumedAt: new Date(), updatedAt: new Date() })
     .where(and(
       eq(executionCheckpointsTable.id, existing.id),
+      eq(executionCheckpointsTable.organizationId, organizationId),
       eq(executionCheckpointsTable.status, "awaiting_clarification"),
     ))
-    .returning();
+    .returning());
 
   if (updated.length === 0) {
     // Another request already transitioned it — idempotent result
@@ -233,32 +251,32 @@ export async function beginResume(conversationId: string): Promise<BeginResumeRe
   return { resumed: true, checkpoint: { ...existing, status: "resuming" } };
 }
 
-export async function markResumed(checkpointId: string): Promise<void> {
-  await db
+export async function markResumed(checkpointId: string, organizationId: string): Promise<void> {
+  await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.mark_resumed", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "resumed", updatedAt: new Date() })
-    .where(eq(executionCheckpointsTable.id, checkpointId));
+    .where(and(eq(executionCheckpointsTable.id, checkpointId), eq(executionCheckpointsTable.organizationId, organizationId))));
 }
 
-export async function markCompleted(checkpointId: string): Promise<void> {
-  await db
+export async function markCompleted(checkpointId: string, organizationId: string): Promise<void> {
+  await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.mark_completed", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "completed", completedAt: new Date(), updatedAt: new Date() })
-    .where(eq(executionCheckpointsTable.id, checkpointId));
+    .where(and(eq(executionCheckpointsTable.id, checkpointId), eq(executionCheckpointsTable.organizationId, organizationId))));
 }
 
-export async function markFailed(checkpointId: string): Promise<void> {
-  await db
+export async function markFailed(checkpointId: string, organizationId: string): Promise<void> {
+  await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.mark_failed", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "failed", updatedAt: new Date() })
-    .where(eq(executionCheckpointsTable.id, checkpointId));
+    .where(and(eq(executionCheckpointsTable.id, checkpointId), eq(executionCheckpointsTable.organizationId, organizationId))));
 }
 
-export async function cancelCheckpoint(checkpointId: string): Promise<void> {
-  await db
+export async function cancelCheckpoint(checkpointId: string, organizationId: string): Promise<void> {
+  await withExecutionCheckpointTenant(organizationId, "execution_checkpoint.cancel", async (client) => client
     .update(executionCheckpointsTable)
     .set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
-    .where(eq(executionCheckpointsTable.id, checkpointId));
+    .where(and(eq(executionCheckpointsTable.id, checkpointId), eq(executionCheckpointsTable.organizationId, organizationId))));
 }
 
 /**

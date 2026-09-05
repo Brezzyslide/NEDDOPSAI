@@ -348,7 +348,7 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     }
   }
 
-  const checkpoint = await getActiveCheckpointByConversation(conversationId);
+  const checkpoint = await getActiveCheckpointByConversation(conversationId, organizationId);
   const controlIntent = classifyCanonicalConversationAction(content);
 
   if (checkpoint && isLikelyCheckpointAnswer(content, checkpoint)) {
@@ -367,10 +367,10 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     });
 
     // Store the clarification answer against the checkpoint
-    await recordClarificationAnswer(checkpoint.id, content).catch(() => {});
+    await recordClarificationAnswer(checkpoint.id, content, organizationId).catch(() => {});
 
     // Atomic claim — prevents duplicate resume from two simultaneous replies
-    const resumeResult = await beginResume(conversationId);
+    const resumeResult = await beginResume(conversationId, organizationId);
 
     if (!resumeResult.resumed) {
       await logOrgEvent({

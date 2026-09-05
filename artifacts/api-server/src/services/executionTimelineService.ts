@@ -14,8 +14,21 @@
  * Never duplicates audit events — reads only from conversation messages.
  */
 
-import { db, conversationMessagesTable, conversationsTable, completedWorkTable } from "@workspace/db";
+import { db, conversationMessagesTable, conversationsTable, completedWorkTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+
+type DbClient = typeof db;
+
+function withExecutionTimelineTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_timeline_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,7 +88,7 @@ export async function getConversationTimeline(
   organizationId: string,
   conversationId: string,
 ): Promise<ExecutionTimeline> {
-  const messages = await db
+  const messages = await withExecutionTimelineTenant(organizationId, "execution_timeline.conversation", async (client) => client
     .select()
     .from(conversationMessagesTable)
     .where(
@@ -85,7 +98,7 @@ export async function getConversationTimeline(
         eq(conversationMessagesTable.messageType, "execution_update"),
       ),
     )
-    .orderBy(conversationMessagesTable.createdAt);
+    .orderBy(conversationMessagesTable.createdAt));
 
   const entries: TimelineEntry[] = messages.map(m => {
     const data = (m.structuredContent as { data?: Record<string, unknown> } | null)?.data ?? {};
@@ -117,7 +130,7 @@ export async function getCompletedWorkTimeline(
   organizationId: string,
   completedWorkId: string,
 ): Promise<ExecutionTimeline | null> {
-  const [work] = await db
+  const [work] = await withExecutionTimelineTenant(organizationId, "execution_timeline.completed_work.lookup", async (client) => client
     .select({ conversationId: completedWorkTable.conversationId })
     .from(completedWorkTable)
     .where(
@@ -126,7 +139,7 @@ export async function getCompletedWorkTimeline(
         eq(completedWorkTable.id, completedWorkId),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (!work?.conversationId) return null;
   return getConversationTimeline(organizationId, work.conversationId);
@@ -141,7 +154,7 @@ export async function getOrgExecutionTimelines(
   limit = 20,
 ): Promise<ExecutionTimeline[]> {
   // Find conversations that have execution_update messages
-  const convIds = await db
+  const convIds = await withExecutionTimelineTenant(organizationId, "execution_timeline.org_conversations", async (client) => client
     .selectDistinct({ conversationId: conversationMessagesTable.conversationId })
     .from(conversationMessagesTable)
     .where(
@@ -151,7 +164,7 @@ export async function getOrgExecutionTimelines(
       ),
     )
     .orderBy(desc(conversationMessagesTable.createdAt))
-    .limit(limit);
+    .limit(limit));
 
   if (convIds.length === 0) return [];
 

@@ -766,9 +766,9 @@ export async function cancelTaskFromConversation(input: {
     return { status: "not_cancelled", taskId: input.taskId, reason: result.reason };
   }
 
-  const checkpoint = await getActiveCheckpointByConversation(input.conversationId).catch(() => null);
+  const checkpoint = await getActiveCheckpointByConversation(input.conversationId, input.organizationId).catch(() => null);
   if (checkpoint && (!checkpoint.taskId || checkpoint.taskId === input.taskId)) {
-    await cancelCheckpoint(checkpoint.id).catch(() => {});
+    await cancelCheckpoint(checkpoint.id, input.organizationId).catch(() => {});
   }
   await cancelTaskExecution(input.taskId, input.organizationId).catch(() => {});
   await logOrgEvent({

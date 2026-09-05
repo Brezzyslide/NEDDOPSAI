@@ -479,7 +479,7 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
     });
 
     // Sprint 27.2: uses atomic beginResume (durable DB CAS) instead of in-memory clearCheckpoint
-    expect(mockBeginResume271).toHaveBeenCalledWith("conv-resume");
+    expect(mockBeginResume271).toHaveBeenCalledWith("conv-resume", ORG);
   });
 
   it("emits execution_recovered SSE event", async () => {

@@ -32,11 +32,16 @@ vi.mock("@workspace/db", () => ({
     insert: mockInsert,
     update: mockUpdate,
   },
-  executionActionsTable: { id: "id", status: "status" },
+  withSystemTenantContext: vi.fn((_context: unknown, fn: (client: unknown) => unknown) => fn({
+    insert: mockInsert,
+    update: mockUpdate,
+  })),
+  executionActionsTable: { id: "id", status: "status", organisationId: "organisationId" },
 }));
 
 vi.mock("drizzle-orm", () => ({
   eq: vi.fn((col: unknown, val: unknown) => ({ col, val })),
+  and: vi.fn((...args: unknown[]) => ({ op: "and", args })),
 }));
 
 vi.mock("../lib/logger.js", () => ({

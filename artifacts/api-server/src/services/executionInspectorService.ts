@@ -20,7 +20,7 @@
  * raw LLM payloads, or sensitive model internals.
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   workPackageManifestsTable,
   retrievalAuditEventsTable,
@@ -37,6 +37,19 @@ import {
 import { eq, and, inArray } from "drizzle-orm";
 import { getConversationTimeline } from "./executionTimelineService.js";
 import type { TimelineEntry } from "./executionTimelineService.js";
+
+type DbClient = typeof db;
+
+function withExecutionInspectorTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_inspector_service", purpose },
+    fn,
+  );
+}
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -376,7 +389,7 @@ export async function getExecutionInspection(
   actorRole: InspectorActorRole,
 ): Promise<ExecutionInspection | null> {
   // ── 1. Load manifest ────────────────────────────────────────────────────────
-  const [manifestRow] = await db
+  const [manifestRow] = await withExecutionInspectorTenant(organizationId, "execution_inspection.by_execution", async (client) => client
     .select()
     .from(workPackageManifestsTable)
     .where(
@@ -385,7 +398,7 @@ export async function getExecutionInspection(
         eq(workPackageManifestsTable.organizationId, organizationId),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (!manifestRow) return null;
 
@@ -407,7 +420,7 @@ export async function getInspectionByCompletedWorkId(
   actorUserId: string,
   actorRole: InspectorActorRole,
 ): Promise<ExecutionInspection | null> {
-  const [manifestRow] = await db
+  const [manifestRow] = await withExecutionInspectorTenant(organizationId, "execution_inspection.by_completed_work", async (client) => client
     .select()
     .from(workPackageManifestsTable)
     .where(
@@ -416,7 +429,7 @@ export async function getInspectionByCompletedWorkId(
         eq(workPackageManifestsTable.organizationId, organizationId),
       ),
     )
-    .limit(1);
+    .limit(1));
 
   if (!manifestRow) return null;
 
@@ -437,7 +450,7 @@ async function _buildInspection(
   const executionId = manifestRow.executionId;
 
   // ── 2. Load retrieval audit event (best-effort) ─────────────────────────────
-  const [auditRow] = await db
+  const [auditRow] = await withExecutionInspectorTenant(organizationId, "execution_inspection.audit_event", async (client) => client
     .select()
     .from(retrievalAuditEventsTable)
     .where(
@@ -447,11 +460,11 @@ async function _buildInspection(
       ),
     )
     .orderBy(retrievalAuditEventsTable.createdAt)
-    .limit(1);
+    .limit(1));
 
   // ── 3. Load completed work (best-effort) ────────────────────────────────────
   const [completedWorkRow] = manifestRow.completedWorkId
-    ? await db
+    ? await withExecutionInspectorTenant(organizationId, "execution_inspection.completed_work", async (client) => client
         .select({
           id: completedWorkTable.id,
           status: completedWorkTable.status,
@@ -464,16 +477,16 @@ async function _buildInspection(
             eq(completedWorkTable.organizationId, organizationId),
           ),
         )
-        .limit(1)
+        .limit(1))
     : [];
 
   // ── 4. Load blueprint name (best-effort) ────────────────────────────────────
   const [blueprintRow] = manifestRow.blueprintId
-    ? await db
+    ? await withExecutionInspectorTenant(organizationId, "execution_inspection.blueprint", async (client) => client
         .select({ name: workBlueprintsTable.title, version: workBlueprintsTable.version })
         .from(workBlueprintsTable)
         .where(eq(workBlueprintsTable.id, manifestRow.blueprintId))
-        .limit(1)
+        .limit(1))
     : [];
 
   // ── 5. Load execution timeline ───────────────────────────────────────────────
@@ -855,7 +868,7 @@ async function _buildEvidenceSources(
   const previewMap = new Map<string, string>();
   if (allSourceIds.length > 0 && chunkIds.length > 0) {
     try {
-      const previewRows = await db
+      const previewRows = await withExecutionInspectorTenant(organizationId, "execution_inspection.chunk_preview", async (client) => client
         .select({
           sourceId: knowledgeChunksTable.knowledgeSourceId,
           text: knowledgeChunksTable.text,
@@ -869,7 +882,7 @@ async function _buildEvidenceSources(
           ),
         )
         .orderBy(knowledgeChunksTable.chunkIndex)
-        .limit(allSourceIds.length * 3); // a few chunks per source, pick first hit
+        .limit(allSourceIds.length * 3)); // a few chunks per source, pick first hit
 
       for (const row of previewRows) {
         if (!previewMap.has(row.sourceId) && chunkSet.has(row.chunkId) && row.text) {
@@ -887,7 +900,7 @@ async function _buildEvidenceSources(
   const chunkCountMap = new Map<string, number>();
   if (chunkIds.length > 0 && allSourceIds.length > 0) {
     try {
-      const countRows = await db
+      const countRows = await withExecutionInspectorTenant(organizationId, "execution_inspection.chunk_counts", async (client) => client
         .select({
           sourceId: knowledgeChunksTable.knowledgeSourceId,
           id: knowledgeChunksTable.id,
@@ -899,7 +912,7 @@ async function _buildEvidenceSources(
             inArray(knowledgeChunksTable.id, chunkIds.slice(0, 200)),
           ),
         )
-        .limit(200);
+        .limit(200));
 
       for (const row of countRows) {
         chunkCountMap.set(row.sourceId, (chunkCountMap.get(row.sourceId) ?? 0) + 1);
