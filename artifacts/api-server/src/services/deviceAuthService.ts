@@ -300,8 +300,9 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
     throw Object.assign(new Error("Refresh token expired"), { code: "REFRESH_TOKEN_EXPIRED" });
   }
 
+  return withDeviceAuthTenant(existing.organizationId, "device_auth.refresh", async (client) => {
   // Check device is still active
-  const [device] = await db
+  const [device] = await client
     .select()
     .from(devicesTable)
     .where(eq(devicesTable.id, existing.deviceId))
@@ -327,7 +328,7 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
   const newAccessTokenId = `dat_${randomUUID()}`;
   const newAccessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
 
-  await db.insert(deviceAccessTokensTable).values({
+  await client.insert(deviceAccessTokensTable).values({
     id: newAccessTokenId,
     deviceId: existing.deviceId,
     organizationId: existing.organizationId,
@@ -343,7 +344,7 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
   const newRefreshTokenId = `drt_${randomUUID()}`;
   const newRefreshTokenExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
-  await db.insert(deviceRefreshTokensTable).values({
+  await client.insert(deviceRefreshTokensTable).values({
     id: newRefreshTokenId,
     deviceId: existing.deviceId,
     organizationId: existing.organizationId,
@@ -353,7 +354,7 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
   });
 
   // Rotate (invalidate) the old refresh token
-  await db
+  await client
     .update(deviceRefreshTokensTable)
     .set({ rotatedAt: now, supersededById: newRefreshTokenId })
     .where(eq(deviceRefreshTokensTable.id, existing.id));
@@ -364,6 +365,7 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
     refreshToken: newRefreshToken,
     refreshTokenExpiresAt: newRefreshTokenExpiresAt,
   };
+  });
 }
 
 /**
@@ -392,7 +394,8 @@ export async function validateAccessToken(rawToken: string): Promise<{
   if (now > tokenRow.expiresAt) return null;
   if (tokenRow.audience !== "device-relay") return null;
 
-  const [device] = await db
+  return withDeviceAuthTenant(tokenRow.organizationId, "device_auth.validate_access", async (client) => {
+  const [device] = await client
     .select()
     .from(devicesTable)
     .where(
@@ -410,12 +413,13 @@ export async function validateAccessToken(rawToken: string): Promise<{
   if (device.status === "pending") return null;
 
   // Update last_used_at (fire-and-forget)
-  db.update(deviceAccessTokensTable)
+  client.update(deviceAccessTokensTable)
     .set({ lastUsedAt: now })
     .where(eq(deviceAccessTokensTable.id, tokenRow.id))
     .catch(() => {});
 
   return { device, tokenId: tokenRow.id };
+  });
 }
 
 /**

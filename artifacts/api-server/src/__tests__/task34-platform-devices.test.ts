@@ -39,6 +39,11 @@ function makeUpdateChain() {
 
 vi.mock("@workspace/db", () => ({
   db: { select: mockDbSelect, update: mockDbUpdate, insert: vi.fn().mockResolvedValue([]) },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    select: mockDbSelect,
+    update: mockDbUpdate,
+    insert: vi.fn().mockResolvedValue([]),
+  })),
   devicesTable:              { id: "id", organizationId: "organization_id", status: "status", lastHeartbeatAt: "last_heartbeat_at", isPlatformDisabled: "is_platform_disabled" },
   deviceCredentialsTable:    { id: "id", deviceId: "device_id", organizationId: "organization_id", revokedAt: "revoked_at", issuedAt: "issued_at" },
   deviceRuntimeStatusTable:  { id: "id", deviceId: "device_id", errorMessage: "error_message", reportedAt: "reported_at" },
