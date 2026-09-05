@@ -7,9 +7,22 @@
 
 import { randomUUID } from "crypto";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { db, specialistRunsTable } from "@workspace/db";
+import { db, specialistRunsTable, withSystemTenantContext } from "@workspace/db";
 import { logOrgEvent } from "./auditService.js";
 import type { SpecialistRunResult } from "./specialistIntelligenceService.js";
+
+type DbClient = typeof db;
+
+function withSpecialistRunTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "specialist_run_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,18 +78,18 @@ export async function createSpecialistRun(
   input: CreateSpecialistRunInput,
 ): Promise<typeof specialistRunsTable.$inferSelect> {
   // Check for existing run with the same idempotency key
-  const existing = await db
+  const existing = await withSpecialistRunTenant(input.organizationId, "specialist_run.create.dedupe", async (client) => client
     .select()
     .from(specialistRunsTable)
     .where(eq(specialistRunsTable.idempotencyKey, input.idempotencyKey))
-    .limit(1);
+    .limit(1));
 
   if (existing[0]) {
     return existing[0];
   }
 
   const id = randomUUID();
-  const [run] = await db
+  const [run] = await withSpecialistRunTenant(input.organizationId, "specialist_run.create", async (client) => client
     .insert(specialistRunsTable)
     .values({
       id,
@@ -99,7 +112,7 @@ export async function createSpecialistRun(
       externalExecutionRequired: input.externalExecutionRequired ?? false,
       idempotencyKey: input.idempotencyKey,
     })
-    .returning();
+    .returning());
 
   if (!run) throw new Error("Failed to create specialist run");
 
@@ -125,11 +138,11 @@ export async function getSpecialistRunById(
   runId: string,
   organizationId: string,
 ): Promise<typeof specialistRunsTable.$inferSelect | undefined> {
-  const [row] = await db
+  const [row] = await withSpecialistRunTenant(organizationId, "specialist_run.get", async (client) => client
     .select()
     .from(specialistRunsTable)
     .where(and(eq(specialistRunsTable.id, runId), eq(specialistRunsTable.organizationId, organizationId)))
-    .limit(1);
+    .limit(1));
   return row;
 }
 
@@ -137,23 +150,23 @@ export async function getRunsByTask(
   taskId: string,
   organizationId: string,
 ): Promise<(typeof specialistRunsTable.$inferSelect)[]> {
-  return db
+  return withSpecialistRunTenant(organizationId, "specialist_run.by_task", async (client) => client
     .select()
     .from(specialistRunsTable)
     .where(and(eq(specialistRunsTable.taskId, taskId), eq(specialistRunsTable.organizationId, organizationId)))
-    .orderBy(desc(specialistRunsTable.createdAt));
+    .orderBy(desc(specialistRunsTable.createdAt)));
 }
 
 export async function getRunsByStatus(
   organizationId: string,
   statuses: SpecialistRunStatus[],
 ): Promise<(typeof specialistRunsTable.$inferSelect)[]> {
-  const rows = await db
+  const rows = await withSpecialistRunTenant(organizationId, "specialist_run.by_status", async (client) => client
     .select()
     .from(specialistRunsTable)
     .where(eq(specialistRunsTable.organizationId, organizationId))
     .orderBy(desc(specialistRunsTable.createdAt))
-    .limit(100);
+    .limit(100));
   return rows.filter(r => statuses.includes(r.status as SpecialistRunStatus));
 }
 
@@ -184,11 +197,11 @@ export async function transitionRunStatus(
   if (to === "failed") timestampUpdates.failedAt = now;
   if (to === "cancelled") timestampUpdates.cancelledAt = now;
 
-  const [updated] = await db
+  const [updated] = await withSpecialistRunTenant(organizationId, "specialist_run.transition", async (client) => client
     .update(specialistRunsTable)
     .set({ status: to, ...timestampUpdates, ...extra, updatedAt: now })
     .where(and(eq(specialistRunsTable.id, runId), eq(specialistRunsTable.organizationId, organizationId)))
-    .returning();
+    .returning());
 
   if (!updated) throw new Error("Failed to update specialist run status");
   return updated;
@@ -202,7 +215,7 @@ export async function saveRunResult(
   result: SpecialistRunResult,
 ): Promise<typeof specialistRunsTable.$inferSelect> {
   const now = new Date();
-  const [updated] = await db
+  const [updated] = await withSpecialistRunTenant(organizationId, "specialist_run.result.save", async (client) => client
     .update(specialistRunsTable)
     .set({
       resultSummary: result.summary.slice(0, 2000),
@@ -214,7 +227,7 @@ export async function saveRunResult(
       updatedAt: now,
     })
     .where(and(eq(specialistRunsTable.id, runId), eq(specialistRunsTable.organizationId, organizationId)))
-    .returning();
+    .returning());
 
   if (!updated) throw new Error("Failed to save run result");
   return updated;
@@ -229,9 +242,9 @@ export async function incrementAttemptNumber(
   const run = await getSpecialistRunById(runId, organizationId);
   if (!run) throw new Error("Specialist run not found");
   const nextAttempt = run.attemptNumber + 1;
-  await db
+  await withSpecialistRunTenant(organizationId, "specialist_run.attempt.increment", async (client) => client
     .update(specialistRunsTable)
     .set({ attemptNumber: nextAttempt, updatedAt: new Date() })
-    .where(eq(specialistRunsTable.id, runId));
+    .where(and(eq(specialistRunsTable.id, runId), eq(specialistRunsTable.organizationId, organizationId))));
   return nextAttempt;
 }

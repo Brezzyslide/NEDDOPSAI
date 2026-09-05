@@ -69,6 +69,7 @@ vi.mock("@workspace/db", () => {
   };
   return {
     db,
+    withSystemTenantContext: vi.fn((_context, fn) => fn(db)),
     completedWorkClaimsTable: { id: "id" },
     completedWorkClaimEvidenceTable: { id: "id" },
     completedWorkVersionsTable: {

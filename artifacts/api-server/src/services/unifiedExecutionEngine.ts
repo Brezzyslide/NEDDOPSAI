@@ -35,7 +35,7 @@ import {
   type ExecutionConstraints,
   type ExecutionStep,
 } from "@workspace/agent-runtime";
-import { db, executionEventsTable, executionSessionsTable, specialistRunsTable, taskExecutionPlansTable, workPackageManifestsTable } from "@workspace/db";
+import { db, executionEventsTable, executionSessionsTable, specialistRunsTable, taskExecutionPlansTable, withSystemTenantContext, workPackageManifestsTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import {
@@ -167,6 +167,18 @@ import type {
 import type { SessionChannel } from "../lib/resources/ExecutionSession.js";
 
 type ArtifactExportFormat = "docx" | "pdf" | "xlsx";
+type DbClient = typeof db;
+
+function withUnifiedExecutionTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "unified_execution_engine", purpose },
+    fn,
+  );
+}
 
 // ─── Shared execution types ───────────────────────────────────────────────────
 // Defined here; re-exported from workExecutionPipelineService for backward compat.
@@ -718,7 +730,7 @@ export class UnifiedExecutionEngine {
     const modelName = "gpt-4o";
     const versionRecord = captureSpecialistRunVersions(roleCode, modelName);
 
-    await db
+    await withUnifiedExecutionTenant(workPackage.organizationId, "specialist_run.versions.update", async (client) => client
       .update(specialistRunsTable)
       .set({
         dnaVersion: versionRecord.dnaVersion,
@@ -729,7 +741,10 @@ export class UnifiedExecutionEngine {
         modelVersion: versionRecord.modelVersion,
         updatedAt: new Date(),
       })
-      .where(eq(specialistRunsTable.id, runId));
+      .where(and(
+        eq(specialistRunsTable.id, runId),
+        eq(specialistRunsTable.organizationId, workPackage.organizationId),
+      )));
 
     // Thread requester identity into the gateway context (Sprint 29C).
     // For audit and future RBAC — no behavioural change at this stage.
@@ -944,7 +959,7 @@ export class UnifiedExecutionEngine {
     let selectedSpecialist: string | undefined;
 
     if (request.taskId) {
-      const [plan] = await db
+      const [plan] = await withUnifiedExecutionTenant(organizationId, "task.execution_plan.get", async (client) => client
         .select()
         .from(taskExecutionPlansTable)
         .where(and(
@@ -952,7 +967,7 @@ export class UnifiedExecutionEngine {
           eq(taskExecutionPlansTable.organizationId, organizationId),
         ))
         .orderBy(desc(taskExecutionPlansTable.createdAt))
-        .limit(1);
+        .limit(1));
 
       if (!plan) {
         return {
@@ -1117,7 +1132,7 @@ export class UnifiedExecutionEngine {
         selectionMeta?.blueprintMode ?? manifest.blueprintMode,
       );
       if (blueprintContract) {
-        await db
+        await withUnifiedExecutionTenant(organizationId, "work_package_manifest.contract_snapshot", async (client) => client
           .update(workPackageManifestsTable)
           .set({
             templateVersion: blueprintContract.template?.version ?? null,
@@ -1150,7 +1165,10 @@ export class UnifiedExecutionEngine {
                 : null,
             },
           })
-          .where(eq(workPackageManifestsTable.id, manifest.id));
+          .where(and(
+            eq(workPackageManifestsTable.id, manifest.id),
+            eq(workPackageManifestsTable.organizationId, organizationId),
+          )));
         manifest.templateVersion = blueprintContract.template?.version ?? null;
         manifest.contractSnapshot = {
           blueprint: {
@@ -1444,7 +1462,7 @@ export class UnifiedExecutionEngine {
         missingItems: validationResult.missingItems,
         summary: validationResult.summary,
       },
-    }).catch(() => {});
+    }, organizationId).catch(() => {});
 
     if (!validationResult.passed) {
       const missingItems = validationResult.missingEvidenceItems ?? [];
@@ -1459,7 +1477,7 @@ export class UnifiedExecutionEngine {
             .map(m => ({ name: m.displayLabel, reason: m.reason })),
           retryAvailable: true,
         },
-      }).catch(() => {});
+      }, organizationId).catch(() => {});
       taskSession = closeExecutionSession(taskSession);
       ctx.session = taskSession;
       return {
@@ -1535,7 +1553,7 @@ export class UnifiedExecutionEngine {
           citationsByType: evidencePack?.citationsByType ?? {},
         },
       },
-    }).catch(() => {});
+    }, organizationId).catch(() => {});
     if (!schemaCheck.passed) {
       const message = `Deliverable output schema is incomplete before synthesis: ${schemaCheck.missingRequirementIds.join(", ")}`;
       await persistInlineExecutionSession({
@@ -1555,7 +1573,7 @@ export class UnifiedExecutionEngine {
           rootCause: message,
           retryAvailable: true,
         },
-      }).catch(() => {});
+      }, organizationId).catch(() => {});
       return {
         outcome: "validation_failed",
         manifestId: manifest.id,
@@ -1589,7 +1607,7 @@ export class UnifiedExecutionEngine {
           failedChecks: preflightCheck.failedChecks,
           requirementPlanStatus: preflightCheck.requirementPlanStatus,
         },
-      }).catch(() => {});
+      }, organizationId).catch(() => {});
       return {
         outcome: "validation_failed",
         manifestId: manifest.id,
@@ -1673,7 +1691,7 @@ export class UnifiedExecutionEngine {
           totalMs: Date.now() - t0,
           evidenceCacheHit: false,
         },
-      });
+      }, organizationId);
 
       if (isFallback) {
         taskSession = closeExecutionSession(taskSession);
@@ -1988,7 +2006,7 @@ export class UnifiedExecutionEngine {
           clarificationItems: buildRuntimeGateFailureItems(runtimeGate.failures),
           gateFailures: runtimeGate.failures,
         },
-      });
+      }, organizationId);
       await recordProfessionalSnapshot({
         organizationId,
         taskId: request.taskId,
@@ -2070,7 +2088,7 @@ export class UnifiedExecutionEngine {
           rootCause: "Task was cancelled before Completed Work creation.",
           retryAvailable: false,
         },
-      }).catch(() => {});
+      }, organizationId).catch(() => {});
       taskSession = closeExecutionSession(taskSession);
       ctx.session = taskSession;
       await persistInlineExecutionSession({
@@ -2170,7 +2188,7 @@ export class UnifiedExecutionEngine {
             rootCause: message,
             retryAvailable: true,
           },
-        });
+        }, organizationId);
         taskSession = markSessionError(taskSession, message);
         ctx.session = taskSession;
         await persistInlineExecutionSession({
@@ -2218,7 +2236,7 @@ export class UnifiedExecutionEngine {
             clarificationItems: buildRuntimeGateFailureItems(artifactGate.failures),
             gateFailures: artifactGate.failures,
           },
-        });
+        }, organizationId);
         taskSession = artifactGate.failures.some((failure) => failure.state === "awaiting_clarification")
           ? closeExecutionSession(taskSession)
           : markSessionError(taskSession, blockingMessage);
@@ -2395,7 +2413,7 @@ export class UnifiedExecutionEngine {
               reason: dimension.feedback.slice(0, 240),
             })),
         },
-      });
+      }, organizationId);
     }
     let finalWork = completedWork;
 
@@ -2424,7 +2442,7 @@ export class UnifiedExecutionEngine {
         totalMs: Date.now() - t0,
         evidenceCacheHit: evidencePack != null,
       },
-    }).catch(() => {});
+    }, organizationId).catch(() => {});
 
     taskSession = closeExecutionSession(taskSession);
     ctx.session = taskSession;
@@ -4472,7 +4490,7 @@ async function recordProfessionalSnapshot(input: {
   if (!input.taskId) return;
   const content = input.contentMarkdown ?? "";
   try {
-    await db.insert(executionEventsTable).values({
+    await withUnifiedExecutionTenant(input.organizationId, "execution_event.professional_snapshot", async (client) => client.insert(executionEventsTable).values({
       id: randomUUID(),
       executionSessionId: input.manifest.executionId,
       organizationId: input.organizationId,
@@ -4497,7 +4515,7 @@ async function recordProfessionalSnapshot(input: {
         modelTelemetry: input.modelTelemetry ?? null,
       },
       occurredAt: new Date(),
-    });
+    }));
   } catch (err) {
     console.warn(
       "[UnifiedExecutionEngine] professional execution event persistence failed:",
@@ -4536,7 +4554,7 @@ async function persistInlineExecutionSession(input: {
     ...input.metadata,
   };
 
-  await db.insert(executionSessionsTable).values({
+  await withUnifiedExecutionTenant(input.organizationId, "execution_session.inline.persist", async (client) => client.insert(executionSessionsTable).values({
     id: input.manifest.executionId,
     taskId: input.taskId,
     organizationId: input.organizationId,
@@ -4568,7 +4586,7 @@ async function persistInlineExecutionSession(input: {
       metadata,
       updatedAt: now,
     },
-  }).catch((err) => {
+  })).catch((err) => {
     console.warn(
       "[UnifiedExecutionEngine] inline execution session persistence failed:",
       err instanceof Error ? err.message : err,

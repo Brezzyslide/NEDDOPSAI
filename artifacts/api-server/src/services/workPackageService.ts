@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   workPackageManifestsTable,
   knowledgeSourcesTable,
@@ -29,6 +29,19 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, sql } from "drizzle-orm";
 import type { WorkBlueprint } from "./workBlueprintService.js";
+
+type DbClient = typeof db;
+
+function withWorkPackageTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "work_package_service", purpose },
+    fn,
+  );
+}
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +127,7 @@ export interface ManifestObservabilityUpdate {
 export async function updateManifestObservability(
   manifestId: string,
   updates: ManifestObservabilityUpdate,
+  organizationId: string,
 ): Promise<void> {
   const set: Partial<typeof workPackageManifestsTable.$inferInsert> = {};
   if (updates.validationSnapshot !== undefined) set.validationSnapshot = updates.validationSnapshot;
@@ -121,10 +135,15 @@ export async function updateManifestObservability(
   if (updates.failureInfo !== undefined) set.failureInfo = updates.failureInfo;
   if (Object.keys(set).length === 0) return;
 
-  await db
+  await withWorkPackageTenant(organizationId, "work_package_manifest.observability.update", async (client) => client
     .update(workPackageManifestsTable)
     .set(set)
-    .where(eq(workPackageManifestsTable.id, manifestId));
+    .where(
+      and(
+        eq(workPackageManifestsTable.id, manifestId),
+        eq(workPackageManifestsTable.organizationId, organizationId),
+      ),
+    ));
 }
 
 export interface WorkPackageManifest {
@@ -202,7 +221,7 @@ export async function assembleWorkPackage(
     assertSelectFields(_libFields, "library-sources");
 
     // Query ALL candidate sources (any status) so we can report exclusions
-    const allCandidates = await db
+    const allCandidates = await withWorkPackageTenant(organizationId, "work_package.library_sources.select", async (client) => client
       .select(_libFields)
       .from(knowledgeSourcesTable)
       .where(
@@ -212,7 +231,7 @@ export async function assembleWorkPackage(
           inArray(knowledgeSourcesTable.sourceType, requiredKnowledgeTypes),
         )
       )
-      .limit(80);
+      .limit(80));
 
     const approvedCurrent = allCandidates.filter(
       r => r.status === "approved" && r.isCurrent,
@@ -244,7 +263,7 @@ export async function assembleWorkPackage(
     approvalStatus: organisationMemoryTable.status,
   };
   assertSelectFields(_memFields, "cos-memory");
-  const memoryRows = await db
+  const memoryRows = await withWorkPackageTenant(organizationId, "work_package.organisation_memory.select", async (client) => client
     .select(_memFields)
     .from(organisationMemoryTable)
     .where(
@@ -253,7 +272,7 @@ export async function assembleWorkPackage(
         eq(organisationMemoryTable.status, "approved"),
       )
     )
-    .limit(30);
+    .limit(30));
 
   const requiredMemoryTypes = new Set(blueprint?.requiredMemories ?? []);
   const cosMemories: ManifestMemoryRef[] = [];
@@ -289,7 +308,7 @@ export async function assembleWorkPackage(
       storageKey: knowledgeSourcesTable.storageKey,
     };
     assertSelectFields(_uploadFields, "task-uploads");
-    const uploadRows = await db
+    const uploadRows = await withWorkPackageTenant(organizationId, "work_package.task_uploads.select", async (client) => client
       .select(_uploadFields)
       .from(knowledgeSourcesTable)
       .where(
@@ -298,7 +317,7 @@ export async function assembleWorkPackage(
           eq(knowledgeSourcesTable.sourceScope, "task"),
           inArray(knowledgeSourcesTable.id, taskUploadSourceIds),
         )
-      );
+      ));
 
     taskUploads = uploadRows.map(r => ({
       sourceId: r.id,
@@ -322,7 +341,7 @@ export async function assembleWorkPackage(
   const id = randomUUID();
   const now = new Date();
 
-  await db.insert(workPackageManifestsTable).values({
+  await withWorkPackageTenant(organizationId, "work_package_manifest.insert", async (client) => client.insert(workPackageManifestsTable).values({
     id,
     organizationId,
     completedWorkId: null,
@@ -354,7 +373,7 @@ export async function assembleWorkPackage(
     assembledAt: now,
     requesterId,
     createdAt: now,
-  });
+  }));
 
   const manifest: WorkPackageManifest = {
     id,
@@ -404,8 +423,11 @@ async function _buildExcludedSources(
   const sourceIds = candidates.map(c => c.id);
 
   // Fetch current version ingestion status + job info in one pass
-  const [versionRows, jobRows, chunkCounts] = await Promise.all([
-    db
+  const [versionRows, jobRows, chunkCounts] = await withWorkPackageTenant(
+    organizationId,
+    "work_package.excluded_sources.inspect",
+    async (client) => Promise.all([
+    client
       .select({
         knowledgeSourceId: knowledgeSourceVersionsTable.knowledgeSourceId,
         ingestionStatus:   knowledgeSourceVersionsTable.ingestionStatus,
@@ -420,7 +442,7 @@ async function _buildExcludedSources(
       )
       .limit(sourceIds.length),
 
-    db.execute<{ knowledge_source_id: string; status: string; last_error_code: string | null }>(sql`
+    client.execute<{ knowledge_source_id: string; status: string; last_error_code: string | null }>(sql`
       SELECT DISTINCT ON (knowledge_source_id)
         knowledge_source_id,
         status,
@@ -431,7 +453,7 @@ async function _buildExcludedSources(
       ORDER BY knowledge_source_id, created_at DESC
     `).then(r => (r.rows ?? r as any) as Array<{ knowledge_source_id: string; status: string; last_error_code: string | null }>),
 
-    db.execute<{ knowledge_source_id: string; cnt: string }>(sql`
+    client.execute<{ knowledge_source_id: string; cnt: string }>(sql`
       SELECT knowledge_source_id, COUNT(*)::int AS cnt
       FROM knowledge_chunks
       WHERE organization_id = ${organizationId}
@@ -439,7 +461,8 @@ async function _buildExcludedSources(
         AND deleted_at IS NULL
       GROUP BY knowledge_source_id
     `).then(r => (r.rows ?? r as any) as Array<{ knowledge_source_id: string; cnt: string }>),
-  ]);
+  ]),
+  );
 
   const versionMap  = new Map(versionRows.map(v => [v.knowledgeSourceId, v.ingestionStatus]));
   const jobMap      = new Map(jobRows.map(j => [j.knowledge_source_id, j]));
@@ -498,18 +521,24 @@ async function _buildExcludedSources(
 export async function linkManifestToCompletedWork(
   manifestId: string,
   completedWorkId: string,
+  organizationId: string,
 ): Promise<void> {
-  await db
+  await withWorkPackageTenant(organizationId, "work_package_manifest.completed_work.link", async (client) => client
     .update(workPackageManifestsTable)
     .set({ completedWorkId })
-    .where(eq(workPackageManifestsTable.id, manifestId));
+    .where(
+      and(
+        eq(workPackageManifestsTable.id, manifestId),
+        eq(workPackageManifestsTable.organizationId, organizationId),
+      ),
+    ));
 }
 
 export async function getManifest(
   id: string,
   organizationId: string,
 ): Promise<WorkPackageManifest | null> {
-  const rows = await db
+  const rows = await withWorkPackageTenant(organizationId, "work_package_manifest.get", async (client) => client
     .select()
     .from(workPackageManifestsTable)
     .where(
@@ -518,7 +547,7 @@ export async function getManifest(
         eq(workPackageManifestsTable.organizationId, organizationId),
       )
     )
-    .limit(1);
+    .limit(1));
 
   const row = rows[0];
   if (!row) return null;

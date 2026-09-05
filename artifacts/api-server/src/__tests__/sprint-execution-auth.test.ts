@@ -131,6 +131,13 @@ vi.mock("@workspace/db", async (importOriginal) => {
       insert:  mocks.dbInsert,
       update:  mocks.dbUpdate,
     },
+    withSystemTenantContext: vi.fn((_context, fn) => fn({
+      select:  mocks.dbChain.select,
+      from:    mocks.dbChain.from,
+      where:   mocks.dbChain.where,
+      insert:  mocks.dbInsert,
+      update:  mocks.dbUpdate,
+    })),
   };
 });
 vi.mock("../services/membershipService.js", () => ({ getMembershipForUser: mocks.getMembershipForUser }));

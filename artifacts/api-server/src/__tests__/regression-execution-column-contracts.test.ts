@@ -147,6 +147,10 @@ vi.mock("@workspace/db", async (importOriginal) => {
         return fn(tx);
       }),
     },
+    withSystemTenantContext: vi.fn((_context, fn) => fn({
+      select: mockDbSelectFn.mockImplementation(() => makeSelectChain([])),
+      insert: mockDbInsertFn.mockImplementation(() => makeInsertChain()),
+    })),
   };
 });
 

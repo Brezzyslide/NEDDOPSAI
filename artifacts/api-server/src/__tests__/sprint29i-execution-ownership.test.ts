@@ -41,6 +41,18 @@ function makeSelectChain(limitResult: unknown[], whereResult?: unknown[]) {
   return { from: fromFn, where: whereFn, limit: limitFn };
 }
 
+function makeInsertChain(valuesFn = vi.fn().mockResolvedValue(undefined)) {
+  return {
+    values: vi.fn((value) => {
+      void valuesFn(value);
+      return {
+        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+        onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+      };
+    }),
+  };
+}
+
 // ─── vi.hoisted — all mock functions declared before vi.mock factories ───────
 
 const {
@@ -93,7 +105,7 @@ const {
   mockLoadSpecialistContext,
 } = vi.hoisted(() => {
   const mockDbInsertValues = vi.fn().mockResolvedValue(undefined);
-  const mockDbInsert       = vi.fn().mockReturnValue({ values: mockDbInsertValues });
+  const mockDbInsert       = vi.fn().mockReturnValue(makeInsertChain(mockDbInsertValues));
   const mockDbSelect       = vi.fn();
 
   return {
@@ -171,7 +183,14 @@ vi.mock("@workspace/db", () => {
       insert: mockDbInsert,
       update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
     },
+    withSystemTenantContext: vi.fn((_context, fn) => fn({
+      select: mockDbSelect,
+      insert: mockDbInsert,
+      update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
+    })),
     specialistRunsTable:          { id: "id", organizationId: "organization_id", createdAt: "created_at" },
+    executionSessionsTable:       { id: "id", taskId: "task_id", organizationId: "organization_id" },
+    executionEventsTable:         { id: "id", taskId: "task_id", organizationId: "organization_id" },
     taskExecutionPlansTable:      { taskId: "task_id", organizationId: "organization_id", createdAt: "created_at" },
     workPackageManifestsTable:    { id: "id", taskId: "task_id", organizationId: "organization_id" },
     knowledgeChunksTable:         { id: "id", organizationId: "organization_id" },
@@ -597,7 +616,7 @@ describe("Sprint 29I (D1) — specialist precedence: assembleWorkPackage receive
     // This preserves the mockResolvedValue/mockReturnValue set inside vi.mock()
     // factories (e.g. updateManifestObservability) which vi.resetAllMocks() would strip.
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockResolveEvidenceForTask.mockResolvedValue(makeEvidencePack());
     // Re-apply the default db.select no-op for tests that override it per call
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
@@ -653,7 +672,7 @@ describe("Sprint 29I (D1) — UEE plan lookup guard", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
   });
 
@@ -715,7 +734,7 @@ describe("Sprint 29I (D1) — Level 3 evidence: plan specialist contract asserti
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
   });
 
@@ -757,7 +776,7 @@ describe("Sprint 29I (D2) — KRS retrieval audit hook", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
   });
 
@@ -820,7 +839,7 @@ describe("Sprint 29I (D3) — evidencePack forwarded to reviewDraft", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
   });
 
@@ -862,7 +881,7 @@ describe("Sprint 29I (D3) — Level 3 evidence: evidence grounding quality asser
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbInsert.mockReturnValue(makeInsertChain(mockDbInsertValues));
     mockDbSelect.mockImplementation(() => makeSelectChain([]));
   });
 

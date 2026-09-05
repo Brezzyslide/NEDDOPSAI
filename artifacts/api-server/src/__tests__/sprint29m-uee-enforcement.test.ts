@@ -123,6 +123,11 @@ vi.mock("@workspace/db", () => {
       insert: mockDbInsert,
       update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
     },
+    withSystemTenantContext: vi.fn((_context, fn) => fn({
+      select: mockDbSelect,
+      insert: mockDbInsert,
+      update: vi.fn(() => ({ set: () => ({ where: () => Promise.resolve([]) }) })),
+    })),
     specialistRunsTable:             { id: "id", organizationId: "organization_id", createdAt: "created_at" },
     executionSessionsTable:          { id: "id", taskId: "task_id", organizationId: "organization_id" },
     executionEventsTable:            { id: "id", taskId: "task_id", organizationId: "organization_id" },

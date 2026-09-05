@@ -29,7 +29,7 @@
 
 import { randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   completedWorkClaimsTable,
   completedWorkClaimEvidenceTable,
@@ -40,6 +40,19 @@ import { logOrgEvent } from "./auditService.js";
 import type { EvidencePack } from "./knowledgeResolutionService.js";
 import type { ValidatedClaim } from "./claimValidationService.js";
 import type { ClaimProvenanceStatus } from "@workspace/db";
+
+type DbClient = typeof db;
+
+function withClaimPersistenceTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "claim_persistence_service", purpose },
+    fn,
+  );
+}
 
 // ─── Version provenance status values ─────────────────────────────────────────
 
@@ -75,7 +88,7 @@ async function resolveEvidenceLinkId(
   chunkId: string,
   organizationId: string,
 ): Promise<string | null> {
-  const rows = await db
+  const rows = await withClaimPersistenceTenant(organizationId, "claim.evidence_link.resolve", async (client) => client
     .select({ id: completedWorkEvidenceLinksTable.id })
     .from(completedWorkEvidenceLinksTable)
     .where(
@@ -86,7 +99,7 @@ async function resolveEvidenceLinkId(
         eq(completedWorkEvidenceLinksTable.organizationId, organizationId),
       ),
     )
-    .limit(1);
+    .limit(1));
   return rows[0]?.id ?? null;
 }
 
@@ -97,7 +110,7 @@ export async function setVersionProvenanceStatus(
   organizationId: string,
   status: VersionProvenanceStatus,
 ): Promise<void> {
-  await db
+  await withClaimPersistenceTenant(organizationId, "completed_work_version.provenance_status", async (client) => client
     .update(completedWorkVersionsTable)
     .set({ provenanceStatus: status })
     .where(
@@ -105,7 +118,7 @@ export async function setVersionProvenanceStatus(
         eq(completedWorkVersionsTable.id, versionId),
         eq(completedWorkVersionsTable.organizationId, organizationId),
       ),
-    );
+    ));
 }
 
 // ─── Provenance audit event ────────────────────────────────────────────────────
@@ -197,7 +210,7 @@ export async function persistClaims(
     const claimId = randomUUID();
     clientIdToUuid.set(claim.clientClaimId, claimId);
 
-    await db
+    await withClaimPersistenceTenant(organisationId, "completed_work_claim.insert", async (client) => client
       .insert(completedWorkClaimsTable)
       .values({
         id: claimId,
@@ -214,7 +227,7 @@ export async function persistClaims(
         absenceRecord: claim.absenceRecord ?? null,
         provenanceStatus: claim.provenanceStatus,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing());
 
     claimsPersisted++;
   }
@@ -252,7 +265,7 @@ export async function persistClaims(
       }
 
       try {
-        await db
+        await withClaimPersistenceTenant(organisationId, "completed_work_claim_evidence.insert", async (client) => client
           .insert(completedWorkClaimEvidenceTable)
           .values({
             id: randomUUID(),
@@ -263,7 +276,7 @@ export async function persistClaims(
             supportingSpan: binding.supportingSpan ?? null,
             spanVerified: binding.spanVerified ? "true" : "false",
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing());
 
         bindingsPersisted++;
       } catch (err) {
@@ -289,10 +302,13 @@ export async function persistClaims(
       .filter((uuid): uuid is string => Boolean(uuid));
 
     if (resolvedIds.length > 0) {
-      await db
+      await withClaimPersistenceTenant(organisationId, "completed_work_claim.related_ids", async (client) => client
         .update(completedWorkClaimsTable)
         .set({ relatedClaimIds: resolvedIds })
-        .where(eq(completedWorkClaimsTable.id, claimUuid));
+        .where(and(
+          eq(completedWorkClaimsTable.id, claimUuid),
+          eq(completedWorkClaimsTable.organizationId, organisationId),
+        )));
     }
   }
 

@@ -41,6 +41,7 @@ const { mockDb } = vi.hoisted(() => {
 
 vi.mock("@workspace/db", () => ({
   db: mockDb,
+  withSystemTenantContext: vi.fn((_context, fn) => fn(mockDb)),
   completedWorkTable: { $inferSelect: {} },
   completedWorkVersionsTable: {},
   completedWorkCommentsTable: {},

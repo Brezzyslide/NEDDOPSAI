@@ -39,6 +39,7 @@ vi.mock("@workspace/db", () => {
   const db = { select: vi.fn(), update: vi.fn(), insert: vi.fn() };
   return {
     db,
+    withSystemTenantContext: vi.fn((_context, fn) => fn(db)),
     workPackageManifestsTable:  { id: "wpm_id", executionId: "wpm_executionId", organizationId: "wpm_orgId", completedWorkId: "wpm_cwId", requesterId: "wpm_requesterId", blueprintId: "wpm_bpId", blueprintVersion: "wpm_bpVer", primarySpecialist: "wpm_ps", supportingSpecialists: "wpm_ss", organisationLibrarySources: "wpm_ols", cosMemories: "wpm_cm", specialistMemories: "wpm_sm", entityKnowledge: "wpm_ek", taskUploads: "wpm_tu", assembledAt: "wpm_asmAt", selectionMetadata: "wpm_selMeta", validationSnapshot: "wpm_valSnap", performanceMetrics: "wpm_perfMeta", failureInfo: "wpm_failInfo" },
     retrievalAuditEventsTable:  { executionId: "rae_execId", organizationId: "rae_orgId", createdAt: "rae_createdAt", sourceIds: "rae_sourceIds", chunkIds: "rae_chunkIds", memoryIds: "rae_memIds", taskUploadIds: "rae_tuIds", scoreMetadata: "rae_scoreMeta", retrievalDurationMs: "rae_retMs" },
     completedWorkTable:         { id: "cw_id", organizationId: "cw_orgId", status: "cw_status", conversationId: "cw_convId" },
@@ -419,7 +420,7 @@ describe("updateManifestObservability", () => {
   it("calls db.update with validationSnapshot when provided", async () => {
     await updateManifestObservability(MANIFEST_ID, {
       validationSnapshot: { passed: true, missingItems: [], summary: "OK" },
-    });
+    }, ORG_ID);
     expect(db.update).toHaveBeenCalledOnce();
   });
 
@@ -429,19 +430,19 @@ describe("updateManifestObservability", () => {
         blueprintSelectionMs: 50, validationMs: 10, retrievalMs: 300,
         llmMs: 4000, reviewMs: 800, totalMs: 5200, evidenceCacheHit: false,
       },
-    });
+    }, ORG_ID);
     expect(db.update).toHaveBeenCalledOnce();
   });
 
   it("calls db.update with failureInfo when provided", async () => {
     await updateManifestObservability(MANIFEST_ID, {
       failureInfo: { state: "failed", failedStage: "executing", rootCause: "Timeout", retryAvailable: false },
-    });
+    }, ORG_ID);
     expect(db.update).toHaveBeenCalledOnce();
   });
 
   it("skips db.update when no fields provided", async () => {
-    await updateManifestObservability(MANIFEST_ID, {});
+    await updateManifestObservability(MANIFEST_ID, {}, ORG_ID);
     expect(db.update).not.toHaveBeenCalled();
   });
 
@@ -449,7 +450,7 @@ describe("updateManifestObservability", () => {
     await updateManifestObservability(MANIFEST_ID, {
       validationSnapshot: { passed: false, missingItems: ["policy"], summary: "Missing policy." },
       failureInfo: { state: "awaiting_clarification", clarificationItems: [{ name: "policy", reason: "Required" }] },
-    });
+    }, ORG_ID);
     expect(db.update).toHaveBeenCalledOnce();
   });
 });

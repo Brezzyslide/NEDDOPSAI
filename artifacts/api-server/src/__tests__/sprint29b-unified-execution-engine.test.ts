@@ -84,6 +84,11 @@ vi.mock("@workspace/db", () => ({
       set: mockDbSet.mockReturnValue({ where: mockDbWhere.mockResolvedValue(undefined) }),
     }),
   },
+  withSystemTenantContext: vi.fn((_context, fn) => fn({
+    update: mockDbUpdate.mockReturnValue({
+      set: mockDbSet.mockReturnValue({ where: mockDbWhere.mockResolvedValue(undefined) }),
+    }),
+  })),
   specialistRunsTable: {},
   workPackageManifestsTable: { id: "id", taskId: "task_id", organizationId: "organization_id" },
   eq: vi.fn(),
