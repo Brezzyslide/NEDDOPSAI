@@ -77,6 +77,9 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: { select: mockDbSelect, update: mockDbUpdate },
+    withSystemTenantContext: vi.fn((_context: unknown, fn: (client: unknown) => unknown) =>
+      fn({ select: mockDbSelect, update: mockDbUpdate }),
+    ),
     specialistRunsTable: fakeTable,
     tasksTable:          fakeTable,
     specialistRunStatusHistoryTable: fakeTable,

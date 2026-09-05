@@ -10,7 +10,20 @@
 
 import { randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import { db, executionIntentsTable, type InsertExecutionIntent } from "@workspace/db";
+import { db, executionIntentsTable, type InsertExecutionIntent, withSystemTenantContext } from "@workspace/db";
+
+type DbClient = typeof db;
+
+function withExecutionIntentTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_intent_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +72,9 @@ export async function persistExecutionIntents(
     status: "prepared",
   }));
 
-  await db.insert(executionIntentsTable).values(rows);
+  await withExecutionIntentTenant(organizationId, "execution_intents.persist", async (client) =>
+    client.insert(executionIntentsTable).values(rows),
+  );
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -71,7 +86,7 @@ export async function getExecutionIntentsForTask(
   taskId: string,
   organizationId: string,
 ): Promise<(typeof executionIntentsTable.$inferSelect)[]> {
-  return db
+  return withExecutionIntentTenant(organizationId, "execution_intents.for_task", async (client) => client
     .select()
     .from(executionIntentsTable)
     .where(
@@ -80,7 +95,7 @@ export async function getExecutionIntentsForTask(
         eq(executionIntentsTable.organizationId, organizationId),
       ),
     )
-    .orderBy(executionIntentsTable.sequenceOrder);
+    .orderBy(executionIntentsTable.sequenceOrder));
 }
 
 /**
@@ -89,7 +104,7 @@ export async function getExecutionIntentsForTask(
 export async function getPendingApprovalIntents(
   organizationId: string,
 ): Promise<(typeof executionIntentsTable.$inferSelect)[]> {
-  return db
+  return withExecutionIntentTenant(organizationId, "execution_intents.pending_approval", async (client) => client
     .select()
     .from(executionIntentsTable)
     .where(
@@ -99,7 +114,7 @@ export async function getPendingApprovalIntents(
         eq(executionIntentsTable.status, "prepared"),
       ),
     )
-    .orderBy(executionIntentsTable.createdAt);
+    .orderBy(executionIntentsTable.createdAt));
 }
 
 // ─── State transitions ────────────────────────────────────────────────────────
@@ -113,7 +128,7 @@ export async function approveIntent(
   organizationId: string,
   approvedBy: string,
 ): Promise<void> {
-  await db
+  await withExecutionIntentTenant(organizationId, "execution_intent.approve", async (client) => client
     .update(executionIntentsTable)
     .set({
       status: "approved",
@@ -126,7 +141,7 @@ export async function approveIntent(
         eq(executionIntentsTable.id, intentId),
         eq(executionIntentsTable.organizationId, organizationId),
       ),
-    );
+    ));
 }
 
 /**
@@ -139,7 +154,7 @@ export async function rejectIntent(
   rejectedBy: string,
   reason: string,
 ): Promise<void> {
-  await db
+  await withExecutionIntentTenant(organizationId, "execution_intent.reject", async (client) => client
     .update(executionIntentsTable)
     .set({
       status: "rejected",
@@ -153,5 +168,5 @@ export async function rejectIntent(
         eq(executionIntentsTable.id, intentId),
         eq(executionIntentsTable.organizationId, organizationId),
       ),
-    );
+    ));
 }

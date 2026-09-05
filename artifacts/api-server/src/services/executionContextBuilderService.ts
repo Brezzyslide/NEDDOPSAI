@@ -27,12 +27,25 @@
  */
 
 import { eq, and } from "drizzle-orm";
-import { db, specialistRunsTable, tasksTable } from "@workspace/db";
+import { db, specialistRunsTable, tasksTable, withSystemTenantContext } from "@workspace/db";
 import { buildSpecialistContext } from "./specialistContextService.js";
 import { buildWorkPackage } from "./specialistWorkPackageService.js";
 
 // Type-only — avoids circular runtime dependency
 import type { SpecialistWorkPackage, SpecialistContext } from "./specialistIntelligenceService.js";
+
+type DbClient = typeof db;
+
+function withExecutionContextTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_context_builder_service", purpose },
+    fn,
+  );
+}
 
 // ─── Input / Output ────────────────────────────────────────────────────────────
 
@@ -75,7 +88,7 @@ export async function buildExecutionContext(
   const { specialistRunId, organisationId } = ids;
 
   // ── Load the specialist run ────────────────────────────────────────────────
-  const run = await db
+  const run = await withExecutionContextTenant(organisationId, "execution_context.specialist_run.get", async (client) => client
     .select()
     .from(specialistRunsTable)
     .where(
@@ -85,7 +98,7 @@ export async function buildExecutionContext(
       ),
     )
     .limit(1)
-    .then(rows => rows[0]);
+    .then(rows => rows[0]));
 
   if (!run) {
     throw new Error(
@@ -101,12 +114,12 @@ export async function buildExecutionContext(
   // ── Resolve task title for work package labelling ─────────────────────────
   let taskTitle = `Task ${taskId ?? "unknown"}`;
   if (taskId) {
-    const taskRow = await db
+    const taskRow = await withExecutionContextTenant(organisationId, "execution_context.task_title.get", async (client) => client
       .select({ title: tasksTable.title })
       .from(tasksTable)
       .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organisationId)))
       .limit(1)
-      .then(rows => rows[0]);
+      .then(rows => rows[0]));
     if (taskRow?.title) taskTitle = taskRow.title;
   }
 
