@@ -798,9 +798,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         });
 
         if (taskId) {
-          await transitionTaskState(taskId, organizationId, "evidence_required").catch(err =>
-            console.warn("[ExecutionCoordinator] Failed to mark task evidence_required:", err?.message),
-          );
+          await transitionTaskState(taskId, organizationId, "evidence_required");
         }
 
         await postClarificationRequestToConversation(
