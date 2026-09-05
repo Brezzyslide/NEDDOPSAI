@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import {
   db,
+  withSystemTenantContext,
   approvalsTable,
   conversationMessagesTable,
   tasksTable,
@@ -27,6 +28,19 @@ import { getMembershipForUser } from "./membershipService.js";
 import { dispatchWorkExecution } from "./executionCoordinatorService.js";
 import { cancelTaskExecution } from "./executionService.js";
 import { logOrgEvent } from "./auditService.js";
+
+type DbClient = typeof db;
+
+function withConversationControlTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "conversation_control_service", purpose },
+    fn,
+  );
+}
 
 export type CanonicalConversationAction =
   | "NEW_TASK"
@@ -538,7 +552,7 @@ export async function persistConversationConfirmation(input: {
     reason: "newer_confirmation_in_same_conversation",
   }).catch(() => {});
 
-  await db.insert(conversationMessagesTable).values({
+  await withConversationControlTenant(input.organizationId, "conversation_confirmation.create", async (client) => client.insert(conversationMessagesTable).values({
     id: randomUUID(),
     organizationId: input.organizationId,
     conversationId: input.conversationId,
@@ -548,7 +562,7 @@ export async function persistConversationConfirmation(input: {
     content: `Pending conversation confirmation ${confirmation.id}.`,
     structuredContent: { type: "conversation_pending_confirmation", data: confirmation },
     status: "delivered",
-  });
+  }));
 
   await logOrgEvent({
     eventType: "conversation.pending_confirmation_created",
@@ -568,7 +582,7 @@ export async function markConversationConfirmationResolved(input: {
   confirmation: PendingConversationConfirmation;
   status: Exclude<PendingConversationConfirmation["status"], "pending">;
 }): Promise<void> {
-  const rows = await db
+  const rows = await withConversationControlTenant(input.organizationId, "conversation_confirmation.resolve.lookup", async (client) => client
     .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
     .from(conversationMessagesTable)
     .where(and(
@@ -577,7 +591,7 @@ export async function markConversationConfirmationResolved(input: {
       eq(conversationMessagesTable.messageType, "system_notice"),
     ))
     .orderBy(desc(conversationMessagesTable.createdAt))
-    .limit(30);
+    .limit(30));
 
   const row = rows.find(candidate => {
     const sc = candidate.structuredContent as any;
@@ -589,14 +603,14 @@ export async function markConversationConfirmationResolved(input: {
     status: input.status,
     resolvedAt: new Date().toISOString(),
   };
-  await db
+  await withConversationControlTenant(input.organizationId, "conversation_confirmation.resolve.update", async (client) => client
     .update(conversationMessagesTable)
     .set({ structuredContent: { type: "conversation_pending_confirmation", data }, updatedAt: new Date() })
     .where(and(
       eq(conversationMessagesTable.organizationId, input.organizationId),
       eq(conversationMessagesTable.conversationId, input.conversationId),
       eq(conversationMessagesTable.id, row.id),
-    ));
+    )));
 }
 
 export function resolvePendingConfirmationAnswer(
@@ -654,7 +668,7 @@ export async function persistConversationFocus(input: {
     source: input.source,
   };
 
-  await db.insert(conversationMessagesTable).values({
+  await withConversationControlTenant(input.organizationId, "conversation_focus.persist", async (client) => client.insert(conversationMessagesTable).values({
     id: randomUUID(),
     organizationId: input.organizationId,
     conversationId: input.conversationId,
@@ -663,7 +677,7 @@ export async function persistConversationFocus(input: {
     content: `Conversation focus changed${focus.taskId ? ` to task ${focus.taskId}` : ""}.`,
     structuredContent: { type: "conversation_focus", data: focus },
     status: "delivered",
-  });
+  }));
 
   await logOrgEvent({
     eventType: "conversation.focus_changed",
@@ -790,11 +804,11 @@ export async function holdTaskFromConversation(input: {
   actorUserId: string;
   hold: boolean;
 }): Promise<{ status: "held" | "resumed"; taskId: string }> {
-  const [task] = await db
+  const [task] = await withConversationControlTenant(input.organizationId, "conversation_task_hold.get", async (client) => client
     .select({ metadata: tasksTable.metadata, currentState: tasksTable.currentState })
     .from(tasksTable)
     .where(and(eq(tasksTable.organizationId, input.organizationId), eq(tasksTable.id, input.taskId)))
-    .limit(1);
+    .limit(1));
   if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
   if (["completed", "cancelled"].includes(task.currentState)) {
     throw Object.assign(new Error(`Cannot ${input.hold ? "pause" : "resume"} a ${task.currentState} task`), { code: "VALIDATION_ERROR" });
@@ -805,9 +819,9 @@ export async function holdTaskFromConversation(input: {
       ? { held: true, heldAt: new Date().toISOString(), heldBy: input.actorUserId, conversationId: input.conversationId }
       : { held: false, resumedAt: new Date().toISOString(), resumedBy: input.actorUserId, conversationId: input.conversationId },
   };
-  await db.update(tasksTable)
+  await withConversationControlTenant(input.organizationId, "conversation_task_hold.update", async (client) => client.update(tasksTable)
     .set({ metadata, updatedAt: new Date() })
-    .where(and(eq(tasksTable.organizationId, input.organizationId), eq(tasksTable.id, input.taskId)));
+    .where(and(eq(tasksTable.organizationId, input.organizationId), eq(tasksTable.id, input.taskId))));
   await logOrgEvent({
     eventType: input.hold ? "conversation.task_paused" : "conversation.task_resumed",
     organizationId: input.organizationId,

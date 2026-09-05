@@ -9,8 +9,21 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, notificationReadsTable } from "@workspace/db";
+import { db, notificationReadsTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
+
+type DbClient = typeof db;
+
+function withNotificationTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "notification_reads_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,7 +44,7 @@ export async function getAllNotificationStates(
   organizationId: string,
   userId: string,
 ): Promise<NotificationState[]> {
-  const rows = await db
+  const rows = await withNotificationTenant(organizationId, "notification_reads.list", async (client) => client
     .select()
     .from(notificationReadsTable)
     .where(
@@ -39,7 +52,7 @@ export async function getAllNotificationStates(
         eq(notificationReadsTable.organizationId, organizationId),
         eq(notificationReadsTable.userId, userId),
       ),
-    );
+    ));
 
   return rows.map(r => ({
     notificationId: r.notificationId,
@@ -70,7 +83,7 @@ export async function markNotificationsRead(
     updatedAt:      now,
   }));
 
-  await db
+  await withNotificationTenant(organizationId, "notification_reads.mark_read", async (client) => client
     .insert(notificationReadsTable)
     .values(rows)
     .onConflictDoUpdate({
@@ -80,7 +93,7 @@ export async function markNotificationsRead(
         notificationReadsTable.notificationId,
       ],
       set: { readAt: now, updatedAt: now },
-    });
+    }));
 }
 
 // ─── Mark unread ──────────────────────────────────────────────────────────────
@@ -91,7 +104,7 @@ export async function markNotificationsUnread(
   notificationIds: string[],
 ): Promise<void> {
   if (notificationIds.length === 0) return;
-  await db
+  await withNotificationTenant(organizationId, "notification_reads.mark_unread", async (client) => client
     .update(notificationReadsTable)
     .set({ readAt: null, updatedAt: new Date() })
     .where(
@@ -100,7 +113,7 @@ export async function markNotificationsUnread(
         eq(notificationReadsTable.userId, userId),
         inArray(notificationReadsTable.notificationId, notificationIds),
       ),
-    );
+    ));
 }
 
 // ─── Archive ──────────────────────────────────────────────────────────────────
@@ -124,7 +137,7 @@ export async function archiveNotifications(
     updatedAt:      now,
   }));
 
-  await db
+  await withNotificationTenant(organizationId, "notification_reads.archive", async (client) => client
     .insert(notificationReadsTable)
     .values(rows)
     .onConflictDoUpdate({
@@ -134,7 +147,7 @@ export async function archiveNotifications(
         notificationReadsTable.notificationId,
       ],
       set: { archivedAt: now, readAt: now, updatedAt: now },
-    });
+    }));
 }
 
 // ─── Restore from archive ─────────────────────────────────────────────────────
@@ -145,7 +158,7 @@ export async function restoreNotifications(
   notificationIds: string[],
 ): Promise<void> {
   if (notificationIds.length === 0) return;
-  await db
+  await withNotificationTenant(organizationId, "notification_reads.restore", async (client) => client
     .update(notificationReadsTable)
     .set({ archivedAt: null, updatedAt: new Date() })
     .where(
@@ -154,7 +167,7 @@ export async function restoreNotifications(
         eq(notificationReadsTable.userId, userId),
         inArray(notificationReadsTable.notificationId, notificationIds),
       ),
-    );
+    ));
 }
 
 // ─── Snooze ───────────────────────────────────────────────────────────────────
@@ -166,7 +179,7 @@ export async function snoozeNotification(
   snoozedUntil: Date,
 ): Promise<void> {
   const now = new Date();
-  await db
+  await withNotificationTenant(organizationId, "notification_reads.snooze", async (client) => client
     .insert(notificationReadsTable)
     .values({
       id:             randomUUID(),
@@ -186,5 +199,5 @@ export async function snoozeNotification(
         notificationReadsTable.notificationId,
       ],
       set: { snoozedUntil, updatedAt: now },
-    });
+    }));
 }

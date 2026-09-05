@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   conversationsTable,
   conversationMessagesTable,
@@ -62,6 +62,19 @@ import {
   buildCapabilityBlockedCard,
   buildMixedCapabilityCard,
 } from "./capabilityGateService.js";
+
+type DbClient = typeof db;
+
+function withConversationTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "conversation_service", purpose },
+    fn,
+  );
+}
 
 async function resolveCanonicalConversationRoles(input: {
   organizationId: string;
@@ -190,22 +203,22 @@ export async function createConversation(input: CreateConversationInput): Promis
     .returning();
 
   // Add creator as participant
-  await db.insert(conversationParticipantsTable).values({
+  await withConversationTenant(input.organizationId, "conversation.participant.creator", async (client) => client.insert(conversationParticipantsTable).values({
     id: randomUUID(),
     organizationId: input.organizationId,
     conversationId: conv!.id,
     participantType: "user",
     userId: input.createdByUserId,
-  });
+  }));
 
   // Add Chief of Staff as participant
-  await db.insert(conversationParticipantsTable).values({
+  await withConversationTenant(input.organizationId, "conversation.participant.chief_of_staff", async (client) => client.insert(conversationParticipantsTable).values({
     id: randomUUID(),
     organizationId: input.organizationId,
     conversationId: conv!.id,
     participantType: "workforce_role",
     workforceRoleCode: "chief_of_staff",
-  });
+  }));
 
   return conv!;
 }

@@ -104,12 +104,16 @@ vi.mock("@workspace/db", () => {
     values:    vi.fn().mockReturnThis(),
     returning: vi.fn().mockResolvedValue([{ id: "conv-1" }]),
   });
+  const mockDb = {
+    select: (...a: unknown[]) => mockDbSelect(...a),
+    update: vi.fn().mockReturnValue(updateChain()),
+    insert: vi.fn().mockReturnValue(insertChain()),
+  };
   return {
-    db: {
-      select: (...a: unknown[]) => mockDbSelect(...a),
-      update: vi.fn().mockReturnValue(updateChain()),
-      insert: vi.fn().mockReturnValue(insertChain()),
-    },
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) =>
+      fn(mockDb)
+    ),
     executionIntentsTable: {},
     tasksTable:            {},
     conversationsTable:    {},

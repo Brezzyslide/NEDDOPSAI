@@ -18,7 +18,7 @@
  */
 
 import { randomUUID }            from "crypto";
-import { db }                    from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { organisationMemoryTable } from "@workspace/db";
 import { eq, and, gte, like }    from "drizzle-orm";
 import {
@@ -26,6 +26,19 @@ import {
   type MemoryType,
 }                                from "./organisationMemoryService.js";
 import { logOrgEvent }           from "./auditService.js";
+
+type DbClient = typeof db;
+
+function withConversationLearningTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "conversation_learning_service", purpose },
+    fn,
+  );
+}
 
 // ─── Pattern registry ─────────────────────────────────────────────────────────
 
@@ -235,7 +248,7 @@ async function checkRecentDuplicate(
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const titlePrefix = title.slice(0, 50);
 
-    const rows = await db.select({ id: organisationMemoryTable.id })
+    const rows = await withConversationLearningTenant(organizationId, "conversation_learning.memory_duplicate_check", async (client) => client.select({ id: organisationMemoryTable.id })
       .from(organisationMemoryTable)
       .where(and(
         eq(organisationMemoryTable.organizationId, organizationId),
@@ -243,7 +256,7 @@ async function checkRecentDuplicate(
         gte(organisationMemoryTable.createdAt, oneDayAgo),
         like(organisationMemoryTable.title, `${titlePrefix}%`),
       ))
-      .limit(1);
+      .limit(1));
 
     return rows.length > 0;
   } catch {
