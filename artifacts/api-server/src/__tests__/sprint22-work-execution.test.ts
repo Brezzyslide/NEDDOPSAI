@@ -79,7 +79,11 @@ const { mockDb, mockLogOrgEvent, mockCreateAIGateway } = vi.hoisted(() => {
 
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
-  return { ...actual, db: mockDb };
+  return {
+    ...actual,
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
+  };
 });
 
 vi.mock("../services/auditService.js", () => ({
@@ -799,6 +803,7 @@ describe("completedWorkService — approve", () => {
     const approved = makeCwRow({ id: "cw-010", status: "approved", approvedByUserId: USER_ID, approvedAt: new Date() });
     mockDb.select
       .mockReturnValueOnce(versionsSlot)  // getVersions() — pin at signing time
+      .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [awaiting] }) }) })  // getCompletedWork — care-plan guard
       .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [awaiting] }) }) })  // getCompletedWork — check existing status
       .mockReturnValueOnce({ from: () => ({ where: () => ({ limit: () => [approved] }) }) }); // getCompletedWork — return after update
     mockDb.update.mockReturnValueOnce({ set: () => ({ where: () => ({ returning: () => [approved] }) }) });

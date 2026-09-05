@@ -13,7 +13,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   completedWorkTable,
   completedWorkVersionsTable,
@@ -29,6 +29,19 @@ import { logOrgEvent } from "./auditService.js";
 import type { ReviewResult } from "./selfReviewService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
 import { findUnconfirmedCarePlanProtectiveStrategies } from "./carePlanBehaviourStrategyService.js";
+
+type DbClient = typeof db;
+
+function withCompletedWorkTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "completed_work_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,82 +146,80 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
   // carries a FK reference to completed_work.id (onDelete: cascade). Inserting the version
   // first causes an immediate FK violation (PostgreSQL error 23503).
   // On any failure the transaction rolls back both writes — no orphaned rows.
-  await db.transaction(async (tx) => {
-    // ── 1. Parent row (must exist before version FK can resolve) ─────────────
-    await tx.insert(completedWorkTable).values({
-      id,
-      organizationId: input.organizationId,
-      conversationId: input.conversationId ?? null,
-      blueprintId: input.blueprintId ?? null,
-      blueprintVersion: input.blueprintVersion ?? null,
-      blueprintContentHash: input.blueprintContentHash ?? null,
-      blueprintProvenanceStatus: input.blueprintProvenanceStatus ?? (
-        input.blueprintContentHash ? "hash_pinned" : "provenance_unverified"
-      ),
-      blueprintFamily: input.blueprintFamily ?? null,
-      blueprintMode: input.blueprintMode ?? null,
-      canonicalIntent: input.canonicalIntent ?? null,
-      manifestId: input.manifestId ?? null,
-      primarySpecialist: input.primarySpecialist,
-      title: input.title,
-      outputType: input.outputType,
-      status: "draft",
-      currentVersionId: versionId,
-      approvalWorkflow: {},
-      artifactState: input.artifactState ?? null,
-      artifactRequired: input.artifactRequired ?? false,
-      artifactId: input.artifactId ?? null,
-      createdByUserId: input.createdByUserId,
-      approvedByUserId: null,
-      approvedAt: null,
-      rejectedAt: null,
-      archivedAt: null,
-      reopenedAt: null,
-      supersededById: null,
-      createdAt: now,
-      updatedAt: now,
+  await withCompletedWorkTenant(input.organizationId, "completed_work.create", async (client) => {
+    await client.transaction(async (tx) => {
+      // ── 1. Parent row (must exist before version FK can resolve) ───────────
+      await tx.insert(completedWorkTable).values({
+        id,
+        organizationId: input.organizationId,
+        conversationId: input.conversationId ?? null,
+        blueprintId: input.blueprintId ?? null,
+        blueprintVersion: input.blueprintVersion ?? null,
+        blueprintContentHash: input.blueprintContentHash ?? null,
+        blueprintProvenanceStatus: input.blueprintProvenanceStatus ?? (
+          input.blueprintContentHash ? "hash_pinned" : "provenance_unverified"
+        ),
+        blueprintFamily: input.blueprintFamily ?? null,
+        blueprintMode: input.blueprintMode ?? null,
+        canonicalIntent: input.canonicalIntent ?? null,
+        manifestId: input.manifestId ?? null,
+        primarySpecialist: input.primarySpecialist,
+        title: input.title,
+        outputType: input.outputType,
+        status: "draft",
+        currentVersionId: versionId,
+        approvalWorkflow: {},
+        artifactState: input.artifactState ?? null,
+        artifactRequired: input.artifactRequired ?? false,
+        artifactId: input.artifactId ?? null,
+        createdByUserId: input.createdByUserId,
+        approvedByUserId: null,
+        approvedAt: null,
+        rejectedAt: null,
+        archivedAt: null,
+        reopenedAt: null,
+        supersededById: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // ── 2. Initial version (FK now satisfiable) ─────────────────────────────
+      await tx.insert(completedWorkVersionsTable).values({
+        id: versionId,
+        completedWorkId: id,
+        organizationId: input.organizationId,
+        versionNumber: 1,
+        contentMarkdown: input.contentMarkdown,
+        qualityScore: input.reviewResult?.qualityScore ?? null,
+        reviewDimensions: input.reviewResult?.dimensions ?? [],
+        changeNote: "Initial draft",
+        isAutoRevision: input.reviewResult?.revised ? "true" : "false",
+        createdByUserId: input.createdByUserId,
+        createdAt: now,
+      });
     });
 
-    // ── 2. Initial version (FK now satisfiable) ───────────────────────────────
-    await tx.insert(completedWorkVersionsTable).values({
-      id: versionId,
-      completedWorkId: id,
-      organizationId: input.organizationId,
-      versionNumber: 1,
-      contentMarkdown: input.contentMarkdown,
-      qualityScore: input.reviewResult?.qualityScore ?? null,
-      reviewDimensions: input.reviewResult?.dimensions ?? [],
-      changeNote: "Initial draft",
-      isAutoRevision: input.reviewResult?.revised ? "true" : "false",
-      createdByUserId: input.createdByUserId,
-      createdAt: now,
-    });
+    if (input.manifestId) {
+      await client
+        .update(workPackageManifestsTable)
+        .set({ completedWorkId: id })
+        .where(eq(workPackageManifestsTable.id, input.manifestId));
+    }
+
+    if (input.assetIds && input.assetIds.length > 0) {
+      const assetRows = input.assetIds.map(a => ({
+        id: randomUUID(),
+        completedWorkId: id,
+        organizationId: input.organizationId,
+        assetType: a.assetType,
+        assetId: a.assetId,
+        role: a.role ?? "supporting",
+        citationRef: a.citationRef ?? null,
+        createdAt: now,
+      }));
+      await client.insert(completedWorkAssetsTable).values(assetRows);
+    }
   });
-
-  // ── Post-transaction side-effects (outside tx — these are best-effort) ──────
-
-  // Link manifest to completed work
-  if (input.manifestId) {
-    await db
-      .update(workPackageManifestsTable)
-      .set({ completedWorkId: id })
-      .where(eq(workPackageManifestsTable.id, input.manifestId));
-  }
-
-  // Record assets used
-  if (input.assetIds && input.assetIds.length > 0) {
-    const assetRows = input.assetIds.map(a => ({
-      id: randomUUID(),
-      completedWorkId: id,
-      organizationId: input.organizationId,
-      assetType: a.assetType,
-      assetId: a.assetId,
-      role: a.role ?? "supporting",
-      citationRef: a.citationRef ?? null,
-      createdAt: now,
-    }));
-    await db.insert(completedWorkAssetsTable).values(assetRows);
-  }
 
   await logOrgEvent({
     organizationId: input.organizationId,
@@ -230,7 +241,7 @@ export async function getCompletedWork(
   id: string,
   organizationId: string,
 ): Promise<CompletedWorkItem | null> {
-  const rows = await db
+  const rows = await withCompletedWorkTenant(organizationId, "completed_work.get", async (client) => client
     .select()
     .from(completedWorkTable)
     .where(
@@ -239,7 +250,7 @@ export async function getCompletedWork(
         eq(completedWorkTable.organizationId, organizationId),
       )
     )
-    .limit(1);
+    .limit(1));
 
   const row = rows[0];
   if (!row) return null;
@@ -258,27 +269,27 @@ export async function listCompletedWork(
   if (filters.outputType) conditions.push(eq(completedWorkTable.outputType, filters.outputType));
   if (filters.conversationId) conditions.push(eq(completedWorkTable.conversationId, filters.conversationId));
 
-  const rows = await db
+  const rows = await withCompletedWorkTenant(organizationId, "completed_work.list", async (client) => client
     .select()
     .from(completedWorkTable)
     .where(and(...conditions))
     .orderBy(desc(completedWorkTable.createdAt))
     .limit(limit)
-    .offset(offset);
+    .offset(offset));
 
   const items = rows.map(mapRow);
 
   // Batch-fetch latest quality score per item (one extra query, not N)
   if (items.length > 0) {
     const ids = items.map(i => i.id);
-    const qualityRows = await db
+    const qualityRows = await withCompletedWorkTenant(organizationId, "completed_work.list.quality", async (client) => client
       .selectDistinctOn([completedWorkVersionsTable.completedWorkId], {
         completedWorkId: completedWorkVersionsTable.completedWorkId,
         qualityScore: completedWorkVersionsTable.qualityScore,
       })
       .from(completedWorkVersionsTable)
       .where(inArray(completedWorkVersionsTable.completedWorkId, ids))
-      .orderBy(completedWorkVersionsTable.completedWorkId, desc(completedWorkVersionsTable.versionNumber));
+      .orderBy(completedWorkVersionsTable.completedWorkId, desc(completedWorkVersionsTable.versionNumber)));
 
     const qualityMap = new Map<string, number | null>();
     for (const r of qualityRows) {
@@ -294,7 +305,7 @@ export async function getVersions(
   completedWorkId: string,
   organizationId: string,
 ): Promise<CompletedWorkVersion[]> {
-  const rows = await db
+  const rows = await withCompletedWorkTenant(organizationId, "completed_work.versions.list", async (client) => client
     .select()
     .from(completedWorkVersionsTable)
     .where(
@@ -303,7 +314,7 @@ export async function getVersions(
         eq(completedWorkVersionsTable.organizationId, organizationId),
       )
     )
-    .orderBy(desc(completedWorkVersionsTable.versionNumber));
+    .orderBy(desc(completedWorkVersionsTable.versionNumber)));
 
   return rows.map(r => ({
     id: r.id,
@@ -478,10 +489,10 @@ export async function archive(
   }
 
   const now = new Date();
-  await db
+  await withCompletedWorkTenant(organizationId, "completed_work.archive", async (client) => client
     .update(completedWorkTable)
     .set({ status: "archived", archivedAt: now, updatedAt: now })
-    .where(eq(completedWorkTable.id, id));
+    .where(and(eq(completedWorkTable.id, id), eq(completedWorkTable.organizationId, organizationId))));
 
   await logOrgEvent({
     organizationId,
@@ -518,10 +529,10 @@ export async function supersedeByNewItem(
   if (!existing) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
 
   const now = new Date();
-  await db
+  await withCompletedWorkTenant(organizationId, "completed_work.supersede", async (client) => client
     .update(completedWorkTable)
     .set({ status: "superseded", supersededById: newId, updatedAt: now })
-    .where(eq(completedWorkTable.id, id));
+    .where(and(eq(completedWorkTable.id, id), eq(completedWorkTable.organizationId, organizationId))));
 
   await logOrgEvent({
     organizationId,
@@ -556,24 +567,26 @@ export async function addVersion(
   const versionId = randomUUID();
   const now = new Date();
 
-  await db.insert(completedWorkVersionsTable).values({
-    id: versionId,
-    completedWorkId: id,
-    organizationId,
-    versionNumber: nextVersion,
-    contentMarkdown,
-    qualityScore: reviewResult?.qualityScore ?? null,
-    reviewDimensions: reviewResult?.dimensions ?? [],
-    changeNote,
-    isAutoRevision: reviewResult?.revised ? "true" : "false",
-    createdByUserId: actorUserId,
-    createdAt: now,
-  });
+  await withCompletedWorkTenant(organizationId, "completed_work.version.add", async (client) => {
+    await client.insert(completedWorkVersionsTable).values({
+      id: versionId,
+      completedWorkId: id,
+      organizationId,
+      versionNumber: nextVersion,
+      contentMarkdown,
+      qualityScore: reviewResult?.qualityScore ?? null,
+      reviewDimensions: reviewResult?.dimensions ?? [],
+      changeNote,
+      isAutoRevision: reviewResult?.revised ? "true" : "false",
+      createdByUserId: actorUserId,
+      createdAt: now,
+    });
 
-  await db
-    .update(completedWorkTable)
-    .set({ currentVersionId: versionId, updatedAt: now })
-    .where(eq(completedWorkTable.id, id));
+    await client
+      .update(completedWorkTable)
+      .set({ currentVersionId: versionId, updatedAt: now })
+      .where(and(eq(completedWorkTable.id, id), eq(completedWorkTable.organizationId, organizationId)));
+  });
 
   await logOrgEvent({
     organizationId,
@@ -611,14 +624,14 @@ export async function addComment(
   if (!existing) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
 
   const commentId = randomUUID();
-  await db.insert(completedWorkCommentsTable).values({
-    id: commentId,
-    completedWorkId: id,
-    organizationId,
-    content,
-    authorUserId,
-    createdAt: new Date(),
-  });
+  await withCompletedWorkTenant(organizationId, "completed_work.comment.add", async (client) => client.insert(completedWorkCommentsTable).values({
+      id: commentId,
+      completedWorkId: id,
+      organizationId,
+      content,
+      authorUserId,
+      createdAt: new Date(),
+    }));
 
   await logOrgEvent({
     organizationId,
@@ -631,7 +644,7 @@ export async function addComment(
 }
 
 export async function getComments(id: string, organizationId: string) {
-  return db
+  return withCompletedWorkTenant(organizationId, "completed_work.comments.list", async (client) => client
     .select()
     .from(completedWorkCommentsTable)
     .where(
@@ -640,7 +653,7 @@ export async function getComments(id: string, organizationId: string) {
         eq(completedWorkCommentsTable.organizationId, organizationId),
       )
     )
-    .orderBy(desc(completedWorkCommentsTable.createdAt));
+    .orderBy(desc(completedWorkCommentsTable.createdAt)));
 }
 
 // ─── Comment resolution (Sprint 25 Hardening) ────────────────────────────────
@@ -651,7 +664,7 @@ export async function resolveComment(
   organizationId: string,
   actorUserId: string,
 ): Promise<void> {
-  const rows = await db
+  const rows = await withCompletedWorkTenant(organizationId, "completed_work.comment.resolve.get", async (client) => client
     .select()
     .from(completedWorkCommentsTable)
     .where(
@@ -661,16 +674,20 @@ export async function resolveComment(
         eq(completedWorkCommentsTable.organizationId, organizationId),
       )
     )
-    .limit(1);
+    .limit(1));
 
   const comment = rows[0];
   if (!comment) throw Object.assign(new Error("Comment not found"), { statusCode: 404 });
   if (comment.status === "resolved") throw Object.assign(new Error("Comment is already resolved"), { statusCode: 400 });
 
-  await db
+  await withCompletedWorkTenant(organizationId, "completed_work.comment.resolve", async (client) => client
     .update(completedWorkCommentsTable)
     .set({ status: "resolved", resolvedByUserId: actorUserId, resolvedAt: new Date() })
-    .where(eq(completedWorkCommentsTable.id, commentId));
+    .where(and(
+      eq(completedWorkCommentsTable.id, commentId),
+      eq(completedWorkCommentsTable.completedWorkId, workId),
+      eq(completedWorkCommentsTable.organizationId, organizationId),
+    )));
 
   await logOrgEvent({
     organizationId,
@@ -688,7 +705,7 @@ export async function reopenComment(
   organizationId: string,
   actorUserId: string,
 ): Promise<void> {
-  const rows = await db
+  const rows = await withCompletedWorkTenant(organizationId, "completed_work.comment.reopen.get", async (client) => client
     .select()
     .from(completedWorkCommentsTable)
     .where(
@@ -698,16 +715,20 @@ export async function reopenComment(
         eq(completedWorkCommentsTable.organizationId, organizationId),
       )
     )
-    .limit(1);
+    .limit(1));
 
   const comment = rows[0];
   if (!comment) throw Object.assign(new Error("Comment not found"), { statusCode: 404 });
   if (comment.status === "open") throw Object.assign(new Error("Comment is already open"), { statusCode: 400 });
 
-  await db
+  await withCompletedWorkTenant(organizationId, "completed_work.comment.reopen", async (client) => client
     .update(completedWorkCommentsTable)
     .set({ status: "reopened", reopenedByUserId: actorUserId, reopenedAt: new Date() })
-    .where(eq(completedWorkCommentsTable.id, commentId));
+    .where(and(
+      eq(completedWorkCommentsTable.id, commentId),
+      eq(completedWorkCommentsTable.completedWorkId, workId),
+      eq(completedWorkCommentsTable.organizationId, organizationId),
+    )));
 
   await logOrgEvent({
     organizationId,
@@ -755,7 +776,7 @@ export async function promoteToLibrary(
   const now2 = new Date();
 
   // Create a knowledge source record directly (content stored in DB, not GCS)
-  await db.insert(knowledgeSourcesTable).values({
+  await withCompletedWorkTenant(organizationId, "completed_work.promote_to_library", async (client) => client.insert(knowledgeSourcesTable).values({
     id:                        sourceId,
     organizationId,
     sourceScope:               "library",
@@ -780,7 +801,7 @@ export async function promoteToLibrary(
     uploadedByUserId:          actorUserId,
     createdAt:                 now2,
     updatedAt:                 now2,
-  } as never);
+  } as never));
 
   await logOrgEvent({
     organizationId,
@@ -797,7 +818,7 @@ export async function promoteToLibrary(
 // ─── Assets ───────────────────────────────────────────────────────────────────
 
 export async function getAssets(id: string, organizationId: string) {
-  return db
+  return withCompletedWorkTenant(organizationId, "completed_work.assets.list", async (client) => client
     .select()
     .from(completedWorkAssetsTable)
     .where(
@@ -805,7 +826,7 @@ export async function getAssets(id: string, organizationId: string) {
         eq(completedWorkAssetsTable.completedWorkId, id),
         eq(completedWorkAssetsTable.organizationId, organizationId),
       )
-    );
+    ));
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -832,10 +853,10 @@ async function transitionStatus(
   }
 
   const now = new Date();
-  await db
+  await withCompletedWorkTenant(organizationId, "completed_work.transition", async (client) => client
     .update(completedWorkTable)
     .set({ status: toStatus, updatedAt: now, ...(options.extraUpdates ?? {}) })
-    .where(eq(completedWorkTable.id, id));
+    .where(and(eq(completedWorkTable.id, id), eq(completedWorkTable.organizationId, organizationId))));
 
   await logOrgEvent({
     organizationId,

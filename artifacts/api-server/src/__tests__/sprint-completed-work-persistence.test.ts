@@ -76,6 +76,7 @@ vi.mock("@workspace/db", () => ({
     "draft", "awaiting_approval", "approved", "rejected",
     "archived", "superseded", "reopened",
   ],
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
   eq: vi.fn((_col: unknown, val: unknown) => val),
   and: vi.fn((...args: unknown[]) => args),
   desc: vi.fn((col: unknown) => col),

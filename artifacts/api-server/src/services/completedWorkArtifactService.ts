@@ -4,6 +4,7 @@ import {
   completedWorkTable,
   workArtifactsTable,
   type WorkArtifactStatus,
+  withSystemTenantContext,
 } from "@workspace/db";
 import { db } from "@workspace/db";
 import { logOrgEvent } from "./auditService.js";
@@ -11,6 +12,19 @@ import { completedWorkExportService, type ExportFormat } from "./completedWorkEx
 import { generateDownloadUrl, uploadFileToStorage } from "./knowledgeStorageService.js";
 
 export type CompletedWorkArtifactFormat = "docx" | "pdf" | "xlsx";
+
+type DbClient = typeof db;
+
+function withCompletedWorkArtifactTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "completed_work_artifact_service", purpose },
+    fn,
+  );
+}
 
 export interface GeneratedWorkArtifact {
   id: string;
@@ -77,13 +91,13 @@ export async function generateCompletedWorkArtifacts(
   const now = new Date();
   const generated: GeneratedWorkArtifact[] = [];
 
-  await db
+  await withCompletedWorkArtifactTenant(input.organizationId, "completed_work_artifacts.mark_generating", async (client) => client
     .update(completedWorkTable)
     .set({ artifactState: "generating", updatedAt: now })
     .where(and(
       eq(completedWorkTable.id, input.completedWorkId),
       eq(completedWorkTable.organizationId, input.organizationId),
-    ));
+    )));
 
   try {
     for (const format of formats) {
@@ -125,7 +139,7 @@ export async function generateCompletedWorkArtifacts(
         generationStatus: "stored",
       };
 
-      await db.insert(workArtifactsTable).values({
+      await withCompletedWorkArtifactTenant(input.organizationId, "completed_work_artifacts.insert", async (client) => client.insert(workArtifactsTable).values({
         id: artifact.id,
         organizationId: artifact.organizationId,
         taskId: artifact.taskId,
@@ -142,12 +156,12 @@ export async function generateCompletedWorkArtifacts(
         version: 1,
         generationStatus: artifact.generationStatus,
         createdAt: now,
-      });
+      }));
       generated.push(artifact);
     }
 
     const primary = generated.find((artifact) => artifact.artifactType === "primary_deliverable") ?? generated[0];
-    await db
+    await withCompletedWorkArtifactTenant(input.organizationId, "completed_work_artifacts.mark_stored", async (client) => client
       .update(completedWorkTable)
       .set({
         artifactState: "stored",
@@ -157,7 +171,7 @@ export async function generateCompletedWorkArtifacts(
       .where(and(
         eq(completedWorkTable.id, input.completedWorkId),
         eq(completedWorkTable.organizationId, input.organizationId),
-      ));
+      )));
 
     await logOrgEvent({
       organizationId: input.organizationId,
@@ -174,13 +188,13 @@ export async function generateCompletedWorkArtifacts(
 
     return generated;
   } catch (err) {
-    await db
+    await withCompletedWorkArtifactTenant(input.organizationId, "completed_work_artifacts.mark_failed", async (client) => client
       .update(completedWorkTable)
       .set({ artifactState: "generation_failed", updatedAt: new Date() })
       .where(and(
         eq(completedWorkTable.id, input.completedWorkId),
         eq(completedWorkTable.organizationId, input.organizationId),
-      ));
+      )));
     throw err;
   }
 }
@@ -189,13 +203,13 @@ export async function listCompletedWorkGeneratedArtifacts(
   completedWorkId: string,
   organizationId: string,
 ): Promise<GeneratedWorkArtifact[]> {
-  const rows = await db
+  const rows = await withCompletedWorkArtifactTenant(organizationId, "completed_work_artifacts.list", async (client) => client
     .select()
     .from(workArtifactsTable)
     .where(and(
       eq(workArtifactsTable.completedWorkId, completedWorkId),
       eq(workArtifactsTable.organizationId, organizationId),
-    ));
+    )));
 
   return rows.map((row) => ({
     id: row.id,

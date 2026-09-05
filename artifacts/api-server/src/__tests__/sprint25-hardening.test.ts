@@ -43,6 +43,12 @@ vi.mock("@workspace/db", async () => {
       update:  () => mockDb,
       execute: mockDb.execute,
     },
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+      select:  () => mockDb,
+      insert:  () => mockDb,
+      update:  () => mockDb,
+      execute: mockDb.execute,
+    })),
   };
 });
 
