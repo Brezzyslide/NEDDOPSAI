@@ -7,7 +7,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   conversationMessagesTable,
   conversationMemoryTable,
@@ -23,6 +23,19 @@ import type {
   Assumption,
 } from "./contextSelectionService.js";
 import { fetchConversationMemory } from "./contextSelectionService.js";
+
+type DbClient = typeof db;
+
+function withConversationMemoryTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "conversation_memory_service", purpose },
+    fn,
+  );
+}
 
 // ─── Summarisation system prompt ──────────────────────────────────────────────
 
@@ -56,14 +69,14 @@ export async function shouldTriggerSummarisation(
 ): Promise<boolean> {
   try {
     const threshold = parseInt(process.env.AI_MEMORY_SUMMARY_THRESHOLD ?? "40", 10);
-    const rows = await db
+    const rows = await withConversationMemoryTenant(organizationId, "conversation_memory.message_count", async (client) => client
       .select({ id: conversationMessagesTable.id })
       .from(conversationMessagesTable)
       .where(and(
         eq(conversationMessagesTable.organizationId, organizationId),
         eq(conversationMessagesTable.conversationId, conversationId),
       ))
-      .limit(threshold + 1);
+      .limit(threshold + 1));
     const total = rows.length;
     if (total < threshold) return false;
 
@@ -82,12 +95,12 @@ export async function updateConversationSummary(
 ): Promise<{ success: boolean; version: number; reason?: string }> {
   try {
     const maxHistory = parseInt(process.env.AI_MAX_HISTORY_MESSAGES ?? "300", 10);
-    const allMessages = await db
+    const allMessages = await withConversationMemoryTenant(organizationId, "conversation_memory.summary.messages", async (client) => client
       .select({ id: conversationMessagesTable.id, senderType: conversationMessagesTable.senderType, content: conversationMessagesTable.content, messageType: conversationMessagesTable.messageType, createdAt: conversationMessagesTable.createdAt })
       .from(conversationMessagesTable)
       .where(and(eq(conversationMessagesTable.organizationId, organizationId), eq(conversationMessagesTable.conversationId, conversationId)))
       .orderBy(asc(conversationMessagesTable.createdAt))
-      .limit(maxHistory);
+      .limit(maxHistory));
 
     if (allMessages.length === 0) return { success: false, version: 0, reason: "no_messages" };
 
@@ -150,7 +163,7 @@ export async function updateConversationSummary(
 
     // Upsert conversation_memory
     if (existing) {
-      await db
+      await withConversationMemoryTenant(organizationId, "conversation_memory.summary.update", async (client) => client
         .update(conversationMemoryTable)
         .set({
           summary: summaryText,
@@ -167,9 +180,9 @@ export async function updateConversationSummary(
         .where(and(
           eq(conversationMemoryTable.organizationId, organizationId),
           eq(conversationMemoryTable.conversationId, conversationId),
-        ));
+        )));
     } else {
-      await db.insert(conversationMemoryTable).values({
+      await withConversationMemoryTenant(organizationId, "conversation_memory.summary.insert", async (client) => client.insert(conversationMemoryTable).values({
         id: randomUUID(),
         organizationId,
         conversationId,
@@ -184,7 +197,7 @@ export async function updateConversationSummary(
         participants: [],
         relatedTaskIds: (structuredSummary.relatedTasks ?? []) as unknown[],
         lastUpdatedAt: new Date(),
-      });
+      }));
     }
 
     await writeAuditEvent(organizationId, actorUserId, conversationId, newVersion, usedFallback);
@@ -218,16 +231,16 @@ export async function pinDecision(
   const updated = [...currentPins, newPin];
 
   if (existing) {
-    await db.update(conversationMemoryTable)
+    await withConversationMemoryTenant(organizationId, "conversation_memory.pin.update", async (client) => client.update(conversationMemoryTable)
       .set({ pinnedDecisions: updated as unknown[], updatedAt: new Date() })
-      .where(and(eq(conversationMemoryTable.organizationId, organizationId), eq(conversationMemoryTable.conversationId, conversationId)));
+      .where(and(eq(conversationMemoryTable.organizationId, organizationId), eq(conversationMemoryTable.conversationId, conversationId))));
   } else {
-    await db.insert(conversationMemoryTable).values({
+    await withConversationMemoryTenant(organizationId, "conversation_memory.pin.insert", async (client) => client.insert(conversationMemoryTable).values({
       id: randomUUID(), organizationId, conversationId,
       summary: "", structuredSummary: {}, summaryVersion: 1,
       summarisedMessageCount: 0, unresolvedQuestions: [], pinnedDecisions: updated as unknown[],
       assumptions: [], participants: [], relatedTaskIds: [], lastUpdatedAt: new Date(),
-    });
+    }));
   }
 
   await writeDecisionAudit(organizationId, pinnedBy, conversationId, "decision.pinned", newPin.id);
@@ -244,9 +257,9 @@ export async function unpinDecision(
     const existing = await fetchConversationMemory(organizationId, conversationId);
     if (!existing) return false;
     const updated = existing.pinnedDecisions.filter(d => d.id !== decisionId);
-    await db.update(conversationMemoryTable)
+    await withConversationMemoryTenant(organizationId, "conversation_memory.unpin", async (client) => client.update(conversationMemoryTable)
       .set({ pinnedDecisions: updated as unknown[], updatedAt: new Date() })
-      .where(and(eq(conversationMemoryTable.organizationId, organizationId), eq(conversationMemoryTable.conversationId, conversationId)));
+      .where(and(eq(conversationMemoryTable.organizationId, organizationId), eq(conversationMemoryTable.conversationId, conversationId))));
     await writeDecisionAudit(organizationId, userId, conversationId, "decision.unpinned", decisionId);
     return true;
   } catch { return false; }
@@ -321,22 +334,22 @@ function buildSummaryText(s: ConversationMemoryStructured): string {
 
 async function writeAuditEvent(orgId: string, userId: string, convId: string, version: number, fallback: boolean) {
   try {
-    await db.insert(orgAuditLogTable).values({
+    await withConversationMemoryTenant(orgId, "conversation_memory.audit.summary", async (client) => client.insert(orgAuditLogTable).values({
       id: randomUUID(), organizationId: orgId, actorUserId: userId, actorType: "system",
       eventType: version === 1 ? "conversation.summary_created" : "conversation.summary_updated",
       resourceType: "conversation_memory", resourceId: convId,
       isSensitive: false, metadata: { summaryVersion: version, usedFallback: fallback }, occurredAt: new Date(),
-    });
+    }));
   } catch { /* non-critical */ }
 }
 
 async function writeDecisionAudit(orgId: string, userId: string, convId: string, eventType: string, decisionId: string) {
   try {
-    await db.insert(orgAuditLogTable).values({
+    await withConversationMemoryTenant(orgId, "conversation_memory.audit.decision", async (client) => client.insert(orgAuditLogTable).values({
       id: randomUUID(), organizationId: orgId, actorUserId: userId, actorType: "user",
       eventType, resourceType: "pinned_decision", resourceId: decisionId,
       isSensitive: false, metadata: { conversationId: convId }, occurredAt: new Date(),
-    });
+    }));
   } catch { /* non-critical */ }
 }
 

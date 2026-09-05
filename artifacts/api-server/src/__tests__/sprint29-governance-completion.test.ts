@@ -41,6 +41,11 @@ vi.mock("@workspace/db", () => ({
     insert:  mockInsert,
     update:  mockUpdate,
   },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    select: () => mockSelectImpl(),
+    insert: mockInsert,
+    update: mockUpdate,
+  })),
   approvalsTable:           { id: "id", organizationId: "organizationId", state: "state", requestedAt: "requestedAt", resolvedAt: "resolvedAt" },
   approvalHistoryTable:     { approvalId: "approvalId", organizationId: "organizationId", action: "action", occurredAt: "occurredAt" },
   organisationMemoryTable:  { id: "id", organizationId: "organizationId", status: "status", memoryType: "memoryType", confidence: "confidence", supersededBy: "supersededBy", updatedAt: "updatedAt" },

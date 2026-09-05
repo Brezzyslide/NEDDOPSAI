@@ -10,7 +10,7 @@
  * and respects a configurable token budget.
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   organizationsTable,
   conversationMessagesTable,
@@ -21,6 +21,19 @@ import {
   conversationMemoryTable,
 } from "@workspace/db";
 import { eq, and, asc, desc, lte } from "drizzle-orm";
+
+type DbClient = typeof db;
+
+function withContextSelectionTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "context_selection_service", purpose },
+    fn,
+  );
+}
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -231,9 +244,9 @@ export async function buildChiefOfStaffContext(params: {
 
 async function fetchOrgProfile(organizationId: string): Promise<Record<string, unknown>> {
   try {
-    const [org] = await db
+    const [org] = await withContextSelectionTenant(organizationId, "context_selection.org_profile", async (client) => client
       .select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug, status: organizationsTable.status })
-      .from(organizationsTable).where(eq(organizationsTable.id, organizationId)).limit(1);
+      .from(organizationsTable).where(eq(organizationsTable.id, organizationId)).limit(1));
     return org ? { id: org.id, name: org.name, slug: org.slug, status: org.status } : {};
   } catch { return {}; }
 }
@@ -241,19 +254,19 @@ async function fetchOrgProfile(organizationId: string): Promise<Record<string, u
 async function fetchAllMessages(
   organizationId: string, conversationId: string, limit: number
 ): Promise<ConversationMessage[]> {
-  const rows = await db
+  const rows = await withContextSelectionTenant(organizationId, "context_selection.messages", async (client) => client
     .select({ id: conversationMessagesTable.id, senderType: conversationMessagesTable.senderType, content: conversationMessagesTable.content, messageType: conversationMessagesTable.messageType, createdAt: conversationMessagesTable.createdAt })
     .from(conversationMessagesTable)
     .where(and(eq(conversationMessagesTable.organizationId, organizationId), eq(conversationMessagesTable.conversationId, conversationId)))
     .orderBy(asc(conversationMessagesTable.createdAt))
-    .limit(limit);
+    .limit(limit));
   return rows.map(r => ({ id: r.id, senderType: r.senderType, content: r.content, messageType: r.messageType, createdAt: r.createdAt }));
 }
 
 async function fetchApprovedOrgMemory(organizationId: string): Promise<OrganisationMemoryItem[]> {
   try {
     const now = new Date();
-    const rows = await db
+    const rows = await withContextSelectionTenant(organizationId, "context_selection.organisation_memory", async (client) => client
       .select()
       .from(organisationMemoryTable)
       .where(
@@ -263,7 +276,7 @@ async function fetchApprovedOrgMemory(organizationId: string): Promise<Organisat
         )
       )
       .orderBy(desc(organisationMemoryTable.importance), desc(organisationMemoryTable.updatedAt))
-      .limit(50);
+      .limit(50));
 
     return rows
       .filter(r => !r.expiresAt || r.expiresAt > now)
@@ -293,11 +306,11 @@ export async function fetchConversationMemory(
   organizationId: string, conversationId: string
 ): Promise<ConversationMemoryRecord | null> {
   try {
-    const [row] = await db
+    const [row] = await withContextSelectionTenant(organizationId, "context_selection.conversation_memory", async (client) => client
       .select()
       .from(conversationMemoryTable)
       .where(and(eq(conversationMemoryTable.organizationId, organizationId), eq(conversationMemoryTable.conversationId, conversationId)))
-      .limit(1);
+      .limit(1));
     if (!row) return null;
     return {
       id: row.id,
@@ -319,22 +332,22 @@ export async function fetchConversationMemory(
 
 async function fetchTaskContext(organizationId: string, taskId: string): Promise<TaskContext[]> {
   try {
-    const rows = await db
+    const rows = await withContextSelectionTenant(organizationId, "context_selection.task", async (client) => client
       .select({ id: tasksTable.id, title: tasksTable.title, currentState: tasksTable.currentState, priority: tasksTable.priority, approvalState: tasksTable.approvalState })
       .from(tasksTable)
       .where(and(eq(tasksTable.organizationId, organizationId), eq(tasksTable.id, taskId)))
-      .limit(1);
+      .limit(1));
     return rows.map(r => ({ id: r.id, title: r.title, currentState: r.currentState, priority: r.priority, approvalState: r.approvalState }));
   } catch { return []; }
 }
 
 async function fetchApprovalContext(organizationId: string, taskId: string): Promise<ApprovalContext[]> {
   try {
-    const rows = await db
+    const rows = await withContextSelectionTenant(organizationId, "context_selection.approvals", async (client) => client
       .select({ id: approvalsTable.id, taskId: approvalsTable.taskId, approvalType: approvalsTable.approvalType, state: approvalsTable.state })
       .from(approvalsTable)
       .where(and(eq(approvalsTable.organizationId, organizationId), eq(approvalsTable.taskId, taskId), eq(approvalsTable.state, "pending")))
-      .limit(5);
+      .limit(5));
     return rows.map(r => ({ id: r.id, taskId: r.taskId, approvalType: r.approvalType, state: r.state }));
   } catch { return []; }
 }

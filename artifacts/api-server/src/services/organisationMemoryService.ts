@@ -7,10 +7,23 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { organisationMemoryTable, orgAuditLogTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import type { OrganisationMemoryItem } from "./contextSelectionService.js";
+
+type DbClient = typeof db;
+
+function withOrgMemoryTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "organisation_memory_service", purpose },
+    fn,
+  );
+}
 
 export type MemoryStatus = "proposed" | "approved" | "rejected" | "superseded" | "expired";
 export type MemoryType =
@@ -88,7 +101,7 @@ export async function proposeOrganisationMemory(
   const autoAdopted = canAutoAdoptMemory(input, conflicts);
   const now = new Date();
 
-  await db.insert(organisationMemoryTable).values({
+  await withOrgMemoryTenant(organizationId, "organisation_memory.create", async (client) => client.insert(organisationMemoryTable).values({
     id,
     organizationId,
     memoryType: VALID_MEMORY_TYPES.includes(input.memoryType) ? input.memoryType : "other",
@@ -107,7 +120,7 @@ export async function proposeOrganisationMemory(
     effectiveTo: input.effectiveTo,
     expiresAt: input.expiresAt,
     createdBy: input.createdBy,
-  });
+  }));
 
   const eventType = autoAdopted ? "memory.approved" : "memory.proposed";
   await writeMemoryAudit(organizationId, input.createdBy, eventType, id, {
@@ -123,9 +136,9 @@ export async function approveOrganisationMemory(
   organizationId: string, memoryId: string, approvedBy: string,
 ): Promise<boolean> {
   try {
-    await db.update(organisationMemoryTable)
+    await withOrgMemoryTenant(organizationId, "organisation_memory.approve", async (client) => client.update(organisationMemoryTable)
       .set({ status: "approved", approvedBy, approvedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId), eq(organisationMemoryTable.status, "proposed")));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId), eq(organisationMemoryTable.status, "proposed"))));
     await writeMemoryAudit(organizationId, approvedBy, "memory.approved", memoryId, {});
     return true;
   } catch { return false; }
@@ -137,9 +150,9 @@ export async function rejectOrganisationMemory(
   organizationId: string, memoryId: string, rejectedBy: string,
 ): Promise<boolean> {
   try {
-    await db.update(organisationMemoryTable)
+    await withOrgMemoryTenant(organizationId, "organisation_memory.reject", async (client) => client.update(organisationMemoryTable)
       .set({ status: "rejected", updatedAt: new Date() })
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId)));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId))));
     await writeMemoryAudit(organizationId, rejectedBy, "memory.rejected", memoryId, {});
     return true;
   } catch { return false; }
@@ -155,9 +168,9 @@ export async function supersedeOrganisationMemory(
     return { ok: false, error: "A memory entry cannot supersede itself" };
   }
   try {
-    await db.update(organisationMemoryTable)
+    await withOrgMemoryTenant(organizationId, "organisation_memory.supersede", async (client) => client.update(organisationMemoryTable)
       .set({ status: "superseded", supersededBy: newId, updatedAt: new Date() })
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, oldId)));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, oldId))));
     await writeMemoryAudit(organizationId, userId, "memory.superseded", oldId, { supersededBy: newId });
     return { ok: true };
   } catch { return { ok: false, error: "Failed to supersede memory entry" }; }
@@ -180,9 +193,9 @@ export async function updateOrganisationMemory(
     if (updates.importance !== undefined) patch.importance = Math.min(10, Math.max(1, updates.importance));
     if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt;
 
-    await db.update(organisationMemoryTable)
+    await withOrgMemoryTenant(organizationId, "organisation_memory.update", async (client) => client.update(organisationMemoryTable)
       .set(patch as Partial<typeof organisationMemoryTable.$inferInsert>)
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId)));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, memoryId))));
     await writeMemoryAudit(organizationId, userId, "memory.updated", memoryId, {});
     return true;
   } catch { return false; }
@@ -210,11 +223,11 @@ export async function listOrganisationMemory(
       conditions.push(eq(organisationMemoryTable.memoryType, filters.memoryType) as any);
     }
 
-    const rows = await db.select().from(organisationMemoryTable)
+    const rows = await withOrgMemoryTenant(organizationId, "organisation_memory.list", async (client) => client.select().from(organisationMemoryTable)
       .where(and(...(conditions as [any])))
       .orderBy(desc(organisationMemoryTable.importance), desc(organisationMemoryTable.updatedAt))
       .limit(limit + 1)
-      .offset(offset);
+      .offset(offset));
 
     const filtered = filters.includeExpired
       ? rows
@@ -234,10 +247,10 @@ async function detectConflictsForNew(
 ): Promise<MemoryConflict[]> {
   const conflicts: MemoryConflict[] = [];
   try {
-    const existing = await db.select({ id: organisationMemoryTable.id, title: organisationMemoryTable.title })
+    const existing = await withOrgMemoryTenant(organizationId, "organisation_memory.conflicts", async (client) => client.select({ id: organisationMemoryTable.id, title: organisationMemoryTable.title })
       .from(organisationMemoryTable)
       .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.memoryType, input.memoryType), eq(organisationMemoryTable.status, "approved")))
-      .limit(10);
+      .limit(10));
 
     for (const row of existing) {
       if (titleSimilarity(input.title, row.title) > 0.6) {
@@ -306,16 +319,16 @@ export async function mergeOrganisationMemory(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     // Load both records and validate ownership
-    const [targetRow] = await db
+    const [targetRow] = await withOrgMemoryTenant(organizationId, "organisation_memory.merge.target", async (client) => client
       .select()
       .from(organisationMemoryTable)
       .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.targetId)))
-      .limit(1);
-    const [sourceRow] = await db
+      .limit(1));
+    const [sourceRow] = await withOrgMemoryTenant(organizationId, "organisation_memory.merge.source", async (client) => client
       .select()
       .from(organisationMemoryTable)
       .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.sourceId)))
-      .limit(1);
+      .limit(1));
 
     if (!targetRow) return { ok: false, error: "Target memory record not found." };
     if (!sourceRow) return { ok: false, error: "Source memory record not found." };
@@ -331,16 +344,16 @@ export async function mergeOrganisationMemory(
     );
     patch.confidence = String(mergedConfidence);
 
-    await db
+    await withOrgMemoryTenant(organizationId, "organisation_memory.merge.update_target", async (client) => client
       .update(organisationMemoryTable)
       .set(patch as any)
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.targetId)));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.targetId))));
 
     // Supersede the source
-    await db
+    await withOrgMemoryTenant(organizationId, "organisation_memory.merge.supersede_source", async (client) => client
       .update(organisationMemoryTable)
       .set({ status: "superseded", supersededBy: input.targetId, updatedAt: new Date() })
-      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.sourceId)));
+      .where(and(eq(organisationMemoryTable.organizationId, organizationId), eq(organisationMemoryTable.id, input.sourceId))));
 
     await writeMemoryAudit(organizationId, input.mergedBy, "memory.merged", input.targetId, {
       sourceId: input.sourceId,
@@ -365,7 +378,7 @@ export async function getMemoryAuditHistory(
 ): Promise<(typeof orgAuditLogTable.$inferSelect)[]> {
   try {
     const { desc: descOrder } = await import("drizzle-orm");
-    return db
+    return await withOrgMemoryTenant(organizationId, "organisation_memory.audit_history", async (client) => client
       .select()
       .from(orgAuditLogTable)
       .where(
@@ -375,7 +388,7 @@ export async function getMemoryAuditHistory(
         ),
       )
       .orderBy(descOrder(orgAuditLogTable.occurredAt))
-      .limit(50);
+      .limit(50));
   } catch { return []; }
 }
 
@@ -383,10 +396,10 @@ export async function getMemoryAuditHistory(
 
 async function writeMemoryAudit(orgId: string, userId: string, eventType: string, resourceId: string, metadata: Record<string, unknown>) {
   try {
-    await db.insert(orgAuditLogTable).values({
+    await withOrgMemoryTenant(orgId, "organisation_memory.audit.write", async (client) => client.insert(orgAuditLogTable).values({
       id: randomUUID(), organizationId: orgId, actorUserId: userId, actorType: "user",
       eventType, resourceType: "organisation_memory", resourceId,
       isSensitive: false, metadata, occurredAt: new Date(),
-    });
+    }));
   } catch { /* non-critical */ }
 }

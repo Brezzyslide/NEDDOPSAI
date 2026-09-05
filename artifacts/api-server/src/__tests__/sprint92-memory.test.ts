@@ -16,7 +16,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@workspace/db", async (importOriginal) => {
   const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
   const { mockDb } = await import("./helpers/sprint92Helpers.js");
-  return { ...actual, db: mockDb };
+  return {
+    ...actual,
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn(mockDb)),
+  };
 });
 
 vi.mock("@workspace/ai-gateway", () => ({
