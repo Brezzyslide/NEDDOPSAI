@@ -17,6 +17,7 @@ import { randomUUID } from "crypto";
 import { eq, and, lt, or } from "drizzle-orm";
 import {
   db,
+  withSystemTenantContext,
   executionIntentsTable,
   tasksTable,
   conversationsTable,
@@ -59,6 +60,19 @@ import {
 } from "./taskService.js";
 import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
 import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
+
+type DbClient = typeof db;
+
+function withExecutionCoordinatorTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "execution_coordinator", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -121,14 +135,14 @@ export async function coordinateIntentApproval(
   organizationId: string,
   approvedBy: string,
 ): Promise<CoordinateIntentApprovalResult> {
-  const [intent] = await db
+  const [intent] = await withExecutionCoordinatorTenant(organizationId, "execution_intent.approve.get", async (client) => client
     .select()
     .from(executionIntentsTable)
     .where(and(
       eq(executionIntentsTable.id, intentId),
       eq(executionIntentsTable.organizationId, organizationId),
     ))
-    .limit(1);
+    .limit(1));
 
   if (!intent) {
     return { dispatched: false, executionStarted: false, skipReason: "intent_not_found" };
@@ -138,24 +152,24 @@ export async function coordinateIntentApproval(
     return { dispatched: false, executionStarted: false, skipReason: "already_dispatched" };
   }
 
-  await db
+  await withExecutionCoordinatorTenant(organizationId, "execution_intent.approve", async (client) => client
     .update(executionIntentsTable)
     .set({ status: "approved", approvedBy, approvedAt: new Date(), updatedAt: new Date() })
     .where(and(
       eq(executionIntentsTable.id, intentId),
       eq(executionIntentsTable.organizationId, organizationId),
-    ));
+    )));
 
   const conversationId = await resolveConversationForTask(organizationId, intent.taskId);
 
-  const [task] = await db
+  const [task] = await withExecutionCoordinatorTenant(organizationId, "execution_intent.task.get", async (client) => client
     .select()
     .from(tasksTable)
     .where(and(
       eq(tasksTable.organizationId, organizationId),
       eq(tasksTable.id, intent.taskId),
     ))
-    .limit(1);
+    .limit(1));
 
   const correlationId = randomUUID();
 
@@ -181,10 +195,10 @@ export async function coordinateIntentApproval(
     metadata: { taskId: intent.taskId, correlationId, intentType: intent.intentType },
   }).catch(() => {});
 
-  await db
+  await withExecutionCoordinatorTenant(organizationId, "execution_intent.mark_dispatched", async (client) => client
     .update(executionIntentsTable)
     .set({ status: "dispatched", dispatchedAt: new Date(), updatedAt: new Date() })
-    .where(eq(executionIntentsTable.id, intentId));
+    .where(eq(executionIntentsTable.id, intentId)));
 
   const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
   const originalRequest = typeof taskCreation?.sourceUserRequest === "string"
@@ -460,25 +474,31 @@ export async function recoverOrphanedExecutions(organizationId?: string): Promis
     conditions.push(eq(executionIntentsTable.organizationId, organizationId));
   }
 
-  const staleIntents = await db
-    .select()
-    .from(executionIntentsTable)
-    .where(and(...conditions))
-    .limit(50);
+  const staleIntents = organizationId
+    ? await withExecutionCoordinatorTenant(organizationId, "execution_intent.recover.list", async (client) => client
+      .select()
+      .from(executionIntentsTable)
+      .where(and(...conditions))
+      .limit(50))
+    : await db
+      .select()
+      .from(executionIntentsTable)
+      .where(and(...conditions))
+      .limit(50);
 
   let recovered = 0;
 
   for (const intent of staleIntents) {
     try {
       const conversationId = await resolveConversationForTask(intent.organizationId, intent.taskId);
-      const [task] = await db
+      const [task] = await withExecutionCoordinatorTenant(intent.organizationId, "execution_intent.recover.task.get", async (client) => client
         .select()
         .from(tasksTable)
         .where(and(
           eq(tasksTable.id, intent.taskId),
           eq(tasksTable.organizationId, intent.organizationId),
         ))
-        .limit(1);
+        .limit(1));
 
       const correlationId = randomUUID();
       const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
@@ -883,11 +903,11 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       }
       if (!conversationId) {
         if (input.intentId) {
-          await db
+          await withExecutionCoordinatorTenant(organizationId, "execution_intent.mark_completed", async (client) => client
             .update(executionIntentsTable)
             .set({ status: "completed", updatedAt: new Date() })
             .where(eq(executionIntentsTable.id, input.intentId))
-            .catch(() => {});
+            .catch(() => {}));
         }
         return;
       }
@@ -922,11 +942,11 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       ).catch(err => console.warn("[ExecutionCoordinator] Completed work message failed:", err?.message));
 
       if (input.intentId) {
-        await db
+        await withExecutionCoordinatorTenant(organizationId, "execution_intent.mark_completed", async (client) => client
           .update(executionIntentsTable)
           .set({ status: "completed", updatedAt: new Date() })
           .where(eq(executionIntentsTable.id, input.intentId))
-          .catch(() => {});
+          .catch(() => {}));
       }
     } else if (result.outcome !== "completed") {
       await reconcileTaskExecutionFailure({
@@ -996,7 +1016,7 @@ async function resolveConversationForTask(
   organizationId: string,
   taskId: string,
 ): Promise<string | null> {
-  const [workroom] = await db
+  const [workroom] = await withExecutionCoordinatorTenant(organizationId, "execution_coordinator.resolve_conversation.workroom", async (client) => client
     .select({ id: conversationsTable.id })
     .from(conversationsTable)
     .where(and(
@@ -1004,18 +1024,18 @@ async function resolveConversationForTask(
       eq(conversationsTable.primaryTaskId, taskId),
       eq(conversationsTable.conversationType, "task_workroom"),
     ))
-    .limit(1);
+    .limit(1));
 
   if (workroom) return workroom.id;
 
-  const [any] = await db
+  const [any] = await withExecutionCoordinatorTenant(organizationId, "execution_coordinator.resolve_conversation.any", async (client) => client
     .select({ id: conversationsTable.id })
     .from(conversationsTable)
     .where(and(
       eq(conversationsTable.organizationId, organizationId),
       eq(conversationsTable.primaryTaskId, taskId),
     ))
-    .limit(1);
+    .limit(1));
 
   return any?.id ?? null;
 }

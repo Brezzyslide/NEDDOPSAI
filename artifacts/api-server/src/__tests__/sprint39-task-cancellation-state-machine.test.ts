@@ -48,6 +48,11 @@ vi.mock("@workspace/db", () => ({
     update: mockDbUpdate,
     insert: mockDbInsert,
   },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    select: mockDbSelect,
+    update: mockDbUpdate,
+    insert: mockDbInsert,
+  })),
   tasksTable: {
     id: "tasks.id",
     organizationId: "tasks.organization_id",

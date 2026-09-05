@@ -28,11 +28,40 @@ function makeSelectChain(rows: unknown[]) {
   c.limit   = () => Promise.resolve(rows);
   return c;
 }
+function makeCoordinatorSelectChain(input: {
+  intentRows?: unknown[];
+  conversationRows?: unknown[];
+  taskRows?: unknown[];
+  fallbackRows?: unknown[];
+}) {
+  const c: Record<string, unknown> = {};
+  let rows = input.fallbackRows ?? [];
+  c.from = (table: unknown) => {
+    const tableName = (table as { _?: string })._;
+    if (tableName === "executionIntents") {
+      rows = input.intentRows ?? [];
+    } else if (tableName === "conversations") {
+      rows = input.conversationRows ?? [];
+    } else if (tableName === "tasks") {
+      rows = input.taskRows ?? [];
+    }
+    return c;
+  };
+  c.where = () => c;
+  c.orderBy = () => c;
+  c.limit = () => Promise.resolve(rows);
+  return c;
+}
 function makeUpdateChain() {
   const c: Record<string, unknown> = {};
   c.set       = () => c;
   c.where     = () => c;
-  c.returning = () => Promise.resolve([]);
+  c.returning = () => Promise.resolve([{
+    id: "task-271",
+    organizationId: "org-271",
+    currentState: "executing",
+    metadata: {},
+  }]);
   return c;
 }
 
@@ -42,6 +71,11 @@ vi.mock("@workspace/db", () => ({
     update: mockDbUpdateFn,
     insert: vi.fn(() => ({ values: () => ({ returning: () => Promise.resolve([]) }) })),
   },
+  withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    select: mockDbSelectFn,
+    update: mockDbUpdateFn,
+    insert: vi.fn(() => ({ values: () => ({ returning: () => Promise.resolve([]) }) })),
+  })),
   executionIntentsTable:     { _: "executionIntents" },
   tasksTable:                { _: "tasks" },
   conversationsTable:        { _: "conversations" },
@@ -155,7 +189,14 @@ const INTENT_ROW = {
   description: "Write quarterly report", approvedBy: null,
 };
 const CONV_ROW  = { id: CONV };
-const TASK_ROW  = { id: TASK, organizationId: ORG, title: "Q3 Report", description: "Write quarterly report" };
+const TASK_ROW  = {
+  id: TASK,
+  organizationId: ORG,
+  title: "Q3 Report",
+  description: "Write quarterly report",
+  currentState: "queued",
+  metadata: {},
+};
 
 // ─── 1. Coordinator — clarification pause ─────────────────────────────────────
 
@@ -281,13 +322,11 @@ describe("executionCoordinatorService — successful dispatch", () => {
   });
 
   it("posts execution started message", async () => {
-    let call = 0;
-    mockDbSelectFn.mockImplementation(() => {
-      call++;
-      if (call === 1) return makeSelectChain([INTENT_ROW]);
-      if (call === 2) return makeSelectChain([CONV_ROW]);
-      return makeSelectChain([TASK_ROW]);
-    });
+    mockDbSelectFn.mockImplementation(() => makeCoordinatorSelectChain({
+      intentRows: [INTENT_ROW],
+      conversationRows: [CONV_ROW],
+      taskRows: [TASK_ROW],
+    }));
 
     const { coordinateIntentApproval } = await import("../services/executionCoordinatorService.js");
     await coordinateIntentApproval(INTENT, ORG, USER);

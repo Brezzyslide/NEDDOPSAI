@@ -35,7 +35,13 @@ vi.mock("@workspace/db", () => {
   const makeUpdateChain = () => {
     const c: Record<string, unknown> = {};
     c.set   = () => c;
-    c.where = () => Promise.resolve({ rowCount: 1 });
+    c.where = () => c;
+    c.returning = () => Promise.resolve([{
+      id: "task-abc",
+      organizationId: "org-123",
+      currentState: "executing",
+      metadata: {},
+    }]);
     return c;
   };
   const makeInsertChain = () => {
@@ -62,6 +68,11 @@ vi.mock("@workspace/db", () => {
       update: mockDbUpdateFn.mockImplementation(() => makeUpdateChain()),
       insert: mockDbInsertFn.mockImplementation(() => makeInsertChain()),
     },
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+      select: mockDbSelectFn,
+      update: mockDbUpdateFn,
+      insert: mockDbInsertFn,
+    })),
     executionIntentsTable: {
       id: "id", organizationId: "organization_id", taskId: "task_id",
       status: "status", approvalRequired: "approval_required",
@@ -172,12 +183,44 @@ function selectReturning(rows: unknown[]) {
   return c;
 }
 
+function selectCoordinatorRows(input: {
+  intentRows?: unknown[];
+  conversationRows?: unknown[];
+  taskRows?: unknown[];
+  fallbackRows?: unknown[];
+}) {
+  const c: Record<string, unknown> = {};
+  let rows = input.fallbackRows ?? [];
+  c.from = (table: unknown) => {
+    const candidate = table as Record<string, unknown>;
+    if (candidate.intentType || candidate.dispatchedAt) {
+      rows = input.intentRows ?? [];
+    } else if (candidate.conversationType || candidate.primaryTaskId) {
+      rows = input.conversationRows ?? [];
+    } else if (candidate.title || candidate.currentState) {
+      rows = input.taskRows ?? [];
+    }
+    return c;
+  };
+  c.where = () => c;
+  c.orderBy = () => c;
+  c.limit = () => Promise.resolve(rows);
+  return c;
+}
+
 const INTENT_ROW = {
   id: INTENT, organizationId: ORG, taskId: TASK,
   status: "prepared", intentType: "generate_report",
   description: "Write Q3 report",
 };
-const TASK_ROW = { id: TASK, organizationId: ORG, title: "Q3 Report", description: "Write Q3 report" };
+const TASK_ROW = {
+  id: TASK,
+  organizationId: ORG,
+  title: "Q3 Report",
+  description: "Write Q3 report",
+  currentState: "queued",
+  metadata: {},
+};
 const CONV_ROW = { id: CONV };
 
 // ─── coordinateIntentApproval ─────────────────────────────────────────────────
@@ -234,13 +277,11 @@ describe("coordinateIntentApproval", () => {
   });
 
   it("dispatches successfully for a prepared intent", async () => {
-    let selectCallCount = 0;
-    mockDbSelectFn.mockImplementation(() => {
-      selectCallCount++;
-      if (selectCallCount === 1) return selectReturning([INTENT_ROW]);  // intent
-      if (selectCallCount === 2) return selectReturning([TASK_ROW]);    // task
-      return selectReturning([CONV_ROW]);                                // conversation
-    });
+    mockDbSelectFn.mockImplementation(() => selectCoordinatorRows({
+      intentRows: [INTENT_ROW],
+      conversationRows: [CONV_ROW],
+      taskRows: [TASK_ROW],
+    }));
 
     const result = await coordinateIntentApproval(INTENT, ORG, USER);
 
@@ -253,13 +294,11 @@ describe("coordinateIntentApproval", () => {
     //   1. intent lookup
     //   2. resolveConversationForTask → workroom
     //   3. task lookup
-    let callCount = 0;
-    mockDbSelectFn.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) return selectReturning([INTENT_ROW]);  // intent
-      if (callCount === 2) return selectReturning([CONV_ROW]);    // workroom conversation
-      return selectReturning([TASK_ROW]);                          // task
-    });
+    mockDbSelectFn.mockImplementation(() => selectCoordinatorRows({
+      intentRows: [INTENT_ROW],
+      conversationRows: [CONV_ROW],
+      taskRows: [TASK_ROW],
+    }));
 
     await coordinateIntentApproval(INTENT, ORG, USER);
 
@@ -269,26 +308,22 @@ describe("coordinateIntentApproval", () => {
   });
 
   it("does not throw when no conversation exists for the task", async () => {
-    let callCount = 0;
-    mockDbSelectFn.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) return selectReturning([INTENT_ROW]);
-      if (callCount === 2) return selectReturning([TASK_ROW]);
-      return selectReturning([]); // no conversation found
-    });
+    mockDbSelectFn.mockImplementation(() => selectCoordinatorRows({
+      intentRows: [INTENT_ROW],
+      conversationRows: [],
+      taskRows: [TASK_ROW],
+    }));
 
     await expect(coordinateIntentApproval(INTENT, ORG, USER)).resolves.not.toThrow();
   });
 
   it("logs audit event on successful dispatch", async () => {
     // Call order: intent → workroom conversation → task
-    let callCount = 0;
-    mockDbSelectFn.mockImplementation(() => {
-      callCount++;
-      if (callCount === 1) return selectReturning([INTENT_ROW]);  // intent
-      if (callCount === 2) return selectReturning([CONV_ROW]);    // workroom
-      return selectReturning([TASK_ROW]);                          // task
-    });
+    mockDbSelectFn.mockImplementation(() => selectCoordinatorRows({
+      intentRows: [INTENT_ROW],
+      conversationRows: [CONV_ROW],
+      taskRows: [TASK_ROW],
+    }));
 
     await coordinateIntentApproval(INTENT, ORG, USER);
 
@@ -306,6 +341,16 @@ describe("coordinateIntentApproval", () => {
 describe("dispatchWorkExecution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbSelectFn.mockReset();
+    mockDbSelectFn.mockImplementation(() => selectReturning([]));
+    mockDbUpdateFn.mockReset();
+    mockDbUpdateFn.mockImplementation(() => {
+      const c: Record<string, unknown> = {};
+      c.set = () => c;
+      c.where = () => c;
+      c.returning = () => Promise.resolve([{ ...TASK_ROW, currentState: "executing" }]);
+      return c;
+    });
     mockExecuteWork.mockResolvedValue({
       outcome: "completed",
       completedWorkId: "cw-2",

@@ -9,6 +9,7 @@ import { createHash, randomUUID } from "crypto";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import {
   db,
+  withSystemTenantContext,
   tasksTable,
   taskCreationIdempotencyTable,
   taskSpecialistsTable,
@@ -22,6 +23,8 @@ import {
   resolveSubjectParticipantForTaskRequest,
 } from "./taskParticipantService.js";
 import type { ApprovalType, TaskState, TaskPriority } from "@workspace/shared";
+
+type DbClient = typeof db;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,6 +73,17 @@ export function isValidTransition(from: TaskState, to: TaskState): boolean {
 
 const TERMINAL_TASK_STATES = new Set<TaskState>(["completed", "cancelled"]);
 const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const;
+
+function withTaskTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "task_service", purpose },
+    fn,
+  );
+}
 
 function mergeTaskMetadata(
   current: unknown,
@@ -129,10 +143,10 @@ function creationIsWithinWorkIntentDedupeWindow(creation: Record<string, unknown
 async function hydrateTaskWithPlan(
   task: typeof tasksTable.$inferSelect,
   dedupeReason?: TaskWithPlan["dedupeReason"],
-  client: typeof db = db,
+  client: DbClient = db,
 ): Promise<TaskWithPlan> {
   const [planRow, specialists] = await Promise.all([
-    getTaskPlan(task.id),
+    getTaskPlan(task.id, task.organizationId),
     client
       .select()
       .from(taskSpecialistsTable)
@@ -149,6 +163,7 @@ async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
   task: typeof tasksTable.$inferSelect;
   reason: TaskWithPlan["dedupeReason"];
 } | null> {
+  return withTaskTenant(input.organizationId, "task.creation.dedupe", async (client) => {
   const idempotencyKey = input.idempotencyKey?.trim();
   if (input.allowDuplicate && !idempotencyKey) return null;
   const workIntentKey = input.conversationId
@@ -156,7 +171,7 @@ async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
     : null;
   if (!idempotencyKey && !workIntentKey) return null;
 
-  const candidates = await db
+  const candidates = await client
     .select()
     .from(tasksTable)
     .where(and(
@@ -181,6 +196,7 @@ async function findExistingTaskForCreation(input: CreateTaskInput): Promise<{
     }
   }
   return null;
+  });
 }
 
 function getApprovalRequirement(task: typeof tasksTable.$inferSelect): { required: boolean; approvalType?: ApprovalType } {
@@ -296,7 +312,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
     metadata: { taskCreation },
   };
 
-  return db.transaction(async (tx) => {
+  return withTaskTenant(input.organizationId, "task.create", async (client) => client.transaction(async (tx) => {
     if (idempotencyKey) {
       const [reserved] = await tx
         .insert(taskCreationIdempotencyTable)
@@ -410,7 +426,7 @@ export async function createTask(input: CreateTaskInput): Promise<TaskWithPlan> 
       .returning();
 
     return { task: updatedTask!, plan, specialists };
-  });
+  }));
 }
 
 export async function getTasksByOrg(
@@ -423,24 +439,26 @@ export async function getTasksByOrg(
     conditions.push(inArray(tasksTable.currentState, states as unknown as string[]));
   }
 
-  return await db
+  return withTaskTenant(organizationId, "task.list", async (client) => client
     .select()
     .from(tasksTable)
     .where(and(...conditions))
     .orderBy(desc(tasksTable.createdAt))
-    .limit(limit);
+    .limit(limit));
 }
 
 export async function getTaskById(
   taskId: string,
   organizationId: string,
 ): Promise<(typeof tasksTable.$inferSelect) | undefined> {
-  const [row] = await db
+  return withTaskTenant(organizationId, "task.get", async (client) => {
+  const [row] = await client
     .select()
     .from(tasksTable)
     .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
     .limit(1);
   return row;
+  });
 }
 
 export async function transitionTaskState(
@@ -462,11 +480,11 @@ export async function transitionTaskState(
     );
   }
 
-  const [updated] = await db
+  const [updated] = await withTaskTenant(organizationId, "task.transition", async (client) => client
     .update(tasksTable)
     .set({ ...updates, currentState: to, updatedAt: new Date() })
     .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
-    .returning();
+    .returning());
 
   if (!updated) {
     throw Object.assign(
@@ -494,7 +512,7 @@ export async function claimTaskForExecution(
     return { claimed: false, task, reason: "not_dispatchable" };
   }
 
-  const [updated] = await db
+  const [updated] = await withTaskTenant(organizationId, "task.claim_execution", async (client) => client
     .update(tasksTable)
     .set({
       currentState: "executing",
@@ -511,7 +529,7 @@ export async function claimTaskForExecution(
       eq(tasksTable.organizationId, organizationId),
       inArray(tasksTable.currentState, [...DISPATCHABLE_TASK_STATES] as unknown as string[]),
     ))
-    .returning();
+    .returning());
 
   if (!updated) {
     const latest = await getTaskById(taskId, organizationId);
@@ -549,7 +567,7 @@ export async function cancelTask(
     };
   }
 
-  const [updated] = await db
+  const [updated] = await withTaskTenant(organizationId, "task.cancel.metadata", async (client) => client
     .update(tasksTable)
     .set({
       metadata: mergeTaskMetadata(transitioned.metadata, {
@@ -565,7 +583,7 @@ export async function cancelTask(
       eq(tasksTable.organizationId, organizationId),
       eq(tasksTable.currentState, "cancelled"),
     ))
-    .returning();
+    .returning());
 
   return { status: "cancelled", task: updated ?? transitioned };
 }
@@ -663,7 +681,7 @@ export async function reconcileTaskExecutionSuccess(input: {
     if (approvalGate.status === "not_ready") return { status: "approval_not_ready", task: approvalGate.task, reason: approvalGate.reason };
   }
 
-  const [updated] = await db
+  const [updated] = await withTaskTenant(input.organizationId, "task.reconcile_success", async (client) => client
     .update(tasksTable)
     .set({
       currentState: "completed",
@@ -682,7 +700,7 @@ export async function reconcileTaskExecutionSuccess(input: {
       eq(tasksTable.organizationId, input.organizationId),
       inArray(tasksTable.currentState, ["approved", "executing", "failed"]),
     ))
-    .returning();
+    .returning());
 
   if (!updated) {
     const latest = await getTaskById(input.taskId, input.organizationId);
@@ -718,7 +736,7 @@ export async function reconcileTaskCompletedWorkApproval(input: {
   if (linkedCompletedWorkId !== input.completedWorkId) return { status: "not_ready", task };
 
   const now = new Date();
-  const [updated] = await db
+  const [updated] = await withTaskTenant(input.organizationId, "task.reconcile_completed_work_approval", async (client) => client
     .update(tasksTable)
     .set({
       currentState: "completed",
@@ -743,7 +761,7 @@ export async function reconcileTaskCompletedWorkApproval(input: {
       eq(tasksTable.organizationId, input.organizationId),
       inArray(tasksTable.currentState, ["awaiting_approval", "approved", "executing", "failed"]),
     ))
-    .returning();
+    .returning());
 
   return updated ? { status: "completed", task: updated } : { status: "not_ready", task };
 }
@@ -760,7 +778,7 @@ export async function reconcileTaskExecutionFailure(input: {
   if (!task) return { status: "not_found" };
   if (task.currentState === "cancelled") return { status: "cancelled", task };
 
-  const [updated] = await db
+  const [updated] = await withTaskTenant(input.organizationId, "task.reconcile_failure", async (client) => client
     .update(tasksTable)
     .set({
       currentState: "failed",
@@ -779,7 +797,7 @@ export async function reconcileTaskExecutionFailure(input: {
       eq(tasksTable.organizationId, input.organizationId),
       inArray(tasksTable.currentState, ["approved", "executing", "queued", "planning", "awaiting_approval", "failed"]),
     ))
-    .returning();
+    .returning());
 
   if (!updated) {
     const latest = await getTaskById(input.taskId, input.organizationId);
@@ -840,13 +858,13 @@ export async function recordTaskModification(input: {
     });
   }
 
-  await db.insert(taskExecutionPlansTable).values({
+  await withTaskTenant(input.organizationId, "task.record_modification.plan", async (client) => client.insert(taskExecutionPlansTable).values({
     id: randomUUID(),
     taskId: input.taskId,
     organizationId: input.organizationId,
     planData: refreshedPlan as unknown as Record<string, unknown>,
     version: `revision-${modifications.length + 2}`,
-  });
+  }));
 
   const nextState: TaskState = task.currentState === "executing" ? "failed" : "planning";
   try {
@@ -868,11 +886,22 @@ export async function recordTaskModification(input: {
 
 export async function getTaskPlan(
   taskId: string,
+  organizationId?: string,
 ): Promise<(typeof taskExecutionPlansTable.$inferSelect) | undefined> {
-  const [row] = await db
+  const read = async (client: DbClient) => {
+    const conditions = [eq(taskExecutionPlansTable.taskId, taskId)];
+    if (organizationId) {
+      conditions.push(eq(taskExecutionPlansTable.organizationId, organizationId));
+    }
+  const [row] = await client
     .select()
     .from(taskExecutionPlansTable)
-    .where(eq(taskExecutionPlansTable.taskId, taskId))
+    .where(and(...conditions))
     .limit(1);
   return row;
+  };
+
+  return organizationId
+    ? withTaskTenant(organizationId, "task.plan.get", read)
+    : read(db);
 }
