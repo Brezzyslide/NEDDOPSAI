@@ -238,7 +238,7 @@ router.get("/:taskId", requireAuth, resolveTenantFromSlug, async (req, res, next
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Task not found." } });
       return;
     }
-    const plan = await taskService.getTaskPlan(task.id);
+    const plan = await taskService.getTaskPlan(task.id, ctx.tenantId);
     res.json({ task, plan: plan?.planData ?? null });
   } catch (err) {
     next(err);

@@ -41,7 +41,7 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
       return;
     }
 
-    const plan = await taskService.getTaskPlan(taskId);
+    const plan = await taskService.getTaskPlan(taskId, ctx.tenantId);
     const conv = await conversationService.getOrCreateWorkroom(ctx.tenantId, taskId, user.id);
     const messages = await conversationService.getMessages(ctx.tenantId, conv.id, { limit: 100 });
     const unreadCount = await conversationService.getUnreadCount(ctx.tenantId, conv.id, user.id);

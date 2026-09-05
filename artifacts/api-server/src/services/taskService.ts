@@ -886,7 +886,7 @@ export async function recordTaskModification(input: {
 
 export async function getTaskPlan(
   taskId: string,
-  organizationId?: string,
+  organizationId: string,
 ): Promise<(typeof taskExecutionPlansTable.$inferSelect) | undefined> {
   const read = async (client: DbClient) => {
     const conditions = [eq(taskExecutionPlansTable.taskId, taskId)];
@@ -901,7 +901,5 @@ export async function getTaskPlan(
   return row;
   };
 
-  return organizationId
-    ? withTaskTenant(organizationId, "task.plan.get", read)
-    : read(db);
+  return withTaskTenant(organizationId, "task.plan.get", read);
 }
