@@ -51,6 +51,32 @@ vi.mock("@workspace/db", () => {
         }),
       }),
     },
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+      insert: (table: unknown) => ({
+        values: (vals: unknown) => {
+          mockInsert(table, vals);
+          return Promise.resolve();
+        },
+      }),
+      update: (table: unknown) => ({
+        set: (vals: unknown) => ({
+          where: () => {
+            mockUpdate(table, vals);
+            return Promise.resolve();
+          },
+        }),
+      }),
+      select: () => ({
+        from: () => ({
+          where: (..._args: unknown[]) => ({
+            limit: (n: number) => {
+              const result = mockSelect(n);
+              return Promise.resolve(Array.isArray(result) ? result : result ? [result] : []);
+            },
+          }),
+        }),
+      }),
+    })),
     devicesTable: { id: "id", organizationId: "org", status: "status", revokedAt: "revokedAt", publicKey: "pk" },
     deviceAuthChallengesTable: { id: "id", deviceId: "deviceId", organizationId: "orgId", expiresAt: "expiresAt", usedAt: "usedAt" },
     deviceAccessTokensTable: { id: "id", deviceId: "deviceId", organizationId: "orgId", tokenHash: "hash", audience: "aud", expiresAt: "exp", revokedAt: "rAt" },

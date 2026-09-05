@@ -164,7 +164,7 @@ router.post("/activation-codes/redeem", async (req, res, next) => {
       });
 
       // Record the failed attempt
-      await activationCodeService.recordFailedAttempt(code).catch(() => {});
+      await activationCodeService.recordFailedAttempt(code, organizationId).catch(() => {});
       return;
     }
 
@@ -203,7 +203,7 @@ router.post("/activation-codes/redeem", async (req, res, next) => {
     );
 
     // Mark the activation code as used
-    await activationCodeService.markTokenUsed(redeemResult.tokenId, credentials.deviceId);
+    await activationCodeService.markTokenUsed(redeemResult.tokenId, credentials.deviceId, redeemResult.organizationId);
 
     res.status(201).json({
       deviceId: credentials.deviceId,

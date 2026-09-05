@@ -17,12 +17,24 @@ import {
   devicesTable,
   deviceCredentialsTable,
   deviceRuntimeStatusTable,
-  organizationsTable,
+  withSystemTenantContext,
 } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import * as auditService from "./auditService.js";
 
 type AuditEventMeta = Pick<auditService.WriteAuditEventParams, "requestId" | "ipAddress" | "userAgent">;
+type DbClient = typeof db;
+
+function withDeviceTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "device_service", purpose },
+    fn,
+  );
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -120,31 +132,31 @@ export async function registerDevice(
   const displayName =
     params.displayName?.trim() || defaultDisplayName(params.platform, params.hostname);
 
-  // Insert device
-  await db.insert(devicesTable).values({
-    id: deviceId,
-    organizationId: params.organizationId,
-    userId: params.userId,
-    displayName,
-    platform: params.platform,
-    arch: params.arch ?? null,
-    hostname: params.hostname ?? null,
-    osVersion: params.osVersion ?? null,
-    appVersion: params.appVersion ?? null,
-    publicKey: params.publicKey ?? null,
-    status: "pending",
-    registeredAt: new Date(),
-  });
+  await withDeviceTenant(params.organizationId, "device.register", async (client) => {
+    await client.insert(devicesTable).values({
+      id: deviceId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      displayName,
+      platform: params.platform,
+      arch: params.arch ?? null,
+      hostname: params.hostname ?? null,
+      osVersion: params.osVersion ?? null,
+      appVersion: params.appVersion ?? null,
+      publicKey: params.publicKey ?? null,
+      status: "pending",
+      registeredAt: new Date(),
+    });
 
-  // Insert credentials
-  await db.insert(deviceCredentialsTable).values({
-    id: credId,
-    deviceId,
-    organizationId: params.organizationId,
-    tokenHash,
-    webhookSecretHash,
-    issuedAt: new Date(),
-    rotationDueAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+    await client.insert(deviceCredentialsTable).values({
+      id: credId,
+      deviceId,
+      organizationId: params.organizationId,
+      tokenHash,
+      webhookSecretHash,
+      issuedAt: new Date(),
+      rotationDueAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+    });
   });
 
   await auditService.writeAuditEvent({
@@ -221,8 +233,8 @@ export async function authenticateDevice(
  * Record a heartbeat from the broker. Updates status and runtime info.
  */
 export async function recordHeartbeat(params: HeartbeatParams): Promise<void> {
-  // Update device status and tunnel URL
-  await db
+  await withDeviceTenant(params.organizationId, "device.heartbeat", async (client) => {
+  await client
     .update(devicesTable)
     .set({
       status: "connected",
@@ -234,9 +246,8 @@ export async function recordHeartbeat(params: HeartbeatParams): Promise<void> {
     })
     .where(eq(devicesTable.id, params.deviceId));
 
-  // Upsert runtime status
   const runtimeId = `drs_${randomUUID()}`;
-  await db
+  await client
     .insert(deviceRuntimeStatusTable)
     .values({
       id: runtimeId,
@@ -267,6 +278,7 @@ export async function recordHeartbeat(params: HeartbeatParams): Promise<void> {
         updatedAt: new Date(),
       },
     });
+  });
 }
 
 /**
@@ -280,8 +292,8 @@ export async function revokeDevice(
 ): Promise<void> {
   const now = new Date();
 
-  // Revoke device
-  await db
+  await withDeviceTenant(organizationId, "device.revoke", async (client) => {
+  await client
     .update(devicesTable)
     .set({ status: "revoked", revokedAt: now, revokedBy: revokedByUserId, updatedAt: now })
     .where(
@@ -291,8 +303,7 @@ export async function revokeDevice(
       ),
     );
 
-  // Revoke all credentials for this device
-  await db
+  await client
     .update(deviceCredentialsTable)
     .set({ revokedAt: now, updatedAt: now })
     .where(
@@ -301,6 +312,7 @@ export async function revokeDevice(
         eq(deviceCredentialsTable.organizationId, organizationId),
       ),
     );
+  });
 
   await auditService.writeAuditEvent({
     organizationId,
@@ -316,7 +328,7 @@ export async function revokeDevice(
  * List all devices for an org.
  */
 export async function listOrgDevices(organizationId: string) {
-  return db
+  return withDeviceTenant(organizationId, "device.list", (client) => client
     .select({
       id: devicesTable.id,
       displayName: devicesTable.displayName,
@@ -336,14 +348,15 @@ export async function listOrgDevices(organizationId: string) {
         isNull(devicesTable.revokedAt),
       ),
     )
-    .orderBy(devicesTable.registeredAt);
+    .orderBy(devicesTable.registeredAt));
 }
 
 /**
  * Mark first-run complete for a device.
  */
 export async function completeFirstRun(deviceId: string, organizationId: string): Promise<void> {
-  await db
+  await withDeviceTenant(organizationId, "device.first_run_complete", async (client) => {
+  await client
     .update(devicesTable)
     .set({ firstRunCompletedAt: new Date(), status: "connected", updatedAt: new Date() })
     .where(
@@ -353,12 +366,12 @@ export async function completeFirstRun(deviceId: string, organizationId: string)
       ),
     );
 
-  // Update org installer_connected_at if this is the first connected device
-  await db.execute(
+  await client.execute(
     // @ts-ignore — raw SQL for conditional update
     `UPDATE organizations 
      SET installer_connected_at = NOW() 
      WHERE id = '${organizationId}' 
        AND installer_connected_at IS NULL`
   ).catch(() => {});
+  });
 }

@@ -28,6 +28,7 @@ import {
   devicesTable,
   deviceWsSessionsTable,
   deviceTaskDispatchTable,
+  withSystemTenantContext,
 } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { validateAccessToken } from "./deviceAuthService.js";
@@ -38,6 +39,19 @@ import {
   type RelayMessage,
   type RelayMessageType,
 } from "../lib/relayProtocol.js";
+
+type DbClient = typeof db;
+
+function withDeviceRelayTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "device_relay_service", purpose },
+    fn,
+  );
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -209,7 +223,7 @@ async function handleAuth(
       reason: "duplicate_connection",
     }));
     existing.ws.terminate();
-    await markSessionDisconnected(existing.sessionId, "duplicate");
+    await markSessionDisconnected(existing.sessionId, "duplicate", existing.organizationId);
     connections.delete(deviceRow.id);
   }
 
@@ -217,7 +231,8 @@ async function handleAuth(
   const sessionId = `wss_${randomUUID()}`;
   const connectedAt = new Date();
 
-  await db.insert(deviceWsSessionsTable).values({
+  await withDeviceRelayTenant(deviceRow.organizationId, "device_relay.connect", async (client) => {
+  await client.insert(deviceWsSessionsTable).values({
     id: sessionId,
     deviceId: deviceRow.id,
     organizationId: deviceRow.organizationId,
@@ -231,11 +246,12 @@ async function handleAuth(
   });
 
   // Mark device as connected
-  await db
+  await client
     .update(devicesTable)
     .set({ status: "connected", lastHeartbeatAt: connectedAt, updatedAt: connectedAt })
     .where(eq(devicesTable.id, deviceRow.id))
     .catch(() => {});
+  });
 
   const connectedDevice: ConnectedDevice = {
     ws,
@@ -306,17 +322,19 @@ async function handleMessage(device: ConnectedDevice, msg: RelayMessage): Promis
 
 async function handleHeartbeat(device: ConnectedDevice, msg: RelayMessage): Promise<void> {
   // Update device last_seen in DB (debounced — only write if >10s since last update)
-  await db
+  await withDeviceRelayTenant(device.organizationId, "device_relay.heartbeat", async (client) => {
+  await client
     .update(devicesTable)
     .set({ lastHeartbeatAt: device.lastSeenAt, updatedAt: device.lastSeenAt })
     .where(eq(devicesTable.id, device.deviceId))
     .catch(() => {});
 
-  await db
+  await client
     .update(deviceWsSessionsTable)
     .set({ lastSeenAt: device.lastSeenAt })
     .where(eq(deviceWsSessionsTable.id, device.sessionId))
     .catch(() => {});
+  });
 
   sendMessage(device.ws, buildRelayMessage("heartbeat_ack", device.deviceId, device.organizationId, {
     serverTime: new Date().toISOString(),
@@ -327,7 +345,7 @@ async function handleTaskAck(device: ConnectedDevice, msg: RelayMessage): Promis
   const { executionId } = (msg.payload ?? {}) as { executionId?: string };
   if (!executionId) return;
 
-  await db
+  await withDeviceRelayTenant(device.organizationId, "device_relay.task_ack", (client) => client
     .update(deviceTaskDispatchTable)
     .set({ status: "acknowledged", acknowledgedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -336,7 +354,7 @@ async function handleTaskAck(device: ConnectedDevice, msg: RelayMessage): Promis
         eq(deviceTaskDispatchTable.deviceId, device.deviceId),
       ),
     )
-    .catch(() => {});
+    .catch(() => {}));
 
   taskEvents.emit(`task:ack:${executionId}`, { executionId });
 }
@@ -348,7 +366,7 @@ async function handleTaskProgress(device: ConnectedDevice, msg: RelayMessage): P
   };
   if (!executionId) return;
 
-  await db
+  await withDeviceRelayTenant(device.organizationId, "device_relay.task_progress", (client) => client
     .update(deviceTaskDispatchTable)
     .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -357,7 +375,7 @@ async function handleTaskProgress(device: ConnectedDevice, msg: RelayMessage): P
         eq(deviceTaskDispatchTable.deviceId, device.deviceId),
       ),
     )
-    .catch(() => {});
+    .catch(() => {}));
 
   taskEvents.emit(`task:progress:${executionId}`, { executionId, progress });
 }
@@ -370,7 +388,7 @@ async function handleTaskResult(device: ConnectedDevice, msg: RelayMessage): Pro
   if (!executionId) return;
 
   const now = new Date();
-  await db
+  await withDeviceRelayTenant(device.organizationId, "device_relay.task_result", (client) => client
     .update(deviceTaskDispatchTable)
     .set({ status: "completed", completedAt: now, updatedAt: now })
     .where(
@@ -379,7 +397,7 @@ async function handleTaskResult(device: ConnectedDevice, msg: RelayMessage): Pro
         eq(deviceTaskDispatchTable.deviceId, device.deviceId),
       ),
     )
-    .catch(() => {});
+    .catch(() => {}));
 
   taskEvents.emit(`task:result:${executionId}`, { executionId, result });
 }
@@ -393,7 +411,7 @@ async function handleTaskError(device: ConnectedDevice, msg: RelayMessage): Prom
   if (!executionId) return;
 
   const now = new Date();
-  await db
+  await withDeviceRelayTenant(device.organizationId, "device_relay.task_error", (client) => client
     .update(deviceTaskDispatchTable)
     .set({
       status: "failed",
@@ -408,7 +426,7 @@ async function handleTaskError(device: ConnectedDevice, msg: RelayMessage): Prom
         eq(deviceTaskDispatchTable.deviceId, device.deviceId),
       ),
     )
-    .catch(() => {});
+    .catch(() => {}));
 
   taskEvents.emit(`task:error:${executionId}`, { executionId, errorCode, message });
 }
@@ -416,34 +434,36 @@ async function handleTaskError(device: ConnectedDevice, msg: RelayMessage): Prom
 function handleDisconnect(device: ConnectedDevice, reason: string): void {
   connections.delete(device.deviceId);
 
-  markSessionDisconnected(device.sessionId, reason).catch(() => {});
+  markSessionDisconnected(device.sessionId, reason, device.organizationId).catch(() => {});
 
   // Mark device as disconnected in DB
-  db.update(devicesTable)
-    .set({ status: "disconnected", updatedAt: new Date() })
-    .where(eq(devicesTable.id, device.deviceId))
-    .catch(() => {});
+  withDeviceRelayTenant(device.organizationId, "device_relay.disconnect", async (client) => {
+    await client.update(devicesTable)
+      .set({ status: "disconnected", updatedAt: new Date() })
+      .where(eq(devicesTable.id, device.deviceId))
+      .catch(() => {});
 
-  // Re-queue any unacked sent tasks back to pending
-  db.update(deviceTaskDispatchTable)
-    .set({ status: "pending", updatedAt: new Date() })
-    .where(
-      and(
-        eq(deviceTaskDispatchTable.deviceId, device.deviceId),
-        eq(deviceTaskDispatchTable.status, "sent"),
-      ),
-    )
-    .catch(() => {});
+    // Re-queue any unacked sent tasks back to pending
+    await client.update(deviceTaskDispatchTable)
+      .set({ status: "pending", updatedAt: new Date() })
+      .where(
+        and(
+          eq(deviceTaskDispatchTable.deviceId, device.deviceId),
+          eq(deviceTaskDispatchTable.status, "sent"),
+        ),
+      )
+      .catch(() => {});
+  }).catch(() => {});
 
   logger.info({ deviceId: device.deviceId, reason }, "[relay] Device disconnected");
 }
 
-async function markSessionDisconnected(sessionId: string, reason: string): Promise<void> {
-  await db
+async function markSessionDisconnected(sessionId: string, reason: string, organizationId: string): Promise<void> {
+  await withDeviceRelayTenant(organizationId, "device_relay.session_disconnect", (client) => client
     .update(deviceWsSessionsTable)
     .set({ disconnectedAt: new Date(), disconnectReason: reason })
     .where(eq(deviceWsSessionsTable.id, sessionId))
-    .catch(() => {});
+    .catch(() => {}));
 }
 
 // ── Task dispatch ─────────────────────────────────────────────────────────────
@@ -469,7 +489,8 @@ export async function dispatchTask(params: DispatchTaskParams): Promise<Dispatch
   const executionId = `exec_${randomUUID()}`;
   const dispatchId = `dtd_${randomUUID()}`;
 
-  await db.insert(deviceTaskDispatchTable).values({
+  await withDeviceRelayTenant(params.organizationId, "device_relay.dispatch", async (client) => {
+  await client.insert(deviceTaskDispatchTable).values({
     id: dispatchId,
     deviceId: params.deviceId,
     organizationId: params.organizationId,
@@ -492,7 +513,7 @@ export async function dispatchTask(params: DispatchTaskParams): Promise<Dispatch
 
   sendMessage(conn.ws, msg);
 
-  await db
+  await client
     .update(deviceTaskDispatchTable)
     .set({
       status: "sent",
@@ -504,6 +525,7 @@ export async function dispatchTask(params: DispatchTaskParams): Promise<Dispatch
     .catch(() => {});
 
   return { executionId, dispatched: true };
+  });
 }
 
 /**
@@ -524,7 +546,7 @@ export async function notifyDeviceRevoked(deviceId: string): Promise<void> {
   }, 1000);
 
   connections.delete(deviceId);
-  await markSessionDisconnected(conn.sessionId, "revoked").catch(() => {});
+  await markSessionDisconnected(conn.sessionId, "revoked", conn.organizationId).catch(() => {});
 }
 
 /**

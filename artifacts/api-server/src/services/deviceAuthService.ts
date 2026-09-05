@@ -33,9 +33,23 @@ import {
   deviceAccessTokensTable,
   deviceRefreshTokensTable,
   deviceCredentialsTable,
+  withSystemTenantContext,
 } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import * as auditService from "./auditService.js";
+
+type DbClient = typeof db;
+
+function withDeviceAuthTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "device_auth_service", purpose },
+    fn,
+  );
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -69,8 +83,9 @@ export async function createChallenge(
   deviceId: string,
   organizationId: string,
 ): Promise<CreateChallengeResult> {
+  return withDeviceAuthTenant(organizationId, "device_auth.challenge", async (client) => {
   // 1. Validate device
-  const [device] = await db
+  const [device] = await client
     .select()
     .from(devicesTable)
     .where(
@@ -96,7 +111,7 @@ export async function createChallenge(
   const nonce = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS);
 
-  await db.insert(deviceAuthChallengesTable).values({
+  await client.insert(deviceAuthChallengesTable).values({
     id: challengeId,
     deviceId,
     organizationId,
@@ -105,6 +120,7 @@ export async function createChallenge(
   });
 
   return { challengeId, nonce, expiresAt };
+  });
 }
 
 export interface ExchangeResult {
@@ -127,9 +143,10 @@ export async function exchangeChallenge(params: {
   signature: string; // base64-encoded Ed25519 signature of the nonce
 }): Promise<ExchangeResult> {
   const { deviceId, organizationId, challengeId, signature } = params;
+  return withDeviceAuthTenant(organizationId, "device_auth.exchange", async (client) => {
 
   // 1. Load and validate challenge
-  const [challenge] = await db
+  const [challenge] = await client
     .select()
     .from(deviceAuthChallengesTable)
     .where(
@@ -152,7 +169,7 @@ export async function exchangeChallenge(params: {
   }
 
   // 2. Load device + public key
-  const [device] = await db
+  const [device] = await client
     .select()
     .from(devicesTable)
     .where(
@@ -195,7 +212,7 @@ export async function exchangeChallenge(params: {
   }
 
   // 4. Mark challenge as used (atomic — prevents replay within the same request)
-  await db
+  await client
     .update(deviceAuthChallengesTable)
     .set({ usedAt: new Date() })
     .where(eq(deviceAuthChallengesTable.id, challengeId));
@@ -206,7 +223,7 @@ export async function exchangeChallenge(params: {
   const accessTokenId = `dat_${randomUUID()}`;
   const accessTokenExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
 
-  await db.insert(deviceAccessTokensTable).values({
+  await client.insert(deviceAccessTokensTable).values({
     id: accessTokenId,
     deviceId,
     organizationId,
@@ -222,7 +239,7 @@ export async function exchangeChallenge(params: {
   const refreshTokenId = `drt_${randomUUID()}`;
   const refreshTokenExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
-  await db.insert(deviceRefreshTokensTable).values({
+  await client.insert(deviceRefreshTokensTable).values({
     id: refreshTokenId,
     deviceId,
     organizationId,
@@ -236,7 +253,7 @@ export async function exchangeChallenge(params: {
   //    via the challenge/exchange flow.  After this point, refresh tokens work
   //    and the relay can maintain continuous connectivity.
   if (device.status === "pending") {
-    await db
+    await client
       .update(devicesTable)
       .set({ status: "connected" })
       .where(eq(devicesTable.id, deviceId));
@@ -250,6 +267,7 @@ export async function exchangeChallenge(params: {
     deviceId,
     organizationId,
   };
+  });
 }
 
 export interface RefreshResult {
@@ -410,8 +428,9 @@ export async function revokeDeviceAuth(
 ): Promise<void> {
   const now = new Date();
 
+  await withDeviceAuthTenant(organizationId, "device_auth.revoke", async (client) => {
   await Promise.all([
-    db
+    client
       .update(deviceAccessTokensTable)
       .set({ revokedAt: now })
       .where(
@@ -421,7 +440,7 @@ export async function revokeDeviceAuth(
           isNull(deviceAccessTokensTable.revokedAt),
         ),
       ),
-    db
+    client
       .update(deviceRefreshTokensTable)
       .set({ revokedAt: now })
       .where(
@@ -431,7 +450,7 @@ export async function revokeDeviceAuth(
           isNull(deviceRefreshTokensTable.revokedAt),
         ),
       ),
-    db
+    client
       .update(deviceCredentialsTable)
       .set({ revokedAt: now, updatedAt: now })
       .where(
@@ -442,4 +461,5 @@ export async function revokeDeviceAuth(
         ),
       ),
   ]);
+  });
 }

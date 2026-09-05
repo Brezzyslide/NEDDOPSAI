@@ -8,10 +8,23 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, organizationsTable, tenantSettingsTable, membershipsTable } from "@workspace/db";
+import { db, organizationsTable, tenantSettingsTable, membershipsTable, withSystemTenantContext } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateUniqueSlug } from "../lib/slugify.js";
 import { ConflictError } from "../lib/errors.js";
+
+type DbClient = typeof db;
+
+function withOrgTenant<T>(
+  orgId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: orgId, serviceIdentity: "org_service", purpose },
+    fn,
+  );
+}
 
 export interface CreateOrgParams {
   name: string;
@@ -97,11 +110,11 @@ export async function getOrgBySlug(slug: string) {
 }
 
 export async function getOrgById(orgId: string) {
-  const [org] = await db
+  const [org] = await withOrgTenant(orgId, "org.get", (client) => client
     .select()
     .from(organizationsTable)
     .where(eq(organizationsTable.id, orgId))
-    .limit(1);
+    .limit(1));
   return org ?? null;
 }
 
@@ -125,20 +138,20 @@ export interface UpdateOrgParams {
 }
 
 export async function updateOrg(orgId: string, params: UpdateOrgParams) {
-  const [updated] = await db
+  const [updated] = await withOrgTenant(orgId, "org.update", (client) => client
     .update(organizationsTable)
     .set({ ...params, updatedAt: new Date() })
     .where(eq(organizationsTable.id, orgId))
-    .returning();
+    .returning());
   return updated ?? null;
 }
 
 export async function getTenantSettings(orgId: string) {
-  const [settings] = await db
+  const [settings] = await withOrgTenant(orgId, "tenant_settings.get", (client) => client
     .select()
     .from(tenantSettingsTable)
     .where(eq(tenantSettingsTable.organizationId, orgId))
-    .limit(1);
+    .limit(1));
   return settings ?? null;
 }
 
@@ -155,10 +168,10 @@ export async function updateTenantSettings(
     securityNotificationEmail: string;
   }>,
 ) {
-  const [updated] = await db
+  const [updated] = await withOrgTenant(orgId, "tenant_settings.update", (client) => client
     .update(tenantSettingsTable)
     .set({ ...params, updatedAt: new Date() })
     .where(eq(tenantSettingsTable.organizationId, orgId))
-    .returning();
+    .returning());
   return updated ?? null;
 }

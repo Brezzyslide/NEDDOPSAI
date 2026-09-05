@@ -13,8 +13,21 @@
  */
 
 import { randomBytes, createHash } from "crypto";
-import { db, deviceActivationTokensTable, organizationsTable } from "@workspace/db";
+import { db, deviceActivationTokensTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and, lt, gt } from "drizzle-orm";
+
+type DbClient = typeof db;
+
+function withActivationTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "activation_code_service", purpose },
+    fn,
+  );
+}
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -83,8 +96,8 @@ export async function createActivationCode(
 ): Promise<ActivationCodeResult> {
   const { randomUUID } = await import("crypto");
 
-  // Revoke any existing unused codes for this org
-  await db
+  await withActivationTenant(organizationId, "activation_code.create", async (client) => {
+  await client
     .update(deviceActivationTokensTable)
     .set({ revokedAt: new Date() })
     .where(
@@ -102,12 +115,13 @@ export async function createActivationCode(
 
   const id = `dat_${randomUUID()}`;
 
-  await db.insert(deviceActivationTokensTable).values({
+  await client.insert(deviceActivationTokensTable).values({
     id,
     organizationId,
     createdByUserId,
     codeHash,
     expiresAt,
+  });
   });
 
   return { id, code, expiresAt };
@@ -126,14 +140,20 @@ export async function redeemActivationCode(
   code: string,
   organizationId: string,
 ): Promise<RedeemResult> {
+  return withActivationTenant(organizationId, "activation_code.redeem", async (client) => {
   const codeHash = hashCodeSync(code.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""));
 
   const now = new Date();
 
-  const [token] = await db
+  const [token] = await client
     .select()
     .from(deviceActivationTokensTable)
-    .where(eq(deviceActivationTokensTable.codeHash, codeHash))
+    .where(
+      and(
+        eq(deviceActivationTokensTable.codeHash, codeHash),
+        eq(deviceActivationTokensTable.organizationId, organizationId),
+      ),
+    )
     .limit(1);
 
   if (!token) {
@@ -162,33 +182,51 @@ export async function redeemActivationCode(
   }
 
   return { ok: true, tokenId: token.id, organizationId: token.organizationId };
+  });
 }
 
 /**
  * Mark a token as used (call this atomically after device registration succeeds).
  */
-export async function markTokenUsed(tokenId: string, deviceId: string): Promise<void> {
-  await db
+export async function markTokenUsed(tokenId: string, deviceId: string, organizationId: string): Promise<void> {
+  await withActivationTenant(organizationId, "activation_code.mark_used", (client) => client
     .update(deviceActivationTokensTable)
     .set({ usedAt: new Date(), usedByDeviceId: deviceId })
-    .where(eq(deviceActivationTokensTable.id, tokenId));
+    .where(
+      and(
+        eq(deviceActivationTokensTable.id, tokenId),
+        eq(deviceActivationTokensTable.organizationId, organizationId),
+      ),
+    ));
 }
 
 /**
  * Increment the failed attempt counter on a token.
  */
-export async function recordFailedAttempt(code: string): Promise<void> {
+export async function recordFailedAttempt(code: string, organizationId: string): Promise<void> {
+  await withActivationTenant(organizationId, "activation_code.failed_attempt", async (client) => {
   const codeHash = hashCodeSync(code.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""));
-  const [token] = await db
+  const [token] = await client
     .select()
     .from(deviceActivationTokensTable)
-    .where(eq(deviceActivationTokensTable.codeHash, codeHash))
+    .where(
+      and(
+        eq(deviceActivationTokensTable.codeHash, codeHash),
+        eq(deviceActivationTokensTable.organizationId, organizationId),
+      ),
+    )
     .limit(1);
 
   if (token) {
-    await db
+    await client
       .update(deviceActivationTokensTable)
       .set({ attemptCount: (token.attemptCount ?? 0) + 1 })
-      .where(eq(deviceActivationTokensTable.id, token.id));
+      .where(
+        and(
+          eq(deviceActivationTokensTable.id, token.id),
+          eq(deviceActivationTokensTable.organizationId, organizationId),
+        ),
+      );
   }
+  });
 }

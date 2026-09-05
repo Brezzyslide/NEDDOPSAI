@@ -6,7 +6,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, membershipsTable, usersTable } from "@workspace/db";
+import { db, membershipsTable, usersTable, withSystemTenantContext } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import {
   ConflictError,
@@ -18,16 +18,29 @@ import {
 import { roleAtLeast } from "@workspace/permissions";
 import type { MembershipRole } from "@workspace/shared";
 
+type DbClient = typeof db;
+
+function withMembershipTenant<T>(
+  orgId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: orgId, serviceIdentity: "membership_service", purpose },
+    fn,
+  );
+}
+
 export async function getMemberships(orgId: string) {
-  return db
+  return withMembershipTenant(orgId, "membership.list", (client) => client
     .select({ membership: membershipsTable, user: usersTable })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(membershipsTable.userId, usersTable.id))
-    .where(eq(membershipsTable.organizationId, orgId));
+    .where(eq(membershipsTable.organizationId, orgId)));
 }
 
 export async function getMembership(orgId: string, membershipId: string) {
-  const [row] = await db
+  const [row] = await withMembershipTenant(orgId, "membership.get", (client) => client
     .select({ membership: membershipsTable, user: usersTable })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(membershipsTable.userId, usersTable.id))
@@ -37,12 +50,12 @@ export async function getMembership(orgId: string, membershipId: string) {
         eq(membershipsTable.id, membershipId),
       ),
     )
-    .limit(1);
+    .limit(1));
   return row ?? null;
 }
 
 export async function getMembershipForUser(orgId: string, userId: string) {
-  const [row] = await db
+  const [row] = await withMembershipTenant(orgId, "membership.get_for_user", (client) => client
     .select()
     .from(membershipsTable)
     .where(
@@ -51,13 +64,13 @@ export async function getMembershipForUser(orgId: string, userId: string) {
         eq(membershipsTable.userId, userId),
       ),
     )
-    .limit(1);
+    .limit(1));
   return row ?? null;
 }
 
 /** Count active owners in the org (for owner-protection checks). */
 async function countActiveOwners(orgId: string): Promise<number> {
-  const [result] = await db
+  const [result] = await withMembershipTenant(orgId, "membership.count_active_owners", (client) => client
     .select({ n: count() })
     .from(membershipsTable)
     .where(
@@ -66,7 +79,7 @@ async function countActiveOwners(orgId: string): Promise<number> {
         eq(membershipsTable.role, "owner"),
         eq(membershipsTable.status, "active"),
       ),
-    );
+    ));
   return Number(result?.n ?? 0);
 }
 
@@ -92,7 +105,7 @@ export async function updateMembershipRole(
     if (ownerCount <= 1) throw new OwnerProtection();
   }
 
-  const [updated] = await db
+  const [updated] = await withMembershipTenant(orgId, "membership.update_role", (client) => client
     .update(membershipsTable)
     .set({ role: newRole, updatedAt: new Date() })
     .where(
@@ -101,7 +114,7 @@ export async function updateMembershipRole(
         eq(membershipsTable.organizationId, orgId),
       ),
     )
-    .returning();
+    .returning());
   return updated!;
 }
 
@@ -123,7 +136,7 @@ export async function suspendMembership(
     if (ownerCount <= 1) throw new OwnerProtection();
   }
 
-  const [updated] = await db
+  const [updated] = await withMembershipTenant(orgId, "membership.suspend", (client) => client
     .update(membershipsTable)
     .set({ status: "suspended", suspendedAt: new Date(), updatedAt: new Date() })
     .where(
@@ -132,12 +145,12 @@ export async function suspendMembership(
         eq(membershipsTable.organizationId, orgId),
       ),
     )
-    .returning();
+    .returning());
   return updated!;
 }
 
 export async function reactivateMembership(orgId: string, membershipId: string) {
-  const [updated] = await db
+  const [updated] = await withMembershipTenant(orgId, "membership.reactivate", (client) => client
     .update(membershipsTable)
     .set({
       status: "active",
@@ -151,7 +164,7 @@ export async function reactivateMembership(orgId: string, membershipId: string) 
         eq(membershipsTable.organizationId, orgId),
       ),
     )
-    .returning();
+    .returning());
   if (!updated) throw new ResourceNotFound("Membership");
   return updated;
 }
@@ -174,7 +187,7 @@ export async function revokeMembership(
     if (ownerCount <= 1) throw new OwnerProtection();
   }
 
-  const [updated] = await db
+  const [updated] = await withMembershipTenant(orgId, "membership.revoke", (client) => client
     .update(membershipsTable)
     .set({ status: "revoked", updatedAt: new Date() })
     .where(
@@ -183,6 +196,6 @@ export async function revokeMembership(
         eq(membershipsTable.organizationId, orgId),
       ),
     )
-    .returning();
+    .returning());
   return updated!;
 }
