@@ -15,8 +15,14 @@ import { createHash, generateKeyPairSync, sign as cryptoSign } from "crypto";
 const mockInsert = vi.fn();
 const mockUpdate = vi.fn();
 const mockSelect = vi.fn();
+const mockExecute = vi.fn();
 
 vi.mock("@workspace/db", () => {
+  const updateResult = () => ({
+    returning: () => Promise.resolve([{ id: "updated" }]),
+    catch: () => Promise.resolve(),
+  });
+
   const chainable = (data: unknown) => ({
     from: () => chainable(data),
     where: () => chainable(data),
@@ -26,6 +32,7 @@ vi.mock("@workspace/db", () => {
 
   return {
     db: {
+      execute: (query: unknown) => mockExecute(query),
       insert: (table: unknown) => ({
         values: (vals: unknown) => {
           mockInsert(table, vals);
@@ -36,7 +43,7 @@ vi.mock("@workspace/db", () => {
         set: (vals: unknown) => ({
           where: () => {
             mockUpdate(table, vals);
-            return Promise.resolve();
+            return updateResult();
           },
         }),
       }),
@@ -52,6 +59,7 @@ vi.mock("@workspace/db", () => {
       }),
     },
     withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+      execute: (query: unknown) => mockExecute(query),
       insert: (table: unknown) => ({
         values: (vals: unknown) => {
           mockInsert(table, vals);
@@ -62,7 +70,7 @@ vi.mock("@workspace/db", () => {
         set: (vals: unknown) => ({
           where: () => {
             mockUpdate(table, vals);
-            return Promise.resolve();
+            return updateResult();
           },
         }),
       }),
@@ -89,6 +97,7 @@ vi.mock("drizzle-orm", () => ({
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   and: (...args: unknown[]) => ({ and: args }),
   isNull: (a: unknown) => ({ isNull: a }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ strings, values }),
 }));
 
 // ── Import service after mocks ────────────────────────────────────────────────
@@ -118,6 +127,7 @@ function signNonce(nonce: string, privateKeyPem: string): string {
 describe("Sprint 15 — Device Authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecute.mockResolvedValue({ rows: [] });
   });
 
   // ── createChallenge ─────────────────────────────────────────────────────────
@@ -305,28 +315,29 @@ describe("Sprint 15 — Device Authentication", () => {
   describe("refreshAccessToken()", () => {
     it("issues new access + refresh tokens and rotates the old refresh token", async () => {
       const rawToken = "a".repeat(64);
-      const tokenHash = sha256(rawToken);
+      sha256(rawToken);
 
-      let callCount = 0;
-      mockSelect.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            id: "drt_1",
-            deviceId: "dev_1",
-            organizationId: "org_1",
-            tokenHash,
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            revokedAt: null,
-            rotatedAt: null,
-          };
-        }
-        return {
-          id: "dev_1",
-          organizationId: "org_1",
-          status: "connected",
-          revokedAt: null,
-        };
+      const resolverRow = {
+        refresh_token_id: "drt_1",
+        device_id: "dev_1",
+        organization_id: "org_1",
+        token_state: "valid",
+        device_state: "connected",
+        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      };
+      mockExecute.mockResolvedValueOnce({
+        rows: [resolverRow],
+      });
+      mockExecute.mockResolvedValueOnce({
+        rows: [{
+          ...resolverRow,
+        }],
+      });
+      mockSelect.mockReturnValue({
+        id: "dev_1",
+        organizationId: "org_1",
+        status: "connected",
+        revokedAt: null,
       });
 
       const result = await deviceAuthService.refreshAccessToken(rawToken);
@@ -335,27 +346,32 @@ describe("Sprint 15 — Device Authentication", () => {
       expect(result.refreshToken).toBeTruthy();
       expect(result.accessToken).not.toBe(rawToken);
       expect(result.refreshToken).not.toBe(rawToken);
-      // Old token marked as rotated
-      expect(mockUpdate).toHaveBeenCalled();
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+      expect((mockExecute.mock.calls[0]?.[0] as { strings?: string[] }).strings?.join(""))
+        .toContain("resolve_device_refresh_token_context");
+      expect((mockExecute.mock.calls[1]?.[0] as { strings?: string[] }).strings?.join(""))
+        .toContain("consume_device_refresh_token");
+      expect(mockInsert).toHaveBeenCalledTimes(2);
     });
 
     it("throws INVALID_REFRESH_TOKEN for unknown token", async () => {
-      mockSelect.mockReturnValue(null);
+      mockExecute.mockResolvedValue({ rows: [] });
       await expect(deviceAuthService.refreshAccessToken("bad_token"))
         .rejects.toMatchObject({ code: "INVALID_REFRESH_TOKEN" });
     });
 
     it("throws REFRESH_TOKEN_REUSED when token already rotated", async () => {
       const rawToken = "b".repeat(64);
-      const tokenHash = sha256(rawToken);
-      mockSelect.mockReturnValue({
-        id: "drt_2",
-        deviceId: "dev_1",
-        organizationId: "org_1",
-        tokenHash,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        revokedAt: null,
-        rotatedAt: new Date(), // already rotated
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          refresh_token_id: "drt_2",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "reused",
+          device_state: "connected",
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }],
       });
       await expect(deviceAuthService.refreshAccessToken(rawToken))
         .rejects.toMatchObject({ code: "REFRESH_TOKEN_REUSED" });
@@ -363,15 +379,16 @@ describe("Sprint 15 — Device Authentication", () => {
 
     it("throws REFRESH_TOKEN_REUSED when token is revoked", async () => {
       const rawToken = "c".repeat(64);
-      const tokenHash = sha256(rawToken);
-      mockSelect.mockReturnValue({
-        id: "drt_3",
-        deviceId: "dev_1",
-        organizationId: "org_1",
-        tokenHash,
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        revokedAt: new Date(), // revoked
-        rotatedAt: null,
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          refresh_token_id: "drt_3",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "revoked",
+          device_state: "connected",
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }],
       });
       await expect(deviceAuthService.refreshAccessToken(rawToken))
         .rejects.toMatchObject({ code: "REFRESH_TOKEN_REUSED" });
@@ -379,15 +396,16 @@ describe("Sprint 15 — Device Authentication", () => {
 
     it("throws REFRESH_TOKEN_EXPIRED when token has expired", async () => {
       const rawToken = "d".repeat(64);
-      const tokenHash = sha256(rawToken);
-      mockSelect.mockReturnValue({
-        id: "drt_4",
-        deviceId: "dev_1",
-        organizationId: "org_1",
-        tokenHash,
-        expiresAt: new Date(Date.now() - 1000), // expired
-        revokedAt: null,
-        rotatedAt: null,
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          refresh_token_id: "drt_4",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "expired",
+          device_state: "connected",
+          expires_at: new Date(Date.now() - 1000),
+        }],
       });
       await expect(deviceAuthService.refreshAccessToken(rawToken))
         .rejects.toMatchObject({ code: "REFRESH_TOKEN_EXPIRED" });
@@ -395,27 +413,16 @@ describe("Sprint 15 — Device Authentication", () => {
 
     it("throws DEVICE_REVOKED when device is revoked during refresh", async () => {
       const rawToken = "e".repeat(64);
-      const tokenHash = sha256(rawToken);
-      let callCount = 0;
-      mockSelect.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            id: "drt_5",
-            deviceId: "dev_revoked",
-            organizationId: "org_1",
-            tokenHash,
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            revokedAt: null,
-            rotatedAt: null,
-          };
-        }
-        return {
-          id: "dev_revoked",
-          organizationId: "org_1",
-          status: "revoked",
-          revokedAt: new Date(),
-        };
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          refresh_token_id: "drt_5",
+          device_id: "dev_revoked",
+          organization_id: "org_1",
+          token_state: "valid",
+          device_state: "device_revoked",
+          expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        }],
       });
       await expect(deviceAuthService.refreshAccessToken(rawToken))
         .rejects.toMatchObject({ code: "DEVICE_REVOKED" });
@@ -427,23 +434,19 @@ describe("Sprint 15 — Device Authentication", () => {
   describe("validateAccessToken()", () => {
     it("returns device for valid non-expired token with correct audience", async () => {
       const rawToken = "valid_token";
-      const tokenHash = sha256(rawToken);
-      let callCount = 0;
-      mockSelect.mockImplementation(() => {
-        callCount++;
-        if (callCount === 1) {
-          return {
-            id: "dat_1",
-            deviceId: "dev_1",
-            organizationId: "org_1",
-            tokenHash,
-            audience: "device-relay",
-            expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-            revokedAt: null,
-          };
-        }
-        return { id: "dev_1", organizationId: "org_1", status: "connected", revokedAt: null };
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          access_token_id: "dat_1",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "valid",
+          device_state: "connected",
+          audience: "device-relay",
+          expires_at: new Date(Date.now() + 15 * 60 * 1000),
+        }],
       });
+      mockSelect.mockReturnValue({ id: "dev_1", organizationId: "org_1", status: "connected", revokedAt: null });
 
       const result = await deviceAuthService.validateAccessToken(rawToken);
       expect(result).not.toBeNull();
@@ -451,22 +454,24 @@ describe("Sprint 15 — Device Authentication", () => {
     });
 
     it("returns null for unknown token", async () => {
-      mockSelect.mockReturnValue(null);
+      mockExecute.mockResolvedValue({ rows: [] });
       const result = await deviceAuthService.validateAccessToken("unknown");
       expect(result).toBeNull();
     });
 
     it("returns null for expired token", async () => {
       const rawToken = "expired_token";
-      const tokenHash = sha256(rawToken);
-      mockSelect.mockReturnValue({
-        id: "dat_2",
-        deviceId: "dev_1",
-        organizationId: "org_1",
-        tokenHash,
-        audience: "device-relay",
-        expiresAt: new Date(Date.now() - 1000), // expired
-        revokedAt: null,
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          access_token_id: "dat_2",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "expired",
+          device_state: "connected",
+          audience: "device-relay",
+          expires_at: new Date(Date.now() - 1000),
+        }],
       });
       const result = await deviceAuthService.validateAccessToken(rawToken);
       expect(result).toBeNull();
@@ -474,15 +479,17 @@ describe("Sprint 15 — Device Authentication", () => {
 
     it("returns null for wrong audience", async () => {
       const rawToken = "wrong_aud";
-      const tokenHash = sha256(rawToken);
-      mockSelect.mockReturnValue({
-        id: "dat_3",
-        deviceId: "dev_1",
-        organizationId: "org_1",
-        tokenHash,
-        audience: "other-service",
-        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-        revokedAt: null,
+      sha256(rawToken);
+      mockExecute.mockResolvedValue({
+        rows: [{
+          access_token_id: "dat_3",
+          device_id: "dev_1",
+          organization_id: "org_1",
+          token_state: "valid",
+          device_state: "connected",
+          audience: "other-service",
+          expires_at: new Date(Date.now() + 15 * 60 * 1000),
+        }],
       });
       const result = await deviceAuthService.validateAccessToken(rawToken);
       expect(result).toBeNull();

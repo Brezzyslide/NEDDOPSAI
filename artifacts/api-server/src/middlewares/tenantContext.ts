@@ -18,10 +18,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import {
-  usersTable,
-} from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   MembershipRequired,
   TenantNotFound,
@@ -44,6 +41,16 @@ type ResolvedAuthTenantContext = {
   membership_id: string;
   membership_role: keyof typeof ROLE_PERMISSIONS;
   membership_status: string;
+};
+
+type ResolvedUserSelfContext = {
+  user_id: string;
+  user_external_id: string;
+  user_email: string;
+  user_first_name: string | null;
+  user_last_name: string | null;
+  user_display_name: string | null;
+  user_status: "pending_verification" | "active" | "suspended" | "deactivated";
 };
 
 // ─── requireAuth ──────────────────────────────────────────────────────────────
@@ -75,46 +82,33 @@ export async function requireAuth(
       return;
     }
 
-    // Legacy non-tenant/platform route lookup. Slugged tenant routes resolve
-    // through resolve_auth_tenant_context() so needsops_app does not need direct
-    // table access before app.current_organization_id is set.
-    let [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.externalId, externalUserId))
-      .limit(1);
+    const resolved = await db.execute<ResolvedUserSelfContext>(sql`
+      SELECT *
+      FROM public.resolve_user_self_context(${externalUserId})
+      LIMIT 1
+    `);
+    const user = resolved.rows[0];
 
-    // JIT provisioning: create the DB record on first authenticated request
     if (!user) {
-      const { randomUUID } = await import("crypto");
-      const email =
-        (auth.sessionClaims?.email as string | undefined) ?? `${externalUserId}@unknown.clerk`;
-      const firstName = auth.sessionClaims?.given_name as string | undefined;
-      const lastName = auth.sessionClaims?.family_name as string | undefined;
-
-      const [created] = await db
-        .insert(usersTable)
-        .values({
-          id: randomUUID(),
-          externalId: externalUserId,
-          email,
-          firstName: firstName ?? null,
-          lastName: lastName ?? null,
-          status: "active",
-        })
-        .returning();
-
-      user = created!;
+      throw new AuthenticationRequired();
     }
 
-    if (user.status === "suspended" || user.status === "deactivated") {
+    if (user.user_status === "suspended" || user.user_status === "deactivated") {
       res.status(403).json({
         error: { code: "USER_SUSPENDED", message: "Your account has been suspended." },
       });
       return;
     }
 
-    req.appUser = user;
+    req.appUser = {
+      id: user.user_id,
+      externalId: user.user_external_id,
+      email: user.user_email,
+      firstName: user.user_first_name,
+      lastName: user.user_last_name,
+      displayName: user.user_display_name,
+      status: user.user_status,
+    };
     next();
   } catch (err) {
     if (err instanceof AuthenticationRequired) {

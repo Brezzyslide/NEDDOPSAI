@@ -19,11 +19,19 @@ import {
   deviceRuntimeStatusTable,
   withSystemTenantContext,
 } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import * as auditService from "./auditService.js";
 
 type AuditEventMeta = Pick<auditService.WriteAuditEventParams, "requestId" | "ipAddress" | "userAgent">;
 type DbClient = typeof db;
+
+type DeviceCredentialContext = {
+  credential_id: string;
+  device_id: string;
+  organization_id: string;
+  credential_state: string;
+  device_state: string;
+};
 
 function withDeviceTenant<T>(
   organizationId: string,
@@ -190,25 +198,27 @@ export async function authenticateDevice(
 ): Promise<{ device: typeof devicesTable.$inferSelect; credentialId: string } | null> {
   const tokenHash = hashSecret(bearerToken);
 
-  const [cred] = await db
-    .select()
-    .from(deviceCredentialsTable)
-    .where(
-      and(
-        eq(deviceCredentialsTable.tokenHash, tokenHash),
-        isNull(deviceCredentialsTable.revokedAt),
-      ),
-    )
-    .limit(1);
+  const resolved = await db.execute<DeviceCredentialContext>(sql`
+    SELECT *
+    FROM public.resolve_device_credential_context(${tokenHash})
+    LIMIT 1
+  `);
+  const cred = resolved.rows[0];
 
   if (!cred) return null;
+  if (cred.credential_state !== "valid") return null;
+  if (cred.device_state === "device_revoked" || cred.device_state === "platform_disabled") {
+    return null;
+  }
 
-  const [device] = await db
+  return withDeviceTenant(cred.organization_id, "device.authenticate", async (client) => {
+  const [device] = await client
     .select()
     .from(devicesTable)
     .where(
       and(
-        eq(devicesTable.id, cred.deviceId),
+        eq(devicesTable.id, cred.device_id),
+        eq(devicesTable.organizationId, cred.organization_id),
         isNull(devicesTable.revokedAt),
       ),
     )
@@ -220,13 +230,19 @@ export async function authenticateDevice(
   if ((device as any).isPlatformDisabled) return null;
 
   // Update last used
-  await db
+  await client
     .update(deviceCredentialsTable)
     .set({ lastUsedAt: new Date() })
-    .where(eq(deviceCredentialsTable.id, cred.id))
+    .where(
+      and(
+        eq(deviceCredentialsTable.id, cred.credential_id),
+        eq(deviceCredentialsTable.organizationId, cred.organization_id),
+      ),
+    )
     .catch(() => {});
 
-  return { device, credentialId: cred.id };
+  return { device, credentialId: cred.credential_id };
+  });
 }
 
 /**

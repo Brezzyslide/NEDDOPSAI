@@ -168,6 +168,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds narrow SECURITY DEFINER auth resolver for pre-tenant user, org slug, and membership resolution.",
   },
+  {
+    id: "0048-pre-context-identity-resolvers",
+    file: "0048_pre_context_identity_resolvers.sql",
+    transactional: true,
+    notes: "Adds narrow SECURITY DEFINER resolvers for device, invitation, and user-self pre-context identity flows.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

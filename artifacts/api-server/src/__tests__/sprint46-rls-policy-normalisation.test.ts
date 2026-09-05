@@ -12,10 +12,18 @@ const authResolverMigration = readFileSync(
   resolve(root, "../../../lib/db/migrations/0047_auth_tenant_resolver.sql"),
   "utf8",
 );
+const preContextResolverMigration = readFileSync(
+  resolve(root, "../../../lib/db/migrations/0048_pre_context_identity_resolvers.sql"),
+  "utf8",
+);
 const tenantMiddleware = readFileSync(
   resolve(root, "middlewares/tenantContext.ts"),
   "utf8",
 );
+const deviceService = readFileSync(resolve(root, "services/deviceService.ts"), "utf8");
+const deviceAuthService = readFileSync(resolve(root, "services/deviceAuthService.ts"), "utf8");
+const invitationService = readFileSync(resolve(root, "services/invitationService.ts"), "utf8");
+const userService = readFileSync(resolve(root, "services/userService.ts"), "utf8");
 
 describe("Sprint 46 RLS policy normalisation", () => {
   it("is registered in the ordered platform migration list", () => {
@@ -109,5 +117,87 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(tenantMiddleware).toContain("public.resolve_auth_tenant_context");
     expect(tenantMiddleware).toContain("req.appUser = {");
     expect(tenantMiddleware).toContain("req.tenantContext = tenantContext");
+  });
+
+  it("registers narrow pre-context identity resolver migration", () => {
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0048-pre-context-identity-resolvers",
+        file: "0048_pre_context_identity_resolvers.sql",
+        transactional: true,
+      }),
+    );
+  });
+
+  it("defines only narrow pre-context resolver inputs", () => {
+    for (const fn of [
+      "resolve_device_credential_context",
+      "resolve_device_refresh_token_context",
+      "consume_device_refresh_token",
+      "resolve_device_access_token_context",
+      "resolve_invitation_token_context",
+      "resolve_user_self_context",
+      "resolve_user_organisations",
+    ]) {
+      expect(preContextResolverMigration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
+      expect(preContextResolverMigration).toContain("SECURITY DEFINER");
+      expect(preContextResolverMigration).toContain("SET search_path = pg_catalog, public");
+    }
+    expect(preContextResolverMigration).toContain("p_token_hash TEXT");
+    expect(preContextResolverMigration).toContain("p_external_user_id TEXT");
+    expect(preContextResolverMigration).not.toMatch(/p_(user_id|organization_id|device_id|membership_id)\s+TEXT/i);
+  });
+
+  it("keeps pre-context resolvers non-enumerating and grants execute only", () => {
+    for (const fn of [
+      "resolve_device_credential_context(TEXT)",
+      "resolve_device_refresh_token_context(TEXT)",
+      "consume_device_refresh_token(TEXT, TEXT)",
+      "resolve_device_access_token_context(TEXT)",
+      "resolve_invitation_token_context(TEXT, TEXT)",
+      "resolve_user_self_context(TEXT)",
+      "resolve_user_organisations(TEXT)",
+    ]) {
+      expect(preContextResolverMigration).toContain(`REVOKE ALL ON FUNCTION public.${fn} FROM PUBLIC`);
+      expect(preContextResolverMigration).toContain(`GRANT EXECUTE ON FUNCTION public.${fn} TO needsops_app`);
+    }
+    for (const table of [
+      "users",
+      "organizations",
+      "memberships",
+      "device_credentials",
+      "device_refresh_tokens",
+      "device_access_tokens",
+      "invitations",
+    ]) {
+      expect(preContextResolverMigration).toContain(`REVOKE SELECT ON public.${table} FROM needsops_app`);
+    }
+  });
+
+  it("keeps device resolvers read-only and returns lifecycle state for the supplied token only", () => {
+    const deviceResolverSql = preContextResolverMigration.match(
+      /CREATE OR REPLACE FUNCTION public\.resolve_device_credential_context[\s\S]*?CREATE OR REPLACE FUNCTION public\.resolve_invitation_token_context/,
+    )?.[0] ?? "";
+    expect(deviceResolverSql).toContain("WHERE c.token_hash = p_token_hash");
+    expect(deviceResolverSql).toContain("WHERE r.token_hash = p_token_hash");
+    expect(deviceResolverSql).toContain("WHERE a.token_hash = p_token_hash");
+    expect(deviceResolverSql).toContain("UPDATE public.device_refresh_tokens r");
+    expect(deviceResolverSql).toContain("r.token_hash = p_token_hash");
+    expect(deviceResolverSql).toContain("superseded_by_id = p_superseded_by_id");
+    expect(deviceResolverSql).toContain("'expired'");
+    expect(deviceResolverSql).toContain("'reused'");
+    expect(deviceResolverSql).not.toMatch(/\b(INSERT|DELETE)\b/i);
+  });
+
+  it("uses resolvers before tenant-scoped opaque-token follow-up writes", () => {
+    expect(deviceService).toContain("public.resolve_device_credential_context");
+    expect(deviceService).toContain("withDeviceTenant(cred.organization_id");
+    expect(deviceAuthService).toContain("public.resolve_device_refresh_token_context");
+    expect(deviceAuthService).toContain("public.consume_device_refresh_token");
+    expect(deviceAuthService).toContain("public.resolve_device_access_token_context");
+    expect(invitationService).toContain("public.resolve_invitation_token_context");
+    expect(userService).toContain("public.resolve_user_self_context");
+    expect(userService).toContain("public.resolve_user_organisations");
+    expect(tenantMiddleware).toContain("public.resolve_user_self_context");
   });
 });

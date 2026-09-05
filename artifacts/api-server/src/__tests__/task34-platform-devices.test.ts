@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // ── hoisted mocks ──────────────────────────────────────────────────────────────
 const mockDbSelect  = vi.hoisted(() => vi.fn());
 const mockDbUpdate  = vi.hoisted(() => vi.fn());
+const mockDbExecute = vi.hoisted(() => vi.fn());
 const mockLog       = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 // Helpers for chaining
@@ -38,8 +39,9 @@ function makeUpdateChain() {
 }
 
 vi.mock("@workspace/db", () => ({
-  db: { select: mockDbSelect, update: mockDbUpdate, insert: vi.fn().mockResolvedValue([]) },
+  db: { execute: mockDbExecute, select: mockDbSelect, update: mockDbUpdate, insert: vi.fn().mockResolvedValue([]) },
   withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) => fn({
+    execute: mockDbExecute,
     select: mockDbSelect,
     update: mockDbUpdate,
     insert: vi.fn().mockResolvedValue([]),
@@ -149,25 +151,21 @@ describe("checkActionRateLimit", () => {
 describe("deviceService.authenticateDevice — platform disable enforcement", () => {
   // Reset mock chain for each test
   beforeEach(() => {
+    mockDbExecute.mockReset();
     mockDbSelect.mockReset();
     mockDbUpdate.mockReset();
   });
 
   it("returns null when device has isPlatformDisabled=true (legacy bearer path)", async () => {
-    // Simulate: credential found, device found BUT isPlatformDisabled=true
-    const credRow = { id: "cred-1", deviceId: "dev-1", tokenHash: "hash", revokedAt: null };
-    const deviceRow = {
-      id: "dev-1",
-      organizationId: "org-1",
-      status: "connected",
-      revokedAt: null,
-      isPlatformDisabled: true,
-    };
-
-    // First select = credential lookup
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([credRow]));
-    // Second select = device lookup
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        credential_id: "cred-1",
+        device_id: "dev-1",
+        organization_id: "org-1",
+        credential_state: "valid",
+        device_state: "platform_disabled",
+      }],
+    });
     // Update (lastUsedAt) — should NOT be called, but provide chain anyway
     mockDbUpdate.mockReturnValue(makeUpdateChain());
 
@@ -177,7 +175,6 @@ describe("deviceService.authenticateDevice — platform disable enforcement", ()
   });
 
   it("returns the device when isPlatformDisabled=false (active device)", async () => {
-    const credRow = { id: "cred-2", deviceId: "dev-2", tokenHash: "hash2", revokedAt: null };
     const deviceRow = {
       id: "dev-2",
       organizationId: "org-1",
@@ -186,7 +183,15 @@ describe("deviceService.authenticateDevice — platform disable enforcement", ()
       isPlatformDisabled: false,
     };
 
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([credRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        credential_id: "cred-2",
+        device_id: "dev-2",
+        organization_id: "org-1",
+        credential_state: "valid",
+        device_state: "connected",
+      }],
+    });
     mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
     const updateSetChain = { where: vi.fn().mockResolvedValue([]) };
     mockDbUpdate.mockReturnValue({ set: vi.fn().mockReturnValue(updateSetChain) });
@@ -198,7 +203,6 @@ describe("deviceService.authenticateDevice — platform disable enforcement", ()
   });
 
   it("returns null when device is revoked (existing check still applies)", async () => {
-    const credRow = { id: "cred-3", deviceId: "dev-3", tokenHash: "hash3", revokedAt: null };
     const deviceRow = {
       id: "dev-3",
       organizationId: "org-1",
@@ -207,7 +211,15 @@ describe("deviceService.authenticateDevice — platform disable enforcement", ()
       isPlatformDisabled: false,
     };
 
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([credRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        credential_id: "cred-3",
+        device_id: "dev-3",
+        organization_id: "org-1",
+        credential_state: "valid",
+        device_state: "connected",
+      }],
+    });
     mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
     mockDbUpdate.mockReturnValue(makeUpdateChain());
 
@@ -221,19 +233,12 @@ describe("deviceService.authenticateDevice — platform disable enforcement", ()
 
 describe("deviceAuthService.validateAccessToken — pending status enforcement", () => {
   beforeEach(() => {
+    mockDbExecute.mockReset();
     mockDbSelect.mockReset();
     mockDbUpdate.mockReset();
   });
 
   it("returns null when device status is 'pending' (post-rotation lockout)", async () => {
-    const tokenRow = {
-      id: "tok-1",
-      deviceId: "dev-10",
-      tokenHash: "hash-tok-1",
-      revokedAt: null,
-      expiresAt: new Date(Date.now() + 60_000),
-      audience: "device-relay",
-    };
     const deviceRow = {
       id: "dev-10",
       organizationId: "org-1",
@@ -242,7 +247,17 @@ describe("deviceAuthService.validateAccessToken — pending status enforcement",
       isPlatformDisabled: false,
     };
 
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([tokenRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        access_token_id: "tok-1",
+        device_id: "dev-10",
+        organization_id: "org-1",
+        token_state: "valid",
+        device_state: "connected",
+        audience: "device-relay",
+        expires_at: new Date(Date.now() + 60_000),
+      }],
+    });
     mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
     mockDbUpdate.mockReturnValue(makeUpdateChain());
 
@@ -256,29 +271,22 @@ describe("deviceAuthService.validateAccessToken — pending status enforcement",
 
 describe("deviceAuthService.refreshAccessToken — platform disable & pending enforcement", () => {
   beforeEach(() => {
+    mockDbExecute.mockReset();
     mockDbSelect.mockReset();
     mockDbUpdate.mockReset();
   });
 
   it("throws DEVICE_PLATFORM_DISABLED when device is platform-disabled", async () => {
-    const refreshRow = {
-      id: "rt-1",
-      deviceId: "dev-20",
-      tokenHash: "hash-rt-1",
-      revokedAt: null,
-      rotatedAt: null,
-      expiresAt: new Date(Date.now() + 60_000),
-    };
-    const deviceRow = {
-      id: "dev-20",
-      organizationId: "org-1",
-      status: "connected",
-      revokedAt: null,
-      isPlatformDisabled: true,
-    };
-
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([refreshRow]));
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        refresh_token_id: "rt-1",
+        device_id: "dev-20",
+        organization_id: "org-1",
+        token_state: "valid",
+        device_state: "platform_disabled",
+        expires_at: new Date(Date.now() + 60_000),
+      }],
+    });
 
     const { refreshAccessToken } = await import("../services/deviceAuthService.js");
     await expect(refreshAccessToken("raw-refresh-abc")).rejects.toMatchObject({
@@ -287,24 +295,16 @@ describe("deviceAuthService.refreshAccessToken — platform disable & pending en
   });
 
   it("throws DEVICE_REACTIVATION_REQUIRED when device status is 'pending'", async () => {
-    const refreshRow = {
-      id: "rt-2",
-      deviceId: "dev-21",
-      tokenHash: "hash-rt-2",
-      revokedAt: null,
-      rotatedAt: null,
-      expiresAt: new Date(Date.now() + 60_000),
-    };
-    const deviceRow = {
-      id: "dev-21",
-      organizationId: "org-1",
-      status: "pending",
-      revokedAt: null,
-      isPlatformDisabled: false,
-    };
-
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([refreshRow]));
-    mockDbSelect.mockReturnValueOnce(makeSelectChain([deviceRow]));
+    mockDbExecute.mockResolvedValueOnce({
+      rows: [{
+        refresh_token_id: "rt-2",
+        device_id: "dev-21",
+        organization_id: "org-1",
+        token_state: "valid",
+        device_state: "pending",
+        expires_at: new Date(Date.now() + 60_000),
+      }],
+    });
 
     const { refreshAccessToken } = await import("../services/deviceAuthService.js");
     await expect(refreshAccessToken("raw-refresh-def")).rejects.toMatchObject({

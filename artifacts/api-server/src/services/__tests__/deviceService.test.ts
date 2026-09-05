@@ -15,6 +15,7 @@ const mockDb = vi.hoisted(() => ({
   values: vi.fn().mockResolvedValue(undefined),
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
+  execute: vi.fn().mockResolvedValue({ rows: [] }),
 }));
 
 vi.mock("@workspace/db", () => ({
@@ -110,7 +111,7 @@ describe("registerDevice (mocked)", () => {
 
 describe("authenticateDevice (mocked)", () => {
   it("returns null for unknown device", async () => {
-    mockDb.limit.mockResolvedValueOnce([]); // device lookup → empty
+    mockDb.execute.mockResolvedValueOnce({ rows: [] }); // resolver lookup → empty
 
     const { authenticateDevice } = await import("../deviceService.js");
     const result = await authenticateDevice("device-uuid-123", "raw-secret");

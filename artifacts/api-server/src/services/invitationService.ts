@@ -19,7 +19,7 @@ import {
   organizationsTable,
   emailDeliveryLogsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   generateInvitationToken,
   hashToken,
@@ -40,6 +40,15 @@ import type { EmailDeliveryResult } from "./email/index.js";
 export type { EmailDeliveryResult };
 
 type DbClient = typeof db;
+
+type InvitationTokenContext = {
+  invitation_id: string;
+  organization_id: string;
+  user_id: string;
+  invitation_email: string;
+  invitation_role: MembershipRole;
+  invited_by: string;
+};
 
 export interface CreateInvitationParams {
   organizationId: string;
@@ -222,14 +231,14 @@ export async function listInvitations(organizationId: string) {
 
 // ─── getInvitationByToken ─────────────────────────────────────────────────────
 
-export async function getInvitationByToken(rawToken: string) {
+export async function getInvitationByToken(rawToken: string, externalUserId: string) {
   const tokenHash = hashToken(rawToken);
-  const [invitation] = await db
-    .select()
-    .from(invitationsTable)
-    .where(eq(invitationsTable.tokenHash, tokenHash))
-    .limit(1);
-  return invitation ?? null;
+  const resolved = await db.execute<InvitationTokenContext>(sql`
+    SELECT *
+    FROM public.resolve_invitation_token_context(${tokenHash}, ${externalUserId})
+    LIMIT 1
+  `);
+  return resolved.rows[0] ?? null;
 }
 
 // ─── revokeInvitation ────────────────────────────────────────────────────────
@@ -345,34 +354,29 @@ export async function resendInvitation(
 
 // ─── acceptInvitation ────────────────────────────────────────────────────────
 
-export async function acceptInvitation(rawToken: string, userId: string, userEmail: string) {
-  const invitation = await getInvitationByToken(rawToken);
+export async function acceptInvitation(
+  rawToken: string,
+  externalUserId: string,
+  userId: string,
+  userEmail: string,
+) {
+  const invitation = await getInvitationByToken(rawToken, externalUserId);
 
   if (!invitation) throw new InvitationInvalid();
-  if (invitation.status === "accepted") throw new InvitationAlreadyUsed();
-  if (invitation.status === "revoked") throw new InvitationInvalid();
-  if (invitation.status === "expired") throw new InvitationExpired();
-  if (new Date() > invitation.expiresAt) {
-    await withInvitationTenant(invitation.organizationId, "invitation.expire", (client) => client
-      .update(invitationsTable)
-      .set({ status: "expired", updatedAt: new Date() })
-      .where(eq(invitationsTable.id, invitation.id)));
-    throw new InvitationExpired();
-  }
 
   // Email must match the invitation
-  if (invitation.email !== userEmail.toLowerCase()) {
+  if (invitation.invitation_email !== userEmail.toLowerCase()) {
     throw new InvitationEmailMismatch();
   }
 
   // Check for duplicate membership
-  return withInvitationTenant(invitation.organizationId, "invitation.accept", async (client) => {
+  return withInvitationTenant(invitation.organization_id, "invitation.accept", async (client) => {
   const [existing] = await client
     .select({ status: membershipsTable.status })
     .from(membershipsTable)
     .where(
       and(
-        eq(membershipsTable.organizationId, invitation.organizationId),
+        eq(membershipsTable.organizationId, invitation.organization_id),
         eq(membershipsTable.userId, userId),
       ),
     )
@@ -384,11 +388,11 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
       .insert(membershipsTable)
       .values({
         id: randomUUID(),
-        organizationId: invitation.organizationId,
+        organizationId: invitation.organization_id,
         userId,
-        role: invitation.role,
+        role: invitation.invitation_role,
         status: "active",
-        invitedBy: invitation.invitedBy,
+        invitedBy: invitation.invited_by,
         joinedAt: new Date(),
       })
       .returning();
@@ -396,7 +400,12 @@ export async function acceptInvitation(rawToken: string, userId: string, userEma
     const [updated] = await client
       .update(invitationsTable)
       .set({ status: "accepted", acceptedAt: new Date(), updatedAt: new Date() })
-      .where(eq(invitationsTable.id, invitation.id))
+      .where(
+        and(
+          eq(invitationsTable.id, invitation.invitation_id),
+          eq(invitationsTable.organizationId, invitation.organization_id),
+        ),
+      )
       .returning();
 
     return { membership: membership!, invitation: updated! };

@@ -26,6 +26,7 @@ router.post("/accept", requireAuth, async (req, res, next) => {
 
     const { membership, invitation } = await invitationService.acceptInvitation(
       token,
+      user.externalId,
       user.id,
       user.email,
     );

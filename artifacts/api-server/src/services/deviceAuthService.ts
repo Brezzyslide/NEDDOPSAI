@@ -35,10 +35,29 @@ import {
   deviceCredentialsTable,
   withSystemTenantContext,
 } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import * as auditService from "./auditService.js";
 
 type DbClient = typeof db;
+
+type DeviceRefreshTokenContext = {
+  refresh_token_id: string;
+  device_id: string;
+  organization_id: string;
+  token_state: string;
+  device_state: string;
+  expires_at: Date;
+};
+
+type DeviceAccessTokenContext = {
+  access_token_id: string;
+  device_id: string;
+  organization_id: string;
+  token_state: string;
+  device_state: string;
+  audience: string;
+  expires_at: Date;
+};
 
 function withDeviceAuthTenant<T>(
   organizationId: string,
@@ -283,29 +302,71 @@ export interface RefreshResult {
  */
 export async function refreshAccessToken(rawRefreshToken: string): Promise<RefreshResult> {
   const tokenHash = hashToken(rawRefreshToken);
+  const newRefreshTokenId = `drt_${randomUUID()}`;
 
-  const [existing] = await db
-    .select()
-    .from(deviceRefreshTokensTable)
-    .where(eq(deviceRefreshTokensTable.tokenHash, tokenHash))
-    .limit(1);
+  const resolved = await db.execute<DeviceRefreshTokenContext>(sql`
+    SELECT *
+    FROM public.resolve_device_refresh_token_context(${tokenHash})
+    LIMIT 1
+  `);
+  const resolvedToken = resolved.rows[0];
+
+  if (!resolvedToken) {
+    throw Object.assign(new Error("Refresh token not found"), { code: "INVALID_REFRESH_TOKEN" });
+  }
+  if (resolvedToken.token_state === "reused" || resolvedToken.token_state === "revoked") {
+    throw Object.assign(new Error("Refresh token already used or revoked"), { code: "REFRESH_TOKEN_REUSED" });
+  }
+  if (resolvedToken.token_state === "expired") {
+    throw Object.assign(new Error("Refresh token expired"), { code: "REFRESH_TOKEN_EXPIRED" });
+  }
+  if (resolvedToken.device_state === "device_revoked") {
+    throw Object.assign(new Error("Device is revoked"), { code: "DEVICE_REVOKED" });
+  }
+  if (resolvedToken.device_state === "platform_disabled") {
+    throw Object.assign(new Error("Device is disabled by a platform administrator"), { code: "DEVICE_PLATFORM_DISABLED" });
+  }
+  if (resolvedToken.device_state === "pending") {
+    throw Object.assign(new Error("Device credentials have been rotated — re-activation required"), { code: "DEVICE_REACTIVATION_REQUIRED" });
+  }
+
+  return withDeviceAuthTenant(resolvedToken.organization_id, "device_auth.refresh", async (client) => {
+  const consumed = await client.execute<DeviceRefreshTokenContext>(sql`
+    SELECT *
+    FROM public.consume_device_refresh_token(${tokenHash}, ${newRefreshTokenId})
+    LIMIT 1
+  `);
+  const existing = consumed.rows[0];
 
   if (!existing) {
     throw Object.assign(new Error("Refresh token not found"), { code: "INVALID_REFRESH_TOKEN" });
   }
-  if (existing.revokedAt || existing.rotatedAt) {
+  if (existing.token_state === "reused" || existing.token_state === "revoked") {
     throw Object.assign(new Error("Refresh token already used or revoked"), { code: "REFRESH_TOKEN_REUSED" });
   }
-  if (new Date() > existing.expiresAt) {
+  if (existing.token_state === "expired") {
     throw Object.assign(new Error("Refresh token expired"), { code: "REFRESH_TOKEN_EXPIRED" });
   }
+  if (existing.device_state === "device_revoked") {
+    throw Object.assign(new Error("Device is revoked"), { code: "DEVICE_REVOKED" });
+  }
+  if (existing.device_state === "platform_disabled") {
+    throw Object.assign(new Error("Device is disabled by a platform administrator"), { code: "DEVICE_PLATFORM_DISABLED" });
+  }
+  if (existing.device_state === "pending") {
+    throw Object.assign(new Error("Device credentials have been rotated — re-activation required"), { code: "DEVICE_REACTIVATION_REQUIRED" });
+  }
 
-  return withDeviceAuthTenant(existing.organizationId, "device_auth.refresh", async (client) => {
   // Check device is still active
   const [device] = await client
     .select()
     .from(devicesTable)
-    .where(eq(devicesTable.id, existing.deviceId))
+    .where(
+      and(
+        eq(devicesTable.id, existing.device_id),
+        eq(devicesTable.organizationId, existing.organization_id),
+      ),
+    )
     .limit(1);
 
   if (!device || device.status === "revoked" || device.revokedAt) {
@@ -330,8 +391,8 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
 
   await client.insert(deviceAccessTokensTable).values({
     id: newAccessTokenId,
-    deviceId: existing.deviceId,
-    organizationId: existing.organizationId,
+    deviceId: existing.device_id,
+    organizationId: existing.organization_id,
     tokenHash: newAccessTokenHash,
     audience: "device-relay",
     expiresAt: newAccessTokenExpiresAt,
@@ -341,23 +402,16 @@ export async function refreshAccessToken(rawRefreshToken: string): Promise<Refre
   // Issue new refresh token
   const newRefreshToken = generateToken();
   const newRefreshTokenHash = hashToken(newRefreshToken);
-  const newRefreshTokenId = `drt_${randomUUID()}`;
   const newRefreshTokenExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
   await client.insert(deviceRefreshTokensTable).values({
     id: newRefreshTokenId,
-    deviceId: existing.deviceId,
-    organizationId: existing.organizationId,
+    deviceId: existing.device_id,
+    organizationId: existing.organization_id,
     tokenHash: newRefreshTokenHash,
     expiresAt: newRefreshTokenExpiresAt,
     issuedAt: now,
   });
-
-  // Rotate (invalidate) the old refresh token
-  await client
-    .update(deviceRefreshTokensTable)
-    .set({ rotatedAt: now, supersededById: newRefreshTokenId })
-    .where(eq(deviceRefreshTokensTable.id, existing.id));
 
   return {
     accessToken: newAccessToken,
@@ -379,28 +433,28 @@ export async function validateAccessToken(rawToken: string): Promise<{
   const tokenHash = hashToken(rawToken);
   const now = new Date();
 
-  const [tokenRow] = await db
-    .select()
-    .from(deviceAccessTokensTable)
-    .where(
-      and(
-        eq(deviceAccessTokensTable.tokenHash, tokenHash),
-        isNull(deviceAccessTokensTable.revokedAt),
-      ),
-    )
-    .limit(1);
+  const resolved = await db.execute<DeviceAccessTokenContext>(sql`
+    SELECT *
+    FROM public.resolve_device_access_token_context(${tokenHash})
+    LIMIT 1
+  `);
+  const tokenRow = resolved.rows[0];
 
   if (!tokenRow) return null;
-  if (now > tokenRow.expiresAt) return null;
+  if (tokenRow.token_state !== "valid") return null;
   if (tokenRow.audience !== "device-relay") return null;
+  if (tokenRow.device_state === "device_revoked" || tokenRow.device_state === "platform_disabled") {
+    return null;
+  }
 
-  return withDeviceAuthTenant(tokenRow.organizationId, "device_auth.validate_access", async (client) => {
+  return withDeviceAuthTenant(tokenRow.organization_id, "device_auth.validate_access", async (client) => {
   const [device] = await client
     .select()
     .from(devicesTable)
     .where(
       and(
-        eq(devicesTable.id, tokenRow.deviceId),
+        eq(devicesTable.id, tokenRow.device_id),
+        eq(devicesTable.organizationId, tokenRow.organization_id),
         isNull(devicesTable.revokedAt),
       ),
     )
@@ -415,10 +469,15 @@ export async function validateAccessToken(rawToken: string): Promise<{
   // Update last_used_at (fire-and-forget)
   client.update(deviceAccessTokensTable)
     .set({ lastUsedAt: now })
-    .where(eq(deviceAccessTokensTable.id, tokenRow.id))
+    .where(
+      and(
+        eq(deviceAccessTokensTable.id, tokenRow.access_token_id),
+        eq(deviceAccessTokensTable.organizationId, tokenRow.organization_id),
+      ),
+    )
     .catch(() => {});
 
-  return { device, tokenId: tokenRow.id };
+  return { device, tokenId: tokenRow.access_token_id };
   });
 }
 

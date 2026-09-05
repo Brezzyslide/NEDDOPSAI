@@ -60,7 +60,7 @@ router.patch("/", requireAuth, async (req, res, next) => {
 router.get("/organisations", requireAuth, async (req, res, next) => {
   try {
     const user = req.appUser!;
-    const memberships = await userService.getUserMemberships(user.id);
+    const memberships = await userService.getUserMemberships(user.externalId);
 
     const organisations = memberships.map(({ membership, org }) => ({
       id: org.id,
