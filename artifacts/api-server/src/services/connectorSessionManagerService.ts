@@ -19,7 +19,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, devicesTable, deviceRuntimeStatusTable } from "@workspace/db";
+import { db, devicesTable, deviceRuntimeStatusTable, withSystemTenantContext } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import { tenantCanUseConnector } from "./entitlementService.js";
@@ -27,6 +27,19 @@ import {
   getConnectedDevicesForOrg,
 } from "./deviceRelayService.js";
 import { ConnectorCapabilityError } from "../lib/resources/types.js";
+
+type DbClient = typeof db;
+
+function withConnectorTenant<T>(
+  organisationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organisationId, serviceIdentity: "connector_session_manager", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -142,7 +155,7 @@ export async function openConnectorSession(
   // ── Validation 3: Device not revoked ─────────────────────────────────────
   let deviceRow: { status: string; displayName?: string | null; platform?: string | null; appVersion?: string | null } | undefined;
   try {
-    const [row] = await db
+    const [row] = await withConnectorTenant(organisationId, "connector_session.device_lookup", (client) => client
       .select({
         status:      devicesTable.status,
         displayName: devicesTable.displayName,
@@ -151,7 +164,7 @@ export async function openConnectorSession(
       })
       .from(devicesTable)
       .where(eq(devicesTable.id, deviceId))
-      .limit(1);
+      .limit(1));
     deviceRow = row as typeof deviceRow;
   } catch {
     // Non-fatal — continue with limited metadata
@@ -169,11 +182,11 @@ export async function openConnectorSession(
   let connectorVersion: string | null = deviceRow?.appVersion ?? null;
   if (!connectorVersion) {
     try {
-      const [runtimeRow] = await db
+      const [runtimeRow] = await withConnectorTenant(organisationId, "connector_session.runtime_lookup", (client) => client
         .select({ appVersion: deviceRuntimeStatusTable.appVersion })
         .from(deviceRuntimeStatusTable)
         .where(eq(deviceRuntimeStatusTable.deviceId, deviceId))
-        .limit(1);
+        .limit(1));
       connectorVersion = (runtimeRow as { appVersion?: string | null } | undefined)?.appVersion ?? null;
     } catch {
       // Non-fatal — version metadata is optional
