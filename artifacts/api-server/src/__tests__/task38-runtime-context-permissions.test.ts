@@ -26,6 +26,9 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@workspace/db", () => ({
   db:                         mockDb,
+  withSystemTenantContext:    vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) =>
+    fn(mockDb),
+  ),
   organizationsTable:         { id: {}, slug: {}, status: {}, executionFrozen: {}, displayName: {}, name: {}, type: {}, industry: {}, country: {}, state: {}, timezone: {}, ndisRegistrationNumber: {}, subscriptionTier: {} },
   organisationMemoryTable:    { organizationId: {}, status: {}, memoryType: {}, title: {}, content: {}, approvedAt: {} },
   executionIntentsTable:      { organizationId: {}, status: {} },

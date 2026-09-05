@@ -58,6 +58,13 @@ vi.mock("@workspace/db", () => {
   });
 
   return {
+    withSystemTenantContext: vi.fn(async (_ctx: unknown, fn: (client: unknown) => Promise<unknown>) =>
+      fn({
+        select: vi.fn().mockReturnValue({ from: mockFrom }),
+        insert: vi.fn().mockReturnValue({ values: mockValues }),
+        update: vi.fn().mockReturnValue({ set: mockSet }),
+      }),
+    ),
     db: {
       select: vi.fn().mockReturnValue({ from: mockFrom }),
       insert: vi.fn().mockReturnValue({ values: mockValues }),
