@@ -462,7 +462,7 @@ export async function resumeFromCheckpointById(
  * after an API restart. Re-queues them for background execution.
  * Safe to call multiple times (idempotent per intent).
  */
-export async function recoverOrphanedExecutions(organizationId?: string): Promise<number> {
+export async function recoverOrphanedExecutions(organizationId: string): Promise<number> {
   const STALE_THRESHOLD_MINUTES = 10;
   const staleCutoff = new Date(Date.now() - STALE_THRESHOLD_MINUTES * 60 * 1000);
 
@@ -470,21 +470,13 @@ export async function recoverOrphanedExecutions(organizationId?: string): Promis
     eq(executionIntentsTable.status, "dispatched"),
     lt(executionIntentsTable.dispatchedAt, staleCutoff),
   ];
-  if (organizationId) {
-    conditions.push(eq(executionIntentsTable.organizationId, organizationId));
-  }
+  conditions.push(eq(executionIntentsTable.organizationId, organizationId));
 
-  const staleIntents = organizationId
-    ? await withExecutionCoordinatorTenant(organizationId, "execution_intent.recover.list", async (client) => client
-      .select()
-      .from(executionIntentsTable)
-      .where(and(...conditions))
-      .limit(50))
-    : await db
-      .select()
-      .from(executionIntentsTable)
-      .where(and(...conditions))
-      .limit(50);
+  const staleIntents = await withExecutionCoordinatorTenant(organizationId, "execution_intent.recover.list", async (client) => client
+    .select()
+    .from(executionIntentsTable)
+    .where(and(...conditions))
+    .limit(50));
 
   let recovered = 0;
 

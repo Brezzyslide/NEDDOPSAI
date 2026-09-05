@@ -16,6 +16,10 @@ const preContextResolverMigration = readFileSync(
   resolve(root, "../../../lib/db/migrations/0048_pre_context_identity_resolvers.sql"),
   "utf8",
 );
+const checkpointStartupSweepMigration = readFileSync(
+  resolve(root, "../../../lib/db/migrations/0049_checkpoint_startup_sweep_functions.sql"),
+  "utf8",
+);
 const tenantMiddleware = readFileSync(
   resolve(root, "middlewares/tenantContext.ts"),
   "utf8",
@@ -199,5 +203,46 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(userService).toContain("public.resolve_user_self_context");
     expect(userService).toContain("public.resolve_user_organisations");
     expect(tenantMiddleware).toContain("public.resolve_user_self_context");
+  });
+
+  it("registers bounded checkpoint startup sweep functions", () => {
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0049-checkpoint-startup-sweep-functions",
+        file: "0049_checkpoint_startup_sweep_functions.sql",
+        transactional: true,
+      }),
+    );
+  });
+
+  it("defines startup checkpoint sweeps as narrow SECURITY DEFINER functions", () => {
+    for (const fn of [
+      "expire_stale_execution_checkpoints",
+      "recover_stuck_execution_resumes",
+    ]) {
+      expect(checkpointStartupSweepMigration).toContain(`CREATE OR REPLACE FUNCTION public.${fn}`);
+      expect(checkpointStartupSweepMigration).toContain("SECURITY DEFINER");
+      expect(checkpointStartupSweepMigration).toContain("SET search_path = pg_catalog, public");
+    }
+    expect(checkpointStartupSweepMigration).toContain("LIMIT LEAST(GREATEST(COALESCE(p_limit, 500), 1), 5000)");
+    expect(checkpointStartupSweepMigration).toContain("UPDATE public.execution_checkpoints");
+    expect(checkpointStartupSweepMigration).toContain("RETURNING c.id");
+    expect(checkpointStartupSweepMigration).toContain("SELECT COUNT(*)::INTEGER");
+  });
+
+  it("grants startup sweeps through execute-only function boundaries", () => {
+    expect(checkpointStartupSweepMigration).toContain(
+      "REVOKE ALL ON FUNCTION public.expire_stale_execution_checkpoints(INTEGER) FROM PUBLIC",
+    );
+    expect(checkpointStartupSweepMigration).toContain(
+      "REVOKE ALL ON FUNCTION public.recover_stuck_execution_resumes(TIMESTAMPTZ, INTEGER) FROM PUBLIC",
+    );
+    expect(checkpointStartupSweepMigration).toContain(
+      "GRANT EXECUTE ON FUNCTION public.expire_stale_execution_checkpoints(INTEGER) TO needsops_app",
+    );
+    expect(checkpointStartupSweepMigration).toContain(
+      "GRANT EXECUTE ON FUNCTION public.recover_stuck_execution_resumes(TIMESTAMPTZ, INTEGER) TO needsops_app",
+    );
+    expect(checkpointStartupSweepMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.execution_checkpoints\s+TO\s+needsops_app/i);
   });
 });

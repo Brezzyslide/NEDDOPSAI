@@ -9,12 +9,43 @@ import { randomUUID } from "crypto";
 import { eq, and, desc } from "drizzle-orm";
 import {
   db,
+  withSystemTenantContext,
   approvalsTable,
   approvalHistoryTable,
   tasksTable,
   type InsertApproval,
 } from "@workspace/db";
-import type { ApprovalType, ApprovalState } from "@workspace/shared";
+import type { ApprovalType, ApprovalState, TaskState } from "@workspace/shared";
+
+type DbClient = typeof db;
+
+const VALID_TASK_TRANSITIONS: Record<TaskState, TaskState[]> = {
+  draft: ["queued", "cancelled"],
+  queued: ["planning", "executing", "evidence_required", "cancelled"],
+  planning: ["awaiting_approval", "approved", "evidence_required", "cancelled"],
+  awaiting_approval: ["planning", "approved", "cancelled", "failed"],
+  evidence_required: ["planning", "queued", "cancelled", "failed"],
+  approved: ["planning", "awaiting_approval", "executing", "cancelled"],
+  executing: ["awaiting_approval", "completed", "evidence_required", "failed", "cancelled"],
+  completed: [],
+  cancelled: [],
+  failed: ["planning", "queued", "awaiting_approval"],
+};
+
+function isValidTaskTransition(from: TaskState, to: TaskState): boolean {
+  return (VALID_TASK_TRANSITIONS[from] ?? []).includes(to);
+}
+
+function withApprovalTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "approval_service", purpose },
+    fn,
+  );
+}
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 
@@ -354,4 +385,114 @@ export async function resolveApprovalWithAuthority(input: {
     actorUserId: input.actorUserId,
     notes: input.notes,
   });
+}
+
+export async function resolveApprovalWithAuthorityAndTaskTransition(input: {
+  approvalId: string;
+  organizationId: string;
+  action: "approved" | "rejected";
+  actorUserId: string;
+  actorRole: string;
+  notes?: string;
+  forceSelfApproval?: boolean;
+}): Promise<typeof approvalsTable.$inferSelect> {
+  const authority = await checkApprovalAuthority(input);
+  if (!authority.allowed) {
+    const status = authority.code === "NOT_FOUND" ? "RESOURCE_NOT_FOUND" : authority.code;
+    throw Object.assign(new Error(authority.message ?? "Approval authority check failed."), {
+      code: status,
+      details: authority,
+    });
+  }
+
+  const nextTaskState: TaskState = input.action === "approved" ? "approved" : "failed";
+
+  return withApprovalTenant(input.organizationId, "approval.resolve_with_task_transition", async (client) => client.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(approvalsTable)
+      .where(and(
+        eq(approvalsTable.id, input.approvalId),
+        eq(approvalsTable.organizationId, input.organizationId),
+      ))
+      .limit(1);
+
+    if (!existing) throw Object.assign(new Error("Approval not found"), { code: "RESOURCE_NOT_FOUND" });
+    if (existing.state !== "pending") {
+      throw Object.assign(
+        new Error(`Approval is already ${existing.state}`),
+        { code: "VALIDATION_ERROR" },
+      );
+    }
+
+    let transitionedTaskId: string | null = null;
+    if (existing.taskId) {
+      const [task] = await tx
+        .select({ id: tasksTable.id, currentState: tasksTable.currentState })
+        .from(tasksTable)
+        .where(and(
+          eq(tasksTable.id, existing.taskId),
+          eq(tasksTable.organizationId, input.organizationId),
+        ))
+        .limit(1);
+
+      if (!task) throw Object.assign(new Error("Task not found"), { code: "RESOURCE_NOT_FOUND" });
+
+      const from = task.currentState as TaskState;
+      if (from !== nextTaskState) {
+        if (!isValidTaskTransition(from, nextTaskState)) {
+          throw Object.assign(
+            new Error(`Cannot transition task from '${from}' to '${nextTaskState}'`),
+            { code: "VALIDATION_ERROR" },
+          );
+        }
+
+        const [updatedTask] = await tx
+          .update(tasksTable)
+          .set({ currentState: nextTaskState, updatedAt: new Date() })
+          .where(and(
+            eq(tasksTable.id, existing.taskId),
+            eq(tasksTable.organizationId, input.organizationId),
+          ))
+          .returning({ id: tasksTable.id });
+
+        if (!updatedTask) {
+          throw Object.assign(
+            new Error(`Task transition from '${from}' to '${nextTaskState}' did not update a row`),
+            { code: "CONFLICT" },
+          );
+        }
+      }
+
+      transitionedTaskId = existing.taskId;
+    }
+
+    const [updated] = await tx
+      .update(approvalsTable)
+      .set({
+        state: input.action,
+        resolvedAt: new Date(),
+        resolvedBy: input.actorUserId,
+        notes: input.notes ?? existing.notes,
+      })
+      .where(and(
+        eq(approvalsTable.id, input.approvalId),
+        eq(approvalsTable.organizationId, input.organizationId),
+      ))
+      .returning();
+
+    if (!updated) throw Object.assign(new Error("Approval resolution did not update a row"), { code: "CONFLICT" });
+
+    await tx.insert(approvalHistoryTable).values({
+      id: randomUUID(),
+      approvalId: input.approvalId,
+      organizationId: input.organizationId,
+      action: input.action,
+      actorUserId: input.actorUserId,
+      notes: input.notes ?? null,
+      metadata: { taskId: transitionedTaskId },
+    });
+
+    return updated;
+  }));
 }

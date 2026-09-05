@@ -156,8 +156,9 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     const src = source("routes/v1/approvalRoutes.ts");
 
     expect(src).toContain("const requestedAction = action ?? decision");
-    expect(src).toContain("resolveApprovalWithAuthority");
-    expect(src).toContain("transitionTaskState(approval.taskId");
+    expect(src).toContain("resolveApprovalWithAuthorityAndTaskTransition");
+    expect(src).not.toContain("Post-approval task transition failed");
+    expect(src).not.toContain("transitionTaskState(approval.taskId");
   });
 
   it("MODIFY_TASK is handled deterministically instead of falling through to ordinary chat", () => {
@@ -378,9 +379,11 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
   });
 
   it("approval rejection moves the task to failed rather than a non-existent rejected task state", () => {
-    const src = source("routes/v1/approvalRoutes.ts");
+    const src = source("services/approvalService.ts");
 
-    expect(src).toContain('requestedAction === "approved" ? "approved" : "failed"');
+    expect(src).toContain('input.action === "approved" ? "approved" : "failed"');
+    expect(src).toContain("approval.resolve_with_task_transition");
+    expect(src).toContain("client.transaction(async (tx)");
     expect(src).not.toContain('"rejected" as unknown as TaskState');
   });
 

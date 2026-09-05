@@ -174,6 +174,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds narrow SECURITY DEFINER resolvers for device, invitation, and user-self pre-context identity flows.",
   },
+  {
+    id: "0049-checkpoint-startup-sweep-functions",
+    file: "0049_checkpoint_startup_sweep_functions.sql",
+    transactional: true,
+    notes: "Adds bounded SECURITY DEFINER functions for startup checkpoint expiry and stuck-resume recovery.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

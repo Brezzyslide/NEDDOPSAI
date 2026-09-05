@@ -537,7 +537,7 @@ describe("executionCoordinatorService — recoverOrphanedExecutions", () => {
     mockExecuteWork.mockResolvedValue({ outcome: "completed", completedWorkId: "cw-rec", message: "Done" });
   });
 
-  it("re-queues stale dispatched intents and returns count", async () => {
+  it("re-queues stale dispatched intents for the requested organisation and returns count", async () => {
     let call = 0;
     mockDbSelectFn.mockImplementation(() => {
       call++;
@@ -545,23 +545,21 @@ describe("executionCoordinatorService — recoverOrphanedExecutions", () => {
         return makeSelectChain([
           { id: "i1", organizationId: "org-1", taskId: "t1", status: "dispatched",
             dispatchedAt: new Date(Date.now() - 20 * 60 * 1000), description: "T1", approvedBy: "u1" },
-          { id: "i2", organizationId: "org-2", taskId: "t2", status: "dispatched",
-            dispatchedAt: new Date(Date.now() - 20 * 60 * 1000), description: "T2", approvedBy: "u2" },
         ]);
       }
       return makeSelectChain([]); // no conversation / task found (safe fallback)
     });
 
     const { recoverOrphanedExecutions } = await import("../services/executionCoordinatorService.js");
-    const count = await recoverOrphanedExecutions();
-    expect(count).toBe(2);
+    const count = await recoverOrphanedExecutions("org-1");
+    expect(count).toBe(1);
   });
 
   it("returns 0 when there are no stale intents", async () => {
     mockDbSelectFn.mockImplementation(() => makeSelectChain([]));
 
     const { recoverOrphanedExecutions } = await import("../services/executionCoordinatorService.js");
-    const count = await recoverOrphanedExecutions();
+    const count = await recoverOrphanedExecutions("org-1");
     expect(count).toBe(0);
   });
 });

@@ -11,7 +11,7 @@ import * as approvalService from "../../services/approvalService.js";
 import * as auditService from "../../services/auditService.js";
 import { computeGovernanceMetrics } from "../../services/governanceMetricsService.js";
 import { dispatchWorkExecution } from "../../services/executionCoordinatorService.js";
-import { getTaskById, transitionTaskState } from "../../services/taskService.js";
+import { getTaskById } from "../../services/taskService.js";
 import type { ApprovalType, ApprovalState } from "@workspace/shared";
 
 const router = Router({ mergeParams: true });
@@ -137,7 +137,7 @@ router.post("/:approvalId/resolve", requireAuth, resolveTenantFromSlug, async (r
 
     const actorRole = ctx.role as string;
 
-    const approval = await approvalService.resolveApprovalWithAuthority({
+    const approval = await approvalService.resolveApprovalWithAuthorityAndTaskTransition({
       approvalId: req.params.approvalId!,
       organizationId: ctx.tenantId,
       action: requestedAction,
@@ -184,13 +184,6 @@ router.post("/:approvalId/resolve", requireAuth, resolveTenantFromSlug, async (r
     // Sprint 29M: read laneContext from task.metadata (persisted by autoCreateAndDispatch)
     // and forward it so UEE applies the correct evidence/claim-integrity overrides even
     // when the task executed via the approval-delayed path.
-    if (approval.taskId) {
-      const nextTaskState = requestedAction === "approved" ? "approved" : "failed";
-      await transitionTaskState(approval.taskId, ctx.tenantId, nextTaskState).catch(err =>
-        console.warn("[approvalRoutes] Post-approval task transition failed (non-fatal):", err?.message),
-      );
-    }
-
     if (requestedAction === "approved" && approval.taskId) {
       getTaskById(approval.taskId, ctx.tenantId)
         .then(task => {

@@ -13,12 +13,14 @@ import { randomUUID } from "crypto";
 const mockUpdate = vi.fn();
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
+const mockExecute = vi.fn();
 
 vi.mock("@workspace/db", () => ({
   db: {
     insert: (...a: unknown[]) => mockInsert(...a),
     update: (...a: unknown[]) => mockUpdate(...a),
     select: (...a: unknown[]) => mockSelect(...a),
+    execute: (...a: unknown[]) => mockExecute(...a),
   },
   withSystemTenantContext: vi.fn((_context: unknown, fn: (client: unknown) => unknown) =>
     fn({
@@ -48,6 +50,7 @@ vi.mock("drizzle-orm", () => ({
   or:      (...a: unknown[]) => ({ op: "or", a }),
   inArray: (...a: unknown[]) => ({ op: "inArray", a }),
   desc:    (...a: unknown[]) => ({ op: "desc", a }),
+  sql:     (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join("?"), values }),
 }));
 
 vi.mock("../services/auditService.js", () => ({
@@ -115,6 +118,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
 describe("executionCheckpointService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExecute.mockReset();
   });
 
   // ── createCheckpoint ────────────────────────────────────────────────────────
@@ -288,19 +292,18 @@ describe("executionCheckpointService", () => {
 
   describe("expireStaleCheckpoints", () => {
     it("marks past-expiry checkpoints as expired and returns the count", async () => {
-      const updateChain = makeUpdateChain([{ id: "cp-1" }, { id: "cp-2" }]);
-      mockUpdate.mockReturnValue(updateChain);
+      mockExecute.mockResolvedValue({ rows: [{ count: 2 }] });
 
       const { expireStaleCheckpoints } = await import("../services/executionCheckpointService.js");
       const count = await expireStaleCheckpoints();
 
       expect(count).toBe(2);
-      const setCall = (updateChain as any).set.mock.calls[0][0];
-      expect(setCall.status).toBe("expired");
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(String(mockExecute.mock.calls[0][0].sql)).toContain("public.expire_stale_execution_checkpoints");
     });
 
     it("returns 0 when no stale checkpoints exist", async () => {
-      mockUpdate.mockReturnValue(makeUpdateChain([]));
+      mockExecute.mockResolvedValue({ rows: [{ count: 0 }] });
       const { expireStaleCheckpoints } = await import("../services/executionCheckpointService.js");
       expect(await expireStaleCheckpoints()).toBe(0);
     });
@@ -308,19 +311,18 @@ describe("executionCheckpointService", () => {
 
   describe("recoverStuckResumes", () => {
     it("restores stuck 'resuming' checkpoints to awaiting_clarification", async () => {
-      const updateChain = makeUpdateChain([{ id: "cp-stuck" }]);
-      mockUpdate.mockReturnValue(updateChain);
+      mockExecute.mockResolvedValue({ rows: [{ count: 1 }] });
 
       const { recoverStuckResumes } = await import("../services/executionCheckpointService.js");
       const count = await recoverStuckResumes();
 
       expect(count).toBe(1);
-      const setCall = (updateChain as any).set.mock.calls[0][0];
-      expect(setCall.status).toBe("awaiting_clarification");
+      expect(mockExecute).toHaveBeenCalledTimes(1);
+      expect(String(mockExecute.mock.calls[0][0].sql)).toContain("public.recover_stuck_execution_resumes");
     });
 
     it("returns 0 when nothing is stuck", async () => {
-      mockUpdate.mockReturnValue(makeUpdateChain([]));
+      mockExecute.mockResolvedValue({ rows: [{ count: 0 }] });
       const { recoverStuckResumes } = await import("../services/executionCheckpointService.js");
       expect(await recoverStuckResumes()).toBe(0);
     });

@@ -12,7 +12,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { eq, and, lt, or, inArray } from "drizzle-orm";
+import { eq, and, lt, or, inArray, sql } from "drizzle-orm";
 import { db, executionCheckpointsTable, withSystemTenantContext } from "@workspace/db";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
@@ -284,17 +284,10 @@ export async function cancelCheckpoint(checkpointId: string, organizationId: str
  * expiresAt as expired. Safe to call on a schedule (e.g. every 10 min).
  */
 export async function expireStaleCheckpoints(): Promise<number> {
-  const now = new Date();
-  const result = await db
-    .update(executionCheckpointsTable)
-    .set({ status: "expired", updatedAt: now })
-    .where(and(
-      inArray(executionCheckpointsTable.status, [...ACTIVE_STATUSES]),
-      lt(executionCheckpointsTable.expiresAt, now),
-    ))
-    .returning({ id: executionCheckpointsTable.id });
-
-  return result.length;
+  const rows = await db.execute<{ count: number }>(
+    sql`SELECT public.expire_stale_execution_checkpoints(${500}) AS count`,
+  );
+  return Number(rows.rows?.[0]?.count ?? 0);
 }
 
 /**
@@ -305,19 +298,15 @@ export async function recoverStuckResumes(): Promise<number> {
   const STUCK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
   const stuckCutoff = new Date(Date.now() - STUCK_THRESHOLD_MS);
 
-  const result = await db
-    .update(executionCheckpointsTable)
-    .set({ status: "awaiting_clarification", updatedAt: new Date() })
-    .where(and(
-      eq(executionCheckpointsTable.status, "resuming"),
-      lt(executionCheckpointsTable.updatedAt, stuckCutoff),
-    ))
-    .returning({ id: executionCheckpointsTable.id });
+  const rows = await db.execute<{ count: number }>(
+    sql`SELECT public.recover_stuck_execution_resumes(${stuckCutoff}, ${500}) AS count`,
+  );
+  const recovered = Number(rows.rows?.[0]?.count ?? 0);
 
-  if (result.length > 0) {
-    console.info(`[CheckpointService] Recovered ${result.length} stuck checkpoint(s) to awaiting_clarification`);
+  if (recovered > 0) {
+    console.info(`[CheckpointService] Recovered ${recovered} stuck checkpoint(s) to awaiting_clarification`);
   }
-  return result.length;
+  return recovered;
 }
 
 // ─── Test-only reset helper (preserved for backward compatibility) ─────────────
