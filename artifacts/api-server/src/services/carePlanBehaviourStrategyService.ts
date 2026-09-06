@@ -30,27 +30,37 @@ export async function recordCarePlanBehaviourStrategyMeasurement(
   const {
     db,
     carePlanBehaviourStrategyMeasurementsTable,
+    withSystemTenantContext,
   } = await import("@workspace/db");
   const id = randomUUID();
   const strategyFingerprint = carePlanStrategyFingerprint(input.strategyText, input.bspSourceQuote);
-  await db.insert(carePlanBehaviourStrategyMeasurementsTable).values({
-    id,
-    organizationId: input.organizationId,
-    taskId: input.taskId ?? null,
-    completedWorkId: input.completedWorkId ?? null,
-    completedWorkVersionId: input.completedWorkVersionId ?? null,
-    participantId: input.participantId ?? null,
-    strategyFingerprint,
-    strategyText: input.strategyText,
-    bspSourceQuote: input.bspSourceQuote,
-    modelFolds: input.modelFolds,
-    apoFolds: input.apoFolds ?? [],
-    confirmationStatus: input.confirmationStatus,
-    actorUserId: input.actorUserId ?? null,
-    confirmedAt: input.confirmedAt ?? null,
-    correctedAt: input.correctedAt ?? null,
-    metadata: input.metadata ?? {},
-  });
+  await withSystemTenantContext(
+    {
+      tenantId: input.organizationId,
+      serviceIdentity: "care_plan_behaviour_strategy_service",
+      purpose: "care_plan.behaviour_strategy.record_measurement",
+    },
+    async (client) => {
+      await client.insert(carePlanBehaviourStrategyMeasurementsTable).values({
+        id,
+        organizationId: input.organizationId,
+        taskId: input.taskId ?? null,
+        completedWorkId: input.completedWorkId ?? null,
+        completedWorkVersionId: input.completedWorkVersionId ?? null,
+        participantId: input.participantId ?? null,
+        strategyFingerprint,
+        strategyText: input.strategyText,
+        bspSourceQuote: input.bspSourceQuote,
+        modelFolds: input.modelFolds,
+        apoFolds: input.apoFolds ?? [],
+        confirmationStatus: input.confirmationStatus,
+        actorUserId: input.actorUserId ?? null,
+        confirmedAt: input.confirmedAt ?? null,
+        correctedAt: input.correctedAt ?? null,
+        metadata: input.metadata ?? {},
+      });
+    },
+  );
   return { id, strategyFingerprint };
 }
 

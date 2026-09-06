@@ -35,6 +35,12 @@ vi.mock("@workspace/db", async () => {
   const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
   return {
     ...actual,
+    withSystemTenantContext: vi.fn(async (_context, fn) => fn({
+      select:  () => mockDb,
+      insert:  () => mockDb,
+      update:  () => mockDb,
+      execute: mockDb.execute,
+    })),
     db: {
       select:  () => mockDb,
       insert:  () => mockDb,

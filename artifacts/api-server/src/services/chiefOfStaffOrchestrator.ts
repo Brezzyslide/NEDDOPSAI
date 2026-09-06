@@ -17,7 +17,15 @@
 
 import { randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
-import { db, specialistRunsTable, specialistConflictsTable, conversationsTable, taskExecutionPlansTable, tasksTable } from "@workspace/db";
+import {
+  db,
+  withSystemTenantContext,
+  specialistRunsTable,
+  specialistConflictsTable,
+  conversationsTable,
+  taskExecutionPlansTable,
+  tasksTable,
+} from "@workspace/db";
 import { createAIGateway } from "@workspace/ai-gateway";
 import type { AIGatewayContext } from "@workspace/ai-gateway";
 import {
@@ -43,6 +51,19 @@ import { createSpecialistIntelligenceService } from "./specialistIntelligenceSer
 import { createUnifiedExecutionEngine } from "./unifiedExecutionEngine.js";
 import { enqueue, markRunning, markCompleted, markFailed, markCancelled } from "./specialistQueueService.js";
 import { logOrgEvent } from "./auditService.js";
+
+type DbClient = typeof db;
+
+function withChiefOfStaffTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "chief_of_staff_orchestrator", purpose },
+    fn,
+  );
+}
 import { addMessage } from "./conversationService.js";
 import type { SpecialistRunResult } from "./specialistIntelligenceService.js";
 import { persistExecutionIntents, type RequestedAction } from "./executionIntentService.js";
@@ -307,10 +328,12 @@ export async function processRunCompletion(
 
   // Persist execution intents produced by this run (fire and forget)
   if (result.requestedExternalActions.length > 0) {
-    db.select({ taskId: specialistRunsTable.taskId })
-      .from(specialistRunsTable)
-      .where(and(eq(specialistRunsTable.id, specialistRunId), eq(specialistRunsTable.organizationId, organizationId)))
-      .limit(1)
+    withChiefOfStaffTenant(organizationId, "chief_of_staff.persist_execution_intents", async (client) =>
+      client.select({ taskId: specialistRunsTable.taskId })
+        .from(specialistRunsTable)
+        .where(and(eq(specialistRunsTable.id, specialistRunId), eq(specialistRunsTable.organizationId, organizationId)))
+        .limit(1),
+    )
       .then(rows => {
         const taskId = rows[0]?.taskId;
         if (!taskId) return;

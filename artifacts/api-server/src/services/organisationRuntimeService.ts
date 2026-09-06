@@ -142,20 +142,25 @@ export async function createExecutionGraph(
 
   // Persist to DB — gracefully skip if table not yet available
   try {
-    const { db, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
+    const { db, withSystemTenantContext, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
     if (db && executionGraphNodesTable) {
       // Graph metadata stored as a synthetic root node
-      await db.insert(executionGraphNodesTable).values({
-        id: randomUUID(),
-        graphId: graph.graphId,
-        organisationId,
-        taskId,
-        nodeId: `root-${taskId}`,
-        nodeType: 'intent',
-        status: 'pending',
-        dependsOnNodeIds: [],
-        createdAt: new Date(),
-      }).onConflictDoNothing();
+      await withSystemTenantContext(
+        { tenantId: organisationId, serviceIdentity: "organisation_runtime_service", purpose: "runtime.create_execution_graph" },
+        async (client: typeof db) => {
+          await client.insert(executionGraphNodesTable).values({
+            id: randomUUID(),
+            graphId: graph.graphId,
+            organisationId,
+            taskId,
+            nodeId: `root-${taskId}`,
+            nodeType: 'intent',
+            status: 'pending',
+            dependsOnNodeIds: [],
+            createdAt: new Date(),
+          }).onConflictDoNothing();
+        },
+      );
     }
   } catch {
     // DB table not yet available — in-memory only
@@ -191,23 +196,28 @@ export async function addGraphNode(
 
   // Persist to DB — gracefully skip if table not yet available
   try {
-    const { db, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
+    const { db, withSystemTenantContext, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
     if (db && executionGraphNodesTable) {
-      await db.insert(executionGraphNodesTable).values({
-        id: randomUUID(),
-        graphId,
-        organisationId: graph.organisationId,
-        taskId: graph.taskId,
-        nodeId: newNode.nodeId,
-        nodeType: newNode.nodeType,
-        status: newNode.status,
-        dependsOnNodeIds: newNode.dependsOnNodeIds,
-        startedAt: newNode.startedAt ? new Date(newNode.startedAt) : null,
-        completedAt: newNode.completedAt ? new Date(newNode.completedAt) : null,
-        resultSummary: newNode.resultSummary ?? null,
-        errorMessage: newNode.errorMessage ?? null,
-        createdAt: new Date(),
-      }).onConflictDoNothing();
+      await withSystemTenantContext(
+        { tenantId: graph.organisationId, serviceIdentity: "organisation_runtime_service", purpose: "runtime.add_graph_node" },
+        async (client: typeof db) => {
+          await client.insert(executionGraphNodesTable).values({
+            id: randomUUID(),
+            graphId,
+            organisationId: graph.organisationId,
+            taskId: graph.taskId,
+            nodeId: newNode.nodeId,
+            nodeType: newNode.nodeType,
+            status: newNode.status,
+            dependsOnNodeIds: newNode.dependsOnNodeIds,
+            startedAt: newNode.startedAt ? new Date(newNode.startedAt) : null,
+            completedAt: newNode.completedAt ? new Date(newNode.completedAt) : null,
+            resultSummary: newNode.resultSummary ?? null,
+            errorMessage: newNode.errorMessage ?? null,
+            createdAt: new Date(),
+          }).onConflictDoNothing();
+        },
+      );
     }
   } catch {
     // DB table not yet available — in-memory only
@@ -261,22 +271,28 @@ export async function updateNodeStatus(
 
   // Persist to DB — gracefully skip if table not yet available
   try {
-    const { db, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
+    const { db, withSystemTenantContext, executionGraphNodesTable } = await import('@workspace/db' as string) as any;
     if (db && executionGraphNodesTable) {
       const { eq, and } = await import('drizzle-orm');
-      await db.update(executionGraphNodesTable)
-        .set({
-          status: node.status,
-          resultSummary: node.resultSummary ?? null,
-          startedAt: node.startedAt ? new Date(node.startedAt) : null,
-          completedAt: node.completedAt ? new Date(node.completedAt) : null,
-        })
-        .where(
-          and(
-            eq(executionGraphNodesTable.graphId, graphId),
-            eq(executionGraphNodesTable.nodeId, nodeId),
-          ),
-        );
+      await withSystemTenantContext(
+        { tenantId: graph.organisationId, serviceIdentity: "organisation_runtime_service", purpose: "runtime.update_graph_node_status" },
+        async (client: typeof db) => {
+          await client.update(executionGraphNodesTable)
+            .set({
+              status: node.status,
+              resultSummary: node.resultSummary ?? null,
+              startedAt: node.startedAt ? new Date(node.startedAt) : null,
+              completedAt: node.completedAt ? new Date(node.completedAt) : null,
+            })
+            .where(
+              and(
+                eq(executionGraphNodesTable.graphId, graphId),
+                eq(executionGraphNodesTable.nodeId, nodeId),
+                eq(executionGraphNodesTable.organisationId, graph.organisationId),
+              ),
+            );
+        },
+      );
     }
   } catch {
     // DB table not yet available — in-memory only
@@ -365,20 +381,25 @@ export async function publishExecutionEvent(event: {
 
   // Persist to DB — gracefully skip if table not yet available
   try {
-    const { db, executionHistoryTable } = await import('@workspace/db' as string) as any;
+    const { db, withSystemTenantContext, executionHistoryTable } = await import('@workspace/db' as string) as any;
     if (db && executionHistoryTable) {
-      await db.insert(executionHistoryTable).values({
-        id: randomUUID(),
-        graphId: event.graphId,
-        organisationId: event.organisationId,
-        taskId: event.taskId ?? null,
-        specialistRunId: event.specialistRunId ?? null,
-        eventType: event.eventType,
-        actorType: event.actorType,
-        actorId: event.actorId ?? null,
-        payload: event.payload ?? {},
-        createdAt: new Date(),
-      });
+      await withSystemTenantContext(
+        { tenantId: event.organisationId, serviceIdentity: "organisation_runtime_service", purpose: "runtime.publish_execution_event" },
+        async (client: typeof db) => {
+          await client.insert(executionHistoryTable).values({
+            id: randomUUID(),
+            graphId: event.graphId,
+            organisationId: event.organisationId,
+            taskId: event.taskId ?? null,
+            specialistRunId: event.specialistRunId ?? null,
+            eventType: event.eventType,
+            actorType: event.actorType,
+            actorId: event.actorId ?? null,
+            payload: event.payload ?? {},
+            createdAt: new Date(),
+          });
+        },
+      );
     }
   } catch {
     // DB table not yet available — in-memory only

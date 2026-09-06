@@ -16,7 +16,7 @@
  *   • getOrgWorkforceHealth    → Part 9: executive health summary
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   specialistTrainingStatusTable,
   completedWorkTable,
@@ -35,6 +35,19 @@ import { randomUUID } from "crypto";
 import { logOrgEvent } from "./auditService.js";
 import { SPECIALISTS } from "../lib/workforceRegistry.js";
 import { getCatalogueEntry, listCatalogue } from "./specialistCatalogueService.js";
+
+type DbClient = typeof db;
+
+function withWorkforceOpsTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "workforce_ops_service", purpose },
+    fn,
+  );
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -565,9 +578,12 @@ export async function getSpecialistWorkload(
   organizationId: string,
   specialistCode: string,
 ): Promise<WorkloadQueue> {
-  const [activeRuns, waitingQueue, recentCompleted, failedRuns, retryRow] = await Promise.all([
+  const [activeRuns, waitingQueue, recentCompleted, failedRuns, retryRow] = await withWorkforceOpsTenant(
+    organizationId,
+    "workforce_ops.specialist_workload",
+    async (client) => Promise.all([
     // Active runs
-    db.select({
+    client.select({
       id: specialistRunsTable.id,
       taskId: specialistRunsTable.taskId,
       status: specialistRunsTable.status,
@@ -586,7 +602,7 @@ export async function getSpecialistWorkload(
       .limit(10),
 
     // Waiting queue
-    db.select({
+    client.select({
       id: specialistQueueTable.id,
       runId: specialistQueueTable.specialistRunId,
       status: specialistQueueTable.status,
@@ -604,7 +620,7 @@ export async function getSpecialistWorkload(
       .limit(10),
 
     // Recently completed work
-    db.select({
+    client.select({
       id: completedWorkTable.id,
       title: completedWorkTable.title,
       status: completedWorkTable.status,
@@ -622,7 +638,7 @@ export async function getSpecialistWorkload(
       .limit(10),
 
     // Failed runs
-    db.select({
+    client.select({
       id: specialistRunsTable.id,
       taskId: specialistRunsTable.taskId,
       lastError: specialistRunsTable.lastError,
@@ -640,7 +656,7 @@ export async function getSpecialistWorkload(
       .limit(5),
 
     // Total retries
-    db.select({ total: sql<number>`SUM(${specialistRunsTable.attemptNumber} - 1)` })
+    client.select({ total: sql<number>`SUM(${specialistRunsTable.attemptNumber} - 1)` })
       .from(specialistRunsTable)
       .where(
         and(
@@ -649,7 +665,8 @@ export async function getSpecialistWorkload(
         ),
       )
       .limit(1),
-  ]);
+    ]),
+  );
 
   return {
     activeRuns: activeRuns.map(r => ({
@@ -704,8 +721,11 @@ export async function getSpecialistPerformance(
 ): Promise<SpecialistPerformance> {
   const since = periodStart(period);
 
-  const [workRows, [qualityRow], [confidenceRow]] = await Promise.all([
-    db.select({
+  const [workRows, [qualityRow], [confidenceRow]] = await withWorkforceOpsTenant(
+    organizationId,
+    "workforce_ops.specialist_performance",
+    async (client) => Promise.all([
+    client.select({
       status: completedWorkTable.status,
     })
       .from(completedWorkTable)
@@ -718,7 +738,7 @@ export async function getSpecialistPerformance(
       )
       .limit(500),
 
-    db.select({ avg: avg(completedWorkVersionsTable.qualityScore) })
+    client.select({ avg: avg(completedWorkVersionsTable.qualityScore) })
       .from(completedWorkVersionsTable)
       .where(
         and(
@@ -728,7 +748,7 @@ export async function getSpecialistPerformance(
       )
       .limit(1),
 
-    db.select({ avg: avg(specialistRunsTable.confidence) })
+    client.select({ avg: avg(specialistRunsTable.confidence) })
       .from(specialistRunsTable)
       .where(
         and(
@@ -738,7 +758,8 @@ export async function getSpecialistPerformance(
         ),
       )
       .limit(1),
-  ]);
+    ]),
+  );
 
   const total = workRows.length;
   const approved = workRows.filter(w => w.status === "approved").length;
@@ -782,8 +803,11 @@ export async function getSpecialistKnowledge(
   organizationId: string,
   specialistCode: string,
 ): Promise<SpecialistKnowledge> {
-  const [sources, trainingRow, memoryRow] = await Promise.all([
-    db.select({
+  const [sources, trainingRow, memoryRow] = await withWorkforceOpsTenant(
+    organizationId,
+    "workforce_ops.specialist_knowledge",
+    async (client) => Promise.all([
+    client.select({
       id: knowledgeSourcesTable.id,
       title: knowledgeSourcesTable.title,
       sourceType: knowledgeSourcesTable.sourceType,
@@ -795,7 +819,7 @@ export async function getSpecialistKnowledge(
       .orderBy(desc(knowledgeSourcesTable.createdAt))
       .limit(20),
 
-    db.select()
+    client.select()
       .from(specialistTrainingStatusTable)
       .where(
         and(
@@ -805,11 +829,12 @@ export async function getSpecialistKnowledge(
       )
       .limit(1),
 
-    db.select({ n: count() })
+    client.select({ n: count() })
       .from(organisationMemoryTable)
       .where(eq(organisationMemoryTable.organizationId, organizationId))
       .limit(1),
-  ]);
+    ]),
+  );
 
   const approved = sources.filter(s => s.status === "approved").length;
   const pending  = sources.filter(s => s.status === "pending_review").length;
@@ -865,13 +890,16 @@ export async function getWorkforceAlerts(
     s => s.executionStatus !== "deprecated" && !s.isArchived,
   );
 
-  const [trainingRows, failedRuns, pendingApprovals] = await Promise.all([
-    db.select()
+  const [trainingRows, failedRuns, pendingApprovals] = await withWorkforceOpsTenant(
+    organizationId,
+    "workforce_ops.alerts",
+    async (client) => Promise.all([
+    client.select()
       .from(specialistTrainingStatusTable)
       .where(eq(specialistTrainingStatusTable.organizationId, organizationId))
       .limit(500),
 
-    db.select({
+    client.select({
       id: specialistRunsTable.id,
       workforceRoleCode: specialistRunsTable.workforceRoleCode,
       lastError: specialistRunsTable.lastError,
@@ -888,7 +916,7 @@ export async function getWorkforceAlerts(
       .orderBy(desc(specialistRunsTable.failedAt))
       .limit(10),
 
-    db.select({ n: count() })
+    client.select({ n: count() })
       .from(completedWorkTable)
       .where(
         and(
@@ -897,7 +925,8 @@ export async function getWorkforceAlerts(
         ),
       )
       .limit(1),
-  ]);
+    ]),
+  );
 
   const trainingMap = new Map(trainingRows.map(r => [r.specialistId, r]));
 
@@ -1130,18 +1159,21 @@ export async function getOrgWorkforceHealth(
     s => s.executionStatus !== "deprecated" && !s.isArchived,
   );
 
-  const [trainingRows, qualityRow, taskRow, pendingRow] = await Promise.all([
-    db.select()
+  const [trainingRows, qualityRow, taskRow, pendingRow] = await withWorkforceOpsTenant(
+    organizationId,
+    "workforce_ops.org_health",
+    async (client) => Promise.all([
+    client.select()
       .from(specialistTrainingStatusTable)
       .where(eq(specialistTrainingStatusTable.organizationId, organizationId))
       .limit(500),
 
-    db.select({ avg: avg(completedWorkVersionsTable.qualityScore) })
+    client.select({ avg: avg(completedWorkVersionsTable.qualityScore) })
       .from(completedWorkVersionsTable)
       .where(eq(completedWorkVersionsTable.organizationId, organizationId))
       .limit(1),
 
-    db.select({ n: count() })
+    client.select({ n: count() })
       .from(tasksTable)
       .where(
         and(
@@ -1151,7 +1183,7 @@ export async function getOrgWorkforceHealth(
       )
       .limit(1),
 
-    db.select({ n: count() })
+    client.select({ n: count() })
       .from(completedWorkTable)
       .where(
         and(
@@ -1160,7 +1192,8 @@ export async function getOrgWorkforceHealth(
         ),
       )
       .limit(1),
-  ]);
+    ]),
+  );
 
   const readyCount        = trainingRows.filter(r => r.status === "ready").length;
   const withKnowledge     = trainingRows.filter(r => r.knowledgeSourcesApproved).length;

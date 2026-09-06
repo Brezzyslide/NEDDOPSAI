@@ -16,10 +16,23 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
+import { db, withSystemTenantContext, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
 import { withOrgContext, OrgConnectionError } from "@workspace/org-db";
 import { sql } from "drizzle-orm";
 import type { AuditEventType } from "@workspace/shared";
+
+type DbClient = typeof db;
+
+function withAuditTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "audit_service", purpose },
+    fn,
+  );
+}
 
 export interface WriteAuditEventParams {
   organizationId?: string | null;
@@ -117,21 +130,23 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
       // Org not yet provisioned — best-effort fallback to public.org_audit_log.
       // The legacy table has FK constraints; if the insert fails (e.g. actor_user_id
       // not in users table), swallow and warn — audit events must not block operations.
-      await db.insert(orgAuditLogTable).values({
-        id: randomUUID(),
-        organizationId: orgId,
-        actorUserId: null, // null avoids FK violation on users.id in legacy table
-        actorType: params.actorType ?? "user",
-        eventType: params.eventType,
-        resourceType: params.resourceType,
-        resourceId: params.resourceId ?? null,
-        requestId: params.requestId ?? null,
-        ipAddress: params.ipAddress ?? null,
-        userAgent: params.userAgent ?? null,
-        accessPurpose: params.accessPurpose ?? null,
-        isSensitive: params.isSensitive ?? false,
-        metadata: params.metadata ?? {},
-        occurredAt: now,
+      await withAuditTenant(orgId, "audit.org_legacy_fallback", async (client) => {
+        await client.insert(orgAuditLogTable).values({
+          id: randomUUID(),
+          organizationId: orgId,
+          actorUserId: null, // null avoids FK violation on users.id in legacy table
+          actorType: params.actorType ?? "user",
+          eventType: params.eventType,
+          resourceType: params.resourceType,
+          resourceId: params.resourceId ?? null,
+          requestId: params.requestId ?? null,
+          ipAddress: params.ipAddress ?? null,
+          userAgent: params.userAgent ?? null,
+          accessPurpose: params.accessPurpose ?? null,
+          isSensitive: params.isSensitive ?? false,
+          metadata: params.metadata ?? {},
+          occurredAt: now,
+        });
       }).catch((fallbackErr: any) => {
         // Best-effort: legacy fallback also failed — log warning, do not throw.
         console.warn(

@@ -72,21 +72,23 @@ export async function createApproval(input: {
     expiresAt: expiresAt ?? null,
   };
 
-  const [approval] = await db.insert(approvalsTable).values(row).returning();
-  if (!approval) throw new Error("Failed to create approval");
+  return withApprovalTenant(input.organizationId, "approval.create", async (client) => client.transaction(async (tx) => {
+    const [approval] = await tx.insert(approvalsTable).values(row).returning();
+    if (!approval) throw new Error("Failed to create approval");
 
-  // Sprint 5: include organizationId for direct tenant ownership on join table
-  await db.insert(approvalHistoryTable).values({
-    id: randomUUID(),
-    approvalId,
-    organizationId: input.organizationId,
-    action: "requested",
-    actorUserId: input.requestedByUserId ?? null,
-    notes: input.notes ?? null,
-    metadata: { approvalType: input.approvalType },
-  });
+    // Sprint 5: include organizationId for direct tenant ownership on join table
+    await tx.insert(approvalHistoryTable).values({
+      id: randomUUID(),
+      approvalId,
+      organizationId: input.organizationId,
+      action: "requested",
+      actorUserId: input.requestedByUserId ?? null,
+      notes: input.notes ?? null,
+      metadata: { approvalType: input.approvalType },
+    });
 
-  return approval;
+    return approval;
+  }));
 }
 
 export async function getPendingApprovalForTask(input: {
@@ -116,34 +118,36 @@ export async function supersedePendingApprovalsForTask(input: {
   actorUserId: string;
   reason: string;
 }): Promise<(typeof approvalsTable.$inferSelect)[]> {
-  const superseded = await db
-    .update(approvalsTable)
-    .set({
-      state: "superseded" as ApprovalState,
-      resolvedAt: new Date(),
-      resolvedBy: input.actorUserId,
-      notes: input.reason,
-    })
-    .where(and(
-      eq(approvalsTable.taskId, input.taskId),
-      eq(approvalsTable.organizationId, input.organizationId),
-      eq(approvalsTable.state, "pending") as any,
-    ))
-    .returning();
+  return withApprovalTenant(input.organizationId, "approval.supersede_pending", async (client) => client.transaction(async (tx) => {
+    const superseded = await tx
+      .update(approvalsTable)
+      .set({
+        state: "superseded" as ApprovalState,
+        resolvedAt: new Date(),
+        resolvedBy: input.actorUserId,
+        notes: input.reason,
+      })
+      .where(and(
+        eq(approvalsTable.taskId, input.taskId),
+        eq(approvalsTable.organizationId, input.organizationId),
+        eq(approvalsTable.state, "pending") as any,
+      ))
+      .returning();
 
-  if (superseded.length > 0) {
-    await db.insert(approvalHistoryTable).values(superseded.map(approval => ({
-      id: randomUUID(),
-      approvalId: approval.id,
-      organizationId: input.organizationId,
-      action: "superseded",
-      actorUserId: input.actorUserId,
-      notes: input.reason,
-      metadata: { taskId: input.taskId },
-    })));
-  }
+    if (superseded.length > 0) {
+      await tx.insert(approvalHistoryTable).values(superseded.map(approval => ({
+        id: randomUUID(),
+        approvalId: approval.id,
+        organizationId: input.organizationId,
+        action: "superseded",
+        actorUserId: input.actorUserId,
+        notes: input.reason,
+        metadata: { taskId: input.taskId },
+      })));
+    }
 
-  return superseded;
+    return superseded;
+  }));
 }
 
 // ─── Resolve ──────────────────────────────────────────────────────────────────
@@ -155,48 +159,53 @@ export async function resolveApproval(input: {
   actorUserId: string;
   notes?: string;
 }): Promise<typeof approvalsTable.$inferSelect> {
-  const [existing] = await db
-    .select()
-    .from(approvalsTable)
-    .where(
-      and(
+  return withApprovalTenant(input.organizationId, "approval.resolve", async (client) => client.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(approvalsTable)
+      .where(
+        and(
+          eq(approvalsTable.id, input.approvalId),
+          eq(approvalsTable.organizationId, input.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!existing) throw Object.assign(new Error("Approval not found"), { code: "RESOURCE_NOT_FOUND" });
+    if (existing.state !== "pending") {
+      throw Object.assign(
+        new Error(`Approval is already ${existing.state}`),
+        { code: "VALIDATION_ERROR" },
+      );
+    }
+
+    const [updated] = await tx
+      .update(approvalsTable)
+      .set({
+        state: input.action,
+        resolvedAt: new Date(),
+        resolvedBy: input.actorUserId,
+        notes: input.notes ?? existing.notes,
+      })
+      .where(and(
         eq(approvalsTable.id, input.approvalId),
         eq(approvalsTable.organizationId, input.organizationId),
-      ),
-    )
-    .limit(1);
+      ))
+      .returning();
 
-  if (!existing) throw Object.assign(new Error("Approval not found"), { code: "RESOURCE_NOT_FOUND" });
-  if (existing.state !== "pending") {
-    throw Object.assign(
-      new Error(`Approval is already ${existing.state}`),
-      { code: "VALIDATION_ERROR" },
-    );
-  }
+    // Sprint 5: include organizationId for direct tenant ownership on join table
+    await tx.insert(approvalHistoryTable).values({
+      id: randomUUID(),
+      approvalId: input.approvalId,
+      organizationId: input.organizationId,
+      action: input.action,
+      actorUserId: input.actorUserId,
+      notes: input.notes ?? null,
+      metadata: {},
+    });
 
-  const [updated] = await db
-    .update(approvalsTable)
-    .set({
-      state: input.action,
-      resolvedAt: new Date(),
-      resolvedBy: input.actorUserId,
-      notes: input.notes ?? existing.notes,
-    })
-    .where(eq(approvalsTable.id, input.approvalId))
-    .returning();
-
-  // Sprint 5: include organizationId for direct tenant ownership on join table
-  await db.insert(approvalHistoryTable).values({
-    id: randomUUID(),
-    approvalId: input.approvalId,
-    organizationId: input.organizationId,
-    action: input.action,
-    actorUserId: input.actorUserId,
-    notes: input.notes ?? null,
-    metadata: {},
-  });
-
-  return updated!;
+    return updated!;
+  }));
 }
 
 // ─── Query ────────────────────────────────────────────────────────────────────

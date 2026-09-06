@@ -9,15 +9,31 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import { usageEventsTable, usagePeriodSummariesTable, tenantSubscriptionsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import type { UsageDimensionCode } from "@workspace/shared";
 
+type DbClient = typeof db;
+
+function withUsageTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "usage_service", purpose },
+    fn,
+  );
+}
+
 // ─── Period helpers ───────────────────────────────────────────────────────────
 
-async function getActivePeriod(organizationId: string): Promise<{ start: Date; end: Date } | null> {
-  const [sub] = await db
+async function getActivePeriod(
+  client: DbClient,
+  organizationId: string,
+): Promise<{ start: Date; end: Date } | null> {
+  const [sub] = await client
     .select()
     .from(tenantSubscriptionsTable)
     .where(eq(tenantSubscriptionsTable.organizationId, organizationId))
@@ -57,50 +73,52 @@ export async function recordUsageEvent(opts: RecordUsageOptions): Promise<Record
     metadata = {},
   } = opts;
 
-  const period = await getActivePeriod(organizationId);
-
   try {
     const eventId = randomUUID();
-    await db.insert(usageEventsTable).values({
-      id: eventId,
-      organizationId,
-      dimensionCode,
-      quantity,
-      idempotencyKey,
-      taskId: taskId ?? null,
-      specialistCode: specialistCode ?? null,
-      metadata,
-      periodStart: period?.start ?? null,
-      periodEnd: period?.end ?? null,
-    });
+    await withUsageTenant(organizationId, "usage.record_event", async (client) => client.transaction(async (tx) => {
+      const period = await getActivePeriod(tx, organizationId);
 
-    // Update or insert the period summary
-    if (period) {
-      const summaryId = `${organizationId}_${dimensionCode}_${period.start.toISOString()}`;
-      await db
-        .insert(usagePeriodSummariesTable)
-        .values({
-          id: summaryId,
-          organizationId,
-          dimensionCode,
-          periodStart: period.start,
-          periodEnd: period.end,
-          totalQuantity: quantity,
-          eventCount: 1,
-        })
-        .onConflictDoUpdate({
-          target: [
-            usagePeriodSummariesTable.organizationId,
-            usagePeriodSummariesTable.dimensionCode,
-            usagePeriodSummariesTable.periodStart,
-          ],
-          set: {
-            totalQuantity: sql`${usagePeriodSummariesTable.totalQuantity} + ${quantity}`,
-            eventCount: sql`${usagePeriodSummariesTable.eventCount} + 1`,
-            lastUpdatedAt: new Date(),
-          },
-        });
-    }
+      await tx.insert(usageEventsTable).values({
+        id: eventId,
+        organizationId,
+        dimensionCode,
+        quantity,
+        idempotencyKey,
+        taskId: taskId ?? null,
+        specialistCode: specialistCode ?? null,
+        metadata,
+        periodStart: period?.start ?? null,
+        periodEnd: period?.end ?? null,
+      });
+
+      // Update or insert the period summary
+      if (period) {
+        const summaryId = `${organizationId}_${dimensionCode}_${period.start.toISOString()}`;
+        await tx
+          .insert(usagePeriodSummariesTable)
+          .values({
+            id: summaryId,
+            organizationId,
+            dimensionCode,
+            periodStart: period.start,
+            periodEnd: period.end,
+            totalQuantity: quantity,
+            eventCount: 1,
+          })
+          .onConflictDoUpdate({
+            target: [
+              usagePeriodSummariesTable.organizationId,
+              usagePeriodSummariesTable.dimensionCode,
+              usagePeriodSummariesTable.periodStart,
+            ],
+            set: {
+              totalQuantity: sql`${usagePeriodSummariesTable.totalQuantity} + ${quantity}`,
+              eventCount: sql`${usagePeriodSummariesTable.eventCount} + 1`,
+              lastUpdatedAt: new Date(),
+            },
+          });
+      }
+    }));
 
     return { recorded: true, duplicate: false, eventId };
   } catch (err: unknown) {

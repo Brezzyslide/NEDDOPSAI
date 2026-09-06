@@ -22,7 +22,14 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@workspace/db", async () => {
   const actual = await vi.importActual<typeof import("@workspace/db/schema")>("@workspace/db/schema");
-  return { ...actual, db: mockDb };
+  return {
+    ...actual,
+    db: mockDb,
+    withSystemTenantContext: vi.fn(async (_ctx, fn) => fn({
+      ...mockDb,
+      transaction: vi.fn(async (txFn) => txFn(mockDb)),
+    })),
+  };
 });
 
 // ─── Imports ──────────────────────────────────────────────────────────────────

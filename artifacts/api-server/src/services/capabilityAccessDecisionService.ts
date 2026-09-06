@@ -16,7 +16,7 @@
  */
 
 import { randomUUID } from "crypto";
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   capabilityDecisionsTable,
   orgAuditLogTable,
@@ -36,6 +36,19 @@ import type {
   CapabilityIdentificationResult,
 } from "./capabilityIdentificationService.js";
 import type { WorkforcePackCode } from "@workspace/shared";
+
+type DbClient = typeof db;
+
+function withCapabilityTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "capability_access_decision_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -427,7 +440,8 @@ async function persistDecision(
   correlationId: string,
 ): Promise<void> {
   try {
-    await db.insert(capabilityDecisionsTable).values({
+    await withCapabilityTenant(organizationId, "capability_decision.persist", async (client) => {
+      await client.insert(capabilityDecisionsTable).values({
       id: decisionData.decisionId,
       organizationId,
       userId,
@@ -445,6 +459,7 @@ async function persistDecision(
       expiresAt: null,
       correlationId,
     });
+    });
   } catch { /* non-critical — do not break the request */ }
 }
 
@@ -455,7 +470,8 @@ async function writeAuditEvent(
   metadata: Record<string, unknown>,
 ): Promise<void> {
   try {
-    await db.insert(orgAuditLogTable).values({
+    await withCapabilityTenant(orgId, "capability_decision.audit", async (client) => {
+      await client.insert(orgAuditLogTable).values({
       id: randomUUID(),
       organizationId: orgId,
       actorUserId: userId,
@@ -466,6 +482,7 @@ async function writeAuditEvent(
       isSensitive: false,
       metadata,
       occurredAt: new Date(),
+    });
     });
   } catch { /* non-critical */ }
 }

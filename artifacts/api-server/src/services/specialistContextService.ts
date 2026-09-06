@@ -27,7 +27,7 @@
  *   - Cross-specialist memory is never included
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   organisationMemoryTable,
   organisationSpecialistConfigTable,
@@ -48,6 +48,19 @@ import type { SensitivityLevel } from "../lib/knowledge/IKnowledgeProvider.js";
 import { projectKnowledgeCitationsToEvidenceReferences } from "../lib/knowledge/evidenceReferenceProjection.js";
 import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import type { EvidenceReference } from "./specialistIntelligenceService.js";
+
+type DbClient = typeof db;
+
+function withSpecialistContextTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "specialist_context_service", purpose },
+    fn,
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -418,10 +431,10 @@ export async function buildSpecialistContext(params: {
   } = params;
 
   const [task, convMemRow, previousRunRows, conversationMessageRows] =
-    await Promise.all([
+    await withSpecialistContextTenant(organizationId, "specialist_context.assemble", async (client) => Promise.all([
       // Task row — scope + approval state
       taskId
-        ? db.select({ title: tasksTable.title, approvalState: tasksTable.approvalState, currentState: tasksTable.currentState })
+        ? client.select({ title: tasksTable.title, approvalState: tasksTable.approvalState, currentState: tasksTable.currentState })
             .from(tasksTable)
             .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
             .limit(1)
@@ -430,7 +443,7 @@ export async function buildSpecialistContext(params: {
 
       // Pinned decisions from conversation memory
       conversationId
-        ? db.select({ pinnedDecisions: conversationMemoryTable.pinnedDecisions })
+        ? client.select({ pinnedDecisions: conversationMemoryTable.pinnedDecisions })
             .from(conversationMemoryTable)
             .where(and(
               eq(conversationMemoryTable.organizationId, organizationId),
@@ -442,7 +455,7 @@ export async function buildSpecialistContext(params: {
 
       // Previous specialist run summaries for the same task
       taskId
-        ? db.select({
+        ? client.select({
             id:               specialistRunsTable.id,
             workforceRoleCode: specialistRunsTable.workforceRoleCode,
             resultSummary:    specialistRunsTable.resultSummary,
@@ -459,7 +472,7 @@ export async function buildSpecialistContext(params: {
 
       // Conversation message history
       conversationId
-        ? db.select({
+        ? client.select({
             id:         conversationMessagesTable.id,
             senderType: conversationMessagesTable.senderType,
             content:    conversationMessagesTable.content,
@@ -472,7 +485,7 @@ export async function buildSpecialistContext(params: {
             .orderBy(asc(conversationMessagesTable.createdAt))
             .limit(50)
         : Promise.resolve([]),
-    ]);
+    ]));
 
   // Extract pinned decisions
   interface PinnedDecision { id: string; decision: string; }
