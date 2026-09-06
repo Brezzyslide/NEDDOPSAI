@@ -10,6 +10,7 @@
     "db:bootstrap": "tsx src/scripts/db-bootstrap.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run src/__tests__",
+    "check:db-boundaries": "node scripts/check-db-boundaries.mjs",
     "test:gate:compare": "node scripts/compare-vitest-deterministic-gate.mjs --run-current",
     "test:gate:compare:reports": "node scripts/compare-vitest-deterministic-gate.mjs"
   },
