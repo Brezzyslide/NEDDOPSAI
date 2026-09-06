@@ -34,7 +34,7 @@
     {
       "file": "src/services/ingestionJobService.ts",
       "kind": "direct-db",
-      "reason": "Worker queue claim is a broader-role cross-org operation pending SECURITY DEFINER SKIP LOCKED claim function."
+      "reason": "Calls worker-only SECURITY DEFINER claim_next_ingestion_job before tenant context exists; processing after claim is tenant-scoped using the returned organizationId."
     },
     {
       "file": "src/routes/organizations.ts",

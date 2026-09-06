@@ -5,8 +5,6 @@ import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const EXPECTED_TEST_FILE_COUNT = 256;
-
 const args = process.argv.slice(2).filter((arg, index) => !(arg === "--" && index <= 1));
 
 if (args.length < 2 && args[0] !== "--run-current") {
@@ -17,6 +15,21 @@ if (args.length < 2 && args[0] !== "--run-current") {
   ].join("\n"));
   process.exit(2);
 }
+
+function runBoundaryGuard() {
+  console.log("Running DB boundary guard: pnpm run check:db-boundaries");
+  const result = spawnSync("pnpm", ["run", "check:db-boundaries"], {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+runBoundaryGuard();
 
 function runCurrentReport(outputPath) {
   const vitestArgs = [
@@ -137,24 +150,25 @@ function testFileCount(report) {
   return (report.testResults ?? []).length;
 }
 
-function validateReportShape(label, report, expectedFiles) {
+function validateCurrentReportShape(report, expectedFiles) {
   const count = testFileCount(report);
   const files = new Set((report.testResults ?? []).map(result => normalisePath(filePath(result))));
   const errors = [];
-  if (count !== EXPECTED_TEST_FILE_COUNT) {
-    errors.push({
-      label,
-      type: "file_count",
-      expected: EXPECTED_TEST_FILE_COUNT,
-      actual: count,
-    });
-  }
   if (expectedFiles) {
+    const expectedCount = expectedFiles.size;
+    if (count !== expectedCount) {
+      errors.push({
+        label: "current",
+        type: "file_count",
+        expected: expectedCount,
+        actual: count,
+      });
+    }
     const missing = [...expectedFiles].filter(file => !files.has(file)).sort();
     const extra = [...files].filter(file => !expectedFiles.has(file)).sort();
     if (missing.length > 0 || extra.length > 0) {
       errors.push({
-        label,
+        label: "current",
         type: "file_set",
         missing,
         extra,
@@ -164,13 +178,25 @@ function validateReportShape(label, report, expectedFiles) {
   return errors;
 }
 
+function validateNoRemovedTestFiles(parentReport, currentReport) {
+  const parentFiles = new Set((parentReport.testResults ?? []).map(result => normalisePath(filePath(result))));
+  const currentFiles = new Set((currentReport.testResults ?? []).map(result => normalisePath(filePath(result))));
+  const removed = [...parentFiles].filter(file => !currentFiles.has(file)).sort();
+  if (removed.length === 0) return [];
+  return [{
+    label: "current",
+    type: "file_removed",
+    removed,
+  }];
+}
+
 const parent = readReport(parentPath);
 const current = readReport(currentPath);
 const zeroCollectedExclusions = readZeroCollectedExclusions();
 const expectedFiles = expectedTestFiles();
 const reportShapeErrors = [
-  ...validateReportShape("parent", parent, expectedFiles),
-  ...validateReportShape("current", current, expectedFiles),
+  ...validateCurrentReportShape(current, expectedFiles),
+  ...validateNoRemovedTestFiles(parent, current),
 ];
 const parentFailures = failedNames(parent);
 const currentFailures = failedNames(current);
@@ -202,7 +228,7 @@ const summary = {
     skipped: current.numPendingTests,
     files: testFileCount(current),
   },
-  expectedFiles: EXPECTED_TEST_FILE_COUNT,
+  expectedFiles: expectedFiles?.size ?? null,
   reportShapeErrors,
   releaseOnlyFailures: releaseOnly,
   zeroCollectedFiles: unexpectedCurrentZeroCollected,
@@ -223,6 +249,8 @@ if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || un
   for (const error of reportShapeErrors) {
     if (error.type === "file_count") {
       console.error(`${error.label} test file count mismatch: expected ${error.expected}, got ${error.actual}`);
+    } else if (error.type === "file_removed") {
+      console.error(`${error.label} removed test files: ${error.removed.join(", ")}`);
     } else {
       if (error.missing.length > 0) console.error(`${error.label} missing test files: ${error.missing.join(", ")}`);
       if (error.extra.length > 0) console.error(`${error.label} unexpected test files: ${error.extra.join(", ")}`);
