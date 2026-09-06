@@ -41,7 +41,7 @@ for (const file of listTypeScriptFiles(requestPathRoots)) {
   const source = fs.readFileSync(file, "utf8");
   const lines = source.split(/\r?\n/);
 
-  if (hasPlatformDbImport(source) && !isAllowed("platform-db-import", rel)) {
+  if (hasPlatformDbImport(source) && !isPlatformRouteFile(rel) && !isAllowed("platform-db-import", rel)) {
     violations.push({
       kind: "platform-db-import",
       file: rel,
@@ -80,6 +80,14 @@ function normaliseFile(file) {
 
 function isAllowed(kind, file) {
   return allowed.has(`${kind}:${file}`);
+}
+
+function isPlatformRouteFile(file) {
+  return (
+    /^src\/routes\/v1\/platform[A-Z][^/]*\.ts$/.test(file) ||
+    file === "src/routes/v1/platform.ts" ||
+    file === "src/routes/v1/admin.ts"
+  );
 }
 
 function hasPlatformDbImport(source) {

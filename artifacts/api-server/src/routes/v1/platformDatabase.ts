@@ -38,6 +38,7 @@
  */
 
 import { Router, type Request, type Response } from "express";
+import { platformDb } from "@workspace/db/platform";
 import {
   provisionOrgDb,
   deprovisionOrgDb,
@@ -51,7 +52,6 @@ import {
   verifyRLS,
   verifyNeedsOpsAppRoleIsSecure,
 } from "@workspace/org-db";
-import { db } from "@workspace/db";
 import { orgDatabaseRegistryTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
@@ -139,8 +139,7 @@ platformDatabaseRouter.get(
     const organizationId = req.params.id;
     if (!organizationId) return res.status(400).json({ error: "Organization ID required" });
 
-    const [entry] = await db
-      .select()
+    const [entry] = await platformDb.select()
       .from(orgDatabaseRegistryTable)
       .where(eq(orgDatabaseRegistryTable.organizationId, organizationId))
       .limit(1);

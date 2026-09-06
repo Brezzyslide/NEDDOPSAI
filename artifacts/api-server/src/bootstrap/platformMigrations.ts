@@ -180,6 +180,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds bounded SECURITY DEFINER functions for startup checkpoint expiry and stuck-resume recovery.",
   },
+  {
+    id: "0050-platform-public-worker-boundaries",
+    file: "0050_platform_public_worker_boundaries.sql",
+    transactional: true,
+    notes: "Adds platform and worker app roles, public catalogue column grants, and worker-only ingestion job claim function.",
+  },
 ] as const;
 
 export function defaultMigrationsDir(): string {

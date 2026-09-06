@@ -5,11 +5,18 @@
  * These routes are separate from org-level routes and have no tenant context.
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-// Sprint 3: use DB-backed platform auth middleware (also accepts Clerk platformAdmin flag)
+
 import { requirePlatformAdmin } from "../../middlewares/requirePlatformRole.js";
-import { db, usersTable, organizationsTable, membershipsTable, auditLogTable } from "@workspace/db";
+import {
+  usersTable,
+  organizationsTable,
+  membershipsTable,
+  auditLogTable,
+} from "@workspace/db";
 import { count } from "drizzle-orm";
 
 const router = Router();
@@ -17,10 +24,10 @@ const router = Router();
 // GET /v1/admin/status
 router.get("/status", requireAuth, requirePlatformAdmin, async (_req, res, next) => {
   try {
-    const [userCount] = await db.select({ n: count() }).from(usersTable);
-    const [orgCount] = await db.select({ n: count() }).from(organizationsTable);
-    const [membershipCount] = await db.select({ n: count() }).from(membershipsTable);
-    const [auditCount] = await db.select({ n: count() }).from(auditLogTable);
+    const [userCount] = await platformDb.select({ n: count() }).from(usersTable);
+    const [orgCount] = await platformDb.select({ n: count() }).from(organizationsTable);
+    const [membershipCount] = await platformDb.select({ n: count() }).from(membershipsTable);
+    const [auditCount] = await platformDb.select({ n: count() }).from(auditLogTable);
 
     res.json({
       platform: "NeedsOps AI+",
@@ -44,8 +51,7 @@ router.get("/users", requireAuth, requirePlatformAdmin, async (req, res, next) =
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const users = await db
-      .select()
+    const users = await platformDb.select()
       .from(usersTable)
       .limit(limit)
       .offset(offset)
@@ -64,8 +70,7 @@ router.get("/tenants", requireAuth, requirePlatformAdmin, async (req, res, next)
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const orgs = await db
-      .select()
+    const orgs = await platformDb.select()
       .from(organizationsTable)
       .limit(limit)
       .offset(offset)

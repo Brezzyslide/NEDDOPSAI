@@ -20,11 +20,15 @@
  * POST   /v1/platform/packs/:code/prices/:vid/archive    archive
  */
 
-import { Router } from "express";
-import { randomUUID } from "crypto";
-import { eq, asc, and, desc } from "drizzle-orm";
 import {
-  db,
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
+import { randomUUID } from "crypto";
+import { eq,
+  asc,
+  and,
+  desc } from "drizzle-orm";
+import {
   workforcePacksTable,
   tenantWorkforcePacksTable,
   workforcePackPriceVersionsTable,
@@ -50,8 +54,7 @@ async function packWithDetail(pack: any) {
     executionStatus: s.executionStatus,
   }));
 
-  const priceVersions = await db
-    .select()
+  const priceVersions = await platformDb.select()
     .from(workforcePackPriceVersionsTable)
     .where(eq(workforcePackPriceVersionsTable.workforcePackId, pack.id))
     .orderBy(desc(workforcePackPriceVersionsTable.versionNumber));
@@ -79,8 +82,7 @@ function validatePricing(monthlyPriceCents?: number, annualPriceCents?: number, 
 // GET /v1/platform/packs
 router.get("/", requirePlatformAuth, async (req, res) => {
   try {
-    const packs = await db
-      .select()
+    const packs = await platformDb.select()
       .from(workforcePacksTable)
       .orderBy(asc(workforcePacksTable.displayOrder));
     const result = await Promise.all(packs.map(packWithDetail));
@@ -95,8 +97,7 @@ router.get("/:code/prices", requirePlatformAuth, async (_req, _res, _next) => { 
 
 router.get("/:code", requirePlatformAuth, async (req, res) => {
   try {
-    const [pack] = await db
-      .select()
+    const [pack] = await platformDb.select()
       .from(workforcePacksTable)
       .where(eq(workforcePacksTable.code, req.params.code))
       .limit(1);
@@ -104,8 +105,7 @@ router.get("/:code", requirePlatformAuth, async (req, res) => {
       res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } });
       return;
     }
-    const grantRows = await db
-      .select({ orgId: tenantWorkforcePacksTable.organizationId })
+    const grantRows = await platformDb.select({ orgId: tenantWorkforcePacksTable.organizationId })
       .from(tenantWorkforcePacksTable)
       .where(eq(tenantWorkforcePacksTable.packCode, req.params.code));
     res.json({ ...(await packWithDetail(pack)), orgGrantCount: grantRows.length });
@@ -135,13 +135,13 @@ router.post("/", requirePlatformAuth, async (req, res) => {
   const id = `pack_${code}`;
 
   try {
-    const existing = await db.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, code)).limit(1);
+    const existing = await platformDb.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, code)).limit(1);
     if (existing.length) {
       res.status(409).json({ error: { code: "CONFLICT", message: `Pack code '${code}' already exists.` } });
       return;
     }
 
-    const [pack] = await db.insert(workforcePacksTable).values({
+    const [pack] = await platformDb.insert(workforcePacksTable).values({
       id, code, name, description, marketingTagline, industry, iconEmoji, colorHex, tier,
       status: "draft",
       isFree, pricingStatus, fallbackDisplayText,
@@ -171,7 +171,7 @@ router.patch("/:code", requirePlatformAuth, async (req, res) => {
   }
 
   try {
-    const [pack] = await db.update(workforcePacksTable).set(updates).where(eq(workforcePacksTable.code, req.params.code)).returning();
+    const [pack] = await platformDb.update(workforcePacksTable).set(updates).where(eq(workforcePacksTable.code, req.params.code)).returning();
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
     invalidatePublicPacksCache();
     await auditService.writeAuditEvent({
@@ -188,7 +188,7 @@ router.patch("/:code", requirePlatformAuth, async (req, res) => {
 // POST /v1/platform/packs/:code/publish
 router.post("/:code/publish", requirePlatformAuth, async (req, res) => {
   try {
-    const [pack] = await db.update(workforcePacksTable)
+    const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "available", isPubliclyVisible: true, updatedAt: new Date() })
       .where(eq(workforcePacksTable.code, req.params.code)).returning();
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
@@ -207,7 +207,7 @@ router.post("/:code/publish", requirePlatformAuth, async (req, res) => {
 // POST /v1/platform/packs/:code/unpublish
 router.post("/:code/unpublish", requirePlatformAuth, async (req, res) => {
   try {
-    const [pack] = await db.update(workforcePacksTable)
+    const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "draft", isPubliclyVisible: false, updatedAt: new Date() })
       .where(eq(workforcePacksTable.code, req.params.code)).returning();
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
@@ -226,7 +226,7 @@ router.post("/:code/unpublish", requirePlatformAuth, async (req, res) => {
 // POST /v1/platform/packs/:code/archive
 router.post("/:code/archive", requirePlatformAuth, async (req, res) => {
   try {
-    const [pack] = await db.update(workforcePacksTable)
+    const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "archived", isPubliclyVisible: false, updatedAt: new Date() })
       .where(eq(workforcePacksTable.code, req.params.code)).returning();
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
@@ -250,10 +250,10 @@ router.post("/:code/grant", requirePlatformAuth, async (req, res) => {
     return;
   }
   try {
-    const [pack] = await db.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
+    const [pack] = await platformDb.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
 
-    const [grant] = await db.insert(tenantWorkforcePacksTable).values({
+    const [grant] = await platformDb.insert(tenantWorkforcePacksTable).values({
       id: `twp_${randomUUID()}`,
       organizationId,
       packCode: req.params.code,
@@ -288,10 +288,10 @@ router.post("/:code/grant", requirePlatformAuth, async (req, res) => {
 // GET /v1/platform/packs/:code/prices
 router.get("/:code/prices", requirePlatformAuth, async (req, res) => {
   try {
-    const [pack] = await db.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
+    const [pack] = await platformDb.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
 
-    const versions = await db.select().from(workforcePackPriceVersionsTable)
+    const versions = await platformDb.select().from(workforcePackPriceVersionsTable)
       .where(eq(workforcePackPriceVersionsTable.workforcePackId, pack.id))
       .orderBy(desc(workforcePackPriceVersionsTable.versionNumber));
     res.json({ priceVersions: versions });
@@ -311,12 +311,12 @@ router.post("/:code/prices", requirePlatformAuth, async (req, res) => {
   if (!currency) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "currency is required." } }); return; }
 
   try {
-    const [pack] = await db.select().from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
+    const [pack] = await platformDb.select().from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
     if (pack.status === "archived") { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Archived pack cannot have new pricing." } }); return; }
 
     // Determine next version number
-    const existing = await db.select({ versionNumber: workforcePackPriceVersionsTable.versionNumber })
+    const existing = await platformDb.select({ versionNumber: workforcePackPriceVersionsTable.versionNumber })
       .from(workforcePackPriceVersionsTable)
       .where(eq(workforcePackPriceVersionsTable.workforcePackId, pack.id))
       .orderBy(desc(workforcePackPriceVersionsTable.versionNumber))
@@ -324,7 +324,7 @@ router.post("/:code/prices", requirePlatformAuth, async (req, res) => {
 
     const nextVersion = (existing[0]?.versionNumber ?? 0) + 1;
 
-    const [version] = await db.insert(workforcePackPriceVersionsTable).values({
+    const [version] = await platformDb.insert(workforcePackPriceVersionsTable).values({
       id:               `ppv_${randomUUID()}`,
       workforcePackId:  pack.id,
       versionNumber:    nextVersion,
@@ -355,7 +355,7 @@ router.patch("/:code/prices/:vid", requirePlatformAuth, async (req, res) => {
   const { monthlyPriceCents, annualPriceCents, currency, notes, effectiveFrom } = req.body;
 
   try {
-    const [version] = await db.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
+    const [version] = await platformDb.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
     if (!version) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Price version not found." } }); return; }
     if (version.status !== "draft") {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Only draft price versions can be edited. To change an active price, create a new version." } });
@@ -372,7 +372,7 @@ router.patch("/:code/prices/:vid", requirePlatformAuth, async (req, res) => {
     if (notes      !== undefined) updates.notes      = notes;
     if (effectiveFrom !== undefined) updates.effectiveFrom = new Date(effectiveFrom);
 
-    const [updated] = await db.update(workforcePackPriceVersionsTable).set(updates).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).returning();
+    const [updated] = await platformDb.update(workforcePackPriceVersionsTable).set(updates).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).returning();
     res.json({ priceVersion: updated });
   } catch (err: any) {
     res.status(500).json({ error: { code: "INTERNAL_ERROR", message: err.message } });
@@ -384,7 +384,7 @@ router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res)
   const staff = req.platformUserId!;
 
   try {
-    const [version] = await db.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
+    const [version] = await platformDb.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
     if (!version) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Price version not found." } }); return; }
     if (!["draft", "scheduled"].includes(version.status)) {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Only draft or scheduled versions can be activated." } }); return;
@@ -394,7 +394,7 @@ router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res)
     }
 
     // Supersede previous active version for same currency
-    await db.update(workforcePackPriceVersionsTable)
+    await platformDb.update(workforcePackPriceVersionsTable)
       .set({ status: "superseded", isCurrent: false, updatedAt: new Date() })
       .where(and(
         eq(workforcePackPriceVersionsTable.workforcePackId, version.workforcePackId),
@@ -403,13 +403,13 @@ router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res)
       ));
 
     // Activate this version
-    const [activated] = await db.update(workforcePackPriceVersionsTable)
+    const [activated] = await platformDb.update(workforcePackPriceVersionsTable)
       .set({ status: "active", isCurrent: true, publishedAt: new Date(), approvedBy: staff, updatedAt: new Date() })
       .where(eq(workforcePackPriceVersionsTable.id, version.id))
       .returning();
 
     // Update pack pricingStatus to reflect it now has pricing
-    await db.update(workforcePacksTable)
+    await platformDb.update(workforcePacksTable)
       .set({ pricingStatus: "not_configured", updatedAt: new Date() }) // reset; public endpoint derives from price versions
       .where(eq(workforcePacksTable.id, version.workforcePackId));
 
@@ -430,10 +430,10 @@ router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res)
 // POST /v1/platform/packs/:code/prices/:vid/archive
 router.post("/:code/prices/:vid/archive", requirePlatformAuth, async (req, res) => {
   try {
-    const [version] = await db.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
+    const [version] = await platformDb.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
     if (!version) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Price version not found." } }); return; }
 
-    const [archived] = await db.update(workforcePackPriceVersionsTable)
+    const [archived] = await platformDb.update(workforcePackPriceVersionsTable)
       .set({ status: "archived", isCurrent: false, archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(workforcePackPriceVersionsTable.id, version.id))
       .returning();

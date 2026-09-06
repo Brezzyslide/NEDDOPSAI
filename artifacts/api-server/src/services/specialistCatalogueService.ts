@@ -15,11 +15,13 @@
 
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { specialistCatalogueTable } from "@workspace/db";
+import { platformAuditLogTable, specialistCatalogueTable } from "@workspace/db";
 import { eq, asc, desc, and, or, like, sql } from "drizzle-orm";
 import { SPECIALISTS, WORKFORCE_PACKS } from "../lib/workforceRegistry.js";
 import type { SpecialistCatalogueRow } from "@workspace/db";
 import { logger } from "../lib/logger.js";
+
+type CatalogueDb = typeof db;
 
 // ─── Platform audit helper ────────────────────────────────────────────────────
 
@@ -28,10 +30,10 @@ async function logPlatformCatalogueEvent(
   specialistCode: string,
   actorUserId: string | null,
   metadata: Record<string, unknown> = {},
+  client: CatalogueDb = db,
 ): Promise<void> {
   try {
-    const { db: platformDb, platformAuditLogTable } = await import("@workspace/db");
-    await platformDb.insert(platformAuditLogTable).values({
+    await client.insert(platformAuditLogTable).values({
       id: randomUUID(),
       actorUserId: actorUserId ?? "system",
       actorType: actorUserId ? "platform_staff" : "system",
@@ -83,7 +85,7 @@ export type CatalogueEntry = SpecialistCatalogueRow;
  *   - Existing rows: update only category, pack_membership, version_metadata,
  *     execution_status (structural) — preserve all commercially-edited fields
  */
-export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; updated: number }> {
+export async function seedCatalogueFromRegistry(client: CatalogueDb = db): Promise<{ inserted: number; updated: number }> {
   let inserted = 0;
   let updated = 0;
 
@@ -100,7 +102,7 @@ export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; u
       colour: specialist.colour,
     };
 
-    const [existing] = await db
+    const [existing] = await client
       .select({ id: specialistCatalogueTable.id })
       .from(specialistCatalogueTable)
       .where(eq(specialistCatalogueTable.specialistCode, specialist.code))
@@ -108,7 +110,7 @@ export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; u
 
     if (existing) {
       // Existing row — update only structural fields; preserve commercial edits
-      await db
+      await client
         .update(specialistCatalogueTable)
         .set({
           category:        specialist.departmentCode,
@@ -121,7 +123,7 @@ export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; u
       updated++;
     } else {
       // New row — insert with full defaults from registry
-      await db.insert(specialistCatalogueTable).values({
+      await client.insert(specialistCatalogueTable).values({
         id:              `cat_${specialist.code}`,
         specialistCode:  specialist.code,
         displayName:     specialist.displayName,
@@ -151,7 +153,7 @@ export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; u
   }
 
   // Detect codes in DB that have no registry match (log warning only)
-  const allDbCodes = await db
+  const allDbCodes = await client
     .select({ code: specialistCatalogueTable.specialistCode })
     .from(specialistCatalogueTable);
   const registryCodes = new Set(SPECIALISTS.map(s => s.code));
@@ -170,7 +172,7 @@ export async function seedCatalogueFromRegistry(): Promise<{ inserted: number; u
 
 // ─── List ─────────────────────────────────────────────────────────────────────
 
-export async function listCatalogue(options: CatalogueListOptions = {}): Promise<{
+export async function listCatalogue(options: CatalogueListOptions = {}, client: CatalogueDb = db): Promise<{
   entries: CatalogueEntry[];
   total: number;
   page: number;
@@ -210,14 +212,14 @@ export async function listCatalogue(options: CatalogueListOptions = {}): Promise
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [entries, [countRow]] = await Promise.all([
-    db
+    client
       .select()
       .from(specialistCatalogueTable)
       .where(where)
       .orderBy(asc(specialistCatalogueTable.displayOrder), asc(specialistCatalogueTable.specialistCode))
       .limit(limit)
       .offset((page - 1) * limit),
-    db
+    client
       .select({ n: sql<number>`count(*)::int` })
       .from(specialistCatalogueTable)
       .where(where),
@@ -228,8 +230,8 @@ export async function listCatalogue(options: CatalogueListOptions = {}): Promise
 
 // ─── Get by code ──────────────────────────────────────────────────────────────
 
-export async function getCatalogueEntry(specialistCode: string): Promise<CatalogueEntry | null> {
-  const [entry] = await db
+export async function getCatalogueEntry(specialistCode: string, client: CatalogueDb = db): Promise<CatalogueEntry | null> {
+  const [entry] = await client
     .select()
     .from(specialistCatalogueTable)
     .where(eq(specialistCatalogueTable.specialistCode, specialistCode))
@@ -243,8 +245,9 @@ export async function updateCatalogueEntry(
   specialistCode: string,
   input: UpdateCatalogueInput,
   changedBy: string,
+  client: CatalogueDb = db,
 ): Promise<CatalogueEntry> {
-  const existing = await getCatalogueEntry(specialistCode);
+  const existing = await getCatalogueEntry(specialistCode, client);
   if (!existing) {
     throw Object.assign(new Error("Specialist not found in catalogue"), { statusCode: 404 });
   }
@@ -252,7 +255,7 @@ export async function updateCatalogueEntry(
     throw Object.assign(new Error("Cannot update an archived specialist"), { statusCode: 409 });
   }
 
-  const [updated] = await db
+  const [updated] = await client
     .update(specialistCatalogueTable)
     .set({
       ...( input.displayName  !== undefined && { displayName:  input.displayName  }),
@@ -274,7 +277,7 @@ export async function updateCatalogueEntry(
   void logPlatformCatalogueEvent("catalogue.specialist_updated", specialistCode, changedBy, {
     changes: Object.keys(input),
     newVersion: updated.versionCounter,
-  });
+  }, client);
 
   return updated;
 }
@@ -293,8 +296,9 @@ export async function updateCatalogueEntry(
 export async function archiveCatalogueEntry(
   specialistCode: string,
   changedBy: string,
+  client: CatalogueDb = db,
 ): Promise<CatalogueEntry> {
-  const existing = await getCatalogueEntry(specialistCode);
+  const existing = await getCatalogueEntry(specialistCode, client);
   if (!existing) {
     throw Object.assign(new Error("Specialist not found in catalogue"), { statusCode: 404 });
   }
@@ -314,7 +318,7 @@ export async function archiveCatalogueEntry(
     );
   }
 
-  const [updated] = await db
+  const [updated] = await client
     .update(specialistCatalogueTable)
     .set({
       isArchived:     true,
@@ -331,7 +335,7 @@ export async function archiveCatalogueEntry(
   void logPlatformCatalogueEvent("catalogue.specialist_archived", specialistCode, changedBy, {
     previousStatus: existing.executionStatus,
     newVersion: updated.versionCounter,
-  });
+  }, client);
 
   return updated;
 }
@@ -341,8 +345,9 @@ export async function archiveCatalogueEntry(
 export async function unarchiveCatalogueEntry(
   specialistCode: string,
   changedBy: string,
+  client: CatalogueDb = db,
 ): Promise<CatalogueEntry> {
-  const existing = await getCatalogueEntry(specialistCode);
+  const existing = await getCatalogueEntry(specialistCode, client);
   if (!existing) {
     throw Object.assign(new Error("Specialist not found in catalogue"), { statusCode: 404 });
   }
@@ -350,7 +355,7 @@ export async function unarchiveCatalogueEntry(
     throw Object.assign(new Error("Specialist is not archived"), { statusCode: 409 });
   }
 
-  const [updated] = await db
+  const [updated] = await client
     .update(specialistCatalogueTable)
     .set({
       isArchived:     false,
@@ -366,7 +371,7 @@ export async function unarchiveCatalogueEntry(
 
   void logPlatformCatalogueEvent("catalogue.specialist_unarchived", specialistCode, changedBy, {
     newVersion: updated.versionCounter,
-  });
+  }, client);
 
   return updated;
 }
@@ -377,8 +382,9 @@ export async function assignToPack(
   specialistCode: string,
   packCode: string,
   changedBy: string,
+  client: CatalogueDb = db,
 ): Promise<CatalogueEntry> {
-  const existing = await getCatalogueEntry(specialistCode);
+  const existing = await getCatalogueEntry(specialistCode, client);
   if (!existing) {
     throw Object.assign(new Error("Specialist not found in catalogue"), { statusCode: 404 });
   }
@@ -392,7 +398,7 @@ export async function assignToPack(
     );
   }
 
-  const [updated] = await db
+  const [updated] = await client
     .update(specialistCatalogueTable)
     .set({
       packMembership: packCode,
@@ -409,7 +415,7 @@ export async function assignToPack(
     fromPack: existing.packMembership,
     toPack: packCode,
     newVersion: updated.versionCounter,
-  });
+  }, client);
 
   return updated;
 }
@@ -420,8 +426,9 @@ export async function markComingSoon(
   specialistCode: string,
   comingSoon: boolean,
   changedBy: string,
+  client: CatalogueDb = db,
 ): Promise<CatalogueEntry> {
-  const existing = await getCatalogueEntry(specialistCode);
+  const existing = await getCatalogueEntry(specialistCode, client);
   if (!existing) {
     throw Object.assign(new Error("Specialist not found in catalogue"), { statusCode: 404 });
   }
@@ -429,7 +436,7 @@ export async function markComingSoon(
     throw Object.assign(new Error("Cannot update an archived specialist"), { statusCode: 409 });
   }
 
-  const [updated] = await db
+  const [updated] = await client
     .update(specialistCatalogueTable)
     .set({
       comingSoon:     comingSoon,
@@ -448,6 +455,7 @@ export async function markComingSoon(
     specialistCode,
     changedBy,
     { comingSoon, newVersion: updated.versionCounter },
+    client,
   );
 
   return updated;
@@ -460,11 +468,11 @@ export async function markComingSoon(
  * commercial data; registry fields provide runtime/code-defined data.
  * Used by the workforce browser endpoint to serve enriched specialist data.
  */
-export async function getMergedSpecialist(specialistCode: string): Promise<Record<string, unknown> | null> {
+export async function getMergedSpecialist(specialistCode: string, client: CatalogueDb = db): Promise<Record<string, unknown> | null> {
   const registryEntry = SPECIALISTS.find(s => s.code === specialistCode);
   if (!registryEntry) return null;
 
-  const catalogueEntry = await getCatalogueEntry(specialistCode);
+  const catalogueEntry = await getCatalogueEntry(specialistCode, client);
 
   if (!catalogueEntry) {
     // No DB entry yet (pre-seed) — fall back to registry only.

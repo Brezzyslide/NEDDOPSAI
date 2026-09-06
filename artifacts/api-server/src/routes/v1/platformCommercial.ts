@@ -16,12 +16,14 @@
  * GET    /overrides                — all active platform overrides (cross-org)
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   plansTable,
   planVersionsTable,
   planFeaturesTable,
@@ -43,9 +45,9 @@ const billingAuth = [...auth, requirePlatformRole("platform_billing_admin")];
 
 router.get("/plans", ...auth, async (_req, res, next) => {
   try {
-    const plans = await db.select().from(plansTable).orderBy(plansTable.displayOrder);
-    const versions = await db.select().from(planVersionsTable);
-    const subs = await db.select({ n: count(), planId: tenantSubscriptionsTable.planId })
+    const plans = await platformDb.select().from(plansTable).orderBy(plansTable.displayOrder);
+    const versions = await platformDb.select().from(planVersionsTable);
+    const subs = await platformDb.select({ n: count(), planId: tenantSubscriptionsTable.planId })
       .from(tenantSubscriptionsTable).groupBy(tenantSubscriptionsTable.planId);
     const subMap = Object.fromEntries(subs.map(s => [s.planId, Number(s.n)]));
 
@@ -76,7 +78,7 @@ router.post("/plans", ...billingAuth, async (req, res, next) => {
     if (!code || !name) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "code and name are required." } }); return; }
 
     const planId = `plan_${code}`;
-    const [plan] = await db.insert(plansTable).values({
+    const [plan] = await platformDb.insert(plansTable).values({
       id: planId, code, name,
       description: description ?? null,
       displayOrder: String(displayOrder ?? "99"),
@@ -96,7 +98,7 @@ router.post("/plans", ...billingAuth, async (req, res, next) => {
 router.patch("/plans/:id", ...billingAuth, async (req, res, next) => {
   try {
     const { name, description, isPublic, isActive, displayOrder, trialLengthDays, monthlyPriceCents, annualPriceCents, currency, notes } = req.body as Record<string, any>;
-    const [plan] = await db.update(plansTable)
+    const [plan] = await platformDb.update(plansTable)
       .set({
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
@@ -121,16 +123,16 @@ router.patch("/plans/:id", ...billingAuth, async (req, res, next) => {
 
 router.get("/plans/:id/versions", ...auth, async (req, res, next) => {
   try {
-    const versions = await db.select().from(planVersionsTable)
+    const versions = await platformDb.select().from(planVersionsTable)
       .where(eq(planVersionsTable.planId, req.params.id!))
       .orderBy(desc(planVersionsTable.versionNumber));
 
     const enriched = await Promise.all(versions.map(async v => {
       const [features, packs, allowances, [subCount]] = await Promise.all([
-        db.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, v.id)),
-        db.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, v.id)),
-        db.select().from(planUsageAllowancesTable).where(eq(planUsageAllowancesTable.planVersionId, v.id)),
-        db.select({ n: count() }).from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.planVersionId, v.id)),
+        platformDb.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, v.id)),
+        platformDb.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, v.id)),
+        platformDb.select().from(planUsageAllowancesTable).where(eq(planUsageAllowancesTable.planVersionId, v.id)),
+        platformDb.select({ n: count() }).from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.planVersionId, v.id)),
       ]);
       return { ...v, features, workforcePacks: packs, usageAllowances: allowances, subscriberCount: Number(subCount?.n ?? 0) };
     }));
@@ -144,15 +146,15 @@ router.post("/plans/:id/versions", ...billingAuth, async (req, res, next) => {
     const { label, notes, includedSeats, maxSeats } = req.body as Record<string, any>;
 
     // Clone from active version
-    const [active] = await db.select().from(planVersionsTable)
+    const [active] = await platformDb.select().from(planVersionsTable)
       .where(and(eq(planVersionsTable.planId, req.params.id!), eq(planVersionsTable.isActive, true))).limit(1);
 
-    const allVersions = await db.select().from(planVersionsTable).where(eq(planVersionsTable.planId, req.params.id!));
+    const allVersions = await platformDb.select().from(planVersionsTable).where(eq(planVersionsTable.planId, req.params.id!));
     const maxNum = allVersions.reduce((m, v) => Math.max(m, v.versionNumber), 0);
     const newNum = maxNum + 1;
     const newId = `planv_${req.params.id!.replace("plan_", "")}_v${newNum}`;
 
-    const [newVersion] = await db.insert(planVersionsTable).values({
+    const [newVersion] = await platformDb.insert(planVersionsTable).values({
       id: newId, planId: req.params.id!,
       versionNumber: newNum,
       label: label ?? `v${newNum}`,
@@ -166,18 +168,18 @@ router.post("/plans/:id/versions", ...billingAuth, async (req, res, next) => {
     // Clone feature mappings from active version if it exists
     if (active) {
       const [existingFeatures, existingPacks, existingAllowances] = await Promise.all([
-        db.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, active.id)),
-        db.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, active.id)),
-        db.select().from(planUsageAllowancesTable).where(eq(planUsageAllowancesTable.planVersionId, active.id)),
+        platformDb.select().from(planFeaturesTable).where(eq(planFeaturesTable.planVersionId, active.id)),
+        platformDb.select().from(planWorkforcePacksTable).where(eq(planWorkforcePacksTable.planVersionId, active.id)),
+        platformDb.select().from(planUsageAllowancesTable).where(eq(planUsageAllowancesTable.planVersionId, active.id)),
       ]);
       if (existingFeatures.length) {
-        await db.insert(planFeaturesTable).values(existingFeatures.map(f => ({ ...f, planVersionId: newId }))).onConflictDoNothing();
+        await platformDb.insert(planFeaturesTable).values(existingFeatures.map(f => ({ ...f, planVersionId: newId }))).onConflictDoNothing();
       }
       if (existingPacks.length) {
-        await db.insert(planWorkforcePacksTable).values(existingPacks.map(p => ({ ...p, planVersionId: newId }))).onConflictDoNothing();
+        await platformDb.insert(planWorkforcePacksTable).values(existingPacks.map(p => ({ ...p, planVersionId: newId }))).onConflictDoNothing();
       }
       if (existingAllowances.length) {
-        await db.insert(planUsageAllowancesTable).values(existingAllowances.map(a => ({ ...a, planVersionId: newId }))).onConflictDoNothing();
+        await platformDb.insert(planUsageAllowancesTable).values(existingAllowances.map(a => ({ ...a, planVersionId: newId }))).onConflictDoNothing();
       }
     }
 
@@ -189,11 +191,11 @@ router.post("/plans/:id/versions", ...billingAuth, async (req, res, next) => {
 router.post("/plans/:id/versions/:vid/activate", ...billingAuth, async (req, res, next) => {
   try {
     // Deactivate current active version
-    await db.update(planVersionsTable)
+    await platformDb.update(planVersionsTable)
       .set({ isActive: false, updatedAt: new Date() })
       .where(and(eq(planVersionsTable.planId, req.params.id!), eq(planVersionsTable.isActive, true)));
 
-    const [activated] = await db.update(planVersionsTable)
+    const [activated] = await platformDb.update(planVersionsTable)
       .set({ isActive: true, activatedAt: new Date(), updatedAt: new Date() })
       .where(eq(planVersionsTable.id, req.params.vid!))
       .returning();
@@ -205,7 +207,7 @@ router.post("/plans/:id/versions/:vid/activate", ...billingAuth, async (req, res
 
 router.post("/plans/:id/versions/:vid/archive", ...billingAuth, async (req, res, next) => {
   try {
-    const [archived] = await db.update(planVersionsTable)
+    const [archived] = await platformDb.update(planVersionsTable)
       .set({ isActive: false, isLegacy: true, archivedAt: new Date(), updatedAt: new Date() })
       .where(eq(planVersionsTable.id, req.params.vid!))
       .returning();
@@ -218,7 +220,7 @@ router.post("/plans/:id/versions/:vid/archive", ...billingAuth, async (req, res,
 
 router.get("/features", ...auth, async (_req, res, next) => {
   try {
-    const features = await db.select().from(featuresTable).orderBy(featuresTable.category, featuresTable.code);
+    const features = await platformDb.select().from(featuresTable).orderBy(featuresTable.category, featuresTable.code);
     res.json({ features });
   } catch (err) { next(err); }
 });
@@ -227,7 +229,7 @@ router.get("/features", ...auth, async (_req, res, next) => {
 
 router.get("/usage-dimensions", ...auth, async (_req, res, next) => {
   try {
-    const dims = await db.select().from(usageDimensionsTable);
+    const dims = await platformDb.select().from(usageDimensionsTable);
     res.json({ dimensions: dims });
   } catch (err) { next(err); }
 });
@@ -237,7 +239,7 @@ router.get("/usage-dimensions", ...auth, async (_req, res, next) => {
 router.get("/overrides", ...auth, async (req, res, next) => {
   try {
     const activeOnly = req.query.active !== "false";
-    let q = db.select({
+    let q = platformDb.select({
       override: tenantOverridesTable,
       org: { id: tenantOverridesTable.organizationId },
     }).from(tenantOverridesTable).$dynamic();

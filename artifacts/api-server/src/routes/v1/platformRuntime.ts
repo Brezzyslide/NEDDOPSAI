@@ -13,12 +13,13 @@
  */
 
 import { Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import { getRuntimeHealth } from "../../services/executionService.js";
 import { isOpenClawConfigured, loadOpenClawConfig } from "@workspace/openclaw";
 import { count, eq } from "drizzle-orm";
-import { db, executionSessionsTable } from "@workspace/db";
+import { executionSessionsTable } from "@workspace/db";
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
@@ -29,18 +30,15 @@ router.get("/status", ...auth, async (_req, res, next) => {
     const config = loadOpenClawConfig();
     const health = await getRuntimeHealth();
 
-    const [activeSessions] = await db
-      .select({ n: count() })
+    const [activeSessions] = await platformDb.select({ n: count() })
       .from(executionSessionsTable)
       .where(eq(executionSessionsTable.currentStatus, "running"));
 
-    const [queuedSessions] = await db
-      .select({ n: count() })
+    const [queuedSessions] = await platformDb.select({ n: count() })
       .from(executionSessionsTable)
       .where(eq(executionSessionsTable.currentStatus, "submitted"));
 
-    const [failedSessions] = await db
-      .select({ n: count() })
+    const [failedSessions] = await platformDb.select({ n: count() })
       .from(executionSessionsTable)
       .where(eq(executionSessionsTable.currentStatus, "failed"));
 

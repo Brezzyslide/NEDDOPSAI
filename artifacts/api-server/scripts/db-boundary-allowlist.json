@@ -85,6 +85,31 @@
       "file": "src/routes/system.ts",
       "kind": "direct-db",
       "reason": "Public health endpoint performs SELECT 1 only; tenant-derived dashboard summary was retired."
+    },
+    {
+      "file": "src/routes/v1/plans.ts",
+      "kind": "direct-db",
+      "reason": "Public plan catalogue reads use explicit column-level SELECT grants only; internal plan notes are excluded."
+    },
+    {
+      "file": "src/routes/v1/installerReleases.ts",
+      "kind": "direct-db",
+      "reason": "Public installer metadata reads and insert-only anonymous download events use explicit column-level grants."
+    },
+    {
+      "file": "src/middlewares/requirePlatformRole.ts",
+      "kind": "platform-db-import",
+      "reason": "Platform-only authorization middleware used by platform routers; reads platform_roles through the platform pool before role checks."
+    },
+    {
+      "file": "src/services/platformDeviceService.ts",
+      "kind": "platform-db-import",
+      "reason": "Platform-only device console service; all device queries/actions are cross-org platform operations selected from platform routers."
+    },
+    {
+      "file": "src/services/specialistCatalogueService.ts",
+      "kind": "direct-db",
+      "reason": "Public/tenant workforce catalogue overlay reads and bootstrap catalogue seeding; platform routes pass platformDb for mutations."
     }
   ]
 }

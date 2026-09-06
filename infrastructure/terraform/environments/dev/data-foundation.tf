@@ -7,6 +7,7 @@ locals {
     "openai",
     "email",
     "connector",
+    "database_roles",
   ])
 }
 

@@ -18,6 +18,9 @@ const workspaceSourcePlugin = {
   setup(build) {
     // Match any @workspace/* import that esbuild cannot resolve normally
     build.onResolve({ filter: /^@workspace\// }, (args) => {
+      if (args.path === "@workspace/db/platform") {
+        return { path: path.join(workspaceRoot, "lib", "db", "src", "platform.ts") };
+      }
       const pkgName = args.path.replace("@workspace/", "");
       const srcEntry = path.join(workspaceRoot, "lib", pkgName, "src", "index.ts");
       return { path: srcEntry };

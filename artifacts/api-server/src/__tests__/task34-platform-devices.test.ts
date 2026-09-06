@@ -55,6 +55,15 @@ vi.mock("@workspace/db", () => ({
   platformAuditLogTable:     { metadata: "metadata", occurredAt: "occurred_at" },
 }));
 
+vi.mock("@workspace/db/platform", () => ({
+  platformDb: {
+    execute: mockDbExecute,
+    select: mockDbSelect,
+    update: mockDbUpdate,
+    insert: vi.fn().mockResolvedValue([]),
+  },
+}));
+
 vi.mock("../services/auditService.js", () => ({
   log: mockLog,
   writeAuditEvent: mockLog,

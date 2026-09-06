@@ -89,11 +89,13 @@ import activationCodesRouter from "./activationCodes.js";
 import devicesRouter from "./devices.js";
 import paymentBypassRouter from "./paymentBypass.js";
 import installerReleasesRouter from "./installerReleases.js";
+import platformInstallerReleasesRouter from "./platformInstallerReleases.js";
 import orgDiscoveryRouter from "./orgDiscovery.js";
 router.use("/", activationCodesRouter);
 router.use("/", devicesRouter);
 router.use("/", paymentBypassRouter);
 router.use("/", installerReleasesRouter);
+router.use("/platform/installer", platformInstallerReleasesRouter);
 router.use("/", orgDiscoveryRouter);
 // Sprint 15 — Short-lived device auth (challenge / exchange / refresh)
 import deviceAuthRouter from "./deviceAuth.js";

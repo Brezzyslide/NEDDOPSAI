@@ -9,12 +9,14 @@
  * POST /:code/extend-trial    — Extend a pack trial
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   organizationsTable,
   tenantWorkforcePacksTable,
   workforcePacksTable,
@@ -31,8 +33,7 @@ router.get("/:code/organisations", ...auth, async (req, res, next) => {
   try {
     const { code } = req.params;
 
-    const grants = await db
-      .select({
+    const grants = await platformDb.select({
         grant: tenantWorkforcePacksTable,
         org: {
           id: organizationsTable.id,
@@ -90,7 +91,7 @@ router.post("/:code/grant", ...auth, requirePlatformRole("platform_commercial"),
     }
 
     // Validate org exists and is not closed
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, organisationId)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
     if (org.status === "closed") {
@@ -98,7 +99,7 @@ router.post("/:code/grant", ...auth, requirePlatformRole("platform_commercial"),
     }
 
     // Validate pack exists and is not archived
-    const [pack] = await db.select().from(workforcePacksTable)
+    const [pack] = await platformDb.select().from(workforcePacksTable)
       .where(eq(workforcePacksTable.code, code!)).limit(1);
     if (!pack) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: `Pack '${code}' not found.` } }); return; }
     if (pack.status === "archived") {
@@ -106,7 +107,7 @@ router.post("/:code/grant", ...auth, requirePlatformRole("platform_commercial"),
     }
 
     // Check for duplicate active grant
-    const [existing] = await db.select().from(tenantWorkforcePacksTable)
+    const [existing] = await platformDb.select().from(tenantWorkforcePacksTable)
       .where(
         and(
           eq(tenantWorkforcePacksTable.organizationId, organisationId),
@@ -119,7 +120,7 @@ router.post("/:code/grant", ...auth, requirePlatformRole("platform_commercial"),
     }
 
     const now = new Date();
-    const [inserted] = await db.insert(tenantWorkforcePacksTable).values({
+    const [inserted] = await platformDb.insert(tenantWorkforcePacksTable).values({
       id: randomUUID(),
       organizationId: organisationId,
       packCode: code!,
@@ -155,7 +156,7 @@ router.post("/:code/revoke", ...auth, requirePlatformRole("platform_commercial")
     }
 
     // Find active grant
-    const [grant] = await db.select().from(tenantWorkforcePacksTable)
+    const [grant] = await platformDb.select().from(tenantWorkforcePacksTable)
       .where(
         and(
           eq(tenantWorkforcePacksTable.organizationId, organisationId),
@@ -167,7 +168,7 @@ router.post("/:code/revoke", ...auth, requirePlatformRole("platform_commercial")
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "No active grant found for this pack and organisation." } }); return;
     }
 
-    await db.update(tenantWorkforcePacksTable).set({
+    await platformDb.update(tenantWorkforcePacksTable).set({
       revokedAt: new Date(),
       status: "revoked",
     }).where(eq(tenantWorkforcePacksTable.id, grant.id));
@@ -203,7 +204,7 @@ router.post("/:code/start-trial", ...auth, requirePlatformRole("platform_commerc
     }
 
     // Validate org is not closed
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, organisationId)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
     if (org.status === "closed") {
@@ -211,7 +212,7 @@ router.post("/:code/start-trial", ...auth, requirePlatformRole("platform_commerc
     }
 
     // Check no active grant exists
-    const [existing] = await db.select().from(tenantWorkforcePacksTable)
+    const [existing] = await platformDb.select().from(tenantWorkforcePacksTable)
       .where(
         and(
           eq(tenantWorkforcePacksTable.organizationId, organisationId),
@@ -226,7 +227,7 @@ router.post("/:code/start-trial", ...auth, requirePlatformRole("platform_commerc
     const now = new Date();
     const trialEndsAt = new Date(now.getTime() + trialLengthDays * 86_400_000);
 
-    const [inserted] = await db.insert(tenantWorkforcePacksTable).values({
+    const [inserted] = await platformDb.insert(tenantWorkforcePacksTable).values({
       id: randomUUID(),
       organizationId: organisationId,
       packCode: code!,
@@ -270,7 +271,7 @@ router.post("/:code/extend-trial", ...auth, requirePlatformRole("platform_commer
     }
 
     // Find active trial grant
-    const [grant] = await db.select().from(tenantWorkforcePacksTable)
+    const [grant] = await platformDb.select().from(tenantWorkforcePacksTable)
       .where(
         and(
           eq(tenantWorkforcePacksTable.organizationId, organisationId),
@@ -286,7 +287,7 @@ router.post("/:code/extend-trial", ...auth, requirePlatformRole("platform_commer
     const currentTrialEnd = grant.trialEndsAt ?? new Date();
     const newTrialEndsAt = new Date(currentTrialEnd.getTime() + additionalDays * 86_400_000);
 
-    await db.update(tenantWorkforcePacksTable).set({
+    await platformDb.update(tenantWorkforcePacksTable).set({
       trialEndsAt: newTrialEndsAt,
     }).where(eq(tenantWorkforcePacksTable.id, grant.id));
 

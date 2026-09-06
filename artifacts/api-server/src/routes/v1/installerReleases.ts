@@ -7,11 +7,7 @@
  * GET /v1/installer/latest.json
  *   Returns installer metadata as JSON (no redirect).
  *
- * GET /v1/installer/releases
- *   List all installer releases (platform admin).
- *
- * POST /v1/installer/releases
- *   Create a new installer release record (platform admin).
+ * Platform release creation is mounted separately under /v1/platform/installer.
  */
 
 import { Router } from "express";
@@ -128,72 +124,6 @@ router.get("/installer/latest.json", async (req, res, next) => {
     }
 
     res.json({ release });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// ── POST /v1/installer/releases (platform admin) ──────────────────────────────
-
-router.post("/installer/releases", async (req, res, next) => {
-  try {
-    // Require platform admin auth — simple API key check for now
-    const adminKey = req.headers["x-platform-admin-key"] as string | undefined;
-    if (adminKey !== process.env.PLATFORM_ADMIN_KEY || !process.env.PLATFORM_ADMIN_KEY) {
-      res.status(401).json({ error: { code: "UNAUTHORIZED", message: "Platform admin key required." } });
-      return;
-    }
-
-    const { randomUUID } = await import("crypto");
-    const {
-      version,
-      channel = "stable",
-      platform,
-      arch,
-      downloadUrl,
-      sha256,
-      fileSizeBytes,
-      minOsVersion,
-      releaseNotes,
-      isCurrent = true,
-    } = req.body;
-
-    if (!version || !platform || !arch || !downloadUrl) {
-      res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "version, platform, arch, downloadUrl required." } });
-      return;
-    }
-
-    // If isCurrent, clear other current releases for this platform/arch/channel
-    if (isCurrent) {
-      await db
-        .update(installerReleasesTable)
-        .set({ isCurrent: false, updatedAt: new Date() })
-        .where(
-          and(
-            eq(installerReleasesTable.platform, platform),
-            eq(installerReleasesTable.arch, arch),
-            eq(installerReleasesTable.channel, channel),
-          ),
-        );
-    }
-
-    const id = `ir_${randomUUID()}`;
-    await db.insert(installerReleasesTable).values({
-      id,
-      version,
-      channel,
-      platform,
-      arch,
-      downloadUrl,
-      sha256,
-      fileSizeBytes,
-      minOsVersion,
-      releaseNotes,
-      isCurrent,
-      publishedAt: new Date(),
-    });
-
-    res.status(201).json({ release: { id, version, platform, arch, downloadUrl } });
   } catch (err) {
     next(err);
   }

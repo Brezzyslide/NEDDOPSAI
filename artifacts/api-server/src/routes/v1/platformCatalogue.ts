@@ -13,6 +13,7 @@
  */
 
 import { Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
@@ -49,7 +50,7 @@ router.get("/", ...auth, async (req, res, next) => {
       search:            search   || undefined,
       page:              Math.max(1, parseInt(page, 10) || 1),
       limit:             Math.min(100, Math.max(1, parseInt(limit, 10) || 50)),
-    });
+    }, platformDb);
 
     res.json(result);
   } catch (err) { next(err); }
@@ -59,7 +60,7 @@ router.get("/", ...auth, async (req, res, next) => {
 
 router.get("/:code", ...auth, async (req, res, next) => {
   try {
-    const entry = await getCatalogueEntry(req.params.code!);
+    const entry = await getCatalogueEntry(req.params.code!, platformDb);
     if (!entry) {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Specialist not found in catalogue." } });
       return;
@@ -104,7 +105,7 @@ router.patch("/:code", ...auth, async (req, res, next) => {
       displayOrder,
       planVisibility,
       iconMetadata,
-    }, actorId);
+    }, actorId, platformDb);
 
     res.json({ entry: updated });
   } catch (err) { next(err); }
@@ -115,7 +116,7 @@ router.patch("/:code", ...auth, async (req, res, next) => {
 router.post("/:code/archive", ...auth, async (req, res, next) => {
   try {
     const actorId = (req as any).auth?.userId ?? "unknown";
-    const updated = await archiveCatalogueEntry(req.params.code!, actorId);
+    const updated = await archiveCatalogueEntry(req.params.code!, actorId, platformDb);
     res.json({ entry: updated, archived: true });
   } catch (err) { next(err); }
 });
@@ -125,7 +126,7 @@ router.post("/:code/archive", ...auth, async (req, res, next) => {
 router.post("/:code/unarchive", ...auth, async (req, res, next) => {
   try {
     const actorId = (req as any).auth?.userId ?? "unknown";
-    const updated = await unarchiveCatalogueEntry(req.params.code!, actorId);
+    const updated = await unarchiveCatalogueEntry(req.params.code!, actorId, platformDb);
     res.json({ entry: updated, archived: false });
   } catch (err) { next(err); }
 });
@@ -142,7 +143,7 @@ router.post("/:code/assign-pack", ...auth, async (req, res, next) => {
       return;
     }
 
-    const updated = await assignToPack(req.params.code!, packCode, actorId);
+    const updated = await assignToPack(req.params.code!, packCode, actorId, platformDb);
     res.json({ entry: updated });
   } catch (err) { next(err); }
 });
@@ -159,7 +160,7 @@ router.post("/:code/coming-soon", ...auth, async (req, res, next) => {
       return;
     }
 
-    const updated = await markComingSoon(req.params.code!, comingSoon, actorId);
+    const updated = await markComingSoon(req.params.code!, comingSoon, actorId, platformDb);
     res.json({ entry: updated });
   } catch (err) { next(err); }
 });
@@ -168,7 +169,7 @@ router.post("/:code/coming-soon", ...auth, async (req, res, next) => {
 
 router.post("/seed", ...auth, async (_req, res, next) => {
   try {
-    const result = await seedCatalogueFromRegistry();
+    const result = await seedCatalogueFromRegistry(platformDb);
     res.json({ seeded: true, ...result });
   } catch (err) { next(err); }
 });

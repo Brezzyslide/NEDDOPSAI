@@ -15,7 +15,8 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { getAuth } from "@clerk/express";
-import { db, platformRolesTable, usersTable } from "@workspace/db";
+import { platformRolesTable } from "@workspace/db";
+import { platformDb } from "@workspace/db/platform";
 import { eq, and, isNull } from "drizzle-orm";
 import type { PlatformRole } from "@workspace/shared";
 
@@ -59,7 +60,7 @@ export async function requirePlatformAuth(
     }
 
     // DB check
-    const [roleRow] = await db
+    const [roleRow] = await platformDb
       .select()
       .from(platformRolesTable)
       .where(

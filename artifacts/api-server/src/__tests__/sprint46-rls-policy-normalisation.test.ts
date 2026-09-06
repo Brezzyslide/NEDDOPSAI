@@ -20,6 +20,10 @@ const checkpointStartupSweepMigration = readFileSync(
   resolve(root, "../../../lib/db/migrations/0049_checkpoint_startup_sweep_functions.sql"),
   "utf8",
 );
+const platformPublicWorkerBoundaryMigration = readFileSync(
+  resolve(root, "../../../lib/db/migrations/0050_platform_public_worker_boundaries.sql"),
+  "utf8",
+);
 const tenantMiddleware = readFileSync(
   resolve(root, "middlewares/tenantContext.ts"),
   "utf8",
@@ -244,5 +248,60 @@ describe("Sprint 46 RLS policy normalisation", () => {
       "GRANT EXECUTE ON FUNCTION public.recover_stuck_execution_resumes(TIMESTAMPTZ, INTEGER) TO needsops_app",
     );
     expect(checkpointStartupSweepMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.execution_checkpoints\s+TO\s+needsops_app/i);
+  });
+
+  it("registers platform, public and worker boundary migration", () => {
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0050-platform-public-worker-boundaries",
+        file: "0050_platform_public_worker_boundaries.sql",
+        transactional: true,
+      }),
+    );
+  });
+
+  it("creates non-owner platform and worker app roles", () => {
+    expect(platformPublicWorkerBoundaryMigration).toContain(
+      "CREATE ROLE needsops_platform_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT",
+    );
+    expect(platformPublicWorkerBoundaryMigration).toContain(
+      "CREATE ROLE needsops_worker_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT",
+    );
+    expect(platformPublicWorkerBoundaryMigration).toContain("GRANT needsops_app TO needsops_worker_app");
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/CREATE ROLE needsops_(platform|worker)_app\s+LOGIN\s+SUPERUSER/i);
+    expect(platformPublicWorkerBoundaryMigration.replace(/--.*$/gm, "")).not.toMatch(/WITH\s+GRANT\s+OPTION/i);
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/ALTER SCHEMA public OWNER TO needsops_(platform|worker)_app/i);
+  });
+
+  it("uses column-level public grants for catalogue and installer reads", () => {
+    for (const table of [
+      "plans",
+      "plan_versions",
+      "installer_releases",
+      "workforce_packs",
+      "workforce_pack_price_versions",
+      "specialist_catalogue",
+    ]) {
+      expect(platformPublicWorkerBoundaryMigration).toContain(`ON TABLE public.${table} TO needsops_app`);
+    }
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/GRANT SELECT ON TABLE public\.(plans|plan_versions|installer_releases|workforce_packs|workforce_pack_price_versions|specialist_catalogue) TO needsops_app/i);
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/GRANT SELECT \([^)]*\b(notes|created_by|approved_by|changed_by)\b[^)]*\) ON TABLE public\.(plans|plan_versions|workforce_pack_price_versions|specialist_catalogue) TO needsops_app/is);
+    expect(platformPublicWorkerBoundaryMigration).toContain(
+      "GRANT INSERT (\n  id, release_id, organization_id, user_id, platform, arch, ip_hash, user_agent\n) ON TABLE public.installer_download_events TO needsops_app",
+    );
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/GRANT SELECT ON TABLE public\.installer_download_events TO needsops_app/i);
+  });
+
+  it("defines worker-only bounded ingestion claim function", () => {
+    expect(platformPublicWorkerBoundaryMigration).toContain("CREATE OR REPLACE FUNCTION public.claim_next_ingestion_job");
+    expect(platformPublicWorkerBoundaryMigration).toContain("SECURITY DEFINER");
+    expect(platformPublicWorkerBoundaryMigration).toContain("SET search_path = pg_catalog, public");
+    expect(platformPublicWorkerBoundaryMigration).toContain("FOR UPDATE SKIP LOCKED");
+    expect(platformPublicWorkerBoundaryMigration).toContain("RETURNS TABLE");
+    expect(platformPublicWorkerBoundaryMigration).toContain("\"organizationId\" TEXT");
+    expect(platformPublicWorkerBoundaryMigration).toContain("REVOKE ALL ON FUNCTION public.claim_next_ingestion_job(TEXT) FROM PUBLIC");
+    expect(platformPublicWorkerBoundaryMigration).toContain("GRANT EXECUTE ON FUNCTION public.claim_next_ingestion_job(TEXT) TO needsops_worker_app");
+    expect(platformPublicWorkerBoundaryMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.claim_next_ingestion_job(TEXT) TO needsops_app");
+    expect(platformPublicWorkerBoundaryMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
 });

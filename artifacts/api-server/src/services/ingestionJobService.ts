@@ -42,6 +42,15 @@ export class IngestionJobError extends Error {
 
 type DbClient = typeof db;
 
+export interface ClaimedIngestionJob {
+  id: string;
+  organizationId: string;
+  knowledgeSourceId: string;
+  sourceVersionId: string;
+  status: string;
+  attemptCount: number;
+}
+
 function withIngestionJobTenant<T>(
   organizationId: string,
   purpose: string,
@@ -120,27 +129,10 @@ export async function enqueueIngestionJob(
  */
 export async function claimNextIngestionJob(
   workerId: string,
-): Promise<IngestionJob | null> {
-  const rows = await db.execute<IngestionJob>(sql`
-    UPDATE ingestion_jobs
-    SET
-      status           = 'fetching',
-      claimed_by       = ${workerId},
-      claimed_at       = NOW(),
-      last_attempt_at  = NOW(),
-      attempt_count    = attempt_count + 1,
-      started_at       = COALESCE(started_at, NOW()),
-      updated_at       = NOW()
-    WHERE id = (
-      SELECT id
-      FROM   ingestion_jobs
-      WHERE  status = 'queued'
-         OR  (status = 'failed' AND attempt_count < max_attempts)
-      ORDER  BY created_at ASC
-      LIMIT  1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING *
+): Promise<ClaimedIngestionJob | null> {
+  const rows = await db.execute<ClaimedIngestionJob>(sql`
+    SELECT *
+    FROM public.claim_next_ingestion_job(${workerId})
   `);
 
   const row = (rows.rows ?? rows as unknown as IngestionJob[])[0];

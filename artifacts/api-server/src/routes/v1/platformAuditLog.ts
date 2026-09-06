@@ -6,10 +6,15 @@
  * GET  /actors — list of actors who have taken platform actions
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
-import { db, auditLogTable } from "@workspace/db";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import {
+  auditLogTable,
+} from "@workspace/db";
 import { eq, desc, count, gte, lte, and, or, ilike } from "drizzle-orm";
 
 const router = Router();
@@ -26,13 +31,13 @@ router.get("/", ...auth, async (req, res, next) => {
     const since     = req.query.since ? new Date(req.query.since as string) : undefined;
     const until     = req.query.until ? new Date(req.query.until as string) : undefined;
 
-    let q = db.select().from(auditLogTable).$dynamic();
+    let q = platformDb.select().from(auditLogTable).$dynamic();
     if (actorId)   q = q.where(eq(auditLogTable.actorUserId, actorId));
     if (orgId)     q = q.where(eq(auditLogTable.organizationId, orgId));
     if (since)     q = q.where(gte(auditLogTable.occurredAt, since));
     if (until)     q = q.where(lte(auditLogTable.occurredAt, until));
 
-    const [totalRow] = await db.select({ n: count() }).from(auditLogTable);
+    const [totalRow] = await platformDb.select({ n: count() }).from(auditLogTable);
     const events = await q.orderBy(desc(auditLogTable.occurredAt)).limit(limit).offset(offset);
 
     res.json({ events, page, limit, total: Number(totalRow?.n ?? 0) });
@@ -41,8 +46,7 @@ router.get("/", ...auth, async (req, res, next) => {
 
 router.get("/actors", ...auth, async (_req, res, next) => {
   try {
-    const actors = await db
-      .selectDistinct({ actorId: auditLogTable.actorUserId })
+    const actors = await platformDb.selectDistinct({ actorId: auditLogTable.actorUserId })
       .from(auditLogTable)
       .where(eq(auditLogTable.actorType, "user"))
       .limit(100);

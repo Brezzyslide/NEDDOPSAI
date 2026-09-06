@@ -14,6 +14,7 @@
  */
 
 import { Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
   BUSINESS_CAPABILITIES,
@@ -147,9 +148,9 @@ router.post("/capabilities/:code/deprecate", async (req, res, next) => {
 // GET /platform/specialist-runs — platform-wide monitoring
 router.get("/specialist-runs", async (_req, res, next) => {
   try {
-    const { db, specialistRunsTable } = await import("@workspace/db");
+    const { specialistRunsTable } = await import("@workspace/db");
     const { desc } = await import("drizzle-orm");
-    const runs = await db.select().from(specialistRunsTable).orderBy(desc(specialistRunsTable.createdAt)).limit(200);
+    const runs = await platformDb.select().from(specialistRunsTable).orderBy(desc(specialistRunsTable.createdAt)).limit(200);
     res.json({
       runs: runs.map(r => ({
         id: r.id,
@@ -180,10 +181,9 @@ router.get("/specialist-runs", async (_req, res, next) => {
 // GET /platform/specialist-runs/stats
 router.get("/specialist-runs/stats", async (_req, res, next) => {
   try {
-    const { db, specialistRunsTable } = await import("@workspace/db");
+    const { specialistRunsTable } = await import("@workspace/db");
     const { sql } = await import("drizzle-orm");
-    const [stats] = await db
-      .select({
+    const [stats] = await platformDb.select({
         total: sql<number>`count(*)`,
         completed: sql<number>`sum(case when status = 'completed' then 1 else 0 end)`,
         failed: sql<number>`sum(case when status = 'failed' then 1 else 0 end)`,

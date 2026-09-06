@@ -6,11 +6,13 @@
  * POST /v1/platform/pack-access-requests/:id/reject   reject
  */
 
-import { Router } from "express";
-import { randomUUID } from "crypto";
-import { eq, desc } from "drizzle-orm";
 import {
-  db,
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
+import { randomUUID } from "crypto";
+import { eq,
+  desc } from "drizzle-orm";
+import {
   workforcePackAccessRequestsTable,
   tenantWorkforcePacksTable,
 } from "@workspace/db";
@@ -23,8 +25,7 @@ const router = Router();
 router.get("/", requirePlatformAuth, async (req, res, next) => {
   try {
     const status = (req.query.status as string) || "pending";
-    const requests = await db
-      .select()
+    const requests = await platformDb.select()
       .from(workforcePackAccessRequestsTable)
       .where(eq(workforcePackAccessRequestsTable.status, status as any))
       .orderBy(desc(workforcePackAccessRequestsTable.requestedAt));
@@ -40,8 +41,7 @@ router.post("/:id/approve", requirePlatformAuth, async (req, res, next) => {
     const staff = req.platformUserId!;
     const { reason = "" } = req.body;
 
-    const [request] = await db
-      .select()
+    const [request] = await platformDb.select()
       .from(workforcePackAccessRequestsTable)
       .where(eq(workforcePackAccessRequestsTable.id, req.params.id))
       .limit(1);
@@ -52,12 +52,12 @@ router.post("/:id/approve", requirePlatformAuth, async (req, res, next) => {
     }
 
     // Update request status
-    await db.update(workforcePackAccessRequestsTable)
+    await platformDb.update(workforcePackAccessRequestsTable)
       .set({ status: "approved", reviewedBy: staff, reviewedAt: new Date(), reviewNotes: reason, updatedAt: new Date() })
       .where(eq(workforcePackAccessRequestsTable.id, request.id));
 
     // Grant pack to org
-    await db.insert(tenantWorkforcePacksTable).values({
+    await platformDb.insert(tenantWorkforcePacksTable).values({
       id:             `twp_${randomUUID()}`,
       organizationId: request.organizationId,
       packCode:       request.packCode,
@@ -93,8 +93,7 @@ router.post("/:id/reject", requirePlatformAuth, async (req, res, next) => {
     const staff = req.platformUserId!;
     const { reason = "" } = req.body;
 
-    const [request] = await db
-      .select()
+    const [request] = await platformDb.select()
       .from(workforcePackAccessRequestsTable)
       .where(eq(workforcePackAccessRequestsTable.id, req.params.id))
       .limit(1);
@@ -104,7 +103,7 @@ router.post("/:id/reject", requirePlatformAuth, async (req, res, next) => {
       return;
     }
 
-    await db.update(workforcePackAccessRequestsTable)
+    await platformDb.update(workforcePackAccessRequestsTable)
       .set({ status: "rejected", reviewedBy: staff, reviewedAt: new Date(), reviewNotes: reason, updatedAt: new Date() })
       .where(eq(workforcePackAccessRequestsTable.id, request.id));
 

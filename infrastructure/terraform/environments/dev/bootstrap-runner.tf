@@ -60,6 +60,7 @@ data "aws_iam_policy_document" "bootstrap_execution_secrets" {
     actions = ["secretsmanager:GetSecretValue"]
     resources = [
       aws_db_instance.postgres.master_user_secret[0].secret_arn,
+      aws_secretsmanager_secret.app["database_roles"].arn,
     ]
   }
 }
@@ -161,6 +162,14 @@ resource "aws_ecs_task_definition" "db_bootstrap" {
         {
           name      = "DB_PASSWORD"
           valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
+        },
+        {
+          name      = "NEEDSOPS_PLATFORM_APP_PASSWORD"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_PLATFORM_APP_PASSWORD::"
+        },
+        {
+          name      = "NEEDSOPS_WORKER_APP_PASSWORD"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_WORKER_APP_PASSWORD::"
         },
       ]
 

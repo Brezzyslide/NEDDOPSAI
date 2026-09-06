@@ -35,6 +35,10 @@ vi.mock("@workspace/db", () => {
   };
 });
 
+vi.mock("@workspace/db/platform", () => ({
+  platformDb: { select: mockSelect, update: mockUpdate, insert: mockInsert },
+}));
+
 vi.mock("../auditService.js", () => ({
   log: mockLog,
   writeAuditEvent: mockLog,

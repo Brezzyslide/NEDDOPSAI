@@ -9,10 +9,11 @@
  */
 
 import { Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, platformInternalNotesTable, organizationsTable, tenantOverridesTable, auditLogTable,
+platformInternalNotesTable, organizationsTable, tenantOverridesTable, auditLogTable,
 } from "@workspace/db";
 import { eq, desc, and, ilike, or } from "drizzle-orm";
 
@@ -26,8 +27,7 @@ router.get("/notes", ...auth, async (req, res, next) => {
     const priority = req.query.priority as string | undefined;
     const search = req.query.search as string | undefined;
 
-    let q = db
-      .select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
+    let q = platformDb.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
       .from(platformInternalNotesTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, platformInternalNotesTable.organizationId))
       .$dynamic();
@@ -43,8 +43,7 @@ router.get("/notes", ...auth, async (req, res, next) => {
 
 router.get("/flagged", ...auth, async (_req, res, next) => {
   try {
-    const flaggedNotes = await db
-      .select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
+    const flaggedNotes = await platformDb.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
       .from(platformInternalNotesTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, platformInternalNotesTable.organizationId))
       .where(eq(platformInternalNotesTable.isFlagged, true))
@@ -58,8 +57,7 @@ router.get("/flagged", ...auth, async (_req, res, next) => {
 router.get("/overrides", ...auth, async (req, res, next) => {
   try {
     const limit = Math.min(100, Number(req.query.limit) || 20);
-    const overrides = await db
-      .select({ override: tenantOverridesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
+    const overrides = await platformDb.select({ override: tenantOverridesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
       .from(tenantOverridesTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, tenantOverridesTable.organizationId))
       .where(eq(tenantOverridesTable.isActive, true))
@@ -72,8 +70,7 @@ router.get("/overrides", ...auth, async (req, res, next) => {
 router.get("/timeline", ...auth, async (req, res, next) => {
   try {
     const limit = Math.min(100, Number(req.query.limit) || 30);
-    const events = await db
-      .select()
+    const events = await platformDb.select()
       .from(auditLogTable)
       .where(or(
         eq(auditLogTable.eventType, "platform.internal_note_added"),

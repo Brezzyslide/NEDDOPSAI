@@ -8,11 +8,16 @@
  * GET  /logins         — recent platform logins (from audit log)
  */
 
-import { Router } from "express";
-import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, organizationsTable, auditLogTable, platformInternalNotesTable,
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
+import { requireAuth } from "../../middlewares/tenantContext.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import {
+  organizationsTable,
+  auditLogTable,
+  platformInternalNotesTable,
 } from "@workspace/db";
 import { eq, desc, count, or, and } from "drizzle-orm";
 
@@ -22,14 +27,14 @@ const auth = [requireAuth, requirePlatformAuth, requirePlatformRole("platform_se
 router.get("/overview", ...auth, async (_req, res, next) => {
   try {
     const [suspendedCount, flaggedNotes, recentActions] = await Promise.all([
-      db.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "suspended")),
-      db.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
+      platformDb.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "suspended")),
+      platformDb.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
         .from(platformInternalNotesTable)
         .leftJoin(organizationsTable, eq(organizationsTable.id, platformInternalNotesTable.organizationId))
         .where(eq(platformInternalNotesTable.isFlagged, true))
         .orderBy(desc(platformInternalNotesTable.createdAt))
         .limit(20),
-      db.select().from(auditLogTable)
+      platformDb.select().from(auditLogTable)
         .where(or(
           eq(auditLogTable.eventType, "platform.organisation_suspended"),
           eq(auditLogTable.eventType, "platform.security_review_flagged"),
@@ -54,8 +59,7 @@ router.get("/overview", ...auth, async (_req, res, next) => {
 
 router.get("/flags", ...auth, async (_req, res, next) => {
   try {
-    const flags = await db
-      .select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
+    const flags = await platformDb.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug } })
       .from(platformInternalNotesTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, platformInternalNotesTable.organizationId))
       .where(eq(platformInternalNotesTable.isFlagged, true))
@@ -67,7 +71,7 @@ router.get("/flags", ...auth, async (_req, res, next) => {
 router.get("/actions", ...auth, async (req, res, next) => {
   try {
     const limit = Math.min(200, Number(req.query.limit) || 50);
-    const events = await db.select().from(auditLogTable)
+    const events = await platformDb.select().from(auditLogTable)
       .orderBy(desc(auditLogTable.createdAt)).limit(limit);
     res.json({ events, total: events.length });
   } catch (err) { next(err); }
@@ -75,7 +79,7 @@ router.get("/actions", ...auth, async (req, res, next) => {
 
 router.get("/logins", ...auth, async (_req, res, next) => {
   try {
-    const logins = await db.select().from(auditLogTable)
+    const logins = await platformDb.select().from(auditLogTable)
       .where(or(
         eq(auditLogTable.eventType, "platform.organisation_viewed"),
         eq(auditLogTable.eventType, "user.signed_in"),

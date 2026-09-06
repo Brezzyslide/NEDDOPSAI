@@ -12,12 +12,18 @@
  * DELETE /roles/:userId   — revoke platform role
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, featureFlagsTable, platformSettingsTable, platformRolesTable, usersTable,
+  featureFlagsTable,
+  platformSettingsTable,
+  platformRolesTable,
+  usersTable,
 } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { auditService } from "../../services/auditService.js";
@@ -30,7 +36,7 @@ const auth      = [requireAuth, requirePlatformAuth];
 
 router.get("/flags", ...auth, async (_req, res, next) => {
   try {
-    const flags = await db.select().from(featureFlagsTable).orderBy(featureFlagsTable.key);
+    const flags = await platformDb.select().from(featureFlagsTable).orderBy(featureFlagsTable.key);
     res.json({ flags });
   } catch (err) { next(err); }
 });
@@ -40,7 +46,7 @@ router.post("/flags", ...superAuth, async (req, res, next) => {
     const { key, label, description, isEnabled, context } = req.body as Record<string, any>;
     if (!key || !label) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "key and label are required." } }); return; }
 
-    const [flag] = await db.insert(featureFlagsTable).values({
+    const [flag] = await platformDb.insert(featureFlagsTable).values({
       key, label,
       description: description ?? null,
       isEnabled: isEnabled ?? false,
@@ -56,7 +62,7 @@ router.post("/flags", ...superAuth, async (req, res, next) => {
 router.patch("/flags/:key", ...superAuth, async (req, res, next) => {
   try {
     const { isEnabled, context, label, description } = req.body as Record<string, any>;
-    const [flag] = await db.update(featureFlagsTable)
+    const [flag] = await platformDb.update(featureFlagsTable)
       .set({
         ...(isEnabled !== undefined && { isEnabled }),
         ...(context !== undefined && { context }),
@@ -77,7 +83,7 @@ router.patch("/flags/:key", ...superAuth, async (req, res, next) => {
 
 router.get("/config", ...auth, async (_req, res, next) => {
   try {
-    const settings = await db.select().from(platformSettingsTable).orderBy(platformSettingsTable.key);
+    const settings = await platformDb.select().from(platformSettingsTable).orderBy(platformSettingsTable.key);
     res.json({ settings });
   } catch (err) { next(err); }
 });
@@ -87,15 +93,15 @@ router.put("/config/:key", ...superAuth, async (req, res, next) => {
     const { value, label, description } = req.body as { value: unknown; label?: string; description?: string };
     if (value === undefined) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "value is required." } }); return; }
 
-    const existing = await db.select().from(platformSettingsTable).where(eq(platformSettingsTable.key, req.params.key!)).limit(1);
+    const existing = await platformDb.select().from(platformSettingsTable).where(eq(platformSettingsTable.key, req.params.key!)).limit(1);
     let setting;
     if (existing.length) {
-      [setting] = await db.update(platformSettingsTable)
+      [setting] = await platformDb.update(platformSettingsTable)
         .set({ value, updatedBy: req.platformUserId!, updatedAt: new Date(),
                ...(label !== undefined && { label }), ...(description !== undefined && { description }) })
         .where(eq(platformSettingsTable.key, req.params.key!)).returning();
     } else {
-      [setting] = await db.insert(platformSettingsTable).values({
+      [setting] = await platformDb.insert(platformSettingsTable).values({
         key: req.params.key!, value, updatedBy: req.platformUserId!,
         label: label ?? req.params.key!,
         description: description ?? null,
@@ -111,8 +117,7 @@ router.put("/config/:key", ...superAuth, async (req, res, next) => {
 
 router.get("/roles", ...superAuth, async (_req, res, next) => {
   try {
-    const roles = await db
-      .select({ role: platformRolesTable, user: { id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName } })
+    const roles = await platformDb.select({ role: platformRolesTable, user: { id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName } })
       .from(platformRolesTable)
       .leftJoin(usersTable, eq(usersTable.id, platformRolesTable.userId))
       .where(isNull(platformRolesTable.revokedAt))
@@ -126,7 +131,7 @@ router.post("/roles", ...superAuth, async (req, res, next) => {
     const { userId, role, grantReason } = req.body as { userId: string; role: string; grantReason?: string };
     if (!userId || !role) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "userId and role are required." } }); return; }
 
-    const [granted] = await db.insert(platformRolesTable).values({
+    const [granted] = await platformDb.insert(platformRolesTable).values({
       id: randomUUID(), userId, role: role as any,
       grantedBy: req.platformUserId!,
       grantReason: grantReason ?? null,
@@ -140,7 +145,7 @@ router.post("/roles", ...superAuth, async (req, res, next) => {
 
 router.delete("/roles/:userId", ...superAuth, async (req, res, next) => {
   try {
-    await db.update(platformRolesTable)
+    await platformDb.update(platformRolesTable)
       .set({ revokedAt: new Date(), revokedBy: req.platformUserId! })
       .where(and(eq(platformRolesTable.userId, req.params.userId!), isNull(platformRolesTable.revokedAt)));
 

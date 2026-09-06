@@ -137,6 +137,7 @@ data "aws_iam_policy_document" "api_execution_secrets" {
       aws_secretsmanager_secret.app["session"].arn,
       aws_secretsmanager_secret.app["clerk"].arn,
       aws_secretsmanager_secret.app["openai"].arn,
+      aws_secretsmanager_secret.app["database_roles"].arn,
     ]
   }
 }
@@ -246,6 +247,10 @@ resource "aws_ecs_task_definition" "api" {
           value = aws_db_instance.postgres.db_name
         },
         {
+          name  = "DB_PLATFORM_USERNAME"
+          value = "needsops_platform_app"
+        },
+        {
           name  = "APP_STORAGE_BUCKET"
           value = aws_s3_bucket.app_storage.id
         },
@@ -315,6 +320,10 @@ resource "aws_ecs_task_definition" "api" {
         {
           name      = "DB_PASSWORD"
           valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
+        },
+        {
+          name      = "DB_PLATFORM_PASSWORD"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_PLATFORM_APP_PASSWORD::"
         },
         {
           name      = "SESSION_SECRET"

@@ -11,6 +11,7 @@
       "@workspace/auth": ["../../lib/auth/src/index.ts"],
       "@workspace/permissions": ["../../lib/permissions/src/index.ts"],
       "@workspace/db": ["../../lib/db/src/index.ts"],
+      "@workspace/db/platform": ["../../lib/db/src/platform.ts"],
       "@workspace/validation": ["../../lib/validation/src/index.ts"],
       "@workspace/api-zod": ["../../lib/api-zod/src/index.ts"]
     }

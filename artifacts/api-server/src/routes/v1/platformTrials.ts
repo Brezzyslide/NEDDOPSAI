@@ -7,11 +7,16 @@
  * GET  /expired    — expired trials
  */
 
-import { Router } from "express";
-import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, tenantSubscriptionsTable, organizationsTable, plansTable,
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
+import { requireAuth } from "../../middlewares/tenantContext.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import {
+  tenantSubscriptionsTable,
+  organizationsTable,
+  plansTable,
 } from "@workspace/db";
 import { eq, and, lte, gte, desc, or } from "drizzle-orm";
 import { auditService } from "../../services/auditService.js";
@@ -24,8 +29,7 @@ router.get("/", ...auth, async (req, res, next) => {
     const status = req.query.status as string | undefined; // trial | trial_expired | all
     const daysFilter = Number(req.query.days) || null;
 
-    let q = db
-      .select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
+    let q = platformDb.select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
       .from(tenantSubscriptionsTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, tenantSubscriptionsTable.organizationId))
       .leftJoin(plansTable, eq(plansTable.id, tenantSubscriptionsTable.planId))
@@ -70,8 +74,7 @@ router.get("/expiring", ...auth, async (req, res, next) => {
     const now  = new Date();
     const cutoff = new Date(now.getTime() + days * 86_400_000);
 
-    const rows = await db
-      .select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
+    const rows = await platformDb.select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
       .from(tenantSubscriptionsTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, tenantSubscriptionsTable.organizationId))
       .leftJoin(plansTable, eq(plansTable.id, tenantSubscriptionsTable.planId))
@@ -102,7 +105,7 @@ router.post("/:id/extend", requireAuth, requirePlatformAuth, requirePlatformRole
       return;
     }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable)
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.id, req.params.id!)).limit(1);
     if (!sub) {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } });
@@ -120,7 +123,7 @@ router.post("/:id/extend", requireAuth, requirePlatformAuth, requirePlatformRole
     const newTrialEndsAt = new Date(sub.trialEndAt.getTime() + additionalDays * 86_400_000);
     const now = new Date();
 
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({
         trialEndAt: newTrialEndsAt,
         changedBy: req.platformUserId!,
@@ -150,7 +153,7 @@ router.post("/:id/cancel", requireAuth, requirePlatformAuth, requirePlatformRole
       return;
     }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable)
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.id, req.params.id!)).limit(1);
     if (!sub) {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } });
@@ -163,15 +166,15 @@ router.post("/:id/cancel", requireAuth, requirePlatformAuth, requirePlatformRole
 
     const now = new Date();
 
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ status: "trial_expired", trialEndAt: now, changedBy: req.platformUserId!, updatedAt: now })
       .where(eq(tenantSubscriptionsTable.id, sub.id));
 
     // Update org status to "restricted" if org was in "trial"
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, sub.organizationId)).limit(1);
     if (org && org.status === "trial") {
-      await db.update(organizationsTable)
+      await platformDb.update(organizationsTable)
         .set({ status: "restricted" as any, updatedAt: now })
         .where(eq(organizationsTable.id, org.id));
     }
@@ -214,7 +217,7 @@ router.post("/:id/convert", requireAuth, requirePlatformAuth, requirePlatformRol
       return;
     }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable)
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.id, req.params.id!)).limit(1);
     if (!sub) {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } });
@@ -241,13 +244,13 @@ router.post("/:id/convert", requireAuth, requirePlatformAuth, requirePlatformRol
       ...(planVersionId ? { planVersionId } : {}),
     };
 
-    const [updatedSub] = await db.update(tenantSubscriptionsTable)
+    const [updatedSub] = await platformDb.update(tenantSubscriptionsTable)
       .set(updatePayload as any)
       .where(eq(tenantSubscriptionsTable.id, sub.id))
       .returning();
 
     // Update org status to "active"
-    await db.update(organizationsTable)
+    await platformDb.update(organizationsTable)
       .set({ status: "active", updatedAt: now } as any)
       .where(eq(organizationsTable.id, sub.organizationId));
 

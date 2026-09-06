@@ -87,6 +87,22 @@ async function ensureFreshSchemaPrerequisites(pool: pg.Pool): Promise<void> {
   await pool.query("CREATE EXTENSION IF NOT EXISTS vector");
 }
 
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function configureRestrictedRolePasswords(pool: pg.Pool): Promise<void> {
+  const platformPassword = process.env["NEEDSOPS_PLATFORM_APP_PASSWORD"];
+  const workerPassword = process.env["NEEDSOPS_WORKER_APP_PASSWORD"];
+
+  if (platformPassword) {
+    await pool.query(`ALTER ROLE needsops_platform_app PASSWORD ${sqlLiteral(platformPassword)}`);
+  }
+  if (workerPassword) {
+    await pool.query(`ALTER ROLE needsops_worker_app PASSWORD ${sqlLiteral(workerPassword)}`);
+  }
+}
+
 function validateBootstrapEnvironment(identity: BootstrapIdentity): void {
   if (identity.environment !== "dev") {
     throw new Error(`Refusing bootstrap for environment "${identity.environment}". Expected "dev".`);
@@ -181,6 +197,9 @@ async function main(): Promise<void> {
       },
     });
     console.log("[db:bootstrap] Platform migrations complete", migrationResult);
+
+    console.log("[db:bootstrap] Configuring restricted runtime role passwords");
+    await configureRestrictedRolePasswords(pool);
 
     console.log("[db:bootstrap] Seeding platform defaults");
     await seedPlatformDefaults();

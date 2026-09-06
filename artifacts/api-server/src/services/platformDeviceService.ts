@@ -12,12 +12,12 @@
 
 import { randomUUID, createHash, randomBytes } from "crypto";
 import {
-  db,
   devicesTable,
   deviceCredentialsTable,
   deviceRuntimeStatusTable,
   organizationsTable,
 } from "@workspace/db";
+import { platformDb } from "@workspace/db/platform";
 import {
   eq, and, ilike, or, isNull, lt, desc, sql, inArray, count,
 } from "drizzle-orm";
@@ -115,7 +115,7 @@ export async function listDevicesForPlatform(filters: ListDevicesFilters = {}) {
   const limit = Math.min(100, Math.max(1, filters.limit ?? 50));
   const offset = (page - 1) * limit;
 
-  const rows = await db
+  const rows = await platformDb
     .select({
       device: devicesTable,
       orgName: organizationsTable.name,
@@ -143,7 +143,7 @@ export async function listDevicesForPlatform(filters: ListDevicesFilters = {}) {
     .limit(limit)
     .offset(offset);
 
-  const [{ n: total }] = await db
+  const [{ n: total }] = await platformDb
     .select({ n: count() })
     .from(devicesTable)
     .leftJoin(organizationsTable, eq(organizationsTable.id, devicesTable.organizationId))
@@ -177,7 +177,7 @@ export async function listDevicesForPlatform(filters: ListDevicesFilters = {}) {
  * Includes runtime status and credential metadata (no hashes).
  */
 export async function getDeviceDetailForPlatform(deviceId: string) {
-  const [row] = await db
+  const [row] = await platformDb
     .select({
       device: devicesTable,
       orgName: organizationsTable.name,
@@ -192,7 +192,7 @@ export async function getDeviceDetailForPlatform(deviceId: string) {
   if (!row) return null;
 
   // Credential metadata (no hashes, no tokens)
-  const credentials = await db
+  const credentials = await platformDb
     .select({
       id: deviceCredentialsTable.id,
       issuedAt: deviceCredentialsTable.issuedAt,
@@ -239,7 +239,7 @@ export async function getDeviceDetailForPlatform(deviceId: string) {
  * Get devices for a specific org (platform view — safe fields only).
  */
 export async function listDevicesForOrg(organizationId: string) {
-  const rows = await db
+  const rows = await platformDb
     .select({
       device: devicesTable,
       runtime: deviceRuntimeStatusTable,
@@ -271,7 +271,7 @@ export async function platformRevokeDevice(
   platformUserId: string,
   reason?: string,
 ): Promise<void> {
-  const [device] = await db
+  const [device] = await platformDb
     .select({ id: devicesTable.id, organizationId: devicesTable.organizationId })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -279,12 +279,12 @@ export async function platformRevokeDevice(
   if (!device) throw Object.assign(new Error("Device not found."), { status: 404 });
 
   const now = new Date();
-  await db
+  await platformDb
     .update(devicesTable)
     .set({ status: "revoked", revokedAt: now, revokedBy: platformUserId, updatedAt: now })
     .where(eq(devicesTable.id, deviceId));
 
-  await db
+  await platformDb
     .update(deviceCredentialsTable)
     .set({ revokedAt: now, updatedAt: now })
     .where(eq(deviceCredentialsTable.deviceId, deviceId));
@@ -303,7 +303,7 @@ export async function platformDisableDevice(
   platformUserId: string,
   reason?: string,
 ): Promise<void> {
-  const [device] = await db
+  const [device] = await platformDb
     .select({ id: devicesTable.id, organizationId: devicesTable.organizationId, status: devicesTable.status })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -312,7 +312,7 @@ export async function platformDisableDevice(
   if (device.status === "revoked") throw Object.assign(new Error("Device is permanently revoked."), { status: 409 });
 
   const now = new Date();
-  await db
+  await platformDb
     .update(devicesTable)
     .set({
       isPlatformDisabled: true,
@@ -336,7 +336,7 @@ export async function platformEnableDevice(
   deviceId: string,
   platformUserId: string,
 ): Promise<void> {
-  const [device] = await db
+  const [device] = await platformDb
     .select({ id: devicesTable.id, organizationId: devicesTable.organizationId })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -344,7 +344,7 @@ export async function platformEnableDevice(
   if (!device) throw Object.assign(new Error("Device not found."), { status: 404 });
 
   const now = new Date();
-  await db
+  await platformDb
     .update(devicesTable)
     .set({
       isPlatformDisabled: false,
@@ -373,7 +373,7 @@ export async function platformRotateDeviceCredentials(
   platformUserId: string,
   reason?: string,
 ): Promise<{ credentialsRevoked: number }> {
-  const [device] = await db
+  const [device] = await platformDb
     .select({ id: devicesTable.id, organizationId: devicesTable.organizationId })
     .from(devicesTable)
     .where(eq(devicesTable.id, deviceId))
@@ -381,7 +381,7 @@ export async function platformRotateDeviceCredentials(
   if (!device) throw Object.assign(new Error("Device not found."), { status: 404 });
 
   const now = new Date();
-  const activeCredentials = await db
+  const activeCredentials = await platformDb
     .select({ id: deviceCredentialsTable.id })
     .from(deviceCredentialsTable)
     .where(
@@ -392,7 +392,7 @@ export async function platformRotateDeviceCredentials(
     );
 
   if (activeCredentials.length > 0) {
-    await db
+    await platformDb
       .update(deviceCredentialsTable)
       .set({ revokedAt: now, updatedAt: now })
       .where(
@@ -405,7 +405,7 @@ export async function platformRotateDeviceCredentials(
 
   // Revoke relay access tokens and refresh tokens so short-lived relay sessions
   // are also invalidated — preventing bypass of the re-activation requirement
-  await db
+  await platformDb
     .update(deviceAccessTokensTable)
     .set({ revokedAt: now })
     .where(
@@ -415,7 +415,7 @@ export async function platformRotateDeviceCredentials(
       ),
     );
 
-  await db
+  await platformDb
     .update(deviceRefreshTokensTable)
     .set({ revokedAt: now })
     .where(
@@ -426,7 +426,7 @@ export async function platformRotateDeviceCredentials(
     );
 
   // Mark device as needing re-activation (pending)
-  await db
+  await platformDb
     .update(devicesTable)
     .set({ status: "pending", updatedAt: now })
     .where(eq(devicesTable.id, deviceId));
@@ -449,7 +449,7 @@ export async function getDeviceAuditHistory(deviceId: string) {
   const { platformAuditLogTable } = await import("@workspace/db");
   const { sql: drizzleSql } = await import("drizzle-orm");
 
-  const events = await db
+  const events = await platformDb
     .select()
     .from(platformAuditLogTable)
     .where(drizzleSql`${platformAuditLogTable.metadata}->>'deviceId' = ${deviceId}`)
@@ -464,7 +464,7 @@ export async function getDeviceAuditHistory(deviceId: string) {
  * Returns recent error messages; never returns credential data.
  */
 export async function getDeviceErrorHistory(deviceId: string) {
-  const rows = await db
+  const rows = await platformDb
     .select({
       id: deviceRuntimeStatusTable.id,
       brokerStatus: deviceRuntimeStatusTable.brokerStatus,

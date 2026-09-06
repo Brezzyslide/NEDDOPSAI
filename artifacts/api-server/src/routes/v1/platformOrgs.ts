@@ -25,12 +25,14 @@
  * GET  /:id/members              — members list
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   organizationsTable,
   membershipsTable,
   usersTable,
@@ -88,8 +90,7 @@ router.get("/", ...auth, async (req, res, next) => {
         : undefined;
     const whereClause = and(searchClause, statusClause);
 
-    let qb = db
-      .select({ org: organizationsTable, memberCount: count(membershipsTable.id) })
+    let qb = platformDb.select({ org: organizationsTable, memberCount: count(membershipsTable.id) })
       .from(organizationsTable)
       .leftJoin(membershipsTable, and(
         eq(membershipsTable.organizationId, organizationsTable.id),
@@ -102,7 +103,7 @@ router.get("/", ...auth, async (req, res, next) => {
 
     // Count query uses the same search/status clause so the returned total
     // reflects the filtered set, not the full table.
-    let countQb = db.select({ n: count() }).from(organizationsTable).$dynamic();
+    let countQb = platformDb.select({ n: count() }).from(organizationsTable).$dynamic();
     if (whereClause) countQb = countQb.where(whereClause);
 
     const [rows, [totalRow]] = await Promise.all([
@@ -113,10 +114,10 @@ router.get("/", ...auth, async (req, res, next) => {
     const orgIds = rows.map(r => r.org.id);
     const [subs, planRows] = await Promise.all([
       orgIds.length
-        ? db.select().from(tenantSubscriptionsTable)
+        ? platformDb.select().from(tenantSubscriptionsTable)
             .where(or(...orgIds.map(id => eq(tenantSubscriptionsTable.organizationId, id))))
         : [],
-      db.select().from(plansTable),
+      platformDb.select().from(plansTable),
     ]);
 
     const subMap = Object.fromEntries(subs.map(s => [s.organizationId, s]));
@@ -140,7 +141,7 @@ router.get("/", ...auth, async (req, res, next) => {
 
 router.get("/:id", ...auth, async (req, res, next) => {
   try {
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
@@ -148,26 +149,26 @@ router.get("/:id", ...auth, async (req, res, next) => {
     // approval details). Only safe aggregate counts are permitted here.
     // Operational content is accessible to authorised org members only via org portal.
     const [sub, members, overrides, notes, taskCountResult, approvalCountResult, pendingApprovalCountResult, usageRows] = await Promise.all([
-      db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1),
-      db.select({ membership: membershipsTable, user: usersTable })
+      platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1),
+      platformDb.select({ membership: membershipsTable, user: usersTable })
         .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
         .where(eq(membershipsTable.organizationId, org.id)),
-      db.select().from(tenantOverridesTable).where(eq(tenantOverridesTable.organizationId, org.id))
+      platformDb.select().from(tenantOverridesTable).where(eq(tenantOverridesTable.organizationId, org.id))
         .orderBy(desc(tenantOverridesTable.createdAt)),
-      db.select().from(platformInternalNotesTable)
+      platformDb.select().from(platformInternalNotesTable)
         .where(eq(platformInternalNotesTable.organizationId, org.id))
         .orderBy(desc(platformInternalNotesTable.createdAt)).limit(50),
       // Counts only — no operational content exposed to platform console
-      db.select({ count: count() }).from(tasksTable).where(eq(tasksTable.organizationId, org.id)),
-      db.select({ count: count() }).from(approvalsTable).where(eq(approvalsTable.organizationId, org.id)),
-      db.select({ count: count() }).from(approvalsTable).where(and(eq(approvalsTable.organizationId, org.id), sql`state = 'pending'`)),
-      db.select().from(usagePeriodSummariesTable).where(eq(usagePeriodSummariesTable.organizationId, org.id))
+      platformDb.select({ count: count() }).from(tasksTable).where(eq(tasksTable.organizationId, org.id)),
+      platformDb.select({ count: count() }).from(approvalsTable).where(eq(approvalsTable.organizationId, org.id)),
+      platformDb.select({ count: count() }).from(approvalsTable).where(and(eq(approvalsTable.organizationId, org.id), sql`state = 'pending'`)),
+      platformDb.select().from(usagePeriodSummariesTable).where(eq(usagePeriodSummariesTable.organizationId, org.id))
         .orderBy(desc(usagePeriodSummariesTable.periodStart)).limit(13),
     ]);
 
     const [entitlements, packs, seatInfo] = await Promise.all([
-      db.select().from(tenantEntitlementsTable).where(eq(tenantEntitlementsTable.organizationId, org.id)),
-      db.select().from(tenantWorkforcePacksTable).where(and(
+      platformDb.select().from(tenantEntitlementsTable).where(eq(tenantEntitlementsTable.organizationId, org.id)),
+      platformDb.select().from(tenantWorkforcePacksTable).where(and(
         eq(tenantWorkforcePacksTable.organizationId, org.id),
         isNull(tenantWorkforcePacksTable.revokedAt),
       )),
@@ -217,9 +218,9 @@ router.post("/:id/suspend", ...auth, requirePlatformRole("platform_operations_ad
   try {
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
-    await db.update(organizationsTable).set({ status: "suspended", updatedAt: new Date() }).where(eq(organizationsTable.id, org.id));
+    await platformDb.update(organizationsTable).set({ status: "suspended", updatedAt: new Date() }).where(eq(organizationsTable.id, org.id));
     await auditService.log({ eventType: "platform.organisation_suspended", actorId: req.platformUserId, organizationId: org.id, metadata: { reason } });
     res.json({ success: true, message: `Organisation '${org.name}' suspended.` });
   } catch (err) { next(err); }
@@ -231,9 +232,9 @@ router.post("/:id/reactivate", ...auth, requirePlatformRole("platform_operations
   try {
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
-    await db.update(organizationsTable).set({ status: "active", updatedAt: new Date() }).where(eq(organizationsTable.id, org.id));
+    await platformDb.update(organizationsTable).set({ status: "active", updatedAt: new Date() }).where(eq(organizationsTable.id, org.id));
     await auditService.log({ eventType: "platform.organisation_reactivated", actorId: req.platformUserId, organizationId: org.id, metadata: { reason } });
     res.json({ success: true, message: `Organisation '${org.name}' reactivated.` });
   } catch (err) { next(err); }
@@ -246,25 +247,25 @@ router.post("/:id/change-plan", ...auth, requirePlatformRole("platform_billing_a
     const { planCode, reason } = req.body as { planCode: string; reason: string };
     if (!planCode || !reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "planCode and reason are required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    const [plan] = await db.select().from(plansTable).where(eq(plansTable.code, planCode)).limit(1);
+    const [plan] = await platformDb.select().from(plansTable).where(eq(plansTable.code, planCode)).limit(1);
     if (!plan) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `Plan '${planCode}' not found.` } }); return; }
 
-    const [version] = await db.select().from(planVersionsTable)
+    const [version] = await platformDb.select().from(planVersionsTable)
       .where(and(eq(planVersionsTable.planId, plan.id), eq(planVersionsTable.isActive, true))).limit(1);
     if (!version) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `No active version for plan '${planCode}'.` } }); return; }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
     const now = new Date();
 
     if (sub) {
-      await db.update(tenantSubscriptionsTable)
+      await platformDb.update(tenantSubscriptionsTable)
         .set({ planId: plan.id, planVersionId: version.id, updatedAt: now, internalNote: `Plan changed to ${planCode}. Reason: ${reason}` })
         .where(eq(tenantSubscriptionsTable.id, sub.id));
     } else {
-      await db.insert(tenantSubscriptionsTable).values({
+      await platformDb.insert(tenantSubscriptionsTable).values({
         id: randomUUID(), organizationId: org.id, planId: plan.id, planVersionId: version.id,
         status: "active", billingCycle: "monthly", currentPeriodStart: now,
         currentPeriodEnd: new Date(now.getTime() + 30 * 86_400_000), createdAt: now, updatedAt: now,
@@ -284,26 +285,26 @@ router.post("/:id/trial/start", ...auth, requirePlatformRole("platform_billing_a
     const { planCode, days, reason } = req.body as { planCode: string; days: number; reason: string };
     if (!planCode || !days || !reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "planCode, days, and reason are required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    const [plan] = await db.select().from(plansTable).where(eq(plansTable.code, planCode)).limit(1);
+    const [plan] = await platformDb.select().from(plansTable).where(eq(plansTable.code, planCode)).limit(1);
     if (!plan) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `Plan '${planCode}' not found.` } }); return; }
 
-    const [version] = await db.select().from(planVersionsTable)
+    const [version] = await platformDb.select().from(planVersionsTable)
       .where(and(eq(planVersionsTable.planId, plan.id), eq(planVersionsTable.isActive, true))).limit(1);
     if (!version) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "No active version for that plan." } }); return; }
 
     const now = new Date();
     const trialEnd = new Date(now.getTime() + days * 86_400_000);
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
     if (sub) {
-      await db.update(tenantSubscriptionsTable)
+      await platformDb.update(tenantSubscriptionsTable)
         .set({ planId: plan.id, planVersionId: version.id, status: "trial", trialStartAt: now, trialEndAt: trialEnd, updatedAt: now })
         .where(eq(tenantSubscriptionsTable.id, sub.id));
     } else {
-      await db.insert(tenantSubscriptionsTable).values({
+      await platformDb.insert(tenantSubscriptionsTable).values({
         id: randomUUID(), organizationId: org.id, planId: plan.id, planVersionId: version.id,
         status: "trial", billingCycle: "monthly", trialStartAt: now, trialEndAt: trialEnd,
         currentPeriodStart: now, currentPeriodEnd: trialEnd, createdAt: now, updatedAt: now,
@@ -322,12 +323,12 @@ router.post("/:id/trial/extend", ...auth, requirePlatformRole("platform_billing_
     const { days, reason } = req.body as { days: number; reason: string };
     if (!days || !reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "days and reason are required." } }); return; }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1);
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1);
     if (!sub) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } }); return; }
 
     const currentEnd = sub.trialEndAt ?? new Date();
     const newEnd = new Date(currentEnd.getTime() + days * 86_400_000);
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ trialEndAt: newEnd, updatedAt: new Date(), internalNote: `Trial extended +${days}d. Reason: ${reason}` })
       .where(eq(tenantSubscriptionsTable.id, sub.id));
 
@@ -343,10 +344,10 @@ router.post("/:id/trial/cancel", ...auth, requirePlatformRole("platform_billing_
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [sub] = await db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1);
+    const [sub] = await platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1);
     if (!sub) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } }); return; }
 
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ status: "trial_expired", updatedAt: new Date(), internalNote: `Trial cancelled. Reason: ${reason}` })
       .where(eq(tenantSubscriptionsTable.id, sub.id));
 
@@ -359,7 +360,7 @@ router.post("/:id/trial/cancel", ...auth, requirePlatformRole("platform_billing_
 
 router.get("/:id/overrides", ...auth, async (req, res, next) => {
   try {
-    const overrides = await db.select().from(tenantOverridesTable)
+    const overrides = await platformDb.select().from(tenantOverridesTable)
       .where(eq(tenantOverridesTable.organizationId, req.params.id!))
       .orderBy(desc(tenantOverridesTable.createdAt));
     res.json({ overrides });
@@ -374,11 +375,11 @@ router.post("/:id/overrides", ...auth, requirePlatformRole("platform_operations_
     };
     if (!overrideType || !reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "overrideType and reason are required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const overrideId = randomUUID();
-    const [created] = await db.insert(tenantOverridesTable).values({
+    const [created] = await platformDb.insert(tenantOverridesTable).values({
       id: overrideId, organizationId: org.id,
       overrideType: overrideType as any, value: value ?? {},
       reason, internalNote: internalNote ?? null, customerNote: customerNote ?? null,
@@ -394,7 +395,7 @@ router.post("/:id/overrides", ...auth, requirePlatformRole("platform_operations_
 router.delete("/:id/overrides/:oid", ...auth, requirePlatformRole("platform_operations_admin"), async (req, res, next) => {
   try {
     const { reason } = req.body as { reason?: string };
-    await db.update(tenantOverridesTable)
+    await platformDb.update(tenantOverridesTable)
       .set({ isActive: false, revokedAt: new Date(), revokedBy: req.platformUserId!, revokeReason: reason ?? null, updatedAt: new Date() })
       .where(and(eq(tenantOverridesTable.id, req.params.oid!), eq(tenantOverridesTable.organizationId, req.params.id!)));
     await auditService.log({ eventType: "platform.override_revoked", actorId: req.platformUserId, organizationId: req.params.id!, metadata: { overrideId: req.params.oid, reason } });
@@ -406,7 +407,7 @@ router.delete("/:id/overrides/:oid", ...auth, requirePlatformRole("platform_oper
 
 router.get("/:id/internal-notes", ...auth, async (req, res, next) => {
   try {
-    const notes = await db.select().from(platformInternalNotesTable)
+    const notes = await platformDb.select().from(platformInternalNotesTable)
       .where(eq(platformInternalNotesTable.organizationId, req.params.id!))
       .orderBy(desc(platformInternalNotesTable.createdAt));
     res.json({ notes });
@@ -420,10 +421,10 @@ router.post("/:id/internal-notes", ...auth, requirePlatformRole("platform_suppor
     };
     if (!content) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "content is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    const [note] = await db.insert(platformInternalNotesTable).values({
+    const [note] = await platformDb.insert(platformInternalNotesTable).values({
       id: randomUUID(), organizationId: org.id, content,
       authorId: req.platformUserId!,
       isInternal: true, isFlagged: isFlagged ?? false,
@@ -475,9 +476,9 @@ router.get("/:id/usage", ...auth, async (req, res, next) => {
 router.get("/:id/entitlements", ...auth, async (req, res, next) => {
   try {
     const [sub, entitlements, packs] = await Promise.all([
-      db.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1),
-      db.select().from(tenantEntitlementsTable).where(eq(tenantEntitlementsTable.organizationId, req.params.id!)),
-      db.select().from(tenantWorkforcePacksTable).where(and(
+      platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, req.params.id!)).limit(1),
+      platformDb.select().from(tenantEntitlementsTable).where(eq(tenantEntitlementsTable.organizationId, req.params.id!)),
+      platformDb.select().from(tenantWorkforcePacksTable).where(and(
         eq(tenantWorkforcePacksTable.organizationId, req.params.id!),
         isNull(tenantWorkforcePacksTable.revokedAt),
       )),
@@ -489,7 +490,7 @@ router.get("/:id/entitlements", ...auth, async (req, res, next) => {
 router.get("/:id/audit", ...auth, async (req, res, next) => {
   try {
     const limit = Math.min(200, Number(req.query.limit) || 50);
-    const events = await db.select().from(auditLogTable)
+    const events = await platformDb.select().from(auditLogTable)
       .where(eq(auditLogTable.organizationId, req.params.id!))
       .orderBy(desc(auditLogTable.createdAt)).limit(limit);
     res.json({ events, count: events.length });
@@ -503,7 +504,7 @@ router.get("/:id/audit", ...auth, async (req, res, next) => {
  */
 router.get("/:id/tasks", ...auth, async (req, res, next) => {
   try {
-    const [totalResult] = await db.select({ count: count() }).from(tasksTable)
+    const [totalResult] = await platformDb.select({ count: count() }).from(tasksTable)
       .where(eq(tasksTable.organizationId, req.params.id!));
     res.json({
       restricted: true,
@@ -516,9 +517,9 @@ router.get("/:id/tasks", ...auth, async (req, res, next) => {
 
 router.get("/:id/approvals", ...auth, async (req, res, next) => {
   try {
-    const [totalResult] = await db.select({ count: count() }).from(approvalsTable)
+    const [totalResult] = await platformDb.select({ count: count() }).from(approvalsTable)
       .where(eq(approvalsTable.organizationId, req.params.id!));
-    const [pendingResult] = await db.select({ count: count() }).from(approvalsTable)
+    const [pendingResult] = await platformDb.select({ count: count() }).from(approvalsTable)
       .where(and(eq(approvalsTable.organizationId, req.params.id!), sql`state = 'pending'`));
     res.json({
       restricted: true,
@@ -531,7 +532,7 @@ router.get("/:id/approvals", ...auth, async (req, res, next) => {
 
 router.get("/:id/members", ...auth, async (req, res, next) => {
   try {
-    const members = await db.select({ membership: membershipsTable, user: usersTable })
+    const members = await platformDb.select({ membership: membershipsTable, user: usersTable })
       .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
       .where(eq(membershipsTable.organizationId, req.params.id!));
     res.json({ members, count: members.length });
@@ -551,7 +552,7 @@ router.patch("/:id", ...auth, requirePlatformRole("platform_admin"), async (req,
       internalNote?: string;
     };
 
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
@@ -562,14 +563,14 @@ router.patch("/:id", ...auth, requirePlatformRole("platform_admin"), async (req,
     if (displayName !== undefined) updateFields.displayName = displayName;
     if (supportStatus !== undefined) updateFields.supportStatus = supportStatus;
 
-    const [updatedOrg] = await db.update(organizationsTable)
+    const [updatedOrg] = await platformDb.update(organizationsTable)
       .set(updateFields)
       .where(eq(organizationsTable.id, org.id))
       .returning();
 
     // Add internal note if provided
     if (internalNote) {
-      await db.insert(platformInternalNotesTable).values({
+      await platformDb.insert(platformInternalNotesTable).values({
         id: randomUUID(),
         organizationId: org.id,
         content: internalNote,
@@ -599,13 +600,13 @@ router.post("/:id/close", ...auth, requirePlatformRole("platform_super_admin"), 
     const { reason, note } = req.body as { reason: string; note?: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
     if (org.status === "closed") { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Organisation is already closed." } }); return; }
 
     const now = new Date();
-    await db.update(organizationsTable).set({
+    await platformDb.update(organizationsTable).set({
       status: "closed",
       closedAt: now,
       closedBy: req.platformUserId!,
@@ -619,7 +620,7 @@ router.post("/:id/close", ...auth, requirePlatformRole("platform_super_admin"), 
 
     // Add internal note if provided
     if (note) {
-      await db.insert(platformInternalNotesTable).values({
+      await platformDb.insert(platformInternalNotesTable).values({
         id: randomUUID(),
         organizationId: org.id,
         content: note,
@@ -657,17 +658,17 @@ router.post("/:id/freeze-execution", ...auth,
       const { reason } = req.body as { reason: string };
       if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-      const [org] = await db.select().from(organizationsTable)
+      const [org] = await platformDb.select().from(organizationsTable)
         .where(eq(organizationsTable.id, req.params.id!)).limit(1);
       if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-      await db.update(organizationsTable).set({
+      await platformDb.update(organizationsTable).set({
         executionFrozen: true,
         updatedAt: new Date(),
       }).where(eq(organizationsTable.id, org.id));
 
       // Store reason as internal note
-      await db.insert(platformInternalNotesTable).values({
+      await platformDb.insert(platformInternalNotesTable).values({
         id: randomUUID(),
         organizationId: org.id,
         content: `Execution frozen. Reason: ${reason}`,
@@ -696,14 +697,14 @@ router.post("/:id/unfreeze-execution", ...auth, requirePlatformRole("platform_op
   try {
     const { reason } = req.body as { reason?: string };
 
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
     if (org.status === "closed" || org.status === "suspended") {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: `Cannot unfreeze execution for a ${org.status} organisation.` } }); return;
     }
 
-    await db.update(organizationsTable).set({
+    await platformDb.update(organizationsTable).set({
       executionFrozen: false,
       updatedAt: new Date(),
     }).where(eq(organizationsTable.id, org.id));
@@ -726,11 +727,11 @@ router.post("/:id/disable-logins", ...auth, requirePlatformRole("platform_securi
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    await db.update(organizationsTable).set({
+    await platformDb.update(organizationsTable).set({
       loginDisabled: true,
       updatedAt: new Date(),
     }).where(eq(organizationsTable.id, org.id));
@@ -752,14 +753,14 @@ router.post("/:id/enable-logins", ...auth, requirePlatformRole("platform_securit
   try {
     const { reason } = req.body as { reason?: string };
 
-    const [org] = await db.select().from(organizationsTable)
+    const [org] = await platformDb.select().from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
     if (org.status === "closed") {
       res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Cannot enable logins for a closed organisation." } }); return;
     }
 
-    await db.update(organizationsTable).set({
+    await platformDb.update(organizationsTable).set({
       loginDisabled: false,
       updatedAt: new Date(),
     }).where(eq(organizationsTable.id, org.id));
@@ -796,7 +797,7 @@ router.post("/:id/subscription", ...auth, requirePlatformRole("platform_commerci
       return;
     }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
@@ -809,13 +810,13 @@ router.post("/:id/subscription", ...auth, requirePlatformRole("platform_commerci
       trialEndAt = new Date(now.getTime() + trialDays * 86_400_000);
     }
 
-    const [existingSub] = await db.select().from(tenantSubscriptionsTable)
+    const [existingSub] = await platformDb.select().from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
 
     let subscription: typeof tenantSubscriptionsTable.$inferSelect;
 
     if (existingSub) {
-      const [updated] = await db.update(tenantSubscriptionsTable)
+      const [updated] = await platformDb.update(tenantSubscriptionsTable)
         .set({
           planId,
           planVersionId,
@@ -830,7 +831,7 @@ router.post("/:id/subscription", ...auth, requirePlatformRole("platform_commerci
         .returning();
       subscription = updated!;
     } else {
-      const [created] = await db.insert(tenantSubscriptionsTable).values({
+      const [created] = await platformDb.insert(tenantSubscriptionsTable).values({
         id: randomUUID(),
         organizationId: org.id,
         planId,
@@ -870,10 +871,10 @@ router.patch("/:id/subscription", ...auth, requirePlatformRole("platform_commerc
       note?: string;
     };
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
-    const [existingSub] = await db.select().from(tenantSubscriptionsTable)
+    const [existingSub] = await platformDb.select().from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1);
     if (!existingSub) {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Subscription not found." } });
@@ -887,7 +888,7 @@ router.patch("/:id/subscription", ...auth, requirePlatformRole("platform_commerc
     if (status !== undefined) updates.status = status;
     if (note !== undefined) updates.internalNote = note;
 
-    const [subscription] = await db.update(tenantSubscriptionsTable)
+    const [subscription] = await platformDb.update(tenantSubscriptionsTable)
       .set(updates as any)
       .where(eq(tenantSubscriptionsTable.id, existingSub.id))
       .returning();
@@ -910,11 +911,11 @@ router.post("/:id/subscription/pause", ...auth, requirePlatformRole("platform_co
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ status: "suspended", suspendedAt: now, changedBy: req.platformUserId!, updatedAt: now })
       .where(eq(tenantSubscriptionsTable.organizationId, org.id));
 
@@ -936,11 +937,11 @@ router.post("/:id/subscription/resume", ...auth, requirePlatformRole("platform_c
     const { reason } = req.body as { reason: string };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ status: "active", suspendedAt: null, changedBy: req.platformUserId!, updatedAt: now })
       .where(eq(tenantSubscriptionsTable.organizationId, org.id));
 
@@ -962,11 +963,11 @@ router.post("/:id/subscription/cancel", ...auth, requirePlatformRole("platform_c
     const { reason, immediate } = req.body as { reason: string; immediate?: boolean };
     if (!reason) { res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "reason is required." } }); return; }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
-    await db.update(tenantSubscriptionsTable)
+    await platformDb.update(tenantSubscriptionsTable)
       .set({ status: "cancelled", cancelledAt: now, changedBy: req.platformUserId!, updatedAt: now })
       .where(eq(tenantSubscriptionsTable.organizationId, org.id));
 
@@ -989,14 +990,14 @@ router.post("/:id/subscription/cancel", ...auth, requirePlatformRole("platform_c
 
 router.get("/:id/seats", ...auth, async (req, res, next) => {
   try {
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
 
     const [seatAllowance, history] = await Promise.all([
       getSeatAllowance(org.id).catch(() => null),
-      db.select().from(seatOverridesTable)
+      platformDb.select().from(seatOverridesTable)
         .where(eq(seatOverridesTable.organizationId, org.id))
         .orderBy(desc(seatOverridesTable.createdAt))
         .limit(10),
@@ -1026,13 +1027,13 @@ router.post("/:id/seats/override", ...auth, requirePlatformRole("platform_commer
       return;
     }
 
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
     const overrideId = randomUUID();
 
-    const [override] = await db.insert(seatOverridesTable).values({
+    const [override] = await platformDb.insert(seatOverridesTable).values({
       id: overrideId,
       organizationId: org.id,
       seatAllowance: seatAllowance ?? null,
@@ -1059,11 +1060,11 @@ router.post("/:id/seats/override", ...auth, requirePlatformRole("platform_commer
 
 router.delete("/:id/seats/override/:oid", ...auth, requirePlatformRole("platform_commercial"), async (req, res, next) => {
   try {
-    const [org] = await db.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
+    const [org] = await platformDb.select().from(organizationsTable).where(eq(organizationsTable.id, req.params.id!)).limit(1);
     if (!org) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } }); return; }
 
     const now = new Date();
-    await db.update(seatOverridesTable)
+    await platformDb.update(seatOverridesTable)
       .set({ revoked: true, revokedAt: now, revokedBy: req.platformUserId! })
       .where(and(
         eq(seatOverridesTable.id, req.params.oid!),
@@ -1161,7 +1162,7 @@ router.post("/", ...auth, requirePlatformRole("platform_owner"), async (req, res
 
 router.get("/:id/provisioning", ...auth, async (req, res, next) => {
   try {
-    const [org] = await db.select({ id: organizationsTable.id })
+    const [org] = await platformDb.select({ id: organizationsTable.id })
       .from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!))
       .limit(1);
@@ -1198,7 +1199,7 @@ router.post("/:id/provisioning/retry", ...auth, requirePlatformRole("platform_ow
 
 router.get("/:id/invitations", ...auth, async (req, res, next) => {
   try {
-    const [org] = await db.select({ id: organizationsTable.id })
+    const [org] = await platformDb.select({ id: organizationsTable.id })
       .from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!))
       .limit(1);
@@ -1215,7 +1216,7 @@ router.get("/:id/invitations", ...auth, async (req, res, next) => {
 
 router.post("/:id/invitations", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
   try {
-    const [org] = await db.select({ id: organizationsTable.id })
+    const [org] = await platformDb.select({ id: organizationsTable.id })
       .from(organizationsTable)
       .where(eq(organizationsTable.id, req.params.id!))
       .limit(1);

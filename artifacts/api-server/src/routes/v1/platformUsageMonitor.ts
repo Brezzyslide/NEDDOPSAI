@@ -9,11 +9,12 @@
  * GET  /trends           — monthly aggregates for charts
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   usagePeriodSummariesTable,
   usageEventsTable,
   organizationsTable,
@@ -36,14 +37,13 @@ router.get("/summary", ...auth, async (_req, res, next) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [totalEvents, monthlyEvents, totalOrgs] = await Promise.all([
-      db.select({ n: count() }).from(usageEventsTable),
-      db.select({ n: count() }).from(usageEventsTable)
+      platformDb.select({ n: count() }).from(usageEventsTable),
+      platformDb.select({ n: count() }).from(usageEventsTable)
         .where(gte(usageEventsTable.recordedAt, monthStart)),
-      db.select({ n: count() }).from(organizationsTable),
+      platformDb.select({ n: count() }).from(organizationsTable),
     ]);
 
-    const dimensionTotals = await db
-      .select({ dimensionCode: usagePeriodSummariesTable.dimensionCode, total: sum(usagePeriodSummariesTable.totalQuantity) })
+    const dimensionTotals = await platformDb.select({ dimensionCode: usagePeriodSummariesTable.dimensionCode, total: sum(usagePeriodSummariesTable.totalQuantity) })
       .from(usagePeriodSummariesTable)
       .where(gte(usagePeriodSummariesTable.periodStart, monthStart))
       .groupBy(usagePeriodSummariesTable.dimensionCode)
@@ -66,8 +66,7 @@ router.get("/top-orgs", ...auth, async (req, res, next) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    let q = db
-      .select({
+    let q = platformDb.select({
         orgId: usagePeriodSummariesTable.organizationId,
         dimensionCode: usagePeriodSummariesTable.dimensionCode,
         total: sum(usagePeriodSummariesTable.totalQuantity),
@@ -91,7 +90,7 @@ router.get("/top-orgs", ...auth, async (req, res, next) => {
     // Enrich with org names
     const orgIds = [...new Set(rows.map(r => r.orgId).filter(Boolean))] as string[];
     const orgs = orgIds.length
-      ? await db.select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug })
+      ? await platformDb.select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug })
           .from(organizationsTable)
           .where(sql`${organizationsTable.id} = ANY(${orgIds})`)
       : [];
@@ -113,8 +112,7 @@ router.get("/warnings", ...auth, async (_req, res, next) => {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const usageRows = await db
-      .select({
+    const usageRows = await platformDb.select({
         orgId: usagePeriodSummariesTable.organizationId,
         dimensionCode: usagePeriodSummariesTable.dimensionCode,
         total: sum(usagePeriodSummariesTable.totalQuantity),
@@ -123,14 +121,13 @@ router.get("/warnings", ...auth, async (_req, res, next) => {
       .where(gte(usagePeriodSummariesTable.periodStart, monthStart))
       .groupBy(usagePeriodSummariesTable.organizationId, usagePeriodSummariesTable.dimensionCode);
 
-    const subs = await db
-      .select({ orgId: tenantSubscriptionsTable.organizationId, planVersionId: tenantSubscriptionsTable.planVersionId })
+    const subs = await platformDb.select({ orgId: tenantSubscriptionsTable.organizationId, planVersionId: tenantSubscriptionsTable.planVersionId })
       .from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.status, "active"));
 
     const subMap = Object.fromEntries(subs.map(s => [s.orgId, s.planVersionId]));
 
-    const allowances = await db.select().from(planUsageAllowancesTable);
+    const allowances = await platformDb.select().from(planUsageAllowancesTable);
     const allowanceMap: Record<string, Record<string, number | null>> = {};
     for (const a of allowances) {
       if (!allowanceMap[a.planVersionId]) allowanceMap[a.planVersionId] = {};
@@ -162,7 +159,7 @@ router.get("/warnings", ...auth, async (_req, res, next) => {
     // Enrich with org names
     const orgIds = [...new Set(warnings.map(w => w.orgId))];
     const orgs = orgIds.length
-      ? await db.select({ id: organizationsTable.id, name: organizationsTable.name })
+      ? await platformDb.select({ id: organizationsTable.id, name: organizationsTable.name })
           .from(organizationsTable).where(sql`${organizationsTable.id} = ANY(${orgIds})`)
       : [];
     const orgMap = Object.fromEntries(orgs.map(o => [o.id, o]));
@@ -181,8 +178,7 @@ router.get("/trends", ...auth, async (req, res, next) => {
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
 
-    const rows = await db
-      .select({
+    const rows = await platformDb.select({
         period: usagePeriodSummariesTable.periodStart,
         dimensionCode: usagePeriodSummariesTable.dimensionCode,
         total: sum(usagePeriodSummariesTable.totalQuantity),

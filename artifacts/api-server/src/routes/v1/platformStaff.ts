@@ -9,12 +9,14 @@
  * GET    /:userId/activity       — recent privileged actions by this staff member
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../../middlewares/tenantContext.js";
-import { requirePlatformAuth, requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
+import { requirePlatformAuth,
+  requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   platformRolesTable,
   platformAuditLogTable,
   usersTable,
@@ -34,8 +36,7 @@ const VALID_ROLES: string[] = platformRoleEnum.enumValues as unknown as string[]
 
 router.get("/", ...adminAuth, async (_req, res, next) => {
   try {
-    const staff = await db
-      .select({
+    const staff = await platformDb.select({
         id: platformRolesTable.id,
         userId: platformRolesTable.userId,
         role: platformRolesTable.role,
@@ -89,8 +90,7 @@ router.post("/invite", ...adminAuth, async (req, res, next) => {
     }
 
     // Check for existing active role record for this userId+role
-    const [existing] = await db
-      .select()
+    const [existing] = await platformDb.select()
       .from(platformRolesTable)
       .where(and(
         eq(platformRolesTable.userId, userId),
@@ -104,7 +104,7 @@ router.post("/invite", ...adminAuth, async (req, res, next) => {
       return;
     }
 
-    const [record] = await db.insert(platformRolesTable).values({
+    const [record] = await platformDb.insert(platformRolesTable).values({
       id: randomUUID(),
       userId,
       role: role as any,
@@ -136,8 +136,7 @@ router.delete("/:userId/roles/:role", ...adminAuth, async (req, res, next) => {
     }
 
     // Verify the role record exists
-    const [existing] = await db
-      .select()
+    const [existing] = await platformDb.select()
       .from(platformRolesTable)
       .where(and(
         eq(platformRolesTable.userId, userId),
@@ -153,8 +152,7 @@ router.delete("/:userId/roles/:role", ...adminAuth, async (req, res, next) => {
 
     // CRITICAL: If revoking platform_super_admin, ensure at least 1 remains after revocation
     if (role === "platform_super_admin") {
-      const [{ n }] = await db
-        .select({ n: count() })
+      const [{ n }] = await platformDb.select({ n: count() })
         .from(platformRolesTable)
         .where(and(
           eq(platformRolesTable.role, "platform_super_admin"),
@@ -172,8 +170,7 @@ router.delete("/:userId/roles/:role", ...adminAuth, async (req, res, next) => {
       }
     }
 
-    await db
-      .update(platformRolesTable)
+    await platformDb.update(platformRolesTable)
       .set({ revokedAt: new Date(), revokedBy: req.platformUserId! })
       .where(and(
         eq(platformRolesTable.userId, userId),
@@ -204,8 +201,7 @@ router.post("/:userId/suspend", ...adminAuth, async (req, res, next) => {
     }
 
     // Fetch all active roles for this user
-    const activeRoles = await db
-      .select()
+    const activeRoles = await platformDb.select()
       .from(platformRolesTable)
       .where(and(
         eq(platformRolesTable.userId, userId),
@@ -220,8 +216,7 @@ router.post("/:userId/suspend", ...adminAuth, async (req, res, next) => {
     const now = new Date();
 
     // Revoke all active roles
-    await db
-      .update(platformRolesTable)
+    await platformDb.update(platformRolesTable)
       .set({ revokedAt: now, revokedBy: req.platformUserId! })
       .where(and(
         eq(platformRolesTable.userId, userId),
@@ -256,8 +251,7 @@ router.get("/:userId/activity", ...adminAuth, async (req, res, next) => {
   try {
     const { userId } = req.params as { userId: string };
 
-    const events = await db
-      .select()
+    const events = await platformDb.select()
       .from(platformAuditLogTable)
       .where(eq(platformAuditLogTable.actorUserId, userId))
       .orderBy(platformAuditLogTable.occurredAt)

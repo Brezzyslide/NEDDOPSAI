@@ -5,12 +5,18 @@
  * GET  /?q=<query>   — search across all entity types
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, organizationsTable, usersTable, membershipsTable, plansTable,
-  platformInternalNotesTable, tenantSubscriptionsTable,
+  organizationsTable,
+  usersTable,
+  membershipsTable,
+  plansTable,
+  platformInternalNotesTable,
+  tenantSubscriptionsTable,
 } from "@workspace/db";
 import { ilike, or, eq, and } from "drizzle-orm";
 
@@ -27,7 +33,7 @@ router.get("/", ...auth, async (req, res, next) => {
     const pattern = `%${q}%`;
 
     const [orgs, users, notes, plans] = await Promise.all([
-      db.select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug, status: organizationsTable.status })
+      platformDb.select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug, status: organizationsTable.status })
         .from(organizationsTable)
         .where(or(
           ilike(organizationsTable.name, pattern),
@@ -35,17 +41,17 @@ router.get("/", ...auth, async (req, res, next) => {
         ))
         .limit(10),
 
-      db.select({ id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName, externalId: usersTable.externalId })
+      platformDb.select({ id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName, externalId: usersTable.externalId })
         .from(usersTable)
         .where(or(ilike(usersTable.email, pattern), ilike(usersTable.firstName, pattern), ilike(usersTable.lastName, pattern)))
         .limit(10),
 
-      db.select({ id: platformInternalNotesTable.id, content: platformInternalNotesTable.content, organizationId: platformInternalNotesTable.organizationId, createdAt: platformInternalNotesTable.createdAt })
+      platformDb.select({ id: platformInternalNotesTable.id, content: platformInternalNotesTable.content, organizationId: platformInternalNotesTable.organizationId, createdAt: platformInternalNotesTable.createdAt })
         .from(platformInternalNotesTable)
         .where(ilike(platformInternalNotesTable.content, pattern))
         .limit(10),
 
-      db.select({ id: plansTable.id, code: plansTable.code, name: plansTable.name })
+      platformDb.select({ id: plansTable.id, code: plansTable.code, name: plansTable.name })
         .from(plansTable)
         .where(or(ilike(plansTable.name, pattern), ilike(plansTable.code, pattern)))
         .limit(5),

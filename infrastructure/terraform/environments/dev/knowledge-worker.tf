@@ -66,6 +66,10 @@ resource "aws_ecs_task_definition" "knowledge_ingestion_worker" {
           value = aws_db_instance.postgres.db_name
         },
         {
+          name  = "DB_USERNAME"
+          value = "needsops_worker_app"
+        },
+        {
           name  = "APP_STORAGE_BUCKET"
           value = aws_s3_bucket.app_storage.id
         },
@@ -109,12 +113,8 @@ resource "aws_ecs_task_definition" "knowledge_ingestion_worker" {
 
       secrets = [
         {
-          name      = "DB_USERNAME"
-          valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:username::"
-        },
-        {
           name      = "DB_PASSWORD"
-          valueFrom = "${aws_db_instance.postgres.master_user_secret[0].secret_arn}:password::"
+          valueFrom = "${aws_secretsmanager_secret.app["database_roles"].arn}:NEEDSOPS_WORKER_APP_PASSWORD::"
         },
         {
           name      = "SESSION_SECRET"

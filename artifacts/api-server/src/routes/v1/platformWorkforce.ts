@@ -12,10 +12,11 @@
  */
 
 import { Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import { WORKFORCE_PACKS, SPECIALISTS, getSpecialistCapabilities, DEPRECATED_ROLE_ALIASES } from "../../lib/workforceRegistry.js";
-import { db, tenantWorkforcePacksTable, organizationsTable, workforcePacksTable, specialistCatalogueTable } from "@workspace/db";
+import { tenantWorkforcePacksTable, organizationsTable, workforcePacksTable, specialistCatalogueTable } from "@workspace/db";
 import { eq, count } from "drizzle-orm";
 import { listCatalogue } from "../../services/specialistCatalogueService.js";
 import { getCanonicalDNAProfile } from "@workspace/workforce-dna";
@@ -26,8 +27,7 @@ const auth = [requireAuth, requirePlatformAuth];
 router.get("/packs", ...auth, async (_req, res, next) => {
   try {
     // Cross-org grant counts from DB
-    const grantCounts = await db
-      .select({ packCode: tenantWorkforcePacksTable.packCode, n: count() })
+    const grantCounts = await platformDb.select({ packCode: tenantWorkforcePacksTable.packCode, n: count() })
       .from(tenantWorkforcePacksTable)
       .groupBy(tenantWorkforcePacksTable.packCode);
     const grantMap = Object.fromEntries(grantCounts.map(g => [g.packCode, Number(g.n)]));
@@ -48,7 +48,7 @@ router.get("/packs/:code", ...auth, async (req, res, next) => {
     if (!pack) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Pack not found." } }); return; }
 
     // Fetch catalogue map (including archived so isArchived is correct)
-    const { entries: catalogueEntries } = await listCatalogue({ includeArchived: true, limit: 500 });
+    const { entries: catalogueEntries } = await listCatalogue({ includeArchived: true, limit: 500 }, platformDb);
     const catalogueMap = new Map(catalogueEntries.map(e => [e.specialistCode, e]));
 
     const specialists = SPECIALISTS
@@ -93,7 +93,7 @@ router.get("/specialists", ...auth, async (req, res, next) => {
       includeArchived:   true,   // ← always fetch archived so they appear in the map
       includeDeprecated: true,
       limit:             500,
-    });
+    }, platformDb);
 
     // Map by specialist code
     const catalogueMap = new Map(catalogueEntries.map(e => [e.specialistCode, e]));
@@ -175,7 +175,7 @@ router.get("/specialists/:code", ...auth, async (req, res, next) => {
       return;
     }
     const { getCatalogueEntry } = await import("../../services/specialistCatalogueService.js");
-    const cat = await getCatalogueEntry(s.code);
+    const cat = await getCatalogueEntry(s.code, platformDb);
     res.json({
       ...s,
       resolvedCapabilities: getSpecialistCapabilities(s.code),
@@ -201,8 +201,7 @@ router.get("/specialists/:code", ...auth, async (req, res, next) => {
 
 router.get("/stats", ...auth, async (_req, res, next) => {
   try {
-    const grantCounts = await db
-      .select({ packCode: tenantWorkforcePacksTable.packCode, n: count() })
+    const grantCounts = await platformDb.select({ packCode: tenantWorkforcePacksTable.packCode, n: count() })
       .from(tenantWorkforcePacksTable).groupBy(tenantWorkforcePacksTable.packCode);
 
     const packStats = WORKFORCE_PACKS.map(p => ({

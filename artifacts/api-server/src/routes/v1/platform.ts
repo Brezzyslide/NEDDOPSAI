@@ -20,16 +20,17 @@
  *   /database/*         → org database management (Sprint 6/7)
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
-  db,
   organizationsTable,
   membershipsTable,
   usersTable,
   tenantSubscriptionsTable,
-  platformAuditLogTable,   // Sprint 7: use split table, not legacy audit_log
+  platformAuditLogTable,
 } from "@workspace/db";
 import { eq, count, desc } from "drizzle-orm";
 
@@ -74,22 +75,20 @@ router.get("/dashboard", ...auth, async (_req, res, next) => {
       [memberCount],
       recentPlatformAudit,
     ] = await Promise.all([
-      db.select({ n: count() }).from(organizationsTable),
-      db.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "active")),
-      db.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "suspended")),
-      db.select({ n: count() }).from(usersTable),
-      db.select({ n: count() }).from(membershipsTable).where(eq(membershipsTable.status, "active")),
+      platformDb.select({ n: count() }).from(organizationsTable),
+      platformDb.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "active")),
+      platformDb.select({ n: count() }).from(organizationsTable).where(eq(organizationsTable.status, "suspended")),
+      platformDb.select({ n: count() }).from(usersTable),
+      platformDb.select({ n: count() }).from(membershipsTable).where(eq(membershipsTable.status, "active")),
       // Sprint 7: use platformAuditLogTable, not legacy audit_log
-      db.select().from(platformAuditLogTable).orderBy(desc(platformAuditLogTable.occurredAt)).limit(10),
+      platformDb.select().from(platformAuditLogTable).orderBy(desc(platformAuditLogTable.occurredAt)).limit(10),
     ]);
 
-    const [trialCount] = await db
-      .select({ n: count() })
+    const [trialCount] = await platformDb.select({ n: count() })
       .from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.status, "trial"));
 
-    const [trialExpiredCount] = await db
-      .select({ n: count() })
+    const [trialExpiredCount] = await platformDb.select({ n: count() })
       .from(tenantSubscriptionsTable)
       .where(eq(tenantSubscriptionsTable.status, "trial_expired"));
 
@@ -145,9 +144,9 @@ router.use("/", platformDatabaseRouter);
 router.get("/plans", ...auth, async (_req, res, next) => {
   try {
     const { plansTable, planVersionsTable, tenantSubscriptionsTable: subTable } = await import("@workspace/db");
-    const plans = await db.select().from(plansTable).orderBy(plansTable.displayOrder);
-    const versions = await db.select().from(planVersionsTable);
-    const subs = await db.select({ n: count(), planId: subTable.planId }).from(subTable).groupBy(subTable.planId);
+    const plans = await platformDb.select().from(plansTable).orderBy(plansTable.displayOrder);
+    const versions = await platformDb.select().from(planVersionsTable);
+    const subs = await platformDb.select({ n: count(), planId: subTable.planId }).from(subTable).groupBy(subTable.planId);
     const subMap = Object.fromEntries(subs.map(s => [s.planId, Number(s.n)]));
     const versionMap: Record<string, typeof versions> = {};
     for (const v of versions) {

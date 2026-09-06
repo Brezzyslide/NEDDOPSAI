@@ -10,12 +10,17 @@
  * GET  /support        — support notes CSV
  */
 
-import { Router } from "express";
+import {
+  Router } from "express";
+import { platformDb } from "@workspace/db/platform";
 import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
-  db, organizationsTable, tenantSubscriptionsTable, plansTable,
-  platformInternalNotesTable, usagePeriodSummariesTable,
+  organizationsTable,
+  tenantSubscriptionsTable,
+  plansTable,
+  platformInternalNotesTable,
+  usagePeriodSummariesTable,
 } from "@workspace/db";
 import { eq, desc, gte, or } from "drizzle-orm";
 
@@ -42,9 +47,9 @@ function sendCSV(res: any, filename: string, csv: string) {
 
 router.get("/organisations", ...auth, async (_req, res, next) => {
   try {
-    const orgs = await db.select().from(organizationsTable).orderBy(organizationsTable.createdAt);
-    const subs = await db.select().from(tenantSubscriptionsTable);
-    const plans = await db.select().from(plansTable);
+    const orgs = await platformDb.select().from(organizationsTable).orderBy(organizationsTable.createdAt);
+    const subs = await platformDb.select().from(tenantSubscriptionsTable);
+    const plans = await platformDb.select().from(plansTable);
     const subMap = Object.fromEntries(subs.map(s => [s.organizationId, s]));
     const planMap = Object.fromEntries(plans.map(p => [p.id, p]));
 
@@ -69,8 +74,8 @@ router.get("/organisations", ...auth, async (_req, res, next) => {
 
 router.get("/plans", ...auth, async (_req, res, next) => {
   try {
-    const plans = await db.select().from(plansTable).orderBy(plansTable.displayOrder);
-    const subs = await db.select({ planId: tenantSubscriptionsTable.planId }).from(tenantSubscriptionsTable);
+    const plans = await platformDb.select().from(plansTable).orderBy(plansTable.displayOrder);
+    const subs = await platformDb.select({ planId: tenantSubscriptionsTable.planId }).from(tenantSubscriptionsTable);
     const subCounts: Record<string, number> = {};
     for (const s of subs) { subCounts[s.planId] = (subCounts[s.planId] ?? 0) + 1; }
     const rows = plans.map(p => ({ ...p, subscriberCount: subCounts[p.id] ?? 0 }));
@@ -82,7 +87,7 @@ router.get("/plans", ...auth, async (_req, res, next) => {
 router.get("/trials", ...auth, async (_req, res, next) => {
   try {
     const now = new Date();
-    const trials = await db.select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
+    const trials = await platformDb.select({ sub: tenantSubscriptionsTable, org: organizationsTable, plan: plansTable })
       .from(tenantSubscriptionsTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, tenantSubscriptionsTable.organizationId))
       .leftJoin(plansTable, eq(plansTable.id, tenantSubscriptionsTable.planId))
@@ -109,7 +114,7 @@ router.get("/usage", ...auth, async (_req, res, next) => {
   try {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const rows = await db.select({
+    const rows = await platformDb.select({
       u: usagePeriodSummariesTable,
       org: { id: organizationsTable.id, name: organizationsTable.name },
     })
@@ -134,7 +139,7 @@ router.get("/usage", ...auth, async (_req, res, next) => {
 
 router.get("/support", ...auth, async (_req, res, next) => {
   try {
-    const notes = await db.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
+    const notes = await platformDb.select({ note: platformInternalNotesTable, org: { id: organizationsTable.id, name: organizationsTable.name } })
       .from(platformInternalNotesTable)
       .leftJoin(organizationsTable, eq(organizationsTable.id, platformInternalNotesTable.organizationId))
       .orderBy(desc(platformInternalNotesTable.createdAt));
