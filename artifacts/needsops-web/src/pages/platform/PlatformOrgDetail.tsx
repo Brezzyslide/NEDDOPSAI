@@ -389,14 +389,14 @@ export default function PlatformOrgDetail() {
   }, [params.id, fetch]);
 
   const loadDevices = useCallback(() => {
-    if (!id) return;
+    if (!params.id) return;
     setDevicesLoading(true); setDevicesError("");
-    fetch(`/devices/by-org/${id}`)
+    fetch(`/devices/by-org/${params.id}`)
       .then(r => r.json())
       .then(d => setOrgDevices(d.devices ?? []))
       .catch(() => setDevicesError("Failed to load devices."))
       .finally(() => setDevicesLoading(false));
-  }, [id, fetch]);
+  }, [params.id, fetch]);
 
   useEffect(() => {
     if (activeTab === "invitations") loadInvitations();

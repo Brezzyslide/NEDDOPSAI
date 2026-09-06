@@ -437,6 +437,7 @@ function MessageBubble({
   creatingTask,
   existingTaskId,
   participantResolution,
+  orgSlug,
 }: {
   msg: Message;
   onCreateTask: (title: string, summary: string, subjectParticipantId?: string) => void;
@@ -445,6 +446,7 @@ function MessageBubble({
   creatingTask: boolean;
   existingTaskId?: string | null;
   participantResolution?: ParticipantResolutionState;
+  orgSlug?: string;
 }) {
   const isUser = msg.senderType === "user";
   const isSystem = msg.senderType === "system";
@@ -492,7 +494,7 @@ function MessageBubble({
               creating={creatingTask}
               existingTaskId={existingTaskId}
               participantResolution={participantResolution}
-              orgSlug={slug}
+              orgSlug={orgSlug}
             />
           )}
           {isClarification && (
@@ -879,6 +881,7 @@ export default function WorkforceChatPage() {
               onConfirm={() => sendMessage("Confirm, please proceed.")}
               creatingTask={creatingTask}
               existingTaskId={linkedTaskId}
+              orgSlug={slug}
               participantResolution={
                 msg.messageType === "task_proposal" && msg.structuredContent
                   ? participantResolutionByProposal[
