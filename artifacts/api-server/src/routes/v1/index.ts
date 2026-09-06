@@ -77,7 +77,8 @@ router.use("/", executionIntentsRouter);
 import platformPacksRouter from "./platformPacks.js";
 router.use("/platform/packs", platformPacksRouter);
 // Sprint 9.6: Pack access requests (tenant + platform)
-import { tenantPackRequestsRouter, platformPackRequestsRouter } from "./packAccessRequests.js";
+import { tenantPackRequestsRouter } from "./packAccessRequests.js";
+import platformPackRequestsRouter from "./platformPackAccessRequests.js";
 router.use("/organisations/:slug/pack-access-requests", tenantPackRequestsRouter);
 router.use("/platform/pack-access-requests", platformPackRequestsRouter);
 // Sprint 3: platform console (platform_roles DB-backed)
