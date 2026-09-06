@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { sql } from "drizzle-orm";
-import { db, organizationsTable, usersTable, workforcePacksTable } from "@workspace/db";
-import { PLATFORM_VERSION } from "@workspace/shared";
+import { db } from "@workspace/db";
 import {
   isDiagnosticsAuthorized,
   readRuntimeDiagnostics,
@@ -36,29 +35,11 @@ router.get("/status", async (_req, res) => {
 
 // GET /system/dashboard-summary
 router.get("/dashboard-summary", async (_req, res) => {
-  const [orgStats, userStats, packStats] = await Promise.all([
-    db.execute<{ total: string; active: string }>(
-      sql`SELECT count(*) as total, count(*) FILTER (WHERE status = 'active') as active FROM organizations`
-    ),
-    db.execute<{ total: string }>(
-      sql`SELECT count(*) as total FROM users`
-    ),
-    db.execute<{ total: string }>(
-      sql`SELECT count(*) as total FROM workforce_packs WHERE status = 'available'`
-    ),
-  ]);
-
-  const orgRow = orgStats.rows[0];
-  const userRow = userStats.rows[0];
-  const packRow = packStats.rows[0];
-
-  res.json({
-    totalOrganizations: Number(orgRow?.total ?? 0),
-    activeOrganizations: Number(orgRow?.active ?? 0),
-    totalUsers: Number(userRow?.total ?? 0),
-    workforcePacksAvailable: Number(packRow?.total ?? 0),
-    platformVersion: PLATFORM_VERSION,
-    lastUpdated: new Date().toISOString(),
+  res.status(410).json({
+    error: {
+      code: "ENDPOINT_RETIRED",
+      message: "Legacy public dashboard summary has been retired. Use authenticated platform APIs.",
+    },
   });
 });
 

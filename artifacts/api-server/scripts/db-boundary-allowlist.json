@@ -1,4 +1,90 @@
 {
   "version": 1,
-  "entries": []
+  "entries": [
+    {
+      "file": "src/middlewares/tenantContext.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER tenant/user resolver functions before tenant context exists; no direct table reads should be added here."
+    },
+    {
+      "file": "src/services/userService.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER user self-organisation resolver functions using external identity input only."
+    },
+    {
+      "file": "src/services/deviceAuthService.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER device token resolver and refresh consumer functions; direct token table access is denied to app role."
+    },
+    {
+      "file": "src/services/deviceService.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER device credential resolver before entering tenant-scoped device operations."
+    },
+    {
+      "file": "src/services/invitationService.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER invitation token resolver that returns opaque valid invite context only."
+    },
+    {
+      "file": "src/services/executionCheckpointService.ts",
+      "kind": "direct-db",
+      "reason": "Calls SECURITY DEFINER startup checkpoint sweep functions; request checkpoint paths are tenant-scoped separately."
+    },
+    {
+      "file": "src/services/ingestionJobService.ts",
+      "kind": "direct-db",
+      "reason": "Worker queue claim is a broader-role cross-org operation pending SECURITY DEFINER SKIP LOCKED claim function."
+    },
+    {
+      "file": "src/routes/organizations.ts",
+      "kind": "direct-db",
+      "reason": "Legacy organisation provisioning/deletion route; not a tenant request path and will move behind platform provisioning boundary."
+    },
+    {
+      "file": "src/services/orgService.ts",
+      "kind": "direct-db",
+      "reason": "Organisation creation/provisioning transaction runs before tenant exists; handled as broader-role provisioning."
+    },
+    {
+      "file": "src/services/orgProvisioningService.ts",
+      "kind": "direct-db",
+      "reason": "Organisation provisioning job enqueue runs before tenant schema exists; broader-role provisioning boundary."
+    },
+    {
+      "file": "src/services/dnaStorageService.ts",
+      "kind": "direct-db",
+      "reason": "Workforce DNA seed/storage transaction is broader-role catalogue provisioning, not tenant request data access."
+    },
+    {
+      "file": "src/services/packProvisioningService.ts",
+      "kind": "direct-db",
+      "reason": "Pack grants/provisioning are platform or bootstrap operations that intentionally create tenant entitlements."
+    },
+    {
+      "file": "src/services/subscriptionProvisioningService.ts",
+      "kind": "direct-db",
+      "reason": "Subscription provisioning creates tenant commercial state before normal tenant-scoped request access applies."
+    },
+    {
+      "file": "src/services/workerProfilePublicationService.ts",
+      "kind": "direct-db",
+      "reason": "Worker profile publication is catalogue/bootstrap publication across platform-owned worker profile tables."
+    },
+    {
+      "file": "src/services/workBlueprintService.ts",
+      "kind": "direct-db",
+      "reason": "Blueprint seed/publication and template catalogue management are platform catalogue operations, not tenant data access."
+    },
+    {
+      "file": "src/services/auditService.ts",
+      "kind": "direct-db",
+      "reason": "Remaining direct DB use is platform/no-org audit-log write; org audit fallback is tenant-scoped."
+    },
+    {
+      "file": "src/routes/system.ts",
+      "kind": "direct-db",
+      "reason": "Public health endpoint performs SELECT 1 only; tenant-derived dashboard summary was retired."
+    }
+  ]
 }
