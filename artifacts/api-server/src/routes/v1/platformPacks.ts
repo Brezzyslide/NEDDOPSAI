@@ -33,12 +33,14 @@ import {
   tenantWorkforcePacksTable,
   workforcePackPriceVersionsTable,
 } from "@workspace/db";
+import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import { getSpecialistsByPack } from "../../lib/workforceRegistry.js";
 import { invalidatePublicPacksCache } from "./workforcePacks.js";
 import * as auditService from "../../services/auditService.js";
 
 const router = Router();
+const auth = [requireAuth, requirePlatformAuth];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -80,7 +82,7 @@ function validatePricing(monthlyPriceCents?: number, annualPriceCents?: number, 
 // ─── Pack CRUD routes ─────────────────────────────────────────────────────────
 
 // GET /v1/platform/packs
-router.get("/", requirePlatformAuth, async (req, res) => {
+router.get("/", ...auth, async (req, res) => {
   try {
     const packs = await platformDb.select()
       .from(workforcePacksTable)
@@ -93,9 +95,9 @@ router.get("/", requirePlatformAuth, async (req, res) => {
 });
 
 // GET /v1/platform/packs/:code
-router.get("/:code/prices", requirePlatformAuth, async (_req, _res, _next) => { _next(); }); // pass-through to price routes below
+router.get("/:code/prices", ...auth, async (_req, _res, _next) => { _next(); }); // pass-through to price routes below
 
-router.get("/:code", requirePlatformAuth, async (req, res) => {
+router.get("/:code", ...auth, async (req, res) => {
   try {
     const [pack] = await platformDb.select()
       .from(workforcePacksTable)
@@ -115,7 +117,7 @@ router.get("/:code", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs — create
-router.post("/", requirePlatformAuth, async (req, res) => {
+router.post("/", ...auth, async (req, res) => {
   const {
     name, description, marketingTagline, industry = "ndis_provider",
     iconEmoji, colorHex, tier = "professional",
@@ -157,7 +159,7 @@ router.post("/", requirePlatformAuth, async (req, res) => {
 });
 
 // PATCH /v1/platform/packs/:code — update metadata (pricing must go via price versions)
-router.patch("/:code", requirePlatformAuth, async (req, res) => {
+router.patch("/:code", ...auth, async (req, res) => {
   const allowed = [
     "name", "description", "marketingTagline", "industry",
     "iconEmoji", "colorHex", "tier", "displayOrder", "featured", "isPubliclyVisible",
@@ -186,7 +188,7 @@ router.patch("/:code", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/publish
-router.post("/:code/publish", requirePlatformAuth, async (req, res) => {
+router.post("/:code/publish", ...auth, async (req, res) => {
   try {
     const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "available", isPubliclyVisible: true, updatedAt: new Date() })
@@ -205,7 +207,7 @@ router.post("/:code/publish", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/unpublish
-router.post("/:code/unpublish", requirePlatformAuth, async (req, res) => {
+router.post("/:code/unpublish", ...auth, async (req, res) => {
   try {
     const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "draft", isPubliclyVisible: false, updatedAt: new Date() })
@@ -224,7 +226,7 @@ router.post("/:code/unpublish", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/archive
-router.post("/:code/archive", requirePlatformAuth, async (req, res) => {
+router.post("/:code/archive", ...auth, async (req, res) => {
   try {
     const [pack] = await platformDb.update(workforcePacksTable)
       .set({ status: "archived", isPubliclyVisible: false, updatedAt: new Date() })
@@ -243,7 +245,7 @@ router.post("/:code/archive", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/grant — grant pack to an org
-router.post("/:code/grant", requirePlatformAuth, async (req, res) => {
+router.post("/:code/grant", ...auth, async (req, res) => {
   const { organizationId, expiresAt, reason = "Manual grant by platform staff" } = req.body;
   if (!organizationId) {
     res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "organizationId is required." } });
@@ -286,7 +288,7 @@ router.post("/:code/grant", requirePlatformAuth, async (req, res) => {
 // ─── Price Version routes ─────────────────────────────────────────────────────
 
 // GET /v1/platform/packs/:code/prices
-router.get("/:code/prices", requirePlatformAuth, async (req, res) => {
+router.get("/:code/prices", ...auth, async (req, res) => {
   try {
     const [pack] = await platformDb.select({ id: workforcePacksTable.id }).from(workforcePacksTable).where(eq(workforcePacksTable.code, req.params.code)).limit(1);
     if (!pack) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Pack not found." } }); return; }
@@ -301,7 +303,7 @@ router.get("/:code/prices", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/prices — create draft price version
-router.post("/:code/prices", requirePlatformAuth, async (req, res) => {
+router.post("/:code/prices", ...auth, async (req, res) => {
   const { monthlyPriceCents, annualPriceCents, currency = "AUD", notes, effectiveFrom } = req.body;
   const staff = req.platformUserId!;
 
@@ -351,7 +353,7 @@ router.post("/:code/prices", requirePlatformAuth, async (req, res) => {
 });
 
 // PATCH /v1/platform/packs/:code/prices/:vid — edit DRAFT only
-router.patch("/:code/prices/:vid", requirePlatformAuth, async (req, res) => {
+router.patch("/:code/prices/:vid", ...auth, async (req, res) => {
   const { monthlyPriceCents, annualPriceCents, currency, notes, effectiveFrom } = req.body;
 
   try {
@@ -380,7 +382,7 @@ router.patch("/:code/prices/:vid", requirePlatformAuth, async (req, res) => {
 });
 
 // POST /v1/platform/packs/:code/prices/:vid/activate — publish price version
-router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res) => {
+router.post("/:code/prices/:vid/activate", ...auth, async (req, res) => {
   const staff = req.platformUserId!;
 
   try {
@@ -428,7 +430,7 @@ router.post("/:code/prices/:vid/activate", requirePlatformAuth, async (req, res)
 });
 
 // POST /v1/platform/packs/:code/prices/:vid/archive
-router.post("/:code/prices/:vid/archive", requirePlatformAuth, async (req, res) => {
+router.post("/:code/prices/:vid/archive", ...auth, async (req, res) => {
   try {
     const [version] = await platformDb.select().from(workforcePackPriceVersionsTable).where(eq(workforcePackPriceVersionsTable.id, req.params.vid)).limit(1);
     if (!version) { res.status(404).json({ error: { code: "NOT_FOUND", message: "Price version not found." } }); return; }

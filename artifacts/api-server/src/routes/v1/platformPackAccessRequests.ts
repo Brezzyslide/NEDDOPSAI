@@ -16,13 +16,15 @@ import {
   workforcePackAccessRequestsTable,
   tenantWorkforcePacksTable,
 } from "@workspace/db";
+import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import * as auditService from "../../services/auditService.js";
 
 const router = Router();
+const auth = [requireAuth, requirePlatformAuth];
 
 // GET /v1/platform/pack-access-requests
-router.get("/", requirePlatformAuth, async (req, res, next) => {
+router.get("/", ...auth, async (req, res, next) => {
   try {
     const status = (req.query.status as string) || "pending";
     const requests = await platformDb.select()
@@ -36,7 +38,7 @@ router.get("/", requirePlatformAuth, async (req, res, next) => {
 });
 
 // POST /v1/platform/pack-access-requests/:id/approve
-router.post("/:id/approve", requirePlatformAuth, async (req, res, next) => {
+router.post("/:id/approve", ...auth, async (req, res, next) => {
   try {
     const staff = req.platformUserId!;
     const { reason = "" } = req.body;
@@ -88,7 +90,7 @@ router.post("/:id/approve", requirePlatformAuth, async (req, res, next) => {
 });
 
 // POST /v1/platform/pack-access-requests/:id/reject
-router.post("/:id/reject", requirePlatformAuth, async (req, res, next) => {
+router.post("/:id/reject", ...auth, async (req, res, next) => {
   try {
     const staff = req.platformUserId!;
     const { reason = "" } = req.body;

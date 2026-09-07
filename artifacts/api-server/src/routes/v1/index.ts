@@ -69,10 +69,12 @@ router.use("/capabilities", capabilitiesRouter);
 router.use("/organisations/:slug/capabilities", orgCapRouter);
 // Sprint 9.5: Specialist runs per task
 router.use("/organisations/:slug/tasks/:taskId/specialist-runs", specialistRunsRouter);
-// Sprint 9.5: Platform Capability Console + specialist run monitoring
-router.use("/platform", platformCapabilitiesRouter);
 // Sprint 10: Execution intents (task-scoped GET + approve/reject actions)
 router.use("/", executionIntentsRouter);
+// Sprint 3: platform console (platform_roles DB-backed)
+router.use("/platform", platformRouter);
+// Sprint 9.5: Platform Capability Console + specialist run monitoring
+router.use("/platform", platformCapabilitiesRouter);
 // Sprint 9.6: Platform Pack Builder (CRUD for workforce packs + pricing)
 import platformPacksRouter from "./platformPacks.js";
 router.use("/platform/packs", platformPacksRouter);
@@ -81,8 +83,6 @@ import { tenantPackRequestsRouter } from "./packAccessRequests.js";
 import platformPackRequestsRouter from "./platformPackAccessRequests.js";
 router.use("/organisations/:slug/pack-access-requests", tenantPackRequestsRouter);
 router.use("/platform/pack-access-requests", platformPackRequestsRouter);
-// Sprint 3: platform console (platform_roles DB-backed)
-router.use("/platform", platformRouter);
 router.use("/admin", adminRouter);
 // Sprint 14 — NeedsOps AI+ Installer, Device Management, Business Discovery
 import activationCodesRouter from "./activationCodes.js";

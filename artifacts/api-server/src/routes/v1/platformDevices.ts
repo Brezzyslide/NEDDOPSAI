@@ -15,8 +15,8 @@
  * GET  /by-org/:orgId           — devices for a specific org (used by org detail tab)
  *
  * Security:
- *   - All routes require platform_owner role minimum
- *   - Revoke/disable/rotate require platform_owner and are rate-limited (20/hr)
+ *   - Read routes require any active platform role.
+ *   - Revoke/disable/enable/rotate require platform operations admin and are rate-limited (20/hr).
  *   - No plaintext tokens or credential hashes ever returned
  */
 
@@ -27,7 +27,7 @@ import * as platformDeviceService from "../../services/platformDeviceService.js"
 
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
-const ownerAuth = [requireAuth, requirePlatformAuth, requirePlatformRole("platform_owner")];
+const operationsAdminAuth = [requireAuth, requirePlatformAuth, requirePlatformRole("platform_operations_admin")];
 
 // ─── GET / — Fleet list ────────────────────────────────────────────────────────
 
@@ -100,7 +100,7 @@ function withRateLimit(handler: (req: any, res: any, next: any) => Promise<void>
 
 // ─── POST /:id/revoke — Permanently revoke ────────────────────────────────────
 
-router.post("/:id/revoke", ...ownerAuth, withRateLimit(async (req, res, next) => {
+router.post("/:id/revoke", ...operationsAdminAuth, withRateLimit(async (req, res, next) => {
   try {
     const { reason } = req.body as { reason?: string };
     await platformDeviceService.platformRevokeDevice(req.params.id!, req.platformUserId!, reason);
@@ -113,7 +113,7 @@ router.post("/:id/revoke", ...ownerAuth, withRateLimit(async (req, res, next) =>
 
 // ─── POST /:id/disable — Temporarily disable ──────────────────────────────────
 
-router.post("/:id/disable", ...ownerAuth, withRateLimit(async (req, res, next) => {
+router.post("/:id/disable", ...operationsAdminAuth, withRateLimit(async (req, res, next) => {
   try {
     const { reason } = req.body as { reason?: string };
     await platformDeviceService.platformDisableDevice(req.params.id!, req.platformUserId!, reason);
@@ -126,7 +126,7 @@ router.post("/:id/disable", ...ownerAuth, withRateLimit(async (req, res, next) =
 
 // ─── POST /:id/enable — Re-enable a disabled device ───────────────────────────
 
-router.post("/:id/enable", ...ownerAuth, withRateLimit(async (req, res, next) => {
+router.post("/:id/enable", ...operationsAdminAuth, withRateLimit(async (req, res, next) => {
   try {
     await platformDeviceService.platformEnableDevice(req.params.id!, req.platformUserId!);
     res.json({ ok: true });
@@ -138,7 +138,7 @@ router.post("/:id/enable", ...ownerAuth, withRateLimit(async (req, res, next) =>
 
 // ─── POST /:id/rotate-credentials — Rotate device credentials ────────────────
 
-router.post("/:id/rotate-credentials", ...ownerAuth, withRateLimit(async (req, res, next) => {
+router.post("/:id/rotate-credentials", ...operationsAdminAuth, withRateLimit(async (req, res, next) => {
   try {
     const { reason } = req.body as { reason?: string };
     const result = await platformDeviceService.platformRotateDeviceCredentials(

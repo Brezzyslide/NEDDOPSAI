@@ -1088,7 +1088,7 @@ router.delete("/:id/seats/override/:oid", ...auth, requirePlatformRole("platform
  * Creates a new organisation from the owner console.
  * Rate limited to 10 org creations per hour per staff member.
  */
-router.post("/", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+router.post("/", ...auth, requirePlatformRole("platform_super_admin"), async (req, res, next) => {
   try {
     const {
       name,
@@ -1177,7 +1177,7 @@ router.get("/:id/provisioning", ...auth, async (req, res, next) => {
 
 // ─── POST /:id/provisioning/retry — Retry a failed provisioning job ──────────
 
-router.post("/:id/provisioning/retry", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+router.post("/:id/provisioning/retry", ...auth, requirePlatformRole("platform_super_admin"), async (req, res, next) => {
   try {
     const { jobId } = req.body as { jobId?: string };
     if (!jobId) {
@@ -1214,7 +1214,7 @@ router.get("/:id/invitations", ...auth, async (req, res, next) => {
 
 // ─── POST /:id/invitations — Send an invitation from the platform console ─────
 
-router.post("/:id/invitations", ...auth, requirePlatformRole("platform_owner"), async (req, res, next) => {
+router.post("/:id/invitations", ...auth, requirePlatformRole("platform_super_admin"), async (req, res, next) => {
   try {
     const [org] = await platformDb.select({ id: organizationsTable.id })
       .from(organizationsTable)

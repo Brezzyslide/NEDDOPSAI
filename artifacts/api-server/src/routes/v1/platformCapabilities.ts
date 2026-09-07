@@ -15,6 +15,7 @@
 
 import { Router } from "express";
 import { platformDb } from "@workspace/db/platform";
+import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth } from "../../middlewares/requirePlatformRole.js";
 import {
   BUSINESS_CAPABILITIES,
@@ -25,8 +26,8 @@ import {
 
 const router = Router();
 
-// All routes require platform authentication
-router.use(requirePlatformAuth);
+// All routes require Clerk authentication before platform role lookup.
+router.use(requireAuth, requirePlatformAuth);
 
 // GET /platform/capabilities
 router.get("/capabilities", async (_req, res, next) => {
