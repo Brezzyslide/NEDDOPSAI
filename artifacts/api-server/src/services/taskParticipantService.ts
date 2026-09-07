@@ -73,23 +73,46 @@ const NAME_STOP_WORDS = new Set([
   "a",
   "about",
   "and",
+  "anyone",
   "based",
   "because",
   "but",
+  "client",
+  "clients",
   "complete",
   "covering",
   "create",
   "develop",
   "draft",
+  "everyone",
   "for",
   "from",
+  "her",
+  "him",
   "including",
+  "me",
+  "my",
+  "myself",
+  "our",
+  "ours",
+  "participant",
+  "participants",
+  "people",
+  "person",
   "prepare",
   "regarding",
+  "resident",
+  "residents",
   "review",
+  "someone",
+  "staff",
+  "team",
   "the",
+  "them",
+  "they",
   "to",
   "update",
+  "us",
   "using",
   "when",
   "where",
@@ -106,6 +129,7 @@ const LEADING_NAME_STOP_WORDS = new Set([
   "review",
   "update",
 ]);
+const STOP_LISTED_AFTER_FOR_PATTERN = /\bfor[ \t]+(?:a[ \t]+|the[ \t]+)?(me|us|myself|my|our|ours|them|they|him|her|someone|anyone|everyone|staff|team|client|clients|participant|participants|resident|residents|person|people)\b/i;
 
 function normalizeIdList(ids: string[] | undefined): string[] {
   return Array.from(new Set((ids ?? []).map(id => id.trim()).filter(Boolean)));
@@ -136,6 +160,7 @@ function shouldRunParticipantResolution(input: {
   const text = getParticipantResolutionText(input);
   if (EXPLICIT_TEMPLATE_TERMS.test(text)) return false;
   if (input.inferredName) return true;
+  if (STOP_LISTED_AFTER_FOR_PATTERN.test(text)) return false;
   return PERSON_REFERENCE_TERMS.test(text);
 }
 

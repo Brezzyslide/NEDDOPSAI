@@ -408,6 +408,97 @@ describe("participant-scoped knowledge retrieval", () => {
     expect(result.candidates).toEqual([]);
   });
 
+  it.each([
+    "me",
+    "us",
+    "myself",
+    "my",
+    "our",
+    "ours",
+    "them",
+    "they",
+    "him",
+    "her",
+    "someone",
+    "anyone",
+    "everyone",
+    "staff",
+    "team",
+    "client",
+    "clients",
+    "participant",
+    "participants",
+    "resident",
+    "residents",
+    "person",
+    "people",
+  ])("d10a. stop-listed after-for reference does not trigger participant resolution: %s", async (phrase) => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const {
+      extractRequestedParticipantName,
+      resolveSubjectParticipantForTaskRequest,
+    } = await import("../services/taskParticipantService.js");
+    const sourceUserRequest = `Create an NDIS care plan for ${phrase}`;
+
+    expect(extractRequestedParticipantName({
+      title: "Generated task title",
+      sourceUserRequest,
+    })).toBe("");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Generated task title",
+      sourceUserRequest,
+    });
+
+    expect(result.status).toBe("not_applicable");
+    expect(result.requestedName).toBeUndefined();
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toEqual([]);
+  });
+
+  it("d10b. a real after-for name still resolves to a picker suggestion", async () => {
+    state.participants = [{
+      id: "participant-a",
+      displayName: "John Doe",
+      preferredName: "John",
+      externalParticipantId: null,
+    }];
+
+    const {
+      extractRequestedParticipantName,
+      resolveSubjectParticipantForTaskRequest,
+    } = await import("../services/taskParticipantService.js");
+    const sourceUserRequest = "Create an NDIS care plan for John Doe";
+
+    expect(extractRequestedParticipantName({
+      title: "Generated task title",
+      sourceUserRequest,
+    })).toBe("john doe");
+
+    const result = await resolveSubjectParticipantForTaskRequest({
+      organizationId: "org-a",
+      title: "Generated task title",
+      sourceUserRequest,
+    });
+
+    expect(result.status).toBe("confirmation_required");
+    expect(result.requestedName).toBe("john doe");
+    expect(result.subjectParticipantIds).toEqual([]);
+    expect(result.candidates).toMatchObject([{
+      id: "participant-a",
+      displayName: "John Doe",
+      matchType: "display_name_exact",
+      isSuggestion: false,
+    }]);
+  });
+
   it("d11. library upload links participant documents to a selected participant", () => {
     const src = readFileSync(resolve(webRoot, "pages/app/OrgLibraryPage.tsx"), "utf8");
 
