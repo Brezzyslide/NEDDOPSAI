@@ -1,12 +1,13 @@
 /**
  * Platform Shell — staff-only layout wrapper for /platform/* pages.
- * Checks that the current user has platform access (publicMetadata.platformAdmin or platformRole).
+ * Checks that the current user has platform access through the DB-backed platform role gate.
  * Renders a dark sidebar nav with 10 sections.
  */
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useUser } from "@clerk/react";
 import { Link, useLocation } from "wouter";
 import { PLATFORM_NAV } from "@/lib/platformApi";
+import { useAuthFetch } from "@/lib/api";
 
 interface Props { children: ReactNode }
 
@@ -14,8 +15,30 @@ export default function PlatformShell({ children }: Props) {
   const { user, isLoaded } = useUser();
   const [location] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [accessState, setAccessState] = useState<"checking" | "allowed" | "denied">("checking");
+  const apiFetch = useAuthFetch();
 
-  if (!isLoaded) {
+  useEffect(() => {
+    if (!isLoaded) return;
+    let cancelled = false;
+
+    async function checkPlatformAccess() {
+      try {
+        const response = await apiFetch("/v1/platform/dashboard");
+        if (!cancelled) setAccessState(response.ok ? "allowed" : "denied");
+      } catch {
+        if (!cancelled) setAccessState("denied");
+      }
+    }
+
+    setAccessState("checking");
+    void checkPlatformAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, isLoaded]);
+
+  if (!isLoaded || accessState === "checking") {
     return (
       <div className="flex h-screen items-center justify-center bg-[#08111e]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#00D4FF] border-t-transparent" />
@@ -23,11 +46,7 @@ export default function PlatformShell({ children }: Props) {
     );
   }
 
-  const isPlatformUser =
-    (user?.publicMetadata as any)?.platformAdmin === true ||
-    (user?.publicMetadata as any)?.platformRole != null;
-
-  if (!isPlatformUser) {
+  if (accessState !== "allowed") {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#08111e] text-[#E2E8F0]">
         <div className="rounded-2xl border border-red-800 bg-[#0f1f30] p-8 text-center">
