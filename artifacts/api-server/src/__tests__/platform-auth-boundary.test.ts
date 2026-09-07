@@ -49,4 +49,11 @@ describe("platform auth boundaries", () => {
 
     expect(gatedRouteSources).not.toContain('requirePlatformRole("platform_owner")');
   });
+
+  it("handles platform role rows whose user join is missing", () => {
+    const source = readRoute("platformStaff.ts");
+
+    expect(source).toContain("row.user?.name ?? null");
+    expect(source).toContain("row.user?.email ?? null");
+  });
 });

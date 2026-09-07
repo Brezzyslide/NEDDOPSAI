@@ -57,8 +57,8 @@ router.get("/", ...adminAuth, async (_req, res, next) => {
       role: row.role,
       grantedAt: row.grantedAt,
       user: {
-        name: row.user.name ?? null,
-        email: row.user.email ?? null,
+        name: row.user?.name ?? null,
+        email: row.user?.email ?? null,
       },
     }));
 
