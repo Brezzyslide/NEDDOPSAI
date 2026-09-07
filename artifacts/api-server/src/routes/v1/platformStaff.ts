@@ -42,8 +42,11 @@ router.get("/", ...adminAuth, async (_req, res, next) => {
         role: platformRolesTable.role,
         grantedAt: platformRolesTable.grantedAt,
         user: {
-          name: usersTable.firstName,
-          email: usersTable.email,
+          id: usersTable.id,
+          externalId: usersTable.externalId,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          displayName: usersTable.displayName,
         },
       })
       .from(platformRolesTable)
@@ -51,16 +54,21 @@ router.get("/", ...adminAuth, async (_req, res, next) => {
       .where(isNull(platformRolesTable.revokedAt))
       .orderBy(platformRolesTable.grantedAt);
 
-    const result = staff.map((row) => ({
+    const result = staff.map((row) => {
+      const fullName = [row.user?.firstName, row.user?.lastName].filter(Boolean).join(" ");
+      return ({
       id: row.id,
       userId: row.userId,
       role: row.role,
       grantedAt: row.grantedAt,
       user: {
-        name: row.user?.name ?? null,
-        email: row.user?.email ?? null,
+        id: row.user?.id ?? null,
+        externalId: row.user?.externalId ?? null,
+        name: row.user?.displayName ?? (fullName || null),
+        email: null,
       },
-    }));
+    });
+    });
 
     res.json({ staff: result });
   } catch (err) { next(err); }

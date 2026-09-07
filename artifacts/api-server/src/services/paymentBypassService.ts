@@ -173,6 +173,7 @@ export async function activatePaymentBypass(
       organizationId,
       userId,
       selectedPackCodes,
+      db,
       auditMeta,
     ).catch(err => console.error("[paymentBypass] Pack provisioning error:", err));
   }

@@ -97,9 +97,9 @@ export function Dashboard() {
             <p className="text-sm text-muted-foreground mb-6">Execute rapid operations from the command surface. All actions are logged and audited.</p>
             
             <div className="grid grid-cols-2 gap-4">
-              <Link href="/organizations" className="flex flex-col p-4 bg-background border border-border rounded hover:border-primary/50 transition-colors group cursor-pointer">
+              <Link href="/platform/organisations" className="flex flex-col p-4 bg-background border border-border rounded hover:border-primary/50 transition-colors group cursor-pointer">
                 <Building2 className="w-6 h-6 text-muted-foreground group-hover:text-primary mb-3 transition-colors" />
-                <span className="font-semibold text-sm">Manage Organizations</span>
+                <span className="font-semibold text-sm">Manage Organisations</span>
                 <span className="text-xs text-muted-foreground mt-1">Deploy and configure tenants</span>
               </Link>
               <Link href="/workforce" className="flex flex-col p-4 bg-background border border-border rounded hover:border-primary/50 transition-colors group cursor-pointer">

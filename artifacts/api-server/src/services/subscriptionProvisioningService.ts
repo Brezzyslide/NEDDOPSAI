@@ -8,6 +8,8 @@ import {
 import { desc, eq, sql } from "drizzle-orm";
 import type { PlanCode } from "@workspace/shared";
 
+type DbClient = typeof db;
+
 export interface TrialSubscriptionResult {
   created: boolean;
   organizationId: string;
@@ -21,8 +23,8 @@ export interface TrialSubscriptionReconciliationResult {
   organizations: string[];
 }
 
-async function resolveLatestPlanVersion(planCode: PlanCode) {
-  const [plan] = await db
+async function resolveLatestPlanVersion(planCode: PlanCode, client: DbClient) {
+  const [plan] = await client
     .select()
     .from(plansTable)
     .where(eq(plansTable.code, planCode))
@@ -32,7 +34,7 @@ async function resolveLatestPlanVersion(planCode: PlanCode) {
     throw new Error(`Plan not found: ${planCode}`);
   }
 
-  const [planVersion] = await db
+  const [planVersion] = await client
     .select()
     .from(planVersionsTable)
     .where(eq(planVersionsTable.planId, plan.id))
@@ -52,9 +54,9 @@ export async function ensureTrialSubscriptionForOrg(params: {
   planCode?: PlanCode;
   note?: string;
   trialDays?: number;
-}): Promise<TrialSubscriptionResult> {
+}, client: DbClient): Promise<TrialSubscriptionResult> {
   const planCode = params.planCode ?? "professional";
-  const [existing] = await db
+  const [existing] = await client
     .select({ id: tenantSubscriptionsTable.id })
     .from(tenantSubscriptionsTable)
     .where(eq(tenantSubscriptionsTable.organizationId, params.organizationId))
@@ -64,12 +66,12 @@ export async function ensureTrialSubscriptionForOrg(params: {
     return { created: false, organizationId: params.organizationId, planCode, subscriptionId: existing.id };
   }
 
-  const { plan, planVersion } = await resolveLatestPlanVersion(planCode);
+  const { plan, planVersion } = await resolveLatestPlanVersion(planCode, client);
   const now = new Date();
   const trialEndsAt = new Date(now.getTime() + (params.trialDays ?? 14) * 86_400_000);
   const subscriptionId = `sub_trial_${randomUUID()}`;
 
-  await db.insert(tenantSubscriptionsTable).values({
+  await client.insert(tenantSubscriptionsTable).values({
     id: subscriptionId,
     organizationId: params.organizationId,
     planId: plan.id,
@@ -112,7 +114,7 @@ export async function reconcileMissingOnboardingTrialSubscriptions(): Promise<Tr
       changedBy: "db_bootstrap",
       planCode: row.has_non_core_pack ? "professional" : "foundation",
       note: "Created by Dev bootstrap to align onboarding trial packs with subscription entitlement gates.",
-    });
+    }, db);
     if (result.created) created++;
   }
 

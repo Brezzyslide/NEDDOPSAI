@@ -41,6 +41,7 @@ import {
   checkRateLimit,
   getProvisioningJob,
 } from "../orgProvisioningService.js";
+import { db } from "@workspace/db";
 
 describe("checkRateLimit", () => {
   it("allows up to 10 calls per hour", () => {
@@ -101,7 +102,7 @@ describe("provisionOrganisation", () => {
   it("returns jobId and orgId on full success (no invitation)", async () => {
     // Fresh user to avoid rate limit
     const uid = `prov-success-${Math.random()}`;
-    const result = await provisionOrganisation(BASE_PARAMS, uid);
+    const result = await provisionOrganisation(BASE_PARAMS, uid, db);
     expect(result.orgId).toBe(ORG_ID);
     expect(result.jobId).toMatch(/^pj_/);
     expect(result.error).toBeUndefined();
@@ -112,16 +113,18 @@ describe("provisionOrganisation", () => {
     await provisionOrganisation(
       { ...BASE_PARAMS, initialAdminEmail: "admin@example.com" },
       uid,
+      db,
     );
     expect(mockCreateInvitation).toHaveBeenCalledWith(
       expect.objectContaining({ email: "admin@example.com", role: "administrator" }),
+      db,
     );
   });
 
   it("returns error but still has orgId when pack provisioning fails", async () => {
     mockProvisionPacks.mockRejectedValueOnce(new Error("pack error"));
     const uid = `prov-packfail-${Math.random()}`;
-    const result = await provisionOrganisation(BASE_PARAMS, uid);
+    const result = await provisionOrganisation(BASE_PARAMS, uid, db);
     expect(result.orgId).toBe(ORG_ID);
     expect(result.error).toMatch(/pack error/i);
   });
@@ -129,7 +132,7 @@ describe("provisionOrganisation", () => {
   it("returns orgId=null when org creation fails", async () => {
     mockCreateOrg.mockRejectedValueOnce(new Error("db error"));
     const uid = `prov-orgfail-${Math.random()}`;
-    const result = await provisionOrganisation(BASE_PARAMS, uid);
+    const result = await provisionOrganisation(BASE_PARAMS, uid, db);
     expect(result.orgId).toBeNull();
     expect(result.error).toMatch(/db error/i);
   });
@@ -140,6 +143,7 @@ describe("provisionOrganisation", () => {
     const result = await provisionOrganisation(
       { ...BASE_PARAMS, initialAdminEmail: "x@example.com" },
       uid,
+      db,
     );
     // org + packs succeeded so we still get orgId
     expect(result.orgId).toBe(ORG_ID);

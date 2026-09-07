@@ -7,7 +7,6 @@ export function TopBar() {
 
   const getPageTitle = () => {
     if (location === "/") return "Command Centre Overview";
-    if (location.startsWith("/organizations")) return "Organizations Management";
     if (location.startsWith("/workforce")) return "Workforce Packs Browser";
     if (location.startsWith("/system")) return "System Health & Status";
     return "Operations";

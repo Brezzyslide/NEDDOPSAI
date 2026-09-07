@@ -17,9 +17,10 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, workforcePacksTable, tenantWorkforcePacksTable, workforcePackAccessRequestsTable } from "@workspace/db";
+import { workforcePacksTable, tenantWorkforcePacksTable, workforcePackAccessRequestsTable } from "@workspace/db";
 import { eq, and, inArray } from "drizzle-orm";
 import * as auditService from "./auditService.js";
+import type { DbClient } from "./orgService.js";
 
 export interface PackProvisioningResult {
   granted:   { code: string; status: "active" | "trial"; trialEndsAt?: Date }[];
@@ -37,6 +38,7 @@ export async function provisionPacksForNewOrg(
   orgId: string,
   userId: string,
   selectedPackCodes: string[],
+  client: DbClient,
   auditMeta: PackProvisioningAuditMeta = {},
 ): Promise<PackProvisioningResult> {
   const result: PackProvisioningResult = { granted: [], requested: [], rejected: [] };
@@ -44,7 +46,7 @@ export async function provisionPacksForNewOrg(
   // ── 1. Load all requested + core packs from DB ──────────────────────────────
   const allCodes = [...new Set(["core", ...selectedPackCodes.map(c => c.toLowerCase())])];
 
-  const packs = await db
+  const packs = await client
     .select()
     .from(workforcePacksTable)
     .where(inArray(workforcePacksTable.code, allCodes));
@@ -52,7 +54,7 @@ export async function provisionPacksForNewOrg(
   const packMap = new Map(packs.map(p => [p.code, p]));
 
   // ── 2. Check for existing grants (idempotency) ───────────────────────────────
-  const existing = await db
+  const existing = await client
     .select({ packCode: tenantWorkforcePacksTable.packCode })
     .from(tenantWorkforcePacksTable)
     .where(eq(tenantWorkforcePacksTable.organizationId, orgId));
@@ -63,7 +65,7 @@ export async function provisionPacksForNewOrg(
     const corePack = packMap.get("core");
     const corePackId = corePack?.id ?? "pack_core";
 
-    await db.insert(tenantWorkforcePacksTable).values({
+    await client.insert(tenantWorkforcePacksTable).values({
       id:            `twp_${randomUUID()}`,
       organizationId: orgId,
       packCode:      "core",
@@ -120,7 +122,7 @@ export async function provisionPacksForNewOrg(
 
     if (selectionMode === "included" || pack.autoGrantOnSignup) {
       // ── Grant immediately as active ──────────────────────────────────────────
-      await db.insert(tenantWorkforcePacksTable).values({
+      await client.insert(tenantWorkforcePacksTable).values({
         id:             `twp_${randomUUID()}`,
         organizationId: orgId,
         packCode:       code,
@@ -139,7 +141,7 @@ export async function provisionPacksForNewOrg(
       const trialDays    = pack.trialLengthDays ?? 14;
       const trialEndsAt  = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
 
-      await db.insert(tenantWorkforcePacksTable).values({
+      await client.insert(tenantWorkforcePacksTable).values({
         id:             `twp_${randomUUID()}`,
         organizationId: orgId,
         packCode:       code,
@@ -167,7 +169,7 @@ export async function provisionPacksForNewOrg(
 
     } else if (selectionMode === "requested" || pack.requiresManualApproval) {
       // ── Create access request ────────────────────────────────────────────────
-      await db.insert(workforcePackAccessRequestsTable).values({
+      await client.insert(workforcePackAccessRequestsTable).values({
         id:              `par_${randomUUID()}`,
         organizationId:  orgId,
         workforcePackId: pack.id,
@@ -178,7 +180,7 @@ export async function provisionPacksForNewOrg(
       }).onConflictDoNothing();
 
       // Also create a pending tenant_workforce_packs row for visibility
-      await db.insert(tenantWorkforcePacksTable).values({
+      await client.insert(tenantWorkforcePacksTable).values({
         id:             `twp_${randomUUID()}`,
         organizationId: orgId,
         packCode:       code,
@@ -204,7 +206,7 @@ export async function provisionPacksForNewOrg(
 
     } else {
       // selectionMode = pending_payment or unrecognised — create pending grant
-      await db.insert(tenantWorkforcePacksTable).values({
+      await client.insert(tenantWorkforcePacksTable).values({
         id:             `twp_${randomUUID()}`,
         organizationId: orgId,
         packCode:       code,

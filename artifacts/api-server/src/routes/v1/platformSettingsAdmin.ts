@@ -117,12 +117,27 @@ router.put("/config/:key", ...superAuth, async (req, res, next) => {
 
 router.get("/roles", ...superAuth, async (_req, res, next) => {
   try {
-    const roles = await platformDb.select({ role: platformRolesTable, user: { id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName } })
+    const roles = await platformDb.select({
+        role: platformRolesTable,
+        user: {
+          id: usersTable.id,
+          externalId: usersTable.externalId,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          displayName: usersTable.displayName,
+          createdAt: usersTable.createdAt,
+        },
+      })
       .from(platformRolesTable)
       .leftJoin(usersTable, eq(usersTable.id, platformRolesTable.userId))
       .where(isNull(platformRolesTable.revokedAt))
       .orderBy(platformRolesTable.grantedAt);
-    res.json({ roles });
+    res.json({
+      roles: roles.map((row) => ({
+        ...row,
+        user: row.user ? { ...row.user, email: null } : null,
+      })),
+    });
   } catch (err) { next(err); }
 });
 

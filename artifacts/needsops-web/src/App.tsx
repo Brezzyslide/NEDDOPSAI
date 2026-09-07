@@ -22,8 +22,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 // Import pages
 import LandingPage from "@/pages/LandingPage";
 import { Dashboard } from "@/pages/Dashboard";
-import { OrganizationsList } from "@/pages/OrganizationsList";
-import { OrganizationDetail } from "@/pages/OrganizationDetail";
 import { WorkforceBrowser } from "@/pages/WorkforceBrowser";
 import { SystemStatus } from "@/pages/SystemStatus";
 import NotFound from "@/pages/not-found";
@@ -369,8 +367,6 @@ function AppRouter() {
             <Route path="/platform" component={PlatformDashboard} />
             {/* Legacy Sprint 0 routes */}
             <Route path="/dashboard" component={Dashboard} />
-            <Route path="/organizations" component={OrganizationsList} />
-            <Route path="/organizations/:id" component={OrganizationDetail} />
             <Route path="/workforce" component={WorkforceBrowser} />
             <Route path="/system" component={SystemStatus} />
             <Route component={NotFound} />

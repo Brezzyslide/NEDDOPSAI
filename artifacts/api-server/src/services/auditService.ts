@@ -17,6 +17,7 @@
 
 import { randomUUID } from "crypto";
 import { db, withSystemTenantContext, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
+import { platformDb } from "@workspace/db/platform";
 import { withOrgContext, OrgConnectionError } from "@workspace/org-db";
 import { sql } from "drizzle-orm";
 import type { AuditEventType } from "@workspace/shared";
@@ -47,6 +48,7 @@ export interface WriteAuditEventParams {
   metadata?: Record<string, unknown>;
   isSensitive?: boolean;
   accessPurpose?: string | null;
+  platformClient?: DbClient;
 }
 
 // ─── Routing helpers ──────────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
 
   if (isPlatform || !hasOrg) {
     // Platform event → platform_audit_log
-    await db.insert(platformAuditLogTable).values({
+    await (params.platformClient ?? platformDb).insert(platformAuditLogTable).values({
       id: randomUUID(),
       organizationId: params.organizationId ?? null,
       actorUserId: params.actorUserId ?? null,

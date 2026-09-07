@@ -11,9 +11,9 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, organizationsTable, orgProvisioningJobsTable } from "@workspace/db";
+import { orgProvisioningJobsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
-import { createOrg } from "./orgService.js";
+import { createOrg, type DbClient } from "./orgService.js";
 import { provisionPacksForNewOrg } from "./packProvisioningService.js";
 import { ensureTrialSubscriptionForOrg } from "./subscriptionProvisioningService.js";
 import * as invitationService from "./invitationService.js";
@@ -74,8 +74,9 @@ async function updateJob(
     errorMessage: string | null;
     completedAt: Date | null;
   }>,
+  client: DbClient,
 ) {
-  await db
+  await client
     .update(orgProvisioningJobsTable)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(orgProvisioningJobsTable.id, jobId));
@@ -86,6 +87,7 @@ async function updateJob(
 export async function provisionOrganisation(
   params: ProvisionOrgParams,
   initiatorUserId: string,
+  client: DbClient,
 ): Promise<{ jobId: string; orgId: string | null; error?: string }> {
   // NOTE: Rate limit is enforced by the caller (platformOrgs route) before
   // reaching here. Do NOT call checkRateLimit again inside this function —
@@ -99,7 +101,7 @@ export async function provisionOrganisation(
   };
 
   // Create the job record — organizationId is null until create_org completes
-  await db.insert(orgProvisioningJobsTable).values({
+  await client.insert(orgProvisioningJobsTable).values({
     id: jobId,
     organizationId: null,
     initiatedBy: initiatorUserId,
@@ -113,7 +115,7 @@ export async function provisionOrganisation(
     // ── Step 1: create_org ───────────────────────────────────────────────────
     await updateJob(jobId, {
       steps: { ...initialSteps, create_org: { status: "running" } },
-    });
+    }, client);
 
     const { org } = await createOrg(
       {
@@ -129,11 +131,12 @@ export async function provisionOrganisation(
         primaryContactEmail: params.primaryContactEmail,
       },
       initiatorUserId,
+      client,
     );
     orgId = org.id;
 
     // Update organizationId now that we have it
-    await db
+    await client
       .update(orgProvisioningJobsTable)
       .set({ organizationId: orgId, updatedAt: new Date() })
       .where(eq(orgProvisioningJobsTable.id, jobId));
@@ -142,14 +145,14 @@ export async function provisionOrganisation(
       ...initialSteps,
       create_org: { status: "completed" },
     };
-    await updateJob(jobId, { steps: stepsAfterCreate });
+    await updateJob(jobId, { steps: stepsAfterCreate }, client);
 
     // ── Step 2: provision_packs ──────────────────────────────────────────────
     const stepsRunningPacks: ProvisionSteps = {
       ...stepsAfterCreate,
       provision_packs: { status: "running" },
     };
-    await updateJob(jobId, { steps: stepsRunningPacks });
+    await updateJob(jobId, { steps: stepsRunningPacks }, client);
 
     try {
       await ensureTrialSubscriptionForOrg({
@@ -157,18 +160,19 @@ export async function provisionOrganisation(
         changedBy: initiatorUserId,
         planCode: (params.additionalPackCodes?.length ?? 0) > 0 ? "professional" : "foundation",
         note: "Created during organisation provisioning so onboarding packs satisfy subscription entitlement gates.",
-      });
+      }, client);
 
       await provisionPacksForNewOrg(
         orgId,
         initiatorUserId,
         params.additionalPackCodes ?? [],
+        client,
       );
       const stepsAfterPacks: ProvisionSteps = {
         ...stepsRunningPacks,
         provision_packs: { status: "completed" },
       };
-      await updateJob(jobId, { steps: stepsAfterPacks });
+      await updateJob(jobId, { steps: stepsAfterPacks }, client);
 
       // ── Step 3: send_invitation (optional) ────────────────────────────────
       if (params.initialAdminEmail) {
@@ -176,7 +180,7 @@ export async function provisionOrganisation(
           ...stepsAfterPacks,
           send_invitation: { status: "running" },
         };
-        await updateJob(jobId, { steps: stepsRunningInvite });
+        await updateJob(jobId, { steps: stepsRunningInvite }, client);
 
         try {
           await invitationService.createInvitation({
@@ -184,7 +188,7 @@ export async function provisionOrganisation(
             email: params.initialAdminEmail,
             role: "administrator" as MembershipRole,
             invitedByUserId: initiatorUserId,
-          });
+          }, client);
           const finalSteps: ProvisionSteps = {
             ...stepsRunningInvite,
             send_invitation: { status: "completed" },
@@ -193,7 +197,7 @@ export async function provisionOrganisation(
             status: "completed",
             steps: finalSteps,
             completedAt: new Date(),
-          });
+          }, client);
         } catch (invErr: any) {
           const finalSteps: ProvisionSteps = {
             ...stepsRunningInvite,
@@ -205,14 +209,14 @@ export async function provisionOrganisation(
             steps: finalSteps,
             errorMessage: `Invitation failed: ${invErr.message}`,
             completedAt: new Date(),
-          });
+          }, client);
         }
       } else {
         await updateJob(jobId, {
           status: "completed",
           steps: { ...stepsAfterPacks, send_invitation: { status: "skipped" } },
           completedAt: new Date(),
-        });
+        }, client);
       }
     } catch (packErr: any) {
       const failedSteps: ProvisionSteps = {
@@ -223,7 +227,7 @@ export async function provisionOrganisation(
         status: "failed",
         steps: failedSteps,
         errorMessage: `Pack provisioning failed: ${packErr.message}`,
-      });
+      }, client);
       return { jobId, orgId, error: failedSteps.provision_packs.error };
     }
   } catch (orgErr: any) {
@@ -235,15 +239,15 @@ export async function provisionOrganisation(
       status: "failed",
       steps: failedSteps,
       errorMessage: `Org creation failed: ${orgErr.message}`,
-    });
+    }, client);
     return { jobId, orgId: null, error: failedSteps.create_org.error };
   }
 
   return { jobId, orgId };
 }
 
-export async function getProvisioningJob(jobId: string) {
-  const [job] = await db
+export async function getProvisioningJob(jobId: string, client: DbClient) {
+  const [job] = await client
     .select()
     .from(orgProvisioningJobsTable)
     .where(eq(orgProvisioningJobsTable.id, jobId))
@@ -251,8 +255,8 @@ export async function getProvisioningJob(jobId: string) {
   return job ?? null;
 }
 
-export async function getLatestProvisioningJobForOrg(orgId: string) {
-  const [job] = await db
+export async function getLatestProvisioningJobForOrg(orgId: string, client: DbClient) {
+  const [job] = await client
     .select()
     .from(orgProvisioningJobsTable)
     .where(eq(orgProvisioningJobsTable.organizationId, orgId))
@@ -265,8 +269,9 @@ export async function getLatestProvisioningJobForOrg(orgId: string) {
 export async function retryProvisioningJob(
   jobId: string,
   initiatorUserId: string,
+  client: DbClient,
 ): Promise<{ success: boolean; error?: string }> {
-  const job = await getProvisioningJob(jobId);
+  const job = await getProvisioningJob(jobId, client);
   if (!job) throw Object.assign(new Error("Provisioning job not found."), { status: 404 });
   if (job.status === "completed") {
     return { success: true }; // already done
@@ -279,20 +284,20 @@ export async function retryProvisioningJob(
   const orgId = job.organizationId;
 
   // Mark running
-  await updateJob(jobId, { status: "running" });
+  await updateJob(jobId, { status: "running" }, client);
 
   // ── Retry pack provisioning if it failed ────────────────────────────────────
   if (steps.provision_packs?.status === "failed" || steps.provision_packs?.status === "pending") {
     await updateJob(jobId, {
       steps: { ...steps, provision_packs: { status: "running" } },
-    });
+    }, client);
     try {
-      await provisionPacksForNewOrg(orgId, initiatorUserId, []);
+      await provisionPacksForNewOrg(orgId, initiatorUserId, [], client);
       steps.provision_packs = { status: "completed" };
-      await updateJob(jobId, { steps });
+      await updateJob(jobId, { steps }, client);
     } catch (e: any) {
       steps.provision_packs = { status: "failed", error: e.message };
-      await updateJob(jobId, { status: "failed", steps, errorMessage: e.message });
+      await updateJob(jobId, { status: "failed", steps, errorMessage: e.message }, client);
       return { success: false, error: e.message };
     }
   }
@@ -302,7 +307,7 @@ export async function retryProvisioningJob(
     // We don't have the email stored — invitation retry is a no-op unless the
     // platform staff resends from the invitations panel. Mark skipped.
     steps.send_invitation = { status: "skipped" };
-    await updateJob(jobId, { steps });
+    await updateJob(jobId, { steps }, client);
   }
 
   // Check if all non-skipped steps are completed
@@ -312,7 +317,7 @@ export async function retryProvisioningJob(
   await updateJob(jobId, {
     status: allDone ? "completed" : "failed",
     completedAt: allDone ? new Date() : null,
-  });
+  }, client);
 
   return { success: allDone };
 }

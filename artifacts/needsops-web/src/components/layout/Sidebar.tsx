@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, Users, Cpu, Settings, Globe, ShieldCheck } from "lucide-react";
+import { Activity, LayoutDashboard, Users, Cpu, Settings, ShieldCheck } from "lucide-react";
 import { useUser } from "@clerk/react";
 
 export function Sidebar() {
@@ -13,7 +13,6 @@ export function Sidebar() {
 
   const navItems = [
     { href: "/", label: "Command Centre", icon: LayoutDashboard },
-    { href: "/organizations", label: "Organizations", icon: Globe },
     { href: "/workforce", label: "Workforce Packs", icon: Users },
     { href: "/system", label: "System Status", icon: Activity },
   ];

@@ -60,6 +60,29 @@ import type { MembershipRole } from "@workspace/shared";
 const router = Router();
 const auth = [requireAuth, requirePlatformAuth];
 
+const platformMemberSelect = {
+  membership: {
+    id: membershipsTable.id,
+    organizationId: membershipsTable.organizationId,
+    userId: membershipsTable.userId,
+    role: membershipsTable.role,
+    status: membershipsTable.status,
+    invitedBy: membershipsTable.invitedBy,
+    joinedAt: membershipsTable.joinedAt,
+    createdAt: membershipsTable.createdAt,
+    updatedAt: membershipsTable.updatedAt,
+  },
+  user: {
+    id: usersTable.id,
+    externalId: usersTable.externalId,
+    firstName: usersTable.firstName,
+    lastName: usersTable.lastName,
+    displayName: usersTable.displayName,
+    createdAt: usersTable.createdAt,
+    email: sql<null>`NULL`,
+  },
+};
+
 // ─── GET / — Org Directory ─────────────────────────────────────────────────────
 
 router.get("/", ...auth, async (req, res, next) => {
@@ -150,7 +173,7 @@ router.get("/:id", ...auth, async (req, res, next) => {
     // Operational content is accessible to authorised org members only via org portal.
     const [sub, members, overrides, notes, taskCountResult, approvalCountResult, pendingApprovalCountResult, usageRows] = await Promise.all([
       platformDb.select().from(tenantSubscriptionsTable).where(eq(tenantSubscriptionsTable.organizationId, org.id)).limit(1),
-      platformDb.select({ membership: membershipsTable, user: usersTable })
+      platformDb.select(platformMemberSelect)
         .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
         .where(eq(membershipsTable.organizationId, org.id)),
       platformDb.select().from(tenantOverridesTable).where(eq(tenantOverridesTable.organizationId, org.id))
@@ -532,7 +555,7 @@ router.get("/:id/approvals", ...auth, async (req, res, next) => {
 
 router.get("/:id/members", ...auth, async (req, res, next) => {
   try {
-    const members = await platformDb.select({ membership: membershipsTable, user: usersTable })
+    const members = await platformDb.select(platformMemberSelect)
       .from(membershipsTable).leftJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
       .where(eq(membershipsTable.organizationId, req.params.id!));
     res.json({ members, count: members.length });
@@ -1140,6 +1163,7 @@ router.post("/", ...auth, requirePlatformRole("platform_super_admin"), async (re
         additionalPackCodes: additionalPackCodes ?? [],
       },
       req.platformUserId!,
+      platformDb,
     );
 
     await auditService.log({
@@ -1170,7 +1194,7 @@ router.get("/:id/provisioning", ...auth, async (req, res, next) => {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } });
       return;
     }
-    const job = await orgProvisioningService.getLatestProvisioningJobForOrg(org.id);
+    const job = await orgProvisioningService.getLatestProvisioningJobForOrg(org.id, platformDb);
     res.json({ job: job ?? null });
   } catch (err) { next(err); }
 });
@@ -1184,7 +1208,7 @@ router.post("/:id/provisioning/retry", ...auth, requirePlatformRole("platform_su
       res.status(422).json({ error: { code: "VALIDATION_ERROR", message: "jobId is required." } });
       return;
     }
-    const result = await orgProvisioningService.retryProvisioningJob(jobId, req.platformUserId!);
+    const result = await orgProvisioningService.retryProvisioningJob(jobId, req.platformUserId!, platformDb);
     res.json(result);
   } catch (err: any) {
     if (err.status) {
@@ -1207,7 +1231,7 @@ router.get("/:id/invitations", ...auth, async (req, res, next) => {
       res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Organisation not found." } });
       return;
     }
-    const invitations = await invitationService.listInvitations(org.id);
+    const invitations = await invitationService.listInvitations(org.id, platformDb);
     res.json({ invitations });
   } catch (err) { next(err); }
 });
@@ -1240,7 +1264,7 @@ router.post("/:id/invitations", ...auth, requirePlatformRole("platform_super_adm
       email,
       role: role as MembershipRole,
       invitedByUserId: req.platformUserId!,
-    });
+    }, platformDb);
 
     await auditService.log({
       eventType: "platform.org_invitation_sent",

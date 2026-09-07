@@ -41,9 +41,21 @@ router.get("/", ...auth, async (req, res, next) => {
         ))
         .limit(10),
 
-      platformDb.select({ id: usersTable.id, email: usersTable.email, firstName: usersTable.firstName, lastName: usersTable.lastName, externalId: usersTable.externalId })
+      platformDb.select({
+          id: usersTable.id,
+          externalId: usersTable.externalId,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          displayName: usersTable.displayName,
+          createdAt: usersTable.createdAt,
+        })
         .from(usersTable)
-        .where(or(ilike(usersTable.email, pattern), ilike(usersTable.firstName, pattern), ilike(usersTable.lastName, pattern)))
+        .where(or(
+          ilike(usersTable.externalId, pattern),
+          ilike(usersTable.firstName, pattern),
+          ilike(usersTable.lastName, pattern),
+          ilike(usersTable.displayName, pattern),
+        ))
         .limit(10),
 
       platformDb.select({ id: platformInternalNotesTable.id, content: platformInternalNotesTable.content, organizationId: platformInternalNotesTable.organizationId, createdAt: platformInternalNotesTable.createdAt })

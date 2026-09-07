@@ -12,6 +12,7 @@ import {
   resolveTenantFromSlug,
 } from "../../middlewares/tenantContext.js";
 import { requirePermission } from "../../middlewares/requirePermission.js";
+import { platformDb } from "@workspace/db/platform";
 import * as orgService from "../../services/orgService.js";
 import * as auditService from "../../services/auditService.js";
 import { provisionPacksForNewOrg } from "../../services/packProvisioningService.js";
@@ -49,6 +50,7 @@ router.post("/", requireAuth, async (req, res, next) => {
     const { org, membership } = await orgService.createOrg(
       { name: name.trim(), type, industry, country, state, timezone, abn, ndisRegistrationNumber, primaryContactName, primaryContactEmail },
       user.id,
+      platformDb,
     );
 
     const meta = auditService.getRequestMeta(req);
@@ -67,6 +69,7 @@ router.post("/", requireAuth, async (req, res, next) => {
       org.id,
       user.id,
       initialWorkforcePacks,
+      platformDb,
       meta,
     ).catch(err => {
       // Non-fatal: org was created; log and continue

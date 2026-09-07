@@ -15,7 +15,7 @@ interface StaffMember {
   userId: string;
   role: string;
   grantedAt: string;
-  user: { name: string | null; email: string | null };
+  user: { name: string | null; externalId: string | null };
 }
 
 interface AuditEvent {
@@ -220,7 +220,7 @@ export default function PlatformStaff() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#1E3A5F] bg-[#08111e]">
-                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748B]">Name / Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748B]">Name / Identity</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748B]">Role</th>
                       <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#64748B]">Granted</th>
                       <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-[#64748B]">Actions</th>
@@ -232,7 +232,7 @@ export default function PlatformStaff() {
                         <tr className="hover:bg-[#0F2035] transition-colors">
                           <td className="px-4 py-3">
                             <div className="font-medium text-[#E2E8F0]">{member.user.name ?? "—"}</div>
-                            <div className="text-xs text-[#64748B]">{member.user.email ?? member.userId}</div>
+                            <div className="text-xs text-[#64748B]">{member.user.externalId ?? member.userId}</div>
                           </td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(member.role)}`}>

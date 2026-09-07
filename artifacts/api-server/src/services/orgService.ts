@@ -8,12 +8,12 @@
  */
 
 import { randomUUID } from "crypto";
-import { db, organizationsTable, tenantSettingsTable, membershipsTable, withSystemTenantContext } from "@workspace/db";
+import { organizationsTable, tenantSettingsTable, membershipsTable, withSystemTenantContext } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { generateUniqueSlug } from "../lib/slugify.js";
 import { ConflictError } from "../lib/errors.js";
 
-type DbClient = typeof db;
+export type DbClient = Parameters<Parameters<typeof withSystemTenantContext>[1]>[0];
 
 function withOrgTenant<T>(
   orgId: string,
@@ -39,10 +39,14 @@ export interface CreateOrgParams {
   primaryContactEmail?: string;
 }
 
-export async function createOrg(params: CreateOrgParams, creatorUserId: string) {
+export async function createOrg(
+  params: CreateOrgParams,
+  creatorUserId: string,
+  client: DbClient,
+) {
   // Generate unique slug
   const slug = await generateUniqueSlug(params.name, async (candidate) => {
-    const [existing] = await db
+    const [existing] = await client
       .select({ id: organizationsTable.id })
       .from(organizationsTable)
       .where(eq(organizationsTable.slug, candidate))
@@ -56,7 +60,7 @@ export async function createOrg(params: CreateOrgParams, creatorUserId: string) 
   const now = new Date();
 
   // Create org + settings + owner membership in a transaction
-  return db.transaction(async (tx) => {
+  return client.transaction(async (tx) => {
     const [org] = await tx
       .insert(organizationsTable)
       .values({
@@ -100,8 +104,8 @@ export async function createOrg(params: CreateOrgParams, creatorUserId: string) 
   });
 }
 
-export async function getOrgBySlug(slug: string) {
-  const [org] = await db
+export async function getOrgBySlug(slug: string, client: DbClient) {
+  const [org] = await client
     .select()
     .from(organizationsTable)
     .where(eq(organizationsTable.slug, slug))

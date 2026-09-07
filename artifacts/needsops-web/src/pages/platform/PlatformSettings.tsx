@@ -235,8 +235,8 @@ export default function PlatformSettings() {
                       {roles.map((item: any, i: number) => (
                         <tr key={i}>
                           <td className="px-4 py-3">
-                            <div className="text-[#E2E8F0]">{item.user?.firstName} {item.user?.lastName}</div>
-                            <div className="text-xs text-[#4A5568]">{item.user?.email}</div>
+                            <div className="text-[#E2E8F0]">{item.user?.displayName ?? ([item.user?.firstName, item.user?.lastName].filter(Boolean).join(" ") || "Unknown user")}</div>
+                            <div className="text-xs text-[#4A5568]">{item.user?.externalId ?? item.role?.userId}</div>
                           </td>
                           <td className="px-4 py-3 font-mono text-xs text-[#00D4FF]">{item.role?.role}</td>
                           <td className="px-4 py-3 text-xs text-[#64748B]">
@@ -244,7 +244,7 @@ export default function PlatformSettings() {
                           </td>
                           <td className="px-4 py-3 text-xs text-[#4A5568]">{item.role?.grantReason ?? "—"}</td>
                           <td className="px-4 py-3">
-                            <button onClick={() => revokeRole(item.role?.userId, item.user?.email ?? item.role?.userId)}
+                            <button onClick={() => revokeRole(item.role?.userId, item.user?.displayName ?? item.user?.externalId ?? item.role?.userId)}
                               className="rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-950/30">
                               Revoke
                             </button>

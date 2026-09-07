@@ -14,7 +14,6 @@ import {
   db,
   withSystemTenantContext,
   invitationsTable,
-  membershipsTable,
   usersTable,
   organizationsTable,
   emailDeliveryLogsTable,
@@ -26,7 +25,6 @@ import {
   buildInvitationUrl,
 } from "../lib/invitationToken.js";
 import {
-  DuplicateMembership,
   InvitationAlreadyUsed,
   InvitationEmailMismatch,
   InvitationExpired,
@@ -70,7 +68,9 @@ function withInvitationTenant<T>(
   organizationId: string,
   purpose: string,
   fn: (client: DbClient) => Promise<T>,
+  client?: DbClient,
 ): Promise<T> {
+  if (client) return fn(client);
   return withSystemTenantContext(
     { tenantId: organizationId, serviceIdentity: "invitation_service", purpose },
     fn,
@@ -124,31 +124,11 @@ async function logEmailDelivery(
 
 export async function createInvitation(
   params: CreateInvitationParams,
+  injectedClient?: DbClient,
 ): Promise<CreateInvitationResult> {
   return withInvitationTenant(params.organizationId, "invitation.create", async (client) => {
-  // Check if there's already an active membership for this email
-  const [existingUser] = await client
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, params.email.toLowerCase()))
-    .limit(1);
-
-  if (existingUser) {
-    const [existingMembership] = await client
-      .select({ id: membershipsTable.id, status: membershipsTable.status })
-      .from(membershipsTable)
-      .where(
-        and(
-          eq(membershipsTable.organizationId, params.organizationId),
-          eq(membershipsTable.userId, existingUser.id),
-        ),
-      )
-      .limit(1);
-
-    if (existingMembership && existingMembership.status === "active") {
-      throw new DuplicateMembership();
-    }
-  }
+  // users.email currently stores Clerk fallback addresses for some accounts.
+  // Do not use it for duplicate membership detection until Clerk email sync is fixed.
 
   const { rawToken, tokenHash, expiresAt } = generateInvitationToken();
 
@@ -170,10 +150,12 @@ export async function createInvitation(
   const acceptanceUrl = buildInvitationUrl(rawToken);
 
   // Look up org name and inviter for the email
-  const [orgName, inviterName] = await Promise.all([
-    getOrgName(client, params.organizationId),
-    getInviterName(client, params.invitedByUserId),
-  ]);
+  const [orgName, inviterName] = injectedClient
+    ? await Promise.all([
+        getOrgName(client, params.organizationId),
+        getInviterName(client, params.invitedByUserId),
+      ])
+    : ["your organisation", null] as const;
 
   // Send invitation email through the service abstraction
   const emailService = getEmailService();
@@ -217,16 +199,16 @@ export async function createInvitation(
     previewUrl,
     emailDelivery: deliveryResult,
   };
-  });
+  }, injectedClient);
 }
 
 // ─── listInvitations ──────────────────────────────────────────────────────────
 
-export async function listInvitations(organizationId: string) {
+export async function listInvitations(organizationId: string, injectedClient?: DbClient) {
   return withInvitationTenant(organizationId, "invitation.list", (client) => client
     .select()
     .from(invitationsTable)
-    .where(eq(invitationsTable.organizationId, organizationId)));
+    .where(eq(invitationsTable.organizationId, organizationId)), injectedClient);
 }
 
 // ─── getInvitationByToken ─────────────────────────────────────────────────────
@@ -246,6 +228,7 @@ export async function getInvitationByToken(rawToken: string, externalUserId: str
 export async function revokeInvitation(
   organizationId: string,
   invitationId: string,
+  injectedClient?: DbClient,
 ) {
   return withInvitationTenant(organizationId, "invitation.revoke", async (client) => {
   const [invitation] = await client
@@ -268,7 +251,7 @@ export async function revokeInvitation(
     .where(eq(invitationsTable.id, invitationId))
     .returning();
   return updated!;
-  });
+  }, injectedClient);
 }
 
 // ─── resendInvitation ────────────────────────────────────────────────────────
@@ -277,6 +260,7 @@ export async function resendInvitation(
   organizationId: string,
   invitationId: string,
   resendingUserId: string,
+  injectedClient?: DbClient,
 ): Promise<CreateInvitationResult> {
   return withInvitationTenant(organizationId, "invitation.resend", async (client) => {
   const [invitation] = await client
@@ -305,10 +289,12 @@ export async function resendInvitation(
 
   const acceptanceUrl = buildInvitationUrl(rawToken);
 
-  const [orgName, inviterName] = await Promise.all([
-    getOrgName(client, organizationId),
-    getInviterName(client, resendingUserId),
-  ]);
+  const [orgName, inviterName] = injectedClient
+    ? await Promise.all([
+        getOrgName(client, organizationId),
+        getInviterName(client, resendingUserId),
+      ])
+    : ["your organisation", null] as const;
 
   const emailService = getEmailService();
   const deliveryResult = await emailService.sendInvitationEmail({
@@ -349,7 +335,7 @@ export async function resendInvitation(
     previewUrl,
     emailDelivery: deliveryResult,
   };
-  });
+  }, injectedClient);
 }
 
 // ─── acceptInvitation ────────────────────────────────────────────────────────

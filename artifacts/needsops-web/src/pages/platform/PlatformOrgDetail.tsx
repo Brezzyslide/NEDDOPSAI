@@ -681,14 +681,14 @@ export default function PlatformOrgDetail() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[#1E3A5F] text-left text-xs text-[#64748B]">
-                        <th className="pb-2">User</th><th className="pb-2">Email</th><th className="pb-2">Role</th><th className="pb-2">Status</th>
+                        <th className="pb-2">User</th><th className="pb-2">Identity</th><th className="pb-2">Role</th><th className="pb-2">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#1E3A5F]">
                       {data.members.map((m, i) => (
                         <tr key={i}>
-                          <td className="py-2 text-[#E2E8F0]">{m.user?.firstName} {m.user?.lastName}</td>
-                          <td className="py-2 text-[#94A3B8]">{m.user?.email}</td>
+                          <td className="py-2 text-[#E2E8F0]">{m.user?.displayName ?? ([m.user?.firstName, m.user?.lastName].filter(Boolean).join(" ") || "Unknown user")}</td>
+                          <td className="py-2 text-[#94A3B8]">{m.user?.externalId ?? m.membership.userId}</td>
                           <td className="py-2 text-[#94A3B8] capitalize">{m.membership.role}</td>
                           <td className="py-2"><span className={`rounded-full px-2 py-0.5 text-xs ${m.membership.status === "active" ? "bg-emerald-950/30 text-emerald-400" : "bg-[#1E3A5F] text-[#94A3B8]"}`}>{m.membership.status}</span></td>
                         </tr>

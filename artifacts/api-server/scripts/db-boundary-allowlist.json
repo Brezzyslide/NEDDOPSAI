@@ -37,34 +37,14 @@
       "reason": "Calls worker-only SECURITY DEFINER claim_next_ingestion_job before tenant context exists; processing after claim is tenant-scoped using the returned organizationId."
     },
     {
-      "file": "src/routes/organizations.ts",
-      "kind": "direct-db",
-      "reason": "Legacy organisation provisioning/deletion route; not a tenant request path and will move behind platform provisioning boundary."
-    },
-    {
-      "file": "src/services/orgService.ts",
-      "kind": "direct-db",
-      "reason": "Organisation creation/provisioning transaction runs before tenant exists; handled as broader-role provisioning."
-    },
-    {
-      "file": "src/services/orgProvisioningService.ts",
-      "kind": "direct-db",
-      "reason": "Organisation provisioning job enqueue runs before tenant schema exists; broader-role provisioning boundary."
-    },
-    {
       "file": "src/services/dnaStorageService.ts",
       "kind": "direct-db",
       "reason": "Workforce DNA seed/storage transaction is broader-role catalogue provisioning, not tenant request data access."
     },
     {
-      "file": "src/services/packProvisioningService.ts",
-      "kind": "direct-db",
-      "reason": "Pack grants/provisioning are platform or bootstrap operations that intentionally create tenant entitlements."
-    },
-    {
       "file": "src/services/subscriptionProvisioningService.ts",
       "kind": "direct-db",
-      "reason": "Subscription provisioning creates tenant commercial state before normal tenant-scoped request access applies."
+      "reason": "Bootstrap reconciliation scans existing tenant_workforce_packs for missing trial subscriptions under the migrator/default DB client; request provisioning callers must pass an explicit client."
     },
     {
       "file": "src/services/workerProfilePublicationService.ts",
@@ -82,6 +62,11 @@
       "reason": "Remaining direct DB use is platform/no-org audit-log write; org audit fallback is tenant-scoped."
     },
     {
+      "file": "src/services/auditService.ts",
+      "kind": "platform-db-import",
+      "reason": "Platform/no-org audit events write platform_audit_log through the platform pool; org-scoped audit still routes through org context or tenant-scoped fallback."
+    },
+    {
       "file": "src/routes/system.ts",
       "kind": "direct-db",
       "reason": "Public health endpoint performs SELECT 1 only; tenant-derived dashboard summary was retired."
@@ -95,6 +80,11 @@
       "file": "src/routes/v1/installerReleases.ts",
       "kind": "direct-db",
       "reason": "Public installer metadata reads and insert-only anonymous download events use explicit column-level grants."
+    },
+    {
+      "file": "src/routes/v1/organisations.ts",
+      "kind": "platform-db-import",
+      "reason": "Self-service organisation creation happens before a tenant exists and explicitly uses the platform pool for org/settings/membership bootstrap; tenant read/update paths in this router remain tenant-scoped."
     },
     {
       "file": "src/middlewares/requirePlatformRole.ts",
