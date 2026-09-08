@@ -145,35 +145,66 @@ const GuardedOrgMemoryPage               = withKnowledgeAdminGuard(OrgMemoryPage
 // ── Error Boundary ────────────────────────────────────────────────────────────
 // Guards against Clerk internal errors (e.g. checkOrgAuthorization crashing
 // when orgMembership is undefined on users without Clerk org membership).
+const CLERK_AUTH_RELOAD_COUNT_KEY = "needsops.clerkAuthBoundary.reloadCount";
+
+function isRecoverableClerkAuthError(error: Error): boolean {
+  const message = error.message ?? "";
+  const stack = error.stack ?? "";
+  return (
+    message.includes("orgMembership") ||
+    message.includes("checkOrgAuthorization") ||
+    stack.includes("checkOrgAuthorization")
+  );
+}
+
 class ClerkErrorBoundary extends Component<
   { children: ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; isReloading: boolean }
 > {
   constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, isReloading: false };
   }
   static getDerivedStateFromError() {
-    return { hasError: true };
+    return { hasError: true, isReloading: false };
   }
   componentDidCatch(error: Error) {
     // Clerk internally calls checkOrgAuthorization(undefined) when <Show> renders
-    // without org membership, which crashes at undefined.role. Do a clean page
-    // reload so Clerk reinitialises with correct state rather than looping.
-    const isClerkAuthError =
-      error.message?.includes("Cannot read properties of undefined") ||
-      error.message?.includes("orgMembership") ||
-      error.message?.includes("checkOrgAuthorization");
-    if (isClerkAuthError) {
+    // without org membership, which crashes at undefined.role. Reload once so
+    // Clerk can reinitialise, but render an error state for all other errors.
+    const reloadCount = Number(window.sessionStorage.getItem(CLERK_AUTH_RELOAD_COUNT_KEY) ?? "0");
+    if (isRecoverableClerkAuthError(error) && reloadCount < 1) {
+      window.sessionStorage.setItem(CLERK_AUTH_RELOAD_COUNT_KEY, String(reloadCount + 1));
+      this.setState({ isReloading: true });
       window.location.reload();
+      return;
     }
+
+    console.error("[ClerkErrorBoundary] Unhandled application error", error);
   }
   render() {
-    // Render null briefly while the reload triggers; avoids a blank screen flash.
     if (this.state.hasError) {
+      if (this.state.isReloading) {
+        return (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#0B1829", color: "#64748B", fontSize: 14 }}>
+            Reconnecting...
+          </div>
+        );
+      }
+
       return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#0B1829", color: "#64748B", fontSize: 14 }}>
-          Reconnecting…
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center", justifyContent: "center", minHeight: "100dvh", padding: 24, background: "#0B1829", color: "#CBD5E1", textAlign: "center" }}>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Something went wrong</div>
+          <button
+            type="button"
+            onClick={() => {
+              window.sessionStorage.removeItem(CLERK_AUTH_RELOAD_COUNT_KEY);
+              window.location.reload();
+            }}
+            style={{ border: "1px solid #1E3A5F", borderRadius: 8, color: "#E2E8F0", background: "transparent", padding: "10px 14px", cursor: "pointer" }}
+          >
+            Reload
+          </button>
         </div>
       );
     }

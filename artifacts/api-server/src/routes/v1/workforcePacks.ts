@@ -22,6 +22,53 @@ const router = Router();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+const publicPackColumns = {
+  id:                     workforcePacksTable.id,
+  code:                   workforcePacksTable.code,
+  name:                   workforcePacksTable.name,
+  description:            workforcePacksTable.description,
+  marketingTagline:       workforcePacksTable.marketingTagline,
+  industry:               workforcePacksTable.industry,
+  iconEmoji:              workforcePacksTable.iconEmoji,
+  colorHex:               workforcePacksTable.colorHex,
+  tier:                   workforcePacksTable.tier,
+  status:                 workforcePacksTable.status,
+  priceMonthly:           workforcePacksTable.priceMonthly,
+  priceAnnual:            workforcePacksTable.priceAnnual,
+  currency:               workforcePacksTable.currency,
+  displayOrder:           workforcePacksTable.displayOrder,
+  featured:               workforcePacksTable.featured,
+  isPubliclyVisible:      workforcePacksTable.isPubliclyVisible,
+  isFree:                 workforcePacksTable.isFree,
+  pricingStatus:          workforcePacksTable.pricingStatus,
+  fallbackDisplayText:    workforcePacksTable.fallbackDisplayText,
+  autoGrantOnSignup:      workforcePacksTable.autoGrantOnSignup,
+  trialEligible:          workforcePacksTable.trialEligible,
+  trialLengthDays:        workforcePacksTable.trialLengthDays,
+  requiresManualApproval: workforcePacksTable.requiresManualApproval,
+  requiresPayment:        workforcePacksTable.requiresPayment,
+  publiclySelectable:     workforcePacksTable.publiclySelectable,
+  selectionMode:          workforcePacksTable.selectionMode,
+  createdAt:              workforcePacksTable.createdAt,
+  updatedAt:              workforcePacksTable.updatedAt,
+} as const;
+
+const publicPriceVersionColumns = {
+  id:                workforcePackPriceVersionsTable.id,
+  workforcePackId:   workforcePackPriceVersionsTable.workforcePackId,
+  versionNumber:     workforcePackPriceVersionsTable.versionNumber,
+  monthlyPriceCents: workforcePackPriceVersionsTable.monthlyPriceCents,
+  annualPriceCents:  workforcePackPriceVersionsTable.annualPriceCents,
+  currency:          workforcePackPriceVersionsTable.currency,
+  status:            workforcePackPriceVersionsTable.status,
+  effectiveFrom:     workforcePackPriceVersionsTable.effectiveFrom,
+  effectiveTo:       workforcePackPriceVersionsTable.effectiveTo,
+  isCurrent:         workforcePackPriceVersionsTable.isCurrent,
+  publishedAt:       workforcePackPriceVersionsTable.publishedAt,
+  createdAt:         workforcePackPriceVersionsTable.createdAt,
+  updatedAt:         workforcePackPriceVersionsTable.updatedAt,
+} as const;
+
 type DisplayMode = "free" | "priced" | "contact_sales" | "coming_soon";
 
 function buildPricingObject(pack: any, priceVersion: any): {
@@ -134,12 +181,12 @@ router.get("/", async (req, res) => {
 
     // Load packs + current active price versions
     const packs = await db
-      .select()
+      .select(publicPackColumns)
       .from(workforcePacksTable)
       .orderBy(asc(workforcePacksTable.displayOrder));
 
     const priceVersions = await db
-      .select()
+      .select(publicPriceVersionColumns)
       .from(workforcePackPriceVersionsTable)
       .where(and(
         eq(workforcePackPriceVersionsTable.isCurrent, true),
@@ -172,7 +219,7 @@ router.get("/", async (req, res) => {
 router.get("/:code", async (req, res) => {
   try {
     const rows = await db
-      .select()
+      .select(publicPackColumns)
       .from(workforcePacksTable)
       .where(eq(workforcePacksTable.code, req.params.code))
       .limit(1);
@@ -184,7 +231,7 @@ router.get("/:code", async (req, res) => {
 
     const pack = rows[0]!;
     const priceVersions = await db
-      .select()
+      .select(publicPriceVersionColumns)
       .from(workforcePackPriceVersionsTable)
       .where(and(
         eq(workforcePackPriceVersionsTable.workforcePackId, pack.id),

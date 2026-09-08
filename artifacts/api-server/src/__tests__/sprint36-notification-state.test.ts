@@ -50,7 +50,7 @@ import {
 
 import { markMessagesRead } from "../services/conversationService.js";
 
-import { REQUIRED_RLS_TABLES } from "@workspace/org-db";
+import { REQUIRED_RLS_TABLES } from "@workspace/org-db/rlsTables";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

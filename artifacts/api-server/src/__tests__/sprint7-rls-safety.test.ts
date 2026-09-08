@@ -21,8 +21,8 @@ import {
   verifyRLS,
   verifyNeedsOpsAppRoleIsSecure,
   RLSVerificationError,
-  REQUIRED_RLS_TABLES,
 } from "@workspace/org-db";
+import { REQUIRED_RLS_TABLES } from "@workspace/org-db/rlsTables";
 
 describe("Sprint 7 — RLS Safety", () => {
 

@@ -17,12 +17,19 @@
 
 import { randomUUID } from "crypto";
 import { db, withSystemTenantContext, platformAuditLogTable, orgAuditLogTable } from "@workspace/db";
-import { platformDb } from "@workspace/db/platform";
-import { withOrgContext, OrgConnectionError } from "@workspace/org-db";
 import { sql } from "drizzle-orm";
 import type { AuditEventType } from "@workspace/shared";
 
 type DbClient = typeof db;
+
+async function getPlatformDb(): Promise<DbClient> {
+  const { platformDb } = await import("@workspace/db/platform");
+  return platformDb as unknown as DbClient;
+}
+
+async function getOrgRouting() {
+  return import("@workspace/org-db");
+}
 
 function withAuditTenant<T>(
   organizationId: string,
@@ -80,7 +87,8 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
 
   if (isPlatform || !hasOrg) {
     // Platform event → platform_audit_log
-    await (params.platformClient ?? platformDb).insert(platformAuditLogTable).values({
+    const platformClient = params.platformClient ?? await getPlatformDb();
+    await platformClient.insert(platformAuditLogTable).values({
       id: randomUUID(),
       organizationId: params.organizationId ?? null,
       actorUserId: params.actorUserId ?? null,
@@ -101,6 +109,7 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
   const orgId = params.organizationId!;
 
   try {
+    const { withOrgContext, OrgConnectionError } = await getOrgRouting();
     await withOrgContext(
       { tenantId: orgId, userId: params.actorUserId ?? "system", purpose: "audit_write" },
       async (conn) => {
@@ -128,6 +137,7 @@ export async function writeAuditEvent(params: WriteAuditEventParams): Promise<vo
       },
     );
   } catch (err: any) {
+    const { OrgConnectionError } = await getOrgRouting();
     if (err instanceof OrgConnectionError) {
       // Org not yet provisioned — best-effort fallback to public.org_audit_log.
       // The legacy table has FK constraints; if the insert fails (e.g. actor_user_id

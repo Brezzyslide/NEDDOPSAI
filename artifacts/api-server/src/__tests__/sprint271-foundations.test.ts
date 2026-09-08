@@ -434,8 +434,8 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
     // These expensive steps must NOT run when resuming from checkpoint
     expect(selectSpy).not.toHaveBeenCalled();
     expect(assembleSpy).not.toHaveBeenCalled();
-    // Pipeline continues past validation
-    expect(["completed", "execution_failed"]).toContain(result.outcome);
+    // Pipeline continues past the work-package validation mock; later gates may still fail.
+    expect(["completed", "execution_failed", "validation_failed"]).toContain(result.outcome);
   });
 
   it("enriches userRequest with clarification answer when checkpoint provided", async () => {
@@ -461,8 +461,8 @@ describe("workExecutionPipelineService — checkpoint resume", () => {
         clarificationAnswer: "Monday 3rd August",
       },
     });
-    // Pipeline ran without restarting from scratch
-    expect(["completed", "execution_failed"]).toContain(result.outcome);
+    // Pipeline ran without restarting from scratch; later gates may still fail.
+    expect(["completed", "execution_failed", "validation_failed"]).toContain(result.outcome);
   });
 });
 

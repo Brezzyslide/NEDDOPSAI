@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { REQUIRED_RLS_TABLES } from "@workspace/org-db";
+import { REQUIRED_RLS_TABLES } from "@workspace/org-db/rlsTables";
 
 // ─── Mock @workspace/db ───────────────────────────────────────────────────────
 // vi.mock is hoisted to top of file — use vi.hoisted() so mockDb is available

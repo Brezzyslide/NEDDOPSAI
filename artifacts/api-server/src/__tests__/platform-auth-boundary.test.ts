@@ -53,7 +53,7 @@ describe("platform auth boundaries", () => {
   it("handles platform role rows whose user join is missing", () => {
     const source = readRoute("platformStaff.ts");
 
-    expect(source).toContain("row.user?.name ?? null");
-    expect(source).toContain("row.user?.email ?? null");
+    expect(source).toContain("row.user?.displayName ?? (fullName || null)");
+    expect(source).toContain("email: null");
   });
 });

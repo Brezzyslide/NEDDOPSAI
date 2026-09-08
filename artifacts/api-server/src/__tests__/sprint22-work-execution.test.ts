@@ -21,7 +21,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { REQUIRED_RLS_TABLES } from "@workspace/org-db";
+import { REQUIRED_RLS_TABLES } from "@workspace/org-db/rlsTables";
 
 // ─── Hoisted mocks ────────────────────────────────────────────────────────────
 

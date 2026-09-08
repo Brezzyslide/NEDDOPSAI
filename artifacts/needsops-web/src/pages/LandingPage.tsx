@@ -10,22 +10,22 @@ interface PackPricing {
   currency?: string;
   monthlyPriceCents?: number;
   annualPriceCents?: number;
-  displayMode: "free" | "priced" | "contact_sales" | "coming_soon";
+  displayMode?: "free" | "priced" | "contact_sales" | "coming_soon";
   fallbackText?: string;
 }
 
 interface Pack {
   code: string;
   name: string;
-  marketingTagline: string | null;
-  description: string | null;
-  iconEmoji: string | null;
-  colorHex: string | null;
-  tier: string;
-  status: string;
-  featured: boolean;
-  specialistCount: number;
-  pricing: PackPricing;
+  marketingTagline?: string | null;
+  description?: string | null;
+  iconEmoji?: string | null;
+  colorHex?: string | null;
+  tier?: string | null;
+  status?: string;
+  featured?: boolean;
+  specialistCount?: number | null;
+  pricing?: PackPricing | null;
 }
 
 const FEATURES = [
@@ -218,8 +218,8 @@ export default function LandingPage() {
   );
 }
 
-function formatPackPrice(pricing: PackPricing): { primary: string; secondary?: string } {
-  switch (pricing.displayMode) {
+function formatPackPrice(pricing?: PackPricing | null): { primary: string; secondary?: string } {
+  switch (pricing?.displayMode) {
     case "free":
       return { primary: "Free", secondary: "Always included" };
     case "priced": {
@@ -234,16 +234,20 @@ function formatPackPrice(pricing: PackPricing): { primary: string; secondary?: s
     case "coming_soon":
       return { primary: pricing.fallbackText ?? "Coming soon" };
     default:
-      return { primary: pricing.fallbackText ?? "Contact NeedsOps" };
+      return { primary: pricing?.fallbackText ?? "Contact NeedsOps" };
   }
 }
 
 function PackCard({ pack, large, onCta }: { pack: Pack; large?: boolean; onCta: () => void }) {
   const color = pack.colorHex ?? "#00D4FF";
-  const tierCls = TIER_BADGE[pack.tier] ?? TIER_BADGE.starter;
+  const tier = pack.tier ?? "starter";
+  const tierCls = TIER_BADGE[tier] ?? TIER_BADGE.starter;
   const priceDisplay = formatPackPrice(pack.pricing);
-  const isFree = pack.pricing.displayMode === "free";
-  const isPriced = pack.pricing.displayMode === "priced";
+  const pricingDisplayMode = pack.pricing?.displayMode ?? "contact_sales";
+  const isFree = pricingDisplayMode === "free";
+  const isPriced = pricingDisplayMode === "priced";
+  const specialistCount = pack.specialistCount ?? 0;
+  const summary = pack.marketingTagline ?? pack.description ?? "";
 
   return (
     <div
@@ -263,14 +267,14 @@ function PackCard({ pack, large, onCta }: { pack: Pack; large?: boolean; onCta: 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
             <h3 className={`font-bold text-[#E2E8F0] ${large ? "text-xl" : "text-base"}`}>{pack.name}</h3>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${tierCls}`}>{pack.tier}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${tierCls}`}>{tier}</span>
           </div>
-          <p className="text-xs text-[#64748B]">{pack.specialistCount} specialist{pack.specialistCount !== 1 ? "s" : ""} included</p>
+          <p className="text-xs text-[#64748B]">{specialistCount} specialist{specialistCount !== 1 ? "s" : ""} included</p>
         </div>
       </div>
 
       <p className={`text-[#94A3B8] ${large ? "text-sm" : "text-xs"} leading-relaxed mb-5 flex-1`}>
-        {pack.marketingTagline ?? pack.description}
+        {summary}
       </p>
 
       <div className="flex items-center justify-between mt-auto">

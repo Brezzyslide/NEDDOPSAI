@@ -91,17 +91,21 @@ export {
 } from "./orgSchemaVersions";
 
 export {
+  REQUIRED_RLS_TABLES,
+  LEGACY_WRITE_RESTRICTED_TABLES,
+  type RequiredRLSTable,
+  type LegacyWriteRestrictedTable,
+} from "./rlsTables";
+
+export {
   verifyRLS,
   verifyNeedsOpsAppRoleIsSecure,
   verifyLegacyTablesReadOnly,
   RLSVerificationError,
   LegacyWriteError,
-  REQUIRED_RLS_TABLES,
-  LEGACY_WRITE_RESTRICTED_TABLES,
   type RLSVerificationResult,
   type RLSTableStatus,
   type LegacyWriteCheckResult,
-  type LegacyWriteRestrictedTable,
 } from "./rlsVerifier";
 
 export {

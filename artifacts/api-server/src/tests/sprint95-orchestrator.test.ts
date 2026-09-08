@@ -370,7 +370,7 @@ describe("Sprint 9.5 — Audit events", () => {
   });
 
   it("RLS tables count includes sprint 9.5 tables", async () => {
-    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db");
+    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db/rlsTables");
     expect(REQUIRED_RLS_TABLES.length).toBeGreaterThanOrEqual(33);
     const sprint95Tables = [
       "specialist_runs",

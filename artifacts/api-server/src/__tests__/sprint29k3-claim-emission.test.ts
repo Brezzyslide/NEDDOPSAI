@@ -1023,7 +1023,7 @@ describe("claimPersistenceService — mocked integration", () => {
 
 describe("Sprint 29K.3 — real DB: schema, RLS, FKs, version ownership", () => {
   it("REQUIRED_RLS_TABLES count includes claim tables", async () => {
-    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db");
+    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db/rlsTables");
     expect(REQUIRED_RLS_TABLES).toContain("completed_work_claims");
     expect(REQUIRED_RLS_TABLES).toContain("completed_work_claim_evidence");
     expect(REQUIRED_RLS_TABLES).toHaveLength(75);
@@ -1045,7 +1045,7 @@ describe("Sprint 29K.3 — real DB: schema, RLS, FKs, version ownership", () => 
   });
 
   it("sprint7 RLS safety test: both claim tables exist in REQUIRED_RLS_TABLES", async () => {
-    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db");
+    const { REQUIRED_RLS_TABLES } = await import("@workspace/org-db/rlsTables");
     const tables = [...REQUIRED_RLS_TABLES];
     const claimIdx = tables.indexOf("completed_work_claims");
     const evidenceIdx = tables.indexOf("completed_work_claim_evidence");

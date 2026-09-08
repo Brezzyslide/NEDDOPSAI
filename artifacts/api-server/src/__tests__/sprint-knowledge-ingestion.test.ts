@@ -146,7 +146,7 @@ import { getEmbeddingProvider, isSemanticSearchAvailable } from "../lib/embeddin
 import { NullEmbeddingProvider } from "../lib/embeddings/nullEmbeddingProvider.js";
 import { enqueueIngestionJob } from "../services/ingestionJobService.js";
 import { triggerIngestion } from "../services/ingestionPipelineService.js";
-import { REQUIRED_RLS_TABLES } from "@workspace/org-db";
+import { REQUIRED_RLS_TABLES } from "@workspace/org-db/rlsTables";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
