@@ -13,7 +13,7 @@ import { requireAuth } from "../../middlewares/tenantContext.js";
 import { requirePlatformAuth,
   requirePlatformRole } from "../../middlewares/requirePlatformRole.js";
 import {
-  auditLogTable,
+  platformAuditLogTable,
 } from "@workspace/db";
 import { eq, desc, count, gte, lte, and, or, ilike } from "drizzle-orm";
 
@@ -31,14 +31,14 @@ router.get("/", ...auth, async (req, res, next) => {
     const since     = req.query.since ? new Date(req.query.since as string) : undefined;
     const until     = req.query.until ? new Date(req.query.until as string) : undefined;
 
-    let q = platformDb.select().from(auditLogTable).$dynamic();
-    if (actorId)   q = q.where(eq(auditLogTable.actorUserId, actorId));
-    if (orgId)     q = q.where(eq(auditLogTable.organizationId, orgId));
-    if (since)     q = q.where(gte(auditLogTable.occurredAt, since));
-    if (until)     q = q.where(lte(auditLogTable.occurredAt, until));
+    let q = platformDb.select().from(platformAuditLogTable).$dynamic();
+    if (actorId)   q = q.where(eq(platformAuditLogTable.actorUserId, actorId));
+    if (orgId)     q = q.where(eq(platformAuditLogTable.organizationId, orgId));
+    if (since)     q = q.where(gte(platformAuditLogTable.occurredAt, since));
+    if (until)     q = q.where(lte(platformAuditLogTable.occurredAt, until));
 
-    const [totalRow] = await platformDb.select({ n: count() }).from(auditLogTable);
-    const events = await q.orderBy(desc(auditLogTable.occurredAt)).limit(limit).offset(offset);
+    const [totalRow] = await platformDb.select({ n: count() }).from(platformAuditLogTable);
+    const events = await q.orderBy(desc(platformAuditLogTable.occurredAt)).limit(limit).offset(offset);
 
     res.json({ events, page, limit, total: Number(totalRow?.n ?? 0) });
   } catch (err) { next(err); }
@@ -46,9 +46,9 @@ router.get("/", ...auth, async (req, res, next) => {
 
 router.get("/actors", ...auth, async (_req, res, next) => {
   try {
-    const actors = await platformDb.selectDistinct({ actorId: auditLogTable.actorUserId })
-      .from(auditLogTable)
-      .where(eq(auditLogTable.actorType, "user"))
+    const actors = await platformDb.selectDistinct({ actorId: platformAuditLogTable.actorUserId })
+      .from(platformAuditLogTable)
+      .where(eq(platformAuditLogTable.actorType, "user"))
       .limit(100);
     res.json({ actors: actors.map(a => a.actorId).filter(Boolean) });
   } catch (err) { next(err); }
