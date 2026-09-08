@@ -14,7 +14,7 @@ FROM node:22-alpine AS base
 # Enable corepack for pnpm
 RUN apk add --no-cache ca-certificates wget \
   && wget -qO /etc/ssl/certs/aws-rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.24.0 --activate
 
 WORKDIR /app
 
