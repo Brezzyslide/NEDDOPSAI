@@ -33,7 +33,16 @@ function withMembershipTenant<T>(
 
 export async function getMemberships(orgId: string) {
   return withMembershipTenant(orgId, "membership.list", (client) => client
-    .select({ membership: membershipsTable, user: usersTable })
+    .select({
+      membership: membershipsTable,
+      user: {
+        id: usersTable.id,
+        externalId: usersTable.externalId,
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        displayName: usersTable.displayName,
+      },
+    })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(membershipsTable.userId, usersTable.id))
     .where(eq(membershipsTable.organizationId, orgId)));
@@ -41,7 +50,16 @@ export async function getMemberships(orgId: string) {
 
 export async function getMembership(orgId: string, membershipId: string) {
   const [row] = await withMembershipTenant(orgId, "membership.get", (client) => client
-    .select({ membership: membershipsTable, user: usersTable })
+    .select({
+      membership: membershipsTable,
+      user: {
+        id: usersTable.id,
+        externalId: usersTable.externalId,
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        displayName: usersTable.displayName,
+      },
+    })
     .from(membershipsTable)
     .innerJoin(usersTable, eq(membershipsTable.userId, usersTable.id))
     .where(

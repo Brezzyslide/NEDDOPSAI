@@ -204,7 +204,20 @@ export async function assembleRuntimeContext(
     organisationId,
     "runtime_context.org_identity",
     (client) => client
-    .select()
+    .select({
+      id: organizationsTable.id,
+      name: organizationsTable.name,
+      displayName: organizationsTable.displayName,
+      type: organizationsTable.type,
+      industry: organizationsTable.industry,
+      country: organizationsTable.country,
+      state: organizationsTable.state,
+      timezone: organizationsTable.timezone,
+      ndisRegistrationNumber: organizationsTable.ndisRegistrationNumber,
+      subscriptionTier: organizationsTable.subscriptionTier,
+      status: organizationsTable.status,
+      executionFrozen: organizationsTable.executionFrozen,
+    })
     .from(organizationsTable)
     .where(eq(organizationsTable.id, organisationId))
     .limit(1),

@@ -320,7 +320,7 @@ export async function resolveSubjectParticipantForTaskRequest(
         displayName: usersTable.displayName,
         firstName: usersTable.firstName,
         lastName: usersTable.lastName,
-        email: usersTable.email,
+        externalId: usersTable.externalId,
       })
       .from(membershipsTable)
       .innerJoin(usersTable, eq(usersTable.id, membershipsTable.userId))
@@ -377,7 +377,7 @@ export async function resolveSubjectParticipantForTaskRequest(
         }))
     : [];
   const staffConflicts = staffRows
-    .map(staff => staff.displayName ?? ([staff.firstName, staff.lastName].filter(Boolean).join(" ") || staff.email))
+    .map(staff => staff.displayName ?? ([staff.firstName, staff.lastName].filter(Boolean).join(" ") || staff.externalId))
     .filter((name): name is string => Boolean(name))
     .filter(name => {
       const normalizedStaff = normalizeName(name);

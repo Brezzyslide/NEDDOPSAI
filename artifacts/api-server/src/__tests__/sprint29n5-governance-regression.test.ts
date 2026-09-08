@@ -55,7 +55,7 @@ vi.mock("@workspace/db", () => ({
   participantsTable:           { id: "id", organizationId: "organization_id", status: "status", deletedAt: "deleted_at" },
   taskParticipantsTable:       { id: "id", organizationId: "organization_id", taskId: "task_id", participantId: "participant_id", role: "role" },
   membershipsTable:            { id: "id", organizationId: "organization_id", userId: "user_id", status: "status" },
-  usersTable:                  { id: "id", displayName: "display_name", firstName: "first_name", lastName: "last_name", email: "email" },
+  usersTable:                  { id: "id", externalId: "external_id", displayName: "display_name", firstName: "first_name", lastName: "last_name" },
   retrievalAuditEventsTable:   { id: "id" },
   eq: vi.fn(),
   and: vi.fn(),

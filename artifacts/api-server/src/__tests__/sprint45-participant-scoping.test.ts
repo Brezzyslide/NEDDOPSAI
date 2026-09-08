@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
     displayName: string | null;
     firstName: string | null;
     lastName: string | null;
-    email: string;
+    externalId: string;
   }>,
   sources: [] as Array<Record<string, unknown>>,
   scopes: [] as Array<Record<string, unknown>>,
@@ -67,10 +67,10 @@ const tables = vi.hoisted(() => ({
   },
   usersTable: {
     id: "users.id",
+    externalId: "users.external_id",
     displayName: "users.display_name",
     firstName: "users.first_name",
     lastName: "users.last_name",
-    email: "users.email",
   },
   retrievalAuditEventsTable: { id: "retrieval_audit_events.id" },
 }));
