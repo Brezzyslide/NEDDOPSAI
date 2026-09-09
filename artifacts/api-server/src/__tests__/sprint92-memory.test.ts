@@ -382,6 +382,7 @@ describe("buildChiefOfStaffContext", () => {
     expect(pkg).toHaveProperty("currentTasks");
     expect(pkg).toHaveProperty("currentApprovals");
     expect(pkg).toHaveProperty("contextWarnings");
+    expect(pkg).toHaveProperty("contextRetrievalFailures");
     expect(pkg).toHaveProperty("tokenEstimate");
     expect(pkg).toHaveProperty("historyStats");
   });

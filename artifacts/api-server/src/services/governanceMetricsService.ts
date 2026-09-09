@@ -36,21 +36,21 @@ export interface GovernanceMetrics {
   memoryHealthScore:      number | null; // 0-100, null when no memory records exist
 
   // Work & execution
-  completedWorkPending:   number;
-  completedWorkApproved:  number;
+  completedWorkPending:   number | null;
+  completedWorkApproved:  number | null;
   executionSuccessRate:   number | null; // 0-100, null when no data
 
   // Blueprint coverage
-  publishedBlueprintCount: number;
-  draftBlueprintCount:     number;
-  blueprintCoverage:       number; // 0-100 (published / (published + draft))
+  publishedBlueprintCount: number | null;
+  draftBlueprintCount:     number | null;
+  blueprintCoverage:       number | null; // 0-100, null when not computable
 
   // Composite governance score (0-100)
   governanceScore:        number | null;
 
   // Audit activity (last 30 days)
-  governanceEventsLast30Days: number;
-  topGovernanceActors: { actorUserId: string | null; count: number }[];
+  governanceEventsLast30Days: number | null;
+  topGovernanceActors: { actorUserId: string | null; count: number }[] | null;
 }
 
 // ─── Main compute ─────────────────────────────────────────────────────────────
@@ -115,8 +115,8 @@ export async function computeGovernanceMetrics(
       );
 
   // ── Completed work ──────────────────────────────────────────────────────────
-  let completedWorkPending  = 0;
-  let completedWorkApproved = 0;
+  let completedWorkPending: number | null  = null;
+  let completedWorkApproved: number | null = null;
   let executionSuccessRate: number | null = null;
 
   try {
@@ -128,7 +128,7 @@ export async function computeGovernanceMetrics(
 
     completedWorkPending  = cwRows.filter(w => w.status === "awaiting_approval").length;
     completedWorkApproved = cwRows.filter(w => w.status === "approved").length;
-  } catch { /* table may not be accessible */ }
+  } catch { /* table may not be accessible — metric remains null */ }
 
   // Execution success rate is task execution success, not Completed Work approval ratio.
   try {
@@ -144,12 +144,12 @@ export async function computeGovernanceMetrics(
     executionSuccessRate = terminalTasks > 0
       ? Math.round((completedTasks / terminalTasks) * 100)
       : null;
-  } catch { /* table may not be accessible */ }
+  } catch { /* table may not be accessible — metric remains null */ }
 
   // ── Blueprints ───────────────────────────────────────────────────────────────
-  let publishedBlueprintCount = 0;
-  let draftBlueprintCount = 0;
-  let blueprintCoverage = 100;
+  let publishedBlueprintCount: number | null = null;
+  let draftBlueprintCount: number | null = null;
+  let blueprintCoverage: number | null = null;
 
   try {
     const bpRows = await db
@@ -166,11 +166,11 @@ export async function computeGovernanceMetrics(
     draftBlueprintCount     = bpRows.filter(b => b.status === "draft" || b.status === "review").length;
     const total = publishedBlueprintCount + draftBlueprintCount;
     blueprintCoverage       = total === 0 ? 100 : Math.round((publishedBlueprintCount / total) * 100);
-  } catch { /* non-critical */ }
+  } catch { /* non-critical — metric remains null */ }
 
   // ── Audit activity ───────────────────────────────────────────────────────────
-  let governanceEventsLast30Days = 0;
-  let topGovernanceActors: { actorUserId: string | null; count: number }[] = [];
+  let governanceEventsLast30Days: number | null = null;
+  let topGovernanceActors: { actorUserId: string | null; count: number }[] | null = null;
 
   try {
     const auditRows = await db
@@ -199,7 +199,7 @@ export async function computeGovernanceMetrics(
         actorUserId: actorUserId === "__system__" ? null : actorUserId,
         count,
       }));
-  } catch { /* non-critical */ }
+  } catch { /* non-critical — metric remains null */ }
 
   // ── Composite governance score (0-100) ───────────────────────────────────────
   // Weighted: approval freshness (25%) + memory health (20%) + work approval (20%)
@@ -207,7 +207,7 @@ export async function computeGovernanceMetrics(
   const approvalFreshness    = approvedLast30Days > 0 || pendingApprovals.length === 0 ? 100
     : Math.max(0, 100 - pendingApprovals.length * 5);
   const agedApprovalPenalty  = Math.max(0, 100 - approvalsAgedOver48h * 20);
-  const governanceScore = memoryHealthScore === null || executionSuccessRate === null
+  const governanceScore = memoryHealthScore === null || executionSuccessRate === null || blueprintCoverage === null
     ? null
     : Math.min(100, Math.round(
         approvalFreshness   * 0.25 +

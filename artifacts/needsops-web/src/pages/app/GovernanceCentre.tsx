@@ -26,14 +26,14 @@ interface GovernanceMetrics {
   approvedMemoryCount:     number;
   pendingMemoryCount:      number;
   memoryHealthScore:       number | null;
-  completedWorkPending:    number;
+  completedWorkPending:    number | null;
   executionSuccessRate:    number | null;
-  publishedBlueprintCount: number;
-  draftBlueprintCount:     number;
-  blueprintCoverage:       number;
+  publishedBlueprintCount: number | null;
+  draftBlueprintCount:     number | null;
+  blueprintCoverage:       number | null;
   governanceScore:         number | null;
-  governanceEventsLast30Days: number;
-  topGovernanceActors:     { actorUserId: string | null; count: number }[];
+  governanceEventsLast30Days: number | null;
+  topGovernanceActors:     { actorUserId: string | null; count: number }[] | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -79,6 +79,11 @@ function HealthIndicator({ label, value, max, unit, inverse }: {
       </div>
     </div>
   );
+}
+
+function metricDisplay(value: number | null | undefined, suffix = "") {
+  if (value === null || value === undefined) return "Not computable";
+  return `${Math.round(value)}${suffix}`;
 }
 
 function NavCard({ icon, title, description, count, countLabel, urgent, onClick }: {
@@ -180,6 +185,7 @@ export default function GovernanceCentre() {
     enabled: !!slug && slug !== "undefined", staleTime: 120_000,
   });
   const metrics = metricsData?.metrics as GovernanceMetrics | undefined;
+  const topGovernanceActors = metrics?.topGovernanceActors ?? [];
 
   const health      = healthData as Record<string, any> | undefined;
   const healthScore = health?.healthScore ?? health?.overallScore ?? health?.score ?? 0;
@@ -317,10 +323,11 @@ export default function GovernanceCentre() {
                 <div className="bg-[#0B1829] border border-[#1E3A5F] rounded-xl p-3">
                   <p className="text-[#64748B] text-xs mb-1">Blueprint coverage</p>
                   <p className={`text-xl font-bold ${
+                    metrics.blueprintCoverage === null ? "text-[#94A3B8]" :
                     metrics.blueprintCoverage >= 70 ? "text-emerald-400" :
                     metrics.blueprintCoverage >= 40 ? "text-amber-400" : "text-[#94A3B8]"
-                  }`}>{Math.round(metrics.blueprintCoverage)}%</p>
-                  <p className="text-[#64748B] text-xs mt-0.5">{metrics.publishedBlueprintCount} published</p>
+                  }`}>{metricDisplay(metrics.blueprintCoverage, "%")}</p>
+                  <p className="text-[#64748B] text-xs mt-0.5">{metricDisplay(metrics.publishedBlueprintCount)} published</p>
                 </div>
               </div>
 
@@ -339,10 +346,10 @@ export default function GovernanceCentre() {
                         <span className="text-[#64748B] text-xs">{b.label}</span>
                       </div>
                     ))}
-                    {metrics.topGovernanceActors.length > 0 && (
+                    {topGovernanceActors.length > 0 && (
                       <div className="ml-auto text-right">
                         <p className="text-[#64748B] text-xs">Top actor</p>
-                        <p className="text-[#94A3B8] text-xs font-mono">{metrics.topGovernanceActors[0]?.actorUserId ?? "—"}</p>
+                        <p className="text-[#94A3B8] text-xs font-mono">{topGovernanceActors[0]?.actorUserId ?? "—"}</p>
                       </div>
                     )}
                   </div>

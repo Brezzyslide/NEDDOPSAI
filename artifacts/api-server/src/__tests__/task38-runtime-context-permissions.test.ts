@@ -92,6 +92,7 @@ vi.mock("../services/auditService.js", () => ({
 // Import after all mocks
 const {
   assembleRuntimeContext,
+  runtimeContextToPromptBlocks,
   isSensitivityPermitted,
   filterBySensitivity,
 } = await import("../services/runtimeContextService.js");
@@ -446,7 +447,7 @@ describe("Runtime counts from execution_intents", () => {
     expect(ctx.runtimeState.pendingIntentCount).toBe(4);
   });
 
-  it("falls back to zero counts when the count query fails", async () => {
+  it("records a retrieval failure when runtime count queries fail", async () => {
     // Org select ok, memory ok, count query throws
     mockDb.select
       .mockReturnValueOnce(makeSelectChain([makeOrg()]))     // org
@@ -466,6 +467,13 @@ describe("Runtime counts from execution_intents", () => {
 
     expect(ctx.runtimeState.activeGraphCount).toBe(0);
     expect(ctx.runtimeState.pendingIntentCount).toBe(0);
+    expect(ctx.contextRetrievalFailures).toEqual([
+      expect.objectContaining({
+        component: "runtimeState",
+        purpose: "runtime_context.execution_intents",
+        message: "DB error",
+      }),
+    ]);
   });
 
   it("reflects executionFrozen from org record", async () => {
@@ -476,6 +484,25 @@ describe("Runtime counts from execution_intents", () => {
     const ctx = await assembleRuntimeContext(ORG_ID, "chief_of_staff");
 
     expect(ctx.runtimeState.executionFrozen).toBe(true);
+  });
+
+  it("includes context retrieval failures in runtime prompt blocks", async () => {
+    setupDbNoMembershipCheck();
+    mockTenantHasWorkforcePack.mockResolvedValue(grantedPack());
+    mockTenantCanUseFeature.mockResolvedValue(grantedFeature());
+
+    const ctx = await assembleRuntimeContext(ORG_ID, "chief_of_staff");
+    ctx.contextRetrievalFailures.push({
+      component: "memoryEntries",
+      purpose: "runtime_context.memory",
+      message: "permission denied for table organisation_memory",
+      code: "42501",
+    });
+
+    const prompt = runtimeContextToPromptBlocks(ctx);
+
+    expect(prompt).toContain("CONTEXT RETRIEVAL FAILURES");
+    expect(prompt).toContain("memoryEntries [42501]");
   });
 });
 

@@ -257,6 +257,11 @@ export async function buildConversationContext(
   if (msgResult.status === "rejected")       failedComponents.push("messageContext");
   if (memResult.status === "rejected")       failedComponents.push("memory");
   if (workforceResult.status === "rejected") failedComponents.push("workforce");
+  if (memory?.contextRetrievalFailures?.length) {
+    failedComponents.push(
+      ...memory.contextRetrievalFailures.map((failure) => `memory.${failure.component}`),
+    );
+  }
 
   // ── Round 1b: Action state (needs recentMessages from buildMessageContext) ────
   // Sprint 28.5: action state resolver uses recentMessages to detect proposal and

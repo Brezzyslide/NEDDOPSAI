@@ -86,6 +86,7 @@ const FULL_COS_PACKAGE = {
   currentTasks: [{ id: "task-001", title: "Risk Review", currentState: "executing", priority: "high", approvalState: "approved" }],
   currentApprovals: [],
   contextWarnings: [],
+  contextRetrievalFailures: [],
   tokenEstimate: 1200,
   historyStats: { totalAvailable: 5, sent: 5, summarised: 0 },
 };
@@ -349,6 +350,31 @@ describe("buildConversationContext — graceful degradation", () => {
     // Memory and action state still work
     expect(ctx.memory).not.toBeNull();
     expect(ctx.actionState).not.toBeNull();
+  });
+
+  it("marks context degraded when memory package contains retrieval failures", async () => {
+    mocks.buildMessageContext.mockResolvedValue(FULL_MESSAGE_CTX);
+    mocks.buildChiefOfStaffContext.mockResolvedValue({
+      ...FULL_COS_PACKAGE,
+      contextWarnings: ["Context retrieval failed for approvedOrganisationMemory (42501): permission denied"],
+      contextRetrievalFailures: [
+        {
+          component: "approvedOrganisationMemory",
+          purpose: "context_selection.organisation_memory",
+          message: "permission denied",
+          code: "42501",
+        },
+      ],
+    });
+    mocks.getConversationWorkforceContext.mockResolvedValue(FULL_WORKFORCE);
+    mocks.checkOrganisationLibraryPresence.mockResolvedValue(null);
+    mocks.resolveConversationActionState.mockResolvedValue(FULL_ACTION_STATE);
+
+    const ctx = await buildConversationContext(BASE_INPUT);
+
+    expect(ctx.runtime.isDegraded).toBe(true);
+    expect(ctx.runtime.failedComponents).toContain("memory.approvedOrganisationMemory");
+    expect(ctx.memory?.contextRetrievalFailures).toHaveLength(1);
   });
 
   it("records libraryPresenceLoadFailed when terms exist but check throws", async () => {

@@ -130,6 +130,13 @@ export interface ApprovalContext {
   state: string;
 }
 
+export interface ContextRetrievalFailure {
+  component: string;
+  purpose: string;
+  message: string;
+  code: string | null;
+}
+
 export interface ConversationMemoryRecord {
   id: string;
   conversationId: string;
@@ -157,6 +164,7 @@ export interface ChiefOfStaffContextPackage {
   currentTasks: TaskContext[];
   currentApprovals: ApprovalContext[];
   contextWarnings: string[];
+  contextRetrievalFailures: ContextRetrievalFailure[];
   tokenEstimate: number;
   historyStats: { totalAvailable: number; sent: number; summarised: number };
 }
@@ -173,17 +181,20 @@ export async function buildChiefOfStaffContext(params: {
   const { organizationId, conversationId, taskId, currentMessage } = params;
   const config = memoryConfig();
   const warnings: string[] = [];
+  const retrievalFailures: ContextRetrievalFailure[] = [];
 
   // All independent DB reads in parallel
   const [orgProfile, allMessages, orgMemory, convMemory, tasks, approvals] =
     await Promise.all([
       fetchOrgProfile(organizationId),
       fetchAllMessages(organizationId, conversationId, config.maxHistoryMessages),
-      fetchApprovedOrgMemory(organizationId),
-      fetchConversationMemory(organizationId, conversationId),
-      taskId ? fetchTaskContext(organizationId, taskId) : Promise.resolve([] as TaskContext[]),
-      taskId ? fetchApprovalContext(organizationId, taskId) : Promise.resolve([] as ApprovalContext[]),
+      fetchApprovedOrgMemory(organizationId, retrievalFailures),
+      fetchConversationMemory(organizationId, conversationId, retrievalFailures),
+      taskId ? fetchTaskContext(organizationId, taskId, retrievalFailures) : Promise.resolve([] as TaskContext[]),
+      taskId ? fetchApprovalContext(organizationId, taskId, retrievalFailures) : Promise.resolve([] as ApprovalContext[]),
     ]);
+
+  warnings.push(...retrievalFailures.map(formatRetrievalFailureWarning));
 
   const recentCount = Math.min(config.recentHistoryMessages, allMessages.length);
   const recentMessages = allMessages.slice(-recentCount);
@@ -231,6 +242,7 @@ export async function buildChiefOfStaffContext(params: {
     currentTasks: tasks,
     currentApprovals: approvals,
     contextWarnings: warnings,
+    contextRetrievalFailures: retrievalFailures,
     tokenEstimate,
     historyStats: {
       totalAvailable: allMessages.length,
@@ -242,13 +254,40 @@ export async function buildChiefOfStaffContext(params: {
 
 // ─── DB fetch helpers ─────────────────────────────────────────────────────────
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function errorCode(err: unknown): string | null {
+  if (typeof err !== "object" || err === null) return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function recordRetrievalFailure(
+  failures: ContextRetrievalFailure[] | undefined,
+  component: string,
+  purpose: string,
+  err: unknown,
+): void {
+  failures?.push({
+    component,
+    purpose,
+    message: errorMessage(err),
+    code: errorCode(err),
+  });
+}
+
+function formatRetrievalFailureWarning(failure: ContextRetrievalFailure): string {
+  const code = failure.code ? ` (${failure.code})` : "";
+  return `Context retrieval failed for ${failure.component}${code}: ${failure.message}`;
+}
+
 async function fetchOrgProfile(organizationId: string): Promise<Record<string, unknown>> {
-  try {
-    const [org] = await withContextSelectionTenant(organizationId, "context_selection.org_profile", async (client) => client
-      .select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug, status: organizationsTable.status })
-      .from(organizationsTable).where(eq(organizationsTable.id, organizationId)).limit(1));
-    return org ? { id: org.id, name: org.name, slug: org.slug, status: org.status } : {};
-  } catch { return {}; }
+  const [org] = await withContextSelectionTenant(organizationId, "context_selection.org_profile", async (client) => client
+    .select({ id: organizationsTable.id, name: organizationsTable.name, slug: organizationsTable.slug, status: organizationsTable.status })
+    .from(organizationsTable).where(eq(organizationsTable.id, organizationId)).limit(1));
+  return org ? { id: org.id, name: org.name, slug: org.slug, status: org.status } : {};
 }
 
 async function fetchAllMessages(
@@ -263,7 +302,10 @@ async function fetchAllMessages(
   return rows.map(r => ({ id: r.id, senderType: r.senderType, content: r.content, messageType: r.messageType, createdAt: r.createdAt }));
 }
 
-async function fetchApprovedOrgMemory(organizationId: string): Promise<OrganisationMemoryItem[]> {
+async function fetchApprovedOrgMemory(
+  organizationId: string,
+  failures?: ContextRetrievalFailure[],
+): Promise<OrganisationMemoryItem[]> {
   try {
     const now = new Date();
     const rows = await withContextSelectionTenant(organizationId, "context_selection.organisation_memory", async (client) => client
@@ -299,11 +341,16 @@ async function fetchApprovedOrgMemory(organizationId: string): Promise<Organisat
         approvedAt: r.approvedAt ?? null,
         createdAt: r.createdAt,
       }));
-  } catch { return []; }
+  } catch (err) {
+    recordRetrievalFailure(failures, "approvedOrganisationMemory", "context_selection.organisation_memory", err);
+    return [];
+  }
 }
 
 export async function fetchConversationMemory(
-  organizationId: string, conversationId: string
+  organizationId: string,
+  conversationId: string,
+  failures?: ContextRetrievalFailure[],
 ): Promise<ConversationMemoryRecord | null> {
   try {
     const [row] = await withContextSelectionTenant(organizationId, "context_selection.conversation_memory", async (client) => client
@@ -327,10 +374,17 @@ export async function fetchConversationMemory(
       relatedTaskIds: (row.relatedTaskIds as string[]) ?? [],
       lastUpdatedAt: row.lastUpdatedAt,
     };
-  } catch { return null; }
+  } catch (err) {
+    recordRetrievalFailure(failures, "conversationMemory", "context_selection.conversation_memory", err);
+    return null;
+  }
 }
 
-async function fetchTaskContext(organizationId: string, taskId: string): Promise<TaskContext[]> {
+async function fetchTaskContext(
+  organizationId: string,
+  taskId: string,
+  failures?: ContextRetrievalFailure[],
+): Promise<TaskContext[]> {
   try {
     const rows = await withContextSelectionTenant(organizationId, "context_selection.task", async (client) => client
       .select({ id: tasksTable.id, title: tasksTable.title, currentState: tasksTable.currentState, priority: tasksTable.priority, approvalState: tasksTable.approvalState })
@@ -338,10 +392,17 @@ async function fetchTaskContext(organizationId: string, taskId: string): Promise
       .where(and(eq(tasksTable.organizationId, organizationId), eq(tasksTable.id, taskId)))
       .limit(1));
     return rows.map(r => ({ id: r.id, title: r.title, currentState: r.currentState, priority: r.priority, approvalState: r.approvalState }));
-  } catch { return []; }
+  } catch (err) {
+    recordRetrievalFailure(failures, "currentTasks", "context_selection.task", err);
+    return [];
+  }
 }
 
-async function fetchApprovalContext(organizationId: string, taskId: string): Promise<ApprovalContext[]> {
+async function fetchApprovalContext(
+  organizationId: string,
+  taskId: string,
+  failures?: ContextRetrievalFailure[],
+): Promise<ApprovalContext[]> {
   try {
     const rows = await withContextSelectionTenant(organizationId, "context_selection.approvals", async (client) => client
       .select({ id: approvalsTable.id, taskId: approvalsTable.taskId, approvalType: approvalsTable.approvalType, state: approvalsTable.state })
@@ -349,7 +410,10 @@ async function fetchApprovalContext(organizationId: string, taskId: string): Pro
       .where(and(eq(approvalsTable.organizationId, organizationId), eq(approvalsTable.taskId, taskId), eq(approvalsTable.state, "pending")))
       .limit(5));
     return rows.map(r => ({ id: r.id, taskId: r.taskId, approvalType: r.approvalType, state: r.state }));
-  } catch { return []; }
+  } catch (err) {
+    recordRetrievalFailure(failures, "currentApprovals", "context_selection.approvals", err);
+    return [];
+  }
 }
 
 // ─── Relevance scoring ────────────────────────────────────────────────────────

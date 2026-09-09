@@ -80,6 +80,13 @@ export interface ConnectorContext {
   operationMode: 'live' | 'mock' | 'unavailable';
 }
 
+export interface ContextRetrievalFailure {
+  component: string;
+  purpose: string;
+  message: string;
+  code: string | null;
+}
+
 export interface OrganisationRuntimeContext {
   // Assembled for a specific employee execution
   organisationId: string;
@@ -133,6 +140,9 @@ export interface OrganisationRuntimeContext {
     pendingIntentCount: number;
   };
 
+  // Context retrieval failures, distinct from legitimately empty sections
+  contextRetrievalFailures: ContextRetrievalFailure[];
+
   // Operational preferences
   operationalPreferences: {
     businessHoursStart: string;
@@ -145,6 +155,30 @@ export interface OrganisationRuntimeContext {
 // OrgConfigurationData is imported from organisationConfigurationService.js above.
 // Re-export it so callers that import from this module continue to work.
 export type { OrgConfigurationData };
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function errorCode(err: unknown): string | null {
+  if (typeof err !== "object" || err === null) return null;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function recordRetrievalFailure(
+  failures: ContextRetrievalFailure[],
+  component: string,
+  purpose: string,
+  err: unknown,
+): void {
+  failures.push({
+    component,
+    purpose,
+    message: errorMessage(err),
+    code: errorCode(err),
+  });
+}
 
 // ─── Assembly ─────────────────────────────────────────────────────────────────
 
@@ -168,12 +202,14 @@ export async function assembleRuntimeContext(
   const assembledAt = new Date().toISOString();
   const includeMemory = options?.includeMemory ?? true;
   const maxMemoryEntries = options?.maxMemoryEntries ?? 20;
+  const contextRetrievalFailures: ContextRetrievalFailure[] = [];
 
   // ── 0. Cross-tenant guard ──────────────────────────────────────────────────
   // If a requesting user ID is provided, verify they are an active member of
   // this org before assembling any context. This prevents cross-tenant leakage
   // when the caller forwards an unverified org ID.
-  if (options?.requestingUserId) {
+  const requestingUserId = options?.requestingUserId;
+  if (requestingUserId) {
     const [membership] = await withRuntimeTenant(
       organisationId,
       "runtime_context.verify_membership",
@@ -183,7 +219,7 @@ export async function assembleRuntimeContext(
       .where(
         and(
           eq(membershipsTable.organizationId, organisationId),
-          eq(membershipsTable.userId, options.requestingUserId),
+          eq(membershipsTable.userId, requestingUserId),
           eq(membershipsTable.status, 'active'),
         ),
       )
@@ -192,7 +228,7 @@ export async function assembleRuntimeContext(
 
     if (!membership) {
       const err = new Error(
-        `User ${options.requestingUserId} does not have active membership in organisation ${organisationId}.`,
+        `User ${requestingUserId} does not have active membership in organisation ${organisationId}.`,
       );
       (err as NodeJS.ErrnoException).code = 'CROSS_TENANT_ACCESS';
       throw err;
@@ -245,11 +281,23 @@ export async function assembleRuntimeContext(
   let configuration: OrgConfigurationData | null = null;
   try {
     configuration = await getConfiguration(organisationId) ?? getDefaultConfiguration();
-  } catch {
+  } catch (err) {
+    recordRetrievalFailure(
+      contextRetrievalFailures,
+      "configuration",
+      "runtime_context.configuration",
+      err,
+    );
     // Configuration unavailable — fall back to NDIS defaults
     try {
       configuration = getDefaultConfiguration();
-    } catch {
+    } catch (err) {
+      recordRetrievalFailure(
+        contextRetrievalFailures,
+        "configurationDefault",
+        "runtime_context.configuration.default",
+        err,
+      );
       configuration = null;
     }
   }
@@ -280,7 +328,13 @@ export async function assembleRuntimeContext(
         content: m.content,
         approvedAt: m.approvedAt?.toISOString(),
       }));
-    } catch {
+    } catch (err) {
+      recordRetrievalFailure(
+        contextRetrievalFailures,
+        "memoryEntries",
+        "runtime_context.memory",
+        err,
+      );
       // Memory table access failed — return empty
       memoryEntries = [];
     }
@@ -310,7 +364,13 @@ export async function assembleRuntimeContext(
       name: ep.name,
       triggerType: ep.triggerType,
     }));
-  } catch {
+  } catch (err) {
+    recordRetrievalFailure(
+      contextRetrievalFailures,
+      "structure",
+      "runtime_context.structure",
+      err,
+    );
     // Structure queries failed — leave zero defaults
   }
 
@@ -418,6 +478,7 @@ export async function assembleRuntimeContext(
       canBrowse:           browseEntitlement.allowed,
       canExecuteConnectors: connectorEntitlement.allowed,
       sensitivityClearance,
+      contextRetrievalFailures,
     },
   }).catch(() => { /* swallow — audit write failure must not block execution */ });
 
@@ -475,7 +536,13 @@ export async function assembleRuntimeContext(
         displayName: s.displayName,
         packCode: s.packCode ?? null,
       }));
-  } catch {
+  } catch (err) {
+    recordRetrievalFailure(
+      contextRetrievalFailures,
+      "enabledWorkforce",
+      "runtime_context.enabled_workforce",
+      err,
+    );
     enabledWorkforce = [];
   }
 
@@ -515,7 +582,13 @@ export async function assembleRuntimeContext(
     ]);
     activeGraphCount   = activeRow[0]?.n ?? 0;
     pendingIntentCount = pendingRow[0]?.n ?? 0;
-  } catch {
+  } catch (err) {
+    recordRetrievalFailure(
+      contextRetrievalFailures,
+      "runtimeState",
+      "runtime_context.execution_intents",
+      err,
+    );
     // Count queries failed — leave zero defaults; do not block context assembly
   }
 
@@ -546,6 +619,7 @@ export async function assembleRuntimeContext(
     connectors,
     enabledWorkforce,
     runtimeState,
+    contextRetrievalFailures,
     operationalPreferences,
   };
 }
@@ -557,7 +631,18 @@ export async function assembleRuntimeContext(
  * Does NOT include memory entries (those are assembled separately).
  */
 export function runtimeContextToPromptBlocks(context: OrganisationRuntimeContext): string {
+  const contextRetrievalFailures = context.contextRetrievalFailures ?? [];
   const blocks: string[] = [];
+
+  if (contextRetrievalFailures.length > 0) {
+    blocks.push([
+      '=== CONTEXT RETRIEVAL FAILURES ===',
+      ...contextRetrievalFailures.map((failure) => {
+        const code = failure.code ? ` [${failure.code}]` : '';
+        return `- ${failure.component}${code}: ${failure.message}`;
+      }),
+    ].join('\n'));
+  }
 
   // ── ORG IDENTITY ──
   blocks.push([

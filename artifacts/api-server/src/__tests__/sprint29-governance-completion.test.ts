@@ -138,6 +138,21 @@ function makeChain(rows: unknown[]) {
   return c;
 }
 
+function makeRejectingChain(message = "DB error") {
+  const rejected = Promise.reject(new Error(message));
+  rejected.catch(() => {});
+  const c: Record<string, unknown> = {};
+  c.from     = () => c;
+  c.where    = () => c;
+  c.orderBy  = () => c;
+  c.limit    = () => rejected;
+  c.offset   = () => rejected;
+  c.then     = rejected.then.bind(rejected);
+  c.catch    = rejected.catch.bind(rejected);
+  c.finally  = rejected.finally.bind(rejected);
+  return c;
+}
+
 function setupSelectSequence(rowSets: unknown[][]) {
   let call = 0;
   mockSelectImpl.mockImplementation(() => makeChain(rowSets[call++] ?? []));
@@ -616,8 +631,8 @@ describe("Sprint 29 — Governance Completion", () => {
         ],
       });
       const metrics = await computeGovernanceMetrics(ORG_ID);
-      expect(metrics.topGovernanceActors[0]?.actorUserId).toBe("user-A");
-      expect(metrics.topGovernanceActors[0]?.count).toBe(2);
+      expect(metrics.topGovernanceActors?.[0]?.actorUserId).toBe("user-A");
+      expect(metrics.topGovernanceActors?.[0]?.count).toBe(2);
     });
 
     it("handles empty DB gracefully — all numeric fields default safely", async () => {
@@ -626,6 +641,29 @@ describe("Sprint 29 — Governance Completion", () => {
       expect(metrics.pendingApprovals).toBe(0);
       expect(metrics.memoryHealthScore).toBeNull();
       expect(metrics.executionSuccessRate).toBeNull();
+      expect(metrics.governanceScore).toBeNull();
+    });
+
+    it("returns null, not zero, when optional metric queries fail", async () => {
+      let call = 0;
+      mockSelectImpl.mockImplementation(() => {
+        call += 1;
+        if (call === 1) return makeChain([makeApproval({ state: "pending" })]);
+        if (call === 2) return makeChain([makeMemoryRow({ status: "approved" })]);
+        return makeRejectingChain();
+      });
+
+      const metrics = await computeGovernanceMetrics(ORG_ID);
+
+      expect(metrics.pendingApprovals).toBe(1);
+      expect(metrics.completedWorkPending).toBeNull();
+      expect(metrics.completedWorkApproved).toBeNull();
+      expect(metrics.executionSuccessRate).toBeNull();
+      expect(metrics.publishedBlueprintCount).toBeNull();
+      expect(metrics.draftBlueprintCount).toBeNull();
+      expect(metrics.blueprintCoverage).toBeNull();
+      expect(metrics.governanceEventsLast30Days).toBeNull();
+      expect(metrics.topGovernanceActors).toBeNull();
       expect(metrics.governanceScore).toBeNull();
     });
   });
