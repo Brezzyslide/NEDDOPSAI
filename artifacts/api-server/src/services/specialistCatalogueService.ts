@@ -69,7 +69,28 @@ export interface UpdateCatalogueInput {
   iconMetadata?: { icon: string; colour: string };
 }
 
-export type CatalogueEntry = SpecialistCatalogueRow;
+export type CatalogueEntry = Omit<SpecialistCatalogueRow, "changedBy">;
+
+const cataloguePublicSelect = {
+  id:              specialistCatalogueTable.id,
+  specialistCode:  specialistCatalogueTable.specialistCode,
+  displayName:     specialistCatalogueTable.displayName,
+  description:     specialistCatalogueTable.description,
+  executionStatus: specialistCatalogueTable.executionStatus,
+  availability:    specialistCatalogueTable.availability,
+  category:        specialistCatalogueTable.category,
+  iconMetadata:    specialistCatalogueTable.iconMetadata,
+  packMembership:  specialistCatalogueTable.packMembership,
+  planVisibility:  specialistCatalogueTable.planVisibility,
+  comingSoon:      specialistCatalogueTable.comingSoon,
+  displayOrder:    specialistCatalogueTable.displayOrder,
+  versionMetadata: specialistCatalogueTable.versionMetadata,
+  isActive:        specialistCatalogueTable.isActive,
+  isArchived:      specialistCatalogueTable.isArchived,
+  versionCounter:  specialistCatalogueTable.versionCounter,
+  createdAt:       specialistCatalogueTable.createdAt,
+  updatedAt:       specialistCatalogueTable.updatedAt,
+};
 
 // ─── Seeding ──────────────────────────────────────────────────────────────────
 
@@ -213,7 +234,7 @@ export async function listCatalogue(options: CatalogueListOptions = {}, client: 
 
   const [entries, [countRow]] = await Promise.all([
     client
-      .select()
+      .select(cataloguePublicSelect)
       .from(specialistCatalogueTable)
       .where(where)
       .orderBy(asc(specialistCatalogueTable.displayOrder), asc(specialistCatalogueTable.specialistCode))
@@ -232,7 +253,7 @@ export async function listCatalogue(options: CatalogueListOptions = {}, client: 
 
 export async function getCatalogueEntry(specialistCode: string, client: CatalogueDb = db): Promise<CatalogueEntry | null> {
   const [entry] = await client
-    .select()
+    .select(cataloguePublicSelect)
     .from(specialistCatalogueTable)
     .where(eq(specialistCatalogueTable.specialistCode, specialistCode))
     .limit(1);

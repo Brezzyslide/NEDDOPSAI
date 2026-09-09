@@ -115,7 +115,21 @@ export async function getOrgBySlug(slug: string, client: DbClient) {
 
 export async function getOrgById(orgId: string) {
   const [org] = await withOrgTenant(orgId, "org.get", (client) => client
-    .select()
+    .select({
+      id:                     organizationsTable.id,
+      name:                   organizationsTable.name,
+      displayName:            organizationsTable.displayName,
+      slug:                   organizationsTable.slug,
+      type:                   organizationsTable.type,
+      industry:               organizationsTable.industry,
+      country:                organizationsTable.country,
+      state:                  organizationsTable.state,
+      timezone:               organizationsTable.timezone,
+      ndisRegistrationNumber: organizationsTable.ndisRegistrationNumber,
+      subscriptionTier:       organizationsTable.subscriptionTier,
+      status:                 organizationsTable.status,
+      executionFrozen:        organizationsTable.executionFrozen,
+    })
     .from(organizationsTable)
     .where(eq(organizationsTable.id, orgId))
     .limit(1));

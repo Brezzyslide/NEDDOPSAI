@@ -17,6 +17,8 @@
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
@@ -351,6 +353,19 @@ describe("snoozeNotification", () => {
 // ── 8. Unread count query correctness (structural contract tests) ──────────────
 
 describe("Unread count — structural contracts", () => {
+  it("grants the app role the exact message_reads columns required by unread count", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0052_smoke_column_grants.sql"),
+      "utf8",
+    );
+
+    expect(migration).toContain("ON TABLE public.message_reads TO needsops_app");
+    for (const column of ["id", "organization_id", "message_id", "user_id", "read_at"]) {
+      expect(migration).toMatch(new RegExp(`\\b${column}\\b`));
+    }
+    expect(migration).not.toMatch(/GRANT SELECT ON TABLE public\\.message_reads TO needsops_app/i);
+  });
+
   it("unread count query must exclude messages already in message_reads for this user", () => {
     // This is a structural contract: the fixed query uses a LEFT JOIN + isNull check.
     // We verify the pattern rather than the DB (which requires a real connection).
