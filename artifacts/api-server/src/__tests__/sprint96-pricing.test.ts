@@ -11,6 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 // ─── Pricing helpers ──────────────────────────────────────────────────────────
 
@@ -366,6 +367,13 @@ describe("Security invariants", () => {
     expect(publicPackFields).not.toContain("notes");
     expect(publicPackFields).not.toContain("createdBy");
     expect(publicPackFields).not.toContain("approvedBy");
+  });
+
+  it("workforce-packs propagates permission errors instead of registry fallback", () => {
+    const source = readFileSync(new URL("../routes/v1/workforcePacks.ts", import.meta.url), "utf8");
+    expect(source).toContain('code === "42501"');
+    expect(source).toMatch(/if \(isPermissionError\(err\)\) \{\s*next\(err\);\s*return;\s*\}/);
+    expect(source.indexOf("if (isPermissionError(err))")).toBeLessThan(source.indexOf("registry_fallback"));
   });
 });
 

@@ -22,6 +22,17 @@ const router = Router();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+function isPermissionError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "42501";
+}
+
+function warnRegistryFallback(err: unknown, route: string): void {
+  const detail = err instanceof Error
+    ? { message: err.message, code: (err as { code?: unknown }).code }
+    : { message: String(err), code: undefined };
+  console.warn(`[workforce-packs] ${route} DB catalogue unavailable; using registry fallback`, detail);
+}
+
 const publicPackColumns = {
   id:                     workforcePacksTable.id,
   code:                   workforcePacksTable.code,
@@ -165,7 +176,7 @@ function formatPublicPack(pack: any, priceVersion: any, includeSpecialists = fal
 // ─── routes ──────────────────────────────────────────────────────────────────
 
 // GET /v1/workforce-packs  — publicly visible, available packs with pricing
-router.get("/", async (req, res) => {
+router.get("/", async (req, res, next) => {
   try {
     // Check cache (no status filter bypass cache)
     const statusFilter = req.query.status as string | undefined;
@@ -205,18 +216,23 @@ router.get("/", async (req, res) => {
 
     res.json({ packs: result });
   } catch (err: any) {
+    if (isPermissionError(err)) {
+      next(err);
+      return;
+    }
     // Fallback to registry if DB not ready
     try {
+      warnRegistryFallback(err, "list");
       const { WORKFORCE_PACKS } = await import("../../lib/workforceRegistry.js");
       res.json({ packs: WORKFORCE_PACKS, source: "registry_fallback" });
     } catch {
-      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: err.message } });
+      next(err);
     }
   }
 });
 
 // GET /v1/workforce-packs/:code
-router.get("/:code", async (req, res) => {
+router.get("/:code", async (req, res, next) => {
   try {
     const rows = await db
       .select(publicPackColumns)
@@ -242,14 +258,19 @@ router.get("/:code", async (req, res) => {
 
     res.json(formatPublicPack(pack, priceVersions[0] ?? null, true));
   } catch (err: any) {
+    if (isPermissionError(err)) {
+      next(err);
+      return;
+    }
     try {
+      warnRegistryFallback(err, "detail");
       const { WORKFORCE_PACKS, SPECIALISTS: S, getSpecialistCapabilities: gc } = await import("../../lib/workforceRegistry.js");
       const pack = WORKFORCE_PACKS.find((p: any) => p.code === req.params.code);
       if (!pack) { res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Workforce pack not found." } }); return; }
       const specialists = S.filter((s: any) => s.packCode === pack.code).map((s: any) => ({ ...s, resolvedCapabilities: gc(s.code) }));
       res.json({ ...pack, specialists });
     } catch {
-      res.status(500).json({ error: { code: "INTERNAL_ERROR", message: err.message } });
+      next(err);
     }
   }
 });
