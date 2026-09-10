@@ -6,6 +6,7 @@ import {
   migrationChecksum,
   PLATFORM_MIGRATIONS,
   runPlatformMigrations,
+  verifyPlatformSecurityBaseline,
   type MigrationDbClient,
   type PlatformMigration,
 } from "../bootstrap/platformMigrations";
@@ -20,6 +21,16 @@ class FakeMigrationClient implements MigrationDbClient {
   public readonly queries: Array<{ text: string; values?: unknown[] }> = [];
   public readonly ledger = new Map<string, { checksum: string }>();
   public failOnSql?: string;
+  public platformSecurityValues = new Map<string, string>([
+    ["needsops_worker_app is NOINHERIT", "false"],
+    ["needsops_worker_app is a member of needsops_app", "true"],
+    ["worker can execute claim_next_ingestion_job", "true"],
+    ["public cannot execute claim_next_ingestion_job", "false"],
+    ["needsops_app can read context user identity columns", "true"],
+    ["needsops_app cannot read user email by default", "false"],
+    ["needsops_app can read context organization identity columns", "true"],
+    ["needsops_app can read message read columns", "true"],
+  ]);
 
   async query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }> {
     this.queries.push({ text, values });
@@ -41,6 +52,31 @@ class FakeMigrationClient implements MigrationDbClient {
       const migrationId = String(values?.[0]);
       const checksum = String(values?.[1]);
       this.ledger.set(migrationId, { checksum });
+    }
+
+    if (text.includes("rolinherit FROM pg_roles")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_worker_app is NOINHERIT") }] as T[] };
+    }
+    if (text.includes("FROM pg_auth_members")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_worker_app is a member of needsops_app") }] as T[] };
+    }
+    if (text.includes("has_function_privilege('needsops_worker_app'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("worker can execute claim_next_ingestion_job") }] as T[] };
+    }
+    if (text.includes("has_function_privilege('PUBLIC'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("public cannot execute claim_next_ingestion_job") }] as T[] };
+    }
+    if (text.includes("'public.users', 'email'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app cannot read user email by default") }] as T[] };
+    }
+    if (text.includes("'public.users'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can read context user identity columns") }] as T[] };
+    }
+    if (text.includes("'public.organizations'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can read context organization identity columns") }] as T[] };
+    }
+    if (text.includes("'public.message_reads'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can read message read columns") }] as T[] };
     }
 
     return { rows: [] };
@@ -229,6 +265,16 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(source).toContain("await runPlatformMigrations");
   });
 
+  it("runs platform security verification after ordered migrations", () => {
+    const source = readFileSync(join(process.cwd(), "src/scripts/db-bootstrap.ts"), "utf8");
+
+    expect(source).toContain("verifyPlatformSecurityBaseline");
+    expect(source.indexOf("await runPlatformMigrations")).toBeLessThan(
+      source.indexOf("await verifyPlatformSecurityBaseline"),
+    );
+    expect(source).toContain("Platform security baseline verification failed");
+  });
+
   it("orders the manifest observability reconciliation after runtime conversation evidence RLS", () => {
     const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
 
@@ -248,6 +294,46 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0039-completed-work-version-provenance-status")).toBe(
       migrationIds.indexOf("0038-completed-work-approved-version-pin") + 1,
+    );
+  });
+
+  it("registers post-A4 column grants and worker role reconciliation migrations", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+
+    expect(migrationIds).toContain("0050-platform-public-worker-boundaries");
+    expect(migrationIds).toContain("0051-context-identity-column-grants");
+    expect(migrationIds).toContain("0052-smoke-column-grants");
+    expect(migrationIds).toContain("0053-worker-role-boundary-reconciliation");
+    expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
+      migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
+    );
+    expect(migrationIds.indexOf("0052-smoke-column-grants")).toBe(
+      migrationIds.indexOf("0051-context-identity-column-grants") + 1,
+    );
+    expect(migrationIds.indexOf("0053-worker-role-boundary-reconciliation")).toBe(
+      migrationIds.indexOf("0052-smoke-column-grants") + 1,
+    );
+  });
+
+  it("verifies worker membership and least-privilege column grants after migrations", async () => {
+    const client = new FakeMigrationClient();
+
+    const result = await verifyPlatformSecurityBaseline(client);
+
+    expect(result).toEqual({ passed: true, failures: [] });
+    expect(client.queries.some((query) => query.text.includes("FROM pg_auth_members"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("'public.users', 'email'"))).toBe(true);
+  });
+
+  it("fails platform security verification when worker membership drifts", async () => {
+    const client = new FakeMigrationClient();
+    client.platformSecurityValues.set("needsops_worker_app is a member of needsops_app", "false");
+
+    const result = await verifyPlatformSecurityBaseline(client);
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain(
+      "needsops_worker_app is a member of needsops_app: expected true, got false",
     );
   });
 

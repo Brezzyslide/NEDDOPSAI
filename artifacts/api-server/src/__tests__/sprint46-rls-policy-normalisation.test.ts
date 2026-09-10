@@ -304,4 +304,26 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(platformPublicWorkerBoundaryMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.claim_next_ingestion_job(TEXT) TO needsops_app");
     expect(platformPublicWorkerBoundaryMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
+
+  it("registers worker role boundary reconciliation after hand-applied A4 grants", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const reconciliationMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0053_worker_role_boundary_reconciliation.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0053-worker-role-boundary-reconciliation",
+        file: "0053_worker_role_boundary_reconciliation.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0053-worker-role-boundary-reconciliation")).toBeGreaterThan(
+      migrationIds.indexOf("0052-smoke-column-grants"),
+    );
+    expect(reconciliationMigration).toContain("ALTER ROLE needsops_worker_app NOINHERIT");
+    expect(reconciliationMigration).toContain("GRANT needsops_app TO needsops_worker_app");
+    expect(reconciliationMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
+  });
 });

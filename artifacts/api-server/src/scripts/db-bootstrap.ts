@@ -131,7 +131,7 @@ async function main(): Promise<void> {
   requiredEnv("NEEDSOPS_DB_BOOTSTRAP_ENV");
 
   const [
-    { runPlatformMigrations },
+    { runPlatformMigrations, verifyPlatformSecurityBaseline },
     { assertBlueprintAcceptance, checkBlueprintAcceptance },
     { seedPlatformDefaults },
     { runSeed },
@@ -200,6 +200,13 @@ async function main(): Promise<void> {
 
     console.log("[db:bootstrap] Configuring restricted runtime role passwords");
     await configureRestrictedRolePasswords(pool);
+
+    console.log("[db:bootstrap] Verifying platform security baseline");
+    const platformSecurity = await verifyPlatformSecurityBaseline(pool);
+    if (!platformSecurity.passed) {
+      throw new Error(`Platform security baseline verification failed: ${platformSecurity.failures.join("; ")}`);
+    }
+    console.log("[db:bootstrap] Platform security baseline passed");
 
     console.log("[db:bootstrap] Seeding platform defaults");
     await seedPlatformDefaults();

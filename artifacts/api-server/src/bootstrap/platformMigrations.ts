@@ -186,7 +186,130 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds platform and worker app roles, public catalogue column grants, and worker-only ingestion job claim function.",
   },
+  {
+    id: "0051-context-identity-column-grants",
+    file: "0051_context_identity_column_grants.sql",
+    transactional: true,
+    notes: "Adds narrow user and organization identity column grants used by tenant context assembly.",
+  },
+  {
+    id: "0052-smoke-column-grants",
+    file: "0052_smoke_column_grants.sql",
+    transactional: true,
+    notes: "Adds narrow message read column grants required by authenticated unread-count smoke paths.",
+  },
+  {
+    id: "0053-worker-role-boundary-reconciliation",
+    file: "0053_worker_role_boundary_reconciliation.sql",
+    transactional: true,
+    notes: "Restores worker membership in needsops_app while keeping the worker role NOINHERIT at rest.",
+  },
 ] as const;
+
+interface PlatformSecurityCheck {
+  name: string;
+  query: string;
+  values?: unknown[];
+  expected: string | boolean;
+}
+
+export interface PlatformSecurityVerificationResult {
+  passed: boolean;
+  failures: string[];
+}
+
+const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
+  {
+    name: "needsops_worker_app is NOINHERIT",
+    query: "SELECT COALESCE((SELECT rolinherit FROM pg_roles WHERE rolname = 'needsops_worker_app'), true)::text AS value",
+    expected: "false",
+  },
+  {
+    name: "needsops_worker_app is a member of needsops_app",
+    query: `
+      SELECT EXISTS (
+        SELECT 1
+        FROM pg_auth_members m
+        JOIN pg_roles member ON member.oid = m.member
+        JOIN pg_roles role ON role.oid = m.roleid
+        WHERE member.rolname = 'needsops_worker_app'
+          AND role.rolname = 'needsops_app'
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "worker can execute claim_next_ingestion_job",
+    query: "SELECT has_function_privilege('needsops_worker_app', 'public.claim_next_ingestion_job(text)', 'EXECUTE')::text AS value",
+    expected: "true",
+  },
+  {
+    name: "public cannot execute claim_next_ingestion_job",
+    query: "SELECT has_function_privilege('PUBLIC', 'public.claim_next_ingestion_job(text)', 'EXECUTE')::text AS value",
+    expected: "false",
+  },
+  {
+    name: "needsops_app can read context user identity columns",
+    query: `
+      SELECT (
+        has_column_privilege('needsops_app', 'public.users', 'id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.users', 'external_id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.users', 'first_name', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.users', 'last_name', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.users', 'display_name', 'SELECT')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app cannot read user email by default",
+    query: "SELECT has_column_privilege('needsops_app', 'public.users', 'email', 'SELECT')::text AS value",
+    expected: "false",
+  },
+  {
+    name: "needsops_app can read context organization identity columns",
+    query: `
+      SELECT (
+        has_column_privilege('needsops_app', 'public.organizations', 'id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.organizations', 'name', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.organizations', 'display_name', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.organizations', 'slug', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.organizations', 'status', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.organizations', 'execution_frozen', 'SELECT')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app can read message read columns",
+    query: `
+      SELECT (
+        has_column_privilege('needsops_app', 'public.message_reads', 'id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.message_reads', 'organization_id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.message_reads', 'message_id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.message_reads', 'user_id', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.message_reads', 'read_at', 'SELECT')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+];
+
+export async function verifyPlatformSecurityBaseline(
+  client: MigrationDbClient,
+): Promise<PlatformSecurityVerificationResult> {
+  const failures: string[] = [];
+
+  for (const check of PLATFORM_SECURITY_CHECKS) {
+    const result = await client.query<{ value: string | boolean }>(check.query, check.values);
+    const actual = String(result.rows[0]?.value);
+    if (actual !== String(check.expected)) {
+      failures.push(`${check.name}: expected ${String(check.expected)}, got ${actual}`);
+    }
+  }
+
+  return { passed: failures.length === 0, failures };
+}
 
 export function defaultMigrationsDir(): string {
   const currentDir = dirname(fileURLToPath(import.meta.url));

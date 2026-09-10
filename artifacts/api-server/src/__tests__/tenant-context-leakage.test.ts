@@ -45,6 +45,13 @@ const mockDb = vi.hoisted(() => {
         context["app.actor_type"] = text.includes("platform_staff") ? "platform_staff" : "system";
         return { rows: [{ set_config: context["app.actor_type"] }] };
       }
+      if (text.includes("current_user AS current_user")) {
+        return { rows: [{ current_user: context["__current_user"] ?? "needsops_app" }] };
+      }
+      if (text.includes("SET LOCAL ROLE needsops_app")) {
+        context["__local_role"] = "needsops_app";
+        return { rows: [] };
+      }
       if (text.includes("current_setting('app.current_organization_id'")) {
         const orgId = context["app.current_organization_id"] || null;
         return { rows: [{ org_id: orgId, organization_id: orgId }] };
@@ -82,6 +89,7 @@ const mockDb = vi.hoisted(() => {
       committedContexts,
       rolledBackContexts,
       rowsByOrg,
+      executeWithContext: (context: Context) => executeWithContext(context, rowsByOrg),
     },
   };
 
@@ -95,6 +103,7 @@ vi.mock("../../../../lib/db/src/index.js", () => ({
 import {
   getCurrentTenantContext,
   withPlatformContext,
+  withSystemTenantContext,
   withTenantContext,
 } from "../../../../lib/db/src/tenantAccess";
 
@@ -172,5 +181,24 @@ describe("A3 tenant context pooled-connection leakage guard", () => {
     expect(platformDbSource).toContain("export const platformDb = drizzle(platformPool");
     expect(platformDbSource).not.toContain("set_config('app.current_organization_id'");
     expect(platformDbSource).not.toContain("current_organization_id");
+  });
+
+  it("activates needsops_app only for worker system tenant transactions", async () => {
+    mockDb.transaction.mockImplementationOnce(async (fn: (tx: { execute: (query: unknown) => Promise<{ rows: unknown[] }> }) => Promise<unknown>) => {
+      const localContext: Context = { __current_user: "needsops_worker_app" };
+      const tx = {
+        execute: mockDb.__testState.executeWithContext(localContext),
+      };
+      const result = await fn(tx);
+      mockDb.__testState.committedContexts.push({ ...localContext });
+      return result;
+    });
+
+    await withSystemTenantContext(
+      { tenantId: "org-alpha", serviceIdentity: "ingestion_pipeline_service", purpose: "test.worker" },
+      async () => "ok",
+    );
+
+    expect(mockDb.__testState.committedContexts.at(-1)?.["__local_role"]).toBe("needsops_app");
   });
 });

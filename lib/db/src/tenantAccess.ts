@@ -133,6 +133,11 @@ export async function withSystemTenantContext<T>(
   }
 
   return db.transaction(async (tx) => {
+    const roleResult = await tx.execute(sql`SELECT current_user AS current_user`);
+    const currentUser = (roleResult.rows[0] as { current_user?: string } | undefined)?.current_user;
+    if (currentUser === "needsops_worker_app") {
+      await tx.execute(sql`SET LOCAL ROLE needsops_app`);
+    }
     await tx.execute(
       sql`SELECT set_config('app.current_organization_id', ${ctx.tenantId}, true)`,
     );
