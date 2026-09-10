@@ -246,7 +246,7 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
   {
     name: "public cannot execute claim_next_ingestion_job",
     query: `
-      SELECT NOT EXISTS (
+      SELECT (NOT EXISTS (
         SELECT 1
         FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -256,7 +256,7 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
           AND pg_get_function_identity_arguments(p.oid) = 'p_worker_id text'
           AND acl.grantee = 0
           AND acl.privilege_type = 'EXECUTE'
-      )::text AS value
+      ))::text AS value
     `,
     expected: "true",
   },
