@@ -204,6 +204,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Restores worker membership in needsops_app while keeping the worker role NOINHERIT at rest.",
   },
+  {
+    id: "0054-legacy-write-restriction-reconciliation",
+    file: "0054_legacy_write_restriction_reconciliation.sql",
+    transactional: true,
+    notes: "Re-applies the Sprint 7.1 needsops_app legacy write revokes through the ordered migration runner.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

@@ -326,4 +326,37 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(reconciliationMigration).toContain("GRANT needsops_app TO needsops_worker_app");
     expect(reconciliationMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
+
+  it("registers legacy write restriction reconciliation after worker role reconciliation", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const reconciliationMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0054_legacy_write_restriction_reconciliation.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0054-legacy-write-restriction-reconciliation",
+        file: "0054_legacy_write_restriction_reconciliation.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0054-legacy-write-restriction-reconciliation")).toBe(
+      migrationIds.indexOf("0053-worker-role-boundary-reconciliation") + 1,
+    );
+
+    for (const table of [
+      "audit_log",
+      "org_audit_log",
+      "tasks",
+      "approvals",
+      "approval_history",
+      "task_execution_plans",
+      "task_specialists",
+    ]) {
+      expect(reconciliationMigration).toContain(
+        `REVOKE INSERT, UPDATE, DELETE ON TABLE public.${table} FROM needsops_app`,
+      );
+    }
+  });
 });

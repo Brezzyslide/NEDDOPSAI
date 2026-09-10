@@ -297,13 +297,14 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
   });
 
-  it("registers post-A4 column grants and worker role reconciliation migrations", () => {
+  it("registers post-A4 column grants and worker/security reconciliation migrations", () => {
     const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
 
     expect(migrationIds).toContain("0050-platform-public-worker-boundaries");
     expect(migrationIds).toContain("0051-context-identity-column-grants");
     expect(migrationIds).toContain("0052-smoke-column-grants");
     expect(migrationIds).toContain("0053-worker-role-boundary-reconciliation");
+    expect(migrationIds).toContain("0054-legacy-write-restriction-reconciliation");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -312,6 +313,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0053-worker-role-boundary-reconciliation")).toBe(
       migrationIds.indexOf("0052-smoke-column-grants") + 1,
+    );
+    expect(migrationIds.indexOf("0054-legacy-write-restriction-reconciliation")).toBe(
+      migrationIds.indexOf("0053-worker-role-boundary-reconciliation") + 1,
     );
   });
 
