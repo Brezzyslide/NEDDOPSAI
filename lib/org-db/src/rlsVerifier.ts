@@ -153,6 +153,22 @@ export interface LegacyWriteCheckResult {
   checkedAt: Date;
 }
 
+function normalizePrivilegeList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .replace(/^\{|\}$/g, "")
+      .split(",")
+      .map(privilege => privilege.trim().replace(/^"|"$/g, ""))
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 /**
  * Verifies that needsops_app does NOT have INSERT, UPDATE, or DELETE
  * on any of the legacy write-restricted tables.
@@ -176,7 +192,7 @@ export async function verifyLegacyTablesReadOnly(): Promise<LegacyWriteCheckResu
 
   const writeableTable = (result.rows as any[]).map(row => ({
     tableName: row.table_name as string,
-    privileges: row.privileges as string[],
+    privileges: normalizePrivilegeList(row.privileges),
   }));
 
   return {
