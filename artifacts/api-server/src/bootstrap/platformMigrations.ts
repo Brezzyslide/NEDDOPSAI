@@ -245,8 +245,20 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
   },
   {
     name: "public cannot execute claim_next_ingestion_job",
-    query: "SELECT has_function_privilege('PUBLIC', 'public.claim_next_ingestion_job(text)', 'EXECUTE')::text AS value",
-    expected: "false",
+    query: `
+      SELECT NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) acl
+        WHERE n.nspname = 'public'
+          AND p.proname = 'claim_next_ingestion_job'
+          AND pg_get_function_identity_arguments(p.oid) = 'p_worker_id text'
+          AND acl.grantee = 0
+          AND acl.privilege_type = 'EXECUTE'
+      )::text AS value
+    `,
+    expected: "true",
   },
   {
     name: "needsops_app can read context user identity columns",

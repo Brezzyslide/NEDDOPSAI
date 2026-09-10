@@ -25,7 +25,7 @@ class FakeMigrationClient implements MigrationDbClient {
     ["needsops_worker_app is NOINHERIT", "false"],
     ["needsops_worker_app is a member of needsops_app", "true"],
     ["worker can execute claim_next_ingestion_job", "true"],
-    ["public cannot execute claim_next_ingestion_job", "false"],
+    ["public cannot execute claim_next_ingestion_job", "true"],
     ["needsops_app can read context user identity columns", "true"],
     ["needsops_app cannot read user email by default", "false"],
     ["needsops_app can read context organization identity columns", "true"],
@@ -63,7 +63,7 @@ class FakeMigrationClient implements MigrationDbClient {
     if (text.includes("has_function_privilege('needsops_worker_app'")) {
       return { rows: [{ value: this.platformSecurityValues.get("worker can execute claim_next_ingestion_job") }] as T[] };
     }
-    if (text.includes("has_function_privilege('PUBLIC'")) {
+    if (text.includes("acl.grantee = 0")) {
       return { rows: [{ value: this.platformSecurityValues.get("public cannot execute claim_next_ingestion_job") }] as T[] };
     }
     if (text.includes("'public.users', 'email'")) {
