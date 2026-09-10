@@ -213,12 +213,13 @@ describe("DatabaseIngestionQueue.claimNext", () => {
     });
   });
 
-  it("uses SKIP LOCKED SQL pattern (contains FOR UPDATE SKIP LOCKED)", async () => {
+  it("uses the worker-only claim function instead of direct table mutation", async () => {
     mockDb.execute.mockResolvedValue({ rows: [] });
     await queue.claimNext("worker-1");
     const sqlArg = mockDb.execute.mock.calls[0]?.[0];
     const queryStr = JSON.stringify(sqlArg);
-    expect(queryStr).toContain("SKIP LOCKED");
+    expect(queryStr).toContain("claim_next_ingestion_job");
+    expect(queryStr).not.toContain("UPDATE ingestion_jobs");
   });
 });
 
@@ -230,7 +231,7 @@ describe("DatabaseIngestionQueue.heartbeat", () => {
     vi.clearAllMocks();
     mockDb.execute.mockResolvedValue({ rows: [] });
 
-    await queue.heartbeat("job-1", "worker-1");
+    await queue.heartbeat("job-1", "worker-1", "org-1");
 
     expect(mockDb.execute).toHaveBeenCalledOnce();
     const sqlArg = JSON.stringify(mockDb.execute.mock.calls[0]?.[0]);

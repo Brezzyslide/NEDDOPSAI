@@ -187,7 +187,7 @@ export class KnowledgeIngestionWorker {
     try {
       workerHeartbeat();
       const queue = getIngestionQueue();
-      await queue.heartbeat(this._currentJobId, this.workerId);
+      await queue.heartbeat(this._currentJobId, this.workerId, this._currentOrgId);
     } catch {
       // Non-fatal — lease expiry will be caught by sweeper
     }

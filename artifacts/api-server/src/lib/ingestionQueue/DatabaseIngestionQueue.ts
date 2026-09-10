@@ -17,7 +17,7 @@
  * making it impossible to diagnose why a job had failed.
  */
 
-import { db } from "@workspace/db";
+import { db, withSystemTenantContext } from "@workspace/db";
 import {
   ingestionJobsTable,
   INGESTION_NON_RETRYABLE_CODES,
@@ -35,6 +35,19 @@ const DEFAULT_LEASE_MS      = parseInt(process.env.KNOWLEDGE_WORKER_LEASE_MS    
 const BASE_BACKOFF_S        = 30;
 const MAX_BACKOFF_S         = 1800;
 const JITTER_MS             = 5_000;
+
+type DbClient = typeof db;
+
+function withQueueTenant<T>(
+  organizationId: string,
+  purpose: string,
+  fn: (client: DbClient) => Promise<T>,
+): Promise<T> {
+  return withSystemTenantContext(
+    { tenantId: organizationId, serviceIdentity: "database_ingestion_queue", purpose },
+    fn,
+  );
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -141,36 +154,9 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   // ── claimNext ──────────────────────────────────────────────────────────────
 
   async claimNext(workerId: string): Promise<IngestionJob | null> {
-    const leaseMs = DEFAULT_LEASE_MS;
-    const leaseInterval = `${Math.ceil(leaseMs / 1000)} seconds`;
-
     const rows = await db.execute<IngestionJob>(sql`
-      UPDATE ingestion_jobs
-      SET
-        status            = 'fetching',
-        claimed_by        = ${workerId},
-        claimed_at        = NOW(),
-        heartbeat_at      = NOW(),
-        lease_expires_at  = NOW() + ${leaseInterval}::interval,
-        last_attempt_at   = NOW(),
-        attempt_count     = attempt_count + 1,
-        started_at        = COALESCE(started_at, NOW()),
-        next_attempt_at   = NULL,
-        updated_at        = NOW()
-      WHERE id = (
-        SELECT id
-        FROM   ingestion_jobs
-        WHERE  status = 'queued'
-           OR  (
-               status = 'failed'
-               AND attempt_count < max_attempts
-               AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
-           )
-        ORDER BY created_at ASC
-        LIMIT  1
-        FOR UPDATE SKIP LOCKED
-      )
-      RETURNING *
+      SELECT *
+      FROM public.claim_next_ingestion_job(${workerId})
     `);
 
     // Sprint 28.6 fix: db.execute returns snake_case keys; normalize to camelCase
@@ -181,11 +167,14 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
 
   // ── heartbeat ──────────────────────────────────────────────────────────────
 
-  async heartbeat(jobId: string, workerId: string): Promise<void> {
+  async heartbeat(jobId: string, workerId: string, organizationId?: string): Promise<void> {
+    if (!organizationId) {
+      throw new Error("DatabaseIngestionQueue.heartbeat: organizationId is required for tenant-scoped heartbeat");
+    }
     const leaseMs = DEFAULT_LEASE_MS;
     const leaseInterval = `${Math.ceil(leaseMs / 1000)} seconds`;
 
-    await db.execute(sql`
+    await withQueueTenant(organizationId, "ingestion_queue.heartbeat", (client) => client.execute(sql`
       UPDATE ingestion_jobs
       SET
         heartbeat_at     = NOW(),
@@ -194,13 +183,13 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
         updated_at       = NOW()
       WHERE id = ${jobId}
         AND claimed_by = ${workerId}
-    `);
+    `));
   }
 
   // ── complete ───────────────────────────────────────────────────────────────
 
   async complete(input: Parameters<IIngestionQueue["complete"]>[0]): Promise<IngestionJob> {
-    const rows = await db
+    const rows = await withQueueTenant(input.organizationId, "ingestion_queue.complete", (client) => client
       .update(ingestionJobsTable)
       .set({
         status:                   "review_required",
@@ -226,7 +215,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
           eq(ingestionJobsTable.organizationId, input.organizationId),
         ),
       )
-      .returning();
+      .returning());
 
     const row = rows[0];
     if (!row) throw new Error("DatabaseIngestionQueue.complete: update returned no rows");
@@ -244,7 +233,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   ): Promise<IngestionJob> {
     const isNonRetryable = nonRetryable || INGESTION_NON_RETRYABLE_CODES.has(errorCode);
 
-    const rows = await db.execute<IngestionJob>(sql`
+    const rows = await withQueueTenant(organizationId, "ingestion_queue.fail", (client) => client.execute<IngestionJob>(sql`
       UPDATE ingestion_jobs
       SET
         status           = CASE
@@ -276,7 +265,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
       WHERE id             = ${jobId}
         AND organization_id = ${organizationId}
       RETURNING *
-    `);
+    `));
 
     // Sprint 28.6 fix: db.execute returns snake_case keys; normalize to camelCase
     const rawRow2 = (rows.rows ?? rows as unknown as Record<string, unknown>[])[0];
@@ -299,7 +288,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   // ── cancel ─────────────────────────────────────────────────────────────────
 
   async cancel(jobId: string, organizationId: string, actorUserId: string): Promise<IngestionJob> {
-    const rows = await db.execute<IngestionJob>(sql`
+    const rows = await withQueueTenant(organizationId, "ingestion_queue.cancel", (client) => client.execute<IngestionJob>(sql`
       UPDATE ingestion_jobs
       SET
         status       = CASE
@@ -312,7 +301,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
         AND organization_id = ${organizationId}
         AND status NOT IN ('approved', 'cancelled', 'cancelling', 'revoked', 'dead_lettered')
       RETURNING *
-    `);
+    `));
 
     const row = (rows.rows ?? rows as unknown as IngestionJob[])[0];
     if (!row) throw new Error("Job not found or cannot be cancelled");
@@ -331,7 +320,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
   // ── finaliseCancellation ───────────────────────────────────────────────────
 
   async finaliseCancellation(jobId: string, organizationId: string): Promise<void> {
-    await db
+    await withQueueTenant(organizationId, "ingestion_queue.finalise_cancellation", (client) => client
       .update(ingestionJobsTable)
       .set({
         status:          "cancelled",
@@ -346,7 +335,7 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
           eq(ingestionJobsTable.organizationId, organizationId),
           eq(ingestionJobsTable.status,         "cancelling"),
         ),
-      );
+      ));
   }
 
   // ── recoverStuck ───────────────────────────────────────────────────────────
@@ -356,6 +345,10 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
    * last_error_code = 'LEASE_EXPIRED' so the field is never left NULL.
    */
   async recoverStuck(): Promise<number> {
+    if ((process.env.DB_USERNAME ?? process.env.PGUSER) === "needsops_worker_app") {
+      return 0;
+    }
+
     const processingStatuses: IngestionJobStatus[] = [
       "fetching","extracting","normalising","chunking","embedding","cancelling",
     ];

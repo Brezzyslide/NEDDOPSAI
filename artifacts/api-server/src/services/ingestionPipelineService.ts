@@ -277,20 +277,24 @@ async function runPipeline(
         sourceType:       source.sourceType,
       });
       if (canonicalTitle) {
-        await db
-          .update(knowledgeSourcesTable)
-          .set({
-            canonicalTitle,
-            searchAliases: aliases.length > 0 ? aliases : [],
-            updatedAt:     new Date(),
-          })
-          .where(
-            and(
-              eq(knowledgeSourcesTable.id,             knowledgeSourceId),
-              eq(knowledgeSourcesTable.organizationId, organizationId),
-              isNull(knowledgeSourcesTable.canonicalTitle),
+        await withIngestionPipelineTenant(
+          organizationId,
+          "ingestion_pipeline.update_source_identity",
+          (client) => client
+            .update(knowledgeSourcesTable)
+            .set({
+              canonicalTitle,
+              searchAliases: aliases.length > 0 ? aliases : [],
+              updatedAt:     new Date(),
+            })
+            .where(
+              and(
+                eq(knowledgeSourcesTable.id,             knowledgeSourceId),
+                eq(knowledgeSourcesTable.organizationId, organizationId),
+                isNull(knowledgeSourcesTable.canonicalTitle),
+              ),
             ),
-          );
+        );
       }
     }
 
@@ -858,15 +862,19 @@ async function updateVersionIngestionStatus(
   organizationId:  string,
   ingestionStatus: string,
 ): Promise<void> {
-  await db
-    .update(knowledgeSourceVersionsTable)
-    .set({ ingestionStatus, updatedAt: new Date() })
-    .where(
-      and(
-        eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
-        eq(knowledgeSourceVersionsTable.organizationId, organizationId),
+  await withIngestionPipelineTenant(
+    organizationId,
+    "ingestion_pipeline.update_version_ingestion_status",
+    (client) => client
+      .update(knowledgeSourceVersionsTable)
+      .set({ ingestionStatus, updatedAt: new Date() })
+      .where(
+        and(
+          eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
+          eq(knowledgeSourceVersionsTable.organizationId, organizationId),
+        ),
       ),
-    );
+  );
 }
 
 function extFromMime(mimeType: string): string {

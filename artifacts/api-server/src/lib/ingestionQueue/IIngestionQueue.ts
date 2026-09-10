@@ -45,7 +45,7 @@ export interface IIngestionQueue {
   claimNext(workerId: string): Promise<IngestionJob | null>;
 
   /** Extend the lease and record a liveness heartbeat. */
-  heartbeat(jobId: string, workerId: string): Promise<void>;
+  heartbeat(jobId: string, workerId: string, organizationId?: string): Promise<void>;
 
   /** Mark job complete (moves to review_required). */
   complete(input: {
