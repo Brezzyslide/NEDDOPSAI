@@ -342,54 +342,19 @@ describe("DatabaseIngestionQueue.recoverStuck", () => {
     vi.clearAllMocks();
   });
 
-  it("returns 0 when no stuck jobs exist", async () => {
-    const selectChain = {
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
-      }),
-    };
-    mockDb.select.mockReturnValue(selectChain);
+  it("returns the bounded database recovery count", async () => {
+    mockDb.execute.mockResolvedValue({ rows: [{ recovered: 2 }] });
 
     const count = await queue.recoverStuck();
-    expect(count).toBe(0);
-    expect(mockDb.execute).not.toHaveBeenCalled();
+    expect(count).toBe(2);
+    expect(mockDb.select).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockDb.execute.mock.calls[0]?.[0])).toContain("recover_stuck_ingestion_jobs");
   });
 
-  it("resets expired-lease jobs to queued when attempts remain", async () => {
-    const stuckJob = {
-      id: "job-1", organizationId: "org-1",
-      attemptCount: 1, maxAttempts: 3, status: "extracting",
-    };
-    const selectChain = {
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([stuckJob]) }),
-      }),
-    };
-    mockDb.select.mockReturnValue(selectChain);
-    mockDb.execute.mockResolvedValue({ rows: [] });
+  it("returns 0 when the bounded database recovery reports no stuck jobs", async () => {
+    mockDb.execute.mockResolvedValue({ rows: [{ recovered: 0 }] });
 
-    const count = await queue.recoverStuck();
-    expect(count).toBe(1);
-    const sqlArg = JSON.stringify(mockDb.execute.mock.calls[0]?.[0]);
-    expect(sqlArg).toContain("queued");
-  });
-
-  it("dead-letters stuck jobs that have exhausted attempts", async () => {
-    const stuckJob = {
-      id: "job-1", organizationId: "org-1",
-      attemptCount: 3, maxAttempts: 3, status: "embedding",
-    };
-    const selectChain = {
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([stuckJob]) }),
-      }),
-    };
-    mockDb.select.mockReturnValue(selectChain);
-    mockDb.execute.mockResolvedValue({ rows: [] });
-
-    await queue.recoverStuck();
-    const sqlArg = JSON.stringify(mockDb.execute.mock.calls[0]?.[0]);
-    expect(sqlArg).toContain("dead_lettered");
+    await expect(queue.recoverStuck()).resolves.toBe(0);
   });
 });
 

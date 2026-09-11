@@ -25,7 +25,9 @@ class FakeMigrationClient implements MigrationDbClient {
     ["needsops_worker_app is NOINHERIT", "false"],
     ["needsops_worker_app is a member of needsops_app", "true"],
     ["worker can execute claim_next_ingestion_job", "true"],
+    ["worker can execute recover_stuck_ingestion_jobs", "true"],
     ["public cannot execute claim_next_ingestion_job", "true"],
+    ["public cannot execute recover_stuck_ingestion_jobs", "true"],
     ["needsops_app can read context user identity columns", "true"],
     ["needsops_app cannot read user email by default", "false"],
     ["needsops_app can read context organization identity columns", "true"],
@@ -60,8 +62,14 @@ class FakeMigrationClient implements MigrationDbClient {
     if (text.includes("FROM pg_auth_members")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_worker_app is a member of needsops_app") }] as T[] };
     }
+    if (text.includes("has_function_privilege('needsops_worker_app'") && text.includes("recover_stuck_ingestion_jobs")) {
+      return { rows: [{ value: this.platformSecurityValues.get("worker can execute recover_stuck_ingestion_jobs") }] as T[] };
+    }
     if (text.includes("has_function_privilege('needsops_worker_app'")) {
       return { rows: [{ value: this.platformSecurityValues.get("worker can execute claim_next_ingestion_job") }] as T[] };
+    }
+    if (text.includes("acl.grantee = 0") && text.includes("recover_stuck_ingestion_jobs")) {
+      return { rows: [{ value: this.platformSecurityValues.get("public cannot execute recover_stuck_ingestion_jobs") }] as T[] };
     }
     if (text.includes("acl.grantee = 0")) {
       return { rows: [{ value: this.platformSecurityValues.get("public cannot execute claim_next_ingestion_job") }] as T[] };
@@ -305,6 +313,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0052-smoke-column-grants");
     expect(migrationIds).toContain("0053-worker-role-boundary-reconciliation");
     expect(migrationIds).toContain("0054-legacy-write-restriction-reconciliation");
+    expect(migrationIds).toContain("0055-worker-ingestion-recovery-function");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -316,6 +325,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0054-legacy-write-restriction-reconciliation")).toBe(
       migrationIds.indexOf("0053-worker-role-boundary-reconciliation") + 1,
+    );
+    expect(migrationIds.indexOf("0055-worker-ingestion-recovery-function")).toBe(
+      migrationIds.indexOf("0054-legacy-write-restriction-reconciliation") + 1,
     );
   });
 

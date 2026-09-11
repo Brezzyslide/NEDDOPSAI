@@ -121,34 +121,29 @@ describe("DatabaseIngestionQueue.recoverStuck — writes last_error_code on dead
     mockDbUpdate.mockReset().mockReturnValue({ set: vi.fn().mockReturnThis(), where: vi.fn().mockResolvedValue([]) });
   });
 
-  it("calls db.execute (raw SQL) when dead-lettering via lease expiry", async () => {
+  it("calls bounded database recovery function", async () => {
     const { DatabaseIngestionQueue } = await import("../lib/ingestionQueue/DatabaseIngestionQueue.js");
     const queue = new DatabaseIngestionQueue();
     await queue.recoverStuck();
-    // recoverStuck must call db.execute at least once (for the dead-letter UPDATE)
     expect(mockDbExec).toHaveBeenCalled();
-    // The SQL must reference LEASE_EXPIRED (written when isExhausted=true)
     const allArgs = mockDbExec.mock.calls.flat();
     const sqlStr  = allArgs.map((c: unknown) => JSON.stringify(c)).join(" ");
-    expect(sqlStr).toContain("LEASE_EXPIRED");
+    expect(sqlStr).toContain("recover_stuck_ingestion_jobs");
   });
 
-  it("does not throw when there are no stuck jobs", async () => {
-    // Override to return empty list — function returns early without db.execute
-    mockDbSelect.mockReturnValue(makeSelectChain([]));
+  it("does not throw when the recovery function reports no stuck jobs", async () => {
+    mockDbExec.mockResolvedValue({ rows: [{ recovered: 0 }] });
     const { DatabaseIngestionQueue } = await import("../lib/ingestionQueue/DatabaseIngestionQueue.js");
     const queue = new DatabaseIngestionQueue();
     await expect(queue.recoverStuck()).resolves.not.toThrow();
   });
 
-  it("returns 0 without calling db.execute when no stuck jobs exist", async () => {
-    mockDbExec.mockClear();
-    mockDbSelect.mockReturnValue(makeSelectChain([]));
+  it("returns 0 from the recovery function count", async () => {
+    mockDbExec.mockResolvedValue({ rows: [{ recovered: 0 }] });
     const { DatabaseIngestionQueue } = await import("../lib/ingestionQueue/DatabaseIngestionQueue.js");
     const queue = new DatabaseIngestionQueue();
     const result = await queue.recoverStuck();
     expect(result).toBe(0);
-    expect(mockDbExec).not.toHaveBeenCalled();
   });
 });
 

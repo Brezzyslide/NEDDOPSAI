@@ -210,6 +210,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Re-applies the Sprint 7.1 needsops_app legacy write revokes through the ordered migration runner.",
   },
+  {
+    id: "0055-worker-ingestion-recovery-function",
+    file: "0055_worker_ingestion_recovery_function.sql",
+    transactional: true,
+    notes: "Adds worker-only bounded SECURITY DEFINER lease recovery for stuck ingestion jobs.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -250,6 +256,11 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
     expected: "true",
   },
   {
+    name: "worker can execute recover_stuck_ingestion_jobs",
+    query: "SELECT has_function_privilege('needsops_worker_app', 'public.recover_stuck_ingestion_jobs(timestamptz, integer)', 'EXECUTE')::text AS value",
+    expected: "true",
+  },
+  {
     name: "public cannot execute claim_next_ingestion_job",
     query: `
       SELECT (NOT EXISTS (
@@ -260,6 +271,23 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
         WHERE n.nspname = 'public'
           AND p.proname = 'claim_next_ingestion_job'
           AND pg_get_function_identity_arguments(p.oid) = 'p_worker_id text'
+          AND acl.grantee = 0
+          AND acl.privilege_type = 'EXECUTE'
+      ))::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "public cannot execute recover_stuck_ingestion_jobs",
+    query: `
+      SELECT (NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) acl
+        WHERE n.nspname = 'public'
+          AND p.proname = 'recover_stuck_ingestion_jobs'
+          AND pg_get_function_identity_arguments(p.oid) = 'p_stuck_before timestamp with time zone, p_limit integer'
           AND acl.grantee = 0
           AND acl.privilege_type = 'EXECUTE'
       ))::text AS value

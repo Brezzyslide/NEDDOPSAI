@@ -359,4 +359,29 @@ describe("Sprint 46 RLS policy normalisation", () => {
       );
     }
   });
+
+  it("defines worker-only bounded ingestion lease recovery function", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const recoveryMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0055_worker_ingestion_recovery_function.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0055-worker-ingestion-recovery-function",
+        file: "0055_worker_ingestion_recovery_function.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0055-worker-ingestion-recovery-function")).toBe(
+      migrationIds.indexOf("0054-legacy-write-restriction-reconciliation") + 1,
+    );
+    expect(recoveryMigration).toContain("CREATE OR REPLACE FUNCTION public.recover_stuck_ingestion_jobs");
+    expect(recoveryMigration).toContain("SECURITY DEFINER");
+    expect(recoveryMigration).toContain("FOR UPDATE SKIP LOCKED");
+    expect(recoveryMigration).toContain("REVOKE ALL ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) FROM PUBLIC");
+    expect(recoveryMigration).toContain("GRANT EXECUTE ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) TO needsops_worker_app");
+    expect(recoveryMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
+  });
 });

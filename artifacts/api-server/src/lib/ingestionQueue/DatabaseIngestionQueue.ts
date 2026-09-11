@@ -22,9 +22,8 @@ import {
   ingestionJobsTable,
   INGESTION_NON_RETRYABLE_CODES,
   type IngestionJob,
-  type IngestionJobStatus,
 } from "@workspace/db";
-import { eq, and, sql, lt, inArray } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import type { IIngestionQueue, QueueHealth } from "./IIngestionQueue.js";
 import { logOrgEvent } from "../../services/auditService.js";
@@ -345,95 +344,12 @@ export class DatabaseIngestionQueue implements IIngestionQueue {
    * last_error_code = 'LEASE_EXPIRED' so the field is never left NULL.
    */
   async recoverStuck(): Promise<number> {
-    if ((process.env.DB_USERNAME ?? process.env.PGUSER) === "needsops_worker_app") {
-      return 0;
-    }
+    const result = await db.execute<{ recovered: string | number }>(sql`
+      SELECT public.recover_stuck_ingestion_jobs(NOW() - INTERVAL '2 minutes', 50) AS recovered
+    `);
 
-    const processingStatuses: IngestionJobStatus[] = [
-      "fetching","extracting","normalising","chunking","embedding","cancelling",
-    ];
-
-    const stuck = await db
-      .select({
-        id:             ingestionJobsTable.id,
-        organizationId: ingestionJobsTable.organizationId,
-        attemptCount:   ingestionJobsTable.attemptCount,
-        maxAttempts:    ingestionJobsTable.maxAttempts,
-        status:         ingestionJobsTable.status,
-        lastErrorCode:  ingestionJobsTable.lastErrorCode,
-      })
-      .from(ingestionJobsTable)
-      .where(
-        and(
-          inArray(ingestionJobsTable.status, processingStatuses as string[] as any),
-          lt(ingestionJobsTable.leaseExpiresAt, new Date()),
-        ),
-      )
-      .limit(50);
-
-    if (stuck.length === 0) return 0;
-
-    let recovered = 0;
-    for (const job of stuck) {
-      const isExhausted = job.attemptCount >= job.maxAttempts;
-      const newStatus   = isExhausted ? "dead_lettered" : "queued";
-
-      // Sprint 28.6: write error info when dead-lettering so last_error_code is never NULL.
-      // For retryable jobs keep any existing error code; we're just re-queuing.
-      const leaseExpiredCode    = "LEASE_EXPIRED";
-      const leaseExpiredMessage = `Job lease expired during stage '${job.status}' after ${job.attemptCount} attempt(s). Worker likely crashed or hung.`;
-
-      await db.execute(sql`
-        UPDATE ingestion_jobs
-        SET
-          status             = ${newStatus},
-          claimed_by         = NULL,
-          lease_expires_at   = NULL,
-          heartbeat_at       = NULL,
-          recovery_count     = recovery_count + 1,
-          dead_lettered_at   = ${isExhausted ? sql`NOW()` : sql`NULL`},
-          next_attempt_at    = ${!isExhausted ? sql`NOW() + '30 seconds'::interval` : sql`NULL`},
-          -- Always write error info on dead-letter; keep existing code for retries
-          last_error_code    = CASE
-                                 WHEN ${isExhausted}
-                                   THEN COALESCE(last_error_code, ${leaseExpiredCode})
-                                 ELSE last_error_code
-                               END,
-          last_error_message = CASE
-                                 WHEN ${isExhausted} AND last_error_message IS NULL
-                                   THEN ${leaseExpiredMessage}
-                                 ELSE last_error_message
-                               END,
-          last_failed_at     = CASE
-                                 WHEN ${isExhausted} AND last_failed_at IS NULL
-                                   THEN NOW()
-                                 ELSE last_failed_at
-                               END,
-          metadata           = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
-            recoveredFromLease: true,
-            stageAtRecovery: job.status,
-          })}::jsonb,
-          updated_at         = NOW()
-        WHERE id = ${job.id}
-          AND lease_expires_at < NOW()
-      `);
-
-      logOrgEvent({
-        eventType:      isExhausted ? "ingestion_job.dead_lettered" : "ingestion_job.recovered",
-        organizationId: job.organizationId,
-        resourceType:   "ingestion_job",
-        resourceId:     job.id,
-        metadata:       {
-          reason:         "lease_expired",
-          previousStatus: job.status,
-          errorCode:      isExhausted ? (job.lastErrorCode ?? leaseExpiredCode) : undefined,
-        },
-      }).catch(() => {});
-
-      recovered++;
-    }
-
-    return recovered;
+    const row = (result.rows ?? [])[0];
+    return Number(row?.recovered ?? 0);
   }
 
   // ── health ─────────────────────────────────────────────────────────────────
