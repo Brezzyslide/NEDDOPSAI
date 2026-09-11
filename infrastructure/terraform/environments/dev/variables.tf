@@ -167,6 +167,17 @@ variable "knowledge_worker_desired_count" {
   }
 }
 
+variable "knowledge_worker_max_jobs" {
+  type        = number
+  description = "Maximum jobs a Knowledge Ingestion Worker process should handle before exiting. Use 0 for unlimited production polling."
+  default     = 0
+
+  validation {
+    condition     = var.knowledge_worker_max_jobs >= 0 && var.knowledge_worker_max_jobs <= 50
+    error_message = "knowledge_worker_max_jobs must be between 0 and 50."
+  }
+}
+
 variable "api_temporary_http_cidrs" {
   type        = list(string)
   description = "Temporary HTTP health-test CIDRs while DNS/ACM HTTPS is not ready. Keep empty for final HTTPS-only posture."

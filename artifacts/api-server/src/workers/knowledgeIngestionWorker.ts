@@ -36,6 +36,7 @@ import {
 const POLL_MS       = parseInt(process.env.KNOWLEDGE_WORKER_POLL_MS       ?? "5000",   10);
 const HEARTBEAT_MS  = parseInt(process.env.KNOWLEDGE_WORKER_HEARTBEAT_MS  ?? "15000",  10);
 const SWEEP_MS      = parseInt(process.env.KNOWLEDGE_WORKER_SWEEP_MS      ?? "60000",  10);
+const MAX_JOBS      = parseInt(process.env.KNOWLEDGE_WORKER_MAX_JOBS      ?? "0",      10);
 
 // ─── Worker class ─────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ export class KnowledgeIngestionWorker {
   private _heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private _currentJobId:  string | null = null;
   private _currentOrgId:  string | null = null;
+  private _processedJobs  = 0;
 
   constructor(workerId?: string) {
     this.workerId = workerId ?? `worker-${randomUUID()}`;
@@ -170,10 +172,20 @@ export class KnowledgeIngestionWorker {
         if (this._heartbeatTimer) { clearInterval(this._heartbeatTimer); this._heartbeatTimer = null; }
         this._currentJobId = null;
         this._currentOrgId = null;
+        this._processedJobs += 1;
       }
 
     } catch (err) {
       logger.error({ workerId: this.workerId, err }, "[knowledge-worker] Poll error");
+    }
+
+    if (MAX_JOBS > 0 && this._processedJobs >= MAX_JOBS) {
+      logger.info(
+        { workerId: this.workerId, processedJobs: this._processedJobs, maxJobs: MAX_JOBS },
+        "[knowledge-worker] Max job count reached; stopping",
+      );
+      await this.stop();
+      return;
     }
 
     // Immediately poll again — if queue has work, process it without delay

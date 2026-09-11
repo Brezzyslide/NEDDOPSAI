@@ -21,8 +21,20 @@ describe("Sprint 43 knowledge worker deployment visibility", () => {
     expect(workerTf).toContain('"./dist/workers/knowledgeIngestionWorker.mjs"');
     expect(varsTf).toContain('variable "knowledge_worker_desired_count"');
     expect(varsTf).toContain("default     = 0");
+    expect(varsTf).toContain('variable "knowledge_worker_max_jobs"');
+    expect(workerTf).toContain('"KNOWLEDGE_WORKER_MAX_JOBS"');
+    expect(workerTf).toContain("value = tostring(var.knowledge_worker_max_jobs)");
     expect(apiTf).toContain('name  = "KNOWLEDGE_WORKER_MODE"');
     expect(apiTf).toContain('value = "external"');
+  });
+
+  it("can stop a standalone worker after a bounded number of jobs", () => {
+    const worker = readRepo("artifacts/api-server/src/workers/knowledgeIngestionWorker.ts");
+
+    expect(worker).toContain('process.env.KNOWLEDGE_WORKER_MAX_JOBS');
+    expect(worker).toContain('this._processedJobs += 1');
+    expect(worker).toContain('MAX_JOBS > 0 && this._processedJobs >= MAX_JOBS');
+    expect(worker).toContain('"[knowledge-worker] Max job count reached; stopping"');
   });
 
   it("wires the worker to the same runtime secrets required by API ingestion", () => {

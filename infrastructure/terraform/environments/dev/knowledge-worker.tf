@@ -90,6 +90,10 @@ resource "aws_ecs_task_definition" "knowledge_ingestion_worker" {
           value = "database"
         },
         {
+          name  = "KNOWLEDGE_WORKER_MAX_JOBS"
+          value = tostring(var.knowledge_worker_max_jobs)
+        },
+        {
           name  = "AI_PROVIDER"
           value = "openai"
         },
