@@ -32,6 +32,10 @@ class FakeMigrationClient implements MigrationDbClient {
     ["needsops_app cannot read user email by default", "false"],
     ["needsops_app can read context organization identity columns", "true"],
     ["needsops_app can read message read columns", "true"],
+    ["needsops_app cannot insert directly into shared org audit log", "false"],
+    ["needsops_app can execute shared org audit writer", "true"],
+    ["worker can execute shared org audit writer", "true"],
+    ["public cannot execute shared org audit writer", "true"],
   ]);
 
   async query<T = unknown>(text: string, values?: unknown[]): Promise<{ rows: T[] }> {
@@ -62,17 +66,29 @@ class FakeMigrationClient implements MigrationDbClient {
     if (text.includes("FROM pg_auth_members")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_worker_app is a member of needsops_app") }] as T[] };
     }
+    if (text.includes("has_function_privilege('needsops_worker_app'") && text.includes("write_org_audit_event")) {
+      return { rows: [{ value: this.platformSecurityValues.get("worker can execute shared org audit writer") }] as T[] };
+    }
     if (text.includes("has_function_privilege('needsops_worker_app'") && text.includes("recover_stuck_ingestion_jobs")) {
       return { rows: [{ value: this.platformSecurityValues.get("worker can execute recover_stuck_ingestion_jobs") }] as T[] };
     }
     if (text.includes("has_function_privilege('needsops_worker_app'")) {
       return { rows: [{ value: this.platformSecurityValues.get("worker can execute claim_next_ingestion_job") }] as T[] };
     }
+    if (text.includes("acl.grantee = 0") && text.includes("write_org_audit_event")) {
+      return { rows: [{ value: this.platformSecurityValues.get("public cannot execute shared org audit writer") }] as T[] };
+    }
     if (text.includes("acl.grantee = 0") && text.includes("recover_stuck_ingestion_jobs")) {
       return { rows: [{ value: this.platformSecurityValues.get("public cannot execute recover_stuck_ingestion_jobs") }] as T[] };
     }
     if (text.includes("acl.grantee = 0")) {
       return { rows: [{ value: this.platformSecurityValues.get("public cannot execute claim_next_ingestion_job") }] as T[] };
+    }
+    if (text.includes("has_table_privilege('needsops_app', 'public.org_audit_log', 'INSERT')")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app cannot insert directly into shared org audit log") }] as T[] };
+    }
+    if (text.includes("has_function_privilege('needsops_app'") && text.includes("write_org_audit_event")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can execute shared org audit writer") }] as T[] };
     }
     if (text.includes("'public.users', 'email'")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_app cannot read user email by default") }] as T[] };
@@ -315,6 +331,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0054-legacy-write-restriction-reconciliation");
     expect(migrationIds).toContain("0055-worker-ingestion-recovery-function");
     expect(migrationIds).toContain("0056-worker-ingestion-lease-reconciliation");
+    expect(migrationIds).toContain("0057-shared-org-audit-event-function");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -333,6 +350,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds.indexOf("0056-worker-ingestion-lease-reconciliation")).toBe(
       migrationIds.indexOf("0055-worker-ingestion-recovery-function") + 1,
     );
+    expect(migrationIds.indexOf("0057-shared-org-audit-event-function")).toBe(
+      migrationIds.indexOf("0056-worker-ingestion-lease-reconciliation") + 1,
+    );
   });
 
   it("verifies worker membership and least-privilege column grants after migrations", async () => {
@@ -343,6 +363,8 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(result).toEqual({ passed: true, failures: [] });
     expect(client.queries.some((query) => query.text.includes("FROM pg_auth_members"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("'public.users', 'email'"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("write_org_audit_event"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("'public.org_audit_log', 'INSERT'"))).toBe(true);
   });
 
   it("fails platform security verification when worker membership drifts", async () => {

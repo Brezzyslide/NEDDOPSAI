@@ -408,4 +408,31 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(leaseMigration).toContain("GRANT EXECUTE ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) TO needsops_worker_app");
     expect(leaseMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
+
+  it("registers shared org audit writer after legacy write restrictions", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const auditMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0057_shared_org_audit_event_function.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0057-shared-org-audit-event-function",
+        file: "0057_shared_org_audit_event_function.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0057-shared-org-audit-event-function")).toBe(
+      migrationIds.indexOf("0056-worker-ingestion-lease-reconciliation") + 1,
+    );
+    expect(auditMigration).toContain("CREATE OR REPLACE FUNCTION public.write_org_audit_event");
+    expect(auditMigration).toContain("SECURITY DEFINER");
+    expect(auditMigration).toContain("SET search_path = pg_catalog, public");
+    expect(auditMigration).toContain("INSERT INTO public.org_audit_log");
+    expect(auditMigration).toContain("REVOKE ALL ON FUNCTION public.write_org_audit_event");
+    expect(auditMigration).toContain("GRANT EXECUTE ON FUNCTION public.write_org_audit_event");
+    expect(auditMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.org_audit_log\s+TO\s+(needsops_app|needsops_worker_app)/i);
+  });
+
 });

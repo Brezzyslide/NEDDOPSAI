@@ -222,6 +222,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Sets leases during bounded worker claims and recovers legacy NULL-lease claimed jobs.",
   },
+  {
+    id: "0057-shared-org-audit-event-function",
+    file: "0057_shared_org_audit_event_function.sql",
+    transactional: true,
+    notes: "Adds a bounded SECURITY DEFINER function for shared org audit writes without granting legacy table DML.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -342,6 +348,38 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
         has_column_privilege('needsops_app', 'public.message_reads', 'user_id', 'SELECT') AND
         has_column_privilege('needsops_app', 'public.message_reads', 'read_at', 'SELECT')
       )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app cannot insert directly into shared org audit log",
+    query: "SELECT has_table_privilege('needsops_app', 'public.org_audit_log', 'INSERT')::text AS value",
+    expected: "false",
+  },
+  {
+    name: "needsops_app can execute shared org audit writer",
+    query: "SELECT has_function_privilege('needsops_app', 'public.write_org_audit_event(text,text,text,text,text,text,text,text,text,text,text,boolean,jsonb)', 'EXECUTE')::text AS value",
+    expected: "true",
+  },
+  {
+    name: "worker can execute shared org audit writer",
+    query: "SELECT has_function_privilege('needsops_worker_app', 'public.write_org_audit_event(text,text,text,text,text,text,text,text,text,text,text,boolean,jsonb)', 'EXECUTE')::text AS value",
+    expected: "true",
+  },
+  {
+    name: "public cannot execute shared org audit writer",
+    query: `
+      SELECT (NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) acl
+        WHERE n.nspname = 'public'
+          AND p.proname = 'write_org_audit_event'
+          AND pg_get_function_identity_arguments(p.oid) = 'p_id text, p_organization_id text, p_actor_user_id text, p_actor_type text, p_event_type text, p_resource_type text, p_resource_id text, p_request_id text, p_ip_address text, p_user_agent text, p_access_purpose text, p_is_sensitive boolean, p_metadata jsonb'
+          AND acl.grantee = 0
+          AND acl.privilege_type = 'EXECUTE'
+      ))::text AS value
     `,
     expected: "true",
   },

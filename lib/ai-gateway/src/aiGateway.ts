@@ -16,7 +16,8 @@
  */
 
 import { randomUUID } from "crypto";
-import { db as platformDb, orgAuditLogTable } from "@workspace/db";
+import { db as platformDb } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import {
   APPROVED_PROVIDERS,
   PURPOSE_FIELD_ALLOWLIST,
@@ -374,6 +375,44 @@ function getConfiguredProvider(): ApprovedProvider {
 
 // ─── Audit writer ─────────────────────────────────────────────────────────────
 
+
+function formatAuditError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
+async function writeSharedOrgAuditEvent(params: {
+  id: string;
+  organizationId: string;
+  actorUserId: string | null;
+  actorType: string;
+  eventType: string;
+  resourceType: string;
+  resourceId: string | null;
+  requestId?: string | null;
+  accessPurpose: string | null;
+  isSensitive: boolean;
+  metadata: Record<string, unknown>;
+}): Promise<void> {
+  await platformDb.execute(sql`
+    SELECT public.write_org_audit_event(
+      ${params.id},
+      ${params.organizationId},
+      ${params.actorUserId},
+      ${params.actorType},
+      ${params.eventType},
+      ${params.resourceType},
+      ${params.resourceId},
+      ${params.requestId ?? null},
+      ${null},
+      ${null},
+      ${params.accessPurpose},
+      ${params.isSensitive},
+      ${JSON.stringify(params.metadata)}::jsonb
+    )
+  `);
+}
+
 interface GatewayAuditParams {
   auditId: string;
   ctx: AIGatewayContext;
@@ -409,12 +448,12 @@ async function writeGatewayDenialAuditEvent(
   ctx: AIGatewayContext,
   deniedFields: string[],
 ): Promise<void> {
-  await platformDb.insert(orgAuditLogTable).values({
+  await writeSharedOrgAuditEvent({
     id: randomUUID(),
     organizationId: ctx.organizationId,
     actorUserId: ctx.userId,
     actorType: "ai_gateway",
-    eventType: "ai_gateway.field_access_denied" as any,
+    eventType: "ai_gateway.field_access_denied",
     resourceType: "ai_request",
     resourceId: ctx.correlationId,
     accessPurpose: ctx.purpose,
@@ -424,23 +463,26 @@ async function writeGatewayDenialAuditEvent(
       purpose: ctx.purpose,
       role: ctx.role,
       decision: "denied",
-      // Full field paths logged internally for platform operators — never sent to customers.
+      // Full field paths logged internally for platform operators; never sent to customers.
       deniedFieldPaths: deniedFields,
       permittedDataClasses: PURPOSE_FIELD_ALLOWLIST[ctx.purpose as AIPurpose] ?? [],
     },
-    occurredAt: new Date(),
-  }).catch(() => {
-    console.error("[AI Gateway] WARN: Failed to write field-denial audit event", ctx.correlationId);
+  }).catch((error: unknown) => {
+    console.error(
+      "[AI Gateway] WARN: Failed to write field-denial audit event",
+      ctx.correlationId,
+      formatAuditError(error),
+    );
   });
 }
 
 async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void> {
-  await platformDb.insert(orgAuditLogTable).values({
+  await writeSharedOrgAuditEvent({
     id: params.auditId,
     organizationId: params.ctx.organizationId,
     actorUserId: params.ctx.userId,
     actorType: "ai_gateway",
-    eventType: params.eventType as any,
+    eventType: params.eventType,
     resourceType: "ai_request",
     resourceId: params.responseId,
     accessPurpose: params.ctx.purpose,
@@ -471,9 +513,12 @@ async function writeGatewayAuditEvent(params: GatewayAuditParams): Promise<void>
       retryCount: params.retryCount ?? null,
       providerFailureKind: params.providerFailureKind ?? null,
     },
-    occurredAt: new Date(),
-  }).catch(() => {
-    console.error("[AI Gateway] WARN: Failed to write audit event for response", params.responseId);
+  }).catch((error: unknown) => {
+    console.error(
+      "[AI Gateway] WARN: Failed to write audit event for response",
+      params.responseId,
+      formatAuditError(error),
+    );
   });
 }
 
