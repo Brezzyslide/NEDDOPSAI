@@ -384,4 +384,28 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(recoveryMigration).toContain("GRANT EXECUTE ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) TO needsops_worker_app");
     expect(recoveryMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
+
+  it("registers worker ingestion lease reconciliation after recovery function", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const leaseMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0056_worker_ingestion_lease_reconciliation.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0056-worker-ingestion-lease-reconciliation",
+        file: "0056_worker_ingestion_lease_reconciliation.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0056-worker-ingestion-lease-reconciliation")).toBe(
+      migrationIds.indexOf("0055-worker-ingestion-recovery-function") + 1,
+    );
+    expect(leaseMigration).toContain("lease_expires_at = NOW() + INTERVAL '2 minutes'");
+    expect(leaseMigration).toContain("lease_expires_at IS NULL AND updated_at < p_stuck_before");
+    expect(leaseMigration).toContain("REVOKE ALL ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) FROM PUBLIC");
+    expect(leaseMigration).toContain("GRANT EXECUTE ON FUNCTION public.recover_stuck_ingestion_jobs(TIMESTAMPTZ, INTEGER) TO needsops_worker_app");
+    expect(leaseMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
+  });
 });

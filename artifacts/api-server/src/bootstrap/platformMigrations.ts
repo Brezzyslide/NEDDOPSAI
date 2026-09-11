@@ -216,6 +216,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds worker-only bounded SECURITY DEFINER lease recovery for stuck ingestion jobs.",
   },
+  {
+    id: "0056-worker-ingestion-lease-reconciliation",
+    file: "0056_worker_ingestion_lease_reconciliation.sql",
+    transactional: true,
+    notes: "Sets leases during bounded worker claims and recovers legacy NULL-lease claimed jobs.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
