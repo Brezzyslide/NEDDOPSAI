@@ -327,7 +327,7 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(reconciliationMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
 
-  it("registers legacy write restriction reconciliation after worker role reconciliation", () => {
+  it("registers conditional legacy write restriction reconciliation after worker role reconciliation", () => {
     const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
     const reconciliationMigration = readFileSync(
       resolve(process.cwd(), "../../lib/db/migrations/0054_legacy_write_restriction_reconciliation.sql"),
@@ -345,19 +345,18 @@ describe("Sprint 46 RLS policy normalisation", () => {
       migrationIds.indexOf("0053-worker-role-boundary-reconciliation") + 1,
     );
 
-    for (const table of [
-      "audit_log",
-      "org_audit_log",
-      "tasks",
-      "approvals",
-      "approval_history",
-      "task_execution_plans",
-      "task_specialists",
-    ]) {
-      expect(reconciliationMigration).toContain(
-        `REVOKE INSERT, UPDATE, DELETE ON TABLE public.${table} FROM needsops_app`,
-      );
-    }
+    expect(reconciliationMigration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.audit_log FROM needsops_app",
+    );
+    expect(reconciliationMigration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.org_audit_log FROM needsops_app",
+    );
+    expect(reconciliationMigration).toContain("app.enforce_legacy_public_task_write_restrictions");
+    expect(reconciliationMigration).toContain("EXISTS (SELECT 1 FROM public.org_database_registry LIMIT 1)");
+    expect(reconciliationMigration).toContain("org-schema task routing is not active");
+    expect(reconciliationMigration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.tasks FROM needsops_app",
+    );
   });
 
   it("defines worker-only bounded ingestion lease recovery function", () => {
@@ -433,6 +432,45 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(auditMigration).toContain("REVOKE ALL ON FUNCTION public.write_org_audit_event");
     expect(auditMigration).toContain("GRANT EXECUTE ON FUNCTION public.write_org_audit_event");
     expect(auditMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.org_audit_log\s+TO\s+(needsops_app|needsops_worker_app)/i);
+  });
+
+  it("registers public task subsystem write restoration after shared audit writer", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const taskWriteMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0058_restore_public_task_subsystem_writes.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0058-restore-public-task-subsystem-writes",
+        file: "0058_restore_public_task_subsystem_writes.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0058-restore-public-task-subsystem-writes")).toBe(
+      migrationIds.indexOf("0057-shared-org-audit-event-function") + 1,
+    );
+
+    for (const table of [
+      "tasks",
+      "task_execution_plans",
+      "task_specialists",
+      "approvals",
+      "approval_history",
+      "task_participants",
+    ]) {
+      expect(taskWriteMigration).toContain(
+        `GRANT INSERT, UPDATE, DELETE ON TABLE public.${table} TO needsops_app`,
+      );
+    }
+
+    expect(taskWriteMigration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.audit_log FROM needsops_app",
+    );
+    expect(taskWriteMigration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.org_audit_log FROM needsops_app",
+    );
   });
 
 });

@@ -228,6 +228,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds a bounded SECURITY DEFINER function for shared org audit writes without granting legacy table DML.",
   },
+  {
+    id: "0058-restore-public-task-subsystem-writes",
+    file: "0058_restore_public_task_subsystem_writes.sql",
+    transactional: true,
+    notes: "Restores needsops_app task subsystem writes under public-table RLS until org-schema task routing is active.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -355,6 +361,37 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
     name: "needsops_app cannot insert directly into shared org audit log",
     query: "SELECT has_table_privilege('needsops_app', 'public.org_audit_log', 'INSERT')::text AS value",
     expected: "false",
+  },
+  {
+    name: "needsops_app cannot insert directly into legacy audit log",
+    query: "SELECT has_table_privilege('needsops_app', 'public.audit_log', 'INSERT')::text AS value",
+    expected: "false",
+  },
+  {
+    name: "needsops_app can write public task subsystem under RLS",
+    query: `
+      SELECT (
+        has_table_privilege('needsops_app', 'public.tasks', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.tasks', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.tasks', 'DELETE') AND
+        has_table_privilege('needsops_app', 'public.task_execution_plans', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.task_execution_plans', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.task_execution_plans', 'DELETE') AND
+        has_table_privilege('needsops_app', 'public.task_specialists', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.task_specialists', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.task_specialists', 'DELETE') AND
+        has_table_privilege('needsops_app', 'public.approvals', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.approvals', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.approvals', 'DELETE') AND
+        has_table_privilege('needsops_app', 'public.approval_history', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.approval_history', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.approval_history', 'DELETE') AND
+        has_table_privilege('needsops_app', 'public.task_participants', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.task_participants', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.task_participants', 'DELETE')
+      )::text AS value
+    `,
+    expected: "true",
   },
   {
     name: "needsops_app can execute shared org audit writer",
