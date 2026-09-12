@@ -4,11 +4,6 @@
 -- Applies the write restrictions that were specified in the Sprint 7 migration
 -- but not applied to the live database, plus org classification columns.
 --
--- Audit tables are always directly write-restricted. Task/approval table
--- write restrictions are schema-per-tenant preparation only; keep them gated
--- until org-schema task routing is active, otherwise current shared-public
--- task creation breaks before it has a destination.
---
 -- Idempotent: safe to run multiple times.
 -- Applied: 2026-07-25
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -45,28 +40,52 @@ END;
 $$;
 
 DO $$
-DECLARE
-  enforce_task_boundary BOOLEAN;
 BEGIN
-  SELECT
-    COALESCE(NULLIF(current_setting('app.enforce_legacy_public_task_write_restrictions', TRUE), ''), 'false') = 'true'
-    OR EXISTS (SELECT 1 FROM public.org_database_registry LIMIT 1)
-  INTO enforce_task_boundary;
-
-  IF enforce_task_boundary THEN
-    -- Legacy shared task tables — no new writes once org-schema task routing exists.
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.tasks FROM needsops_app';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.approvals FROM needsops_app';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.approval_history FROM needsops_app';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.task_execution_plans FROM needsops_app';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.task_specialists FROM needsops_app';
-    EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.task_participants FROM needsops_app';
-    RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on legacy public task subsystem from needsops_app';
-  ELSE
-    RAISE NOTICE 'Skipped public task write revokes: org-schema task routing is not active.';
-  END IF;
+  -- tasks: legacy shared table — no new writes
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.tasks FROM needsops_app';
+  RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on tasks from needsops_app';
 EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
-  RAISE NOTICE 'Could not apply conditional public task write revokes';
+  RAISE NOTICE 'Could not revoke on tasks';
+END;
+$$;
+
+DO $$
+BEGIN
+  -- approvals: legacy shared table
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.approvals FROM needsops_app';
+  RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on approvals from needsops_app';
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE NOTICE 'Could not revoke on approvals';
+END;
+$$;
+
+DO $$
+BEGIN
+  -- approval_history: legacy shared table
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.approval_history FROM needsops_app';
+  RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on approval_history from needsops_app';
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE NOTICE 'Could not revoke on approval_history';
+END;
+$$;
+
+DO $$
+BEGIN
+  -- task_execution_plans: legacy shared table
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.task_execution_plans FROM needsops_app';
+  RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on task_execution_plans from needsops_app';
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE NOTICE 'Could not revoke on task_execution_plans';
+END;
+$$;
+
+DO $$
+BEGIN
+  -- task_specialists: legacy shared table
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.task_specialists FROM needsops_app';
+  RAISE NOTICE 'Revoked INSERT/UPDATE/DELETE on task_specialists from needsops_app';
+EXCEPTION WHEN undefined_object OR insufficient_privilege THEN
+  RAISE NOTICE 'Could not revoke on task_specialists';
 END;
 $$;
 
@@ -79,19 +98,19 @@ COMMENT ON TABLE public.org_audit_log IS
   'LEGACY — read-only from Sprint 7.1. New org events go to org-schema org_audit_log. Do not insert here.';
 
 COMMENT ON TABLE public.tasks IS
-  'Shared tenant table from Sprint 6. Writable under RLS until org-schema task routing is active; then legacy/read-only.';
+  'LEGACY — shared tenant table from Sprint 6. Read-only after Sprint 7.1 boundary close. Operational data lives in org-schema org_tasks.';
 
 COMMENT ON TABLE public.approvals IS
-  'Shared tenant table from Sprint 6. Writable under RLS until org-schema approval routing is active; then legacy/read-only.';
+  'LEGACY — shared tenant table from Sprint 6. Read-only after Sprint 7.1 boundary close.';
 
 COMMENT ON TABLE public.approval_history IS
-  'Shared tenant table from Sprint 6. Writable under RLS until org-schema approval routing is active; then legacy/read-only.';
+  'LEGACY — shared tenant table from Sprint 6. Read-only after Sprint 7.1 boundary close.';
 
 COMMENT ON TABLE public.task_execution_plans IS
-  'Shared tenant table from Sprint 6. Writable under RLS until org-schema task routing is active; then legacy/read-only.';
+  'LEGACY — shared tenant table from Sprint 6. Read-only after Sprint 7.1 boundary close.';
 
 COMMENT ON TABLE public.task_specialists IS
-  'Shared tenant table from Sprint 6. Writable under RLS until org-schema task routing is active; then legacy/read-only.';
+  'LEGACY — shared tenant table from Sprint 6. Read-only after Sprint 7.1 boundary close.';
 
 -- ── 3. Organisation classification columns ────────────────────────────────────
 -- Stored as metadata; not inferred from name or slug.
