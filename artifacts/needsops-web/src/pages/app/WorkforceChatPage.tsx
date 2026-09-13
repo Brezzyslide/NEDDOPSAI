@@ -33,6 +33,61 @@ interface Message {
   _failed?: boolean;
 }
 
+function makeLocalErrorMessage(clientMessageId: string, content: string): Message {
+  return {
+    id: `${clientMessageId}-error`,
+    senderType: "chief_of_staff",
+    messageType: "error",
+    content,
+    structuredContent: {
+      type: "send_failure",
+      data: { clientMessageId },
+    },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function appendSendFailure(
+  messages: Message[],
+  clientMessageId: string,
+  content: string,
+  markClientMessageFailed: boolean,
+): Message[] {
+  let foundClientMessage = false;
+  let foundErrorMessage = false;
+
+  const next = messages.map(message => {
+    if (message.id === clientMessageId) {
+      foundClientMessage = true;
+      return markClientMessageFailed
+        ? { ...message, _pending: false, _failed: true }
+        : { ...message, _pending: false };
+    }
+    if (message.id === `${clientMessageId}-error`) foundErrorMessage = true;
+    return message;
+  });
+
+  if (!foundErrorMessage) {
+    const errorMessage = makeLocalErrorMessage(clientMessageId, content);
+    if (!foundClientMessage) return [...next, errorMessage];
+    const clientIndex = next.findIndex(message => message.id === clientMessageId);
+    return [
+      ...next.slice(0, clientIndex + 1),
+      errorMessage,
+      ...next.slice(clientIndex + 1),
+    ];
+  }
+
+  return next;
+}
+
+function extractApiErrorMessage(status: number, body: unknown, fallback: string): string {
+  const error = (body as { error?: { message?: unknown; code?: unknown } } | null)?.error;
+  if (typeof error?.message === "string" && error.message.trim()) return error.message;
+  if (typeof error?.code === "string" && error.code.trim()) return `${fallback} (${error.code})`;
+  return `${fallback} (${status})`;
+}
+
 interface Conversation {
   id: string;
   title?: string;
@@ -464,6 +519,7 @@ function MessageBubble({
   const proposalData = msg.messageType === "task_proposal" && msg.structuredContent
     ? (msg.structuredContent as { data: TaskProposalData }).data
     : null;
+  const isErrorMessage = msg.messageType === "error";
 
   // Show the clarification card for clarification_request messages from the CoS.
   // The card variant (confirmation vs. free-text questions) is determined inside
@@ -482,7 +538,9 @@ function MessageBubble({
               ? msg._failed
                 ? "bg-red-900/30 text-[#E2E8F0] border border-red-500/40"
                 : "bg-[#00D4FF]/15 text-[#E2E8F0] border border-[#00D4FF]/20"
-              : "bg-[#112033] text-[#CBD5E1] border border-[#1E3A5F]"
+              : isErrorMessage
+                ? "bg-red-950/30 text-red-100 border border-red-500/40"
+                : "bg-[#112033] text-[#CBD5E1] border border-[#1E3A5F]"
           } ${msg._pending ? "opacity-60" : ""}`}
         >
           {msg.content}
@@ -580,7 +638,13 @@ export default function WorkforceChatPage() {
       method: "POST",
       body: JSON.stringify({ conversationType: "general_workforce", title: "Workforce Chat" }),
     })
-      .then(r => r.json())
+      .then(async r => {
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          throw new Error(extractApiErrorMessage(r.status, d, "Failed to start conversation."));
+        }
+        return d;
+      })
       .then(d => {
         if (d.conversation) {
           setConversationId(d.conversation.id);
@@ -597,14 +661,20 @@ export default function WorkforceChatPage() {
           }
           // Load existing messages
           apiFetch(`/v1/organisations/${slug}/conversations/${d.conversation.id}/messages`)
-            .then(r => r.json())
+            .then(async r => {
+              const d2 = await r.json().catch(() => ({}));
+              if (!r.ok) {
+                throw new Error(extractApiErrorMessage(r.status, d2, "Failed to load conversation messages."));
+              }
+              return d2;
+            })
             .then(d2 => {
               if (d2.messages) setMessages(d2.messages);
             })
-            .catch(() => {});
+            .catch(err => setError(err instanceof Error ? err.message : "Failed to load conversation messages."));
         }
       })
-      .catch(() => setError("Failed to start conversation."));
+      .catch(err => setError(err instanceof Error ? err.message : "Failed to start conversation."));
   }, [slug, isSignedIn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -656,15 +726,16 @@ export default function WorkforceChatPage() {
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as Record<string, unknown>;
-        const msg = (errBody as any)?.error?.message ?? `Server error (${res.status})`;
+        const msg = extractApiErrorMessage(res.status, errBody, "The Chief of Staff could not process this message.");
         setError(msg);
-        setMessages(prev => prev.filter(m => m.id !== clientId));
+        setMessages(prev => appendSendFailure(prev, clientId, msg, true));
         return;
       }
 
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let userMessageConfirmed = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -682,6 +753,7 @@ export default function WorkforceChatPage() {
           if (evt.type === "token") {
             setStreamingText(prev => prev + (evt.content as string));
           } else if (evt.type === "user_message") {
+            userMessageConfirmed = true;
             // Reconcile: replace optimistic message with server-confirmed message
             setMessages(prev => [
               ...prev.filter(m => m.id !== clientId),
@@ -716,22 +788,24 @@ export default function WorkforceChatPage() {
           } else if (evt.type === "done") {
             setIsStreaming(false);
           } else if (evt.type === "error") {
-            setError((evt.message as string) ?? "The Chief of Staff encountered an error.");
+            const msg = typeof evt.message === "string" && evt.message.trim()
+              ? evt.message
+              : "The Chief of Staff encountered an error.";
+            setError(msg);
             setStreamingText("");
-            setMessages(prev => prev.filter(m => m.id !== clientId));
+            setMessages(prev => appendSendFailure(prev, clientId, msg, !userMessageConfirmed));
           }
         }
       }
     } catch (e: any) {
       if (e?.name === "AbortError") {
-        // Aborted — remove optimistic message cleanly
-        setMessages(prev => prev.filter(m => m.id !== clientId));
+        const msg = "Response stopped before completion.";
+        setMessages(prev => appendSendFailure(prev, clientId, msg, false));
       } else {
-        setError("Failed to send message.");
+        const msg = "Failed to send message.";
+        setError(msg);
         // Keep message visible but mark as failed so user knows
-        setMessages(prev => prev.map(m =>
-          m.id === clientId ? { ...m, _pending: false, _failed: true } : m,
-        ));
+        setMessages(prev => appendSendFailure(prev, clientId, msg, true));
       }
     } finally {
       setIsStreaming(false);

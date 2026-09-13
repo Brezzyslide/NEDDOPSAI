@@ -724,6 +724,41 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(src).toContain("subjectParticipantIds: subjectParticipantId ? [subjectParticipantId] : undefined");
   });
 
+  it("chat send failures keep the user message visible and attach the failure response", () => {
+    const workforceChatPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
+    const taskWorkroomPage = readFileSync(resolve(root, "../../needsops-web/src/pages/app/TaskWorkroomPage.tsx"), "utf8");
+
+    for (const src of [workforceChatPage, taskWorkroomPage]) {
+      const sendBody = src.slice(
+        src.indexOf("const sendMessage = useCallback"),
+        src.indexOf("const handleKeyDown"),
+      );
+      const optimisticInsertIndex = sendBody.indexOf("setMessages(prev => [...prev, {");
+      const apiRequestIndex = sendBody.indexOf("const res = await apiFetch");
+      expect(optimisticInsertIndex).toBeGreaterThan(-1);
+      expect(apiRequestIndex).toBeGreaterThan(-1);
+      expect(optimisticInsertIndex).toBeLessThan(apiRequestIndex);
+      expect(src).toContain("_pending: true");
+      expect(src).toContain("appendSendFailure(prev, clientId, msg, true)");
+      expect(src).toContain("appendSendFailure(prev, clientId, msg, !userMessageConfirmed)");
+      expect(src).toContain("appendSendFailure(prev, clientId, msg, false)");
+      expect(src).toContain('messageType: "error"');
+      expect(src).toContain('type: "send_failure"');
+      expect(src).toContain("extractApiErrorMessage");
+    }
+
+    const workforceSend = workforceChatPage.slice(
+      workforceChatPage.indexOf("const sendMessage = useCallback"),
+      workforceChatPage.indexOf("const handleKeyDown"),
+    );
+    const taskWorkroomSend = taskWorkroomPage.slice(
+      taskWorkroomPage.indexOf("const sendMessage = useCallback"),
+      taskWorkroomPage.indexOf("const handleKeyDown"),
+    );
+    expect(workforceSend).not.toContain("setMessages(prev => prev.filter(m => m.id !== clientId));");
+    expect(taskWorkroomSend).not.toContain("setMessages(prev => prev.filter(m => m.id !== clientId));");
+  });
+
   it("UI copy distinguishes queued/readiness from actual execution start and concrete approvals", () => {
     const src = readFileSync(resolve(root, "../../needsops-web/src/pages/app/WorkforceChatPage.tsx"), "utf8");
 

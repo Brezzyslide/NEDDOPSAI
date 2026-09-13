@@ -43,6 +43,61 @@ interface Message {
   _failed?: boolean;
 }
 
+function makeLocalErrorMessage(clientMessageId: string, content: string): Message {
+  return {
+    id: `${clientMessageId}-error`,
+    senderType: "chief_of_staff",
+    messageType: "error",
+    content,
+    structuredContent: {
+      type: "send_failure",
+      data: { clientMessageId },
+    },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function appendSendFailure(
+  messages: Message[],
+  clientMessageId: string,
+  content: string,
+  markClientMessageFailed: boolean,
+): Message[] {
+  let foundClientMessage = false;
+  let foundErrorMessage = false;
+
+  const next = messages.map(message => {
+    if (message.id === clientMessageId) {
+      foundClientMessage = true;
+      return markClientMessageFailed
+        ? { ...message, _pending: false, _failed: true }
+        : { ...message, _pending: false };
+    }
+    if (message.id === `${clientMessageId}-error`) foundErrorMessage = true;
+    return message;
+  });
+
+  if (!foundErrorMessage) {
+    const errorMessage = makeLocalErrorMessage(clientMessageId, content);
+    if (!foundClientMessage) return [...next, errorMessage];
+    const clientIndex = next.findIndex(message => message.id === clientMessageId);
+    return [
+      ...next.slice(0, clientIndex + 1),
+      errorMessage,
+      ...next.slice(clientIndex + 1),
+    ];
+  }
+
+  return next;
+}
+
+function extractApiErrorMessage(status: number, body: unknown, fallback: string): string {
+  const error = (body as { error?: { message?: unknown; code?: unknown } } | null)?.error;
+  if (typeof error?.message === "string" && error.message.trim()) return error.message;
+  if (typeof error?.code === "string" && error.code.trim()) return `${fallback} (${error.code})`;
+  return `${fallback} (${status})`;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -345,6 +400,7 @@ function MessageBubble({
   const sc = msg.structuredContent as Record<string, unknown> | null | undefined;
   const scType = sc?.type as string | undefined;
   const scData = sc?.data as Record<string, unknown> | undefined;
+  const isErrorMessage = msg.messageType === "error";
 
   // ── C3: Detect specialist update messages ──────────────────────────────────
   const isSpecialistUpdate = scType === "specialist_update" && scData?.isSpecialistUpdate === true;
@@ -385,7 +441,9 @@ function MessageBubble({
               ? msg._failed
                 ? "bg-red-900/30 text-[#E2E8F0] border border-red-500/40"
                 : "bg-[#00D4FF]/15 text-[#E2E8F0] border border-[#00D4FF]/20"
-              : "bg-[#112033] text-[#CBD5E1] border border-[#1E3A5F]"
+              : isErrorMessage
+                ? "bg-red-950/30 text-red-100 border border-red-500/40"
+                : "bg-[#112033] text-[#CBD5E1] border border-[#1E3A5F]"
           } ${msg._pending ? "opacity-60" : ""}`}
         >
           {msg.content}
@@ -625,10 +683,16 @@ export default function TaskWorkroomPage() {
   const abortRef = useRef<AbortController | null>(null);
 
   // Load workroom data
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError: isWorkroomLoadError, error: workroomLoadError, refetch } = useQuery({
     queryKey: ["workroom", slug, taskId],
-    queryFn: () =>
-      apiFetch(`/v1/organisations/${slug}/tasks/${taskId}/workroom`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await apiFetch(`/v1/organisations/${slug}/tasks/${taskId}/workroom`);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        throw new Error(extractApiErrorMessage(r.status, d, "Failed to load task workroom."));
+      }
+      return d;
+    },
     enabled: !!slug && !!taskId,
     refetchInterval: 15_000, // poll for execution updates
   });
@@ -692,9 +756,18 @@ export default function TaskWorkroomPage() {
         }
       );
 
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({})) as Record<string, unknown>;
+        const msg = extractApiErrorMessage(res.status, errBody, "The workforce could not process this message.");
+        setError(msg);
+        setMessages(prev => appendSendFailure(prev, clientId, msg, true));
+        return;
+      }
+
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let userMessageConfirmed = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -710,6 +783,7 @@ export default function TaskWorkroomPage() {
           if (evt.type === "token") {
             setStreamingText(prev => prev + (evt.content as string));
           } else if (evt.type === "user_message") {
+            userMessageConfirmed = true;
             // Reconcile: replace optimistic message with server-confirmed message.
             // Guard: if the background poll already injected this server ID into
             // state before the SSE event fires, do not duplicate it.
@@ -735,20 +809,23 @@ export default function TaskWorkroomPage() {
           } else if (evt.type === "done") {
             setIsStreaming(false);
           } else if (evt.type === "error") {
-            setError((evt.message as string) ?? "An error occurred.");
+            const msg = typeof evt.message === "string" && evt.message.trim()
+              ? evt.message
+              : "An error occurred.";
+            setError(msg);
             setStreamingText("");
-            setMessages(prev => prev.filter(m => m.id !== clientId));
+            setMessages(prev => appendSendFailure(prev, clientId, msg, !userMessageConfirmed));
           }
         }
       }
     } catch (e: any) {
       if (e?.name === "AbortError") {
-        setMessages(prev => prev.filter(m => m.id !== clientId));
+        const msg = "Response stopped before completion.";
+        setMessages(prev => appendSendFailure(prev, clientId, msg, false));
       } else {
-        setError("Failed to send message.");
-        setMessages(prev => prev.map(m =>
-          m.id === clientId ? { ...m, _pending: false, _failed: true } : m,
-        ));
+        const msg = "Failed to send message.";
+        setError(msg);
+        setMessages(prev => appendSendFailure(prev, clientId, msg, true));
       }
     } finally {
       setIsStreaming(false);
@@ -833,6 +910,24 @@ export default function TaskWorkroomPage() {
       <AppShell orgSlug={slug ?? ""}>
         <div className="flex items-center justify-center h-full">
           <p className="text-[#64748B] text-sm">Loading workroom…</p>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (isWorkroomLoadError) {
+    return (
+      <AppShell orgSlug={slug ?? ""}>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center max-w-sm">
+            <p className="text-[#E2E8F0] font-semibold">Could not load task workroom</p>
+            <p className="text-red-400 text-xs mt-2">
+              {workroomLoadError instanceof Error ? workroomLoadError.message : "Failed to load task workroom."}
+            </p>
+            <button onClick={() => void refetch()} className="mt-3 text-[#00D4FF] text-sm hover:underline">
+              Try again
+            </button>
+          </div>
         </div>
       </AppShell>
     );
