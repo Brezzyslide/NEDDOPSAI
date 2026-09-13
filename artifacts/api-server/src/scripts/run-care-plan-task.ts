@@ -16,6 +16,7 @@ const requesterRole = process.env.CARE_PLAN_REQUESTER_ROLE?.trim() || "owner";
 const title = process.env.CARE_PLAN_TITLE?.trim() || "Create participant-specific care plan";
 const userRequest = requiredEnv("CARE_PLAN_USER_REQUEST");
 const correlationId = process.env.CARE_PLAN_CORRELATION_ID?.trim() || `care-plan-${randomUUID()}`;
+let createdTaskId: string | null = null;
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -36,6 +37,7 @@ try {
     sourceUserRequest: userRequest,
     subjectParticipantIds: [participantId],
   });
+  createdTaskId = created.task.id;
 
   console.log(JSON.stringify({
     stage: "task_created",
@@ -138,9 +140,32 @@ try {
       : null,
   }));
 } catch (error) {
+  if (createdTaskId) {
+    try {
+      await reconcileTaskExecutionFailure({
+        taskId: createdTaskId,
+        organizationId,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        correlationId,
+        failureMetadata: {
+          runner: "run-care-plan-task",
+          stage: "fatal",
+        },
+      });
+    } catch (reconciliationError) {
+      console.error(JSON.stringify({
+        stage: "failure_reconciliation_failed",
+        taskId: createdTaskId,
+        error: reconciliationError instanceof Error ? reconciliationError.message : String(reconciliationError),
+      }));
+    }
+  }
+
   console.error(JSON.stringify({
     stage: "fatal",
+    taskId: createdTaskId,
     error: error instanceof Error ? error.message : String(error),
+    cause: error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined,
     stack: error instanceof Error ? error.stack : undefined,
   }));
   process.exitCode = 1;

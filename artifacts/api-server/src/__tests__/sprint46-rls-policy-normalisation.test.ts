@@ -472,4 +472,47 @@ describe("Sprint 46 RLS policy normalisation", () => {
     );
   });
 
+  it("registers execution runtime table grants after public task write restoration", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const executionRuntimeMigration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0059_execution_runtime_table_grants.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0059-execution-runtime-table-grants",
+        file: "0059_execution_runtime_table_grants.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0059-execution-runtime-table-grants")).toBe(
+      migrationIds.indexOf("0058-restore-public-task-subsystem-writes") + 1,
+    );
+
+    for (const table of [
+      "work_blueprints",
+      "blueprint_sections",
+      "blueprint_versions",
+      "work_templates",
+      "blueprint_intent_mappings",
+    ]) {
+      expect(executionRuntimeMigration).toContain(`public.${table}`);
+    }
+
+    for (const table of [
+      "work_package_manifests",
+      "completed_work",
+      "completed_work_versions",
+      "work_artifacts",
+      "execution_checkpoints",
+      "execution_actions",
+    ]) {
+      expect(executionRuntimeMigration).toContain(`public.${table}`);
+    }
+
+    expect(executionRuntimeMigration).not.toContain("org_database_registry");
+    expect(executionRuntimeMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE).*public\.org_audit_log/i);
+  });
+
 });

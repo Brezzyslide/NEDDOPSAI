@@ -35,6 +35,7 @@ class FakeMigrationClient implements MigrationDbClient {
     ["needsops_app cannot insert directly into shared org audit log", "false"],
     ["needsops_app cannot insert directly into legacy audit log", "false"],
     ["needsops_app can write public task subsystem under RLS", "true"],
+    ["needsops_app can access execution runtime tables under RLS", "true"],
     ["needsops_app can execute shared org audit writer", "true"],
     ["worker can execute shared org audit writer", "true"],
     ["public cannot execute shared org audit writer", "true"],
@@ -94,6 +95,9 @@ class FakeMigrationClient implements MigrationDbClient {
     }
     if (text.includes("has_table_privilege('needsops_app', 'public.tasks', 'INSERT')")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_app can write public task subsystem under RLS") }] as T[] };
+    }
+    if (text.includes("has_table_privilege('needsops_app', 'public.work_blueprints', 'SELECT')")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can access execution runtime tables under RLS") }] as T[] };
     }
     if (text.includes("has_function_privilege('needsops_app'") && text.includes("write_org_audit_event")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_app can execute shared org audit writer") }] as T[] };
@@ -341,6 +345,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0056-worker-ingestion-lease-reconciliation");
     expect(migrationIds).toContain("0057-shared-org-audit-event-function");
     expect(migrationIds).toContain("0058-restore-public-task-subsystem-writes");
+    expect(migrationIds).toContain("0059-execution-runtime-table-grants");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -365,6 +370,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds.indexOf("0058-restore-public-task-subsystem-writes")).toBe(
       migrationIds.indexOf("0057-shared-org-audit-event-function") + 1,
     );
+    expect(migrationIds.indexOf("0059-execution-runtime-table-grants")).toBe(
+      migrationIds.indexOf("0058-restore-public-task-subsystem-writes") + 1,
+    );
   });
 
   it("verifies worker membership and least-privilege column grants after migrations", async () => {
@@ -379,6 +387,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(client.queries.some((query) => query.text.includes("'public.org_audit_log', 'INSERT'"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("'public.audit_log', 'INSERT'"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("'public.tasks', 'INSERT'"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("'public.work_blueprints', 'SELECT'"))).toBe(true);
   });
 
   it("fails platform security verification when task subsystem writes are missing", async () => {
@@ -390,6 +399,18 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(result.passed).toBe(false);
     expect(result.failures).toContain(
       "needsops_app can write public task subsystem under RLS: expected true, got false",
+    );
+  });
+
+  it("fails platform security verification when execution runtime table grants are missing", async () => {
+    const client = new FakeMigrationClient();
+    client.platformSecurityValues.set("needsops_app can access execution runtime tables under RLS", "false");
+
+    const result = await verifyPlatformSecurityBaseline(client);
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain(
+      "needsops_app can access execution runtime tables under RLS: expected true, got false",
     );
   });
 

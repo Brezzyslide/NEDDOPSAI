@@ -234,6 +234,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Restores needsops_app task subsystem writes under public-table RLS until org-schema task routing is active.",
   },
+  {
+    id: "0059-execution-runtime-table-grants",
+    file: "0059_execution_runtime_table_grants.sql",
+    transactional: true,
+    notes: "Grants needsops_app access to RLS-protected blueprint and completed-work execution runtime tables.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -389,6 +395,27 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
         has_table_privilege('needsops_app', 'public.task_participants', 'INSERT') AND
         has_table_privilege('needsops_app', 'public.task_participants', 'UPDATE') AND
         has_table_privilege('needsops_app', 'public.task_participants', 'DELETE')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app can access execution runtime tables under RLS",
+    query: `
+      SELECT (
+        has_table_privilege('needsops_app', 'public.work_blueprints', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.blueprint_sections', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.blueprint_versions', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.work_templates', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.blueprint_intent_mappings', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.work_package_manifests', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.work_package_manifests', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.completed_work', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.completed_work', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.completed_work_versions', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.work_artifacts', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.execution_checkpoints', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.execution_actions', 'INSERT')
       )::text AS value
     `,
     expected: "true",
