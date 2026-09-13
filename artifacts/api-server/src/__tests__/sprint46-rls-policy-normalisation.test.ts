@@ -327,7 +327,7 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(reconciliationMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE)\s+ON\s+public\.ingestion_jobs\s+TO\s+needsops_worker_app/i);
   });
 
-  it("registers conditional legacy write restriction reconciliation after worker role reconciliation", () => {
+  it("keeps applied legacy write restriction reconciliation immutable after worker role reconciliation", () => {
     const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
     const reconciliationMigration = readFileSync(
       resolve(process.cwd(), "../../lib/db/migrations/0054_legacy_write_restriction_reconciliation.sql"),
@@ -351,12 +351,11 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(reconciliationMigration).toContain(
       "REVOKE INSERT, UPDATE, DELETE ON TABLE public.org_audit_log FROM needsops_app",
     );
-    expect(reconciliationMigration).toContain("app.enforce_legacy_public_task_write_restrictions");
-    expect(reconciliationMigration).toContain("EXISTS (SELECT 1 FROM public.org_database_registry LIMIT 1)");
-    expect(reconciliationMigration).toContain("org-schema task routing is not active");
     expect(reconciliationMigration).toContain(
       "REVOKE INSERT, UPDATE, DELETE ON TABLE public.tasks FROM needsops_app",
     );
+    expect(reconciliationMigration).not.toContain("app.enforce_legacy_public_task_write_restrictions");
+    expect(reconciliationMigration).not.toContain("org-schema task routing is not active");
   });
 
   it("defines worker-only bounded ingestion lease recovery function", () => {
