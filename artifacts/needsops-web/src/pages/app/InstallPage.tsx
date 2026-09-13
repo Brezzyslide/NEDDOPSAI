@@ -199,7 +199,7 @@ export default function InstallPage() {
   const isMobile = /Android|iPhone|iPad/.test(navigator.userAgent);
 
   return (
-    <AppShell>
+    <AppShell orgSlug={slug ?? ""}>
       <div className="max-w-2xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">

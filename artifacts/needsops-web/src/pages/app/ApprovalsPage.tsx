@@ -513,7 +513,10 @@ export default function ApprovalsPage() {
             method: "POST", body: JSON.stringify({ reason: comment }),
           }).catch(() => ({ ok: true })); // graceful if endpoint absent
         }
+        return { ok: true };
       }
+
+      return { ok: false };
     },
     onSuccess: () => {
       setModal(null);

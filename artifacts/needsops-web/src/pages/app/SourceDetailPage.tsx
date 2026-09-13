@@ -482,7 +482,7 @@ export default function SourceDetailPage() {
               {statusInfo.stage}
             </p>
           )}
-          {jobInfo && (
+          {jobInfo && job && (
             <div className={`mt-3 text-sm rounded-lg px-3 py-2 border ${jobInfo.badge}`}>
               <div className="font-medium">Processing: {jobInfo.label}</div>
               <div className="mt-0.5">{jobInfo.detail}</div>

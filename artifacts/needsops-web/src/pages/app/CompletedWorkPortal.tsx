@@ -343,7 +343,7 @@ export default function CompletedWorkPortal() {
 
   return (
     <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>
-      <AppShell>
+      <AppShell orgSlug={slug ?? ""}>
         <div className="min-h-full bg-[#0B1829] text-[#E2E8F0]">
           {/* ── Header ── */}
           <div className="sticky top-0 z-20 bg-[#0B1829] border-b border-[#1E3A5F] px-8 pt-6 pb-0">

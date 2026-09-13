@@ -27,6 +27,11 @@ type DuplicateWarning = {
 };
 
 const STATUS_OPTIONS = ["", "active", "inactive", "archived"] as const;
+type ParticipantStatusFilter = (typeof STATUS_OPTIONS)[number];
+
+function isParticipantStatusFilter(value: string): value is ParticipantStatusFilter {
+  return (STATUS_OPTIONS as readonly string[]).includes(value);
+}
 
 function sourceLabel(source: ParticipantSource) {
   return source.title || source.originalFileName || source.id;
@@ -38,7 +43,7 @@ export default function ParticipantsPage() {
   const qc = useQueryClient();
   const { isKnowledgeAdmin } = useOrgRole(slug);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("");
+  const [status, setStatus] = useState<ParticipantStatusFilter>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     displayName: "",
@@ -212,7 +217,10 @@ export default function ParticipantsPage() {
                   />
                   <select
                     value={status}
-                    onChange={event => setStatus(event.target.value)}
+                    onChange={event => {
+                      const nextStatus = event.target.value;
+                      if (isParticipantStatusFilter(nextStatus)) setStatus(nextStatus);
+                    }}
                     className="bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] outline-none focus:border-[#00D4FF]"
                   >
                     {STATUS_OPTIONS.map(option => (

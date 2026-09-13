@@ -571,7 +571,16 @@ export default function ExecutionInspectorPanel({
 
   const { data, isLoading, error } = useQuery<ExecutionInspection>({
     queryKey: ["execution-inspector", slug, completedWorkId ?? executionId],
-    queryFn: () => apiFetch(url!),
+    queryFn: async () => {
+      const response = await apiFetch(url!);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = (payload as { error?: { message?: string } })?.error?.message
+          ?? `Execution inspection request failed (${response.status}).`;
+        throw new Error(message);
+      }
+      return payload as ExecutionInspection;
+    },
     enabled: !!url && !!slug,
     retry: false,
   });

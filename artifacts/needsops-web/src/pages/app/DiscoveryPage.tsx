@@ -255,7 +255,7 @@ export default function DiscoveryPage() {
 
   if (completed) {
     return (
-      <AppShell>
+      <AppShell orgSlug={slug ?? ""}>
         <div className="max-w-lg mx-auto px-4 py-16 text-center">
           <div className="text-5xl mb-6">🎯</div>
           <h1 className="text-2xl font-bold text-[#E2E8F0] mb-3">Business Discovery complete!</h1>
@@ -274,7 +274,7 @@ export default function DiscoveryPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell orgSlug={slug ?? ""}>
       <div className="max-w-xl mx-auto px-4 py-8">
         {/* Progress */}
         <div className="mb-6">

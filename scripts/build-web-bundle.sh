@@ -33,4 +33,6 @@ if [[ -z "${VITE_CLERK_PUBLISHABLE_KEY:-}" ]]; then
   export VITE_CLERK_PUBLISHABLE_KEY
 fi
 
+pnpm exec tsc -b lib/api-client-react/tsconfig.json
+pnpm --dir artifacts/needsops-web typecheck
 pnpm --dir artifacts/needsops-web build
