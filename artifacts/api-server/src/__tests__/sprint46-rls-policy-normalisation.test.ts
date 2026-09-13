@@ -515,4 +515,28 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(executionRuntimeMigration).not.toMatch(/GRANT\s+(SELECT|UPDATE|INSERT|DELETE).*public\.org_audit_log/i);
   });
 
+  it("registers participant document category migration after execution runtime grants", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+    const migration = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0060_participant_document_categories.sql"),
+      "utf8",
+    );
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0060-participant-document-categories",
+        file: "0060_participant_document_categories.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0060-participant-document-categories")).toBe(
+      migrationIds.indexOf("0059-execution-runtime-table-grants") + 1,
+    );
+    expect(migration).toContain("document_category text");
+    expect(migration).toContain("knowledge_sources_document_category_check");
+    expect(migration).toContain("GRANT SELECT");
+    expect(migration).toContain("GRANT UPDATE");
+    expect(migration).toContain("hasBehaviourSupportPlan");
+  });
+
 });

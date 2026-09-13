@@ -25,6 +25,7 @@ interface KnowledgeSource {
   title: string;
   description?: string;
   sourceType: string;
+  documentCategory?: string | null;
   mimeType?: string;
   status: SourceStatus;
   authorityLevel: string;
@@ -156,6 +157,22 @@ const DOCUMENT_CATEGORIES = [
   { value: "operational_manual",      label: "Operational Manual" },
 ] as const;
 
+const PARTICIPANT_DOCUMENT_CATEGORIES = [
+  { value: "care_plan",                          label: "Care Plan" },
+  { value: "health_support_plan",                label: "Health Support Plan" },
+  { value: "behaviour_support_plan",             label: "Behaviour Support Plan" },
+  { value: "risk_assessment",                    label: "Risk Assessment" },
+  { value: "restrictive_practice_authorisation", label: "Restrictive Practice Authorisation" },
+  { value: "ndis_plan",                          label: "NDIS Plan" },
+  { value: "strengths_based_questionnaire",      label: "Strengths-Based Questionnaire" },
+  { value: "intake_form",                        label: "Intake Form" },
+  { value: "service_agreement",                  label: "Service Agreement" },
+  { value: "mealtime_management_risk_assessment", label: "Mealtime Risk Assessment" },
+  { value: "allied_health_report",               label: "Allied Health Report" },
+  { value: "home_safety_checklist",              label: "Home Safety Checklist" },
+  { value: "other_participant_document",         label: "Other Participant Document" },
+] as const;
+
 const AUTHORITY_OPTIONS = [
   { value: "mandatory",       label: "Required reading — all specialists must follow" },
   { value: "authoritative",   label: "Authoritative — primary reference" },
@@ -186,7 +203,7 @@ const SENSITIVITY_SHORT: Record<string, string> = {
 };
 
 const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
-  DOCUMENT_CATEGORIES.map(c => [c.value, c.label]),
+  [...DOCUMENT_CATEGORIES, ...PARTICIPANT_DOCUMENT_CATEGORIES].map(c => [c.value, c.label]),
 );
 
 
@@ -224,6 +241,8 @@ interface UploadState {
   title:        string;
   description:  string;
   category:     string;
+  documentCategory: string;
+  documentCategorySuggested: string;
   scope:        string;  // "organisation:all" | "workforce:all"
   participantId: string;
   authorityLevel:           string;
@@ -234,7 +253,7 @@ interface UploadState {
 
 const INITIAL_UPLOAD: UploadState = {
   file: null, title: "", description: "",
-  category: "policy", scope: "organisation:all", participantId: "",
+  category: "policy", documentCategory: "", documentCategorySuggested: "", scope: "organisation:all", participantId: "",
   authorityLevel: "supporting", sensitivityClassification: "internal",
   versionLabel: "", effectiveFrom: "",
 };
@@ -352,7 +371,9 @@ export default function OrgLibraryPage() {
     1: !!upload.file,
     2: upload.title.trim().length > 0,
     3: upload.category.length > 0,
-    4: upload.category === "participant_document" ? upload.participantId.length > 0 : upload.scope.length > 0,
+    4: upload.category === "participant_document"
+      ? upload.participantId.length > 0 && upload.documentCategory.length > 0
+      : upload.scope.length > 0,
     5: true,
     6: true,
   };
@@ -416,6 +437,10 @@ export default function OrgLibraryPage() {
             title:                    upload.title.trim(),
             description:              upload.description.trim() || undefined,
             sourceType:               upload.category,
+            documentCategory:          isParticipantDocumentUpload ? upload.documentCategory : undefined,
+            documentCategorySuggested: isParticipantDocumentUpload && upload.documentCategorySuggested
+              ? upload.documentCategorySuggested
+              : undefined,
             storageKey,
             storageProvider,
             originalFileName,
@@ -584,6 +609,11 @@ export default function OrgLibraryPage() {
                       <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
                         {CATEGORY_LABELS[source.sourceType] ?? source.sourceType}
                       </span>
+                      {source.documentCategory && (
+                        <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
+                          {CATEGORY_LABELS[source.documentCategory] ?? source.documentCategory}
+                        </span>
+                      )}
                       <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
                         {AUTHORITY_SHORT[source.authorityLevel] ?? source.authorityLevel}
                       </span>
@@ -790,6 +820,8 @@ export default function OrgLibraryPage() {
                         onClick={() => setUpload(p => ({
                           ...p,
                           category: cat.value,
+                          documentCategory: cat.value === "participant_document" ? p.documentCategory : "",
+                          documentCategorySuggested: cat.value === "participant_document" ? p.documentCategorySuggested : "",
                           scope: cat.value === "participant_document" ? "" : p.scope || INITIAL_UPLOAD.scope,
                           participantId: cat.value === "participant_document" ? p.participantId : "",
                         }))}
@@ -816,6 +848,30 @@ export default function OrgLibraryPage() {
                   </p>
                   {upload.category === "participant_document" ? (
                     <div className="space-y-3">
+                      <div>
+                        <label className="text-sm font-medium text-slate-700 mb-2 block">
+                          Participant document kind <span className="text-red-400">*</span>
+                        </label>
+                        {upload.documentCategorySuggested && (
+                          <p className="text-xs text-slate-500 mb-2">
+                            Suggested: {CATEGORY_LABELS[upload.documentCategorySuggested] ?? upload.documentCategorySuggested}. Please choose the correct category.
+                          </p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {PARTICIPANT_DOCUMENT_CATEGORIES.map(cat => (
+                            <button
+                              key={cat.value}
+                              onClick={() => setUpload(p => ({ ...p, documentCategory: cat.value }))}
+                              className={`px-3 py-2 rounded-lg border text-sm text-left transition-colors ${
+                                upload.documentCategory === cat.value
+                                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 font-medium"
+                                  : "border-slate-200 text-slate-600 hover:border-indigo-200 hover:bg-indigo-50/30"
+                              }`}>
+                              {cat.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       {participantsQuery.isLoading && (
                         <div className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-500">
                           Loading participants...
@@ -923,6 +979,12 @@ export default function OrgLibraryPage() {
                       <span className="text-slate-500">Category</span>
                       <span className="text-slate-900 font-medium">{CATEGORY_LABELS[upload.category] ?? upload.category}</span>
                     </div>
+                    {upload.category === "participant_document" && (
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Document kind</span>
+                        <span className="text-slate-900 font-medium">{CATEGORY_LABELS[upload.documentCategory] ?? "Not selected"}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-slate-500">Scope</span>
                       <span className="text-slate-900 font-medium">

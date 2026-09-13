@@ -87,6 +87,8 @@ export interface EvidenceChunk {
   versionLabel: string | null;
   /** Drizzle sourceType: "policy" | "legislation" | "procedure" | etc. */
   sourceType: string;
+  /** Uploader-selected professional document category, where applicable. */
+  documentCategory?: string | null;
   /** Authority level of the source: "mandatory" | "primary" | "supporting" | "reference" */
   authorityLevel: string;
   /** Section heading within the document (null if not parsed) */
@@ -327,6 +329,7 @@ function mapRawChunk(
     sourceTitle:     chunk.sourceTitle,
     versionLabel,
     sourceType:      chunk.sourceScope === "task" ? "task_upload" : "library",
+    documentCategory: chunk.documentCategory ?? null,
     authorityLevel:  chunk.authorityLevel,
     sectionTitle:    chunk.sectionTitle,
     pageNumber:      chunk.pageNumber,
@@ -367,6 +370,7 @@ interface TaskUploadChunkRow {
   pageNumber: number | null;
   text: string;
   tokenCount: number | null;
+  documentCategory: string | null;
 }
 
 async function retrieveTaskUploadChunks(
@@ -388,11 +392,14 @@ async function retrieveTaskUploadChunks(
         pageNumber:       knowledgeChunksTable.pageNumber,
         text:             knowledgeChunksTable.text,
         tokenCount:       knowledgeChunksTable.tokenCount,
+        documentCategory: knowledgeSourcesTable.documentCategory,
       })
       .from(knowledgeChunksTable)
+      .innerJoin(knowledgeSourcesTable, eq(knowledgeSourcesTable.id, knowledgeChunksTable.knowledgeSourceId))
       .where(
         and(
           eq(knowledgeChunksTable.organizationId, organisationId),
+          eq(knowledgeSourcesTable.organizationId, organisationId),
           inArray(knowledgeChunksTable.knowledgeSourceId, sourceIds),
         )
       )
@@ -406,7 +413,7 @@ async function retrieveTaskUploadChunks(
 async function getVersionLabels(
   sourceVersionIds: string[],
   organisationId: string,
-): Promise<Map<string, string>> {
+): Promise<Map<string, { sourceType: string; documentCategory: string | null }>> {
   if (sourceVersionIds.length === 0) return new Map();
 
   const rows = await withSystemTenantContext(
@@ -441,8 +448,9 @@ async function getSourceTypes(
     { tenantId: organisationId, serviceIdentity: "knowledge_resolution_service", purpose: "krs.source_types" },
     (client) => client
       .select({
-        id:         knowledgeSourcesTable.id,
-        sourceType: knowledgeSourcesTable.sourceType,
+        id:               knowledgeSourcesTable.id,
+        sourceType:       knowledgeSourcesTable.sourceType,
+        documentCategory: knowledgeSourcesTable.documentCategory,
       })
       .from(knowledgeSourcesTable)
       .where(
@@ -454,7 +462,10 @@ async function getSourceTypes(
       .limit(200), // safety cap; source IDs are always bounded by MAX_LIBRARY_CHUNKS
   );
 
-  return new Map(rows.map(r => [r.id, r.sourceType]));
+  return new Map(rows.map(r => [r.id, {
+    sourceType: r.sourceType,
+    documentCategory: r.documentCategory ?? null,
+  }]));
 }
 
 // ─── Pack builder ─────────────────────────────────────────────────────────────
@@ -573,8 +584,11 @@ export async function resolveEvidence(
       const librarySourceIds = [...new Set(allEvidenceChunks.map(c => c.sourceId))];
       const typeMap = await getSourceTypes(librarySourceIds, organisationId);
       for (const c of allEvidenceChunks) {
-        const st = typeMap.get(c.sourceId);
-        if (st) c.sourceType = st;
+        const sourceMeta = typeMap.get(c.sourceId);
+        if (sourceMeta) {
+          c.sourceType = sourceMeta.sourceType;
+          c.documentCategory = sourceMeta.documentCategory;
+        }
       }
     }
   }
@@ -665,6 +679,7 @@ export async function resolveEvidence(
         sourceTitle:     titleMap.get(row.knowledgeSourceId) ?? "Task Upload",
         versionLabel:    vLabel,
         sourceType:      "task_upload",
+        documentCategory: row.documentCategory ?? null,
         authorityLevel:  "reference",
         sectionTitle:    row.sectionTitle,
         pageNumber:      row.pageNumber,
@@ -996,8 +1011,11 @@ export async function resolveConversationEvidence(input: {
     const sourceIds = [...new Set(allEvidenceChunks.map(c => c.sourceId))];
     const typeMap = await getSourceTypes(sourceIds, organisationId);
     for (const c of allEvidenceChunks) {
-      const st = typeMap.get(c.sourceId);
-      if (st) c.sourceType = st;
+      const sourceMeta = typeMap.get(c.sourceId);
+      if (sourceMeta) {
+        c.sourceType = sourceMeta.sourceType;
+        c.documentCategory = sourceMeta.documentCategory;
+      }
     }
   }
 
@@ -1053,6 +1071,7 @@ export function buildCitationSummary(pack: EvidencePack): Record<string, unknown
     sourceTitle:   c.sourceTitle,
     versionLabel:  c.versionLabel,
     sourceType:    c.sourceType,
+    documentCategory: c.documentCategory ?? null,
     authorityLevel: c.authorityLevel,
     citation:      c.citation,
     confidence:    c.confidence,

@@ -23,6 +23,9 @@
 
 import {
   canonicaliseSourceType,
+  canonicaliseDocumentCategory,
+  documentCategoryDisplayLabel,
+  isKnownDocumentCategory,
   sourceTypeDisplayLabel,
   isTrustedProviderSource,
 } from "../utils/sourceTypeNormalisation.js";
@@ -102,6 +105,11 @@ export interface ValidationResult {
 export interface WorkPackageValidationOptions {
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
   participantSpecificMode?: boolean;
+  participantSupportProfile?: {
+    hasBehaviourSupportPlan?: boolean | null;
+    hasRestrictivePractices?: boolean | null;
+    receivesHealthSupport?: boolean | null;
+  } | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -111,6 +119,75 @@ export interface WorkPackageValidationOptions {
  * Chunks below this threshold are retrieved but not relied upon for compliance.
  */
 const MIN_REQUIRED_EVIDENCE_CONFIDENCE = 0.25;
+
+interface LibraryRequirementResolution {
+  skip: boolean;
+  required: boolean;
+  documentCategory: string | null;
+  displayLabel: string;
+  reason: string;
+}
+
+function resolveLibraryKnowledgeRequirement(input: {
+  blueprintCode?: string | null;
+  rawType: string;
+  participantSpecificMode: boolean;
+  participantSupportProfile?: WorkPackageValidationOptions["participantSupportProfile"];
+}): LibraryRequirementResolution {
+  const canonical = canonicaliseSourceType(input.rawType);
+  const documentCategory = isKnownDocumentCategory(input.rawType)
+    ? canonicaliseDocumentCategory(input.rawType)
+    : "";
+  const carePlan = input.blueprintCode === "care_plan";
+  const support = input.participantSupportProfile ?? {};
+
+  if (carePlan && input.participantSpecificMode) {
+    if (canonical === "care_plan") {
+      return {
+        skip: true,
+        required: false,
+        documentCategory: null,
+        displayLabel: documentCategoryDisplayLabel(canonical),
+        reason: "Existing care plans are evidence for review/update work, not mandatory for creating a first care plan.",
+      };
+    }
+    if (canonical === "behaviour_support_plan" && support.hasBehaviourSupportPlan !== true) {
+      return {
+        skip: true,
+        required: false,
+        documentCategory: null,
+        displayLabel: documentCategoryDisplayLabel(canonical),
+        reason: "Behaviour support plan is required only when the participant record says one applies.",
+      };
+    }
+    if (canonical === "health_support_plan" && support.receivesHealthSupport !== true) {
+      return {
+        skip: true,
+        required: false,
+        documentCategory: null,
+        displayLabel: documentCategoryDisplayLabel(canonical),
+        reason: "Health support plan is required only when the participant record says health support applies.",
+      };
+    }
+    if (canonical === "restrictive_practice_authorisation" && support.hasRestrictivePractices !== true) {
+      return {
+        skip: true,
+        required: false,
+        documentCategory: null,
+        displayLabel: documentCategoryDisplayLabel(canonical),
+        reason: "Restrictive practice authorisation is required only when the participant record says restrictive practices apply.",
+      };
+    }
+  }
+
+  return {
+    skip: false,
+    required: true,
+    documentCategory: documentCategory || null,
+    displayLabel: documentCategory ? documentCategoryDisplayLabel(documentCategory) : sourceTypeDisplayLabel(canonical),
+    reason: `Blueprint recommends a ${documentCategory ? documentCategoryDisplayLabel(documentCategory) : sourceTypeDisplayLabel(canonical)} for this type of work`,
+  };
+}
 
 // ─── Validation ───────────────────────────────────────────────────────────────
 
@@ -141,11 +218,16 @@ export function validateWorkPackage(
   // Separate: all retrieved types (for warnings) vs high-confidence types (for required rules)
   const retrievedAllTypes = new Set<string>();
   const retrievedHighConfTypes = new Set<string>();
+  const retrievedAllDocumentCategories = new Set<string>();
 
   if (evidencePack) {
     for (const chunk of evidencePack.chunks) {
       const canonical = canonicaliseSourceType(chunk.sourceType);
       retrievedAllTypes.add(canonical);
+      const category = isKnownDocumentCategory(chunk.documentCategory)
+        ? canonicaliseDocumentCategory(chunk.documentCategory)
+        : "";
+      if (category) retrievedAllDocumentCategories.add(category);
       if (chunk.confidence >= MIN_REQUIRED_EVIDENCE_CONFIDENCE) {
         retrievedHighConfTypes.add(canonical);
       }
@@ -155,6 +237,10 @@ export function validateWorkPackage(
       const canonical = canonicaliseSourceType(upload.sourceType);
       retrievedAllTypes.add(canonical);
       retrievedHighConfTypes.add(canonical); // uploads are always directly relevant
+      const category = isKnownDocumentCategory((upload as any).documentCategory)
+        ? canonicaliseDocumentCategory((upload as any).documentCategory)
+        : "";
+      if (category) retrievedAllDocumentCategories.add(category);
     }
   } else {
     // Legacy / ad-hoc fallback: use manifest source-type metadata
@@ -162,11 +248,19 @@ export function validateWorkPackage(
       const canonical = canonicaliseSourceType(src.sourceType);
       retrievedAllTypes.add(canonical);
       retrievedHighConfTypes.add(canonical);
+      const category = isKnownDocumentCategory((src as any).documentCategory)
+        ? canonicaliseDocumentCategory((src as any).documentCategory)
+        : "";
+      if (category) retrievedAllDocumentCategories.add(category);
     }
     for (const upload of manifest.taskUploads) {
       const canonical = canonicaliseSourceType(upload.sourceType);
       retrievedAllTypes.add(canonical);
       retrievedHighConfTypes.add(canonical);
+      const category = isKnownDocumentCategory((upload as any).documentCategory)
+        ? canonicaliseDocumentCategory((upload as any).documentCategory)
+        : "";
+      if (category) retrievedAllDocumentCategories.add(category);
     }
   }
 
@@ -289,9 +383,19 @@ export function validateWorkPackage(
   // warnings. Participant-specific work treats declared evidence as blocking.
   for (const rawType of blueprint.requiredLibraryKnowledge) {
     const canonical = canonicaliseSourceType(rawType);
-    if (!retrievedAllTypes.has(canonical)) {
+    const requirement = resolveLibraryKnowledgeRequirement({
+      blueprintCode: blueprint.code,
+      rawType,
+      participantSpecificMode,
+      participantSupportProfile: options.participantSupportProfile ?? null,
+    });
+    if (requirement.skip) continue;
+    const matched = requirement.documentCategory
+      ? retrievedAllDocumentCategories.has(requirement.documentCategory)
+      : retrievedAllTypes.has(canonical);
+    if (!matched) {
       const isTrusted = isTrustedProviderSource(canonical);
-      const effectiveRequired = participantSpecificMode && !isTrusted;
+      const effectiveRequired = participantSpecificMode && requirement.required && !isTrusted;
       const searchOutcome = isTrusted
         ? "trusted_source_unavailable"
         : evidenceSearched
@@ -305,16 +409,16 @@ export function validateWorkPackage(
         message: isTrusted
           ? `${sourceTypeDisplayLabel(canonical)} is sourced by the platform — retrieval not yet available for this work type`
           : evidenceSearched
-          ? `Searched Organisation Library but could not locate a current ${sourceTypeDisplayLabel(canonical)}`
-          : `No ${sourceTypeDisplayLabel(canonical)} documents found in Organisation Library`,
-        details: [sourceTypeDisplayLabel(canonical)],
+          ? `Searched Organisation Library but could not locate a current ${requirement.displayLabel}`
+          : `No ${requirement.displayLabel} documents found in Organisation Library`,
+        details: [requirement.displayLabel],
       });
 
       upsertMissing({
-        canonicalType: canonical,
-        displayLabel: sourceTypeDisplayLabel(canonical),
+        canonicalType: requirement.documentCategory ?? canonical,
+        displayLabel: requirement.displayLabel,
         required: effectiveRequired,
-        reason: `Blueprint recommends a ${sourceTypeDisplayLabel(canonical)} for this type of work`,
+        reason: requirement.reason,
         searched: evidenceSearched,
         searchOutcome,
         suggestedAction,

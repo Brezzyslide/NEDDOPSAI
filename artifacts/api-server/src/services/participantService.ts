@@ -28,7 +28,16 @@ export interface ParticipantInput {
   preferredName?: string | null;
   externalParticipantId?: string | null;
   status?: ParticipantStatus;
+  supportProfile?: ParticipantSupportProfileInput | null;
 }
+
+export interface ParticipantSupportProfile {
+  hasBehaviourSupportPlan: boolean | null;
+  hasRestrictivePractices: boolean | null;
+  receivesHealthSupport: boolean | null;
+}
+
+export type ParticipantSupportProfileInput = Partial<ParticipantSupportProfile>;
 
 export interface ParticipantSearchResult {
   participant: Participant;
@@ -64,6 +73,47 @@ function normalizeStatus(value: unknown): ParticipantStatus {
     : "active";
 }
 
+function normalizeOptionalBoolean(value: unknown): boolean | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const lower = value.trim().toLowerCase();
+    if (lower === "true") return true;
+    if (lower === "false") return false;
+  }
+  return null;
+}
+
+export function normalizeParticipantSupportProfile(
+  raw: unknown,
+): ParticipantSupportProfile {
+  const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  return {
+    hasBehaviourSupportPlan: normalizeOptionalBoolean(value.hasBehaviourSupportPlan) ?? null,
+    hasRestrictivePractices: normalizeOptionalBoolean(value.hasRestrictivePractices) ?? null,
+    receivesHealthSupport: normalizeOptionalBoolean(value.receivesHealthSupport) ?? null,
+  };
+}
+
+function mergeSupportProfile(
+  existingMetadata: unknown,
+  input: ParticipantSupportProfileInput | null | undefined,
+): Record<string, unknown> | undefined {
+  if (input === undefined) return undefined;
+  const metadata = existingMetadata && typeof existingMetadata === "object"
+    ? { ...(existingMetadata as Record<string, unknown>) }
+    : {};
+  const existing = normalizeParticipantSupportProfile(metadata.supportProfile);
+  metadata.supportProfile = {
+    ...existing,
+    hasBehaviourSupportPlan: normalizeOptionalBoolean(input?.hasBehaviourSupportPlan) ?? existing.hasBehaviourSupportPlan,
+    hasRestrictivePractices: normalizeOptionalBoolean(input?.hasRestrictivePractices) ?? existing.hasRestrictivePractices,
+    receivesHealthSupport: normalizeOptionalBoolean(input?.receivesHealthSupport) ?? existing.receivesHealthSupport,
+  };
+  return metadata;
+}
+
 function normalizeLimit(value: unknown): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 25;
@@ -86,6 +136,7 @@ function assertParticipantInput(input: ParticipantInput): Required<ParticipantIn
     preferredName: cleanText(input.preferredName),
     externalParticipantId: cleanText(input.externalParticipantId),
     status: normalizeStatus(input.status),
+    supportProfile: normalizeParticipantSupportProfile(input.supportProfile),
   };
 }
 
@@ -116,6 +167,7 @@ export async function createParticipant(
         preferredName: values.preferredName,
         externalParticipantId: values.externalParticipantId,
         status: values.status,
+        metadata: { supportProfile: values.supportProfile },
         updatedAt: new Date(),
       })
       .returning();
@@ -267,6 +319,21 @@ export async function updateParticipant(
   input: Partial<ParticipantInput>,
 ): Promise<Participant> {
   return withParticipantTenant(organizationId, "participant.update", async (client) => {
+  let existingMetadata: unknown = undefined;
+  if (input.supportProfile !== undefined) {
+    const [existing] = await client
+      .select({ metadata: participantsTable.metadata })
+      .from(participantsTable)
+      .where(and(
+        eq(participantsTable.id, participantId),
+        eq(participantsTable.organizationId, organizationId),
+        isNull(participantsTable.deletedAt),
+      ))
+      .limit(1);
+    if (!existing) throw new ParticipantServiceError("Participant not found.", "NOT_FOUND");
+    existingMetadata = existing.metadata;
+  }
+
   const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (input.displayName !== undefined) {
     const displayName = cleanText(input.displayName);
@@ -278,6 +345,9 @@ export async function updateParticipant(
   if (input.preferredName !== undefined) patch.preferredName = cleanText(input.preferredName);
   if (input.externalParticipantId !== undefined) patch.externalParticipantId = cleanText(input.externalParticipantId);
   if (input.status !== undefined) patch.status = normalizeStatus(input.status);
+  if (input.supportProfile !== undefined) {
+    patch.metadata = mergeSupportProfile(existingMetadata, input.supportProfile);
+  }
 
   let updated: Participant | undefined;
   try {

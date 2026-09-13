@@ -240,6 +240,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Grants needsops_app access to RLS-protected blueprint and completed-work execution runtime tables.",
   },
+  {
+    id: "0060-participant-document-categories",
+    file: "0060_participant_document_categories.sql",
+    transactional: true,
+    notes: "Adds uploader-selected participant document categories and backfills Micheal/MR evidence categories and support flags.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -416,6 +422,20 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
         has_table_privilege('needsops_app', 'public.work_artifacts', 'INSERT') AND
         has_table_privilege('needsops_app', 'public.execution_checkpoints', 'INSERT') AND
         has_table_privilege('needsops_app', 'public.execution_actions', 'INSERT')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app can read/write participant document categories",
+    query: `
+      SELECT (
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category', 'UPDATE') AND
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category_suggested', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category_suggested', 'UPDATE') AND
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category_matched_suggestion', 'SELECT') AND
+        has_column_privilege('needsops_app', 'public.knowledge_sources', 'document_category_matched_suggestion', 'UPDATE')
       )::text AS value
     `,
     expected: "true",

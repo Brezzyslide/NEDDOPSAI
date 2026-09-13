@@ -20,6 +20,10 @@ import {
   participantNameSimilarity,
   PICKER_FUZZY_THRESHOLD,
 } from "./participantMatchingService.js";
+import {
+  normalizeParticipantSupportProfile,
+  type ParticipantSupportProfile,
+} from "./participantService.js";
 
 export type TaskParticipantRole = "subject" | "related" | "guardian_context";
 const SELECTABLE_PARTICIPANT_STATUSES = ["active", "inactive"] as const;
@@ -514,4 +518,41 @@ export async function getRetrievalSubjectParticipantIdsForTask(
   return deriveRetrievalEntityIdsFromTaskParticipants(
     await getTaskParticipantBindings(organizationId, taskId),
   );
+}
+
+function combineBoolean(values: Array<boolean | null>): boolean | null {
+  if (values.some(value => value === true)) return true;
+  if (values.length > 0 && values.every(value => value === false)) return false;
+  return null;
+}
+
+export async function getSubjectParticipantSupportProfileForTask(
+  organizationId: string,
+  taskId: string,
+): Promise<ParticipantSupportProfile | null> {
+  return withTaskParticipantTenant(organizationId, "task_participant.support_profile.get", async (client) => {
+    const rows = await client
+      .select({
+        metadata: participantsTable.metadata,
+      })
+      .from(taskParticipantsTable)
+      .innerJoin(participantsTable, eq(participantsTable.id, taskParticipantsTable.participantId))
+      .where(and(
+        eq(taskParticipantsTable.organizationId, organizationId),
+        eq(taskParticipantsTable.taskId, taskId),
+        eq(taskParticipantsTable.role, "subject"),
+        eq(participantsTable.organizationId, organizationId),
+        isNull(participantsTable.deletedAt),
+      ));
+
+    if (rows.length === 0) return null;
+    const profiles = rows.map(row => normalizeParticipantSupportProfile(
+      (row.metadata as Record<string, unknown> | null | undefined)?.supportProfile,
+    ));
+    return {
+      hasBehaviourSupportPlan: combineBoolean(profiles.map(profile => profile.hasBehaviourSupportPlan)),
+      hasRestrictivePractices: combineBoolean(profiles.map(profile => profile.hasRestrictivePractices)),
+      receivesHealthSupport: combineBoolean(profiles.map(profile => profile.receivesHealthSupport)),
+    };
+  });
 }

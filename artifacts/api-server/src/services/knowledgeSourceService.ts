@@ -56,6 +56,10 @@ import { eq, and, desc, inArray, isNull, ne, not } from "drizzle-orm";
 import { logOrgEvent } from "./auditService.js";
 import { enqueueCurationJobAsync } from "./knowledgeCurationService.js";
 import { getIngestionQueue } from "../lib/ingestionQueue/index.js";
+import {
+  canonicaliseDocumentCategory,
+  isKnownDocumentCategory,
+} from "../utils/sourceTypeNormalisation.js";
 
 type DbClient = typeof db;
 
@@ -70,6 +74,9 @@ export interface CompleteUploadInput {
   title: string;
   description?: string;
   sourceType: string;
+  documentCategory?: string | null;
+  documentCategorySuggested?: string | null;
+  documentCategorySuggestionConfidence?: string | null;
   language?: string;
   authorityLevel?: string;
   sensitivityClassification?: string;
@@ -93,6 +100,9 @@ export interface UpdateSourceMetadataInput {
   title?: string;
   description?: string;
   sourceType?: string;
+  documentCategory?: string | null;
+  documentCategorySuggested?: string | null;
+  documentCategorySuggestionConfidence?: string | null;
   language?: string;
   authorityLevel?: string;
   sensitivityClassification?: string;
@@ -141,6 +151,38 @@ function validateSourceType(t: string): void {
       "INVALID_SOURCE_TYPE",
     );
   }
+}
+
+function normalizeDocumentCategory(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const canonical = canonicaliseDocumentCategory(String(value));
+  if (!isKnownDocumentCategory(canonical)) {
+    throw new KnowledgeSourceError("Unsupported document category.", "INVALID_DOCUMENT_CATEGORY");
+  }
+  return canonical;
+}
+
+function resolveDocumentCategory(input: {
+  sourceType: string;
+  documentCategory?: string | null;
+  documentCategorySuggested?: string | null;
+}): {
+  documentCategory: string | null;
+  documentCategorySuggested: string | null;
+  documentCategoryMatchedSuggestion: boolean | null;
+} {
+  const documentCategory = normalizeDocumentCategory(input.documentCategory);
+  const documentCategorySuggested = normalizeDocumentCategory(input.documentCategorySuggested);
+  if (input.sourceType === "participant_document" && !documentCategory) {
+    throw new KnowledgeSourceError("Participant documents require a document category.", "DOCUMENT_CATEGORY_REQUIRED");
+  }
+  return {
+    documentCategory,
+    documentCategorySuggested,
+    documentCategoryMatchedSuggestion: documentCategory && documentCategorySuggested
+      ? documentCategory === documentCategorySuggested
+      : null,
+  };
 }
 
 function validateScopeType(t: string): void {
@@ -233,6 +275,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   return withKnowledgeSourceTenant(input.organizationId, "knowledge_source.complete_upload", async (client) => {
   // Validate inputs
   validateSourceType(input.sourceType);
+  const category = resolveDocumentCategory(input);
 
   const authorityLevel = KNOWLEDGE_AUTHORITY_LEVELS.includes(input.authorityLevel as never)
     ? input.authorityLevel!
@@ -281,6 +324,12 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
       title: input.title.trim().slice(0, 500),
       description: input.description?.trim().slice(0, 2000) ?? null,
       sourceType: input.sourceType,
+      documentCategory: category.documentCategory,
+      documentCategorySuggested: category.documentCategorySuggested,
+      documentCategorySuggestionConfidence: input.documentCategorySuggestionConfidence ?? null,
+      documentCategoryConfirmedByUserId: category.documentCategory ? input.uploadedByUserId : null,
+      documentCategoryConfirmedAt: category.documentCategory ? new Date() : null,
+      documentCategoryMatchedSuggestion: category.documentCategoryMatchedSuggestion,
       originalFileName: input.originalFileName,
       mimeType: input.mimeType,
       storageProvider: input.storageProvider,
@@ -446,12 +495,36 @@ export async function updateSourceMetadata(
   }
 
   if (input.sourceType) validateSourceType(input.sourceType);
+  const nextSourceType = input.sourceType ?? source.sourceType;
 
   const updates: Partial<KnowledgeSource> = { updatedAt: new Date() };
   if (input.title) updates.title = input.title.trim().slice(0, 500);
   if (input.description !== undefined)
     updates.description = input.description?.trim().slice(0, 2000) ?? null;
   if (input.sourceType) updates.sourceType = input.sourceType;
+  if (
+    input.documentCategory !== undefined ||
+    input.documentCategorySuggested !== undefined ||
+    input.sourceType !== undefined
+  ) {
+    const category = resolveDocumentCategory({
+      sourceType: nextSourceType,
+      documentCategory: input.documentCategory !== undefined
+        ? input.documentCategory
+        : source.documentCategory,
+      documentCategorySuggested: input.documentCategorySuggested !== undefined
+        ? input.documentCategorySuggested
+        : source.documentCategorySuggested,
+    });
+    updates.documentCategory = category.documentCategory;
+    updates.documentCategorySuggested = category.documentCategorySuggested;
+    updates.documentCategorySuggestionConfidence = input.documentCategorySuggestionConfidence !== undefined
+      ? input.documentCategorySuggestionConfidence
+      : source.documentCategorySuggestionConfidence;
+    updates.documentCategoryConfirmedByUserId = category.documentCategory ? actorUserId : null;
+    updates.documentCategoryConfirmedAt = category.documentCategory ? new Date() : null;
+    updates.documentCategoryMatchedSuggestion = category.documentCategoryMatchedSuggestion;
+  }
   if (input.language) updates.language = input.language;
   if (input.authorityLevel && KNOWLEDGE_AUTHORITY_LEVELS.includes(input.authorityLevel as never))
     updates.authorityLevel = input.authorityLevel;

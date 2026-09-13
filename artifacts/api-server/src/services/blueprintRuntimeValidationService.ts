@@ -1216,16 +1216,15 @@ function hasEvidenceCategory(
   const lower = category.toLowerCase();
   return evidencePack.chunks.some((chunk) => {
     const sourceType = chunk.sourceType?.toLowerCase?.() ?? "";
-    const sourceTitle = chunk.sourceTitle?.toLowerCase?.() ?? "";
+    const documentCategory = chunk.documentCategory?.toLowerCase?.() ?? "";
     const currentAuthorityEvidence = isCustomerTemplateOptional(context) &&
       isAuthoritativeEvidenceCategory(category) &&
       (
         sourceType.includes("current_authority") ||
-        sourceTitle.includes("current_authority") ||
         chunk.provenance?.sourceOrigin === "external_authority"
       );
     if (currentAuthorityEvidence) return true;
-    return sourceType === lower || sourceType.includes(lower) || sourceTitle.includes(lower);
+    return sourceType === lower || documentCategory === lower;
   });
 }
 

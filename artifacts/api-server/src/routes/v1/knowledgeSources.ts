@@ -253,6 +253,11 @@ router.post(
         title: String(body.title),
         description: body.description ? String(body.description) : undefined,
         sourceType: String(body.sourceType),
+        documentCategory: body.documentCategory ? String(body.documentCategory) : undefined,
+        documentCategorySuggested: body.documentCategorySuggested ? String(body.documentCategorySuggested) : undefined,
+        documentCategorySuggestionConfidence: body.documentCategorySuggestionConfidence
+          ? String(body.documentCategorySuggestionConfidence)
+          : undefined,
         language: body.language ? String(body.language) : "en",
         authorityLevel: body.authorityLevel,
         sensitivityClassification: body.sensitivityClassification,

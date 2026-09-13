@@ -82,6 +82,20 @@ export const knowledgeSourcesTable = pgTable("knowledge_sources", {
    */
   sourceType: text("source_type").notNull(),
 
+  /**
+   * Participant/document-specific category selected by the uploader.
+   *
+   * `source_type` describes retrieval scope/class at a coarse level. For
+   * participant documents it remains `participant_document`; this field carries
+   * the professional document category used by evidence gates.
+   */
+  documentCategory: text("document_category"),
+  documentCategorySuggested: text("document_category_suggested"),
+  documentCategorySuggestionConfidence: text("document_category_suggestion_confidence"),
+  documentCategoryConfirmedByUserId: text("document_category_confirmed_by_user_id"),
+  documentCategoryConfirmedAt: timestamp("document_category_confirmed_at", { withTimezone: true }),
+  documentCategoryMatchedSuggestion: boolean("document_category_matched_suggestion"),
+
   // ─── File metadata ────────────────────────────────────────────────────────
 
   /** Original file name as provided by the uploader */
@@ -257,6 +271,24 @@ export const KNOWLEDGE_SOURCE_TYPES = [
   "task_upload",
 ] as const;
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
+
+export const KNOWLEDGE_DOCUMENT_CATEGORIES = [
+  "care_plan",
+  "health_support_plan",
+  "behaviour_support_plan",
+  "risk_assessment",
+  "restrictive_practice_authorisation",
+  "participant_document",
+  "ndis_plan",
+  "strengths_based_questionnaire",
+  "intake_form",
+  "service_agreement",
+  "mealtime_management_risk_assessment",
+  "allied_health_report",
+  "home_safety_checklist",
+  "other_participant_document",
+] as const;
+export type KnowledgeDocumentCategory = (typeof KNOWLEDGE_DOCUMENT_CATEGORIES)[number];
 
 export const KNOWLEDGE_SOURCE_STATUSES = [
   "uploaded",

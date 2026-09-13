@@ -770,6 +770,88 @@ describe("Regression: Medication Management Policy review", () => {
   });
 });
 
+describe("Care-plan participant document category gate", () => {
+  it("uses documentCategory, not participant_document sourceType, for BSP and risk evidence", () => {
+    const bp = makeBlueprint({
+      code: "care_plan",
+      validationRules: [],
+      requiredLibraryKnowledge: [
+        "care_plan",
+        "health_support_plan",
+        "behaviour_support_plan",
+        "risk_assessment",
+        "restrictive_practice_authorisation",
+      ],
+      mandatoryCitations: [],
+      requiredEntityKnowledge: { participant: true },
+    } as Partial<WorkBlueprint>);
+    const manifest = makeManifest();
+    const evidencePack = makeEvidencePack([
+      makeChunk({
+        chunkId: "bsp",
+        sourceType: "participant_document",
+        documentCategory: "behaviour_support_plan",
+        sourceTitle: "20260324 MR NDIS CBSP",
+        confidence: 0.86,
+      }),
+      makeChunk({
+        chunkId: "risk",
+        sourceType: "participant_document",
+        documentCategory: "risk_assessment",
+        sourceTitle: "Client Fire Risk Assessment Form_MR",
+        confidence: 0.81,
+      }),
+    ]);
+
+    const result = validateWorkPackage(manifest, bp, evidencePack, {
+      participantSpecificMode: true,
+      participantSupportProfile: {
+        hasBehaviourSupportPlan: true,
+        hasRestrictivePractices: false,
+        receivesHealthSupport: false,
+      },
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.missingItems).not.toContain("Behaviour Support Plan");
+    expect(result.missingItems).not.toContain("Risk Assessment");
+    expect(result.missingItems).not.toContain("Restrictive Practice Authorisation");
+    expect(result.missingItems).not.toContain("Health Support Plan");
+    expect(result.missingItems).not.toContain("Care Plan");
+  });
+
+  it("blocks when a participant flag says BSP applies but no BSP-category document is retrieved", () => {
+    const bp = makeBlueprint({
+      code: "care_plan",
+      validationRules: [],
+      requiredLibraryKnowledge: ["behaviour_support_plan"],
+      mandatoryCitations: [],
+      requiredEntityKnowledge: { participant: true },
+    } as Partial<WorkBlueprint>);
+    const manifest = makeManifest();
+    const evidencePack = makeEvidencePack([
+      makeChunk({
+        chunkId: "generic",
+        sourceType: "participant_document",
+        sourceTitle: "MR CBSP final filename only",
+        confidence: 0.9,
+      }),
+    ]);
+
+    const result = validateWorkPackage(manifest, bp, evidencePack, {
+      participantSpecificMode: true,
+      participantSupportProfile: {
+        hasBehaviourSupportPlan: true,
+        hasRestrictivePractices: false,
+        receivesHealthSupport: false,
+      },
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.missingItems).toContain("Behaviour Support Plan");
+  });
+});
+
 // ─── Inspector alignment ──────────────────────────────────────────────────────
 
 describe("Evidence Pack and Inspector alignment", () => {

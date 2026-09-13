@@ -12,6 +12,15 @@ type Participant = {
   preferredName?: string | null;
   externalParticipantId?: string | null;
   status: "active" | "inactive" | "archived";
+  metadata?: {
+    supportProfile?: ParticipantSupportProfile | null;
+  } | null;
+};
+
+type ParticipantSupportProfile = {
+  hasBehaviourSupportPlan?: boolean | null;
+  hasRestrictivePractices?: boolean | null;
+  receivesHealthSupport?: boolean | null;
 };
 
 type ParticipantSource = {
@@ -43,13 +52,16 @@ export default function ParticipantsPage() {
   const qc = useQueryClient();
   const { isKnowledgeAdmin } = useOrgRole(slug);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<ParticipantStatusFilter>("");
+  const [status, setStatus] = useState<(typeof STATUS_OPTIONS)[number]>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({
     displayName: "",
     preferredName: "",
     externalParticipantId: "",
     status: "active",
+    hasBehaviourSupportPlan: false,
+    hasRestrictivePractices: false,
+    receivesHealthSupport: false,
   });
   const [duplicateWarnings, setDuplicateWarnings] = useState<DuplicateWarning[]>([]);
   const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
@@ -105,6 +117,11 @@ export default function ParticipantsPage() {
           preferredName: form.preferredName || null,
           externalParticipantId: form.externalParticipantId || null,
           status: form.status,
+          supportProfile: {
+            hasBehaviourSupportPlan: form.hasBehaviourSupportPlan,
+            hasRestrictivePractices: form.hasRestrictivePractices,
+            receivesHealthSupport: form.receivesHealthSupport,
+          },
         }),
       });
       const body = await res.json();
@@ -115,17 +132,26 @@ export default function ParticipantsPage() {
       if (body.warned) return;
       qc.invalidateQueries({ queryKey: ["participants", slug] });
       setSelectedId(body.participant.id);
-      setForm({ displayName: "", preferredName: "", externalParticipantId: "", status: "active" });
+      setForm({
+        displayName: "",
+        preferredName: "",
+        externalParticipantId: "",
+        status: "active",
+        hasBehaviourSupportPlan: false,
+        hasRestrictivePractices: false,
+        receivesHealthSupport: false,
+      });
       setDuplicateWarnings([]);
       setDuplicateAcknowledged(false);
     },
   });
 
   const updateParticipant = useMutation({
-    mutationFn: async (participant: Participant) => {
+    mutationFn: async (input: { participant: Participant; patch?: Record<string, unknown> }) => {
+      const participant = input.participant;
       const res = await apiFetch(`/v1/organisations/${slug}/participants/${participant.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ status: participant.status === "active" ? "inactive" : "active" }),
+        body: JSON.stringify(input.patch ?? { status: participant.status === "active" ? "inactive" : "active" }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error?.message ?? "Could not update participant.");
@@ -190,6 +216,7 @@ export default function ParticipantsPage() {
   );
   const unlinkedSources: ParticipantSource[] = unlinkedQuery.data?.sources ?? [];
   const selectedSources: ParticipantSource[] = selectedSourcesQuery.data?.sources ?? [];
+  const selectedSupport = selectedParticipant?.metadata?.supportProfile ?? {};
 
   return (
     <>
@@ -295,6 +322,24 @@ export default function ParticipantsPage() {
                       placeholder="External participant ID"
                       className="w-full bg-[#0B1829] border border-[#1E3A5F] rounded-lg px-3 py-2 text-sm text-[#E2E8F0] placeholder:text-[#64748B] outline-none focus:border-[#00D4FF]"
                     />
+                    <div className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] p-3 space-y-2">
+                      <p className="text-[#94A3B8] text-xs font-semibold">Support profile</p>
+                      {[
+                        ["hasBehaviourSupportPlan", "Behaviour support plan applies"],
+                        ["hasRestrictivePractices", "Restrictive practices apply"],
+                        ["receivesHealthSupport", "Receives health support"],
+                      ].map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-xs text-[#CBD5E1]">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(form[key as keyof typeof form])}
+                            onChange={event => setForm(prev => ({ ...prev, [key]: event.target.checked }))}
+                            className="h-4 w-4 rounded border-[#1E3A5F] bg-[#112033]"
+                          />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
                     <button
                       type="submit"
                       disabled={createParticipant.isPending || form.displayName.trim().length < 2}
@@ -337,7 +382,7 @@ export default function ParticipantsPage() {
                     {isKnowledgeAdmin && (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => updateParticipant.mutate(selectedParticipant)}
+                          onClick={() => updateParticipant.mutate({ participant: selectedParticipant })}
                           className="text-xs text-[#00D4FF] hover:text-[#00B8D9]"
                         >
                           {selectedParticipant.status === "active" ? "Mark inactive" : "Mark active"}
@@ -351,6 +396,40 @@ export default function ParticipantsPage() {
                       </div>
                     )}
                   </div>
+
+                  {isKnowledgeAdmin && (
+                    <div className="rounded-lg border border-[#1E3A5F] bg-[#0B1829] p-3 mb-4">
+                      <p className="text-[#94A3B8] text-xs font-semibold mb-2">Support profile</p>
+                      <div className="space-y-2">
+                        {[
+                          ["hasBehaviourSupportPlan", "Behaviour support plan applies"],
+                          ["hasRestrictivePractices", "Restrictive practices apply"],
+                          ["receivesHealthSupport", "Receives health support"],
+                        ].map(([key, label]) => {
+                          const supportKey = key as keyof ParticipantSupportProfile;
+                          return (
+                            <label key={key} className="flex items-center gap-2 text-xs text-[#CBD5E1]">
+                              <input
+                                type="checkbox"
+                                checked={selectedSupport[supportKey] === true}
+                                onChange={event => updateParticipant.mutate({
+                                  participant: selectedParticipant,
+                                  patch: {
+                                    supportProfile: {
+                                      ...selectedSupport,
+                                      [supportKey]: event.target.checked,
+                                    },
+                                  },
+                                })}
+                                className="h-4 w-4 rounded border-[#1E3A5F] bg-[#112033]"
+                              />
+                              <span>{label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2 mb-4">
                     {selectedSources.length === 0 ? (

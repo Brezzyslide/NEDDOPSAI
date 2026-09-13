@@ -59,7 +59,10 @@ import {
   transitionTaskState,
 } from "./taskService.js";
 import { deriveProfessionalIntentKey } from "./professionalExecutionContextService.js";
-import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
+import {
+  getRetrievalSubjectParticipantIdsForTask,
+  getSubjectParticipantSupportProfileForTask,
+} from "./taskParticipantService.js";
 
 type DbClient = typeof db;
 
@@ -603,6 +606,9 @@ async function evaluateParticipantEvidencePreflight(input: {
   const validationResult = validateWorkPackage(manifest, blueprint, evidencePack, {
     standardTemplateEvidence: classifyStandardTemplateEvidenceContext(input.userRequest),
     participantSpecificMode: true,
+    participantSupportProfile: input.taskId
+      ? await getSubjectParticipantSupportProfileForTask(input.organizationId, input.taskId)
+      : null,
   });
 
   return {

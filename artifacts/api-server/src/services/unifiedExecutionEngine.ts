@@ -149,7 +149,10 @@ import {
   mapConnectorCategoryToChannel,
   mapExecutionChannelToSession,
 } from "./writeTargetResolverService.js";
-import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
+import {
+  getRetrievalSubjectParticipantIdsForTask,
+  getSubjectParticipantSupportProfileForTask,
+} from "./taskParticipantService.js";
 
 // Type-only imports — break circular runtime dependency.
 // specialistIntelligenceService will import createUnifiedExecutionEngine from here.
@@ -1453,6 +1456,9 @@ export class UnifiedExecutionEngine {
     const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined, {
       standardTemplateEvidence,
       participantSpecificMode: subjectParticipantIds.length > 0,
+      participantSupportProfile: request.taskId
+        ? await getSubjectParticipantSupportProfileForTask(organizationId, request.taskId)
+        : null,
     });
     tValidationMs = Date.now() - t4;
 
