@@ -110,17 +110,17 @@ export const REQUIRED_RLS_TABLES = [
 export type RequiredRLSTable = typeof REQUIRED_RLS_TABLES[number];
 
 /**
- * Tables that must be READ-ONLY for needsops_app from Sprint 7.1 onward.
- * Write access to these tables is a security boundary violation.
+ * Public audit tables must stay non-writable for needsops_app. Org audit writes
+ * go through bounded SECURITY DEFINER functions so application code cannot
+ * bypass the shared audit boundary with direct table DML.
+ *
+ * Task/approval tables are intentionally excluded while the active production
+ * write path is still public tables under RLS. Their required writes are
+ * verified by the platform security baseline after 0058.
  */
 export const LEGACY_WRITE_RESTRICTED_TABLES = [
   "audit_log",
   "org_audit_log",
-  "tasks",
-  "approvals",
-  "approval_history",
-  "task_execution_plans",
-  "task_specialists",
 ] as const;
 
 export type LegacyWriteRestrictedTable = typeof LEGACY_WRITE_RESTRICTED_TABLES[number];

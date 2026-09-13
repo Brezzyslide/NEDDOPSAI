@@ -59,13 +59,13 @@ export async function runRLSStartupCheck(): Promise<void> {
 
   // ── 3. Legacy write restriction check ────────────────────────────────────
 
-  logger.info("[startup] Verifying legacy table write restrictions...");
+  logger.info("[startup] Verifying direct audit table write restrictions...");
   const writeResult = await verifyLegacyTablesReadOnly();
 
   if (writeResult.allReadOnly) {
     logger.info(
-      { tablesChecked: writeResult.writeableTable.length === 0 ? 7 : writeResult.writeableTable.length },
-      "[startup] Legacy table write restriction check passed — all legacy tables read-only",
+      { tablesChecked: 2 },
+      "[startup] Direct audit table write restriction check passed",
     );
   } else {
     // Write access on legacy tables is a hard startup failure
@@ -77,8 +77,7 @@ export async function runRLSStartupCheck(): Promise<void> {
           privileges: t.privileges,
         })),
       },
-      "[FATAL] Legacy table write restrictions not applied. " +
-      "Run lib/db/migrations/sprint71-write-restrictions.sql. Server will not start.",
+      "[FATAL] Direct audit table write restrictions not applied. Server will not start.",
     );
     throw err;
   }

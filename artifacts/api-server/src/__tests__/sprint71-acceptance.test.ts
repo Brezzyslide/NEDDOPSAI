@@ -116,18 +116,15 @@ afterAll(async () => {
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
-// ── Test 1 [DB]: Legacy table write restrictions applied to live DB ───────────
+// ── Test 1 [DB]: Direct audit table write restrictions applied to live DB ─────
 
-it("[1][DB] needsops_app has no INSERT/UPDATE/DELETE on legacy tables", async () => {
+it("[1][DB] needsops_app has no direct INSERT/UPDATE/DELETE on public audit tables", async () => {
   const result = await platformDb.execute(sql.raw(`
     SELECT table_name, privilege_type
     FROM information_schema.role_table_grants
     WHERE grantee = 'needsops_app'
       AND table_schema = 'public'
-      AND table_name IN (
-        'audit_log', 'org_audit_log', 'tasks', 'approvals',
-        'approval_history', 'task_execution_plans', 'task_specialists'
-      )
+      AND table_name IN ('audit_log', 'org_audit_log')
       AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
     ORDER BY table_name, privilege_type
   `));
@@ -145,14 +142,14 @@ it("[2][DB] verifyLegacyTablesReadOnly() returns allReadOnly = true", async () =
   expect(result.checkedAt).toBeInstanceOf(Date);
 }, 10_000);
 
-// ── Test 3 [D]: LegacyWriteError carries table names ─────────────────────────
+// ── Test 3 [D]: LegacyWriteError carries direct audit table names ─────────────
 
 it("[3][D] LegacyWriteError correctly surfaces writeable table names", () => {
   const mockResult: LegacyWriteCheckResult = {
     allReadOnly: false,
     writeableTable: [
-      { tableName: "tasks", privileges: ["INSERT", "UPDATE"] },
-      { tableName: "approvals", privileges: ["DELETE"] },
+      { tableName: "audit_log", privileges: ["INSERT", "UPDATE"] },
+      { tableName: "org_audit_log", privileges: ["DELETE"] },
     ],
     checkedAt: new Date(),
   };
@@ -160,10 +157,10 @@ it("[3][D] LegacyWriteError correctly surfaces writeable table names", () => {
   const err = new LegacyWriteError(mockResult);
 
   expect(err.name).toBe("LegacyWriteError");
-  expect(err.writeableTables).toContain("tasks");
-  expect(err.writeableTables).toContain("approvals");
+  expect(err.writeableTables).toContain("audit_log");
+  expect(err.writeableTables).toContain("org_audit_log");
   expect(err.message).toContain("SECURITY");
-  expect(err.message).toContain("sprint71-write-restrictions.sql");
+  expect(err.message).toContain("public audit tables");
 });
 
 // ── Test 4 [DB]: Org audit events write to org schema (not public.org_audit_log) ─

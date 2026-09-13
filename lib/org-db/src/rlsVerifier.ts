@@ -171,7 +171,7 @@ function normalizePrivilegeList(value: unknown): string[] {
 
 /**
  * Verifies that needsops_app does NOT have INSERT, UPDATE, or DELETE
- * on any of the legacy write-restricted tables.
+ * on any of the direct-write-restricted audit tables.
  *
  * Called at server startup — if any table is writeable, the server should
  * refuse to start (or emit a critical alert).
@@ -209,8 +209,8 @@ export class LegacyWriteError extends Error {
     const tables = result.writeableTable.map(t => `${t.tableName}(${t.privileges.join(",")})`).join(", ");
     super(
       `[SECURITY] Legacy table write restriction violated. needsops_app still has write access to: ${tables}. ` +
-      "Run lib/db/migrations/sprint71-write-restrictions.sql to apply REVOKE commands. " +
-      "DO NOT start the server with write access on legacy operational tables.",
+      "Run the ordered platform migrations to apply audit table REVOKE commands. " +
+      "DO NOT start the server with direct write access on public audit tables.",
     );
     this.name = "LegacyWriteError";
     this.writeableTables = result.writeableTable.map(t => t.tableName);
