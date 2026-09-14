@@ -12,6 +12,7 @@ import {
   parseEvidenceContract,
 } from "./blueprintContractService.js";
 import {
+  canonicaliseDocumentCategory,
   canonicaliseSourceType,
   isTrustedProviderSource,
 } from "../utils/sourceTypeNormalisation.js";
@@ -1213,10 +1214,11 @@ function hasEvidenceCategory(
   context?: StandardTemplateEvidenceContext | null,
 ): boolean {
   if (!evidencePack) return false;
-  const lower = category.toLowerCase();
+  const sourceRequirement = canonicaliseSourceType(category);
+  const documentRequirement = canonicaliseDocumentCategory(category);
   return evidencePack.chunks.some((chunk) => {
-    const sourceType = chunk.sourceType?.toLowerCase?.() ?? "";
-    const documentCategory = chunk.documentCategory?.toLowerCase?.() ?? "";
+    const sourceType = canonicaliseSourceType(chunk.sourceType ?? "");
+    const documentCategory = canonicaliseDocumentCategory(chunk.documentCategory ?? "");
     const currentAuthorityEvidence = isCustomerTemplateOptional(context) &&
       isAuthoritativeEvidenceCategory(category) &&
       (
@@ -1224,7 +1226,7 @@ function hasEvidenceCategory(
         chunk.provenance?.sourceOrigin === "external_authority"
       );
     if (currentAuthorityEvidence) return true;
-    return sourceType === lower || documentCategory === lower;
+    return sourceType === sourceRequirement || documentCategory === documentRequirement;
   });
 }
 
