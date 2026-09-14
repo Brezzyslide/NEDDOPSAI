@@ -246,6 +246,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds uploader-selected participant document categories and backfills Micheal/MR evidence categories and support flags.",
   },
+  {
+    id: "0061-participant-support-profile-backfill",
+    file: "0061_participant_support_profile_backfill.sql",
+    transactional: true,
+    notes: "Repairs participant support-profile facts from linked approved BSP-category participant documents.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

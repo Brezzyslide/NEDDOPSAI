@@ -351,6 +351,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0058-restore-public-task-subsystem-writes");
     expect(migrationIds).toContain("0059-execution-runtime-table-grants");
     expect(migrationIds).toContain("0060-participant-document-categories");
+    expect(migrationIds).toContain("0061-participant-support-profile-backfill");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -380,6 +381,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0060-participant-document-categories")).toBe(
       migrationIds.indexOf("0059-execution-runtime-table-grants") + 1,
+    );
+    expect(migrationIds.indexOf("0061-participant-support-profile-backfill")).toBe(
+      migrationIds.indexOf("0060-participant-document-categories") + 1,
     );
   });
 
