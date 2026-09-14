@@ -278,7 +278,6 @@ export const KNOWLEDGE_DOCUMENT_CATEGORIES = [
   "behaviour_support_plan",
   "risk_assessment",
   "restrictive_practice_authorisation",
-  "participant_document",
   "ndis_plan",
   "strengths_based_questionnaire",
   "intake_form",

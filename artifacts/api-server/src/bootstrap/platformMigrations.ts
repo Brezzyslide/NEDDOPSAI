@@ -258,6 +258,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Repairs support-profile JSONB creation for participants without an existing supportProfile object.",
   },
+  {
+    id: "0063-remove-participant-document-category-scope-leftover",
+    file: "0063_remove_participant_document_category_scope_leftover.sql",
+    transactional: true,
+    notes: "Removes participant_document from document categories while preserving it as a participant source/scope type.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

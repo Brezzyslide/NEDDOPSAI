@@ -301,7 +301,11 @@ export function validateWorkPackage(
         message: `${rule.description} Not required for a standard reusable professional deliverable request.`,
         details: ["Organisation/person-specific evidence changes tailoring, but is not the sole authority for standard reusable professional work."],
       });
-      if (!evalResult.passed && evalResult.missingCanonicalType) {
+      if (
+        !evalResult.passed &&
+        evalResult.missingCanonicalType &&
+        !isParticipantSpecificEvidenceRule(rule.rule)
+      ) {
         upsertMissing({
           canonicalType: evalResult.missingCanonicalType,
           displayLabel: sourceTypeDisplayLabel(evalResult.missingCanonicalType),
@@ -614,10 +618,13 @@ function evaluateRule(
     case "participant_context_present":
       return {
         passed:
+          allSourceTypes.has("participant_document") ||
+          allSourceTypes.has("participant_record") ||
+          allSourceTypes.has("entity_knowledge") ||
           manifest.taskUploads.length > 0 ||
           Object.keys(manifest.entityKnowledge ?? {}).length > 0,
         missingCanonicalType: "participant_document",
-        details: ["Participant information (task upload or entity knowledge)"],
+        details: ["Participant-scoped evidence, participant record, task upload or entity knowledge"],
       };
 
     case "staff_context_present":

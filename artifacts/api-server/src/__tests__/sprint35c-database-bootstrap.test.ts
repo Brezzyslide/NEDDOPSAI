@@ -353,6 +353,7 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(migrationIds).toContain("0060-participant-document-categories");
     expect(migrationIds).toContain("0061-participant-support-profile-backfill");
     expect(migrationIds).toContain("0062-participant-support-profile-jsonb-repair");
+    expect(migrationIds).toContain("0063-remove-participant-document-category-scope-leftover");
     expect(migrationIds.indexOf("0051-context-identity-column-grants")).toBe(
       migrationIds.indexOf("0050-platform-public-worker-boundaries") + 1,
     );
@@ -388,6 +389,9 @@ describe("Sprint 35C database bootstrap foundation", () => {
     );
     expect(migrationIds.indexOf("0062-participant-support-profile-jsonb-repair")).toBe(
       migrationIds.indexOf("0061-participant-support-profile-backfill") + 1,
+    );
+    expect(migrationIds.indexOf("0063-remove-participant-document-category-scope-leftover")).toBe(
+      migrationIds.indexOf("0062-participant-support-profile-jsonb-repair") + 1,
     );
   });
 

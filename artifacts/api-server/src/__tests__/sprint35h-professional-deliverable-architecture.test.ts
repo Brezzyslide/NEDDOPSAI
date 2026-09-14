@@ -1034,9 +1034,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     );
 
     expect(result.passed).toBe(true);
-    expect(result.missingItems).toContain("Participant Document");
-    expect(result.missingEvidenceItems.find((item) => item.displayLabel === "Participant Document")?.required)
-      .toBe(false);
+    expect(result.missingItems).not.toContain("Participant Document");
     expect(result.issues.some(issue => issue.rule === "participant_context_present" && issue.level === "info")).toBe(true);
   });
 

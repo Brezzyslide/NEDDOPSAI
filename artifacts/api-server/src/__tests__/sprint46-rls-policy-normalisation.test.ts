@@ -529,6 +529,10 @@ describe("Sprint 46 RLS policy normalisation", () => {
       resolve(process.cwd(), "../../lib/db/migrations/0062_participant_support_profile_jsonb_repair.sql"),
       "utf8",
     );
+    const removeScopeLeftover = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0063_remove_participant_document_category_scope_leftover.sql"),
+      "utf8",
+    );
 
     expect(PLATFORM_MIGRATIONS).toContainEqual(
       expect.objectContaining({
@@ -560,6 +564,16 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(migrationIds.indexOf("0062-participant-support-profile-jsonb-repair")).toBe(
       migrationIds.indexOf("0061-participant-support-profile-backfill") + 1,
     );
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0063-remove-participant-document-category-scope-leftover",
+        file: "0063_remove_participant_document_category_scope_leftover.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0063-remove-participant-document-category-scope-leftover")).toBe(
+      migrationIds.indexOf("0062-participant-support-profile-jsonb-repair") + 1,
+    );
     expect(migration).toContain("document_category text");
     expect(migration).toContain("knowledge_sources_document_category_check");
     expect(migration).toContain("GRANT SELECT");
@@ -571,6 +585,9 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(supportProfileJsonbRepair).toContain("jsonb_build_object");
     expect(supportProfileJsonbRepair).toContain("COALESCE(p.metadata->'supportProfile', '{}'::jsonb)");
     expect(supportProfileJsonbRepair).toContain("ks.document_category = 'behaviour_support_plan'");
+    expect(removeScopeLeftover).toContain("document_category = 'other_participant_document'");
+    expect(removeScopeLeftover).toContain("WHERE document_category = 'participant_document'");
+    expect(removeScopeLeftover).not.toMatch(/document_category IS NULL OR document_category IN \([\s\S]*'participant_document'/);
   });
 
 });

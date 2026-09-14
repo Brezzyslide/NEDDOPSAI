@@ -41,7 +41,6 @@ export const DOCUMENT_CATEGORY_DISPLAY_LABELS: Record<string, string> = {
   behaviour_support_plan:               "Behaviour Support Plan",
   risk_assessment:                      "Risk Assessment",
   restrictive_practice_authorisation:   "Restrictive Practice Authorisation",
-  participant_document:                 "Participant Document",
   ndis_plan:                            "NDIS Plan",
   strengths_based_questionnaire:        "Strengths-Based Questionnaire",
   intake_form:                          "Intake Form",

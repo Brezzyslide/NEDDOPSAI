@@ -281,6 +281,29 @@ describe("validateWorkPackage — approved policy evidence satisfies requirement
     const result = validateWorkPackage(manifest, bp, evidencePack);
     expect(result.passed).toBe(true);
   });
+
+  it("passes when retrieved participant-scoped evidence satisfies participant_context requirement", () => {
+    const bp = makeBlueprint({
+      validationRules: [
+        { rule: "participant_context_present", required: true, description: "Participant information required" },
+      ],
+      requiredLibraryKnowledge: [],
+      mandatoryCitations: [],
+    });
+    const manifest = makeManifest();
+    const evidencePack = makeEvidencePack([
+      makeChunk({
+        sourceType: "participant_document",
+        documentCategory: "behaviour_support_plan",
+        confidence: 0.86,
+      }),
+    ]);
+
+    const result = validateWorkPackage(manifest, bp, evidencePack);
+
+    expect(result.passed).toBe(true);
+    expect(result.missingItems).not.toContain("Participant Document");
+  });
 });
 
 describe("validateWorkPackage — metadata-only does NOT satisfy evidence requirement", () => {

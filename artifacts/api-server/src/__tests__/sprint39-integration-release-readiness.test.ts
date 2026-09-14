@@ -202,8 +202,6 @@ describe("Sprint 39 integration release readiness", () => {
     expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "minimum_evidence_count")).toBe(true);
     expect(participantValidation.missingItems).toEqual(expect.arrayContaining([
       "Participant Document",
-      "Care Plan",
-      "Behaviour Support Plan",
       "Risk Assessment",
       "5 Relevant Evidence Items",
     ]));
@@ -214,7 +212,7 @@ describe("Sprint 39 integration release readiness", () => {
     });
     expect(templateValidation.passed).toBe(true);
     expect(templateValidation.issues.some(issue => issue.level === "error")).toBe(false);
-    expect(templateValidation.missingItems).toContain("Participant Document");
+    expect(templateValidation.missingItems).not.toContain("Participant Document");
   });
 
   it("runs participant evidence preflight before claiming execution", () => {
