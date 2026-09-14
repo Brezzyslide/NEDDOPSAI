@@ -67,6 +67,7 @@ vi.mock("@workspace/db", () => {
     knowledgeSourcesTable: fakeTable,
     knowledgeChunksTable:  fakeTable,
     knowledgeSourceVersionsTable: fakeTable,
+    specialistCatalogueTable: fakeTable,
   };
 });
 
@@ -289,6 +290,19 @@ describe("KRS org-library retrieval — always fires (Sprint 29G fix)", () => {
     expect(src).toContain("always run the org-library query for every task execution");
     // The restrictive `if` is gone
     expect(src).not.toMatch(/if \(workPackage\.organisationLibrarySources\.length/);
+  });
+
+  it("enriches entity-scoped chunks with source metadata before validation sees the pack", () => {
+    const src = readSrc("src/services/knowledgeResolutionService.ts");
+    expect(src).toContain("async function enrichSourceMetadata");
+
+    const entityRetrieval = src.indexOf('scopeMode:      "entity_scoped"');
+    const enrichment = src.indexOf("await enrichSourceMetadata(allEvidenceChunks, organisationId);", entityRetrieval);
+    const sortStep = src.indexOf("Step 5: Sort all chunks", entityRetrieval);
+
+    expect(entityRetrieval).toBeGreaterThan(-1);
+    expect(enrichment).toBeGreaterThan(entityRetrieval);
+    expect(enrichment).toBeLessThan(sortStep);
   });
 });
 

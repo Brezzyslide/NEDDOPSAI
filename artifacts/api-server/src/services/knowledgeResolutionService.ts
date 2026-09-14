@@ -441,7 +441,7 @@ async function getVersionLabels(
 async function getSourceTypes(
   sourceIds: string[],
   organisationId: string,
-): Promise<Map<string, string>> {
+): Promise<Map<string, { sourceType: string; documentCategory: string | null }>> {
   if (sourceIds.length === 0) return new Map();
 
   const rows = await withSystemTenantContext(
@@ -466,6 +466,29 @@ async function getSourceTypes(
     sourceType: r.sourceType,
     documentCategory: r.documentCategory ?? null,
   }]));
+}
+
+async function enrichSourceMetadata(
+  chunks: EvidenceChunk[],
+  organisationId: string,
+): Promise<void> {
+  const sourceIds = [
+    ...new Set(
+      chunks
+        .filter(c => c.sourceType === "library")
+        .map(c => c.sourceId),
+    ),
+  ];
+  if (sourceIds.length === 0) return;
+
+  const typeMap = await getSourceTypes(sourceIds, organisationId);
+  for (const chunk of chunks) {
+    if (chunk.sourceType !== "library") continue;
+    const sourceMeta = typeMap.get(chunk.sourceId);
+    if (!sourceMeta) continue;
+    chunk.sourceType = sourceMeta.sourceType;
+    chunk.documentCategory = sourceMeta.documentCategory;
+  }
 }
 
 // ─── Pack builder ─────────────────────────────────────────────────────────────
@@ -579,18 +602,7 @@ export async function resolveEvidence(
       allEvidenceChunks.push(chunk);
     }
 
-    // Enrich sourceType using a single batch query
-    if (allEvidenceChunks.length > 0) {
-      const librarySourceIds = [...new Set(allEvidenceChunks.map(c => c.sourceId))];
-      const typeMap = await getSourceTypes(librarySourceIds, organisationId);
-      for (const c of allEvidenceChunks) {
-        const sourceMeta = typeMap.get(c.sourceId);
-        if (sourceMeta) {
-          c.sourceType = sourceMeta.sourceType;
-          c.documentCategory = sourceMeta.documentCategory;
-        }
-      }
-    }
+    await enrichSourceMetadata(allEvidenceChunks, organisationId);
   }
 
   // ── Step 2: Participant/entity-scoped knowledge ────────────────────────────
@@ -644,6 +656,8 @@ export async function resolveEvidence(
       allEvidenceChunks.push(mapRawChunk(raw, vLabel, "specialist_knowledge"));
     }
   }
+
+  await enrichSourceMetadata(allEvidenceChunks, organisationId);
 
   // ── Step 4: Task upload chunks (direct query by source ID) ─────────────────
   if (workPackage.taskUploads.length > 0) {
@@ -1006,18 +1020,7 @@ export async function resolveConversationEvidence(input: {
     allEvidenceChunks.push(mapRawChunk(raw, libVersionLabels.get(raw.sourceVersionId) ?? null, "organisation_library"));
   }
 
-  // Enrich sourceType in a single batch query
-  if (allEvidenceChunks.length > 0) {
-    const sourceIds = [...new Set(allEvidenceChunks.map(c => c.sourceId))];
-    const typeMap = await getSourceTypes(sourceIds, organisationId);
-    for (const c of allEvidenceChunks) {
-      const sourceMeta = typeMap.get(c.sourceId);
-      if (sourceMeta) {
-        c.sourceType = sourceMeta.sourceType;
-        c.documentCategory = sourceMeta.documentCategory;
-      }
-    }
-  }
+  await enrichSourceMetadata(allEvidenceChunks, organisationId);
 
   // ── Step 2: Specialist-scoped knowledge ────────────────────────────────────
   if (specialistCode) {
@@ -1043,6 +1046,8 @@ export async function resolveConversationEvidence(input: {
       allEvidenceChunks.push(mapRawChunk(raw, spVersionLabels.get(raw.sourceVersionId) ?? null, "specialist_knowledge"));
     }
   }
+
+  await enrichSourceMetadata(allEvidenceChunks, organisationId);
 
   const retrievalMs = Date.now() - startMs;
   const sorted = allEvidenceChunks.sort((a, b) => b.confidence - a.confidence);
