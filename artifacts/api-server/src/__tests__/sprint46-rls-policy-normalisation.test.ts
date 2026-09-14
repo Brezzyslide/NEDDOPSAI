@@ -525,6 +525,10 @@ describe("Sprint 46 RLS policy normalisation", () => {
       resolve(process.cwd(), "../../lib/db/migrations/0061_participant_support_profile_backfill.sql"),
       "utf8",
     );
+    const supportProfileJsonbRepair = readFileSync(
+      resolve(process.cwd(), "../../lib/db/migrations/0062_participant_support_profile_jsonb_repair.sql"),
+      "utf8",
+    );
 
     expect(PLATFORM_MIGRATIONS).toContainEqual(
       expect.objectContaining({
@@ -546,6 +550,16 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(migrationIds.indexOf("0061-participant-support-profile-backfill")).toBe(
       migrationIds.indexOf("0060-participant-document-categories") + 1,
     );
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0062-participant-support-profile-jsonb-repair",
+        file: "0062_participant_support_profile_jsonb_repair.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0062-participant-support-profile-jsonb-repair")).toBe(
+      migrationIds.indexOf("0061-participant-support-profile-backfill") + 1,
+    );
     expect(migration).toContain("document_category text");
     expect(migration).toContain("knowledge_sources_document_category_check");
     expect(migration).toContain("GRANT SELECT");
@@ -554,6 +568,9 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(supportProfileBackfill).toContain("ks.document_category = 'behaviour_support_plan'");
     expect(supportProfileBackfill).toContain("ks.status = 'approved'");
     expect(supportProfileBackfill).toContain("'{supportProfile,hasBehaviourSupportPlan}'");
+    expect(supportProfileJsonbRepair).toContain("jsonb_build_object");
+    expect(supportProfileJsonbRepair).toContain("COALESCE(p.metadata->'supportProfile', '{}'::jsonb)");
+    expect(supportProfileJsonbRepair).toContain("ks.document_category = 'behaviour_support_plan'");
   });
 
 });

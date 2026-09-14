@@ -252,6 +252,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Repairs participant support-profile facts from linked approved BSP-category participant documents.",
   },
+  {
+    id: "0062-participant-support-profile-jsonb-repair",
+    file: "0062_participant_support_profile_jsonb_repair.sql",
+    transactional: true,
+    notes: "Repairs support-profile JSONB creation for participants without an existing supportProfile object.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
