@@ -105,6 +105,7 @@ export interface ValidationResult {
 export interface WorkPackageValidationOptions {
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null;
   participantSpecificMode?: boolean;
+  requireRetrievedEvidence?: boolean;
   participantSupportProfile?: {
     hasBehaviourSupportPlan?: boolean | null;
     hasRestrictivePractices?: boolean | null;
@@ -199,6 +200,35 @@ export function validateWorkPackage(
 ): ValidationResult {
   const evidenceSearched = evidencePack != null;
   const participantSpecificMode = options.participantSpecificMode === true;
+  const retrievedEvidenceCount = evidencePack?.chunks.length ?? 0;
+
+  if (options.requireRetrievedEvidence === true && retrievedEvidenceCount === 0) {
+    const missing: MissingEvidenceItem = {
+      canonicalType: "runtime_evidence_pack",
+      displayLabel: "Retrieved Evidence",
+      required: true,
+      reason: "This task requires retrieved evidence in the runtime EvidencePack before execution can proceed",
+      searched: evidenceSearched,
+      searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+      suggestedAction: "upload_document",
+    };
+    return {
+      passed: false,
+      issues: [{
+        rule: "runtime_evidence_pack_present",
+        level: "error",
+        message: "No retrieved evidence reached the runtime EvidencePack.",
+        details: ["Execution stopped before generation because the evidence pack contained zero chunks."],
+      }],
+      missingItems: [missing.displayLabel],
+      conflictingItems: [],
+      recommendedAction: "request_information",
+      summary: "Retrieved evidence is required for this task, but the runtime EvidencePack is empty.",
+      missingEvidenceItems: [missing],
+      evidenceSearched,
+      clarificationMessage: buildClarificationMessage([missing]),
+    };
+  }
 
   if (!blueprint) {
     return {
@@ -458,7 +488,6 @@ export function validateWorkPackage(
 
   if (participantSpecificMode) {
     const minimumEvidenceCount = blueprint.evidenceContract?.minimumEvidenceCount ?? 0;
-    const retrievedEvidenceCount = evidencePack?.chunks.length ?? 0;
     if (minimumEvidenceCount > 0 && retrievedEvidenceCount < minimumEvidenceCount) {
       issues.push({
         rule: "minimum_evidence_count",

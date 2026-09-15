@@ -794,6 +794,35 @@ describe("Regression: Medication Management Policy review", () => {
 });
 
 describe("Care-plan participant document category gate", () => {
+  it("fails closed when participant work requires retrieved evidence but the runtime pack is empty", () => {
+    const bp = makeBlueprint({
+      code: "care_plan",
+      validationRules: [],
+      requiredLibraryKnowledge: [],
+      mandatoryCitations: [],
+      requiredEntityKnowledge: { participant: true },
+    } as Partial<WorkBlueprint>);
+    const manifest = makeManifest();
+    const evidencePack = makeEvidencePack([]);
+
+    const result = validateWorkPackage(manifest, bp, evidencePack, {
+      participantSpecificMode: true,
+      requireRetrievedEvidence: true,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.missingEvidenceItems).toEqual([
+      expect.objectContaining({
+        canonicalType: "runtime_evidence_pack",
+        displayLabel: "Retrieved Evidence",
+        required: true,
+        searched: true,
+        searchOutcome: "not_found",
+      }),
+    ]);
+    expect(result.summary).toContain("runtime EvidencePack is empty");
+  });
+
   it("uses documentCategory, not participant_document sourceType, for BSP and risk evidence", () => {
     const bp = makeBlueprint({
       code: "care_plan",

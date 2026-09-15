@@ -1467,6 +1467,7 @@ export class UnifiedExecutionEngine {
     const validationResult = validateWorkPackage(manifest, blueprint, evidencePack ?? undefined, {
       standardTemplateEvidence,
       participantSpecificMode: subjectParticipantIds.length > 0,
+      requireRetrievedEvidence: laneContext?.requiresEvidence === true || subjectParticipantIds.length > 0,
       participantSupportProfile: request.taskId
         ? await getSubjectParticipantSupportProfileForTask(organizationId, request.taskId)
         : null,
@@ -1478,6 +1479,14 @@ export class UnifiedExecutionEngine {
         passed: validationResult.passed,
         missingItems: validationResult.missingItems,
         summary: validationResult.summary,
+        evidenceProvenance: {
+          runtimeEvidenceRequired: laneContext?.requiresEvidence === true || subjectParticipantIds.length > 0,
+          runtimeEvidenceReachedPack: (evidencePack?.totalChunks ?? 0) > 0,
+          subjectParticipantIds,
+          totalChunks: evidencePack?.totalChunks ?? 0,
+          sourceIds: evidencePack?.sourceIds ?? [],
+          citationsByType: evidencePack?.citationsByType ?? {},
+        },
       },
     }, organizationId).catch(() => {});
 
@@ -1565,6 +1574,9 @@ export class UnifiedExecutionEngine {
           mandatoryRequirementCount: requirementPlan.filter((item) => item.applicability === "applicable").length,
         },
         evidenceProvenance: {
+          runtimeEvidenceRequired: laneContext?.requiresEvidence === true || subjectParticipantIds.length > 0,
+          runtimeEvidenceReachedPack: (evidencePack?.totalChunks ?? 0) > 0,
+          subjectParticipantIds,
           totalChunks: evidencePack?.totalChunks ?? 0,
           sourceIds: evidencePack?.sourceIds ?? [],
           citationsByType: evidencePack?.citationsByType ?? {},

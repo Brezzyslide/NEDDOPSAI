@@ -914,6 +914,22 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(taskService).toContain("creationIsWithinWorkIntentDedupeWindow(creation)");
   });
 
+  it("participant evidence retrieval forwards entity ids and validation fails closed on an empty runtime pack", () => {
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const validation = source("services/workValidationService.ts");
+
+    expect(uee).toContain("getRetrievalSubjectParticipantIdsForTask");
+    expect(uee).toContain("entityIds: subjectParticipantIds");
+    expect(uee).toContain("participantSpecificMode: subjectParticipantIds.length > 0");
+    expect(uee).toContain("requireRetrievedEvidence: laneContext?.requiresEvidence === true || subjectParticipantIds.length > 0");
+    expect(uee).toContain("runtimeEvidenceRequired");
+    expect(uee).toContain("runtimeEvidenceReachedPack");
+    expect(uee).toContain("subjectParticipantIds");
+    expect(validation).toContain("requireRetrievedEvidence?: boolean");
+    expect(validation).toContain("runtime_evidence_pack");
+    expect(validation).toContain("No retrieved evidence reached the runtime EvidencePack.");
+  });
+
   it("action-state grounding queries persisted task state and exposes it to the CoS prompt", () => {
     const actionState = source("services/conversationActionStateService.ts");
 
