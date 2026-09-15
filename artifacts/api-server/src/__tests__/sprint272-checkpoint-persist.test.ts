@@ -100,6 +100,7 @@ function makeRow(overrides: Record<string, unknown> = {}) {
     clarificationAnswer:    null,
     checkpointPayload:      {
       originalRequest: "help me",
+      requesterId:      "user-1",
       blueprint: null,
       manifest: { manifestId: "m1" },
     },
@@ -147,6 +148,7 @@ describe("executionCheckpointService", () => {
       expect(mockInsert).toHaveBeenCalled();  // insert new
       expect(result.conversationId).toBe("conv-1");
       expect(result.correlationId).toBe("corr-1");
+      expect(result.requesterId).toBe("user-1");
     });
   });
 
@@ -171,6 +173,7 @@ describe("executionCheckpointService", () => {
       expect(result).not.toBeNull();
       expect(result?.conversationId).toBe("conv-2");
       expect(result?.correlationId).toBe("corr-1");
+      expect(result?.requesterId).toBe("user-1");
       expect(result?.payload.originalRequest).toBe("help me");
     });
 

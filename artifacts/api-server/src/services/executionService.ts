@@ -235,6 +235,96 @@ function requireTaskLaneContext(
   return laneContext;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidIsoTimestamp(value: unknown): value is string {
+  return isNonEmptyString(value) && Number.isFinite(new Date(value).getTime());
+}
+
+function assertFreshPendingPackageTimestamps(pkg: ExecutionPackage): void {
+  if (!isValidIsoTimestamp(pkg.issuedAt) || !isValidIsoTimestamp(pkg.expiresAt)) {
+    throw Object.assign(
+      new Error("Pending execution package timestamps are invalid; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_STALE_ARTEFACTS" },
+    );
+  }
+  if (new Date(pkg.issuedAt).getTime() > Date.now()) {
+    throw Object.assign(
+      new Error("Pending execution package was issued in the future; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_STALE_ARTEFACTS" },
+    );
+  }
+  if (new Date(pkg.expiresAt).getTime() <= Date.now()) {
+    throw Object.assign(
+      new Error("Pending execution package has expired; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_EXPIRED" },
+    );
+  }
+}
+
+function assertPendingSessionArtefacts(input: {
+  pkg: ExecutionPackage & { dnaSource?: "database" | "static_fallback"; contextAudit?: ContextAudit };
+  sessionMetadata: Record<string, unknown>;
+  requestedByUserId: string;
+}): void {
+  const { pkg, sessionMetadata, requestedByUserId } = input;
+  const manifest = pkg.specialistManifest as unknown;
+  const runtime = pkg.runtimeInstructions as unknown;
+  const profile = pkg.workerProfile as unknown;
+  const contextAudit = pkg.contextAudit as unknown;
+  const manifestAudit = sessionMetadata.manifestAudit;
+  const requesterId = sessionMetadata.requesterId;
+
+  if (!isNonEmptyString(requesterId)) {
+    throw Object.assign(
+      new Error("Pending execution package requester could not be verified; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_REQUESTER_UNVERIFIED" },
+    );
+  }
+  if (requesterId !== requestedByUserId) {
+    throw Object.assign(
+      new Error("Pending execution package requester does not match the current user."),
+      { code: "EXECUTION_PACKAGE_REQUESTER_MISMATCH" },
+    );
+  }
+
+  if (
+    !isRecord(manifest) ||
+    !isNonEmptyString(manifest.specialistId) ||
+    !isNonEmptyString(manifest.dnaVersion) ||
+    !isNonEmptyString(manifest.manifestHash) ||
+    !isRecord(runtime) ||
+    !isNonEmptyString(runtime.instruction) ||
+    !isNonEmptyString(runtime.instructionHash) ||
+    !isValidIsoTimestamp(runtime.compiledAt) ||
+    !isRecord(profile) ||
+    !Array.isArray(profile.allowedChannels) ||
+    !Array.isArray(profile.prohibitedActions) ||
+    !Array.isArray(profile.requiresApprovalFor) ||
+    !Array.isArray(pkg.steps) ||
+    pkg.steps.length === 0 ||
+    !isRecord(contextAudit) ||
+    !Array.isArray(contextAudit.injectedMemoryIds) ||
+    typeof contextAudit.hasOrganisationContext !== "boolean" ||
+    typeof contextAudit.tokenBudgetUsed !== "number" ||
+    !isRecord(manifestAudit) ||
+    !isNonEmptyString(manifestAudit.executionId) ||
+    !isNonEmptyString(manifestAudit.manifestHash) ||
+    !isNonEmptyString(manifestAudit.instructionHash)
+  ) {
+    throw Object.assign(
+      new Error("Pending execution package is missing required resume artefacts; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_STALE_ARTEFACTS" },
+    );
+  }
+}
+
 export class PreDispatchAuthorityError extends Error {
   code = "PRE_DISPATCH_AUTHORITY_DENIED";
   decision: ExecutionAuthorityValidationSnapshot;
@@ -730,8 +820,10 @@ async function getLatestExecutionSession(taskId: string, organizationId: string)
 async function assertPendingSessionResumeSafety(input: {
   task: typeof tasksTable.$inferSelect;
   pkg: ExecutionPackage & { dnaSource?: "database" | "static_fallback"; contextAudit?: ContextAudit };
+  sessionMetadata: Record<string, unknown>;
+  requestedByUserId: string;
 }): Promise<ExecutionLaneContext> {
-  const { task, pkg } = input;
+  const { task, pkg, sessionMetadata, requestedByUserId } = input;
 
   if (pkg.taskId !== task.id || pkg.tenantId !== task.organizationId) {
     throw Object.assign(
@@ -740,12 +832,8 @@ async function assertPendingSessionResumeSafety(input: {
     );
   }
 
-  if (new Date(pkg.expiresAt).getTime() <= Date.now()) {
-    throw Object.assign(
-      new Error("Pending execution package has expired; rebuild the execution package before resuming."),
-      { code: "EXECUTION_PACKAGE_EXPIRED" },
-    );
-  }
+  assertFreshPendingPackageTimestamps(pkg);
+  assertPendingSessionArtefacts({ pkg, sessionMetadata, requestedByUserId });
 
   const laneContext = requireTaskLaneContext(task, pkg);
   const access = await checkExecutionAccess(
@@ -1044,12 +1132,18 @@ export async function submitTaskExecution(
       );
     }
     if (!requiresOpenClawRuntime(storedPackage)) {
-      const laneContext = await assertPendingSessionResumeSafety({ task, pkg: storedPackage });
+      const sessionMetadata = isRecord(existingPendingSession.metadata) ? existingPendingSession.metadata : {};
+      const laneContext = await assertPendingSessionResumeSafety({
+        task,
+        pkg: storedPackage,
+        sessionMetadata,
+        requestedByUserId: input.requestedByUserId,
+      });
       await startAwsNativeExecution({
         task,
         pkg: storedPackage,
         requestedByUserId: input.requestedByUserId,
-        manifestAudit: (existingPendingSession.metadata as Record<string, unknown> | null)?.manifestAudit as Record<string, unknown> | undefined,
+        manifestAudit: sessionMetadata.manifestAudit as Record<string, unknown> | undefined,
         resumeExistingSession: true,
         laneContext,
       });
@@ -1165,6 +1259,7 @@ export async function submitTaskExecution(
         note: "OpenClaw runtime not configured. Session pending runtime connection for broker-required channels.",
         runtimeSelection: "openclaw_required",
         runtimeReason: "Package requested browser, local file, or local application execution that must not run AWS-native.",
+        requesterId: input.requestedByUserId,
         manifestAudit: auditRecord,
       },
       createdAt: new Date(),

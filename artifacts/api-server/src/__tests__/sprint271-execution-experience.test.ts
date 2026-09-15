@@ -60,7 +60,15 @@ function makeUpdateChain() {
     id: "task-271",
     organizationId: "org-271",
     currentState: "executing",
-    metadata: {},
+    metadata: {
+      laneContext: {
+        executionClass: "professional_work",
+        requiresCompletedWork: true,
+        requiresEvidence: false,
+        requiresClaimIntegrity: true,
+        requiresApproval: true,
+      },
+    },
   }]);
   return c;
 }
@@ -78,6 +86,7 @@ vi.mock("@workspace/db", () => ({
   })),
   executionIntentsTable:     { _: "executionIntents" },
   tasksTable:                { _: "tasks" },
+  taskParticipantsTable:     { _: "taskParticipants" },
   conversationsTable:        { _: "conversations" },
   conversationMessagesTable: { _: "conversationMessages" },
 }));
@@ -103,6 +112,7 @@ vi.mock("../services/conversationService.js", () => ({
   postCompletedWorkCreatedToConversation: mockPostCompleted,
   postExecutionFailedToConversation:     mockPostFailed,
   postClarificationRequestToConversation: mockPostClarif,
+  getOrCreateWorkroom:                   vi.fn().mockResolvedValue({ id: "conv-workroom" }),
 }));
 
 const mockLogOrgEvent = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -195,7 +205,15 @@ const TASK_ROW  = {
   title: "Q3 Report",
   description: "Write quarterly report",
   currentState: "queued",
-  metadata: {},
+  metadata: {
+    laneContext: {
+      executionClass: "professional_work",
+      requiresCompletedWork: true,
+      requiresEvidence: false,
+      requiresClaimIntegrity: true,
+      requiresApproval: true,
+    },
+  },
 };
 
 // ─── 1. Coordinator — clarification pause ─────────────────────────────────────
@@ -456,6 +474,7 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
       id: "cp-resume-1",
       conversationId: "conv-resume",
       organizationId: ORG,
+      requesterId: USER,
       correlationId: "corr-resume",
       clarificationQuestions: ["What is the date?"],
       clarificationAnswer: null,
@@ -487,6 +506,7 @@ describe("executionCoordinatorService — resumeFromCheckpoint", () => {
       id: "cp-resume-2",
       conversationId: "conv-resume-2",
       organizationId: ORG,
+      requesterId: USER,
       correlationId: "corr-resume-2",
       clarificationQuestions: [],
       clarificationAnswer: null,

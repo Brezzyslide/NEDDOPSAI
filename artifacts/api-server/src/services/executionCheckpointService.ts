@@ -36,6 +36,7 @@ function withExecutionCheckpointTenant<T>(
 
 export interface CheckpointPayload {
   originalRequest: string;
+  requesterId?: string;
   blueprint: WorkBlueprint | null;
   manifest: WorkPackageManifest;
   laneContext?: ExecutionLaneContext;
@@ -63,6 +64,7 @@ export interface ActiveCheckpoint {
   taskId: string | null;
   correlationId: string;
   status: string;
+  requesterId: string | null;
   clarificationQuestions: string[];
   clarificationAnswer: string | null;
   payload: CheckpointPayload;
@@ -89,6 +91,9 @@ function rowToCheckpoint(row: typeof executionCheckpointsTable.$inferSelect): Ac
     taskId:                 row.taskId,
     correlationId:          row.correlationId,
     status:                 row.status,
+    requesterId:            typeof (row.checkpointPayload as Record<string, unknown> | null)?.requesterId === "string"
+      ? (row.checkpointPayload as Record<string, unknown>).requesterId as string
+      : null,
     clarificationQuestions: (row.clarificationQuestions as string[]) ?? [],
     clarificationAnswer:    row.clarificationAnswer,
     payload:                row.checkpointPayload as CheckpointPayload,
@@ -134,7 +139,7 @@ export async function createCheckpoint(input: CreateCheckpointInput): Promise<Ac
       blueprintId:            input.blueprintId,
       workPackageManifestId:  input.workPackageManifestId,
       status:                 "awaiting_clarification",
-      checkpointPayload:      input.payload as Record<string, unknown>,
+      checkpointPayload:      { ...input.payload, requesterId: input.requesterId } as Record<string, unknown>,
       clarificationQuestions: input.clarificationQuestions,
       expiresAt,
       createdAt:              now,

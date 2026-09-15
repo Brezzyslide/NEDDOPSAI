@@ -795,12 +795,26 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
 
     expect(checkpointResumeBody).toContain("requireTaskLaneContext");
     expect(checkpointResumeBody).toContain("claimTaskForCheckpointResume");
+    expect(checkpointResumeBody).toContain("checkpoint.requesterId");
+    expect(checkpointResumeBody).toContain("hasCheckpointResumeArtefacts");
+    expect(coordinator).toContain("execution_coordinator.resume_requester_unverified");
+    expect(coordinator).toContain("execution_coordinator.resume_checkpoint_stale");
     expect(coordinator).toContain("checkExecutionAccess(organizationId, primaryRole, [\"api\", \"internal\"])");
     expect(coordinator).toContain("laneContext,      // Sprint 29M: classifier lane");
     expect(pendingResumeBody).toContain("assertPendingSessionResumeSafety");
+    expect(pendingResumeBody).toContain("sessionMetadata");
+    expect(pendingResumeBody).toContain("requestedByUserId: input.requestedByUserId");
     expect(execution).toContain("checkExecutionAccess(");
     expect(execution).toContain("validateOpenClawExecutionPackageAuthority");
     expect(execution).toContain("EXECUTION_PACKAGE_EXPIRED");
+    expect(execution).toContain("EXECUTION_PACKAGE_REQUESTER_UNVERIFIED");
+    expect(execution).toContain("EXECUTION_PACKAGE_REQUESTER_MISMATCH");
+    expect(execution).toContain("EXECUTION_PACKAGE_STALE_ARTEFACTS");
+    expect(execution).toContain("assertPendingSessionArtefacts");
+    expect(execution).toContain("runtimeInstructions");
+    expect(execution).toContain("contextAudit");
+    expect(execution).toContain("manifestAudit");
+    expect(execution).toContain("requesterId: input.requestedByUserId");
     expect(execution).toContain("laneContext: input.laneContext");
     expect(uee).toContain("if (request.taskId && !laneContext)");
     expect(uee).toContain("Execution lane context is missing for this task");

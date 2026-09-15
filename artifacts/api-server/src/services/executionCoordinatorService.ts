@@ -120,6 +120,18 @@ function isExecutionLaneContext(value: unknown): value is ExecutionLaneContext {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasCheckpointResumeArtefacts(checkpoint: ActiveCheckpoint): boolean {
+  return (
+    isRecord(checkpoint.payload) &&
+    typeof checkpoint.payload.originalRequest === "string" &&
+    isRecord(checkpoint.payload.manifest)
+  );
+}
+
 async function getTaskLaneContext(
   organizationId: string,
   taskId: string | undefined,
@@ -546,6 +558,62 @@ export async function resumeFromCheckpointById(
 ): Promise<void> {
   const { checkpoint, conversationId, organizationId, requesterId, clarificationAnswer } = input;
   const correlationId = checkpoint.correlationId;
+
+  if (!checkpoint.requesterId || checkpoint.requesterId !== requesterId) {
+    const msg =
+      `The work could not resume because the checkpoint requester could not be verified. ` +
+      `No work was performed. Please retry from the original task context.`;
+    if (conversationId) {
+      emitExecutionEvent(conversationId, {
+        type: "execution_failed",
+        conversationId,
+        correlationId,
+        organizationId,
+        humanLabel: "Work could not resume — requester could not be verified.",
+        errorMessage: msg,
+      });
+      await postExecutionFailedToConversation(organizationId, conversationId, checkpoint.taskId ?? "", msg, correlationId)
+        .catch(() => {});
+    }
+    await logOrgEvent({
+      eventType: "execution_coordinator.resume_requester_unverified",
+      organizationId,
+      actorType: "user",
+      actorUserId: requesterId,
+      resourceType: "conversation",
+      resourceId: conversationId,
+      metadata: { correlationId, checkpointId: checkpoint.id, checkpointRequesterId: checkpoint.requesterId },
+    }).catch(() => {});
+    return;
+  }
+
+  if (!hasCheckpointResumeArtefacts(checkpoint)) {
+    const msg =
+      `The work could not resume because the checkpoint is missing required execution artefacts. ` +
+      `No work was performed. Please retry from the original task context.`;
+    if (conversationId) {
+      emitExecutionEvent(conversationId, {
+        type: "execution_failed",
+        conversationId,
+        correlationId,
+        organizationId,
+        humanLabel: "Work could not resume — checkpoint is stale.",
+        errorMessage: msg,
+      });
+      await postExecutionFailedToConversation(organizationId, conversationId, checkpoint.taskId ?? "", msg, correlationId)
+        .catch(() => {});
+    }
+    await logOrgEvent({
+      eventType: "execution_coordinator.resume_checkpoint_stale",
+      organizationId,
+      actorType: "user",
+      actorUserId: requesterId,
+      resourceType: "conversation",
+      resourceId: conversationId,
+      metadata: { correlationId, checkpointId: checkpoint.id },
+    }).catch(() => {});
+    return;
+  }
 
   if (conversationId) {
     emitExecutionEvent(conversationId, {
