@@ -40,6 +40,7 @@ import {
 import { getActiveWorkerProfilesForRole, type WorkerProfile } from "../lib/workerProfileRegistry.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
 import { executeWork } from "./workExecutionPipelineService.js";
+import type { ExecutionLaneContext } from "./unifiedExecutionEngine.js";
 import { getMembershipForUser } from "./membershipService.js";
 import {
   reconcileTaskExecutionFailure,
@@ -196,6 +197,42 @@ function mapWorkerProfileRiskLevel(
 
 function unique<T>(values: T[]): T[] {
   return Array.from(new Set(values));
+}
+
+function isExecutionLaneContext(value: unknown): value is ExecutionLaneContext {
+  if (!value || typeof value !== "object") return false;
+  const lane = value as Record<string, unknown>;
+  return (
+    (lane.executionClass === "transient" ||
+      lane.executionClass === "professional_work" ||
+      lane.executionClass === "evidence_bearing") &&
+    typeof lane.requiresCompletedWork === "boolean" &&
+    typeof lane.requiresEvidence === "boolean" &&
+    typeof lane.requiresClaimIntegrity === "boolean" &&
+    typeof lane.requiresApproval === "boolean" &&
+    (lane.allowExternalWebSearch === undefined || typeof lane.allowExternalWebSearch === "boolean")
+  );
+}
+
+function getTaskLaneContext(task: typeof tasksTable.$inferSelect): ExecutionLaneContext | undefined {
+  const metadata = (task.metadata ?? {}) as Record<string, unknown>;
+  return isExecutionLaneContext(metadata.laneContext) ? metadata.laneContext : undefined;
+}
+
+function requireTaskLaneContext(
+  task: typeof tasksTable.$inferSelect,
+  pkg?: ExecutionPackage | null,
+): ExecutionLaneContext {
+  const packageLane = isExecutionLaneContext(pkg?.laneContext) ? pkg.laneContext : undefined;
+  const taskLane = getTaskLaneContext(task);
+  const laneContext = packageLane ?? taskLane;
+  if (!laneContext) {
+    throw Object.assign(
+      new Error("Execution lane context is missing; task execution must fail closed before resume."),
+      { code: "EXECUTION_LANE_CONTEXT_MISSING" },
+    );
+  }
+  return laneContext;
 }
 
 export class PreDispatchAuthorityError extends Error {
@@ -642,6 +679,7 @@ async function buildExecutionPackage(
     callbackUrl: "", // resolved by engine from OPENCLAW_CALLBACK_BASE_URL
     expiresAt,
     issuedAt: now.toISOString(),
+    laneContext: requireTaskLaneContext(task),
     dnaSource,
     contextAudit: {
       injectedMemoryIds: assembled.injectedMemoryIds,
@@ -689,6 +727,61 @@ async function getLatestExecutionSession(taskId: string, organizationId: string)
   return session ?? null;
 }
 
+async function assertPendingSessionResumeSafety(input: {
+  task: typeof tasksTable.$inferSelect;
+  pkg: ExecutionPackage & { dnaSource?: "database" | "static_fallback"; contextAudit?: ContextAudit };
+}): Promise<ExecutionLaneContext> {
+  const { task, pkg } = input;
+
+  if (pkg.taskId !== task.id || pkg.tenantId !== task.organizationId) {
+    throw Object.assign(
+      new Error("Pending execution package does not match the task and organisation being resumed."),
+      { code: "EXECUTION_PACKAGE_SCOPE_MISMATCH" },
+    );
+  }
+
+  if (new Date(pkg.expiresAt).getTime() <= Date.now()) {
+    throw Object.assign(
+      new Error("Pending execution package has expired; rebuild the execution package before resuming."),
+      { code: "EXECUTION_PACKAGE_EXPIRED" },
+    );
+  }
+
+  const laneContext = requireTaskLaneContext(task, pkg);
+  const access = await checkExecutionAccess(
+    task.organizationId,
+    pkg.workforceRole,
+    pkg.requestedChannels,
+  );
+  if (!access.allowed) {
+    throw Object.assign(
+      new Error(access.decision.reason),
+      { code: "EXECUTION_ACCESS_DENIED", decision: access.decision },
+    );
+  }
+
+  const profile = resolvePrimaryWorkerProfileOrThrow({
+    primaryRole:     pkg.workforceRole,
+    organizationId:  task.organizationId,
+    taskId:          task.id,
+    executionId:     pkg.executionId,
+    dnaVersion:      pkg.specialistManifest.dnaVersion,
+    dnaHash:         pkg.specialistManifest.manifestHash,
+  });
+  const authorityValidation = validateOpenClawExecutionPackageAuthority({
+    pkg,
+    workerProfile: profile,
+    blueprintContract: pkg.blueprintContract ?? null,
+  });
+  pkg.authorityValidation = authorityValidation;
+  pkg.laneContext = laneContext;
+  if (authorityValidation.decision !== "PERMITTED") {
+    throw new PreDispatchAuthorityError(authorityValidation.reason, authorityValidation);
+  }
+
+  return laneContext;
+}
+
 async function persistExecutionEvent(input: {
   executionSessionId: string;
   organizationId: string;
@@ -713,6 +806,7 @@ async function startAwsNativeExecution(input: {
   requestedByUserId: string;
   manifestAudit?: Record<string, unknown>;
   resumeExistingSession?: boolean;
+  laneContext: ExecutionLaneContext;
 }) {
   const now = new Date();
   const taskDescription = input.task.description ?? input.task.title;
@@ -784,6 +878,7 @@ async function startAwsNativeExecution(input: {
         title: input.task.title,
         taskId: input.task.id,
         outputRequiresApproval: true,
+        laneContext: input.laneContext,
       });
 
       if (result.outcome === "completed") {
@@ -949,12 +1044,14 @@ export async function submitTaskExecution(
       );
     }
     if (!requiresOpenClawRuntime(storedPackage)) {
+      const laneContext = await assertPendingSessionResumeSafety({ task, pkg: storedPackage });
       await startAwsNativeExecution({
         task,
         pkg: storedPackage,
         requestedByUserId: input.requestedByUserId,
         manifestAudit: (existingPendingSession.metadata as Record<string, unknown> | null)?.manifestAudit as Record<string, unknown> | undefined,
         resumeExistingSession: true,
+        laneContext,
       });
       return {
         executionId: storedPackage.executionId,
@@ -1043,6 +1140,7 @@ export async function submitTaskExecution(
       pkg,
       requestedByUserId: input.requestedByUserId,
       manifestAudit: auditRecord,
+      laneContext: requireTaskLaneContext(task, pkg),
     });
 
     return {

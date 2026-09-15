@@ -25,6 +25,7 @@ import {
 } from "@workspace/db";
 import { executeWork, EXECUTION_STAGE_LABELS } from "./workExecutionPipelineService.js";
 import type { ExecutionStage, ExecutionCheckpointData } from "./workExecutionPipelineService.js";
+import type { ExecutionLaneContext } from "./unifiedExecutionEngine.js";
 import { getMembershipForUser } from "./membershipService.js";
 import {
   postExecutionStartedToConversation,
@@ -50,8 +51,10 @@ import type { WorkPackageManifest } from "./workPackageService.js";
 import { resolveEvidence, type EvidencePack } from "./knowledgeResolutionService.js";
 import { validateWorkPackage, type ValidationResult } from "./workValidationService.js";
 import { classifyStandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
+import { checkExecutionAccess } from "./executionPolicy.js";
 import {
   claimTaskForExecution,
+  getTaskById,
   getTaskPlan,
   isTaskCancelled,
   reconcileTaskExecutionFailure,
@@ -100,6 +103,135 @@ export interface DispatchWorkExecutionInput {
    * the classifier's decision, not just the blueprint's declared output type.
    */
   laneContext?: import("./unifiedExecutionEngine.js").ExecutionLaneContext;
+}
+
+function isExecutionLaneContext(value: unknown): value is ExecutionLaneContext {
+  if (!value || typeof value !== "object") return false;
+  const lane = value as Record<string, unknown>;
+  return (
+    (lane.executionClass === "transient" ||
+      lane.executionClass === "professional_work" ||
+      lane.executionClass === "evidence_bearing") &&
+    typeof lane.requiresCompletedWork === "boolean" &&
+    typeof lane.requiresEvidence === "boolean" &&
+    typeof lane.requiresClaimIntegrity === "boolean" &&
+    typeof lane.requiresApproval === "boolean" &&
+    (lane.allowExternalWebSearch === undefined || typeof lane.allowExternalWebSearch === "boolean")
+  );
+}
+
+async function getTaskLaneContext(
+  organizationId: string,
+  taskId: string | undefined,
+): Promise<ExecutionLaneContext | undefined> {
+  if (!taskId) return undefined;
+  const task = await getTaskById(taskId, organizationId);
+  const metadata = (task?.metadata ?? {}) as Record<string, unknown>;
+  return isExecutionLaneContext(metadata.laneContext) ? metadata.laneContext : undefined;
+}
+
+async function requireTaskLaneContext(input: {
+  organizationId: string;
+  taskId?: string;
+  laneContext?: ExecutionLaneContext;
+  checkpoint?: ActiveCheckpoint;
+}): Promise<ExecutionLaneContext | undefined> {
+  if (!input.taskId) return input.laneContext;
+  const checkpointPayload = input.checkpoint?.payload as Record<string, unknown> | undefined;
+  const checkpointLane = isExecutionLaneContext(checkpointPayload?.laneContext)
+    ? checkpointPayload.laneContext
+    : undefined;
+  const laneContext = input.laneContext ?? checkpointLane ?? await getTaskLaneContext(input.organizationId, input.taskId);
+  if (!laneContext) {
+    throw Object.assign(
+      new Error("Execution lane context is missing; task execution must fail closed before resume."),
+      { code: "EXECUTION_LANE_CONTEXT_MISSING" },
+    );
+  }
+  return laneContext;
+}
+
+async function claimTaskForCheckpointResume(input: {
+  organizationId: string;
+  taskId?: string;
+  correlationId: string;
+  checkpointId: string;
+}): Promise<boolean> {
+  if (!input.taskId) return true;
+  const task = await getTaskById(input.taskId, input.organizationId);
+  if (!task) {
+    await logOrgEvent({
+      eventType: "execution_coordinator.resume_task_missing",
+      organizationId: input.organizationId,
+      actorType: "system",
+      resourceType: "task",
+      resourceId: input.taskId,
+      metadata: { correlationId: input.correlationId, checkpointId: input.checkpointId },
+    }).catch(() => {});
+    return false;
+  }
+
+  if (task.currentState === "cancelled" || task.currentState === "completed" || task.currentState === "executing") {
+    await logOrgEvent({
+      eventType: "execution_coordinator.resume_task_not_dispatchable",
+      organizationId: input.organizationId,
+      actorType: "system",
+      resourceType: "task",
+      resourceId: input.taskId,
+      metadata: {
+        correlationId: input.correlationId,
+        checkpointId: input.checkpointId,
+        currentState: task.currentState,
+      },
+    }).catch(() => {});
+    return false;
+  }
+
+  const resumableStates = ["evidence_required", "queued", "approved", "failed"];
+  if (!resumableStates.includes(task.currentState)) {
+    await logOrgEvent({
+      eventType: "execution_coordinator.resume_task_not_dispatchable",
+      organizationId: input.organizationId,
+      actorType: "system",
+      resourceType: "task",
+      resourceId: input.taskId,
+      metadata: {
+        correlationId: input.correlationId,
+        checkpointId: input.checkpointId,
+        currentState: task.currentState,
+      },
+    }).catch(() => {});
+    return false;
+  }
+
+  const [updated] = await withExecutionCoordinatorTenant(input.organizationId, "checkpoint_resume.task.claim", async (client) => client
+    .update(tasksTable)
+    .set({
+      currentState: "executing",
+      metadata: {
+        ...((task.metadata ?? {}) as Record<string, unknown>),
+        executionClaim: {
+          correlationId: input.correlationId,
+          checkpointId: input.checkpointId,
+          resumed: true,
+          claimedAt: new Date().toISOString(),
+        },
+      },
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(tasksTable.id, input.taskId!),
+      eq(tasksTable.organizationId, input.organizationId),
+      or(
+        eq(tasksTable.currentState, "evidence_required"),
+        eq(tasksTable.currentState, "queued"),
+        eq(tasksTable.currentState, "approved"),
+        eq(tasksTable.currentState, "failed"),
+      ),
+    ))
+    .returning());
+
+  return !!updated;
 }
 
 interface ParticipantEvidencePreflightResult {
@@ -447,6 +579,36 @@ export async function resumeFromCheckpointById(
     manifest: checkpoint.payload.manifest,
     clarificationAnswer,
   };
+  const laneContext = await requireTaskLaneContext({
+    organizationId,
+    taskId: checkpoint.taskId ?? undefined,
+    checkpoint,
+  });
+
+  const claimed = await claimTaskForCheckpointResume({
+    organizationId,
+    taskId: checkpoint.taskId ?? undefined,
+    correlationId,
+    checkpointId: checkpoint.id,
+  });
+  if (!claimed) {
+    if (conversationId) {
+      const msg =
+        `The work could not resume because the task state is no longer executable. ` +
+        `No work was performed. Please retry or contact support with reference ${correlationId}.`;
+      emitExecutionEvent(conversationId, {
+        type: "execution_failed",
+        conversationId,
+        correlationId,
+        organizationId,
+        humanLabel: "Work could not resume — task state changed.",
+        errorMessage: msg,
+      });
+      await postExecutionFailedToConversation(organizationId, conversationId, checkpoint.taskId ?? "", msg, correlationId)
+        .catch(() => {});
+    }
+    return;
+  }
 
   runExecutionInBackground({
     organizationId,
@@ -457,6 +619,7 @@ export async function resumeFromCheckpointById(
     correlationId,
     intentId: undefined,
     checkpointData,
+    laneContext,
   });
 }
 
@@ -717,6 +880,49 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       input.canonicalIntent ??
       deriveProfessionalIntentKey(userRequest, plan?.intent ?? null) ??
       undefined;
+    const laneContext = await requireTaskLaneContext({
+      organizationId,
+      taskId,
+      laneContext: input.laneContext,
+    });
+    if (taskId && plan) {
+      const planData = plan.planData as { primarySpecialist?: string; assignedSpecialists?: string[] };
+      const primaryRole = planData.primarySpecialist ?? planData.assignedSpecialists?.[0] ?? "chief_of_staff";
+      const access = await checkExecutionAccess(organizationId, primaryRole, ["api", "internal"]);
+      if (!access.allowed) {
+        const msg =
+          `The work could not start because execution access is no longer permitted: ${access.decision.reason}. ` +
+          `No work was performed. Please retry or contact support with reference ${correlationId}.`;
+        await logOrgEvent({
+          eventType: "execution_coordinator.access_denied",
+          organizationId,
+          actorType: "system",
+          actorUserId: requesterId,
+          resourceType: "task",
+          resourceId: taskId,
+          metadata: { correlationId, decision: access.decision, deniedAt: access.deniedAt },
+        }).catch(() => {});
+        if (conversationId) {
+          emitExecutionEvent(conversationId, {
+            type: "execution_failed",
+            conversationId,
+            correlationId,
+            organizationId,
+            humanLabel: "Work could not start — execution access denied.",
+            errorMessage: msg,
+          });
+          await postExecutionFailedToConversation(organizationId, conversationId, taskId, msg, correlationId)
+            .catch(() => {});
+        }
+        await reconcileTaskExecutionFailure({
+          taskId,
+          organizationId,
+          errorMessage: msg,
+          correlationId,
+        }).catch(() => {});
+        return;
+      }
+    }
 
     const result = await executeWork({
       organizationId,
@@ -728,7 +934,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       correlationId,
       taskId,           // Sprint 29I (D1): forward CoS task ID so engine can read the authoritative plan
       checkpointData: input.checkpointData,
-      laneContext: input.laneContext,  // Sprint 29M: classifier lane → UEE evidence override
+      laneContext,      // Sprint 29M: classifier lane → UEE evidence override
       onProgress: async (stage: ExecutionStage) => {
         const humanLabel = EXECUTION_STAGE_LABELS[stage] ?? stage;
 
@@ -781,6 +987,7 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
             originalRequest: userRequest,
             blueprint: (result as { blueprint?: WorkBlueprint | null }).blueprint ?? null,
             manifest: (result as { manifest?: WorkPackageManifest }).manifest ?? null,
+            laneContext,
           },
         }).catch(err =>
           console.warn("[ExecutionCoordinator] Failed to persist checkpoint (in-memory fallback active):", err?.message),

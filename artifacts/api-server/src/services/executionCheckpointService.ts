@@ -16,6 +16,7 @@ import { eq, and, lt, or, inArray, sql } from "drizzle-orm";
 import { db, executionCheckpointsTable, withSystemTenantContext } from "@workspace/db";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
+import type { ExecutionLaneContext } from "./unifiedExecutionEngine.js";
 import { logOrgEvent } from "./auditService.js";
 
 type DbClient = typeof db;
@@ -37,6 +38,7 @@ export interface CheckpointPayload {
   originalRequest: string;
   blueprint: WorkBlueprint | null;
   manifest: WorkPackageManifest;
+  laneContext?: ExecutionLaneContext;
 }
 
 export interface CreateCheckpointInput {

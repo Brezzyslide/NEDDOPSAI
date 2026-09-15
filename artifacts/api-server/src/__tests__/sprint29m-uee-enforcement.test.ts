@@ -112,7 +112,11 @@ function makeSelectChain(result: unknown[]) {
   const whereFn  = vi.fn().mockReturnValue(
     Object.assign(Promise.resolve(result), { limit: limitFn, orderBy: vi.fn().mockReturnValue({ limit: limitFn }) }),
   );
-  return { from: vi.fn().mockReturnValue({ where: whereFn }), where: whereFn };
+  const chain = {
+    where: whereFn,
+    innerJoin: vi.fn().mockReturnThis(),
+  };
+  return { from: vi.fn().mockReturnValue(chain), where: whereFn, innerJoin: chain.innerJoin };
 }
 
 vi.mock("@workspace/db", () => {
@@ -138,6 +142,8 @@ vi.mock("@workspace/db", () => {
     completedWorkEvidenceLinksTable: { id: "id", completedWorkId: "completed_work_id", organizationId: "organization_id" },
     taskExecutionPlansTable:         { taskId: "task_id", organizationId: "organization_id", createdAt: "created_at" },
     workPackageManifestsTable:       { id: "id", taskId: "task_id", organizationId: "organization_id" },
+    participantsTable:               { id: "id", metadata: "metadata" },
+    taskParticipantsTable:           { taskId: "task_id", organizationId: "organization_id", participantId: "participant_id" },
     knowledgeChunksTable:            { id: "id", organizationId: "organization_id" },
     knowledgeSourcesTable:           { id: "id", organizationId: "organization_id" },
     knowledgeSourceVersionsTable:    { id: "id" },
@@ -526,7 +532,11 @@ function setupHappyPathMocks(blueprintEvidenceMode: "none" | "optional" | "requi
   mockLoadOrgSpecialistConfig.mockResolvedValue(null);
   mockLoadSpecialistContext.mockResolvedValue(mockSpecialistContextPackage);
 
-  // The plan is present so the specialist readiness check passes
+  // Subject participant lookup runs before task plan lookup.
+  mockDbSelect.mockImplementationOnce(() =>
+    makeSelectChain([]),
+  );
+  // The plan is present so the specialist readiness check passes.
   mockDbSelect.mockImplementationOnce(() =>
     makeSelectChain([makePlan("operations_manager")]),
   );
@@ -859,20 +869,21 @@ describe("A — UEE evidence gate (laneContext.requiresEvidence=true)", () => {
     }
   });
 
-  it("A4: laneContext absent, evidence null → execution proceeds (existing best-effort behavior unchanged)", async () => {
+  it("A4: task laneContext absent, evidence null → execution fails closed before generation", async () => {
     setupHappyPathMocks("none");
     mockResolveEvidenceForTask.mockResolvedValue(null); // null but no laneContext requirement
 
     const engine = makeEngine();
     const result = await engine.execute(makeRequest({
-      // No laneContext — falls back to best-effort evidence
+      // No laneContext — task execution cannot evaluate load-bearing gates safely.
     }));
 
-    // Gate should NOT fire — execution proceeds regardless
     expect(result.trigger).toBe("task");
     if (result.trigger === "task") {
-      expect(result.workResult.outcome).not.toBe("execution_failed");
+      expect(result.workResult.outcome).toBe("execution_failed");
+      expect(result.workResult.message).toContain("Execution lane context is missing");
     }
+    expect(mockCreateDraft).not.toHaveBeenCalled();
   });
 });
 
@@ -974,7 +985,7 @@ describe("C — PROFESSIONAL_WORK lane: evidence gate does not fire (best-effort
     }
   });
 
-  it("C2: no laneContext with null evidence → gate does not fire (backward compatibility)", async () => {
+  it("C2: task laneContext absent with null evidence → execution fails closed", async () => {
     setupHappyPathMocks("none");
     mockResolveEvidenceForTask.mockResolvedValue(null);
 
@@ -983,8 +994,10 @@ describe("C — PROFESSIONAL_WORK lane: evidence gate does not fire (best-effort
 
     expect(result.trigger).toBe("task");
     if (result.trigger === "task") {
-      expect(result.workResult.outcome).not.toBe("execution_failed");
+      expect(result.workResult.outcome).toBe("execution_failed");
+      expect(result.workResult.message).toContain("Execution lane context is missing");
     }
+    expect(mockCreateDraft).not.toHaveBeenCalled();
   });
 });
 
@@ -1057,9 +1070,9 @@ describe("D — care plan template full path uses declared Blueprint placeholder
     });
     mockLoadOrgSpecialistConfig.mockResolvedValue(null);
     mockLoadSpecialistContext.mockResolvedValue(mockSpecialistContextPackage);
-    mockDbSelect.mockImplementationOnce(() =>
-      makeSelectChain([makePlan("service_delivery_coordinator")]),
-    );
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([makePlan("service_delivery_coordinator")]));
     mockGetSpecialistByCode.mockReturnValue({ executionStatus: "available", dnaStatus: "active" });
     mockSelectBlueprint.mockResolvedValue({
       blueprint,

@@ -780,6 +780,32 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(awsNativeBody).toContain('currentState: "executing"');
   });
 
+  it("resume paths re-run lane, access, authority, and task-state gates", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+    const execution = source("services/executionService.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const checkpointResumeBody = coordinator.slice(
+      coordinator.indexOf("export async function resumeFromCheckpointById"),
+      coordinator.indexOf("/**", coordinator.indexOf("export async function resumeFromCheckpointById") + 1),
+    );
+    const pendingResumeBody = execution.slice(
+      execution.indexOf("if (existingPendingSession?.currentStatus === \"pending\")"),
+      execution.indexOf("// 2. Provider-independent execution gate"),
+    );
+
+    expect(checkpointResumeBody).toContain("requireTaskLaneContext");
+    expect(checkpointResumeBody).toContain("claimTaskForCheckpointResume");
+    expect(coordinator).toContain("checkExecutionAccess(organizationId, primaryRole, [\"api\", \"internal\"])");
+    expect(coordinator).toContain("laneContext,      // Sprint 29M: classifier lane");
+    expect(pendingResumeBody).toContain("assertPendingSessionResumeSafety");
+    expect(execution).toContain("checkExecutionAccess(");
+    expect(execution).toContain("validateOpenClawExecutionPackageAuthority");
+    expect(execution).toContain("EXECUTION_PACKAGE_EXPIRED");
+    expect(execution).toContain("laneContext: input.laneContext");
+    expect(uee).toContain("if (request.taskId && !laneContext)");
+    expect(uee).toContain("Execution lane context is missing for this task");
+  });
+
   it("CoS and system-authored plan cards cannot invent operational completion ETAs", () => {
     const cosPrompt = source("services/chiefOfStaffLLMService.ts");
     const conversationService = source("services/conversationService.ts");

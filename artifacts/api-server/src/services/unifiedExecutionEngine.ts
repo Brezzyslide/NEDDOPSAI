@@ -1240,6 +1240,17 @@ export class UnifiedExecutionEngine {
     // PROFESSIONAL_WORK and TRANSIENT lanes are unaffected (requiresEvidence=false).
     // Neither KRS nor OpenClaw run for TRANSIENT requests.
 
+    const laneContext = request.laneContext;
+    if (request.taskId && !laneContext) {
+      return {
+        outcome:       "execution_failed",
+        manifestId:    manifest.id,
+        blueprintCode: blueprint?.code,
+        message:
+          "Execution lane context is missing for this task. Evidence and approval gates cannot be evaluated safely.",
+      };
+    }
+
     await progress("retrieving_evidence");
     const t3evidence = Date.now();
 
@@ -1262,12 +1273,12 @@ export class UnifiedExecutionEngine {
     // When allowExternalWebSearch=true, the adapter may search the web and retrieve
     // external authoritative sources (Part C). All results pass through Authority Gate.
     const openClawPromise: Promise<OrchestratorResult | null> =
-      request.laneContext?.requiresEvidence
+      laneContext?.requiresEvidence
         ? runParallelEvidenceDiscovery({
             executionId:            manifest.executionId,
             organisationId:         organizationId,
             evidenceQuestion:       userRequest,
-            allowExternalWebSearch: request.laneContext?.allowExternalWebSearch ?? false,
+            allowExternalWebSearch: laneContext.allowExternalWebSearch ?? false,
           }).catch(err => {
             console.warn(
               "[UnifiedExecutionEngine] 29N.11: OpenClaw parallel discovery threw: " +
@@ -1324,11 +1335,11 @@ export class UnifiedExecutionEngine {
       openClawCandidatesRejected:   convergence.openClawCandidatesRejected,
       deduplicatedItems:            convergence.deduplicatedItems,
       contradictionsDetected:       convergence.contradictions.length,
-      allowExternalWebSearch:       request.laneContext?.allowExternalWebSearch ?? false,
+      allowExternalWebSearch:       laneContext?.allowExternalWebSearch ?? false,
     };
 
     // ── 6. Sufficiency gate on the merged pack (EVIDENCE_BEARING only) ─────────
-    if (request.laneContext?.requiresEvidence) {
+    if (laneContext?.requiresEvidence) {
       const mergedPack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
 
       const sufficiency = evaluateEvidenceSufficiency({
@@ -2290,10 +2301,10 @@ export class UnifiedExecutionEngine {
     // tasks always run the full provenance pipeline.
     const blueprintEvidenceMode = classifyEvidenceMode(blueprint);
     const evidenceMode: ReturnType<typeof classifyEvidenceMode> =
-      (request.laneContext?.requiresEvidence && blueprintEvidenceMode !== "required")
+      (laneContext?.requiresEvidence && blueprintEvidenceMode !== "required")
         ? "required"
         : blueprintEvidenceMode;
-    if (request.laneContext?.requiresEvidence && blueprintEvidenceMode !== "required") {
+    if (laneContext?.requiresEvidence && blueprintEvidenceMode !== "required") {
       console.info(
         "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresEvidence=true overrides " +
         `blueprint evidenceMode from "${blueprintEvidenceMode}" to "required" (correlationId=${request.correlationId ?? "unknown"})`,
@@ -2396,7 +2407,7 @@ export class UnifiedExecutionEngine {
     // Sprint 29M: if laneContext.requiresApproval=true, force approval regardless
     // of outputRequiresApproval, so EVIDENCE_BEARING tasks can never skip the
     // approval gate even when routed through a no-approval blueprint.
-    const laneRequiresApproval = request.laneContext?.requiresApproval === true;
+    const laneRequiresApproval = laneContext?.requiresApproval === true;
     const qualityGatePassed = reviewResult.passed ?? reviewPassed(reviewResult);
     const requiresApproval = qualityGatePassed && (laneRequiresApproval || request.outputRequiresApproval !== false);
     if (laneRequiresApproval && request.outputRequiresApproval === false) {

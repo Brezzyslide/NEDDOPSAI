@@ -510,6 +510,15 @@ export interface ExecutionPackage {
   blueprintContract?: BlueprintExecutionContractSnapshot | null;
   /** NeedsOps pre-dispatch authority validation snapshot */
   authorityValidation?: ExecutionAuthorityValidationSnapshot;
+  /** Immutable execution-lane decision captured when the task was classified */
+  laneContext?: {
+    executionClass: "transient" | "professional_work" | "evidence_bearing";
+    requiresCompletedWork: boolean;
+    requiresEvidence: boolean;
+    requiresClaimIntegrity: boolean;
+    requiresApproval: boolean;
+    allowExternalWebSearch?: boolean;
+  };
   /** Approval state at the time of submission */
   approvalState: string;
   /** Hard constraints the runtime must not exceed */
