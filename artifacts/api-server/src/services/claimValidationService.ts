@@ -893,6 +893,7 @@ export function mergeDeliverableSectionDeltas(input: {
   currentSections: ParsedDeliverableSection[] | undefined;
   repairSections: ParsedDeliverableSection[] | undefined;
   allowedRequirementIds: string[];
+  knownRequirementIds?: string[];
 }): ParsedDeliverableSection[] {
   const currentSections = input.currentSections ?? [];
   const repairSections = input.repairSections ?? [];
@@ -905,10 +906,11 @@ export function mergeDeliverableSectionDeltas(input: {
 
   const currentIds = new Set(currentSections.map((section) => section.requirementId));
   const allowedIds = new Set(input.allowedRequirementIds);
+  const knownIds = new Set(input.knownRequirementIds ?? [...currentIds]);
   const replacements = new Map<string, ParsedDeliverableSection>();
 
   for (const section of repairSections) {
-    if (!currentIds.has(section.requirementId)) {
+    if (!knownIds.has(section.requirementId)) {
       throw new Error(`Targeted repair returned unknown requirementId "${section.requirementId}".`);
     }
     if (!allowedIds.has(section.requirementId)) {
@@ -920,7 +922,13 @@ export function mergeDeliverableSectionDeltas(input: {
     replacements.set(section.requirementId, section);
   }
 
-  return currentSections.map((section) => replacements.get(section.requirementId) ?? section);
+  const merged = currentSections.map((section) => replacements.get(section.requirementId) ?? section);
+  for (const [requirementId, section] of replacements) {
+    if (!currentIds.has(requirementId)) {
+      merged.push(section);
+    }
+  }
+  return merged;
 }
 
 /**

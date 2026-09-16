@@ -2354,6 +2354,50 @@ The strategies below implement the participant's behaviour support plan.
     expect(merged.find((section) => section.requirementId === "mandatory-2")?.heading).toBe("Repaired Risk Controls");
   });
 
+  it("ignores valid non-target repair sections even when the current draft omitted them", () => {
+    const currentSections = carePlanDeliverableSections().filter((section) => section.requirementId !== "mandatory-1");
+    const merged = mergeDeliverableSectionDeltas({
+      currentSections,
+      repairSections: [
+        {
+          requirementId: "mandatory-1",
+          heading: "Already Accepted But Omitted",
+          content: "This valid non-target section should not be introduced by the current repair group.",
+        },
+        {
+          requirementId: "mandatory-2",
+          heading: "Repaired Risk Controls",
+          content: "Repaired substantive wording for requirement two now explains the concrete risk controls, responsible owner, review trigger, escalation pathway and evidence record expected in the reusable care plan.",
+        },
+      ],
+      allowedRequirementIds: ["mandatory-2"],
+      knownRequirementIds: carePlanDeliverableSections().map((section) => section.requirementId),
+    });
+
+    expect(merged.some((section) => section.requirementId === "mandatory-1")).toBe(false);
+    expect(merged.find((section) => section.requirementId === "mandatory-2")?.heading).toBe("Repaired Risk Controls");
+  });
+
+  it("adds targeted repair sections that were missing from the current draft", () => {
+    const allSections = carePlanDeliverableSections();
+    const currentSections = allSections.filter((section) => section.requirementId !== "mandatory-9");
+    const merged = mergeDeliverableSectionDeltas({
+      currentSections,
+      repairSections: [
+        {
+          requirementId: "mandatory-9",
+          heading: "Repaired Mandatory Section",
+          content: "Repaired substantive wording for requirement nine records the participant-specific strategy, missing evidence finding, responsible role, review point and escalation pathway.",
+        },
+      ],
+      allowedRequirementIds: ["mandatory-9"],
+      knownRequirementIds: allSections.map((section) => section.requirementId),
+    });
+
+    expect(merged).toHaveLength(9);
+    expect(merged.find((section) => section.requirementId === "mandatory-9")?.heading).toBe("Repaired Mandatory Section");
+  });
+
   it("assembles byte-identical markdown before and after no-op equivalent repair", () => {
     const currentSections = carePlanDeliverableSections();
     const order = currentSections.map((section) => section.requirementId);

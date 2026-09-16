@@ -2869,12 +2869,14 @@ export class UnifiedExecutionEngine {
       };
     }
 
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
     let mergedSections: ParsedDeliverableSection[];
     try {
       mergedSections = mergeDeliverableSectionDeltas({
         currentSections: input.deliverableSections,
         repairSections: parsed.deliverableSections,
         allowedRequirementIds: input.missingRequirements.map((requirement) => requirement.requirementId),
+        knownRequirementIds: coverageProfile.requirements.map((requirement) => requirement.id),
       });
     } catch (error) {
       return {
@@ -2885,7 +2887,6 @@ export class UnifiedExecutionEngine {
       };
     }
 
-    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
     const finalSections = assembleTemplateSectionsForContext(
       input.professionalContext,
       input.blueprintContract,
