@@ -2327,6 +2327,29 @@ The strategies below implement the participant's behaviour support plan.
     ).toThrow('Targeted repair returned unknown requirementId "mandatory-99".');
   });
 
+  it("ignores valid non-deficient targeted repair sections without failing the merge", () => {
+    const currentSections = carePlanDeliverableSections();
+    const merged = mergeDeliverableSectionDeltas({
+      currentSections,
+      repairSections: [
+        {
+          requirementId: "mandatory-1",
+          heading: "Already Accepted",
+          content: "This valid but non-deficient section should be ignored during targeted repair.",
+        },
+        {
+          requirementId: "mandatory-2",
+          heading: "Repaired Risk Controls",
+          content: "Repaired substantive wording for requirement two now explains the concrete risk controls, responsible owner, review trigger, escalation pathway and evidence record expected in the reusable care plan.",
+        },
+      ],
+      allowedRequirementIds: ["mandatory-2"],
+    });
+
+    expect(merged.find((section) => section.requirementId === "mandatory-1")?.heading).toBe("Care Plan Requirement 1");
+    expect(merged.find((section) => section.requirementId === "mandatory-2")?.heading).toBe("Repaired Risk Controls");
+  });
+
   it("assembles byte-identical markdown before and after no-op equivalent repair", () => {
     const currentSections = carePlanDeliverableSections();
     const order = currentSections.map((section) => section.requirementId);

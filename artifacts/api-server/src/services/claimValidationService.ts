@@ -912,7 +912,7 @@ export function mergeDeliverableSectionDeltas(input: {
       throw new Error(`Targeted repair returned unknown requirementId "${section.requirementId}".`);
     }
     if (!allowedIds.has(section.requirementId)) {
-      throw new Error(`Targeted repair returned non-deficient requirementId "${section.requirementId}".`);
+      continue;
     }
     if (replacements.has(section.requirementId)) {
       throw new Error(`Targeted repair returned duplicate requirementId "${section.requirementId}".`);
