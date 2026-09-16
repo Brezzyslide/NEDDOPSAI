@@ -1247,7 +1247,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-support-delivery-client-safety")?.completionFields)
       .toEqual(["On-call contact", "Service manager contact"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-client-endorsement")?.completionFields)
-      .toEqual(["Provided to"]);
+      .toEqual(["Signature", "Date", "Provided to", "Consent"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-behavioural-management")?.expectedEvidenceCategories)
       .toContain("behaviour_support_plan");
   });
@@ -1304,6 +1304,106 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
   });
 
+  it("does not require literal communication keywords when authored criteria are substantively met", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint: carePlan,
+      sections: carePlan.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const content = [
+      "According to the behaviour support plan and intake form, workers should use calm, clear prompts and allow time for Micheal to respond before repeating an instruction.",
+      "Workers should offer two simple choices, check that Micheal has understood through his response, avoid rapid questioning, and record changes in how he communicates during the shift.",
+    ].join(" ");
+    const report = evaluateDeliverableRequirementCoverage(
+      `## Worker Communication Approach\n\n${content}`,
+      {
+        ...profile,
+        requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-communication-strategy"),
+      },
+      {
+        deliverableSections: [{
+          requirementId: "care-plan-communication-strategy",
+          heading: "Worker Communication Approach",
+          content,
+        }],
+      },
+    );
+
+    expect(content).not.toMatch(/\breceptive\b/i);
+    expect(content).not.toMatch(/\bcommunication aid\b/i);
+    expect(report.missing).toHaveLength(0);
+    expect(report.requirementResults[0]).toMatchObject({
+      substantiveValidationMode: "ADEQUACY_CRITERIA",
+      finalResult: "SATISFIED",
+    });
+  });
+
+  it("runs care-plan behaviour safety checks by requirementId when headings differ", () => {
+    const carePlan = getRegistryEntry("care_plan");
+    if (!carePlan) throw new Error("missing care_plan blueprint");
+    const contract = {
+      blueprint: carePlan,
+      sections: carePlan.sections ?? [],
+      template: null,
+      mode: "create",
+    } satisfies BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for participant Michael.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint: carePlan,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const participantContext = {
+      ...professionalContext,
+      specificity: "PARTICIPANT_SPECIFIC" as const,
+      deliverable: {
+        ...professionalContext.deliverable,
+        standardisation: "participant_specific" as const,
+      },
+    };
+    const content = `### Proactive strategies
+
+| Behaviour or trigger | Strategy | What the worker does | BSP source |
+| --- | --- | --- | --- |
+| Loud environment | Offer quiet space | Prompt Michael to move to the lounge | the BSP |`;
+    const gate = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: `## Behaviour Management Strategies\n\n${content}`,
+      professionalContext: participantContext,
+      professionalWork: {
+        behaviourSupportStrategies: [
+          { strategy: "Offer quiet space", bspSource: "\"Offer access to a quiet space\" - BSP page 4" },
+        ],
+      },
+      deliverableSections: [{
+        requirementId: "care-plan-behavioural-management",
+        heading: "Behaviour Management Strategies",
+        content,
+      }],
+      deferApprovalGate: true,
+    });
+
+    expect(gate.failures.find((failure) => failure.gate === "care_plan_behaviour_safety")?.details)
+      .toEqual(expect.arrayContaining([expect.stringContaining("TRACEABILITY")]));
+  });
+
   it("accepts specific participant-mode absence statements for mandatory no-evidence sections", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const contract = {
@@ -1334,8 +1434,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       ...profile,
       requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-about-me"),
     };
+    const disaster = {
+      ...profile,
+      requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-disaster-management-strategy"),
+    };
     const specificAbsence = "No retrieved mealtime management risk assessment evidence was present for Micheal Rocca. Food texture, fluid consistency, positioning, supervision level, equipment and worker mealtime actions are not recorded in the available evidence; a mealtime management risk assessment would carry those instructions.";
     const aboutMeAbsence = "No retrieved strengths based questionnaire or participant voice document is recorded for Micheal Rocca. Strengths, likes, dislikes, what matters to him, communication preferences and informal supports are not recorded in the available evidence; a strengths based questionnaire or participant voice record would carry those details.";
+    const disasterAbsence = "No retrieved disaster management risk assessment or community access risk assessment is recorded for Micheal Rocca. Participant-specific evacuation assistance, assembly point, transport contingency and location-specific community access arrangements are not recorded in the available evidence; a disaster management risk assessment or community access risk assessment would carry those instructions.";
     const vagueAbsence = "Not applicable.";
 
     const accepted = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${specificAbsence}`, mealtime, {
@@ -1344,12 +1449,16 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const acceptedAboutMe = evaluateDeliverableRequirementCoverage(`## About Me\n\n${aboutMeAbsence}`, aboutMe, {
       deliverableSections: [{ requirementId: "care-plan-about-me", heading: "About Me", content: aboutMeAbsence }],
     });
+    const acceptedConditional = evaluateDeliverableRequirementCoverage(`## Disaster Management Strategy\n\n${disasterAbsence}`, disaster, {
+      deliverableSections: [{ requirementId: "care-plan-disaster-management-strategy", heading: "Disaster Management Strategy", content: disasterAbsence }],
+    });
     const rejected = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${vagueAbsence}`, mealtime, {
       deliverableSections: [{ requirementId: "care-plan-mealtime-management-strategy", heading: "Mealtime Management Strategy", content: vagueAbsence }],
     });
 
     expect(accepted.missing).toHaveLength(0);
     expect(acceptedAboutMe.missing).toHaveLength(0);
+    expect(acceptedConditional.missing).toHaveLength(0);
     expect(rejected.missing).toHaveLength(1);
   });
 
@@ -1484,7 +1593,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-document-control")?.completionFields)
       .toEqual(["Form ID", "Date"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-client-endorsement")?.completionFields)
-      .toEqual(["Provided to"]);
+      .toEqual(["Signature", "Date", "Provided to", "Consent"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-mealtime-management-strategy")?.adequacyCriteria)
       .toContain("Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date");
     expect(profile.requirements.map((requirement) => requirement.id)).toEqual([
@@ -2373,6 +2482,15 @@ The strategies below implement the participant's behaviour support plan.
     expect(src).toContain("missing_expected_source_categories");
     expect(src).toContain("## EXPECTED SOURCE COVERAGE FOR REPAIR");
     expect(src).toContain("do not invent participant preferences, supports, dates, assessments or source details");
+  });
+
+  it("maps mechanical care-plan gate failures back to targeted repair requirements", () => {
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const runtime = source("services/blueprintRuntimeValidationService.ts");
+
+    expect(uee).toContain("mechanicalRequirementFailuresForRepair");
+    expect(uee).toContain('requirementId: "care-plan-goals"');
+    expect(runtime).toContain("care_plan_minimum_three_personal_goals");
   });
 
   it("ignores valid non-target repair sections even when the current draft omitted them", () => {

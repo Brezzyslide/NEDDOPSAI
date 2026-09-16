@@ -2079,7 +2079,7 @@ function carePlanDomainSufficiency(requirementId: string, normalised: string): {
   const hasAny = (terms: string[]) => terms.some((term) => normalised.includes(normaliseContent(term)));
   const hasAll = (terms: string[]) => terms.every((term) => normalised.includes(normaliseContent(term)));
   const count = (terms: string[]) => terms.filter((term) => normalised.includes(normaliseContent(term))).length;
-  const sourceBacked = hasAny(["source", "evidence", "according to", "based on", "as recorded", "behaviour support plan", "bsp", "intake form", "risk assessment", "ndis plan", "service agreement", "signing record"]);
+  const sourceBacked = hasAny(["source", "evidence", "according to", "based on", "as recorded", "as noted", "document", "behaviour support plan", "bsp", "intake form", "risk assessment", "ndis plan", "service agreement", "signing record"]);
   const workerAction = hasAny(["worker", "support worker", "staff", "team member", "prompt", "support", "assist", "monitor", "record", "escalat", "report", "contact", "provide"]);
 
   const checks: Record<string, { passed: boolean; partial: boolean; reason: string }> = {
@@ -2109,9 +2109,9 @@ function carePlanDomainSufficiency(requirementId: string, normalised: string): {
       reason: "Undertaking ADL must state support levels and worker actions, not only capacity labels.",
     },
     "care-plan-communication-strategy": {
-      passed: workerAction && hasAny(["communication", "communicat"]) && count(["verbal", "non verbal", "expressive", "receptive", "strategy", "understood", "response", "avoid"]) >= 2,
-      partial: hasAny(["communication", "communicat", "verbal", "strategy"]) || workerAction,
-      reason: "Communication strategy must contain a worker-usable communication strategy, not literal keyword coverage.",
+      passed: workerAction && sourceBacked && hasAny(["communication", "communicat", "understand", "response", "prompt", "clear", "choice", "calm"]) && count(["strategy", "worker", "staff", "prompt", "response", "understood", "avoid", "allow time", "clear", "calm", "choice"]) >= 3,
+      partial: hasAny(["communication", "communicat", "verbal", "strategy", "response", "understood"]) || workerAction || sourceBacked,
+      reason: "Communication strategy must contain evidence-cited worker actions for communication support; it must not depend on literal receptive/aid keywords.",
     },
     "care-plan-mobility-strategy": {
       passed: workerAction && hasAny(["mobility", "transfer", "aid", "equipment"]) && hasAny(["required", "not required", "used", "not recorded", "not available"]),

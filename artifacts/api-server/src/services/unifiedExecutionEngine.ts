@@ -1905,14 +1905,37 @@ export class UnifiedExecutionEngine {
     if (!runtimeGate.passed) {
       const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
-      if (hasCoverageFailure && coverageReport.missing.length > 0) {
-        const repairGroups = groupRequirementFailuresForRepair(coverageProfile, coverageReport.missing).slice(0, 8);
+      const hasMechanicalFailure = runtimeGate.failures.some((failure) => failure.gate === "mechanical_gate");
+      const repairableFailures = mergeRepairableRequirementFailures(
+        coverageReport.missing,
+        mechanicalRequirementFailuresForRepair(runtimeGate.failures, coverageReport),
+      );
+      if ((hasCoverageFailure || hasMechanicalFailure) && repairableFailures.length > 0) {
+        const repairGroups = groupRequirementFailuresForRepair(coverageProfile, repairableFailures).slice(0, 8);
         let repairFailureMessage: string | null = null;
         for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
           const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
-          if (currentCoverage.missing.length === 0) break;
+          const currentRepairableFailures = mergeRepairableRequirementFailures(
+            currentCoverage.missing,
+            mechanicalRequirementFailuresForRepair(
+              validateBlueprintRuntimeCompletion({
+                contract: blueprintContract,
+                contentMarkdown: reviewResult.finalContent,
+                rawClaims,
+                evidencePack: evidencePack ?? null,
+                artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+                deferApprovalGate: true,
+                standardTemplateEvidence,
+                professionalContext,
+                deliverableSections,
+                professionalWork,
+              }).failures,
+              currentCoverage,
+            ),
+          );
+          if (currentRepairableFailures.length === 0) break;
           const groupIds = new Set(repairGroups[repairIndex]!.map((failure) => failure.requirementId));
-          const currentGroupMissing = currentCoverage.missing.filter((failure) => groupIds.has(failure.requirementId));
+          const currentGroupMissing = currentRepairableFailures.filter((failure) => groupIds.has(failure.requirementId));
           if (currentGroupMissing.length === 0) continue;
           const repairResult = await this.repairMissingDeliverableRequirements({
             userRequest,
@@ -2927,6 +2950,74 @@ export class UnifiedExecutionEngine {
       },
     };
   }
+}
+
+function mergeRepairableRequirementFailures(
+  coverageFailures: DeliverableRequirementCoverageFailure[],
+  mechanicalFailures: DeliverableRequirementCoverageFailure[],
+): DeliverableRequirementCoverageFailure[] {
+  const byRequirement = new Map<string, DeliverableRequirementCoverageFailure>();
+  for (const failure of [...coverageFailures, ...mechanicalFailures]) {
+    const existing = byRequirement.get(failure.requirementId);
+    byRequirement.set(failure.requirementId, existing
+      ? {
+          ...existing,
+          reason: [existing.reason, failure.reason].filter(Boolean).join(" "),
+        }
+      : failure);
+  }
+  return [...byRequirement.values()];
+}
+
+function mechanicalRequirementFailuresForRepair(
+  gateFailures: BlueprintRuntimeGateFailure[],
+  coverageReport: ReturnType<typeof evaluateDeliverableRequirementCoverage>,
+): DeliverableRequirementCoverageFailure[] {
+  const mechanicalDetails = gateFailures
+    .filter((failure) => failure.gate === "mechanical_gate")
+    .flatMap((failure) => failure.details ?? []);
+  if (mechanicalDetails.length === 0) return [];
+
+  const repairRules: Array<{ pattern: RegExp; requirementId: string }> = [
+    { pattern: /\bcare_plan_(?:minimum_three_personal_goals|goal_rows_complete|no_invalid_timeframe)\b/i, requirementId: "care-plan-goals" },
+    { pattern: /\bcare_plan_review_date_later_than_plan_date\b/i, requirementId: "care-plan-support-plan-meeting" },
+    { pattern: /\bcare_plan_selected_supports_described\b/i, requirementId: "care-plan-support-delivery-client-safety" },
+    { pattern: /\bcare_plan_capacity_strategy_narratives_present\b/i, requirementId: "care-plan-communication-strategy" },
+  ];
+
+  const detailsByRequirement = new Map<string, string[]>();
+  for (const detail of mechanicalDetails) {
+    for (const rule of repairRules) {
+      if (rule.pattern.test(detail)) {
+        const details = detailsByRequirement.get(rule.requirementId) ?? [];
+        details.push(detail);
+        detailsByRequirement.set(rule.requirementId, details);
+      }
+    }
+  }
+
+  return [...detailsByRequirement.entries()]
+    .map(([requirementId, details]) => {
+      const item = coverageReport.requirementResults.find((result) => result.requirementId === requirementId);
+      if (!item) return null;
+      return {
+        requirementId: item.requirementId,
+        requirement: item.requirement,
+        classification: item.classification,
+        sourceBlueprintSection: item.sourceBlueprintSection,
+        requiredDeliverableRepresentation: item.expectedRepresentation,
+        expectedRepresentation: item.expectedRepresentation,
+        actualLocation: item.actualLocation,
+        structuralResult: item.structuralResult,
+        substantiveResult: item.substantiveResult,
+        finalResult: "NOT_SATISFIED" as const,
+        substantiveValidationMode: item.substantiveValidationMode,
+        substantiveBreakdown: item.substantiveBreakdown,
+        expectedEvidenceCategories: item.expectedEvidenceCategories,
+        reason: `Mechanical care-plan gate failed for this requirement: ${details.join("; ")}`,
+      };
+    })
+    .filter((failure): failure is DeliverableRequirementCoverageFailure => Boolean(failure));
 }
 
 // ─── Canonical task runtime assembly ─────────────────────────────────────────

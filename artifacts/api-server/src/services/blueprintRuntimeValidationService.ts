@@ -200,6 +200,7 @@ export function validateBlueprintRuntimeCompletion(
   failures.push(...validateCarePlanBehaviourSafety({
     blueprintCode: blueprint.code,
     contentMarkdown: input.contentMarkdown,
+    deliverableSections: input.deliverableSections,
     professionalContext: input.professionalContext,
     professionalWork: input.professionalWork,
   }));
@@ -516,8 +517,8 @@ function isAllowedParticipantCompletionPlaceholder(
   if (fields.size === 0) return false;
 
   const base = token.replace(/^INSERT_/, "").replace(/^ADD_/, "").replace(/^COMPLETE_/, "");
+  const fieldOnLine = declaredCompletionFieldForLine(contextLine, fields);
   if (isGenericCompletionPlaceholderToken(token)) {
-    const fieldOnLine = declaredCompletionFieldForLine(contextLine, fields);
     if (!fieldOnLine) return false;
     if (/^(?:TO_BE_COMPLETED|TBC|NOT_YET_COMPLETED)$/.test(base)) return true;
     if (fieldOnLine.includes("DATE") && /\bDATE\b/.test(base)) return true;
@@ -525,6 +526,7 @@ function isAllowedParticipantCompletionPlaceholder(
     return false;
   }
 
+  if (fieldOnLine && isCompletionFieldValuePlaceholderToken(token)) return true;
   if (placeholderTokenMatchesDeclared(token, fields)) return true;
   if (placeholderTokenMatchesDeclared(base, fields)) return true;
 
@@ -536,6 +538,10 @@ function isGenericCompletionPlaceholderToken(token: string): boolean {
   return /^(?:TO_BE_COMPLETED|TBC|NOT_YET_COMPLETED)$/.test(base) ||
     /\bDATE\b/.test(base) ||
     /\bCONTACT(?:_DETAILS?)?\b/.test(base);
+}
+
+function isCompletionFieldValuePlaceholderToken(token: string): boolean {
+  return /\b(?:LIST|INDIVIDUALS?|ENTIT(?:Y|IES)|FAMIL(?:Y|IES)|CARERS?|RECIPIENTS?|SIGNATURE|CONSENT|PROVIDED|CONTACT|DATE|TO_BE_COMPLETED|TBC)\b/.test(token);
 }
 
 function declaredCompletionFields(contract?: BlueprintExecutionContract | null): Set<string> {
@@ -900,6 +906,12 @@ function validateCarePlanMechanicalRules(
   const content = assembleCarePlanMechanicalContent(contentMarkdown, deliverableSections);
   const sections = extractMarkdownSections(content);
   const sectionByHeading = (pattern: RegExp) => sections.find((section) => pattern.test(section.heading));
+  const sectionByRequirementId = (requirementId: string, fallbackPattern: RegExp) => {
+    const structured = deliverableSections?.find((section) => section.requirementId === requirementId);
+    return structured
+      ? { heading: structured.heading, body: structured.content }
+      : sectionByHeading(fallbackPattern);
+  };
 
   const planDate = findNamedDate(content, /\b(?:plan date|date)\b/i);
   const reviewDate = findNamedDate(content, /\b(?:date for review|review date)\b/i);
@@ -912,7 +924,7 @@ function validateCarePlanMechanicalRules(
     failures.push(mechanicalFailure("care_plan_no_invalid_timeframe", `Invalid timeframe value: ${invalidTimeframe[0].trim()}`));
   }
 
-  const goals = sectionByHeading(/\bgoals?\b/i);
+  const goals = sectionByRequirementId("care-plan-goals", /\bgoals?\b/i);
   if (goals) {
     const goalTable = extractMarkdownTablesFromText(goals.body).find((table) =>
       ["current situation", "goal", "actions", "person responsible", "timeframe", "outcomes"].every((required) =>
@@ -936,16 +948,16 @@ function validateCarePlanMechanicalRules(
     }
   }
 
-  const support = sectionByHeading(/\bsupport delivery\b/i);
+  const support = sectionByRequirementId("care-plan-support-delivery-client-safety", /\bsupport delivery\b/i);
   if (support && hasSelectedSupportWithoutDescription(support.body)) {
     failures.push(mechanicalFailure("care_plan_selected_supports_described", "Every selected support type must have a non-empty description."));
   }
 
-  for (const [rule, pattern] of [
-    ["care_plan_capacity_strategy_narratives_present", /\bcommunication\b/i],
-    ["care_plan_capacity_strategy_narratives_present", /\bmobility\b/i],
+  for (const [rule, requirementId, pattern] of [
+    ["care_plan_capacity_strategy_narratives_present", "care-plan-communication-strategy", /\bcommunication\b/i],
+    ["care_plan_capacity_strategy_narratives_present", "care-plan-mobility-strategy", /\bmobility\b/i],
   ] as const) {
-    const section = sectionByHeading(pattern);
+    const section = sectionByRequirementId(requirementId, pattern);
     if (section && /\b(?:verbal|non[- ]verbal|expressive|receptive|aid required|aid not required|capacity)\b/i.test(section.body)) {
       const strategyText = section.body
         .split(/\r?\n/)
@@ -960,8 +972,12 @@ function validateCarePlanMechanicalRules(
     }
   }
 
-  for (const headingPattern of [/\bbehavioural management\b/i, /\brestrictive practices\b/i, /\bdisaster management\b/i]) {
-    const section = sectionByHeading(headingPattern);
+  for (const [requirementId, headingPattern] of [
+    ["care-plan-behavioural-management", /\bbehaviour(?:al)? management\b/i],
+    ["care-plan-restrictive-practices", /\brestrictive practices\b/i],
+    ["care-plan-disaster-management-strategy", /\bdisaster management\b/i],
+  ] as const) {
+    const section = sectionByRequirementId(requirementId, headingPattern);
     if (section && !section.body.trim()) {
       failures.push(mechanicalFailure("care_plan_no_blank_conditional_sections", `${section.heading} is blank; conditional sections require content or explicit non-applicability naming the source.`));
     }
@@ -985,6 +1001,7 @@ function mechanicalFailure(rule: string, detail: string): BlueprintRuntimeGateFa
 interface CarePlanBehaviourSafetyInput {
   blueprintCode: string | null | undefined;
   contentMarkdown: string;
+  deliverableSections?: PerRequirementDeliverableSection[];
   professionalContext?: ProfessionalExecutionContext | null;
   professionalWork?: Record<string, unknown> | null;
 }
@@ -1007,9 +1024,14 @@ function validateCarePlanBehaviourSafety(input: CarePlanBehaviourSafetyInput): B
   if (input.blueprintCode !== "care_plan") return [];
   if (input.professionalContext?.specificity !== "PARTICIPANT_SPECIFIC") return [];
 
-  const behaviouralSection = extractMarkdownSections(input.contentMarkdown).find((section) =>
-    /\bbehavioural management\b/i.test(section.heading),
+  const structuredBehaviouralSection = input.deliverableSections?.find((section) =>
+    section.requirementId === "care-plan-behavioural-management",
   );
+  const behaviouralSection = structuredBehaviouralSection
+    ? { heading: structuredBehaviouralSection.heading, body: structuredBehaviouralSection.content }
+    : extractMarkdownSections(input.contentMarkdown).find((section) =>
+        /\bbehaviour(?:al)? management\b/i.test(section.heading),
+      );
   if (!behaviouralSection) return [];
 
   const renderedStrategies = extractRenderedBehaviourStrategies(behaviouralSection.body);
