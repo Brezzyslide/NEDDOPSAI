@@ -3666,6 +3666,7 @@ function formatParticipantSpecificOutputContract(
     "Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].",
     "If a specific fact is genuinely absent from retrieved evidence, still produce the section and state that the fact is not recorded in the available evidence.",
     "When naming a gap, identify the document or evidence class that would normally carry it, for example: intake form, NDIS plan, behaviour support plan, risk assessment, service agreement, allied health report, or signing record.",
+    "Do not write source references such as \"risk assessment dated [DATE]\" when that source is absent. Say the named source document is not recorded in the retrieved evidence.",
     "A thinly evidenced section is not omitted. It is completed with evidence-backed statements plus explicit named gaps.",
   ].join("\n");
 }

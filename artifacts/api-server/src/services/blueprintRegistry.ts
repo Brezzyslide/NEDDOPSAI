@@ -3235,7 +3235,8 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
     targetLocation: "Mealtime Management Strategy",
     adequacyCriteria: [
       "Strategy drawn from the mealtime management risk assessment, cited",
-      "Where no hands-on strategy is required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
+      "Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date",
+      "Where no hands-on strategy is recorded as required, states so with reference to the assessment, and describes what does apply (mentorship, supervision, prompting)",
       "Written as worker actions",
     ],
   },
@@ -3278,6 +3279,7 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
     adequacyCriteria: [
       "form ID, version and date present; review date consistent with 4.1",
     ],
+    completionFields: ["Form ID", "Date"],
   },
 ];
 

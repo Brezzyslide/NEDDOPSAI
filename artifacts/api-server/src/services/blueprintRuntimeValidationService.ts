@@ -464,11 +464,13 @@ export function detectUnresolvedProfessionalPlaceholders(
 
   for (const match of contentMarkdown.matchAll(BRACKET_TOKEN_PATTERN)) {
     const raw = match[0];
+    const lineText = lineContainingOffset(contentMarkdown, match.index ?? 0);
     const classification = classifyBracketedPlaceholderToken(
       match[1] ?? "",
       standardTemplateEvidence,
       professionalContext,
       contract,
+      lineText,
     );
     if (classification === "unresolved_professional_content") findings.add(raw);
   }
@@ -485,12 +487,14 @@ export function classifyBracketedPlaceholderToken(
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
   professionalContext?: ProfessionalExecutionContext | null,
   contract?: BlueprintExecutionContract | null,
+  contextLine?: string,
 ): BracketedPlaceholderClassification {
   const token = normalisePlaceholderToken(rawToken);
   if (!token || isIgnorableBracketToken(rawToken, token)) return "ignored";
-  if (isAllowedParticipantCompletionPlaceholder(token, professionalContext, contract)) {
+  if (isAllowedParticipantCompletionPlaceholder(token, professionalContext, contract, contextLine)) {
     return "legitimate_factual_field";
   }
+  if (isGenericCompletionPlaceholderToken(token)) return "unresolved_professional_content";
   if (INSTRUCTIONAL_PLACEHOLDER_PATTERN.test(token)) return "unresolved_professional_content";
   if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence, professionalContext)) {
     return "legitimate_factual_field";
@@ -504,21 +508,34 @@ function isAllowedParticipantCompletionPlaceholder(
   token: string,
   professionalContext?: ProfessionalExecutionContext | null,
   contract?: BlueprintExecutionContract | null,
+  contextLine?: string,
 ): boolean {
   if (professionalContext?.specificity !== "PARTICIPANT_SPECIFIC") return false;
   if (professionalContext.deliverable.standardisation !== "participant_specific") return false;
   const fields = declaredCompletionFields(contract);
   if (fields.size === 0) return false;
 
-  if (placeholderTokenMatchesDeclared(token, fields)) return true;
   const base = token.replace(/^INSERT_/, "").replace(/^ADD_/, "").replace(/^COMPLETE_/, "");
+  if (isGenericCompletionPlaceholderToken(token)) {
+    const fieldOnLine = declaredCompletionFieldForLine(contextLine, fields);
+    if (!fieldOnLine) return false;
+    if (/^(?:TO_BE_COMPLETED|TBC|NOT_YET_COMPLETED)$/.test(base)) return true;
+    if (fieldOnLine.includes("DATE") && /\bDATE\b/.test(base)) return true;
+    if (fieldOnLine.includes("CONTACT") && /\bCONTACT(?:_DETAILS?)?\b/.test(base)) return true;
+    return false;
+  }
+
+  if (placeholderTokenMatchesDeclared(token, fields)) return true;
   if (placeholderTokenMatchesDeclared(base, fields)) return true;
 
-  const hasDateCompletionField = [...fields].some((field) => field.includes("DATE"));
-  const hasContactCompletionField = [...fields].some((field) => field.includes("CONTACT"));
-  if (hasDateCompletionField && /\bDATE\b/.test(base)) return true;
-  if (hasContactCompletionField && /\bCONTACT(?:_DETAILS?)?\b/.test(base)) return true;
   return false;
+}
+
+function isGenericCompletionPlaceholderToken(token: string): boolean {
+  const base = token.replace(/^INSERT_/, "").replace(/^ADD_/, "").replace(/^COMPLETE_/, "");
+  return /^(?:TO_BE_COMPLETED|TBC|NOT_YET_COMPLETED)$/.test(base) ||
+    /\bDATE\b/.test(base) ||
+    /\bCONTACT(?:_DETAILS?)?\b/.test(base);
 }
 
 function declaredCompletionFields(contract?: BlueprintExecutionContract | null): Set<string> {
@@ -571,6 +588,30 @@ function placeholderTokenMatchesDeclared(token: string, declared: Set<string>): 
   if (base.endsWith("S") && declared.has(base.slice(0, -1))) return true;
   if (declared.has(`${base}S`)) return true;
   return false;
+}
+
+function lineContainingOffset(content: string, offset: number): string {
+  const safeOffset = Math.max(0, Math.min(offset, content.length));
+  const start = content.lastIndexOf("\n", safeOffset - 1) + 1;
+  const nextBreak = content.indexOf("\n", safeOffset);
+  const end = nextBreak === -1 ? content.length : nextBreak;
+  return content.slice(start, end);
+}
+
+function declaredCompletionFieldForLine(contextLine: string | undefined, declared: Set<string>): string | null {
+  if (!contextLine) return null;
+  const beforeToken = contextLine.split("[", 1)[0] ?? "";
+  const label = beforeToken
+    .replace(/[*_`>#]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/[:|-]\s*$/g, "")
+    .trim();
+  if (!label) return null;
+  const normalisedLabel = normalisePlaceholderToken(label);
+  for (const field of declared) {
+    if (normalisedLabel === field || normalisedLabel.endsWith(`_${field}`)) return field;
+  }
+  return null;
 }
 
 function isProfessionalPlaceholderToken(token: string): boolean {

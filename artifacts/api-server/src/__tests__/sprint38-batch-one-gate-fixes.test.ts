@@ -258,6 +258,55 @@ describe("Sprint 38 Batch One gate fixes", () => {
     ]));
   });
 
+  it("allows participant completion placeholders only on declared completion-field lines", () => {
+    const blueprint = getRegistryEntry("care_plan");
+    if (!blueprint) throw new Error("missing care_plan blueprint");
+    const participantContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        selectionMetadata: {
+          canonicalIntent: "care_plan.create",
+          blueprintFamily: "care_plan",
+          blueprintMode: "create",
+          requestedDeliverableType: "PARTICIPANT_NDIS_CARE_PLAN",
+          deliverableStandardisation: "participant_specific",
+        },
+      }),
+      blueprint,
+      blueprintContract: contract(blueprint),
+      subjectParticipantIds: ["participant-micheal"],
+    });
+
+    const content = [
+      "## Mealtime Management Strategy",
+      "The mealtime management risk assessment is not recorded in the retrieved evidence. Workers provide ordinary supervision and report any change in eating or drinking.",
+      "",
+      "## Document Control",
+      "**Form ID:** [To be completed]",
+      "**Version:** 1.0",
+      "**Date:** [To be completed]",
+      "**Next Review Date:** 19/02/2027",
+    ].join("\n");
+
+    expect(detectUnresolvedProfessionalPlaceholders(
+      content,
+      null,
+      participantContext,
+      contract(blueprint),
+    )).toEqual([]);
+
+    expect(detectUnresolvedProfessionalPlaceholders(
+      "## Mealtime Management Strategy\nBased on the mealtime management risk assessment dated [DATE], no hands-on mealtime strategy is required.",
+      null,
+      participantContext,
+      contract(blueprint),
+    )).toEqual(["[DATE]"]);
+  });
+
   it("reports all unmet declared evidence and memory requirements while allowing standard reusable work to proceed", () => {
     const blueprint = syntheticBlueprint({
       requiredLibraryKnowledge: ["care_plan", "policy", "legislation"],
@@ -387,19 +436,19 @@ describe("Sprint 38 Batch One gate fixes", () => {
       reusableEvidence,
       participantContext,
       contract(blueprint),
-    )).toBe("legitimate_factual_field");
+    )).toBe("unresolved_professional_content");
     expect(classifyBracketedPlaceholderToken(
       "Insert date, later than plan date",
       reusableEvidence,
       participantContext,
       contract(blueprint),
-    )).toBe("legitimate_factual_field");
+    )).toBe("unresolved_professional_content");
     expect(classifyBracketedPlaceholderToken(
       "Insert contact details",
       reusableEvidence,
       participantContext,
       contract(blueprint),
-    )).toBe("legitimate_factual_field");
+    )).toBe("unresolved_professional_content");
     expect(classifyBracketedPlaceholderToken(
       "BSP Reference",
       reusableEvidence,

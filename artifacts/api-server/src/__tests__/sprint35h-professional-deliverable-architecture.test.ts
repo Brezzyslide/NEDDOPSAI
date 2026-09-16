@@ -1470,6 +1470,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(profile.requirements).toHaveLength(14);
     expect(profile.requirements.every((requirement) => requirement.origin === "AUTHORED")).toBe(true);
     expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-document-control")?.completionFields)
+      .toEqual(["Form ID", "Date"]);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-mealtime-management-strategy")?.adequacyCriteria)
+      .toContain("Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date");
     expect(profile.requirements.map((requirement) => requirement.id)).toEqual([
       "care-plan-support-plan-meeting",
       "care-plan-goals",
