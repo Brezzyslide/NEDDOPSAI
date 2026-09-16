@@ -172,12 +172,18 @@ export function compileProfessionalExecutionContext(input: {
 }): ProfessionalExecutionContext {
   const subjectParticipantIds = input.subjectParticipantIds ?? [];
   const operation = deriveProfessionalOperation(input.userRequest, input.manifest.canonicalIntent);
-  const requestedDeliverableType = deriveDeliverableType(input.userRequest, operation, input.blueprint);
+  const requestedDeliverableTypeCandidate = deriveDeliverableType(input.userRequest, operation, input.blueprint);
   const standardisation = resolveDeliverableStandardisation(
     input.userRequest,
     operation,
-    requestedDeliverableType,
+    requestedDeliverableTypeCandidate,
     input.manifest.selectionMetadata?.deliverableStandardisation,
+    subjectParticipantIds.length > 0,
+  );
+  const requestedDeliverableType = resolveRequestedDeliverableTypeForMode(
+    requestedDeliverableTypeCandidate,
+    standardisation,
+    input.blueprint,
     subjectParticipantIds.length > 0,
   );
   const mandatoryProfessionalContent = deriveMandatoryProfessionalContent(input.userRequest, requestedDeliverableType, operation, input.blueprintContract);
@@ -471,8 +477,43 @@ export function deriveRequestedDeliverableType(
   userRequest: string,
   operation: ProfessionalOperation = deriveProfessionalOperation(userRequest),
   blueprint: WorkBlueprint | null = null,
+  options: {
+    standardisation?: ProfessionalDeliverableContract["standardisation"] | null;
+    hasSubjectParticipantBinding?: boolean;
+  } = {},
 ): string {
-  return deriveDeliverableType(userRequest, operation, blueprint);
+  const candidate = deriveDeliverableType(userRequest, operation, blueprint);
+  return resolveRequestedDeliverableTypeForMode(
+    candidate,
+    options.standardisation ?? null,
+    blueprint,
+    options.hasSubjectParticipantBinding === true,
+  );
+}
+
+function resolveRequestedDeliverableTypeForMode(
+  requestedDeliverableType: string,
+  standardisation: ProfessionalDeliverableContract["standardisation"] | null | undefined,
+  blueprint: WorkBlueprint | null,
+  hasSubjectParticipantBinding: boolean,
+): string {
+  const participantSpecific = hasSubjectParticipantBinding || standardisation === "participant_specific";
+  if (!participantSpecific) return requestedDeliverableType;
+
+  const blueprintFamily = String(blueprint?.blueprintFamily ?? blueprint?.code ?? "").toLowerCase();
+  if (
+    requestedDeliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE" ||
+    /\bcare[_ -]?plan\b/.test(blueprintFamily)
+  ) {
+    return "PARTICIPANT_NDIS_CARE_PLAN";
+  }
+  if (
+    requestedDeliverableType === "STANDARD_REUSABLE_NDIS_SUPPORT_PLAN_TEMPLATE" ||
+    /\bsupport[_ -]?plan\b/.test(blueprintFamily)
+  ) {
+    return "PARTICIPANT_NDIS_SUPPORT_PLAN";
+  }
+  return requestedDeliverableType;
 }
 
 function isStandardReusableRequest(text: string): boolean {

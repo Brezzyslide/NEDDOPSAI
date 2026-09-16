@@ -225,6 +225,26 @@ describe("mode-aware self-review rubric", () => {
     expect(dimension(result, "evidence_citation_grounding").score).toBeGreaterThanOrEqual(8);
   });
 
+  it("does not apply template-mode exemptions when standardisation is participant-specific", async () => {
+    const result = await reviewDraft(TEMPLATE_CONTENT, makeManifest({
+      selectionMetadata: {
+        requestedDeliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+        deliverableStandardisation: "participant_specific",
+      },
+    }) as never, makeBlueprint() as never, {
+      ...baseCtx,
+      requirementPlan,
+      failedRequirements: [],
+    });
+
+    expect(dimension(result, "policy_compliance").feedback)
+      .not.toContain("Template mode");
+    expect(dimension(result, "source_coverage").feedback)
+      .not.toContain("Template mode");
+    expect(dimension(result, "evidence_citation_grounding").feedback)
+      .not.toContain("Template mode");
+  });
+
   it("does not exempt a bad reusable template from quality failure", async () => {
     const result = await reviewDraft("# Care Plan\n\nBrief template shell.", makeManifest() as never, makeBlueprint() as never, {
       ...baseCtx,

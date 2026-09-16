@@ -331,7 +331,8 @@ function getReviewModeContext(manifest: WorkPackageManifest): ReviewModeContext 
   const requestedDeliverableType = stringOrNull(selectionMetadata?.requestedDeliverableType);
   const isStandardReusableTemplate =
     deliverableStandardisation === "standard_reusable" ||
-    /^STANDARD_REUSABLE_/.test(requestedDeliverableType ?? "");
+    (deliverableStandardisation !== "participant_specific" &&
+      /^STANDARD_REUSABLE_/.test(requestedDeliverableType ?? ""));
 
   return { isStandardReusableTemplate, deliverableStandardisation, requestedDeliverableType };
 }

@@ -1080,8 +1080,13 @@ export class UnifiedExecutionEngine {
           userRequest,
           selectionMeta.canonicalIntent ?? request.canonicalIntent ?? request.blueprintCode ?? null,
         );
-        selectionMeta.requestedDeliverableType = deriveRequestedDeliverableType(userRequest, operation, blueprint);
-        selectionMeta.deliverableStandardisation = deriveDeliverableStandardisation(userRequest, operation);
+        selectionMeta.deliverableStandardisation = subjectParticipantIds.length > 0
+          ? "participant_specific"
+          : deriveDeliverableStandardisation(userRequest, operation);
+        selectionMeta.requestedDeliverableType = deriveRequestedDeliverableType(userRequest, operation, blueprint, {
+          standardisation: selectionMeta.deliverableStandardisation,
+          hasSubjectParticipantBinding: subjectParticipantIds.length > 0,
+        });
       }
 
       // ─── Sprint 29I (D1/F): Direct blueprint execution readiness check ────────

@@ -702,7 +702,8 @@ function isParticipantSpecificEvidenceRule(rule: string): boolean {
 
 function isStandardReusableTemplateManifest(manifest: WorkPackageManifest): boolean {
   return manifest.selectionMetadata?.deliverableStandardisation === "standard_reusable" ||
-    /^STANDARD_REUSABLE_/.test(String(manifest.selectionMetadata?.requestedDeliverableType ?? ""));
+    (manifest.selectionMetadata?.deliverableStandardisation !== "participant_specific" &&
+      /^STANDARD_REUSABLE_/.test(String(manifest.selectionMetadata?.requestedDeliverableType ?? "")));
 }
 
 function isStandardReusableTemplateRule(

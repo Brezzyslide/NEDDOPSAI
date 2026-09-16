@@ -1161,6 +1161,38 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("A thinly evidenced section is not omitted.");
   });
 
+  it("lets participant binding override standard-template wording when resolving care-plan deliverable type", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a participant-specific NDIS care plan for Micheal Rocca and do not use the standard template bypass.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+        selectionMetadata: {
+          requestedDeliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+          deliverableStandardisation: "standard_reusable",
+        },
+      }),
+      blueprint: carePlan,
+      blueprintContract: {
+        blueprint: carePlan,
+        sections: carePlan.sections,
+        template: null,
+        mode: "create",
+      } as BlueprintExecutionContract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+
+    expect(context.subjectParticipantIds).toEqual(["participant-micheal"]);
+    expect(context.deliverable.standardisation).toBe("participant_specific");
+    expect(context.specificity).toBe("PARTICIPANT_SPECIFIC");
+    expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_NDIS_CARE_PLAN");
+    expect(buildProfessionalExecutionContextBlock(context)).toContain("DELIVERABLE_TYPE: PARTICIPANT_NDIS_CARE_PLAN");
+  });
+
   it("wires care-plan document-to-section declarations into a section evidence bridge", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const src = source("services/unifiedExecutionEngine.ts");
