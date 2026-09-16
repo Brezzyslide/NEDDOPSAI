@@ -167,6 +167,8 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(buildScript).toContain("copyPdfKitRuntimeAssets");
     expect(buildScript).toContain('require.resolve("pdfkit"');
     expect(buildScript).toContain('path.join(distDir, "data")');
+    expect(buildScript).toContain('path.join(distDir, "scripts", "data")');
+    expect(buildScript).toContain('path.join(distDir, "workers", "data")');
     expect(buildScript).toContain("src/pdf-runtime-smoke.ts");
     expect(smokeScript).toContain('"Helvetica.afm"');
     expect(smokeScript).toContain('"sRGB_IEC61966_2_1.icc"');

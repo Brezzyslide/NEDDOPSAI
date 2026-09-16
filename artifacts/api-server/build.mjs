@@ -37,7 +37,11 @@ const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 async function copyPdfKitRuntimeAssets(distDir) {
   const pdfkitEntry = require.resolve("pdfkit", { paths: [artifactDir] });
   const pdfkitDataDir = path.join(path.dirname(pdfkitEntry), "data");
-  await cp(pdfkitDataDir, path.join(distDir, "data"), { recursive: true });
+  await Promise.all([
+    path.join(distDir, "data"),
+    path.join(distDir, "scripts", "data"),
+    path.join(distDir, "workers", "data"),
+  ].map((targetDir) => cp(pdfkitDataDir, targetDir, { recursive: true })));
 }
 
 async function buildAll() {
