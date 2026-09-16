@@ -1127,6 +1127,64 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("Every mandatory user-facing section must contain substantive professional prose");
   });
 
+  it("uses a participant-specific care-plan contract that forbids placeholder tokens and requires all fourteen sections", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: {
+        blueprint: carePlan,
+        sections: carePlan.sections,
+        template: null,
+        mode: "create",
+      } as BlueprintExecutionContract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+
+    const block = buildProfessionalExecutionContextBlock(context);
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(context.deliverable.standardisation).toBe("participant_specific");
+    expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_NDIS_CARE_PLAN");
+    expect(block).toContain("PARTICIPANT_FACTUAL_GAP_RULE");
+    expect(block).toContain("Do not emit bracketed placeholder tokens for participant-specific documents.");
+    expect(block).not.toContain("ALLOWED_FACTUAL_PLACEHOLDERS:");
+    expect(src).toContain("You must produce all ${sections.length} sections below, in this order.");
+    expect(src).toContain("Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].");
+    expect(src).toContain("A thinly evidenced section is not omitted.");
+  });
+
+  it("wires care-plan document-to-section declarations into a section evidence bridge", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(carePlan.evidenceContract.documentToSections).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        documentType: "Behaviour support plan",
+        feeds: expect.arrayContaining(["BEHAVIOURAL_MANAGEMENT", "RESTRICTIVE_PRACTICES", "COMMUNICATION_STRATEGY", "GOALS"]),
+      }),
+      expect.objectContaining({
+        documentType: "Intake form",
+        feeds: expect.arrayContaining(["SUPPORT_PLAN_MEETING", "UNDERTAKING_ADL", "COMMUNICATION_STRATEGY", "MOBILITY_STRATEGY"]),
+      }),
+    ]));
+    expect(carePlan.freshnessRules?.documentToSectionsContract ?? carePlan.evidenceContract.freshnessRules?.documentToSectionsContract).toBe(true);
+    expect(src).toContain("function buildSectionEvidenceBridge");
+    expect(src).toContain("parseDocumentToSectionMappings(contract)");
+    expect(src).toContain("Expected source categories:");
+    expect(src).toContain("Matched retrieved evidence:");
+    expect(src).toContain("Evidence gap to state explicitly if needed:");
+    expect(src).toContain("if (sectionEvidenceBridge) variableSections.push(sectionEvidenceBridge);");
+    expect(src).toContain("buildSectionEvidenceBridge(input.blueprintContract, input.evidencePack ?? undefined)");
+  });
+
   it("carries authored requirements and adequacy criteria through verbatim when present", () => {
     const blueprint = {
       ...getRegistryEntry("care_plan"),

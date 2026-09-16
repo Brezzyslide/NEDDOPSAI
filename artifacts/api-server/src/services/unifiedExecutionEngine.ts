@@ -3631,6 +3631,190 @@ ${sectionLines}
 6. The output must be suitable for human review and approval before use`;
 }
 
+function isParticipantSpecificProfessionalContext(
+  professionalContext?: ProfessionalExecutionContext | null,
+): professionalContext is ProfessionalExecutionContext {
+  return professionalContext?.deliverable.standardisation === "participant_specific";
+}
+
+function formatParticipantSpecificOutputContract(
+  contract?: BlueprintExecutionContract | null,
+): string {
+  const sections = contract?.sections ?? [];
+  const sectionLines = sections.length
+    ? sections
+        .sort((left, right) => left.sortOrder - right.sortOrder)
+        .map((section, index) => `${index + 1}. ${section.title} (${section.sectionCode})`)
+        .join("\n")
+    : "No section list supplied by the blueprint contract.";
+
+  const countLine = sections.length > 0
+    ? `You must produce all ${sections.length} sections below, in this order.`
+    : "You must produce every section supplied by the blueprint contract.";
+
+  return [
+    "=== PARTICIPANT-SPECIFIC OUTPUT CONTRACT ===",
+    "This is a participant document, not a reusable template.",
+    countLine,
+    sectionLines,
+    "Populate every section from retrieved evidence and cite the source document.",
+    "Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].",
+    "If a specific fact is genuinely absent from retrieved evidence, still produce the section and state that the fact is not recorded in the available evidence.",
+    "When naming a gap, identify the document or evidence class that would normally carry it, for example: intake form, NDIS plan, behaviour support plan, risk assessment, service agreement, allied health report, or signing record.",
+    "A thinly evidenced section is not omitted. It is completed with evidence-backed statements plus explicit named gaps.",
+  ].join("\n");
+}
+
+type DocumentToSectionMapping = {
+  documentType: string;
+  requiredWhen?: string;
+  feeds: string[];
+};
+
+function buildSectionEvidenceBridge(
+  contract: BlueprintExecutionContract | null | undefined,
+  evidencePack: EvidencePack | undefined,
+): string {
+  const sections = contract?.sections ?? [];
+  if (!sections.length || !evidencePack || evidencePack.totalChunks === 0) return "";
+
+  const documentMappings = parseDocumentToSectionMappings(contract);
+  const chunksByCategory = groupEvidenceChunksByCategory(evidencePack);
+  const lines: string[] = [];
+  const bridgeChunks = new Set<string>();
+
+  for (const section of [...sections].sort((left, right) => left.sortOrder - right.sortOrder)) {
+    const expectedCategories = expectedEvidenceCategoriesForSection(section, documentMappings);
+    const matchedChunks = expectedCategories
+      .flatMap((category) => chunksByCategory.get(category) ?? [])
+      .filter((chunk, index, all) => all.findIndex((candidate) => candidate.chunkId === chunk.chunkId) === index)
+      .sort((left, right) => right.confidence - left.confidence)
+      .slice(0, 5);
+    const presentCategories = new Set(matchedChunks.map(chunkEvidenceCategoryKeys).flat());
+    const missingCategories = expectedCategories.filter((category) => !presentCategories.has(category));
+    matchedChunks.forEach((chunk) => bridgeChunks.add(chunk.chunkId));
+
+    lines.push([
+      `${section.sortOrder}. ${section.title} (${section.sectionCode})`,
+      expectedCategories.length
+        ? `Expected source categories: ${expectedCategories.join(", ")}`
+        : "Expected source categories: none declared; use relevant retrieved evidence and identify any factual gap.",
+      matchedChunks.length
+        ? `Matched retrieved evidence: ${matchedChunks.map(formatEvidenceBridgeChunkReference).join("; ")}`
+        : "Matched retrieved evidence: none.",
+      matchedChunks.length
+        ? `Short evidence summary: ${summariseSectionEvidence(matchedChunks)}`
+        : "",
+      missingCategories.length
+        ? `Evidence gap to state explicitly if needed: no retrieved ${missingCategories.join(", ")} evidence was present for this section.`
+        : "",
+    ].filter(Boolean).join("\n"));
+  }
+
+  const approximateTokens = estimatePromptTokens(lines.join("\n\n"));
+  return [
+    "=== SECTION-TO-EVIDENCE BRIDGE ===",
+    "Use this bridge to connect the fourteen required care-plan sections to the retrieved evidence. The bridge references chunks from the AUTHORITATIVE EVIDENCE block; it does not replace that evidence.",
+    `Bridge summary: ${sections.length} sections mapped; ${bridgeChunks.size} distinct retrieved chunks referenced; approximately ${approximateTokens} prompt tokens added by this bridge.`,
+    ...lines,
+  ].join("\n\n");
+}
+
+function parseDocumentToSectionMappings(
+  contract: BlueprintExecutionContract,
+): DocumentToSectionMapping[] {
+  const raw = (contract.blueprint.evidenceContract as Record<string, unknown> | null | undefined)?.documentToSections;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item): DocumentToSectionMapping | null => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const documentType = typeof record.documentType === "string" ? record.documentType.trim() : "";
+      const feeds = Array.isArray(record.feeds)
+        ? record.feeds.filter((feed): feed is string => typeof feed === "string" && feed.trim().length > 0)
+        : [];
+      if (!documentType || feeds.length === 0) return null;
+      return {
+        documentType,
+        requiredWhen: typeof record.requiredWhen === "string" ? record.requiredWhen : undefined,
+        feeds,
+      };
+    })
+    .filter((item): item is DocumentToSectionMapping => Boolean(item));
+}
+
+function expectedEvidenceCategoriesForSection(
+  section: BlueprintExecutionContract["sections"][number],
+  mappings: DocumentToSectionMapping[],
+): string[] {
+  const declared = Array.isArray(section.evidenceRequirements?.requiredEvidenceCategories)
+    ? section.evidenceRequirements.requiredEvidenceCategories
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map(normaliseEvidenceCategory)
+    : [];
+  const mapped = mappings
+    .filter((mapping) => mapping.feeds.includes(section.sectionCode))
+    .map((mapping) => normaliseEvidenceCategory(mapping.documentType));
+  return Array.from(new Set([...declared, ...mapped])).filter(Boolean);
+}
+
+function groupEvidenceChunksByCategory(evidencePack: EvidencePack): Map<string, EvidencePack["chunks"]> {
+  const grouped = new Map<string, EvidencePack["chunks"]>();
+  for (const chunk of evidencePack.chunks) {
+    for (const key of chunkEvidenceCategoryKeys(chunk)) {
+      const existing = grouped.get(key) ?? [];
+      existing.push(chunk);
+      grouped.set(key, existing);
+    }
+  }
+  return grouped;
+}
+
+function chunkEvidenceCategoryKeys(chunk: EvidencePack["chunks"][number]): string[] {
+  return Array.from(new Set([
+    chunk.documentCategory,
+    chunk.sourceType,
+  ]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    .map(normaliseEvidenceCategory)));
+}
+
+function normaliseEvidenceCategory(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function formatEvidenceBridgeChunkReference(chunk: EvidencePack["chunks"][number]): string {
+  const category = chunk.documentCategory ?? chunk.sourceType;
+  const location = [
+    chunk.sectionTitle,
+    chunk.pageNumber != null ? `p.${chunk.pageNumber}` : null,
+  ].filter(Boolean).join(", ");
+  return `${chunk.citation} (${chunk.sourceTitle}; ${category}; chunk ${chunk.chunkId}${location ? `; ${location}` : ""})`;
+}
+
+function summariseSectionEvidence(chunks: EvidencePack["chunks"]): string {
+  const sources = new Map<string, { count: number; categories: Set<string> }>();
+  for (const chunk of chunks) {
+    const existing = sources.get(chunk.sourceTitle) ?? { count: 0, categories: new Set<string>() };
+    existing.count += 1;
+    for (const key of chunkEvidenceCategoryKeys(chunk)) existing.categories.add(key);
+    sources.set(chunk.sourceTitle, existing);
+  }
+  return Array.from(sources.entries())
+    .map(([source, details]) => `${details.count} chunk${details.count === 1 ? "" : "s"} from ${source} [${Array.from(details.categories).join(", ")}]`)
+    .join("; ");
+}
+
+function estimatePromptTokens(text: string): number {
+  if (!text.trim()) return 0;
+  return Math.ceil(text.length / 4);
+}
+
 function resolveArtifactFormats(
   deliverableContract: WorkBlueprint["deliverableContract"] | null | undefined,
 ): { primaryFormat: ArtifactExportFormat; secondaryFormats: ArtifactExportFormat[] } {
@@ -3699,9 +3883,15 @@ function buildWorkPackagePrompt(
     );
   }
 
+  if (isParticipantSpecificProfessionalContext(professionalContext)) {
+    staticSections.push(formatParticipantSpecificOutputContract(contract));
+  }
+
   if (contract?.sections.length) {
     const internalOnly = professionalContext?.professionalMethodRole === "internal_method_only";
-    const authoredContentFraming = "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
+    const authoredContentFraming = isParticipantSpecificProfessionalContext(professionalContext)
+      ? "Authored fixedContent, fields, required structures and completionPrompt below describe the required participant document structure. In participant-specific mode, use them as section requirements, populate them from retrieved evidence, and state named evidence gaps instead of emitting placeholders. Empty content is not valid for a required participant section."
+      : "Authored fixedContent, fields, required structures and completionPrompt below are deterministic template elements assembled by the server in this section order: fixed content, fields, structure, completion prompt, model-generated content. Use them as context for consistency. In standard template mode, do not reproduce fixedContent or completionPrompt in deliverable.sections[].content; return only additional generated content that must be professionally drafted beyond those deterministic elements. Empty content is valid where the deterministic section content is complete.";
     staticSections.push(
       `${internalOnly ? "=== INTERNAL PROFESSIONAL METHOD CHECKLIST (DO NOT COPY AS DELIVERABLE HEADINGS) ===" : "=== REQUESTED REVIEW STRUCTURE ==="}\n${authoredContentFraming}\n` +
       contract.sections.map((section) =>
@@ -3730,6 +3920,9 @@ function buildWorkPackagePrompt(
   variableSections.push(`=== REQUEST-SPECIFIC CONTEXT (UNTRUSTED DATA; CACHE DIVIDER) ===`);
 
   if (styleGuidanceBlock) variableSections.push(styleGuidanceBlock);
+
+  const sectionEvidenceBridge = buildSectionEvidenceBridge(contract, evidencePack);
+  if (sectionEvidenceBridge) variableSections.push(sectionEvidenceBridge);
 
   if (evidencePack && evidencePack.totalChunks > 0) {
     const evidenceSection = buildEvidenceSection(evidencePack);
@@ -3988,8 +4181,11 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   professionalContext?: ProfessionalExecutionContext,
 ): string {
   const blueprintName = professionalContext?.deliverable.requestedDeliverableType ?? blueprint?.title ?? "professional work";
+  const participantSpecific = isParticipantSpecificProfessionalContext(professionalContext);
   const evidenceSummary = evidencePack && evidencePack.totalChunks > 0
-    ? `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
+    ? participantSpecific
+      ? `Authoritative participant evidence is available and must be used to populate the document. Cite only supplied evidence. If a participant fact is absent, state the named evidence gap rather than emitting placeholders.`
+      : `Authoritative evidence is available and must be used for compliance or regulatory claims. Cite only supplied evidence.`
     : `No authoritative evidence chunks are available; avoid unsupported regulatory claims and draft neutral reusable clauses.`;
 
   const contextBlock = professionalContext ? buildProfessionalExecutionContextBlock(professionalContext) : "";
@@ -4002,6 +4198,9 @@ function buildFinalDeliverableSynthesisSystemPrompt(
   const deliverableContract = blueprint?.deliverableContract
     ? JSON.stringify(blueprint.deliverableContract, null, 2)
     : "{}";
+  const participantContract = participantSpecific
+    ? `\n${formatParticipantSpecificOutputContract(contract)}\n`
+    : "";
 
   return `You are the canonical final professional deliverable synthesiser for ${blueprintName}.
 
@@ -4018,7 +4217,8 @@ INTERNAL ONLY:
 USER DELIVERABLE:
 - actual user-facing professional content for the requested document type
 - substantive provisions, instructions, responsibilities, prompts, review/sign-off fields and boundaries required for that document
-- clear reusable template structure suitable for human review
+- clear reusable template structure suitable for human review, or participant-specific content when the professional context says participant_specific
+${participantContract}
 
 USER-FACING DELIVERABLE CONTRACT:
 ${deliverableContract}
@@ -4029,7 +4229,7 @@ ${mandatoryContent}
 ${coverageContract}
 
 ${professionalContext ? formatAllowedFactualPlaceholderInstruction(professionalContext) : "Allowed placeholders are factual/user-specific data placeholders only."}
-Factual placeholders may appear only inside otherwise drafted professional clauses, fields or template prompts. They must never be the whole answer for a mandatory professional section.
+${participantSpecific ? "For participant-specific documents, bracketed placeholder tokens are never acceptable. Gaps must be written as plain-language absence findings naming the missing evidence class." : "Factual placeholders may appear only inside otherwise drafted professional clauses, fields or template prompts. They must never be the whole answer for a mandatory professional section."}
 
 Not allowed: unresolved professional-content placeholders such as [CLAUSE_1], [PROVIDER_OBLIGATIONS], [CANCELLATION_TERMS], [RIGHTS_CLAUSES], [TERMINATION_TERMS], [CONCLUSION], [INCOMPLETE: ...] or equivalent tokens.
 Also not allowed: sections that are only labels, questions, "review/update" instructions, or bracket variables without substantive professional wording.
@@ -4062,6 +4262,9 @@ ${evidenceSummary}`;
 }
 
 function formatAllowedFactualPlaceholderInstruction(professionalContext: ProfessionalExecutionContext): string {
+  if (isParticipantSpecificProfessionalContext(professionalContext)) {
+    return "Participant-specific factual gap rule: do not use bracketed placeholders. Populate from retrieved evidence; where a fact is absent, state that it is not recorded and name the source document or evidence class that would carry it.";
+  }
   const placeholders = professionalContext.deliverable.allowedFactualPlaceholders.length
     ? professionalContext.deliverable.allowedFactualPlaceholders.join(", ")
     : "none";
@@ -4085,6 +4288,8 @@ function buildFinalDeliverableSynthesisUserPrompt(input: {
   const evidenceSection = input.evidencePack && input.evidencePack.totalChunks > 0
     ? buildEvidenceSection(input.evidencePack)
     : "";
+  const sectionEvidenceBridge = buildSectionEvidenceBridge(input.blueprintContract, input.evidencePack ?? undefined);
+  const participantSpecific = isParticipantSpecificProfessionalContext(input.professionalContext);
   const clauseFamilies = extractUserFacingClauseFamilies(input.blueprintContract);
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
   const deliverableSchema = buildDeliverableOutputSchema(coverageProfile);
@@ -4120,20 +4325,24 @@ Unknown staff-specific values may remain as allowed factual fields, but professi
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
+    participantSpecific ? formatParticipantSpecificOutputContract(input.blueprintContract) : "",
     `## REQUIRED USER-FACING DELIVERABLE CONTENT\nUse these as the final document structure or merge them into equivalent user-facing headings. Do not use internal Blueprint section titles as the document structure for CREATE/TEMPLATE work:\n${mandatoryContent.map((item) => `- ${item}`).join("\n")}`,
     `## REQUIREMENT-DERIVED SECTION GENERATION PLAN\nGenerate the final deliverable by these logical user-facing sections. Each deliverable.sections[] entry must account for its requirementId. The server assembles markdown from deliverable.sections[] after validation. Do not expose requirement IDs in the customer-facing document:\n${sectionGenerationPlan}`,
     structuredDeliverableInstruction,
     `## INTERNAL REQUIREMENT-TO-DELIVERABLE PLAN\nUse this mapping internally to transform professional method into the requested deliverable. Do not include this matrix in the final document:\n${requirementPlan || "- No applicable mapping supplied."}`,
     clauseFamilies.length
-      ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
+      ? participantSpecific
+        ? `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive participant-specific clauses for each of these families from evidence. Do not use placeholder tokens; state named evidence gaps where facts are absent:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
+        : `## USER-FACING CLAUSE FAMILIES DERIVED FROM THE BLUEPRINT\nDraft substantive clauses for each of these families. Keep only factual placeholders such as names, dates, prices, support schedules and signatures:\n${clauseFamilies.map((clause) => `- ${clause}`).join("\n")}`
       : "",
+    sectionEvidenceBridge,
     evidenceSection ? `## AUTHORITATIVE EVIDENCE\n${evidenceSection}` : "",
     failedDraftSection,
     `## COMPLETION GATE FAILURES TO FIX\n${gateDetails}`,
     `## FINAL SYNTHESIS INSTRUCTIONS
 Rewrite the failed draft into the final user-facing deliverable.
 Draft the professional clauses and provisions in full.
-Preserve only factual/user-specific data placeholders, and embed them in drafted professional wording rather than using them as section content.
+${participantSpecific ? "Do not preserve factual placeholder tokens. Replace them with evidence-backed facts or plain-language absence findings that name the missing evidence class." : "Preserve only factual/user-specific data placeholders, and embed them in drafted professional wording rather than using them as section content."}
 Every mandatory user-facing section must contain substantive professional prose, operative provisions, responsibilities, review/sign-off wording or template guidance appropriate to that document type.
 No mandatory section may be placeholder-only, label-only, question-only, instruction-only or dominated by bracket fields.
 For schedule, review, consent and sign-off sections, include both the fillable fields and the reusable professional wording explaining how those fields are used, reviewed, escalated and approved.
@@ -4145,6 +4354,7 @@ If mandatory professional content cannot be completed from the request, evidence
 function buildTargetedRequirementRepairSystemPrompt(
   professionalContext: ProfessionalExecutionContext,
 ): string {
+  const participantSpecific = isParticipantSpecificProfessionalContext(professionalContext);
   return `You are performing deterministic professional coverage repair.
 
 This is NOT a broad rewrite and NOT a general self-review.
@@ -4152,8 +4362,8 @@ Your job is to modify the current user-facing deliverable only enough to satisfy
 
 Rules:
 - Preserve all already-satisfied content unless a small local edit is required.
-- Add missing factual-field structures as labelled fields or bracketed placeholders when values are unknown.
-- Factual field means the field itself must exist in reusable templates; unknown value does not excuse omission.
+- ${participantSpecific ? "For participant-specific documents, never add bracketed placeholders. Add the required field/section and state the evidence-backed value or a plain-language absence finding naming the missing evidence class." : "Add missing factual-field structures as labelled fields or bracketed placeholders when values are unknown."}
+- Factual field means the field itself must exist; unknown value does not excuse omission.
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
 - Return only deliverable.sections[] entries for the missing requirement IDs you changed. The server merges those section deltas into the existing deliverable and assembles the final markdown.
@@ -4166,7 +4376,7 @@ Return ONLY JSON:
     "blueprint_completion": ["<internal repair checks completed>"],
     "requirement_to_deliverable_plan": ["<missing requirement ID repaired at target location>"],
     "evidence_map": ["<short evidence/provenance notes>"],
-    "missing_information": ["<unknown factual values left as fields/placeholders>"]
+    "missing_information": ["<unknown factual values or named evidence gaps>"]
   },
   "requirement_coverage": {
     "satisfied": ["<requirement IDs now represented>"],
@@ -4213,6 +4423,7 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     input.missingRequirements,
   );
   const evidenceSection = buildRelevantRepairEvidenceSection(input.evidencePack ?? null, input.missingRequirements);
+  const participantSpecific = isParticipantSpecificProfessionalContext(input.professionalContext);
 
   return [
     `## ORIGINAL REQUEST\n${input.userRequest}`,
@@ -4223,9 +4434,9 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
-For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown.
+${participantSpecific ? "For factual-field requirements, add the target field or table column and fill it from evidence; when the value is absent, write a plain-language absence finding naming the missing evidence class. Do not add bracketed placeholders." : "For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown."}
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
-For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations.
+${participantSpecific ? "For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive participant-specific content that satisfies the listed minimum expectations from evidence or named gaps." : "For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations."}
 Preserve existing satisfied clauses and wording as much as possible.
 The server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`

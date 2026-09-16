@@ -262,6 +262,19 @@ export function buildProfessionalExecutionContextBlock(
   context: ProfessionalExecutionContext,
   options: { includeUserRequest?: boolean } = {},
 ): string {
+  const participantSpecific = context.deliverable.standardisation === "participant_specific";
+  const factualPlaceholderInstruction = participantSpecific
+    ? [
+        "PARTICIPANT_FACTUAL_GAP_RULE:",
+        "Do not emit bracketed placeholder tokens for participant-specific documents.",
+        "Populate every section from retrieved evidence and cite the source document.",
+        "Where a specific fact is genuinely absent from the evidence, state that it is not recorded and name the document or evidence class that would carry it.",
+      ].join("\n")
+    : [
+        "ALLOWED_FACTUAL_PLACEHOLDERS:",
+        context.deliverable.allowedFactualPlaceholders.join(", "),
+      ].join("\n");
+
   return [
     "## PROFESSIONAL EXECUTION CONTEXT",
     options.includeUserRequest === false ? "" : `USER_REQUEST: ${context.userRequest}`,
@@ -281,8 +294,7 @@ export function buildProfessionalExecutionContextBlock(
     "REQUIRED_PROFESSIONAL_CONTENT:",
     context.deliverable.mandatoryProfessionalContent.map((item) => `- ${item}`).join("\n"),
     "",
-    "ALLOWED_FACTUAL_PLACEHOLDERS:",
-    context.deliverable.allowedFactualPlaceholders.join(", "),
+    factualPlaceholderInstruction,
     "",
     "OUTPUT_CONTRACT:",
     `Produce ${context.deliverable.userFacingPurpose}. Internal professional work is not the artifact payload.`,
