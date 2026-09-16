@@ -3269,6 +3269,7 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
       "Where the plan is provided to family or carer, consent is recorded",
       "The system never fabricates a signature or a consent state",
     ],
+    completionFields: ["Provided to"],
   },
   {
     id: "care-plan-document-control",

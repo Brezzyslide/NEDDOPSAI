@@ -55,6 +55,7 @@ export interface DeliverableRequirementCoverageFailure {
   finalResult?: RequirementFinalResult;
   substantiveValidationMode?: RequirementSubstantiveValidationMode;
   substantiveBreakdown?: DeliverableSubstantiveBreakdown;
+  expectedEvidenceCategories?: string[];
   reason: string;
 }
 

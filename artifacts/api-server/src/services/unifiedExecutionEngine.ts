@@ -4422,6 +4422,8 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     required_representation: requirement.requiredDeliverableRepresentation,
     target_location: inferSchemaTarget(schema, requirement.requirementId),
     adequacy_criteria: requirement.adequacyCriteria,
+    expected_source_categories: expectedEvidenceCategoriesForRepairRequirement(requirement),
+    missing_expected_source_categories: missingExpectedEvidenceCategories(input.evidencePack ?? null, requirement),
     failure_reason: requirement.reason,
   }));
   const deficientSections = formatDeficientDeliverableSections(
@@ -4430,6 +4432,7 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     input.missingRequirements,
   );
   const evidenceSection = buildRelevantRepairEvidenceSection(input.evidencePack ?? null, input.missingRequirements);
+  const sourceCoverageSection = buildRepairSourceCoverageSection(input.evidencePack ?? null, input.missingRequirements);
   const participantSpecific = isParticipantSpecificProfessionalContext(input.professionalContext);
 
   return [
@@ -4437,17 +4440,71 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     `## REPAIR GROUP\n${input.repairGroupIndex && input.repairGroupCount ? `Group ${input.repairGroupIndex} of ${input.repairGroupCount}. Repair this logical section only, then return only the changed deliverable.sections[] entries for the listed missing requirement IDs.` : "Repair the listed logical section and return only changed deliverable.sections[] entries."}`,
     `## DEFICIENT DELIVERABLE SECTION(S)\n${deficientSections}`,
     `## EXACT REQUIREMENTS TO REPAIR\n${JSON.stringify(missing, null, 2)}`,
+    sourceCoverageSection,
     evidenceSection,
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
 ${participantSpecific ? "For factual-field requirements, add the target field or table column and fill it from evidence; when the value is absent, write a plain-language absence finding naming the missing evidence class. Do not add bracketed placeholders." : "For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown."}
+${participantSpecific ? "When missing_expected_source_categories is non-empty, do not invent participant preferences, supports, dates, assessments or source details. Produce the section anyway and state that those named source categories are not recorded in the retrieved evidence." : ""}
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.
 ${participantSpecific ? "For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive participant-specific content that satisfies the listed minimum expectations from evidence or named gaps." : "For must-be-represented or conditional requirements, replace heading-only or keyword-only text with substantive reusable clause wording that satisfies the listed minimum expectations."}
 Preserve existing satisfied clauses and wording as much as possible.
 The server merges your returned section deltas into the existing deliverable and assembles final markdown deterministically.
 Do not expose this repair matrix, requirement IDs, Blueprint section names or gate names in the final deliverable.`
   ].filter(Boolean).join("\n\n---\n\n");
+}
+
+function buildRepairSourceCoverageSection(
+  evidencePack: EvidencePack | null,
+  missingRequirements: DeliverableRequirementCoverageFailure[],
+): string {
+  if (missingRequirements.length === 0) return "";
+  const lines = missingRequirements.map((requirement) => {
+    const expected = expectedEvidenceCategoriesForRepairRequirement(requirement);
+    const matchedChunks = countMatchingEvidenceChunks(evidencePack, expected);
+    const missing = missingExpectedEvidenceCategories(evidencePack, requirement);
+    return [
+      `- ${requirement.requirementId}`,
+      `  Expected source categories: ${expected.length ? expected.join(", ") : "none declared"}`,
+      `  Retrieved matching chunks: ${matchedChunks}`,
+      missing.length ? `  Missing expected source categories: ${missing.join(", ")}` : "  Missing expected source categories: none",
+    ].join("\n");
+  });
+  return `## EXPECTED SOURCE COVERAGE FOR REPAIR\n${lines.join("\n")}`;
+}
+
+function expectedEvidenceCategoriesForRepairRequirement(
+  requirement: DeliverableRequirementCoverageFailure,
+): string[] {
+  return (requirement.expectedEvidenceCategories ?? [])
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function missingExpectedEvidenceCategories(
+  evidencePack: EvidencePack | null,
+  requirement: DeliverableRequirementCoverageFailure,
+): string[] {
+  const expected = expectedEvidenceCategoriesForRepairRequirement(requirement);
+  if (expected.length === 0) return [];
+  return expected.filter((category) => countMatchingEvidenceChunks(evidencePack, [category]) === 0);
+}
+
+function countMatchingEvidenceChunks(evidencePack: EvidencePack | null, expectedCategories: string[]): number {
+  if (!evidencePack || evidencePack.totalChunks === 0 || expectedCategories.length === 0) return 0;
+  const expected = new Set(expectedCategories.flatMap((category) => [
+    normaliseEvidenceCategory(category),
+    normaliseEvidenceCategory(category.replace(/_/g, " ")),
+  ]));
+  return evidencePack.chunks.filter((chunk) => {
+    const actual = [
+      chunk.documentCategory,
+      chunk.sourceType,
+      chunk.sourceTitle,
+      chunk.citation,
+    ].filter((value): value is string => typeof value === "string");
+    return actual.some((value) => expected.has(normaliseEvidenceCategory(value)));
+  }).length;
 }
 
 function formatDeficientDeliverableSections(

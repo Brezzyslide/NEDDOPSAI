@@ -1246,6 +1246,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       .toEqual(["Plan date", "Date for review"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-support-delivery-client-safety")?.completionFields)
       .toEqual(["On-call contact", "Service manager contact"]);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-client-endorsement")?.completionFields)
+      .toEqual(["Provided to"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-behavioural-management")?.expectedEvidenceCategories)
       .toContain("behaviour_support_plan");
   });
@@ -1328,17 +1330,26 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       ...profile,
       requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-mealtime-management-strategy"),
     };
+    const aboutMe = {
+      ...profile,
+      requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-about-me"),
+    };
     const specificAbsence = "No retrieved mealtime management risk assessment evidence was present for Micheal Rocca. Food texture, fluid consistency, positioning, supervision level, equipment and worker mealtime actions are not recorded in the available evidence; a mealtime management risk assessment would carry those instructions.";
+    const aboutMeAbsence = "No retrieved strengths based questionnaire or participant voice document is recorded for Micheal Rocca. Strengths, likes, dislikes, what matters to him, communication preferences and informal supports are not recorded in the available evidence; a strengths based questionnaire or participant voice record would carry those details.";
     const vagueAbsence = "Not applicable.";
 
     const accepted = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${specificAbsence}`, mealtime, {
       deliverableSections: [{ requirementId: "care-plan-mealtime-management-strategy", heading: "Mealtime Management Strategy", content: specificAbsence }],
+    });
+    const acceptedAboutMe = evaluateDeliverableRequirementCoverage(`## About Me\n\n${aboutMeAbsence}`, aboutMe, {
+      deliverableSections: [{ requirementId: "care-plan-about-me", heading: "About Me", content: aboutMeAbsence }],
     });
     const rejected = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${vagueAbsence}`, mealtime, {
       deliverableSections: [{ requirementId: "care-plan-mealtime-management-strategy", heading: "Mealtime Management Strategy", content: vagueAbsence }],
     });
 
     expect(accepted.missing).toHaveLength(0);
+    expect(acceptedAboutMe.missing).toHaveLength(0);
     expect(rejected.missing).toHaveLength(1);
   });
 
@@ -1472,6 +1483,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-document-control")?.completionFields)
       .toEqual(["Form ID", "Date"]);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-client-endorsement")?.completionFields)
+      .toEqual(["Provided to"]);
     expect(profile.requirements.find((requirement) => requirement.id === "care-plan-mealtime-management-strategy")?.adequacyCriteria)
       .toContain("Where a mealtime management risk assessment is absent, states that the assessment is not recorded in the retrieved evidence and does not invent an assessment date");
     expect(profile.requirements.map((requirement) => requirement.id)).toEqual([
@@ -2352,6 +2365,14 @@ The strategies below implement the participant's behaviour support plan.
 
     expect(merged.find((section) => section.requirementId === "mandatory-1")?.heading).toBe("Care Plan Requirement 1");
     expect(merged.find((section) => section.requirementId === "mandatory-2")?.heading).toBe("Repaired Risk Controls");
+  });
+
+  it("tells targeted repair when expected requirement source categories are absent", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("missing_expected_source_categories");
+    expect(src).toContain("## EXPECTED SOURCE COVERAGE FOR REPAIR");
+    expect(src).toContain("do not invent participant preferences, supports, dates, assessments or source details");
   });
 
   it("ignores valid non-target repair sections even when the current draft omitted them", () => {
