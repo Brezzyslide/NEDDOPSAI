@@ -29,6 +29,8 @@ export interface DeliverableRequirement {
   templateCriteria: string[];
   fixedContent: string[];
   templateFields: string[];
+  completionFields?: string[];
+  expectedEvidenceCategories?: string[];
   completionPrompt: string | null;
   coverageRules: DeliverableCoverageRule[];
 }
@@ -89,6 +91,8 @@ export interface DeliverableRequirementCoverageItem {
   expectedRepresentation: string;
   adequacyCriteria: string[];
   templateCriteria: string[];
+  completionFields: string[];
+  expectedEvidenceCategories: string[];
   actualLocation: string | null;
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
@@ -127,6 +131,8 @@ export interface RequirementToDeliverablePlanItem {
   authority: string[];
   adequacyCriteria: string[];
   templateCriteria: string[];
+  completionFields: string[];
+  expectedEvidenceCategories: string[];
   applicability: "applicable" | "internal_only" | "evidence_only" | "quality_control" | "optional";
   expectedUserFacingRepresentation: string;
   targetDeliverableLocation: string;
@@ -143,6 +149,8 @@ export interface DeliverableOutputSchemaField {
   representationKind: DeliverableRepresentationKind;
   adequacyCriteria: string[];
   templateCriteria: string[];
+  completionFields: string[];
+  expectedEvidenceCategories: string[];
   minimumSubstance: string[];
 }
 
@@ -260,6 +268,8 @@ export function buildRequirementToDeliverablePlan(
         : ["Blueprint professional method", "Professional deliverable contract"],
       adequacyCriteria: requirement.adequacyCriteria ?? [],
       templateCriteria: requirement.templateCriteria ?? [],
+      completionFields: requirement.completionFields ?? [],
+      expectedEvidenceCategories: requirement.expectedEvidenceCategories ?? [],
       applicability,
       expectedUserFacingRepresentation: requirement.requiredDeliverableRepresentation,
       targetDeliverableLocation: requirement.targetDeliverableLocation ?? inferTargetDeliverableLocation(requirement),
@@ -284,6 +294,8 @@ export function buildDeliverableOutputSchema(
       representationKind: inferRepresentationKind(item),
       adequacyCriteria: item.adequacyCriteria,
       templateCriteria: item.templateCriteria,
+      completionFields: item.completionFields,
+      expectedEvidenceCategories: item.expectedEvidenceCategories,
       minimumSubstance: deriveMinimumSubstance(item),
     }));
 
@@ -335,6 +347,7 @@ export function evaluateDeliverableRequirementCoverage(
   const normalisedContent = normaliseContent(contentMarkdown);
   const structure = parseMarkdownStructure(contentMarkdown);
   const structuredSections = normaliseDeliverableSections(options.deliverableSections);
+  const structuredSectionsProvided = structuredSections.size > 0;
   const failures: DeliverableRequirementCoverageFailure[] = buildDeliverableSectionIntegrityFailures(
     profile,
     structure,
@@ -358,8 +371,8 @@ export function evaluateDeliverableRequirementCoverage(
       normalisedContent,
       structure,
       schema,
-      structuredSection: null,
-      structuredSectionsProvided: false,
+      structuredSection: structuredSections.get(requirement.id) ?? null,
+      structuredSectionsProvided,
     });
     requirementResults.push(result);
     if (result.finalResult === "SATISFIED") {
@@ -431,8 +444,7 @@ function buildDeliverableSectionIntegrityFailures(
     .map((section) => `${section.title}\n${section.content}`)
     .join("\n\n"));
   const missingStructuredSections = Array.from(structuredSections.values())
-    .filter((section) => !normalisedMarkdown.includes(normaliseContent(section.heading)) ||
-      !normalisedMarkdown.includes(normaliseContent(section.content)));
+    .filter((section) => !normalisedMarkdown.includes(normaliseContent(section.content)));
   if (missingStructuredSections.length > 0) {
     failures.push(deliverableSectionIntegrityFailure(
       `Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): ${missingStructuredSections.map((section) => section.requirementId).join(", ")}.`,
@@ -475,6 +487,12 @@ export function formatRequirementCoveragePrompt(profile: DeliverableRequirementC
       requirement.adequacyCriteria.length
         ? `  Participant criteria:\n${requirement.adequacyCriteria.map((criterion) => `    - ${criterion}`).join("\n")}`
         : "  Participant criteria: DERIVED_FALLBACK_HEURISTIC",
+      requirement.expectedEvidenceCategories.length
+        ? `  Expected evidence categories: ${requirement.expectedEvidenceCategories.join(", ")}`
+        : "",
+      requirement.completionFields.length
+        ? `  Completion fields: ${requirement.completionFields.join(", ")}`
+        : "",
       `  Final deliverable representation: ${requirement.expectedUserFacingRepresentation}`,
       `  Target location: ${requirement.targetDeliverableLocation}`,
     ].filter(Boolean).join("\n"));
@@ -668,6 +686,8 @@ function parseAuthoredRequirement(raw: unknown, index: number, contract?: Bluepr
       targetDeliverableLocation: representation,
       fixedContent: blueprintSection?.fixedContent ?? [],
       templateFields: blueprintSection?.fields ?? [],
+      completionFields: stringArray(record.completionFields ?? record.completionFieldPlaceholders),
+      expectedEvidenceCategories: expectedEvidenceCategoriesForRequirement(blueprintSection),
       completionPrompt: blueprintSection?.completionPrompt ?? null,
     },
   );
@@ -709,6 +729,16 @@ function deriveTemplateCriteriaForSection(section?: BlueprintSection | null): st
     }
   }
   return criteria;
+}
+
+function expectedEvidenceCategoriesForRequirement(section?: BlueprintSection | null): string[] {
+  if (!section) return [];
+  const declared = Array.isArray(section.evidenceRequirements?.requiredEvidenceCategories)
+    ? section.evidenceRequirements.requiredEvidenceCategories
+    : [];
+  return Array.from(new Set([
+    ...declared.filter((item): item is string => typeof item === "string" && item.trim().length > 0),
+  ]));
 }
 
 function parseRequirementClassification(value: unknown): DeliverableRequirementClassification {
@@ -869,6 +899,8 @@ function req(
     templateCriteria?: string[];
     fixedContent?: string[];
     templateFields?: string[];
+    completionFields?: string[];
+    expectedEvidenceCategories?: string[];
     completionPrompt?: string | null;
   } = {},
 ): DeliverableRequirement {
@@ -886,6 +918,8 @@ function req(
     templateCriteria: options.templateCriteria ?? [],
     fixedContent: options.fixedContent ?? [],
     templateFields: options.templateFields ?? [],
+    completionFields: options.completionFields ?? [],
+    expectedEvidenceCategories: options.expectedEvidenceCategories ?? [],
     completionPrompt: options.completionPrompt ?? null,
     coverageRules: allOfAlternatives.map((allOf) => ({ allOf })),
   };
@@ -1361,7 +1395,7 @@ function validateRepresentedRequirement(input: {
     });
   }
 
-  const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content);
+  const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content, input.standardisation);
   if (input.standardisation === "standard_reusable" && (requirement.templateCriteria ?? []).length > 0) {
     const template = evaluateTemplateRequirementContent(requirement, relevant.content);
     const finalResult = template.passed
@@ -1425,6 +1459,8 @@ function coverageItem(
     expectedRepresentation: requirement.requiredDeliverableRepresentation,
     adequacyCriteria: requirement.adequacyCriteria ?? [],
     templateCriteria: requirement.templateCriteria ?? [],
+    completionFields: requirement.completionFields ?? [],
+    expectedEvidenceCategories: requirement.expectedEvidenceCategories ?? [],
     substantiveValidationMode: result.substantiveValidationMode ?? (
       result.substantiveResult === "NOT_APPLICABLE" ? "NOT_APPLICABLE" : "FALLBACK_HEURISTIC"
     ),
@@ -1670,6 +1706,7 @@ function findRelevantSectionContent(
 function evaluateSubstantiveClauseContent(
   requirement: DeliverableRequirement,
   content: string,
+  standardisation?: DeliverableRequirementCoverageProfile["standardisation"],
 ): {
   passed: boolean;
   partial: boolean;
@@ -1685,7 +1722,20 @@ function evaluateSubstantiveClauseContent(
   if (requirement.classification === "CONDITIONAL" && explicitlyStatesNonApplicabilityWithSource(cleaned)) {
     return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
   }
+  if (standardisation === "participant_specific" && explicitlyStatesEvidenceAbsenceForRequirement(cleaned, requirement)) {
+    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+  }
   if (adequacyCriteria.length > 0) {
+    const domain = domainSufficiency(requirement.id, normalised);
+    if (domain.checked) {
+      return {
+        passed: domain.passed,
+        partial: domain.partial,
+        reason: domain.reason,
+        mode: "ADEQUACY_CRITERIA",
+        breakdown,
+      };
+    }
     const criteriaResults = adequacyCriteria.map((criterion) => ({
       criterion,
       passed: adequacyCriterionMatchesContent(criterion, normalised),
@@ -1753,6 +1803,28 @@ function explicitlyStatesNonApplicabilityWithSource(content: string): boolean {
   const nonApplicable = /\b(?:not applicable|non applicable|does not apply|no .* required|no .* recorded|no .* identified|none apply)\b/.test(normalised);
   const sourceNamed = /\b(?:based on|according to|from|as recorded in|source|assessment|plan|bsp|behaviour support plan|risk assessment|intake|service agreement|ndis plan)\b/.test(normalised);
   return nonApplicable && sourceNamed;
+}
+
+function explicitlyStatesEvidenceAbsenceForRequirement(
+  content: string,
+  requirement: DeliverableRequirement,
+): boolean {
+  const normalised = normaliseContent(content);
+  if (!/\b(?:not recorded|not available|not present|not provided|not found|not supplied|unavailable|absent|no retrieved|no .* evidence|no .* assessment|no .* plan|no .* record)\b/.test(normalised)) {
+    return false;
+  }
+  if (!/\b(?:source|document|evidence|assessment|plan|record|form|report)\b/.test(normalised)) {
+    return false;
+  }
+
+  const expected = (requirement.expectedEvidenceCategories ?? [])
+    .flatMap((category) => [category, category.replace(/_/g, " ")])
+    .map(normaliseContent)
+    .filter(Boolean);
+  if (expected.length === 0) {
+    return /\b(?:missing|not recorded|not available|not provided)\b/.test(normalised);
+  }
+  return expected.some((category) => normalised.includes(category));
 }
 
 function evaluateTemplateRequirementContent(
@@ -1877,9 +1949,11 @@ function adequacyCriterionMatchesContent(criterion: string, normalisedContent: s
   return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
 }
 
-function domainSufficiency(requirementId: string, normalised: string): { passed: boolean; partial: boolean; reason: string | null } {
+function domainSufficiency(requirementId: string, normalised: string): { checked: boolean; passed: boolean; partial: boolean; reason: string | null } {
   const includesAny = (terms: string[]) => terms.some((term) => normalised.includes(normaliseContent(term)));
   const countTerms = (terms: string[]) => terms.filter((term) => normalised.includes(normaliseContent(term))).length;
+  const carePlan = carePlanDomainSufficiency(requirementId, normalised);
+  if (carePlan.checked) return carePlan;
   const checks: Record<string, { core: string[]; support: string[]; minSupport: number; reason: string }> = {
     "service-agreement-basis": {
       core: ["ndis", "agreement"],
@@ -1985,13 +2059,108 @@ function domainSufficiency(requirementId: string, normalised: string): { passed:
     },
   };
   const check = checks[requirementId];
-  if (!check) return { passed: true, partial: false, reason: null };
+  if (!check) return { checked: false, passed: true, partial: false, reason: null };
   const corePass = check.core.every((term) => normalised.includes(normaliseContent(term)));
   const supportCount = countTerms(check.support);
   return {
+    checked: true,
     passed: corePass && supportCount >= check.minSupport,
     partial: includesAny(check.core) || supportCount > 0,
     reason: corePass && supportCount >= check.minSupport ? null : check.reason,
+  };
+}
+
+function carePlanDomainSufficiency(requirementId: string, normalised: string): { checked: boolean; passed: boolean; partial: boolean; reason: string | null } {
+  if (!requirementId.startsWith("care-plan-")) {
+    return { checked: false, passed: true, partial: false, reason: null };
+  }
+
+  const hasAny = (terms: string[]) => terms.some((term) => normalised.includes(normaliseContent(term)));
+  const hasAll = (terms: string[]) => terms.every((term) => normalised.includes(normaliseContent(term)));
+  const count = (terms: string[]) => terms.filter((term) => normalised.includes(normaliseContent(term))).length;
+  const sourceBacked = hasAny(["source", "evidence", "according to", "based on", "as recorded", "behaviour support plan", "bsp", "intake form", "risk assessment", "ndis plan", "service agreement", "signing record"]);
+  const workerAction = hasAny(["worker", "support worker", "staff", "team member", "prompt", "support", "assist", "monitor", "record", "escalat", "report", "contact", "provide"]);
+
+  const checks: Record<string, { passed: boolean; partial: boolean; reason: string }> = {
+    "care-plan-support-plan-meeting": {
+      passed: count(["participant name", "date of birth", "ndis number", "diagnosis", "people present", "plan date", "date for review"]) >= 5 && sourceBacked,
+      partial: count(["participant name", "date of birth", "ndis number", "diagnosis", "people present", "plan date", "date for review"]) >= 3 || sourceBacked,
+      reason: "Support Plan Meeting must contain labelled participant/header fields and name the source documents or completion gaps.",
+    },
+    "care-plan-goals": {
+      passed: hasAny(["goal", "goals"]) && count(["current situation", "actions", "person responsible", "timeframe", "outcomes"]) >= 3 && workerAction,
+      partial: hasAny(["goal", "goals", "actions", "outcomes"]),
+      reason: "Goals must include participant-specific goal rows with actions, responsibility, timeframe and outcomes.",
+    },
+    "care-plan-about-me": {
+      passed: count(["strength", "likes", "dislikes", "matters", "communicat", "informal support"]) >= 3 && sourceBacked,
+      partial: count(["strength", "likes", "dislikes", "matters", "communicat", "informal support"]) > 0,
+      reason: "About Me must describe the person using participant-specific preferences, strengths or supports from evidence.",
+    },
+    "care-plan-history-background": {
+      passed: sourceBacked && count(["history", "background", "service", "risk", "context", "source"]) >= 3,
+      partial: sourceBacked || count(["history", "background", "service", "risk", "context"]) > 1,
+      reason: "History and Background must contain operationally relevant history or risk context traceable to named evidence.",
+    },
+    "care-plan-undertaking-adl": {
+      passed: workerAction && count(["independent", "prompt", "supervision", "personal hygiene", "groom", "adl", "daily"]) >= 2,
+      partial: workerAction || count(["independent", "prompt", "supervision", "adl", "daily"]) > 0,
+      reason: "Undertaking ADL must state support levels and worker actions, not only capacity labels.",
+    },
+    "care-plan-communication-strategy": {
+      passed: workerAction && hasAny(["communication", "communicat"]) && count(["verbal", "non verbal", "expressive", "receptive", "strategy", "understood", "response", "avoid"]) >= 2,
+      partial: hasAny(["communication", "communicat", "verbal", "strategy"]) || workerAction,
+      reason: "Communication strategy must contain a worker-usable communication strategy, not literal keyword coverage.",
+    },
+    "care-plan-mobility-strategy": {
+      passed: workerAction && hasAny(["mobility", "transfer", "aid", "equipment"]) && hasAny(["required", "not required", "used", "not recorded", "not available"]),
+      partial: hasAny(["mobility", "transfer", "aid", "equipment"]) || workerAction,
+      reason: "Mobility strategy must state aid/equipment status and worker actions or name the missing assessment.",
+    },
+    "care-plan-support-delivery-client-safety": {
+      passed: workerAction && hasAny(["support type", "personal care", "community access", "transport", "behavioural redirection", "client safety"]) && hasAny(["incident", "emergency", "service manager", "on call"]),
+      partial: workerAction || hasAny(["support type", "client safety", "incident", "emergency"]),
+      reason: "Support Delivery and Client Safety must describe selected supports, worker actions and escalation/safety pathways.",
+    },
+    "care-plan-behavioural-management": {
+      passed: sourceBacked && workerAction && hasAll(["proactive", "reactive", "protective"]) && hasAny(["behaviour support plan", "bsp"]),
+      partial: sourceBacked || hasAny(["proactive", "reactive", "protective", "behaviour support plan", "bsp"]),
+      reason: "Behavioural Management must render BSP-sourced proactive, reactive and protective worker strategies with source references.",
+    },
+    "care-plan-restrictive-practices": {
+      passed: sourceBacked && hasAny(["restrictive practice", "chemical restraint", "environmental restraint", "mechanical restraint", "physical restraint", "seclusion", "no restrictive"]),
+      partial: hasAny(["restrictive practice", "restraint", "authorisation", "authorised"]),
+      reason: "Restrictive Practices must name authorised practices and references, or state source-backed absence of restrictive practices.",
+    },
+    "care-plan-mealtime-management-strategy": {
+      passed: workerAction && hasAny(["mealtime", "eating", "drinking", "food texture", "fluid consistency", "positioning", "supervision"]) && sourceBacked,
+      partial: hasAny(["mealtime", "eating", "drinking", "food texture", "fluid consistency", "positioning", "supervision"]),
+      reason: "Mealtime Management Strategy must either give assessment-sourced worker actions or specifically name the missing mealtime assessment.",
+    },
+    "care-plan-disaster-management-strategy": {
+      passed: workerAction && sourceBacked && hasAny(["disaster", "emergency", "evacuation", "community access", "supported accommodation", "sil"]),
+      partial: hasAny(["disaster", "emergency", "evacuation", "community access", "supported accommodation", "sil"]) || sourceBacked,
+      reason: "Disaster Management Strategy must state participant-specific emergency arrangements or a source-backed absence/applicability finding.",
+    },
+    "care-plan-client-endorsement": {
+      passed: count(["participant", "representative", "signature", "date", "provided", "consent"]) >= 3,
+      partial: count(["participant", "representative", "signature", "date", "provided", "consent"]) > 0,
+      reason: "Client Endorsement must provide a complete-able endorsement block without fabricating signature or consent state.",
+    },
+    "care-plan-document-control": {
+      passed: count(["form id", "version", "date", "uncontrolled when printed"]) >= 3,
+      partial: count(["form id", "version", "date", "uncontrolled when printed"]) > 0,
+      reason: "Document Control must include form ID, version, date and uncontrolled-when-printed control text.",
+    },
+  };
+
+  const check = checks[requirementId];
+  if (!check) return { checked: false, passed: true, partial: false, reason: null };
+  return {
+    checked: true,
+    passed: check.passed,
+    partial: check.partial,
+    reason: check.passed ? null : check.reason,
   };
 }
 

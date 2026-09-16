@@ -140,6 +140,7 @@ export function validateBlueprintRuntimeCompletion(
     input.contentMarkdown,
     standardTemplateEvidence,
     input.professionalContext,
+    contract,
   );
   if (unresolvedProfessionalPlaceholders.length > 0) {
     failures.push({
@@ -454,6 +455,7 @@ export function detectUnresolvedProfessionalPlaceholders(
   contentMarkdown: string,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
   professionalContext?: ProfessionalExecutionContext | null,
+  contract?: BlueprintExecutionContract | null,
 ): string[] {
   const findings = new Set<string>();
   for (const marker of contentMarkdown.match(INCOMPLETE_MARKER_PATTERN) ?? []) {
@@ -466,6 +468,7 @@ export function detectUnresolvedProfessionalPlaceholders(
       match[1] ?? "",
       standardTemplateEvidence,
       professionalContext,
+      contract,
     );
     if (classification === "unresolved_professional_content") findings.add(raw);
   }
@@ -481,9 +484,13 @@ export function classifyBracketedPlaceholderToken(
   rawToken: string,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
   professionalContext?: ProfessionalExecutionContext | null,
+  contract?: BlueprintExecutionContract | null,
 ): BracketedPlaceholderClassification {
   const token = normalisePlaceholderToken(rawToken);
   if (!token || isIgnorableBracketToken(rawToken, token)) return "ignored";
+  if (isAllowedParticipantCompletionPlaceholder(token, professionalContext, contract)) {
+    return "legitimate_factual_field";
+  }
   if (INSTRUCTIONAL_PLACEHOLDER_PATTERN.test(token)) return "unresolved_professional_content";
   if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence, professionalContext)) {
     return "legitimate_factual_field";
@@ -491,6 +498,41 @@ export function classifyBracketedPlaceholderToken(
   if (isProfessionalPlaceholderToken(token)) return "unresolved_professional_content";
   if (looksLikeUndeclaredPlaceholderToken(token)) return "unresolved_professional_content";
   return "ignored";
+}
+
+function isAllowedParticipantCompletionPlaceholder(
+  token: string,
+  professionalContext?: ProfessionalExecutionContext | null,
+  contract?: BlueprintExecutionContract | null,
+): boolean {
+  if (professionalContext?.specificity !== "PARTICIPANT_SPECIFIC") return false;
+  if (professionalContext.deliverable.standardisation !== "participant_specific") return false;
+  const fields = declaredCompletionFields(contract);
+  if (fields.size === 0) return false;
+
+  if (placeholderTokenMatchesDeclared(token, fields)) return true;
+  const base = token.replace(/^INSERT_/, "").replace(/^ADD_/, "").replace(/^COMPLETE_/, "");
+  if (placeholderTokenMatchesDeclared(base, fields)) return true;
+
+  const hasDateCompletionField = [...fields].some((field) => field.includes("DATE"));
+  const hasContactCompletionField = [...fields].some((field) => field.includes("CONTACT"));
+  if (hasDateCompletionField && /\bDATE\b/.test(base)) return true;
+  if (hasContactCompletionField && /\bCONTACT(?:_DETAILS?)?\b/.test(base)) return true;
+  return false;
+}
+
+function declaredCompletionFields(contract?: BlueprintExecutionContract | null): Set<string> {
+  const source = contract?.blueprint.deliverableContract as Record<string, unknown> | null | undefined;
+  const candidate = source?.requirementPlan ?? source?.requirements ?? source?.deliverableRequirements;
+  if (!Array.isArray(candidate)) return new Set();
+  const fields = candidate.flatMap((raw) => {
+    if (!raw || typeof raw !== "object") return [];
+    const value = (raw as Record<string, unknown>).completionFields ??
+      (raw as Record<string, unknown>).completionFieldPlaceholders;
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  });
+  return new Set(fields.map(normalisePlaceholderToken));
 }
 
 function normalisePlaceholderToken(token: string): string {

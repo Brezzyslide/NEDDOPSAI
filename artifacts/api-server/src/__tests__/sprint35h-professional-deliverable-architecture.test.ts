@@ -1217,6 +1217,131 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("buildSectionEvidenceBridge(input.blueprintContract, input.evidencePack ?? undefined)");
   });
 
+  it("carries authored adequacy criteria for every care-plan requirement", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint: carePlan,
+      sections: carePlan.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+
+    expect(profile.requirements).toHaveLength(14);
+    expect(profile.requirements.every((requirement) => requirement.adequacyCriteria.length > 0)).toBe(true);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-support-plan-meeting")?.completionFields)
+      .toEqual(["Plan date", "Date for review"]);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-support-delivery-client-safety")?.completionFields)
+      .toEqual(["On-call contact", "Service manager contact"]);
+    expect(profile.requirements.find((requirement) => requirement.id === "care-plan-behavioural-management")?.expectedEvidenceCategories)
+      .toContain("behaviour_support_plan");
+  });
+
+  it("matches care-plan coverage structurally by requirementId instead of heading text", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint: carePlan,
+      sections: carePlan.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const content = [
+      "The strategies below are sourced from the behaviour support plan.",
+      "Proactive strategies: support workers should use calm redirection, predictable routines and low-stimulus engagement as recorded in the BSP source.",
+      "Reactive strategies: when escalation begins, workers should prompt, redirect, monitor safety, record the incident and contact the service manager.",
+      "Protective strategies: workers maintain safe distance, protect the participant and others, and escalate according to the behaviour support plan.",
+    ].join(" ");
+    const report = evaluateDeliverableRequirementCoverage(
+      `## Behaviour Management Strategies\n\n${content}`,
+      {
+        ...profile,
+        requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-behavioural-management"),
+      },
+      {
+        deliverableSections: [{
+          requirementId: "care-plan-behavioural-management",
+          heading: "Behaviour Management Strategies",
+          content,
+        }],
+      },
+    );
+
+    expect(report.missing).toHaveLength(0);
+    expect(report.requirementResults[0]).toMatchObject({
+      actualLocation: 'deliverable.sections[care-plan-behavioural-management] "Behaviour Management Strategies"',
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "SUBSTANTIVE_PASS",
+      finalResult: "SATISFIED",
+    });
+  });
+
+  it("accepts specific participant-mode absence statements for mandatory no-evidence sections", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const contract = {
+      blueprint: carePlan,
+      sections: carePlan.sections ?? [],
+      template: null,
+      mode: "create",
+    } as BlueprintExecutionContract;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
+    const mealtime = {
+      ...profile,
+      requirements: profile.requirements.filter((requirement) => requirement.id === "care-plan-mealtime-management-strategy"),
+    };
+    const specificAbsence = "No retrieved mealtime management risk assessment evidence was present for Micheal Rocca. Food texture, fluid consistency, positioning, supervision level, equipment and worker mealtime actions are not recorded in the available evidence; a mealtime management risk assessment would carry those instructions.";
+    const vagueAbsence = "Not applicable.";
+
+    const accepted = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${specificAbsence}`, mealtime, {
+      deliverableSections: [{ requirementId: "care-plan-mealtime-management-strategy", heading: "Mealtime Management Strategy", content: specificAbsence }],
+    });
+    const rejected = evaluateDeliverableRequirementCoverage(`## Mealtime Management Strategy\n\n${vagueAbsence}`, mealtime, {
+      deliverableSections: [{ requirementId: "care-plan-mealtime-management-strategy", heading: "Mealtime Management Strategy", content: vagueAbsence }],
+    });
+
+    expect(accepted.missing).toHaveLength(0);
+    expect(rejected.missing).toHaveLength(1);
+  });
+
   it("carries authored requirements and adequacy criteria through verbatim when present", () => {
     const blueprint = {
       ...getRegistryEntry("care_plan"),

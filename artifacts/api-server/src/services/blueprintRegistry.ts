@@ -122,6 +122,7 @@ export interface RegistryEntry {
       classification?: DeliverableRequirementClassificationName;
       targetLocation: string;
       adequacyCriteria?: string[];
+      completionFields?: string[];
       evidenceAuthority?: string[];
       coverageRules?: Array<{ allOf?: string[]; anyOf?: string[] }>;
       conditionalApplicability?: Record<string, unknown>;
@@ -3092,6 +3093,7 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
       "Date for Review is a real date, later than the plan date",
       "Diagnosis is transcribed from a clinical source, never inferred",
     ],
+    completionFields: ["Plan date", "Date for review"],
   },
   {
     id: "care-plan-goals",
@@ -3186,6 +3188,7 @@ const CARE_PLAN_REQUIREMENT_PLAN = [
       "Descriptions state what the worker does, not what the support is called",
       "Selected supports reconcile against funded supports in the service agreement",
     ],
+    completionFields: ["On-call contact", "Service manager contact"],
   },
   {
     id: "care-plan-behavioural-management",

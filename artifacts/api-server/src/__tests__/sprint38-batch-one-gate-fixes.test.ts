@@ -379,14 +379,41 @@ describe("Sprint 38 Batch One gate fixes", () => {
       "NDIS_NUMBER",
       reusableEvidence,
       participantContext,
+      contract(blueprint),
+    )).toBe("unresolved_professional_content");
+
+    expect(classifyBracketedPlaceholderToken(
+      "Insert date",
+      reusableEvidence,
+      participantContext,
+      contract(blueprint),
+    )).toBe("legitimate_factual_field");
+    expect(classifyBracketedPlaceholderToken(
+      "Insert date, later than plan date",
+      reusableEvidence,
+      participantContext,
+      contract(blueprint),
+    )).toBe("legitimate_factual_field");
+    expect(classifyBracketedPlaceholderToken(
+      "Insert contact details",
+      reusableEvidence,
+      participantContext,
+      contract(blueprint),
+    )).toBe("legitimate_factual_field");
+    expect(classifyBracketedPlaceholderToken(
+      "BSP Reference",
+      reusableEvidence,
+      participantContext,
+      contract(blueprint),
     )).toBe("unresolved_professional_content");
 
     const findings = detectUnresolvedProfessionalPlaceholders(
-      "Participant NDIS Number: [NDIS_NUMBER]",
+      "Plan date: [Insert date]\nDate for review: [Insert date, later than plan date]\nOn-call contact: [Insert contact details]\nBSP source: [BSP Reference]\nParticipant NDIS Number: [NDIS_NUMBER]",
       reusableEvidence,
       participantContext,
+      contract(blueprint),
     );
-    expect(findings).toEqual(["[NDIS_NUMBER]"]);
+    expect(findings).toEqual(["[BSP Reference]", "[NDIS_NUMBER]"]);
   });
 
   it("resolves the standard NDIS care plan template request deterministically across repeated context compilation", () => {
