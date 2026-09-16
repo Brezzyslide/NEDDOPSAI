@@ -63,6 +63,16 @@ import {
 
 type DbClient = typeof db;
 
+const EVIDENCE_CLASSES = [
+  "PARTICIPANT_STATED",
+  "PROFESSIONAL_SOURCE",
+  "ORGANISATIONAL_SOURCE",
+  "PROVIDER_STATED",
+  "SYSTEM_DERIVED",
+] as const;
+
+type EvidenceClass = (typeof EVIDENCE_CLASSES)[number];
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CompleteUploadInput {
@@ -77,6 +87,7 @@ export interface CompleteUploadInput {
   documentCategory?: string | null;
   documentCategorySuggested?: string | null;
   documentCategorySuggestionConfidence?: string | null;
+  evidenceClass?: EvidenceClass | null;
   language?: string;
   authorityLevel?: string;
   sensitivityClassification?: string;
@@ -185,6 +196,25 @@ function resolveDocumentCategory(input: {
   };
 }
 
+function resolveEvidenceClass(input: {
+  sourceType: string;
+  sourceScope: string;
+  documentCategory: string | null;
+  evidenceClass?: EvidenceClass | null;
+}): EvidenceClass {
+  if (input.evidenceClass && EVIDENCE_CLASSES.includes(input.evidenceClass)) {
+    return input.evidenceClass;
+  }
+  if (input.sourceScope === "task") return "PROVIDER_STATED";
+  if (input.sourceType === "participant_record") return "PARTICIPANT_STATED";
+  if (input.sourceType === "participant_document") return "PROFESSIONAL_SOURCE";
+  if (["behaviour_support_plan", "risk_assessment", "clinical_report", "allied_health_report"].includes(input.documentCategory ?? input.sourceType)) {
+    return "PROFESSIONAL_SOURCE";
+  }
+  if (input.sourceType === "approved_example") return "SYSTEM_DERIVED";
+  return "ORGANISATIONAL_SOURCE";
+}
+
 function validateScopeType(t: string): void {
   if (!KNOWLEDGE_SCOPE_TYPES.includes(t as never)) {
     throw new KnowledgeSourceError(
@@ -290,6 +320,12 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
   const scope = KNOWLEDGE_SOURCE_SCOPES.includes(input.sourceScope as never)
     ? input.sourceScope!
     : "library";
+  const evidenceClass = resolveEvidenceClass({
+    sourceType: input.sourceType,
+    sourceScope: scope,
+    documentCategory: category.documentCategory,
+    evidenceClass: input.evidenceClass ?? null,
+  });
   const participantIds = uniqueCleanIds(input.participantIds ?? []);
   if (participantIds.length > 0) {
     await assertParticipantsBelongToOrganisation(input.organizationId, participantIds, client);
@@ -330,6 +366,7 @@ export async function completeUpload(input: CompleteUploadInput): Promise<{
       documentCategoryConfirmedByUserId: category.documentCategory ? input.uploadedByUserId : null,
       documentCategoryConfirmedAt: category.documentCategory ? new Date() : null,
       documentCategoryMatchedSuggestion: category.documentCategoryMatchedSuggestion,
+      evidenceClass,
       originalFileName: input.originalFileName,
       mimeType: input.mimeType,
       storageProvider: input.storageProvider,

@@ -89,6 +89,8 @@ export interface EvidenceChunk {
   sourceType: string;
   /** Uploader-selected professional document category, where applicable. */
   documentCategory?: string | null;
+  /** Capture-time evidentiary class. Never infer from chunk text. */
+  evidenceClass: EvidenceClass;
   /** Authority level of the source: "mandatory" | "primary" | "supporting" | "reference" */
   authorityLevel: string;
   /** Section heading within the document (null if not parsed) */
@@ -108,6 +110,13 @@ export interface EvidenceChunk {
   /** Currentness/version status. Unknown must not be promoted to current. */
   currentness?: EvidenceChunkCurrentness;
 }
+
+export type EvidenceClass =
+  | "PARTICIPANT_STATED"
+  | "PROFESSIONAL_SOURCE"
+  | "ORGANISATIONAL_SOURCE"
+  | "PROVIDER_STATED"
+  | "SYSTEM_DERIVED";
 
 export interface EvidenceChunkProvenance {
   sourceOrigin: "internal_krs" | "external_authority" | "task_upload" | "specialist_knowledge" | "memory" | "connector";
@@ -328,8 +337,9 @@ function mapRawChunk(
     sourceVersionId: chunk.sourceVersionId ?? null,
     sourceTitle:     chunk.sourceTitle,
     versionLabel,
-    sourceType:      chunk.sourceScope === "task" ? "task_upload" : "library",
+    sourceType:      chunk.sourceType ?? (chunk.sourceScope === "task" ? "task_upload" : "library"),
     documentCategory: chunk.documentCategory ?? null,
+    evidenceClass:  parseEvidenceClass(chunk.evidenceClass),
     authorityLevel:  chunk.authorityLevel,
     sectionTitle:    chunk.sectionTitle,
     pageNumber:      chunk.pageNumber,
@@ -355,6 +365,19 @@ function mapRawChunk(
       version: versionLabel,
     }),
   };
+}
+
+function parseEvidenceClass(value: string | null | undefined): EvidenceClass {
+  switch (value) {
+    case "PARTICIPANT_STATED":
+    case "PROFESSIONAL_SOURCE":
+    case "ORGANISATIONAL_SOURCE":
+    case "PROVIDER_STATED":
+    case "SYSTEM_DERIVED":
+      return value;
+    default:
+      return "ORGANISATIONAL_SOURCE";
+  }
 }
 
 // ─── Task-upload chunk retrieval ──────────────────────────────────────────────
@@ -413,7 +436,7 @@ async function retrieveTaskUploadChunks(
 async function getVersionLabels(
   sourceVersionIds: string[],
   organisationId: string,
-): Promise<Map<string, { sourceType: string; documentCategory: string | null }>> {
+): Promise<Map<string, string | null>> {
   if (sourceVersionIds.length === 0) return new Map();
 
   const rows = await withSystemTenantContext(
@@ -441,7 +464,7 @@ async function getVersionLabels(
 async function getSourceTypes(
   sourceIds: string[],
   organisationId: string,
-): Promise<Map<string, { sourceType: string; documentCategory: string | null }>> {
+): Promise<Map<string, { sourceType: string; documentCategory: string | null; evidenceClass: EvidenceClass }>> {
   if (sourceIds.length === 0) return new Map();
 
   const rows = await withSystemTenantContext(
@@ -451,6 +474,7 @@ async function getSourceTypes(
         id:               knowledgeSourcesTable.id,
         sourceType:       knowledgeSourcesTable.sourceType,
         documentCategory: knowledgeSourcesTable.documentCategory,
+        evidenceClass:    knowledgeSourcesTable.evidenceClass,
       })
       .from(knowledgeSourcesTable)
       .where(
@@ -465,6 +489,7 @@ async function getSourceTypes(
   return new Map(rows.map(r => [r.id, {
     sourceType: r.sourceType,
     documentCategory: r.documentCategory ?? null,
+    evidenceClass: parseEvidenceClass(r.evidenceClass),
   }]));
 }
 
@@ -488,6 +513,7 @@ async function enrichSourceMetadata(
     if (!sourceMeta) continue;
     chunk.sourceType = sourceMeta.sourceType;
     chunk.documentCategory = sourceMeta.documentCategory;
+    chunk.evidenceClass = sourceMeta.evidenceClass;
   }
 }
 
@@ -694,6 +720,7 @@ export async function resolveEvidence(
         versionLabel:    vLabel,
         sourceType:      "task_upload",
         documentCategory: row.documentCategory ?? null,
+        evidenceClass:   "PROVIDER_STATED",
         authorityLevel:  "reference",
         sectionTitle:    row.sectionTitle,
         pageNumber:      row.pageNumber,
@@ -721,18 +748,26 @@ export async function resolveEvidence(
     userRequest,
     blueprint: input.blueprint,
   });
+  appendTaskUserInputEvidence(allEvidenceChunks, {
+    executionId,
+    organisationId,
+    userRequest,
+  });
 
   // ── Step 5: Sort all chunks — authority > confidence, then by type priority ──
   const TYPE_PRIORITY: Record<string, number> = {
     legislation: 0,
     legislation_reference: 1,
-    policy: 2,
-    procedure: 3,
-    standards: 4,
-    template: 5,
-    entity_knowledge: 6,
-    task_upload: 7,
-    reference: 8,
+    participant_document: 2,
+    participant_record: 3,
+    task_upload: 4,
+    provider_stated: 5,
+    policy: 6,
+    procedure: 7,
+    standards: 8,
+    template: 9,
+    entity_knowledge: 10,
+    reference: 11,
   };
 
   allEvidenceChunks.sort((a, b) => {
@@ -776,6 +811,46 @@ export async function resolveEvidence(
   return pack;
 }
 
+function appendTaskUserInputEvidence(
+  chunks: EvidenceChunk[],
+  input: {
+    executionId: string;
+    organisationId: string;
+    userRequest: string;
+  },
+): void {
+  const text = input.userRequest.trim();
+  if (text.length < 40) return;
+  const retrievedAt = new Date().toISOString();
+  chunks.push({
+    chunkId: `task-user-input:${input.executionId}`,
+    sourceId: `task-user-input:${input.executionId}`,
+    sourceVersionId: null,
+    sourceTitle: "Task-scoped user input",
+    versionLabel: null,
+    sourceType: "provider_stated",
+    documentCategory: "provider_stated",
+    evidenceClass: "PROVIDER_STATED",
+    authorityLevel: "reference",
+    sectionTitle: "Current request",
+    pageNumber: null,
+    text,
+    confidence: 0.65,
+    citation: `Provider-stated task input, ${retrievedAt.slice(0, 10)}`,
+    selectionReason: "task_user_input",
+    provenance: {
+      sourceOrigin: "task_upload",
+      recordIdentifier: input.executionId,
+      documentIdentifier: input.executionId,
+      retrievedAt,
+    },
+    currentness: mapKnowledgeCurrentness({
+      checkedAt: retrievedAt,
+      version: "current-request",
+    }),
+  });
+}
+
 function appendBuiltInAuthorityEvidence(
   chunks: EvidenceChunk[],
   input: {
@@ -816,6 +891,7 @@ function appendBuiltInAuthorityEvidence(
       versionLabel: "current-authority-snapshot-2026-08-24",
       sourceType: seed.sourceType,
       authorityLevel: seed.authorityLevel,
+      evidenceClass: "SYSTEM_DERIVED",
       sectionTitle: seed.title,
       pageNumber: null,
       text: seed.text,
@@ -928,15 +1004,18 @@ export function buildEvidenceSection(pack: EvidencePack): string {
 
   // Build in type-priority order
   const orderedTypes = Object.keys(pack.citationsByType).sort((a, b) => {
-    const TYPE_PRIORITY: Record<string, number> = {
-      legislation: 0,
-      legislation_reference: 1,
-      policy: 2,
-      procedure: 3,
-      standards: 4,
-      template: 5,
-      task_upload: 6,
-    };
+      const TYPE_PRIORITY: Record<string, number> = {
+        legislation: 0,
+        legislation_reference: 1,
+        participant_document: 2,
+        participant_record: 3,
+        task_upload: 4,
+        provider_stated: 5,
+        policy: 6,
+        procedure: 7,
+        standards: 8,
+        template: 9,
+      };
     return (TYPE_PRIORITY[a] ?? 8) - (TYPE_PRIORITY[b] ?? 8);
   });
 
@@ -948,7 +1027,8 @@ export function buildEvidenceSection(pack: EvidencePack): string {
     const chunkBlocks = chunks.map(c => {
       const locParts = [c.sectionTitle, c.pageNumber != null ? `p.${c.pageNumber}` : null].filter(Boolean);
       const locLine = locParts.length > 0 ? ` (${locParts.join(", ")})` : "";
-      return `[${c.citation}]${locLine}\n${c.text}`;
+      const classLine = `Evidence class: ${c.evidenceClass}; category: ${c.documentCategory ?? c.sourceType}`;
+      return `[${c.citation}]${locLine}\n${classLine}\n${c.text}`;
     });
 
     sections.push(`--- ${label} ---\n${chunkBlocks.join("\n\n")}`);

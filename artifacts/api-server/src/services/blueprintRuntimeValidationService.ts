@@ -135,6 +135,9 @@ export function validateBlueprintRuntimeCompletion(
   const deliverableContract = parseDeliverableContract(blueprint.deliverableContract as Record<string, unknown> | null);
 
   const standardTemplateEvidence = input.standardTemplateEvidence ?? null;
+  const participantCarePlan =
+    blueprint.code === "care_plan" &&
+    input.professionalContext?.specificity === "PARTICIPANT_SPECIFIC";
 
   const unresolvedProfessionalPlaceholders = detectUnresolvedProfessionalPlaceholders(
     input.contentMarkdown,
@@ -176,6 +179,16 @@ export function validateBlueprintRuntimeCompletion(
     const coverageReport = evaluateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile, {
       deliverableSections: input.deliverableSections,
     });
+    if (participantCarePlan && carePlanCoreOperatingSectionsAllUnsupported(coverageReport)) {
+      failures.push({
+        gate: "care_plan_core_operating_floor",
+        state: "validation",
+        message: "Care plan cannot reach approval when Support Delivery, ADL and Communication are all unsupported.",
+        details: [
+          "At least one core operating section must be substantively supported by professional, participant-stated or provider-stated evidence before approval.",
+        ],
+      });
+    }
     if (coverageReport.missing.length > 0) {
       failures.push({
         gate: "mandatory_deliverable_coverage",
@@ -267,7 +280,7 @@ export function validateBlueprintRuntimeCompletion(
     }
   }
 
-  if (evidenceContract) {
+  if (evidenceContract && !participantCarePlan) {
     const minimumEvidenceCount = effectiveMinimumEvidenceCount(
       evidenceContract.minimumEvidenceCount ?? 0,
       evidenceContract.requiredEvidenceCategories ?? [],
@@ -1333,6 +1346,18 @@ function hasEvidenceCategory(
     if (currentAuthorityEvidence) return true;
     return sourceType === sourceRequirement || documentCategory === documentRequirement;
   });
+}
+
+function carePlanCoreOperatingSectionsAllUnsupported(
+  coverageReport: ReturnType<typeof evaluateDeliverableRequirementCoverage>,
+): boolean {
+  const required = new Set([
+    "care-plan-undertaking-adl",
+    "care-plan-communication-strategy",
+    "care-plan-support-delivery-client-safety",
+  ]);
+  const results = new Map(coverageReport.requirementResults.map((item) => [item.requirementId, item]));
+  return Array.from(required).every((id) => results.get(id)?.finalResult !== "SATISFIED");
 }
 
 function containsDeliverableHeading(contentMarkdown: string, deliverable: string): boolean {

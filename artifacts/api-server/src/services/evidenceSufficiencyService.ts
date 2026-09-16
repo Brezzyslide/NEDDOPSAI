@@ -289,6 +289,7 @@ export function evaluateEvidenceSufficiency(
   input: SufficiencyEvaluationInput,
 ): EvidenceSufficiencyResult {
   const { userRequest, blueprint, evidencePack, requiredExternalAuthorityTypes = [], minimumRequiredAuthorityLevel = "supporting" } = input;
+  const participantCarePlan = blueprint?.code === "care_plan";
 
   const reasons: SufficiencyReason[] = [];
   const unresolvedReferences: UnresolvedReference[] = [];
@@ -320,6 +321,32 @@ export function evaluateEvidenceSufficiency(
       coverageScore: 0,
       isEscalationRecommended: true,
     };
+  }
+
+  // ── 2. Cross-reference detection ───────────────────────────────────────────
+  if (participantCarePlan) {
+    const hasParticipantEvidence = evidencePack.chunks.some((chunk) =>
+      ["participant_document", "participant_record", "entity_knowledge"].includes(chunk.sourceType) ||
+      chunk.evidenceClass === "PARTICIPANT_STATED" ||
+      chunk.provenance?.sourceOrigin === "task_upload"
+    );
+    const hasSubstantiveProfessionalSource = evidencePack.chunks.some((chunk) =>
+      chunk.evidenceClass === "PROFESSIONAL_SOURCE" ||
+      ["behaviour_support_plan", "allied_health_report", "clinical_report", "risk_assessment", "intake_form"].includes(chunk.documentCategory ?? chunk.sourceType)
+    );
+    if (!hasParticipantEvidence || !hasSubstantiveProfessionalSource) {
+      return {
+        status: "INSUFFICIENT_COVERAGE",
+        reasons: [{
+          code: "INSUFFICIENT_CHUNK_COUNT",
+          detail: "Participant care plans require participant identity plus at least one substantive professional source such as a BSP, allied health report, risk assessment or intake assessment.",
+        }],
+        unresolvedReferences: [],
+        missingAuthorityTypes: [],
+        coverageScore: computeCoverageScore(evidencePack, 0, 0),
+        isEscalationRecommended: true,
+      };
+    }
   }
 
   // ── 2. Cross-reference detection ───────────────────────────────────────────
@@ -387,7 +414,7 @@ export function evaluateEvidenceSufficiency(
     evidencePack.totalChunks >= MIN_CHUNKS_ADEQUATE &&
     evidencePack.sourceIds.length >= MIN_SOURCES_ADEQUATE;
 
-  if (!hasAdequateCoverage) {
+  if (!participantCarePlan && !hasAdequateCoverage) {
     reasons.push({
       code: "INSUFFICIENT_CHUNK_COUNT",
       detail: `Only ${evidencePack.totalChunks} chunk(s) from ${evidencePack.sourceIds.length} source(s) retrieved. Minimum: ${MIN_CHUNKS_ADEQUATE} chunks from ${MIN_SOURCES_ADEQUATE} source.`,
@@ -427,7 +454,7 @@ export function evaluateEvidenceSufficiency(
   } else if (evidencePack.avgConfidence < LOW_CONFIDENCE_THRESHOLD) {
     status = "LOW_CONFIDENCE";
     isEscalationRecommended = true; // OpenClaw may find better-matched sources
-  } else if (!hasAdequateCoverage) {
+  } else if (!participantCarePlan && !hasAdequateCoverage) {
     status = "INSUFFICIENT_COVERAGE";
     isEscalationRecommended = true; // OpenClaw may find sources not in Library
   } else if (highestAuthorityInPack < requiredAuthorityRank) {

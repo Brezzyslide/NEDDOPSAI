@@ -96,6 +96,17 @@ export const knowledgeSourcesTable = pgTable("knowledge_sources", {
   documentCategoryConfirmedAt: timestamp("document_category_confirmed_at", { withTimezone: true }),
   documentCategoryMatchedSuggestion: boolean("document_category_matched_suggestion"),
 
+  /**
+   * Evidentiary class selected at capture.
+   *
+   * PARTICIPANT_STATED     — participant's own stated preference/account
+   * PROFESSIONAL_SOURCE    — BSP, allied health, clinical or risk document
+   * ORGANISATIONAL_SOURCE  — policy, procedure, service agreement, template
+   * PROVIDER_STATED        — provider/staff entered operational knowledge
+   * SYSTEM_DERIVED         — system inference/style/example, never content proof
+   */
+  evidenceClass: text("evidence_class").notNull().default("ORGANISATIONAL_SOURCE"),
+
   // ─── File metadata ────────────────────────────────────────────────────────
 
   /** Original file name as provided by the uploader */

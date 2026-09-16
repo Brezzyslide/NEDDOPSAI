@@ -264,6 +264,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Removes participant_document from document categories while preserving it as a participant source/scope type.",
   },
+  {
+    id: "0064-knowledge-source-evidence-class",
+    file: "0064_knowledge_source_evidence_class.sql",
+    transactional: true,
+    notes: "Adds capture-time evidence classes to knowledge sources and exposes them to KRS.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

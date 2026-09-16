@@ -416,6 +416,9 @@ export function validateWorkPackage(
   // Standard reusable templates surface missing organisation evidence as
   // warnings. Participant-specific work treats declared evidence as blocking.
   for (const rawType of blueprint.requiredLibraryKnowledge) {
+    if (blueprint.code === "care_plan" && participantSpecificMode) {
+      continue;
+    }
     const canonical = canonicaliseSourceType(rawType);
     const requirement = resolveLibraryKnowledgeRequirement({
       blueprintCode: blueprint.code,
@@ -487,6 +490,48 @@ export function validateWorkPackage(
   }
 
   if (participantSpecificMode) {
+    if (blueprint.code === "care_plan") {
+      const participantEvidencePresent =
+        retrievedAllTypes.has("participant_document") ||
+        retrievedAllTypes.has("participant_record") ||
+        retrievedAllTypes.has("entity_knowledge") ||
+        manifest.entityKnowledge?.participant != null;
+      const substantiveProfessionalSourcePresent = carePlanSubstantiveProfessionalSourcePresent(evidencePack);
+      if (!participantEvidencePresent) {
+        issues.push({
+          rule: "care_plan_participant_identity_evidence",
+          level: "error",
+          message: "No linked participant evidence was found for this participant-specific care plan.",
+          details: ["Care plan generation requires participant identity plus substantive participant/professional evidence."],
+        });
+        upsertMissing({
+          canonicalType: "participant_document",
+          displayLabel: "Participant Document",
+          required: true,
+          reason: "Care plan generation requires evidence linked to the participant subject",
+          searched: evidenceSearched,
+          searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+          suggestedAction: "upload_document",
+        });
+      }
+      if (!substantiveProfessionalSourcePresent) {
+        issues.push({
+          rule: "care_plan_substantive_professional_source",
+          level: "error",
+          message: "No substantive professional source was found for this participant-specific care plan.",
+          details: ["At least one BSP, allied health report, clinical report, risk assessment or intake assessment is required to begin."],
+        });
+        upsertMissing({
+          canonicalType: "substantive_professional_source",
+          displayLabel: "Substantive Professional Source",
+          required: true,
+          reason: "A BSP alone is sufficient to begin; missing section-specific sources become named gaps in the document",
+          searched: evidenceSearched,
+          searchOutcome: evidenceSearched ? "not_found" : "not_searched",
+          suggestedAction: "upload_document",
+        });
+      }
+    } else {
     const minimumEvidenceCount = blueprint.evidenceContract?.minimumEvidenceCount ?? 0;
     if (minimumEvidenceCount > 0 && retrievedEvidenceCount < minimumEvidenceCount) {
       issues.push({
@@ -504,6 +549,7 @@ export function validateWorkPackage(
         searchOutcome: evidenceSearched ? "not_found" : "not_searched",
         suggestedAction: "upload_document",
       });
+    }
     }
 
     const participantEntityRequired =
@@ -592,6 +638,25 @@ export function validateWorkPackage(
     evidenceSearched,
     clarificationMessage,
   };
+}
+
+function carePlanSubstantiveProfessionalSourcePresent(evidencePack?: EvidencePack | null): boolean {
+  const substantiveCategories = new Set([
+    "behaviour_support_plan",
+    "allied_health_report",
+    "clinical_report",
+    "risk_assessment",
+    "intake_form",
+    "ot_assessment",
+    "speech_assessment",
+    "physiotherapy_assessment",
+  ]);
+  return (evidencePack?.chunks ?? []).some((chunk) => {
+    if (chunk.evidenceClass === "PROFESSIONAL_SOURCE") return true;
+    const sourceType = canonicaliseSourceType(chunk.sourceType ?? "");
+    const documentCategory = canonicaliseDocumentCategory(chunk.documentCategory ?? "");
+    return substantiveCategories.has(sourceType) || substantiveCategories.has(documentCategory);
+  });
 }
 
 // ─── Rule evaluation ──────────────────────────────────────────────────────────

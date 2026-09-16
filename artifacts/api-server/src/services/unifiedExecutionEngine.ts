@@ -1782,6 +1782,7 @@ export class UnifiedExecutionEngine {
       failedRequirements: [],
       deliverableContract: blueprint?.deliverableContract ?? null,
     });
+    reviewResult = normaliseReviewResultToStructuredSections(reviewResult, deliverableSections, coverageProfile);
     await recordProfessionalSnapshot({
       organizationId,
       taskId: request.taskId,
@@ -1874,6 +1875,7 @@ export class UnifiedExecutionEngine {
           ),
           deliverableContract: blueprint?.deliverableContract ?? null,
         });
+        reviewResult = normaliseReviewResultToStructuredSections(reviewResult, deliverableSections, coverageProfile);
         await recordProfessionalSnapshot({
           organizationId,
           taskId: request.taskId,
@@ -1996,6 +1998,7 @@ export class UnifiedExecutionEngine {
             failedRequirements: toReviewFailedRequirements(currentGroupMissing),
             deliverableContract: blueprint?.deliverableContract ?? null,
           });
+          reviewResult = normaliseReviewResultToStructuredSections(reviewResult, deliverableSections, coverageProfile);
           await recordProfessionalSnapshot({
             organizationId,
             taskId: request.taskId,
@@ -3755,6 +3758,8 @@ function formatParticipantSpecificOutputContract(
     countLine,
     sectionLines,
     "Populate every section from retrieved evidence and cite the source document.",
+    "Use evidence classes exactly as supplied in the evidence pack: PARTICIPANT_STATED proves preference/voice/goals; PROFESSIONAL_SOURCE proves clinical, behavioural and risk content; ORGANISATIONAL_SOURCE proves provider procedures/policies/service context; PROVIDER_STATED is accountable staff/user input and must be attributed; SYSTEM_DERIVED is style/context only and never proves participant facts.",
+    "If a professional source and participant-stated evidence conflict about the participant's own preference, record both and prefer the participant-stated preference for that preference.",
     "Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].",
     "If a specific fact is genuinely absent from retrieved evidence, still produce the section and state that the fact is not recorded in the available evidence.",
     "When naming a gap, identify the document or evidence class that would normally carry it, for example: intake form, NDIS plan, behaviour support plan, risk assessment, service agreement, allied health report, or signing record.",
@@ -3892,7 +3897,7 @@ function formatEvidenceBridgeChunkReference(chunk: EvidencePack["chunks"][number
     chunk.sectionTitle,
     chunk.pageNumber != null ? `p.${chunk.pageNumber}` : null,
   ].filter(Boolean).join(", ");
-  return `${chunk.citation} (${chunk.sourceTitle}; ${category}; chunk ${chunk.chunkId}${location ? `; ${location}` : ""})`;
+  return `${chunk.citation} (${chunk.sourceTitle}; ${chunk.evidenceClass}; ${category}; chunk ${chunk.chunkId}${location ? `; ${location}` : ""})`;
 }
 
 function summariseSectionEvidence(chunks: EvidencePack["chunks"]): string {
@@ -4783,6 +4788,27 @@ function buildCoverageSnapshot(
     classificationCounts: report.classificationCounts,
     missing: report.missing,
     plan: report.plan,
+  };
+}
+
+function normaliseReviewResultToStructuredSections(
+  reviewResult: Awaited<ReturnType<typeof reviewDraft>>,
+  deliverableSections: ParsedDeliverableSection[] | undefined,
+  coverageProfile: ReturnType<typeof deriveDeliverableRequirementCoverageProfile>,
+): Awaited<ReturnType<typeof reviewDraft>> {
+  if (!deliverableSections?.length) return reviewResult;
+  const structuredMarkdown = assembleDeliverableMarkdownFromSections(
+    deliverableSections,
+    requirementOrderForCoverageProfile(coverageProfile),
+  );
+  if (!structuredMarkdown || reviewResult.finalContent === structuredMarkdown) return reviewResult;
+  return {
+    ...reviewResult,
+    finalContent: structuredMarkdown,
+    autoRevisionNote: [
+      reviewResult.autoRevisionNote,
+      "Self-review output normalized to structured deliverable.sections[] artifact.",
+    ].filter(Boolean).join(" "),
   };
 }
 

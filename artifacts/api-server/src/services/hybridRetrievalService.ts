@@ -66,7 +66,9 @@ export interface RawChunk {
   contentHash: string | null;
   text: string;
   sourceTitle: string;
+  sourceType: string;
   documentCategory: string | null;
+  evidenceClass: string | null;
   authorityLevel: AuthorityLevel;
   sensitivityClassification: SensitivityLevel;
   sourceScope: string;
@@ -170,7 +172,9 @@ export async function retrieveChunks(params: ChunkRetrievalParams): Promise<RawC
       kc.content_hash         AS "contentHash",
       kc.text,
       ks.title                AS "sourceTitle",
+      ks.source_type          AS "sourceType",
       ks.document_category    AS "documentCategory",
+      ks.evidence_class       AS "evidenceClass",
       ks.authority_level      AS "authorityLevel",
       ks.sensitivity_classification AS "sensitivityClassification",
       ks.source_scope         AS "sourceScope",

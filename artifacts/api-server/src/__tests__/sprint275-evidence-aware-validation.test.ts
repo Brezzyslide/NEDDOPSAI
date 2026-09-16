@@ -94,6 +94,7 @@ function makeChunk(overrides: Partial<EvidenceChunk> = {}): EvidenceChunk {
     sourceTitle:    "Medication Management Policy",
     versionLabel:   "v3",
     sourceType:     "policy",
+    evidenceClass:  "ORGANISATIONAL_SOURCE",
     authorityLevel: "primary",
     sectionTitle:   "Section 2",
     pageNumber:     4,
@@ -872,7 +873,7 @@ describe("Care-plan participant document category gate", () => {
     expect(result.missingItems).not.toContain("Care Plan");
   });
 
-  it("blocks when a participant flag says BSP applies but no BSP-category document is retrieved", () => {
+  it("does not infer BSP authority from a participant document title without captured category/class", () => {
     const bp = makeBlueprint({
       code: "care_plan",
       validationRules: [],
@@ -900,7 +901,8 @@ describe("Care-plan participant document category gate", () => {
     });
 
     expect(result.passed).toBe(false);
-    expect(result.missingItems).toContain("Behaviour Support Plan");
+    expect(result.missingItems).toContain("Substantive Professional Source");
+    expect(result.missingItems).not.toContain("Behaviour Support Plan");
   });
 });
 

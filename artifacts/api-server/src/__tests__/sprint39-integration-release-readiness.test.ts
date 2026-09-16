@@ -75,6 +75,18 @@ function emptyEvidencePack(): EvidencePack {
   };
 }
 
+function evidencePackWith(chunks: EvidencePack["chunks"]): EvidencePack {
+  return {
+    ...emptyEvidencePack(),
+    chunks,
+    sourceIds: [...new Set(chunks.map((chunk) => chunk.sourceId))],
+    totalChunks: chunks.length,
+    avgConfidence: chunks.length
+      ? chunks.reduce((sum, chunk) => sum + chunk.confidence, 0) / chunks.length
+      : 0,
+  };
+}
+
 function runGate(input: {
   request: string;
   intent: string;
@@ -198,12 +210,11 @@ describe("Sprint 39 integration release readiness", () => {
       participantSpecificMode: true,
     });
     expect(participantValidation.passed).toBe(false);
-    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "required_participant_entity_knowledge")).toBe(true);
-    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "minimum_evidence_count")).toBe(true);
+    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "care_plan_participant_identity_evidence")).toBe(true);
+    expect(participantValidation.issues.some(issue => issue.level === "error" && issue.rule === "care_plan_substantive_professional_source")).toBe(true);
     expect(participantValidation.missingItems).toEqual(expect.arrayContaining([
       "Participant Document",
-      "Risk Assessment",
-      "5 Relevant Evidence Items",
+      "Substantive Professional Source",
     ]));
     expect(participantValidation.clarificationMessage).toContain("Please upload or approve these documents");
 
@@ -213,6 +224,47 @@ describe("Sprint 39 integration release readiness", () => {
     expect(templateValidation.passed).toBe(true);
     expect(templateValidation.issues.some(issue => issue.level === "error")).toBe(false);
     expect(templateValidation.missingItems).not.toContain("Participant Document");
+  });
+
+  it("lets a participant-specific care plan begin with participant identity and one BSP source", () => {
+    const intent = resolveIntent("care_plan.create");
+    expect(intent).toBeTruthy();
+    const blueprint = getRegistryEntry(intent!.code);
+    expect(blueprint).toBeTruthy();
+    const baseManifest = manifest({
+      blueprintId: intent!.code,
+      canonicalIntent: "care_plan.create",
+      blueprintFamily: intent!.family,
+      blueprintMode: intent!.mode,
+      primarySpecialist: blueprint!.primarySpecialist,
+      selectionMetadata: { deliverableStandardisation: "participant_specific" },
+    });
+    const pack = evidencePackWith([{
+      chunkId: "bsp-1",
+      sourceId: "source-bsp",
+      sourceTitle: "Micheal Behaviour Support Plan",
+      versionLabel: "current",
+      sourceType: "participant_document",
+      documentCategory: "behaviour_support_plan",
+      evidenceClass: "PROFESSIONAL_SOURCE",
+      authorityLevel: "primary",
+      sectionTitle: "Strategies",
+      pageNumber: 4,
+      text: "Workers use calm prompting and proactive redirection strategies.",
+      confidence: 0.86,
+      citation: "Micheal Behaviour Support Plan, p.4",
+      selectionReason: "entity_scoped",
+    }]);
+
+    const result = validateWorkPackage(baseManifest, blueprint!, pack, {
+      standardTemplateEvidence: classifyStandardTemplateEvidenceContext("Create a care plan for Micheal Rocca"),
+      participantSpecificMode: true,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.issues.some(issue => issue.level === "error")).toBe(false);
+    expect(result.missingItems).not.toContain("Care Plan");
+    expect(result.missingItems).not.toContain("5 Relevant Evidence Items");
   });
 
   it("runs participant evidence preflight before claiming execution", () => {
