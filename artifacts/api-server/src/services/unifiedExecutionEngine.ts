@@ -3422,6 +3422,8 @@ function buildProfessionalDeliverableResponseSchema(
   const operation = professionalContext?.operation ?? "CREATE";
   const deliverableType = professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE";
   const audience = professionalContext?.deliverable.audience ?? "requested audience";
+  const requiresSectionEvidenceSources = professionalContext?.specificity === "PARTICIPANT_SPECIFIC" ||
+    professionalContext?.deliverable.standardisation === "participant_specific";
   const stringArray = { type: "array", items: { type: "string" } };
   return {
     name: "professional_deliverable_response",
@@ -3464,11 +3466,32 @@ function buildProfessionalDeliverableResponseSchema(
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["requirementId", "heading", "content"],
+                required: requiresSectionEvidenceSources
+                  ? ["requirementId", "heading", "content", "evidenceSources"]
+                  : ["requirementId", "heading", "content"],
                 properties: {
                   requirementId: { type: "string" },
                   heading: { type: "string" },
                   content: { type: "string" },
+                  ...(requiresSectionEvidenceSources
+                    ? {
+                        evidenceSources: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass"],
+                            properties: {
+                              chunkId: { type: "string" },
+                              documentTitle: { type: "string" },
+                              passage: { type: "string" },
+                              location: { type: "string" },
+                              evidenceClass: { type: "string" },
+                            },
+                          },
+                        },
+                      }
+                    : {}),
                 },
               },
             },
@@ -3758,6 +3781,12 @@ function formatParticipantSpecificOutputContract(
     countLine,
     sectionLines,
     "Populate every section from retrieved evidence and cite the source document.",
+    "Every participant-mode structured row, capacity level, functional assessment, selected support type, goal action, goal outcome, behavioural strategy, restrictive-practice status and person-centred statement is a claim. Each such claim must be linked to an evidenceSource with chunkId, documentTitle, passage and location, or must be explicitly marked as not assessed/not recorded with the missing source document named.",
+    "For ADL, mobility, support delivery and goals specifically: do not assert a capacity level, functional assessment, support type, goal action or outcome unless retrieved evidence supports it. If an item is unassessed, write: \"Not assessed — no functional assessment on file\" or the equivalent specific missing-source statement.",
+    "For Behavioural Management: render BSP-derived strategies as structured rows with fold, behaviour or trigger, strategy, worker action, BSP source, restrictive-practice flag and APO confirmation status.",
+    "For Restrictive Practices: render practices as structured rows with practice type, worker actions, prohibited actions, authorisation status and the authorisation source.",
+    "For Goals: every action and outcome must link to evidence, and each outcome must identify which action(s) it follows from.",
+    "For About Me: person-centred statements must be categorised as strength, preference, like, dislike, what matters, communication preference or informal support, and each must link to its source.",
     "Use evidence classes exactly as supplied in the evidence pack: PARTICIPANT_STATED proves preference/voice/goals; PROFESSIONAL_SOURCE proves clinical, behavioural and risk content; ORGANISATIONAL_SOURCE proves provider procedures/policies/service context; PROVIDER_STATED is accountable staff/user input and must be attributed; SYSTEM_DERIVED is style/context only and never proves participant facts.",
     "If a professional source and participant-stated evidence conflict about the participant's own preference, record both and prefer the participant-stated preference for that preference.",
     "Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].",

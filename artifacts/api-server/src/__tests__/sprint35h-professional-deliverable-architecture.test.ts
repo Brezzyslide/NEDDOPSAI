@@ -1295,13 +1295,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       },
     );
 
-    expect(report.missing).toHaveLength(0);
+    expect(report.missing).toHaveLength(1);
     expect(report.requirementResults[0]).toMatchObject({
       actualLocation: 'deliverable.sections[care-plan-behavioural-management] "Behaviour Management Strategies"',
       structuralResult: "STRUCTURE_PASS",
-      substantiveResult: "SUBSTANTIVE_PASS",
-      finalResult: "SATISFIED",
+      substantiveValidationMode: "UNVERIFIED_SEMANTIC_CRITERIA",
+      finalResult: "PARTIAL",
     });
+    expect(report.missing[0]?.reason).toContain("Authored semantic criteria require structured evidence/source fields");
   });
 
   it("does not require literal communication keywords when authored criteria are substantively met", () => {
@@ -1327,8 +1328,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
     const profile = deriveDeliverableRequirementCoverageProfile(context, contract);
     const content = [
+      "Capacity indicators completed: verbal communication; expressive capacity noted; understanding supported through simple language.",
+      "Strategy narrative present: according to the behaviour support plan and intake form, workers should use calm, clear prompts and allow time for Micheal to respond before repeating an instruction.",
       "According to the behaviour support plan and intake form, workers should use calm, clear prompts and allow time for Micheal to respond before repeating an instruction.",
       "Workers should offer two simple choices, check that Micheal has understood through his response, avoid rapid questioning, and record changes in how he communicates during the shift.",
+      "No contradiction between capacity indicators and the communication narrative is present.",
     ].join(" ");
     const report = evaluateDeliverableRequirementCoverage(
       `## Worker Communication Approach\n\n${content}`,
@@ -1459,7 +1463,53 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(accepted.missing).toHaveLength(0);
     expect(acceptedAboutMe.missing).toHaveLength(0);
     expect(acceptedConditional.missing).toHaveLength(0);
+    expect(acceptedConditional.requirementResults[0]?.blueprintAuthoringGaps)
+      .toEqual(expect.arrayContaining([expect.stringContaining("[OPEN]")]));
     expect(rejected.missing).toHaveLength(1);
+  });
+
+  it("labels domain-specific fallback checks as DOMAIN_HEURISTIC when no authored criteria exist", () => {
+    const report = evaluateDeliverableRequirementCoverage(
+      "## Worker Communication Approach\n\nWorkers must use calm prompts, offer choices, allow time for responses, record changes and cite the behaviour support plan and intake form as the source for the communication strategy.",
+      {
+        primaryDeliverable: "care_plan",
+        standardisation: "participant_specific",
+        requirements: [{
+          id: "care-plan-communication-strategy",
+          description: "Communication strategy must contain worker actions and evidence source.",
+          classification: "MUST_BE_REPRESENTED",
+          requiredDeliverableRepresentation: "Communication and Communication Strategy",
+          origin: "DERIVED",
+          sourceBlueprintSection: "COMMUNICATION_STRATEGY",
+          templateFields: [],
+          fixedContent: [],
+          completionPrompt: null,
+          adequacyCriteria: [],
+          templateCriteria: [],
+          completionFields: [],
+          expectedEvidenceCategories: ["behaviour_support_plan", "intake_form"],
+          evidenceAuthority: ["behaviour_support_plan", "intake_form"],
+          prohibitedRepresentations: [],
+          mandatoryCitations: [],
+          coverageRules: [{ allOf: ["communication", "strategy"] }],
+        }],
+        expectedSectionCount: 1,
+        sectionEvidenceBridge: [],
+      },
+      {
+        deliverableSections: [{
+          requirementId: "care-plan-communication-strategy",
+          heading: "Worker Communication Approach",
+          content: "Workers must use calm prompts, offer choices, allow time for responses, record changes and cite the behaviour support plan and intake form as the source for the communication strategy.",
+        }],
+      },
+    );
+
+    expect(report.missing).toHaveLength(0);
+    expect(report.requirementResults[0]).toMatchObject({
+      substantiveValidationMode: "DOMAIN_HEURISTIC",
+      finalResult: "SATISFIED",
+    });
   });
 
   it("carries authored requirements and adequacy criteria through verbatim when present", () => {

@@ -556,6 +556,15 @@ export interface ParsedDeliverableSection {
   requirementId: string;
   heading: string;
   content: string;
+  evidenceSources?: ParsedDeliverableSectionEvidenceSource[];
+}
+
+export interface ParsedDeliverableSectionEvidenceSource {
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
 }
 
 export interface DeterministicTemplateRequirement {
@@ -983,8 +992,28 @@ function parseDeliverableSections(deliverable: unknown): ParsedDeliverableSectio
     const requirementId = typeof raw.requirementId === "string" ? raw.requirementId.trim() : "";
     const heading = typeof raw.heading === "string" ? raw.heading.trim() : "";
     const content = typeof raw.content === "string" ? raw.content.trim() : "";
+    const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources);
     if (!requirementId || !heading || !content) return [];
-    return [{ requirementId, heading, content }];
+    return [{
+      requirementId,
+      heading,
+      content,
+      ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
+    }];
+  });
+}
+
+function parseSectionEvidenceSources(value: unknown): ParsedDeliverableSectionEvidenceSource[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!isRecord(raw)) return [];
+    const chunkId = typeof raw.chunkId === "string" ? raw.chunkId.trim() : "";
+    const documentTitle = typeof raw.documentTitle === "string" ? raw.documentTitle.trim() : "";
+    const passage = typeof raw.passage === "string" ? raw.passage.trim() : "";
+    const location = typeof raw.location === "string" ? raw.location.trim() : "";
+    const evidenceClass = typeof raw.evidenceClass === "string" ? raw.evidenceClass.trim() : undefined;
+    if (!chunkId || !documentTitle || !passage || !location) return [];
+    return [{ chunkId, documentTitle, passage, location, evidenceClass }];
   });
 }
 

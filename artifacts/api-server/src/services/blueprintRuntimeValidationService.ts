@@ -508,11 +508,11 @@ export function classifyBracketedPlaceholderToken(
   if (isAllowedParticipantCompletionPlaceholder(token, professionalContext, contract, contextLine)) {
     return "legitimate_factual_field";
   }
-  if (isGenericCompletionPlaceholderToken(token)) return "unresolved_professional_content";
-  if (INSTRUCTIONAL_PLACEHOLDER_PATTERN.test(token)) return "unresolved_professional_content";
   if (isAllowedUserDataPlaceholder(token, standardTemplateEvidence, professionalContext)) {
     return "legitimate_factual_field";
   }
+  if (isGenericCompletionPlaceholderToken(token)) return "unresolved_professional_content";
+  if (INSTRUCTIONAL_PLACEHOLDER_PATTERN.test(token)) return "unresolved_professional_content";
   if (isProfessionalPlaceholderToken(token)) return "unresolved_professional_content";
   if (looksLikeUndeclaredPlaceholderToken(token)) return "unresolved_professional_content";
   return "ignored";

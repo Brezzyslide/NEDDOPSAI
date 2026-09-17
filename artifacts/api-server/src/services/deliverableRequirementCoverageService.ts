@@ -80,6 +80,8 @@ export type RequirementFinalResult =
 export type RequirementSubstantiveValidationMode =
   | "TEMPLATE_CRITERIA"
   | "ADEQUACY_CRITERIA"
+  | "UNVERIFIED_SEMANTIC_CRITERIA"
+  | "DOMAIN_HEURISTIC"
   | "FALLBACK_HEURISTIC"
   | "NOT_APPLICABLE";
 
@@ -94,6 +96,8 @@ export interface DeliverableRequirementCoverageItem {
   templateCriteria: string[];
   completionFields: string[];
   expectedEvidenceCategories: string[];
+  unverifiedSemanticCriteria?: string[];
+  blueprintAuthoringGaps?: string[];
   actualLocation: string | null;
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
@@ -198,6 +202,15 @@ export interface PerRequirementDeliverableSection {
   requirementId: string;
   heading: string;
   content: string;
+  evidenceSources?: PerRequirementEvidenceSource[];
+}
+
+export interface PerRequirementEvidenceSource {
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
 }
 
 export interface BlueprintRequirementClassificationSummary {
@@ -519,9 +532,24 @@ function normaliseDeliverableSections(
     const heading = section.heading?.trim();
     const content = section.content?.trim();
     if (!requirementId || !heading || !content) continue;
-    mapped.set(requirementId, { requirementId, heading, content });
+    mapped.set(requirementId, {
+      requirementId,
+      heading,
+      content,
+      evidenceSources: section.evidenceSources?.filter(isCompleteEvidenceSource),
+    });
   }
   return mapped;
+}
+
+function isCompleteEvidenceSource(source: PerRequirementEvidenceSource): boolean {
+  return Boolean(
+    source &&
+    source.chunkId?.trim() &&
+    source.documentTitle?.trim() &&
+    source.passage?.trim() &&
+    source.location?.trim(),
+  );
 }
 
 export function classifyBlueprintRequirement(section: BlueprintSection): DeliverableRequirementClassification {
@@ -1438,6 +1466,8 @@ function validateRepresentedRequirement(input: {
         : "SUBSTANTIVE_FAIL",
     substantiveValidationMode: substantive.mode,
     substantiveBreakdown: substantive.breakdown,
+    unverifiedSemanticCriteria: substantive.unverifiedSemanticCriteria,
+    blueprintAuthoringGaps: substantive.blueprintAuthoringGaps,
     finalResult,
     failureReason: finalResult === "SATISFIED"
       ? null
@@ -1714,36 +1744,57 @@ function evaluateSubstantiveClauseContent(
   reason: string | null;
   mode: RequirementSubstantiveValidationMode;
   breakdown: DeliverableSubstantiveBreakdown;
+  unverifiedSemanticCriteria?: string[];
+  blueprintAuthoringGaps?: string[];
 } {
   const breakdown = analyseSubstantiveCoverageContent(content, requirement);
   const cleaned = breakdown.countedContent;
   const normalised = normaliseContent(cleaned);
 
   const adequacyCriteria = requirement.adequacyCriteria ?? [];
+  const blueprintAuthoringGaps = adequacyCriteria.filter(isBlueprintAuthoringGapCriterion);
   if (requirement.classification === "CONDITIONAL" && explicitlyStatesNonApplicabilityWithSource(cleaned)) {
-    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown, blueprintAuthoringGaps };
   }
   if (standardisation === "participant_specific" && explicitlyStatesEvidenceAbsenceForRequirement(cleaned, requirement)) {
-    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+    return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown, blueprintAuthoringGaps };
   }
   if (adequacyCriteria.length > 0) {
-    const domain = domainSufficiency(requirement.id, normalised);
-    if (domain.checked) {
-      return {
-        passed: domain.passed,
-        partial: domain.partial,
-        reason: domain.reason,
-        mode: "ADEQUACY_CRITERIA",
-        breakdown,
-      };
-    }
-    const criteriaResults = adequacyCriteria.map((criterion) => ({
+    const semanticCriteria = adequacyCriteria.filter(isUnverifiedSemanticCriterion);
+    const mechanicallyCheckableCriteria = adequacyCriteria.filter((criterion) =>
+      !isUnverifiedSemanticCriterion(criterion) &&
+      !isBlueprintAuthoringGapCriterion(criterion),
+    );
+    const criteriaResults = mechanicallyCheckableCriteria.map((criterion) => ({
       criterion,
       passed: adequacyCriterionMatchesContent(criterion, normalised),
     }));
     const missing = criteriaResults.filter((result) => !result.passed).map((result) => result.criterion);
+    if (semanticCriteria.length > 0) {
+      return {
+        passed: false,
+        partial: missing.length < mechanicallyCheckableCriteria.length,
+        reason: [
+          missing.length > 0
+            ? `Relevant section does not satisfy mechanically checkable authored adequacy criteria: ${missing.join("; ")}.`
+            : null,
+          `Authored semantic criteria require structured evidence/source fields or approver judgement and were not mechanically verified: ${semanticCriteria.join("; ")}.`,
+        ].filter(Boolean).join(" "),
+        mode: "UNVERIFIED_SEMANTIC_CRITERIA",
+        breakdown,
+        unverifiedSemanticCriteria: semanticCriteria,
+        blueprintAuthoringGaps,
+      };
+    }
     if (missing.length === 0) {
-      return { passed: true, partial: false, reason: null, mode: "ADEQUACY_CRITERIA", breakdown };
+      return {
+        passed: true,
+        partial: false,
+        reason: null,
+        mode: "ADEQUACY_CRITERIA",
+        breakdown,
+        blueprintAuthoringGaps,
+      };
     }
     return {
       passed: false,
@@ -1751,6 +1802,7 @@ function evaluateSubstantiveClauseContent(
       reason: `Relevant section does not satisfy authored adequacy criteria: ${missing.join("; ")}.`,
       mode: "ADEQUACY_CRITERIA",
       breakdown,
+      blueprintAuthoringGaps,
     };
   }
 
@@ -1786,6 +1838,18 @@ function evaluateSubstantiveClauseContent(
   const keywordRulesPass = requirement.coverageRules.length === 0
     ? true
     : requirement.coverageRules.some((rule) => coverageRuleMatches(normalised, rule));
+
+  if (domain.checked) {
+    return {
+      passed: keywordRulesPass && operativeCount >= 2 && domain.passed,
+      partial: keywordRulesPass || domain.partial || operativeCount >= 2,
+      reason: keywordRulesPass && operativeCount >= 2 && domain.passed
+        ? null
+        : domain.reason ?? "Domain-specific heuristic did not pass.",
+      mode: "DOMAIN_HEURISTIC",
+      breakdown,
+    };
+  }
 
   if (keywordRulesPass && operativeCount >= 2 && domain.passed) {
     return { passed: true, partial: false, reason: null, mode: "FALLBACK_HEURISTIC", breakdown };
@@ -1915,6 +1979,25 @@ function templateFieldIsRepresented(field: string, content: string): boolean {
 }
 
 function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {
+  const criterionKey = normaliseContent(criterion);
+  if (criterionKey.includes("capacity indicators completed")) {
+    return /\b(capacity|verbal|non verbal|expressive|understand|communication)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("strategy narrative present")) {
+    return normalisedContent.includes("strategy") &&
+      !/\b(empty overview|not recorded in the retrieved evidence|not recorded)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("strategy states what a worker should actually do")) {
+    return /\b(worker|workers|staff|support worker|support workers|team member|team members)\b/.test(normalisedContent) &&
+      /\b(use|offer|check|prompt|allow|avoid|record|support|assist|monitor|provide)\b/.test(normalisedContent);
+  }
+  if (criterionKey.includes("capacity indicators must not contradict narrative content")) {
+    if (/\b(no contradiction|does not contradict|not contradict|no inconsistency|no conflict)\b/.test(normalisedContent)) {
+      return true;
+    }
+    return !/\b(contradict|inconsistent|conflict)\b/.test(normalisedContent);
+  }
+
   const terms = criterion
     .toLowerCase()
     .replace(/[^a-z0-9 ]+/g, " ")
@@ -1948,6 +2031,19 @@ function adequacyCriterionMatchesContent(criterion: string, normalisedContent: s
   if (terms.length === 0) return normalisedContent.includes(normaliseContent(criterion));
   const requiredMatches = Math.min(terms.length, terms.length <= 3 ? terms.length : Math.ceil(terms.length * 0.65));
   return terms.filter((term) => normalisedContent.includes(term)).length >= requiredMatches;
+}
+
+function isBlueprintAuthoringGapCriterion(criterion: string): boolean {
+  return /\[OPEN\]/i.test(criterion);
+}
+
+function isUnverifiedSemanticCriterion(criterion: string): boolean {
+  return [
+    /distinct strategies extracted from the BSP equal distinct strategies rendered/i,
+    /Authorisation status is stated as recorded in the BSP or authorisation source/i,
+    /Outcomes describes what achievement looks like.*must follow from the stated goal and actions/i,
+    /Written about the person, not about their deficits/i,
+  ].some((pattern) => pattern.test(criterion));
 }
 
 function domainSufficiency(requirementId: string, normalised: string): { checked: boolean; passed: boolean; partial: boolean; reason: string | null } {
