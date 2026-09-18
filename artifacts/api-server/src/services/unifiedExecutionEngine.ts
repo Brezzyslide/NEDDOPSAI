@@ -3614,7 +3614,7 @@ function buildTargetedRequirementRepairResponseSchema(
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["requirementId", "heading", "content"],
+                required: ["requirementId", "heading", "content", "evidenceSources"],
                 properties: {
                   requirementId: { type: "string" },
                   heading: { type: "string" },

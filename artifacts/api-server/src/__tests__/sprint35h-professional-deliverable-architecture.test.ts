@@ -390,6 +390,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
   });
 
+  it("keeps targeted repair section schema compatible with OpenAI strict JSON schema", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain('name: "targeted_requirement_repair_response"');
+    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources"]');
+  });
+
   it("parses model-supplied requirement coverage as structured professional output", () => {
     const parsed = parseSpecialistJsonOutput(JSON.stringify({
       professional_work: { summary: "Professional findings completed." },
