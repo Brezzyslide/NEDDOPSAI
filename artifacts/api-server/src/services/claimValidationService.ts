@@ -953,7 +953,7 @@ export function parseSpecialistJsonOutput(rawContent: string): SpecialistJsonOut
       .trim();
     const parsed = JSON.parse(cleaned);
 
-    const deliverableSections = parseDeliverableSections(parsed.deliverable);
+    const deliverableSections = parseDeliverableSections(parsed.deliverable, parsed);
     const modelAssembledMarkdown = typeof parsed.deliverable?.assembledMarkdown === "string"
       ? parsed.deliverable.assembledMarkdown.trim()
       : "";
@@ -985,13 +985,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function parseDeliverableSections(deliverable: unknown): ParsedDeliverableSection[] {
-  if (!isRecord(deliverable) || !Array.isArray(deliverable.sections)) return [];
-  return deliverable.sections.flatMap((raw) => {
+function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, unknown>): ParsedDeliverableSection[] {
+  const sections = isRecord(deliverable) && Array.isArray(deliverable.sections)
+    ? deliverable.sections
+    : Array.isArray(parsed?.deliverableSections)
+      ? parsed.deliverableSections
+      : Array.isArray(parsed?.deliverable_sections)
+        ? parsed.deliverable_sections
+        : [];
+  if (!sections.length) return [];
+  return sections.flatMap((raw) => {
     if (!isRecord(raw)) return [];
-    const requirementId = typeof raw.requirementId === "string" ? raw.requirementId.trim() : "";
-    const heading = typeof raw.heading === "string" ? raw.heading.trim() : "";
-    const content = typeof raw.content === "string" ? raw.content.trim() : "";
+    const requirementId = stringField(raw, "requirementId", "requirement_id");
+    const heading = stringField(raw, "heading", "title", "sectionTitle");
+    const content = stringField(raw, "content", "markdown", "body", "text");
     const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources);
     if (!requirementId || !heading || !content) return [];
     return [{
@@ -1001,6 +1008,14 @@ function parseDeliverableSections(deliverable: unknown): ParsedDeliverableSectio
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
     }];
   });
+}
+
+function stringField(record: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
 }
 
 function parseSectionEvidenceSources(value: unknown): ParsedDeliverableSectionEvidenceSource[] {

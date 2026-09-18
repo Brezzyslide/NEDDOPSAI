@@ -4499,6 +4499,7 @@ Rules:
 - Do not add internal Blueprint methodology, requirement IDs, gate names or execution diagnostics to the user-facing document.
 - Do not remove existing clauses or schedules that already satisfy requirements.
 - Return only deliverable.sections[] entries for the missing requirement IDs you changed. The server merges those section deltas into the existing deliverable and assembles the final markdown.
+- The exact JSON path for repair deltas is "deliverable": { "sections": [...] }. Do not use deliverableSections, deliverable_sections, section_deltas, markdown-only responses, or top-level content.
 - Return JSON only.
 
 Return ONLY JSON:
@@ -4570,6 +4571,7 @@ function buildTargetedRequirementRepairUserPrompt(input: {
     `## REPAIR INSTRUCTIONS
 Repair only the missing requirement IDs listed above.
 Return deliverable.sections[] deltas only for those missing requirement IDs; do not return sections that already passed.
+The repair response must put those deltas at the exact JSON path deliverable.sections[]. Do not return deliverableSections, deliverable_sections, plain markdown, or top-level content instead of deliverable.sections[].
 ${participantSpecific ? "For factual-field requirements, add the target field or table column and fill it from evidence; when the value is absent, write a plain-language absence finding naming the missing evidence class. Do not add bracketed placeholders." : "For factual-field requirements, add the target field, table column or bracketed placeholder where values are unknown."}
 ${participantSpecific ? "When missing_expected_source_categories is non-empty, do not invent participant preferences, supports, dates, assessments or source details. Produce the section anyway and state that those named source categories are not recorded in the retrieved evidence." : ""}
 If the missing requirement belongs in a table or form, update that table/form header and exemplar row rather than adding an unrelated paragraph.

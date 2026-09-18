@@ -321,6 +321,31 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
   });
 
+  it("preserves targeted repair sections returned with common model aliases", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      professional_work: { summary: "Repair completed." },
+      requirement_coverage: { satisfied: ["care-plan-goals"], missing: [] },
+      deliverableSections: [
+        {
+          requirement_id: "care-plan-goals",
+          title: "Goals",
+          markdown: "Goal rows have been repaired from evidence and named source gaps.",
+        },
+      ],
+      completion: { unresolvedProfessionalContent: 0, methodologyLeakage: false, readyForCompletedWork: true },
+      claims: [],
+    }));
+
+    expect(parsed.deliverableSections).toEqual([
+      {
+        requirementId: "care-plan-goals",
+        heading: "Goals",
+        content: "Goal rows have been repaired from evidence and named source gaps.",
+      },
+    ]);
+    expect(parsed.content).toContain("## Goals");
+  });
+
   it("parses model-supplied requirement coverage as structured professional output", () => {
     const parsed = parseSpecialistJsonOutput(JSON.stringify({
       professional_work: { summary: "Professional findings completed." },
@@ -809,6 +834,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(runner).not.toContain("structural_result");
     expect(runner).not.toContain("substantive_result");
     expect(runner).toContain("Repair only the missing requirement IDs listed above");
+    expect(runner).toContain('The exact JSON path for repair deltas is "deliverable": { "sections": [...] }');
+    expect(runner).toContain("Do not return deliverableSections, deliverable_sections, plain markdown, or top-level content instead of deliverable.sections[]");
     expect(review).toContain("disableAutoRevision");
   });
 
