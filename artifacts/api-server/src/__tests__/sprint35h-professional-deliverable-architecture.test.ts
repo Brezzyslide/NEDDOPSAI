@@ -397,6 +397,23 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources"]');
   });
 
+  it("keeps final synthesis and targeted repair response contracts aligned with their schemas", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+    const finalPrompt = src.slice(
+      src.indexOf("function buildFinalDeliverableSynthesisSystemPrompt"),
+      src.indexOf("function formatAllowedFactualPlaceholderInstruction"),
+    );
+    const repairPrompt = src.slice(
+      src.indexOf("function buildTargetedRequirementRepairSystemPrompt"),
+      src.indexOf("function buildTargetedRequirementRepairUserPrompt"),
+    );
+
+    expect(finalPrompt).toContain("formatStructuredDeliverableResponseContract(professionalContext)");
+    expect(finalPrompt).not.toContain("formatTargetedRepairDeliverableResponseContract()");
+    expect(repairPrompt).toContain("formatTargetedRepairDeliverableResponseContract()");
+    expect(repairPrompt).not.toContain("formatStructuredDeliverableResponseContract(professionalContext)");
+  });
+
   it("parses model-supplied requirement coverage as structured professional output", () => {
     const parsed = parseSpecialistJsonOutput(JSON.stringify({
       professional_work: { summary: "Professional findings completed." },

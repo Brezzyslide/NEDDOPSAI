@@ -4522,7 +4522,7 @@ Do not expose chain-of-thought. Return ONLY JSON:
     "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  ${formatTargetedRepairDeliverableResponseContract()},
+  ${formatStructuredDeliverableResponseContract(professionalContext)},
   "completion": {
     "operation": "${professionalContext?.operation ?? "CREATE"}",
     "unresolvedProfessionalContent": 0,
@@ -4657,7 +4657,7 @@ Return ONLY JSON:
     "satisfied": ["<requirement IDs now represented>"],
     "missing": []
   },
-  ${formatStructuredDeliverableResponseContract(professionalContext)},
+  ${formatTargetedRepairDeliverableResponseContract()},
   "completion": {
     "operation": "${professionalContext.operation}",
     "unresolvedProfessionalContent": 0,
