@@ -3403,6 +3403,19 @@ function buildDeterministicResult(
 function formatStructuredDeliverableResponseContract(
   professionalContext: ProfessionalExecutionContext | undefined,
 ): string {
+  const participantSpecific = isParticipantSpecificProfessionalContext(professionalContext);
+  const evidenceSourceExample = participantSpecific
+    ? `,
+        "evidenceSources": [
+          {
+            "chunkId": "<retrieved evidence chunk id>",
+            "documentTitle": "<source document title>",
+            "passage": "<short exact supporting passage>",
+            "location": "<page, section or chunk location>",
+            "evidenceClass": "<evidence class>"
+          }
+        ]`
+    : "";
   return `"deliverable": {
     "type": "${professionalContext?.deliverable.requestedDeliverableType ?? "PROFESSIONAL_DELIVERABLE"}",
     "audience": "${professionalContext?.deliverable.audience ?? "requested audience"}",
@@ -3410,7 +3423,7 @@ function formatStructuredDeliverableResponseContract(
       {
         "requirementId": "<one mandatory requirement ID satisfied by this section>",
         "heading": "<user-facing heading>",
-        "content": "<generated user-facing content for this requirement only; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"
+        "content": "<generated user-facing content for this requirement only; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"${evidenceSourceExample}
       }
     ]
   }`;
@@ -3425,7 +3438,7 @@ function formatTargetedRepairDeliverableResponseContract(): string {
         "content": "<replacement user-facing content for this requirement only>",
         "evidenceSources": [
           {
-            "chunkId": "<retrieved evidence chunk id, or omit evidenceSources when the section states a named evidence gap>",
+            "chunkId": "<retrieved evidence chunk id; use an empty evidenceSources array only when the section states a named evidence gap>",
             "documentTitle": "<source document title>",
             "passage": "<short exact supporting passage>",
             "location": "<page, section or chunk location>",

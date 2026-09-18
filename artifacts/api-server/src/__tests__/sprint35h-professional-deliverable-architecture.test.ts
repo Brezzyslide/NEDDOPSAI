@@ -412,6 +412,10 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(finalPrompt).not.toContain("formatTargetedRepairDeliverableResponseContract()");
     expect(repairPrompt).toContain("formatTargetedRepairDeliverableResponseContract()");
     expect(repairPrompt).not.toContain("formatStructuredDeliverableResponseContract(professionalContext)");
+    expect(src).toContain("const participantSpecific = isParticipantSpecificProfessionalContext(professionalContext);");
+    expect(src).toContain('"evidenceSources": [');
+    expect(src).toContain("use an empty evidenceSources array only when the section states a named evidence gap");
+    expect(src).not.toContain("omit evidenceSources when the section states a named evidence gap");
   });
 
   it("parses model-supplied requirement coverage as structured professional output", () => {
