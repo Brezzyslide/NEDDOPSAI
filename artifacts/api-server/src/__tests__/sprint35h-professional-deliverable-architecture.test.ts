@@ -346,6 +346,50 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(parsed.content).toContain("## Goals");
   });
 
+  it("preserves targeted repair sections returned as nested section deltas", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      professional_work: { summary: "Repair completed." },
+      requirement_coverage: { satisfied: ["care-plan-communication-strategy"], missing: [] },
+      deliverable: {
+        section_deltas: [
+          {
+            sectionCode: "care-plan-communication-strategy",
+            section_title: "Communication and Communication Strategy",
+            markdown_content: "Workers should use short, calm instructions based on the retrieved communication evidence.",
+            evidence_sources: [
+              {
+                chunkId: "chunk-communication-1",
+                documentTitle: "Intake checklist",
+                passage: "Michael communicates verbally in English.",
+                location: "chunk 3",
+                evidenceClass: "PROFESSIONAL_SOURCE",
+              },
+            ],
+          },
+        ],
+      },
+      completion: { unresolvedProfessionalContent: 0, methodologyLeakage: false, readyForCompletedWork: true },
+      claims: [],
+    }));
+
+    expect(parsed.deliverableSections).toEqual([
+      {
+        requirementId: "care-plan-communication-strategy",
+        heading: "Communication and Communication Strategy",
+        content: "Workers should use short, calm instructions based on the retrieved communication evidence.",
+        evidenceSources: [
+          {
+            chunkId: "chunk-communication-1",
+            documentTitle: "Intake checklist",
+            passage: "Michael communicates verbally in English.",
+            location: "chunk 3",
+            evidenceClass: "PROFESSIONAL_SOURCE",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("parses model-supplied requirement coverage as structured professional output", () => {
     const parsed = parseSpecialistJsonOutput(JSON.stringify({
       professional_work: { summary: "Professional findings completed." },

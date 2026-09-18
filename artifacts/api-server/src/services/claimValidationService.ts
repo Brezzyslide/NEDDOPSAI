@@ -986,20 +986,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, unknown>): ParsedDeliverableSection[] {
-  const sections = isRecord(deliverable) && Array.isArray(deliverable.sections)
-    ? deliverable.sections
-    : Array.isArray(parsed?.deliverableSections)
-      ? parsed.deliverableSections
-      : Array.isArray(parsed?.deliverable_sections)
-        ? parsed.deliverable_sections
-        : [];
+  const sections = firstArray(
+    isRecord(deliverable) ? deliverable.sections : undefined,
+    isRecord(deliverable) ? deliverable.sectionDeltas : undefined,
+    isRecord(deliverable) ? deliverable.section_deltas : undefined,
+    isRecord(deliverable) ? deliverable.changedSections : undefined,
+    isRecord(deliverable) ? deliverable.changed_sections : undefined,
+    parsed?.deliverableSections,
+    parsed?.deliverable_sections,
+    parsed?.sectionDeltas,
+    parsed?.section_deltas,
+    parsed?.changedSections,
+    parsed?.changed_sections,
+  );
   if (!sections.length) return [];
   return sections.flatMap((raw) => {
     if (!isRecord(raw)) return [];
-    const requirementId = stringField(raw, "requirementId", "requirement_id");
-    const heading = stringField(raw, "heading", "title", "sectionTitle");
-    const content = stringField(raw, "content", "markdown", "body", "text");
-    const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources);
+    const requirementId = stringField(raw, "requirementId", "requirementID", "requirement_id", "requirement", "sectionCode", "section_code", "id");
+    const heading = stringField(raw, "heading", "title", "sectionTitle", "section_title", "name");
+    const content = stringField(raw, "content", "markdown", "markdownContent", "markdown_content", "body", "text", "sectionContent", "section_content");
+    const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources ?? raw.evidence_sources);
     if (!requirementId || !heading || !content) return [];
     return [{
       requirementId,
@@ -1008,6 +1014,13 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
     }];
   });
+}
+
+function firstArray(...values: unknown[]): unknown[] {
+  for (const value of values) {
+    if (Array.isArray(value)) return value;
+  }
+  return [];
 }
 
 function stringField(record: Record<string, unknown>, ...keys: string[]): string {
