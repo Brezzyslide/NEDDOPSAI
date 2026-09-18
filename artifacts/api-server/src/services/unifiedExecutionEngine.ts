@@ -2871,7 +2871,7 @@ export class UnifiedExecutionEngine {
       ],
       maxTokens: 5000,
       outputMode: "json",
-      responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
+      responseSchema: buildTargetedRequirementRepairResponseSchema(input.professionalContext),
       runtimeProfile: "targeted_repair",
       allowProviderFallback: false,
     });
@@ -3416,6 +3416,27 @@ function formatStructuredDeliverableResponseContract(
   }`;
 }
 
+function formatTargetedRepairDeliverableResponseContract(): string {
+  return `"deliverable": {
+    "sections": [
+      {
+        "requirementId": "<one missing requirement ID repaired by this delta>",
+        "heading": "<user-facing heading>",
+        "content": "<replacement user-facing content for this requirement only>",
+        "evidenceSources": [
+          {
+            "chunkId": "<retrieved evidence chunk id, or omit evidenceSources when the section states a named evidence gap>",
+            "documentTitle": "<source document title>",
+            "passage": "<short exact supporting passage>",
+            "location": "<page, section or chunk location>",
+            "evidenceClass": "<evidence class>"
+          }
+        ]
+      }
+    ]
+  }`;
+}
+
 function buildProfessionalDeliverableResponseSchema(
   professionalContext: ProfessionalExecutionContext | undefined,
 ): { name: string; strict: boolean; schema: Record<string, unknown> } {
@@ -3492,6 +3513,127 @@ function buildProfessionalDeliverableResponseSchema(
                         },
                       }
                     : {}),
+                },
+              },
+            },
+          },
+        },
+        completion: {
+          type: "object",
+          additionalProperties: false,
+          required: ["operation", "unresolvedProfessionalContent", "methodologyLeakage", "readyForCompletedWork"],
+          properties: {
+            operation: { type: "string", const: operation },
+            unresolvedProfessionalContent: { type: "number" },
+            methodologyLeakage: { type: "boolean" },
+            readyForCompletedWork: { type: "boolean" },
+          },
+        },
+        claims: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["clientClaimId", "claimText", "claimType", "sectionRef", "confidence", "reasoningSummary", "evidence", "relatedClaimIds"],
+            properties: {
+              clientClaimId: { type: "string" },
+              claimText: { type: "string" },
+              claimType: {
+                type: "string",
+                enum: ["observation", "absence_finding", "inference", "external_requirement", "recommendation"],
+              },
+              sectionRef: { type: ["string", "null"] },
+              confidence: { type: ["number", "null"] },
+              reasoningSummary: { type: ["string", "null"] },
+              evidence: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: ["chunkId", "relationship", "supportingSpan"],
+                  properties: {
+                    chunkId: { type: "string" },
+                    relationship: {
+                      type: "string",
+                      enum: ["direct_support", "context", "contradiction", "external_authority", "searched_for_absence"],
+                    },
+                    supportingSpan: { type: ["string", "null"] },
+                  },
+                },
+              },
+              relatedClaimIds: stringArray,
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function buildTargetedRequirementRepairResponseSchema(
+  professionalContext: ProfessionalExecutionContext | undefined,
+): { name: string; strict: boolean; schema: Record<string, unknown> } {
+  const operation = professionalContext?.operation ?? "CREATE";
+  const stringArray = { type: "array", items: { type: "string" } };
+  return {
+    name: "targeted_requirement_repair_response",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["professional_work", "requirement_coverage", "deliverable", "completion", "claims"],
+      properties: {
+        professional_work: {
+          type: "object",
+          additionalProperties: false,
+          required: ["summary", "blueprint_completion", "requirement_to_deliverable_plan", "evidence_map", "missing_information"],
+          properties: {
+            summary: { type: "string" },
+            blueprint_completion: stringArray,
+            requirement_to_deliverable_plan: stringArray,
+            evidence_map: stringArray,
+            missing_information: stringArray,
+          },
+        },
+        requirement_coverage: {
+          type: "object",
+          additionalProperties: false,
+          required: ["satisfied", "missing"],
+          properties: {
+            satisfied: stringArray,
+            missing: stringArray,
+          },
+        },
+        deliverable: {
+          type: "object",
+          additionalProperties: false,
+          required: ["sections"],
+          properties: {
+            sections: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                required: ["requirementId", "heading", "content"],
+                properties: {
+                  requirementId: { type: "string" },
+                  heading: { type: "string" },
+                  content: { type: "string" },
+                  evidenceSources: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["chunkId", "documentTitle", "passage", "location", "evidenceClass"],
+                      properties: {
+                        chunkId: { type: "string" },
+                        documentTitle: { type: "string" },
+                        passage: { type: "string" },
+                        location: { type: "string" },
+                        evidenceClass: { type: "string" },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -4380,7 +4522,7 @@ Do not expose chain-of-thought. Return ONLY JSON:
     "satisfied": ["<requirement IDs represented in deliverable.sections[].content>"],
     "missing": ["<requirement IDs not yet represented>"]
   },
-  ${formatStructuredDeliverableResponseContract(professionalContext)},
+  ${formatTargetedRepairDeliverableResponseContract()},
   "completion": {
     "operation": "${professionalContext?.operation ?? "CREATE"}",
     "unresolvedProfessionalContent": 0,

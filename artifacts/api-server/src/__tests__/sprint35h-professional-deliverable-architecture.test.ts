@@ -874,6 +874,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(runner).toContain("evidencePack.relevantChunks");
     expect(runner).toContain("buildRelevantRepairEvidenceSection");
     expect(runner).toContain("failure_reason");
+    expect(runner).toContain("buildTargetedRequirementRepairResponseSchema");
+    expect(runner).toContain("responseSchema: buildTargetedRequirementRepairResponseSchema(input.professionalContext)");
     expect(runner).not.toContain("actual_location");
     expect(runner).not.toContain("structural_result");
     expect(runner).not.toContain("substantive_result");
