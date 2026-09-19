@@ -263,6 +263,8 @@ export interface AIProviderHealth {
  *   task_scoped_uploads        — taskUploads.* (no storageKey, no authorityLevel)
  *   entity_scoped_knowledge    — entityKnowledge.* (clearance-checked, task-scoped)
  *   targeted_repair_context    — coverage misses, output schema, current draft
+ *   care_plan_batch_context    — deterministic section group, selected evidence,
+ *                                and structured forward context
  *
  * Purpose separation:
  *   conversation_intelligence  — library presence metadata only; NO evidence chunks
@@ -299,6 +301,12 @@ export const PURPOSE_FIELD_ALLOWLIST: Record<AIPurpose, string[]> = {
     "gateFailures",
     "evidencePack.chunks",
     "requirementCoverageProfile",
+    // care_plan_batch_context
+    // Batch execution receives only deterministic section contracts, preselected
+    // evidence slices, and structured forward facts from earlier batches.
+    "carePlanBatch.targetRequirements",
+    "carePlanBatch.selectedEvidence",
+    "carePlanBatch.forwardContext",
     // targeted_repair_context
     // Allows the existing repair path to see only the deterministic missing
     // requirements, deficient deliverable sections, and relevant evidence.

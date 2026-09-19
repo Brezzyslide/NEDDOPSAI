@@ -388,6 +388,19 @@ describe("task_execution data-field contract — allowlist integrity", () => {
     expect(allowlist.some(f => f.includes("storageKey"))).toBe(false);
     expect(allowlist).not.toContain("conversation.id");
   });
+
+  it("task_execution permits section-batched care-plan context without broad storage access", () => {
+    const allowlist = PURPOSE_FIELD_ALLOWLIST["task_execution"];
+
+    expect(allowlist).toEqual(expect.arrayContaining([
+      "carePlanBatch.targetRequirements",
+      "carePlanBatch.selectedEvidence",
+      "carePlanBatch.forwardContext",
+    ]));
+    expect(allowlist).not.toContain("carePlanBatch.rawDocuments");
+    expect(allowlist).not.toContain("carePlanBatch.storageKey");
+    expect(allowlist).not.toContain("internal.chainOfThought");
+  });
 });
 
 // ─── Part 5 — Regression: medication policy workflow ─────────────────────────
