@@ -246,7 +246,7 @@ export function validateBlueprintRuntimeCompletion(
     }
 
     const templateRequired = blueprint.templateRequired || deliverableContract.templateRequired === true;
-    if (templateRequired && !contract.template) {
+    if (templateRequired && !contract.template && !participantCarePlan) {
       if (!isCustomerTemplateOptional(standardTemplateEvidence)) {
         failures.push({
           gate: "template_required",

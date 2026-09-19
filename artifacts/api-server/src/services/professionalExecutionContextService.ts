@@ -407,11 +407,12 @@ function deriveOutputDepth(
   operation: ProfessionalOperation,
   mandatoryContent: string[],
 ): ProfessionalExecutionContext["outputDepth"] {
+  const participantCarePlan = operation === "CREATE" && deliverableType === "PARTICIPANT_NDIS_CARE_PLAN";
   const comprehensive = operation === "CREATE" &&
     /(?:AGREEMENT|POLICY|PROCEDURE|FRAMEWORK|PLAN|ASSESSMENT|INVESTIGATION)/.test(deliverableType);
   const expectedDepth = comprehensive ? "comprehensive" : mandatoryContent.length > 6 ? "standard" : "concise";
   return {
-    configuredOutputBudget: comprehensive ? 6000 : 4000,
+    configuredOutputBudget: participantCarePlan ? 12000 : comprehensive ? 6000 : 4000,
     expectedMinimumSections: Math.max(4, Math.min(24, mandatoryContent.length)),
     expectedDepth,
     depthInstruction: comprehensive

@@ -2638,6 +2638,12 @@ export class UnifiedExecutionEngine {
         "The work output cannot be saved as Completed Work. Please retry or contact your platform administrator.",
       );
     }
+    if (requiresCanonicalFinalDeliverablePayload(professionalContext) && response.finishReason === "length") {
+      throw new FallbackDraftError(
+        `AI specialist generation was incomplete because the model stopped at the configured output limit (${outputBudget} tokens). ` +
+        "No Completed Work was created. Increase the output budget or use section-batched generation, then retry.",
+      );
+    }
 
     // Sprint 29K.3: parse { content, claims } from the JSON response.
     // parseSpecialistJsonOutput never throws — if parsing fails it returns the
@@ -2647,6 +2653,12 @@ export class UnifiedExecutionEngine {
       ? deriveDeliverableRequirementCoverageProfile(professionalContext, blueprintContract)
       : null;
     const requiresSectionPayload = requiresCanonicalFinalDeliverablePayload(professionalContext);
+    if (requiresSectionPayload && !(parsed.deliverableSections?.length)) {
+      throw new FallbackDraftError(
+        "AI specialist returned JSON but no parseable deliverable.sections[] entries. " +
+        "No Completed Work was created because the model did not produce a document-shaped response.",
+      );
+    }
     const assembledSections = assembleTemplateSectionsForContext(
       professionalContext,
       blueprintContract,
@@ -4565,21 +4577,24 @@ function normaliseCanonicalDeliverableSectionsForContext(
   contract: BlueprintExecutionContract | undefined | null,
   modelSections: ParsedDeliverableSection[] | undefined,
 ): ParsedDeliverableSection[] | undefined {
-  if (modelSections?.length) return modelSections;
   if (!requiresCanonicalFinalDeliverablePayload(professionalContext) || !contract) return modelSections;
+  if (!modelSections?.length) return modelSections;
   const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  return buildRequirementToDeliverablePlan(profile)
+  const existingIds = new Set(modelSections.map((section) => section.requirementId));
+  const missingSkeletons = buildRequirementToDeliverablePlan(profile)
     .filter((item) => item.applicability === "applicable")
     .filter((item) =>
       item.classification === "MUST_BE_REPRESENTED" ||
       item.classification === "CONDITIONAL" ||
       item.classification === "FACTUAL_FIELD"
     )
+    .filter((item) => !existingIds.has(item.requirementId))
     .map((item) => ({
       requirementId: item.requirementId,
       heading: item.targetDeliverableLocation,
       content: "Not assessed - no generated section content supplied.",
     }));
+  return [...modelSections, ...missingSkeletons];
 }
 
 function renderDeterministicStandardTemplateDraft(

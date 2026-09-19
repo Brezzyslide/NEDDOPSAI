@@ -1343,12 +1343,62 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(context.deliverable.standardisation).toBe("participant_specific");
     expect(context.deliverable.requestedDeliverableType).toBe("PARTICIPANT_NDIS_CARE_PLAN");
+    expect(context.outputDepth.configuredOutputBudget).toBe(12000);
     expect(block).toContain("PARTICIPANT_FACTUAL_GAP_RULE");
     expect(block).toContain("Do not emit bracketed placeholder tokens for participant-specific documents.");
     expect(block).not.toContain("ALLOWED_FACTUAL_PLACEHOLDERS:");
     expect(src).toContain("You must produce all ${sections.length} sections below, in this order.");
     expect(src).toContain("Never emit bracketed placeholder tokens such as [BSP Reference], [Name of Aid/Equipment], [Insert date], [Specify] or [unknown value].");
     expect(src).toContain("A thinly evidenced section is not omitted.");
+  });
+
+  it("does not let participant-specific generation failures hide behind skeleton sections or template gates", () => {
+    const carePlan = getRegistryEntry("care_plan") as any;
+    const context = compileProfessionalExecutionContext({
+      userRequest: "Create a Care Plan for Micheal Rocca.",
+      manifest: manifest({
+        canonicalIntent: "care_plan.create",
+        blueprintFamily: "care_plan",
+        blueprintMode: "create",
+        blueprintId: "care_plan",
+        primarySpecialist: "service_delivery_coordinator",
+      }),
+      blueprint: carePlan,
+      blueprintContract: {
+        blueprint: carePlan,
+        sections: carePlan.sections,
+        template: null,
+        mode: "create",
+      } as BlueprintExecutionContract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const src = source("services/unifiedExecutionEngine.ts");
+    const runtimeSrc = source("services/blueprintRuntimeValidationService.ts");
+
+    expect(src).toContain('response.finishReason === "length"');
+    expect(src).toContain("no parseable deliverable.sections[] entries");
+    expect(src).toContain("if (!modelSections?.length) return modelSections;");
+    expect(runtimeSrc).toContain("templateRequired && !contract.template && !participantCarePlan");
+
+    const result = validateBlueprintRuntimeCompletion({
+      contract: {
+        blueprint: carePlan,
+        sections: carePlan.sections,
+        template: null,
+        mode: "create",
+      } as BlueprintExecutionContract,
+      contentMarkdown: "## Support Plan Meeting\n\nNot assessed.",
+      rawClaims: [],
+      evidencePack: null,
+      artifactId: "__artifact_generation_pending__",
+      deferApprovalGate: true,
+      standardTemplateEvidence: null,
+      professionalContext: context,
+      deliverableSections: [],
+      professionalWork: null,
+    });
+
+    expect(result.failures.map((failure) => failure.gate)).not.toContain("template_required");
   });
 
   it("lets participant binding override standard-template wording when resolving care-plan deliverable type", () => {
