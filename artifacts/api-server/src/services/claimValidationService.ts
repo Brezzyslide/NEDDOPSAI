@@ -41,6 +41,11 @@ import {
   type SupportClassification,
   type ConflictSignal,
 } from "./semanticSupportValidator.js";
+import {
+  CARE_PLAN_ADL_CANONICAL_ROWS,
+  type CarePlanAdlMappingMode,
+  normaliseCarePlanAdlActivity,
+} from "./carePlanAdlModel.js";
 
 // ─── Raw claim shape as emitted by the specialist LLM ─────────────────────────
 
@@ -557,6 +562,7 @@ export interface ParsedDeliverableSection {
   heading: string;
   content: string;
   evidenceSources?: ParsedDeliverableSectionEvidenceSource[];
+  structuredRows?: ParsedDeliverableStructuredRow[];
 }
 
 export interface ParsedDeliverableSectionEvidenceSource {
@@ -565,6 +571,15 @@ export interface ParsedDeliverableSectionEvidenceSource {
   passage: string;
   location: string;
   evidenceClass?: string;
+}
+
+export interface ParsedDeliverableStructuredRow {
+  activity: string;
+  supportLevel: string;
+  workerDescription: string;
+  sourceValue: string;
+  chunkId: string;
+  mappingMode: CarePlanAdlMappingMode;
 }
 
 export interface DeterministicTemplateRequirement {
@@ -655,8 +670,15 @@ export function assembleDeliverableMarkdownFromSections(
       (order.get(left.requirementId) ?? Number.MAX_SAFE_INTEGER) -
       (order.get(right.requirementId) ?? Number.MAX_SAFE_INTEGER)
     )
-    .map((section) => `## ${section.heading}\n\n${section.content.trim()}`)
+    .map((section) => `## ${section.heading}\n\n${renderDeliverableSectionContent(section)}`)
     .join("\n\n");
+}
+
+function renderDeliverableSectionContent(section: ParsedDeliverableSection): string {
+  if (isCarePlanAdlDeliverableSection(section) && (section.structuredRows ?? []).length > 0) {
+    return renderCarePlanAdlStructuredTable(section.structuredRows ?? []);
+  }
+  return section.content.trim();
 }
 
 function deterministicTemplateParts(
@@ -683,7 +705,7 @@ function renderScalarTemplateFields(fields: string[]): string {
 
 function renderStructuredTemplateField(field: string): string {
   if (/table with columns\s+activity\s*\|\s*support level\s*\|\s*what the worker does/i.test(field)) {
-    return renderMarkdownRows(["Activity", "Support level", "What the worker does"], CARE_PLAN_ADL_ACTIVITY_ROWS.map((activity) => [
+    return renderMarkdownRows(["Activity", "Support level", "What the worker does"], CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => [
       activity,
       `[SUPPORT_LEVEL_${placeholderToken(activity)}]`,
       `[WHAT_THE_WORKER_DOES_${placeholderToken(activity)}]`,
@@ -774,40 +796,53 @@ function isStructuredTemplateField(field: string): boolean {
   return /table with columns|minimum three personal goal rows|support types selected from|description per selected type|:\s*[^:]+,\s*[^:]+/i.test(field);
 }
 
-const CARE_PLAN_ADL_ACTIVITY_ROWS = [
-  "Personal hygiene and grooming",
-  "Showering and bathing",
-  "Dressing and undressing",
-  "Toileting and continence",
-  "Oral hygiene",
-  "Eating and drinking",
-  "Meal preparation",
-  "Medication management",
-  "Mobility within the home",
-  "Transfers and positioning",
-  "Bedtime and morning routines",
-  "Household cleaning",
-  "Laundry and clothing care",
-  "Making and changing bedding",
-  "Shopping for essential items",
-  "Managing personal belongings",
-  "Using household appliances",
-  "Maintaining a safe home environment",
-  "Managing daily routines",
-  "Time awareness and task initiation",
-  "Attending appointments",
-  "Community access",
-  "Transport and travel",
-  "Money handling and everyday purchases",
-  "Communication of daily needs",
-  "Decision-making relating to daily activities",
-] as const;
-
 function renderMarkdownTable(columns: string[], rowCount: number): string {
   const rows = Array.from({ length: rowCount }, (_, rowIndex) =>
     columns.map((column) => `[${placeholderToken(column)}${rowCount > 1 ? `_${rowIndex + 1}` : ""}]`),
   );
   return renderMarkdownRows(columns, rows);
+}
+
+function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]): string {
+  const byActivity = new Map(rows.map((row) => [normaliseCarePlanAdlActivity(row.activity), row]));
+  return renderMarkdownRows([
+    "Activity",
+    "Support level",
+    "What the worker does",
+    "Source value",
+    "Chunk ID",
+    "Mapping mode",
+  ], CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => {
+    const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
+    if (!row) {
+      return [
+        activity,
+        "Not applicable / not assessed",
+        "Not assessed - no structured ADL source row supplied.",
+        "Absent",
+        "",
+        "CITED_INTERPRETATION",
+      ];
+    }
+    return [
+      activity,
+      escapeMarkdownTableCell(row.supportLevel),
+      escapeMarkdownTableCell(row.workerDescription),
+      escapeMarkdownTableCell(row.sourceValue),
+      escapeMarkdownTableCell(row.chunkId),
+      row.mappingMode,
+    ];
+  }));
+}
+
+function isCarePlanAdlDeliverableSection(section: ParsedDeliverableSection): boolean {
+  const id = normaliseCarePlanAdlActivity(section.requirementId);
+  const heading = normaliseCarePlanAdlActivity(section.heading);
+  return id === "care plan undertaking adl" || heading.includes("undertaking adl");
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n+/g, " ").trim();
 }
 
 function renderMarkdownRows(columns: string[], rows: string[][]): string {
@@ -1006,12 +1041,20 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
     const heading = stringField(raw, "heading", "title", "sectionTitle", "section_title", "name");
     const content = stringField(raw, "content", "markdown", "markdownContent", "markdown_content", "body", "text", "sectionContent", "section_content");
     const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources ?? raw.evidence_sources);
+    const structuredRows = parseDeliverableStructuredRows(
+      raw.structuredRows ??
+      raw.structured_rows ??
+      raw.adlRows ??
+      raw.adl_rows ??
+      raw.rows,
+    );
     if (!requirementId || !heading || !content) return [];
     return [{
       requirementId,
       heading,
       content,
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
+      ...(structuredRows.length > 0 ? { structuredRows } : {}),
     }];
   });
 }
@@ -1042,6 +1085,29 @@ function parseSectionEvidenceSources(value: unknown): ParsedDeliverableSectionEv
     const evidenceClass = typeof raw.evidenceClass === "string" ? raw.evidenceClass.trim() : undefined;
     if (!chunkId || !documentTitle || !passage || !location) return [];
     return [{ chunkId, documentTitle, passage, location, evidenceClass }];
+  });
+}
+
+function parseDeliverableStructuredRows(value: unknown): ParsedDeliverableStructuredRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (!isRecord(raw)) return [];
+    const activity = stringField(raw, "activity", "row", "canonicalRow", "canonical_row", "label");
+    const supportLevel = stringField(raw, "supportLevel", "support_level", "level");
+    const workerDescription = stringField(raw, "workerDescription", "worker_description", "whatTheWorkerDoes", "what_the_worker_does", "description");
+    const sourceValue = stringField(raw, "sourceValue", "source_value", "checklistValue", "checklist_value", "value");
+    const chunkId = stringField(raw, "chunkId", "chunk_id", "sourceChunkId", "source_chunk_id");
+    const mappingMode = stringField(raw, "mappingMode", "mapping_mode", "mode") as CarePlanAdlMappingMode | "";
+    if (!activity || !supportLevel || !workerDescription || !sourceValue || !chunkId) return [];
+    if (mappingMode !== "VERIFIED_MAPPING" && mappingMode !== "CITED_INTERPRETATION") return [];
+    return [{
+      activity,
+      supportLevel,
+      workerDescription,
+      sourceValue,
+      chunkId,
+      mappingMode,
+    }];
   });
 }
 

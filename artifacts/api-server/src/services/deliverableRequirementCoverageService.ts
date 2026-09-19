@@ -1,5 +1,13 @@
 import type { ProfessionalExecutionContext } from "./professionalExecutionContextService.js";
 import type { BlueprintExecutionContract, BlueprintSection } from "./workBlueprintService.js";
+import {
+  CARE_PLAN_ADL_CANONICAL_ROWS,
+  expectedCarePlanAdlSupportLevelsForSourceValue,
+  isCanonicalCarePlanAdlActivity,
+  isCarePlanAdlSupportLevel,
+  normaliseCarePlanAdlActivity,
+  type CarePlanAdlStructuredRow,
+} from "./carePlanAdlModel.js";
 
 export type DeliverableRequirementClassification =
   | "INTERNAL_METHODOLOGY"
@@ -203,6 +211,7 @@ export interface PerRequirementDeliverableSection {
   heading: string;
   content: string;
   evidenceSources?: PerRequirementEvidenceSource[];
+  structuredRows?: CarePlanAdlStructuredRow[];
 }
 
 export interface PerRequirementEvidenceSource {
@@ -537,6 +546,7 @@ function normaliseDeliverableSections(
       heading,
       content,
       evidenceSources: section.evidenceSources?.filter(isCompleteEvidenceSource),
+      structuredRows: section.structuredRows?.filter(isCompleteStructuredRow),
     });
   }
   return mapped;
@@ -549,6 +559,18 @@ function isCompleteEvidenceSource(source: PerRequirementEvidenceSource): boolean
     source.documentTitle?.trim() &&
     source.passage?.trim() &&
     source.location?.trim(),
+  );
+}
+
+function isCompleteStructuredRow(row: CarePlanAdlStructuredRow): boolean {
+  return Boolean(
+    row &&
+    row.activity?.trim() &&
+    row.supportLevel?.trim() &&
+    row.workerDescription?.trim() &&
+    row.sourceValue?.trim() &&
+    row.chunkId?.trim() &&
+    (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION"),
   );
 }
 
@@ -1424,6 +1446,33 @@ function validateRepresentedRequirement(input: {
     });
   }
 
+  if (requirement.id === "care-plan-undertaking-adl") {
+    const adl = evaluateCarePlanAdlStructuredRows(input.structuredSection?.structuredRows ?? []);
+    const finalResult = adl.passed
+      ? "SATISFIED"
+      : adl.partial
+        ? "PARTIAL"
+        : "NOT_SATISFIED";
+    return coverageItem(requirement, {
+      actualLocation: relevant.location,
+      structuralResult: adl.structuralPassed
+        ? "STRUCTURE_PASS"
+        : adl.partial
+          ? "STRUCTURE_PARTIAL"
+          : "STRUCTURE_FAIL",
+      substantiveResult: adl.passed
+        ? "SUBSTANTIVE_PASS"
+        : adl.partial
+          ? "SUBSTANTIVE_PARTIAL"
+          : "SUBSTANTIVE_FAIL",
+      substantiveValidationMode: "ADEQUACY_CRITERIA",
+      substantiveBreakdown: analyseSubstantiveCoverageContent(relevant.content, requirement),
+      finalResult,
+      unverifiedSemanticCriteria: adl.unverifiedRows,
+      failureReason: finalResult === "SATISFIED" ? null : adl.reason,
+    });
+  }
+
   const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content, input.standardisation);
   if (input.standardisation === "standard_reusable" && (requirement.templateCriteria ?? []).length > 0) {
     const template = evaluateTemplateRequirementContent(requirement, relevant.content);
@@ -1860,6 +1909,71 @@ function evaluateSubstantiveClauseContent(
     reason: domain.reason ?? "Section exists but lacks enough operative professional content for the requirement.",
     mode: "FALLBACK_HEURISTIC",
     breakdown,
+  };
+}
+
+function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
+  passed: boolean;
+  partial: boolean;
+  structuralPassed: boolean;
+  reason: string | null;
+  unverifiedRows: string[];
+} {
+  const byActivity = new Map<string, CarePlanAdlStructuredRow>();
+  const duplicate: string[] = [];
+  const invalid: string[] = [];
+  for (const row of rows) {
+    const key = normaliseCarePlanAdlActivity(row.activity);
+    if (!isCanonicalCarePlanAdlActivity(row.activity)) {
+      invalid.push(`${row.activity}: not a canonical ADL activity`);
+      continue;
+    }
+    if (byActivity.has(key)) duplicate.push(row.activity);
+    byActivity.set(key, row);
+  }
+
+  const missing = CARE_PLAN_ADL_CANONICAL_ROWS.filter((activity) =>
+    !byActivity.has(normaliseCarePlanAdlActivity(activity)),
+  );
+  const supportLevelFailures: string[] = [];
+  const citationFailures: string[] = [];
+  const unverifiedRows: string[] = [];
+
+  for (const activity of CARE_PLAN_ADL_CANONICAL_ROWS) {
+    const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
+    if (!row) continue;
+    if (!row.chunkId.trim()) citationFailures.push(`${activity}: missing chunkId`);
+    if (!isCarePlanAdlSupportLevel(row.supportLevel)) {
+      supportLevelFailures.push(`${activity}: unsupported level "${row.supportLevel}"`);
+      continue;
+    }
+    const expectedLevels = expectedCarePlanAdlSupportLevelsForSourceValue(row.sourceValue);
+    if (row.mappingMode === "VERIFIED_MAPPING") {
+      if (expectedLevels.length === 0) {
+        supportLevelFailures.push(`${activity}: VERIFIED_MAPPING used without a controlled source value`);
+      } else if (!expectedLevels.includes(row.supportLevel)) {
+        supportLevelFailures.push(`${activity}: "${row.sourceValue}" cannot map to "${row.supportLevel}"`);
+      }
+      continue;
+    }
+    unverifiedRows.push(`${activity}: CITED_INTERPRETATION requires source review`);
+  }
+
+  const structuralPassed = missing.length === 0 && duplicate.length === 0 && invalid.length === 0;
+  const failures = [
+    missing.length ? `Missing canonical ADL rows: ${missing.join(", ")}.` : null,
+    duplicate.length ? `Duplicate ADL rows: ${duplicate.join(", ")}.` : null,
+    invalid.length ? `Invalid ADL rows: ${invalid.join("; ")}.` : null,
+    citationFailures.length ? `ADL rows without chunk citations: ${citationFailures.join("; ")}.` : null,
+    supportLevelFailures.length ? `ADL support-level mapping failures: ${supportLevelFailures.join("; ")}.` : null,
+  ].filter(Boolean) as string[];
+
+  return {
+    passed: structuralPassed && citationFailures.length === 0 && supportLevelFailures.length === 0,
+    partial: rows.length > 0 && (missing.length < CARE_PLAN_ADL_CANONICAL_ROWS.length || supportLevelFailures.length === 0),
+    structuralPassed,
+    reason: failures.length ? failures.join(" ") : null,
+    unverifiedRows,
   };
 }
 

@@ -1703,7 +1703,7 @@ export class UnifiedExecutionEngine {
           completion: draftResult.completion ?? null,
           requirementPlan,
         },
-        coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
+        coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
         modelTelemetry: latestModelTelemetry,
       });
       tLlmMs = Date.now() - t5;
@@ -1794,7 +1794,7 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       structuredOutput: { requirementPlan },
       reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
       modelTelemetry: latestModelTelemetry,
     });
     tReviewMs = Date.now() - t6;
@@ -1861,7 +1861,7 @@ export class UnifiedExecutionEngine {
             completion: synthesisResult.completion ?? null,
             requirementPlan,
           },
-          coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
+          coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           modelTelemetry: latestModelTelemetry,
         });
         reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
@@ -1887,7 +1887,7 @@ export class UnifiedExecutionEngine {
           contentMarkdown: reviewResult.finalContent,
           structuredOutput: { requirementPlan, afterFinalSynthesis: true },
           reviewSnapshot: buildReviewSnapshot(reviewResult),
-          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           modelTelemetry: latestModelTelemetry,
         });
         runtimeGate = validateBlueprintRuntimeCompletion({
@@ -1985,7 +1985,7 @@ export class UnifiedExecutionEngine {
               repairGroupCount: repairGroups.length,
               requirementPlan,
             },
-            coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections),
+            coverageSnapshot: buildCoverageSnapshot(draftContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
             modelTelemetry: latestModelTelemetry,
           });
           reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
@@ -2015,7 +2015,7 @@ export class UnifiedExecutionEngine {
               repairGroupCount: repairGroups.length,
             },
             reviewSnapshot: buildReviewSnapshot(reviewResult),
-            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
             modelTelemetry: latestModelTelemetry,
           });
           runtimeGate = validateBlueprintRuntimeCompletion({
@@ -2078,7 +2078,7 @@ export class UnifiedExecutionEngine {
         contentMarkdown: reviewResult.finalContent,
         structuredOutput: { requirementPlan, deliverableSections: deliverableSections ?? null },
         reviewSnapshot: buildReviewSnapshot(reviewResult),
-        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
         gateSnapshot: { passed: false, failures: runtimeGate.failures },
         modelTelemetry: latestModelTelemetry,
       });
@@ -2100,7 +2100,7 @@ export class UnifiedExecutionEngine {
         metadata: {
           failedStage: "completion_gates",
           gateFailures: runtimeGate.failures,
-          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
       });
@@ -2115,7 +2115,7 @@ export class UnifiedExecutionEngine {
         failureMetadata: {
           failedStage: "completion_gates",
           gateFailures: runtimeGate.failures,
-          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
         clarificationQuestions: runtimeGate.failures
@@ -2136,7 +2136,7 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       structuredOutput: { requirementPlan },
       reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
       gateSnapshot: { passed: true, failures: [] },
       modelTelemetry: latestModelTelemetry,
     });
@@ -2312,7 +2312,7 @@ export class UnifiedExecutionEngine {
           metadata: {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
-            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
             professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
           },
         });
@@ -2326,7 +2326,7 @@ export class UnifiedExecutionEngine {
           failureMetadata: {
             failedStage: "post_artifact_completion_gates",
             gateFailures: artifactGate.failures,
-            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
             professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
           },
           clarificationQuestions: artifactGate.failures
@@ -2517,7 +2517,7 @@ export class UnifiedExecutionEngine {
         completedWorkId: finalWork.id,
         completedWorkStatus: finalWork.status,
         qualityScore: reviewResult.qualityScore,
-        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
       },
     });
 
@@ -3414,6 +3414,16 @@ function formatStructuredDeliverableResponseContract(
             "location": "<page, section or chunk location>",
             "evidenceClass": "<evidence class>"
           }
+        ],
+        "structuredRows": [
+          {
+            "activity": "<ADL canonical activity name; return [] for non-ADL sections>",
+            "supportLevel": "<Independent | Independent with prompting | Independent with supervision | Partial physical assistance | Full physical assistance | Unable to complete | Not applicable / not assessed>",
+            "workerDescription": "<what the worker does, or a named evidence gap>",
+            "sourceValue": "<controlled source value such as Without support, Support required, Completely unable to, Absent, or quoted prose basis>",
+            "chunkId": "<retrieved evidence chunk id supporting this row>",
+            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, otherwise CITED_INTERPRETATION>"
+          }
         ]`
     : "";
   return `"deliverable": {
@@ -3443,6 +3453,16 @@ function formatTargetedRepairDeliverableResponseContract(): string {
             "passage": "<short exact supporting passage>",
             "location": "<page, section or chunk location>",
             "evidenceClass": "<evidence class>"
+          }
+        ],
+        "structuredRows": [
+          {
+            "activity": "<ADL canonical activity name; return [] for repaired non-ADL sections>",
+            "supportLevel": "<Independent | Independent with prompting | Independent with supervision | Partial physical assistance | Full physical assistance | Unable to complete | Not applicable / not assessed>",
+            "workerDescription": "<what the worker does, or a named evidence gap>",
+            "sourceValue": "<controlled source value such as Without support, Support required, Completely unable to, Absent, or quoted prose basis>",
+            "chunkId": "<retrieved evidence chunk id supporting this row>",
+            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, otherwise CITED_INTERPRETATION>"
           }
         ]
       }
@@ -3501,7 +3521,7 @@ function buildProfessionalDeliverableResponseSchema(
                 type: "object",
                 additionalProperties: false,
                 required: requiresSectionEvidenceSources
-                  ? ["requirementId", "heading", "content", "evidenceSources"]
+                  ? ["requirementId", "heading", "content", "evidenceSources", "structuredRows"]
                   : ["requirementId", "heading", "content"],
                 properties: {
                   requirementId: { type: "string" },
@@ -3521,6 +3541,33 @@ function buildProfessionalDeliverableResponseSchema(
                               passage: { type: "string" },
                               location: { type: "string" },
                               evidenceClass: { type: "string" },
+                            },
+                          },
+                        },
+                        structuredRows: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required: ["activity", "supportLevel", "workerDescription", "sourceValue", "chunkId", "mappingMode"],
+                            properties: {
+                              activity: { type: "string" },
+                              supportLevel: {
+                                type: "string",
+                                enum: [
+                                  "Independent",
+                                  "Independent with prompting",
+                                  "Independent with supervision",
+                                  "Partial physical assistance",
+                                  "Full physical assistance",
+                                  "Unable to complete",
+                                  "Not applicable / not assessed",
+                                ],
+                              },
+                              workerDescription: { type: "string" },
+                              sourceValue: { type: "string" },
+                              chunkId: { type: "string" },
+                              mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION"] },
                             },
                           },
                         },
@@ -3627,7 +3674,7 @@ function buildTargetedRequirementRepairResponseSchema(
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["requirementId", "heading", "content", "evidenceSources"],
+                required: ["requirementId", "heading", "content", "evidenceSources", "structuredRows"],
                 properties: {
                   requirementId: { type: "string" },
                   heading: { type: "string" },
@@ -3644,6 +3691,33 @@ function buildTargetedRequirementRepairResponseSchema(
                         passage: { type: "string" },
                         location: { type: "string" },
                         evidenceClass: { type: "string" },
+                      },
+                    },
+                  },
+                  structuredRows: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["activity", "supportLevel", "workerDescription", "sourceValue", "chunkId", "mappingMode"],
+                      properties: {
+                        activity: { type: "string" },
+                        supportLevel: {
+                          type: "string",
+                          enum: [
+                            "Independent",
+                            "Independent with prompting",
+                            "Independent with supervision",
+                            "Partial physical assistance",
+                            "Full physical assistance",
+                            "Unable to complete",
+                            "Not applicable / not assessed",
+                          ],
+                        },
+                        workerDescription: { type: "string" },
+                        sourceValue: { type: "string" },
+                        chunkId: { type: "string" },
+                        mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION"] },
                       },
                     },
                   },
@@ -3938,6 +4012,9 @@ function formatParticipantSpecificOutputContract(
     "Populate every section from retrieved evidence and cite the source document.",
     "Every participant-mode structured row, capacity level, functional assessment, selected support type, goal action, goal outcome, behavioural strategy, restrictive-practice status and person-centred statement is a claim. Each such claim must be linked to an evidenceSource with chunkId, documentTitle, passage and location, or must be explicitly marked as not assessed/not recorded with the missing source document named.",
     "For ADL, mobility, support delivery and goals specifically: do not assert a capacity level, functional assessment, support type, goal action or outcome unless retrieved evidence supports it. If an item is unassessed, write: \"Not assessed — no functional assessment on file\" or the equivalent specific missing-source statement.",
+    "For Undertaking ADL: return exactly 26 structuredRows, one for each canonical ADL activity row assembled by the server. Do not add, omit or rename ADL activities. Each row must carry activity, supportLevel, workerDescription, sourceValue, chunkId and mappingMode.",
+    "ADL intake-checklist mapping: Without support -> Independent; Completely unable to -> Unable to complete; Support required -> Independent with prompting, Independent with supervision or Partial physical assistance, chosen from other cited evidence and defaulting to the least restrictive supported level; Absent -> Not applicable / not assessed.",
+    "ADL source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing; Comb/brush hair and Shaving -> Personal hygiene and grooming; Dressing -> Dressing and undressing; Use toilet and Post toilet hygiene -> Toileting and continence; Cooking -> Meal preparation; Cleaning and Washing dishes -> Household cleaning; Transfer to/from bed -> Transfers and positioning; Money handling -> Money handling and everyday purchases; Walk without aid -> Mobility within the home; Use public transport -> Transport and travel. If several source items map to one row and disagree, use the highest support level and name the differing parts in workerDescription.",
     "For Behavioural Management: render BSP-derived strategies as structured rows with fold, behaviour or trigger, strategy, worker action, BSP source, restrictive-practice flag and APO confirmation status.",
     "For Restrictive Practices: render practices as structured rows with practice type, worker actions, prohibited actions, authorisation status and the authorisation source.",
     "For Goals: every action and outcome must link to evidence, and each outcome must identify which action(s) it follows from.",
@@ -3958,6 +4035,31 @@ type DocumentToSectionMapping = {
   feeds: string[];
 };
 
+const SECTION_EVIDENCE_RELEVANCE_THRESHOLD = 1.25;
+const SECTION_EVIDENCE_TOKEN_BUDGET = 2_200;
+const SECTION_EVIDENCE_EXPECTED_CATEGORY_BOOST = 2.5;
+
+type SectionEvidenceRoutingRow = {
+  sectionCode: string;
+  sectionTitle: string;
+  expectedCategories: string[];
+  consideredCount: number;
+  selectedCount: number;
+  threshold: number;
+  tokenBudget: number;
+  highestRejectedScore: number | null;
+  selected: Array<{
+    chunkId: string;
+    sourceTitle: string;
+    sourceType?: string;
+    documentCategory?: string;
+    score: number;
+    categoryBoosted: boolean;
+    tokenEstimate: number;
+    selectionReason: "above_threshold" | "best_available_below_threshold";
+  }>;
+};
+
 function buildSectionEvidenceBridge(
   contract: BlueprintExecutionContract | null | undefined,
   evidencePack: EvidencePack | undefined,
@@ -3965,29 +4067,26 @@ function buildSectionEvidenceBridge(
   const sections = contract?.sections ?? [];
   if (!sections.length || !evidencePack || evidencePack.totalChunks === 0) return "";
 
-  const documentMappings = parseDocumentToSectionMappings(contract);
-  const chunksByCategory = groupEvidenceChunksByCategory(evidencePack);
+  const routing = buildSectionEvidenceRoutingReport(contract, evidencePack);
   const lines: string[] = [];
   const bridgeChunks = new Set<string>();
 
-  for (const section of [...sections].sort((left, right) => left.sortOrder - right.sortOrder)) {
-    const expectedCategories = expectedEvidenceCategoriesForSection(section, documentMappings);
-    const matchedChunks = expectedCategories
-      .flatMap((category) => chunksByCategory.get(category) ?? [])
-      .filter((chunk, index, all) => all.findIndex((candidate) => candidate.chunkId === chunk.chunkId) === index)
-      .sort((left, right) => right.confidence - left.confidence)
-      .slice(0, 5);
+  for (const row of routing) {
+    const matchedChunks = row.selected
+      .map((selection) => evidencePack.chunks.find((chunk) => chunk.chunkId === selection.chunkId))
+      .filter((chunk): chunk is EvidencePack["chunks"][number] => Boolean(chunk));
     const presentCategories = new Set(matchedChunks.map(chunkEvidenceCategoryKeys).flat());
-    const missingCategories = expectedCategories.filter((category) => !presentCategories.has(category));
+    const missingCategories = row.expectedCategories.filter((category) => !presentCategories.has(category));
     matchedChunks.forEach((chunk) => bridgeChunks.add(chunk.chunkId));
 
     lines.push([
-      `${section.sortOrder}. ${section.title} (${section.sectionCode})`,
-      expectedCategories.length
-        ? `Expected source categories: ${expectedCategories.join(", ")}`
+      `${row.sectionTitle} (${row.sectionCode})`,
+      row.expectedCategories.length
+        ? `Expected source categories: ${row.expectedCategories.join(", ")}`
         : "Expected source categories: none declared; use relevant retrieved evidence and identify any factual gap.",
+      `Ranking: every retrieved chunk was eligible; score = lexical section relevance + ${(SECTION_EVIDENCE_EXPECTED_CATEGORY_BOOST).toFixed(1)} expected-category boost + confidence. Selection threshold ${SECTION_EVIDENCE_RELEVANCE_THRESHOLD}; section token budget ${SECTION_EVIDENCE_TOKEN_BUDGET}; selected ${row.selectedCount}/${row.consideredCount}; highest rejected score ${row.highestRejectedScore ?? "none"}.`,
       matchedChunks.length
-        ? `Matched retrieved evidence: ${matchedChunks.map(formatEvidenceBridgeChunkReference).join("; ")}`
+        ? `Selected retrieved evidence: ${matchedChunks.map(formatEvidenceBridgeChunkReference).join("; ")}`
         : "Matched retrieved evidence: none.",
       matchedChunks.length
         ? `Short evidence summary: ${summariseSectionEvidence(matchedChunks)}`
@@ -4001,10 +4100,151 @@ function buildSectionEvidenceBridge(
   const approximateTokens = estimatePromptTokens(lines.join("\n\n"));
   return [
     "=== SECTION-TO-EVIDENCE BRIDGE ===",
-    "Use this bridge to connect the fourteen required care-plan sections to the retrieved evidence. The bridge references chunks from the AUTHORITATIVE EVIDENCE block; it does not replace that evidence.",
-    `Bridge summary: ${sections.length} sections mapped; ${bridgeChunks.size} distinct retrieved chunks referenced; approximately ${approximateTokens} prompt tokens added by this bridge.`,
+    "Use this bridge to connect each required care-plan section to the retrieved evidence. Every retrieved chunk is eligible for every section; expected document categories increase priority but do not filter out other evidence.",
+    `Bridge summary: ${sections.length} sections mapped; ${bridgeChunks.size} distinct retrieved chunks referenced; threshold ${SECTION_EVIDENCE_RELEVANCE_THRESHOLD}; per-section budget ${SECTION_EVIDENCE_TOKEN_BUDGET} tokens; approximately ${approximateTokens} prompt tokens added by this bridge.`,
     ...lines,
   ].join("\n\n");
+}
+
+function buildSectionEvidenceRoutingReport(
+  contract: BlueprintExecutionContract | null | undefined,
+  evidencePack: EvidencePack | null | undefined,
+): SectionEvidenceRoutingRow[] {
+  const sections = contract?.sections ?? [];
+  if (!sections.length || !evidencePack || evidencePack.totalChunks === 0) return [];
+
+  const documentMappings = parseDocumentToSectionMappings(contract);
+  return [...sections].sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((section) => rankEvidenceForSection(section, documentMappings, evidencePack));
+}
+
+function rankEvidenceForSection(
+  section: BlueprintExecutionContract["sections"][number],
+  mappings: DocumentToSectionMapping[],
+  evidencePack: EvidencePack,
+): SectionEvidenceRoutingRow {
+  const expectedCategories = expectedEvidenceCategoriesForSection(section, mappings);
+  const expected = new Set(expectedCategories);
+  const sectionTerms = sectionEvidenceTerms(section, expectedCategories);
+  const ranked = evidencePack.chunks
+    .map((chunk) => {
+      const categoryKeys = chunkEvidenceCategoryKeys(chunk);
+      const categoryBoosted = categoryKeys.some((key) => expected.has(key));
+      const text = normaliseContentForEvidenceRanking([
+        chunk.sourceTitle,
+        chunk.sectionTitle ?? "",
+        chunk.documentCategory ?? "",
+        chunk.sourceType ?? "",
+        chunk.text,
+      ].join(" "));
+      const hits = sectionTerms.reduce((count, term) => count + (text.includes(term) ? 1 : 0), 0);
+      const score = hits + (categoryBoosted ? SECTION_EVIDENCE_EXPECTED_CATEGORY_BOOST : 0) + Math.max(0, chunk.confidence ?? 0);
+      return {
+        chunk,
+        score,
+        hits,
+        categoryBoosted,
+        tokenEstimate: Math.max(1, estimatePromptTokens(chunk.text)),
+      };
+    })
+    .sort((left, right) =>
+      right.score - left.score ||
+      Number(right.categoryBoosted) - Number(left.categoryBoosted) ||
+      right.chunk.confidence - left.chunk.confidence,
+    );
+
+  let usedTokens = 0;
+  const selected: Array<{
+    chunk: EvidencePack["chunks"][number];
+    score: number;
+    categoryBoosted: boolean;
+    tokenEstimate: number;
+    selectionReason: "above_threshold" | "best_available_below_threshold";
+  }> = [];
+
+  for (const candidate of ranked) {
+    if (candidate.score < SECTION_EVIDENCE_RELEVANCE_THRESHOLD) continue;
+    if (usedTokens + candidate.tokenEstimate > SECTION_EVIDENCE_TOKEN_BUDGET && selected.length > 0) continue;
+    selected.push({ ...candidate, selectionReason: "above_threshold" });
+    usedTokens += candidate.tokenEstimate;
+  }
+
+  if (selected.length === 0 && ranked[0] && ranked[0].score > 0) {
+    selected.push({ ...ranked[0], selectionReason: "best_available_below_threshold" });
+  }
+
+  const selectedIds = new Set(selected.map((item) => item.chunk.chunkId));
+  const rejected = ranked.filter((item) => !selectedIds.has(item.chunk.chunkId));
+  return {
+    sectionCode: section.sectionCode,
+    sectionTitle: section.title,
+    expectedCategories,
+    consideredCount: evidencePack.chunks.length,
+    selectedCount: selected.length,
+    threshold: SECTION_EVIDENCE_RELEVANCE_THRESHOLD,
+    tokenBudget: SECTION_EVIDENCE_TOKEN_BUDGET,
+    highestRejectedScore: rejected[0]?.score != null ? roundEvidenceScore(rejected[0].score) : null,
+    selected: selected.map((item) => ({
+      chunkId: item.chunk.chunkId,
+      sourceTitle: item.chunk.sourceTitle,
+      sourceType: item.chunk.sourceType,
+      documentCategory: item.chunk.documentCategory,
+      score: roundEvidenceScore(item.score),
+      categoryBoosted: item.categoryBoosted,
+      tokenEstimate: item.tokenEstimate,
+      selectionReason: item.selectionReason,
+    })),
+  };
+}
+
+function sectionEvidenceTerms(
+  section: BlueprintExecutionContract["sections"][number],
+  expectedCategories: string[],
+): string[] {
+  const raw = [
+    section.sectionCode,
+    section.title,
+    section.description,
+    section.instructions,
+    ...(section.evidenceRequirements?.requiredEvidenceCategories ?? []),
+    ...expectedCategories,
+  ].filter((value): value is string => typeof value === "string");
+  return Array.from(new Set(raw
+    .join(" ")
+    .split(/[^a-zA-Z0-9]+/)
+    .map(normaliseContentForEvidenceRanking)
+    .filter((term) => term.length >= 4 && !SECTION_EVIDENCE_STOP_WORDS.has(term))));
+}
+
+const SECTION_EVIDENCE_STOP_WORDS = new Set([
+  "section",
+  "strategy",
+  "required",
+  "where",
+  "participant",
+  "support",
+  "supports",
+  "complete",
+  "record",
+  "recorded",
+  "evidence",
+  "source",
+  "sources",
+  "document",
+  "documents",
+  "retrieved",
+]);
+
+function normaliseContentForEvidenceRanking(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function roundEvidenceScore(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function parseDocumentToSectionMappings(
@@ -4959,6 +5199,7 @@ function buildCoverageSnapshot(
   professionalContext: ProfessionalExecutionContext,
   contract?: BlueprintExecutionContract | null,
   deliverableSections?: ParsedDeliverableSection[],
+  evidencePack?: EvidencePack | null,
 ): Record<string, unknown> {
   const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
   const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile, { deliverableSections });
@@ -4974,6 +5215,7 @@ function buildCoverageSnapshot(
     classificationCounts: report.classificationCounts,
     missing: report.missing,
     plan: report.plan,
+    sectionEvidenceRouting: buildSectionEvidenceRoutingReport(contract, evidencePack),
   };
 }
 

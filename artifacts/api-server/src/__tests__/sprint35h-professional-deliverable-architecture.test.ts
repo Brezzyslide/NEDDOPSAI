@@ -394,7 +394,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const src = source("services/unifiedExecutionEngine.ts");
 
     expect(src).toContain('name: "targeted_requirement_repair_response"');
-    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources"]');
+    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources", "structuredRows"]');
+    expect(src).toContain('required: ["activity", "supportLevel", "workerDescription", "sourceValue", "chunkId", "mappingMode"]');
   });
 
   it("keeps final synthesis and targeted repair response contracts aligned with their schemas", () => {
@@ -414,8 +415,31 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(repairPrompt).not.toContain("formatStructuredDeliverableResponseContract(professionalContext)");
     expect(src).toContain("const participantSpecific = isParticipantSpecificProfessionalContext(professionalContext);");
     expect(src).toContain('"evidenceSources": [');
+    expect(src).toContain('"structuredRows": [');
     expect(src).toContain("use an empty evidenceSources array only when the section states a named evidence gap");
     expect(src).not.toContain("omit evidenceSources when the section states a named evidence gap");
+  });
+
+  it("pins participant ADL structured row mapping and least-restrictive source-value rules", () => {
+    const registry = source("services/blueprintRegistry.ts");
+    const engine = source("services/unifiedExecutionEngine.ts");
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+    const model = source("services/carePlanAdlModel.ts");
+
+    expect(registry).toContain("Without support maps to Independent");
+    expect(registry).toContain("Support required maps to Independent with prompting, Independent with supervision or Partial physical assistance");
+    expect(registry).toContain("use the highest support level and name the differing parts");
+    expect(registry).toContain("Shaving -> Personal hygiene and grooming");
+    expect(registry).toContain("Post toilet hygiene -> Toileting and continence");
+    expect(registry).toContain("Washing dishes -> Household cleaning");
+
+    expect(engine).toContain("return exactly 26 structuredRows");
+    expect(engine).toContain("Do not add, omit or rename ADL activities");
+    expect(engine).toContain("defaulting to the least restrictive supported level");
+    expect(model).toContain("CARE_PLAN_ADL_CANONICAL_ROWS");
+    expect(model).toContain("CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS");
+    expect(coverage).toContain("evaluateCarePlanAdlStructuredRows");
+    expect(coverage).toContain("VERIFIED_MAPPING used without a controlled source value");
   });
 
   it("parses model-supplied requirement coverage as structured professional output", () => {
@@ -1294,7 +1318,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(buildProfessionalExecutionContextBlock(context)).toContain("DELIVERABLE_TYPE: PARTICIPANT_NDIS_CARE_PLAN");
   });
 
-  it("wires care-plan document-to-section declarations into a section evidence bridge", () => {
+  it("wires care-plan document-to-section declarations into a relevance-ranked section evidence bridge", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const src = source("services/unifiedExecutionEngine.ts");
 
@@ -1311,9 +1335,17 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(carePlan.freshnessRules?.documentToSectionsContract ?? carePlan.evidenceContract.freshnessRules?.documentToSectionsContract).toBe(true);
     expect(src).toContain("function buildSectionEvidenceBridge");
     expect(src).toContain("parseDocumentToSectionMappings(contract)");
+    expect(src).toContain("Every retrieved chunk is eligible for every section");
+    expect(src).toContain("SECTION_EVIDENCE_EXPECTED_CATEGORY_BOOST");
+    expect(src).toContain("SECTION_EVIDENCE_RELEVANCE_THRESHOLD");
+    expect(src).toContain("SECTION_EVIDENCE_TOKEN_BUDGET");
     expect(src).toContain("Expected source categories:");
-    expect(src).toContain("Matched retrieved evidence:");
+    expect(src).toContain("Selected retrieved evidence:");
+    expect(src).toContain("highestRejectedScore");
+    expect(src).toContain("sectionEvidenceRouting");
     expect(src).toContain("Evidence gap to state explicitly if needed:");
+    expect(src).not.toContain(".slice(0, 5)");
+    expect(src).not.toContain("SECTION_EVIDENCE_MAX_SELECTIONS");
     expect(src).toContain("if (sectionEvidenceBridge) variableSections.push(sectionEvidenceBridge);");
     expect(src).toContain("buildSectionEvidenceBridge(input.blueprintContract, input.evidencePack ?? undefined)");
   });
@@ -2277,6 +2309,40 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(markdown.match(/^> \*Guidance:/gm)).toHaveLength(14);
     expect(markdown).not.toContain("Non-applicability wording:");
     expect(markdown).not.toContain("\n\nRecord every person who attended the planning meeting");
+  });
+
+  it("renders participant ADL structured rows in canonical order with row-level citations", () => {
+    const markdown = assembleDeliverableMarkdownFromSections([
+      {
+        requirementId: "care-plan-undertaking-adl",
+        heading: "Undertaking ADL",
+        content: "Model prose should not be able to omit the canonical ADL table.",
+        structuredRows: [
+          {
+            activity: "Money handling and everyday purchases",
+            supportLevel: "Independent with prompting",
+            workerDescription: "Prompt Michael to check amounts and confirm purchases before paying.",
+            sourceValue: "Support required",
+            chunkId: "58501903",
+            mappingMode: "VERIFIED_MAPPING",
+          },
+          {
+            activity: "Oral hygiene",
+            supportLevel: "Independent",
+            workerDescription: "Michael brushes his teeth without worker support.",
+            sourceValue: "Without support",
+            chunkId: "51ea99ce",
+            mappingMode: "VERIFIED_MAPPING",
+          },
+        ],
+      },
+    ]);
+
+    expect(markdown).toContain("| Activity | Support level | What the worker does | Source value | Chunk ID | Mapping mode |");
+    expect(markdown.match(/^\| .* \| .* \| .* \| .* \|.*\| .* \|$/gm)).toHaveLength(28);
+    expect(markdown).toContain("| Oral hygiene | Independent | Michael brushes his teeth without worker support. | Without support | 51ea99ce | VERIFIED_MAPPING |");
+    expect(markdown).toContain("| Money handling and everyday purchases | Independent with prompting | Prompt Michael to check amounts and confirm purchases before paying. | Support required | 58501903 | VERIFIED_MAPPING |");
+    expect(markdown).toContain("| Personal hygiene and grooming | Not applicable / not assessed | Not assessed - no structured ADL source row supplied. | Absent |  | CITED_INTERPRETATION |");
   });
 
   it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {
