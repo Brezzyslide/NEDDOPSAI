@@ -1401,6 +1401,45 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.failures.map((failure) => failure.gate)).not.toContain("template_required");
   });
 
+  it("uses four section batches with structured forward context and isolated batch failures for participant care plans", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("shouldUseBatchedParticipantCarePlanGeneration");
+    expect(src).toContain("const CARE_PLAN_BATCHES");
+    expect(src).toContain('"participant-planning-basis"');
+    expect(src).toContain('"functional-capacity"');
+    expect(src).toContain('"support-delivery-safeguards"');
+    expect(src).toContain('"specialist-admin"');
+    expect(src).toContain('"care-plan-undertaking-adl"');
+    expect(src).toContain('"care-plan-mobility-strategy"');
+    expect(src).toContain('"care-plan-behavioural-management"');
+    expect(src).toContain('"care-plan-restrictive-practices"');
+    expect(src).toContain("buildCarePlanBatchDirective");
+    expect(src).toContain("forwardContext");
+    expect(src).toContain("participantIdentity");
+    expect(src).toContain("planDates");
+    expect(src).toContain("goalRows");
+    expect(src).toContain("adlRows");
+    expect(src).toContain("mobilityFindings");
+    expect(src).toContain("restrictivePracticeFacts");
+    expect(src).toContain("narrowEvidencePackForCarePlanBatch");
+    expect(src).toContain("buildFailedBatchSections(batch, reason)");
+    expect(src).toContain("Batch ${batch.name} stopped at the configured output limit");
+    expect(src).toContain("Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries");
+  });
+
+  it("adds a mechanical consistency gate for repeated care-plan facts after batched assembly", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("appendCarePlanCrossSectionConsistencyGate");
+    expect(src).toContain("evaluateCarePlanCrossBatchConsistency");
+    expect(src).toContain("Care plan sections contain contradictory repeated facts.");
+    expect(src).toContain("firstStatement");
+    expect(src).toContain("secondStatement");
+    expect(src).toContain("review date");
+    expect(src).toContain("supportLevel");
+  });
+
   it("lets participant binding override standard-template wording when resolving care-plan deliverable type", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const context = compileProfessionalExecutionContext({

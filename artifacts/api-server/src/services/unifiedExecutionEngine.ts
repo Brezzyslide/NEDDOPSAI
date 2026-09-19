@@ -1812,6 +1812,7 @@ export class UnifiedExecutionEngine {
       deliverableSections,
       professionalWork,
     });
+    runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
     if (
       latestModelTelemetry?.stage !== "deterministic_template_render" &&
       shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)
@@ -1902,6 +1903,7 @@ export class UnifiedExecutionEngine {
           deliverableSections,
           professionalWork,
         });
+        runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
       }
     }
     if (!runtimeGate.passed) {
@@ -2594,6 +2596,21 @@ export class UnifiedExecutionEngine {
     const userMessage = buildWorkPackagePrompt(userRequest, manifest, blueprint, styleGuidanceBlock, evidencePack, blueprintContract, professionalContext);
     const outputBudget = professionalContext?.outputDepth.configuredOutputBudget ?? 4000;
 
+    if (shouldUseBatchedParticipantCarePlanGeneration(professionalContext, blueprintContract)) {
+      return this.generateBatchedParticipantCarePlanDraft({
+        userRequest,
+        manifest,
+        blueprint,
+        styleGuidanceBlock,
+        authCtx,
+        evidencePack,
+        blueprintContract,
+        professionalContext: professionalContext!,
+        systemPrompt,
+        specialistCode,
+      });
+    }
+
     const retrievedFields: string[] = [
       "organisationLibrarySources.sourceId",
       "organisationLibrarySources.title",
@@ -2708,6 +2725,207 @@ export class UnifiedExecutionEngine {
         retryCount: response.retryCount ?? null,
         providerFailureKind: response.providerFailureKind ?? null,
         deliverableLength: assembledContent.length,
+      },
+    };
+  }
+
+  private async generateBatchedParticipantCarePlanDraft(input: {
+    userRequest: string;
+    manifest: WorkPackageManifest;
+    blueprint: WorkBlueprint | null;
+    styleGuidanceBlock: string;
+    authCtx: { userId: string; organizationId: string; role: string };
+    evidencePack?: EvidencePack;
+    blueprintContract?: BlueprintExecutionContract | null;
+    professionalContext: ProfessionalExecutionContext;
+    systemPrompt: string;
+    specialistCode: string;
+  }): Promise<GeneratedProfessionalDraft> {
+    const batches = buildParticipantCarePlanBatches(input.blueprintContract);
+    const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, input.blueprintContract);
+    const claims: RawClaim[] = [];
+    const allSections: ParsedDeliverableSection[] = [];
+    const batchTelemetry: Record<string, unknown>[] = [];
+    const batchFailures: Array<{ batchId: string; requirementIds: string[]; reason: string }> = [];
+    const forwardContext: CarePlanBatchForwardContext = {
+      participantIdentity: {},
+      planDates: {},
+      goalRows: [],
+      adlRows: [],
+      mobilityFindings: [],
+      supportDeliveryFacts: [],
+      restrictivePracticeFacts: [],
+    };
+
+    for (let index = 0; index < batches.length; index += 1) {
+      const batch = batches[index]!;
+      const batchContract = narrowBlueprintContractToRequirements(input.blueprintContract, batch.requirementIds);
+      const batchEvidencePack = narrowEvidencePackForCarePlanBatch(input.evidencePack, batchContract);
+      const gatewayCtx: AIGatewayContext = {
+        userId: input.authCtx.userId,
+        organizationId: input.authCtx.organizationId,
+        role: input.authCtx.role,
+        permissions: [],
+        purpose: "task_execution",
+        correlationId: randomUUID(),
+        provider: "openai",
+        retentionClass: "operational",
+        requiresHumanApproval: true,
+      };
+      const gateway = createAIGateway(gatewayCtx);
+      const userMessage = [
+        buildWorkPackagePrompt(
+          input.userRequest,
+          input.manifest,
+          input.blueprint,
+          input.styleGuidanceBlock,
+          batchEvidencePack,
+          batchContract,
+          input.professionalContext,
+        ),
+        buildCarePlanBatchDirective(batch, index + 1, batches.length, forwardContext, batchEvidencePack),
+      ].join("\n\n");
+      const outputBudget = carePlanBatchOutputBudget(batch);
+      const startedAt = Date.now();
+      const response = await gateway.process({
+        systemPrompt: input.systemPrompt,
+        userMessage,
+        retrievedFields: [
+          "carePlanBatch.targetRequirements",
+          "carePlanBatch.selectedEvidence",
+          "carePlanBatch.forwardContext",
+        ],
+        maxTokens: outputBudget,
+        outputMode: "json",
+        responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
+        promptCacheKey: buildProfessionalPromptCacheKey(
+          input.authCtx.organizationId,
+          input.specialistCode,
+          input.blueprint,
+          batchContract,
+          input.professionalContext,
+        ),
+        runtimeProfile: "professional_execution_batch",
+        allowProviderFallback: false,
+      });
+      const commonTelemetry = {
+        batchId: batch.id,
+        batchName: batch.name,
+        requirementIds: batch.requirementIds,
+        configuredOutputBudget: outputBudget,
+        actualInputTokens: response.usage?.inputTokens ?? null,
+        actualOutputTokens: response.usage?.outputTokens ?? null,
+        actualTotalTokens: response.usage?.totalTokens ?? null,
+        cachedInputTokens: response.usage?.cachedInputTokens ?? null,
+        outputMode: response.outputMode,
+        responseFormat: response.responseFormat,
+        finishReason: response.finishReason ?? null,
+        model: response.model ?? null,
+        latencyMs: response.latencyMs ?? Date.now() - startedAt,
+        runtimeProfile: response.runtimeProfile ?? null,
+        usedFallback: response.usedFallback,
+        selectedEvidenceChunks: batchEvidencePack?.totalChunks ?? 0,
+      };
+
+      if (response.usedFallback || !response.content) {
+        const reason = `Batch ${batch.name} did not produce content${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`;
+        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
+        allSections.push(...buildFailedBatchSections(batch, reason));
+        batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
+        continue;
+      }
+
+      if (response.finishReason === "length") {
+        const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
+        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
+        allSections.push(...buildFailedBatchSections(batch, reason));
+        batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
+        continue;
+      }
+
+      const parsed = parseSpecialistJsonOutput(response.content);
+      const batchSections = (parsed.deliverableSections ?? [])
+        .filter((section) => batch.requirementIds.includes(section.requirementId));
+      if (batchSections.length === 0) {
+        const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
+        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
+        allSections.push(...buildFailedBatchSections(batch, reason));
+        batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
+        continue;
+      }
+
+      allSections.push(...batchSections);
+      claims.push(...parsed.claims);
+      updateCarePlanForwardContext(forwardContext, batchSections);
+      batchTelemetry.push({
+        ...commonTelemetry,
+        failed: false,
+        generatedSections: batchSections.map((section) => section.requirementId),
+      });
+    }
+
+    const sectionByRequirement = new Map<string, ParsedDeliverableSection>();
+    for (const section of allSections) sectionByRequirement.set(section.requirementId, section);
+    const orderedSections = requirementOrderForCoverageProfile(coverageProfile)
+      .map((requirementId) => sectionByRequirement.get(requirementId))
+      .filter((section): section is ParsedDeliverableSection => Boolean(section));
+    const finalDeliverableSections = normaliseCanonicalDeliverableSectionsForContext(
+      input.professionalContext,
+      input.blueprintContract,
+      orderedSections,
+    );
+    const content = assembleDeliverableMarkdownFromSections(
+      finalDeliverableSections ?? orderedSections,
+      requirementOrderForCoverageProfile(coverageProfile),
+    );
+    const consistencyFailures = evaluateCarePlanCrossBatchConsistency(finalDeliverableSections ?? orderedSections);
+
+    return {
+      content,
+      claims,
+      professionalWork: {
+        summary: "Participant care plan generated through section-batched synthesis.",
+        blueprint_completion: ["section_batched_generation"],
+        requirement_to_deliverable_plan: requirementOrderForCoverageProfile(coverageProfile),
+        evidence_map: batchTelemetry.map((item) => JSON.stringify(item)),
+        missing_information: batchFailures.map((failure) => failure.reason),
+        batch_failures: batchFailures,
+        forward_context: forwardContext as unknown as Record<string, unknown>,
+        cross_section_consistency_failures: consistencyFailures,
+      },
+      requirementCoverage: {
+        satisfied: (finalDeliverableSections ?? orderedSections)
+          .filter((section) => !/^Generation (?:incomplete|failed)/i.test(section.content))
+          .map((section) => section.requirementId),
+        missing: batchFailures.flatMap((failure) => failure.requirementIds),
+      },
+      deliverable: { sections: finalDeliverableSections ?? orderedSections },
+      deliverableSections: finalDeliverableSections ?? orderedSections,
+      completion: {
+        operation: input.professionalContext.operation,
+        unresolvedProfessionalContent: batchFailures.length,
+        methodologyLeakage: false,
+        readyForCompletedWork: batchFailures.length === 0 && consistencyFailures.length === 0,
+      },
+      modelTelemetry: {
+        stage: "section_batched_primary_specialist",
+        configuredOutputBudget: batchTelemetry.reduce((sum, item) => sum + Number(item.configuredOutputBudget ?? 0), 0),
+        actualInputTokens: sumNullableTelemetry(batchTelemetry, "actualInputTokens"),
+        actualOutputTokens: sumNullableTelemetry(batchTelemetry, "actualOutputTokens"),
+        actualTotalTokens: sumNullableTelemetry(batchTelemetry, "actualTotalTokens"),
+        cachedInputTokens: sumNullableTelemetry(batchTelemetry, "cachedInputTokens"),
+        outputMode: "json",
+        responseFormat: "json_schema:professional_deliverable_response",
+        finishReason: batchFailures.length > 0 ? "partial_batch_failure" : "completed",
+        model: batchTelemetry.find((item) => item.model)?.model ?? null,
+        latencyMs: sumNullableTelemetry(batchTelemetry, "latencyMs"),
+        usedFallback: batchTelemetry.some((item) => item.usedFallback === true),
+        runtimeProfile: "professional_execution_batch",
+        batchCount: batches.length,
+        batches: batchTelemetry,
+        batchFailures,
+        crossSectionConsistencyFailures: consistencyFailures,
+        deliverableLength: content.length,
       },
     };
   }
@@ -4595,6 +4813,359 @@ function normaliseCanonicalDeliverableSectionsForContext(
       content: "Not assessed - no generated section content supplied.",
     }));
   return [...modelSections, ...missingSkeletons];
+}
+
+type CarePlanBatch = {
+  id: string;
+  name: string;
+  rationale: string;
+  requirementIds: string[];
+};
+
+type CarePlanBatchForwardContext = {
+  participantIdentity: Record<string, string>;
+  planDates: Record<string, string>;
+  goalRows: Array<Record<string, string>>;
+  adlRows: Array<Record<string, string>>;
+  mobilityFindings: Array<Record<string, string>>;
+  supportDeliveryFacts: Array<Record<string, string>>;
+  restrictivePracticeFacts: Array<Record<string, string>>;
+};
+
+const CARE_PLAN_BATCHES: CarePlanBatch[] = [
+  {
+    id: "participant-planning-basis",
+    name: "Participant identity, goals and planning basis",
+    rationale: "Sets participant identity, review dates, history and goals used by later service-delivery sections.",
+    requirementIds: [
+      "care-plan-support-plan-meeting",
+      "care-plan-about-me",
+      "care-plan-history-background",
+      "care-plan-goals",
+    ],
+  },
+  {
+    id: "functional-capacity",
+    name: "Functional capacity",
+    rationale: "Keeps ADL, mobility and communication capacity together so support levels cannot drift between overlapping sections.",
+    requirementIds: [
+      "care-plan-undertaking-adl",
+      "care-plan-mobility-strategy",
+      "care-plan-communication-strategy",
+    ],
+  },
+  {
+    id: "support-delivery-safeguards",
+    name: "Support delivery and safeguards",
+    rationale: "Keeps support delivery, behavioural strategies, restrictive-practice status and disaster safeguards together.",
+    requirementIds: [
+      "care-plan-support-delivery-client-safety",
+      "care-plan-behavioural-management",
+      "care-plan-restrictive-practices",
+      "care-plan-disaster-management-strategy",
+    ],
+  },
+  {
+    id: "specialist-admin",
+    name: "Specialist and administrative sections",
+    rationale: "Completes mealtime, endorsement and document-control sections using earlier plan dates as structured values.",
+    requirementIds: [
+      "care-plan-mealtime-management-strategy",
+      "care-plan-client-endorsement",
+      "care-plan-document-control",
+    ],
+  },
+];
+
+function shouldUseBatchedParticipantCarePlanGeneration(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+): boolean {
+  return professionalContext?.specificity === "PARTICIPANT_SPECIFIC" &&
+    professionalContext.operation === "CREATE" &&
+    professionalContext.deliverable.requestedDeliverableType === "PARTICIPANT_NDIS_CARE_PLAN" &&
+    contract?.blueprint?.code === "care_plan";
+}
+
+function buildParticipantCarePlanBatches(
+  contract: BlueprintExecutionContract | undefined | null,
+): CarePlanBatch[] {
+  const sectionIds = new Set((contract?.blueprint?.deliverableContract?.requirementPlan as Array<{ id?: string }> | undefined ?? [])
+    .map((item) => item.id)
+    .filter((id): id is string => typeof id === "string"));
+  const fallbackIds = new Set(CARE_PLAN_BATCHES.flatMap((batch) => batch.requirementIds));
+  const validIds = sectionIds.size > 0 ? sectionIds : fallbackIds;
+  return CARE_PLAN_BATCHES.map((batch) => ({
+    ...batch,
+    requirementIds: batch.requirementIds.filter((id) => validIds.has(id)),
+  })).filter((batch) => batch.requirementIds.length > 0);
+}
+
+function appendCarePlanCrossSectionConsistencyGate(
+  result: { passed: boolean; failures: BlueprintRuntimeGateFailure[] },
+  sections: ParsedDeliverableSection[] | undefined,
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+): { passed: boolean; failures: BlueprintRuntimeGateFailure[] } {
+  if (!shouldUseBatchedParticipantCarePlanGeneration(professionalContext, { blueprint: { code: "care_plan" } } as BlueprintExecutionContract)) {
+    return result;
+  }
+  const failures = sections?.length ? evaluateCarePlanCrossBatchConsistency(sections) : [];
+  if (failures.length === 0) return result;
+  return {
+    passed: false,
+    failures: [
+      ...result.failures,
+      {
+        gate: "mechanical_gate",
+        state: "validation",
+        message: "Care plan sections contain contradictory repeated facts.",
+        details: failures.map((failure) =>
+          `${failure.fact}: ${failure.firstSection}="${failure.firstStatement}" contradicts ${failure.secondSection}="${failure.secondStatement}"`,
+        ),
+      },
+    ],
+  };
+}
+
+function narrowBlueprintContractToRequirements(
+  contract: BlueprintExecutionContract | undefined | null,
+  requirementIds: string[],
+): BlueprintExecutionContract | undefined | null {
+  if (!contract) return contract;
+  const targetSectionCodes = new Set(
+    ((contract.blueprint.deliverableContract?.requirementPlan as Array<{ id?: string; sectionCode?: string }> | undefined) ?? [])
+      .filter((item) => item.id && requirementIds.includes(item.id))
+      .map((item) => item.sectionCode)
+      .filter((code): code is string => typeof code === "string"),
+  );
+  return {
+    ...contract,
+    sections: contract.sections.filter((section) => targetSectionCodes.has(section.sectionCode)),
+  };
+}
+
+function narrowEvidencePackForCarePlanBatch(
+  evidencePack: EvidencePack | undefined,
+  contract: BlueprintExecutionContract | undefined | null,
+): EvidencePack | undefined {
+  if (!evidencePack || !contract?.sections.length) return evidencePack;
+  const routing = buildSectionEvidenceRoutingReport(contract, evidencePack);
+  const selectedIds = new Set(routing.flatMap((row) => row.selected.map((selection) => selection.chunkId)));
+  const chunks = evidencePack.chunks.filter((chunk) => selectedIds.has(chunk.chunkId));
+  if (chunks.length === 0) return { ...evidencePack, chunks: [], citationsByType: {}, totalChunks: 0, avgConfidence: 0 };
+  return {
+    ...evidencePack,
+    chunks,
+    sourceIds: Array.from(new Set(chunks.map((chunk) => chunk.sourceId))),
+    citationsByType: groupEvidenceChunksByType(chunks),
+    totalChunks: chunks.length,
+    avgConfidence: chunks.reduce((sum, chunk) => sum + chunk.confidence, 0) / chunks.length,
+    retrievalMetrics: {
+      ...evidencePack.retrievalMetrics,
+      selectedChunks: chunks.length,
+    },
+  };
+}
+
+function groupEvidenceChunksByType(chunks: EvidencePack["chunks"]): Record<string, EvidencePack["chunks"]> {
+  return chunks.reduce<Record<string, EvidencePack["chunks"]>>((acc, chunk) => {
+    const key = chunk.sourceType || chunk.documentCategory || "unknown";
+    acc[key] = [...(acc[key] ?? []), chunk];
+    return acc;
+  }, {});
+}
+
+function buildCarePlanBatchDirective(
+  batch: CarePlanBatch,
+  batchNumber: number,
+  batchCount: number,
+  forwardContext: CarePlanBatchForwardContext,
+  evidencePack: EvidencePack | undefined,
+): string {
+  return [
+    "=== SECTION-BATCH GENERATION DIRECTIVE ===",
+    `Batch ${batchNumber}/${batchCount}: ${batch.name}`,
+    `Rationale: ${batch.rationale}`,
+    `Return deliverable.sections[] ONLY for these requirement IDs: ${batch.requirementIds.join(", ")}.`,
+    "Do not return other care-plan sections in this batch.",
+    "If a fact is absent from this batch evidence and forwardContext, state not assessed / not recorded and name the missing evidence class.",
+    "Use structuredRows for ADL and mobility support-level rows. Every row must include activity, supportLevel, workerDescription, sourceValue, chunkId and mappingMode.",
+    "Use evidenceSources for every material assertion. If a section only records a named evidence gap, evidenceSources may be empty.",
+    "Forward context is structured data from earlier batches. Treat it as values, not prose authority. Do not paraphrase it into new facts without preserving the cited support level or source value.",
+    `Selected evidence chunk count for this batch: ${evidencePack?.totalChunks ?? 0}.`,
+    `forwardContext:\n${JSON.stringify(forwardContext, null, 2)}`,
+  ].join("\n");
+}
+
+function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
+  if (batch.id === "functional-capacity") return 6000;
+  if (batch.id === "support-delivery-safeguards") return 6000;
+  return 4500;
+}
+
+function buildFailedBatchSections(batch: CarePlanBatch, reason: string): ParsedDeliverableSection[] {
+  return batch.requirementIds.map((requirementId) => ({
+    requirementId,
+    heading: carePlanRequirementHeading(requirementId),
+    content: `Generation incomplete - ${reason}`,
+    evidenceSources: [],
+    structuredRows: [],
+  }));
+}
+
+function carePlanRequirementHeading(requirementId: string): string {
+  return ({
+    "care-plan-support-plan-meeting": "Support Plan Meeting",
+    "care-plan-goals": "Goals",
+    "care-plan-about-me": "About Me",
+    "care-plan-history-background": "History and Background",
+    "care-plan-undertaking-adl": "Undertaking ADL",
+    "care-plan-communication-strategy": "Communication and Communication Strategy",
+    "care-plan-mobility-strategy": "Mobility and Mobility Strategy",
+    "care-plan-support-delivery-client-safety": "Support Delivery and Client Safety",
+    "care-plan-behavioural-management": "Behavioural Management",
+    "care-plan-restrictive-practices": "Restrictive Practices",
+    "care-plan-mealtime-management-strategy": "Mealtime Management Strategy",
+    "care-plan-disaster-management-strategy": "Disaster Management Strategy",
+    "care-plan-client-endorsement": "Client Endorsement",
+    "care-plan-document-control": "Document Control",
+  } as Record<string, string>)[requirementId] ?? requirementId;
+}
+
+function updateCarePlanForwardContext(
+  context: CarePlanBatchForwardContext,
+  sections: ParsedDeliverableSection[],
+): void {
+  for (const section of sections) {
+    if (section.requirementId === "care-plan-support-plan-meeting") {
+      context.participantIdentity = {
+        ...context.participantIdentity,
+        ...extractLabelledFields(section.content, ["client name", "date of birth", "gender", "language spoken", "ndis number", "diagnosis"]),
+      };
+      context.planDates = {
+        ...context.planDates,
+        ...extractLabelledFields(section.content, ["plan date", "date for review", "review date"]),
+      };
+    }
+    if (section.requirementId === "care-plan-goals") {
+      context.goalRows = extractMarkdownTableRows(section.content);
+    }
+    if (section.requirementId === "care-plan-undertaking-adl") {
+      context.adlRows = (section.structuredRows ?? []).map(rowToForwardContextRecord);
+    }
+    if (section.requirementId === "care-plan-mobility-strategy") {
+      context.mobilityFindings = (section.structuredRows ?? []).map(rowToForwardContextRecord);
+    }
+    if (section.requirementId === "care-plan-support-delivery-client-safety") {
+      context.supportDeliveryFacts = extractMarkdownTableRows(section.content);
+    }
+    if (section.requirementId === "care-plan-restrictive-practices") {
+      context.restrictivePracticeFacts = extractMarkdownTableRows(section.content);
+      if (context.restrictivePracticeFacts.length === 0) {
+        context.restrictivePracticeFacts = [{ status: compactContent(section.content, 400) }];
+      }
+    }
+  }
+}
+
+function rowToForwardContextRecord(row: NonNullable<ParsedDeliverableSection["structuredRows"]>[number]): Record<string, string> {
+  return {
+    activity: row.activity,
+    supportLevel: row.supportLevel,
+    workerDescription: row.workerDescription,
+    sourceValue: row.sourceValue,
+    chunkId: row.chunkId,
+    mappingMode: row.mappingMode,
+  };
+}
+
+function extractLabelledFields(content: string, labels: string[]): Record<string, string> {
+  const fields: Record<string, string> = {};
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const label of labels) {
+    const pattern = new RegExp(`^[-*|\\s]*${escapeRegExp(label)}\\s*[:|]\\s*(.+?)\\s*\\|?$`, "i");
+    const match = lines.map((line) => line.match(pattern)).find(Boolean);
+    if (match?.[1]) fields[label] = match[1].trim();
+  }
+  return fields;
+}
+
+function extractMarkdownTableRows(content: string): Array<Record<string, string>> {
+  const rows = content.split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && line.endsWith("|"))
+    .map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
+  if (rows.length < 2) return [];
+  const header = rows[0]!;
+  return rows.slice(2).map((row) => {
+    const record: Record<string, string> = {};
+    header.forEach((column, index) => {
+      record[column || `column_${index + 1}`] = row[index] ?? "";
+    });
+    return record;
+  }).filter((row) => Object.values(row).some((value) => value.trim().length > 0));
+}
+
+function compactContent(content: string, maxChars: number): string {
+  return content.replace(/\s+/g, " ").trim().slice(0, maxChars);
+}
+
+function evaluateCarePlanCrossBatchConsistency(
+  sections: ParsedDeliverableSection[],
+): Array<Record<string, string>> {
+  const failures: Array<Record<string, string>> = [];
+  const rowByActivity = new Map<string, { requirementId: string; supportLevel: string; chunkId: string }>();
+  for (const section of sections) {
+    for (const row of section.structuredRows ?? []) {
+      const key = normaliseContentForEvidenceRanking(row.activity);
+      if (!key) continue;
+      const existing = rowByActivity.get(key);
+      if (existing && existing.supportLevel !== row.supportLevel) {
+        failures.push({
+          fact: row.activity,
+          firstSection: existing.requirementId,
+          firstStatement: existing.supportLevel,
+          secondSection: section.requirementId,
+          secondStatement: row.supportLevel,
+          firstChunkId: existing.chunkId,
+          secondChunkId: row.chunkId,
+        });
+      } else {
+        rowByActivity.set(key, {
+          requirementId: section.requirementId,
+          supportLevel: row.supportLevel,
+          chunkId: row.chunkId,
+        });
+      }
+    }
+  }
+  const supportPlanDates = sections.find((section) => section.requirementId === "care-plan-support-plan-meeting");
+  const documentControl = sections.find((section) => section.requirementId === "care-plan-document-control");
+  if (supportPlanDates && documentControl) {
+    const supportFields = extractLabelledFields(supportPlanDates.content, ["date for review", "review date"]);
+    const documentFields = extractLabelledFields(documentControl.content, ["date for review", "review date"]);
+    const supportDate = supportFields["date for review"] ?? supportFields["review date"];
+    const documentDate = documentFields["date for review"] ?? documentFields["review date"];
+    if (supportDate && documentDate && supportDate !== documentDate) {
+      failures.push({
+        fact: "review date",
+        firstSection: supportPlanDates.requirementId,
+        firstStatement: supportDate,
+        secondSection: documentControl.requirementId,
+        secondStatement: documentDate,
+      });
+    }
+  }
+  return failures;
+}
+
+function sumNullableTelemetry(items: Record<string, unknown>[], key: string): number | null {
+  const values = items.map((item) => item[key]).filter((value): value is number => typeof value === "number");
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function renderDeterministicStandardTemplateDraft(
