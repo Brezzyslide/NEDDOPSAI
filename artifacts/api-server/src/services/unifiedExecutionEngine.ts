@@ -3433,7 +3433,7 @@ function formatStructuredDeliverableResponseContract(
       {
         "requirementId": "<one mandatory requirement ID satisfied by this section>",
         "heading": "<user-facing heading>",
-        "content": "<generated user-facing content for this requirement only; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"${evidenceSourceExample}
+        "content": "<non-empty generated user-facing content for this requirement only; participant-specific content must never be blank; for deterministic templates, omit server-assembled fixed content, fields, structures and completion prompts>"${evidenceSourceExample}
       }
     ]
   }`;

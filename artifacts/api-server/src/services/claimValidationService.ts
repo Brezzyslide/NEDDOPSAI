@@ -1048,11 +1048,12 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
       raw.adl_rows ??
       raw.rows,
     );
-    if (!requirementId || !heading || !content) return [];
+    if (!requirementId || !heading) return [];
+    const safeContent = content || "Not assessed - no generated section content supplied.";
     return [{
       requirementId,
       heading,
-      content,
+      content: safeContent,
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
       ...(structuredRows.length > 0 ? { structuredRows } : {}),
     }];

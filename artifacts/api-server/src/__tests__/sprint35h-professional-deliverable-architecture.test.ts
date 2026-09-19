@@ -390,6 +390,47 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
   });
 
+  it("preserves identifiable deliverable sections with blank content as explicit content gaps", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      professional_work: {
+        summary: "Draft attempted.",
+        blueprint_completion: [],
+        requirement_to_deliverable_plan: [],
+        evidence_map: [],
+        missing_information: [],
+      },
+      requirement_coverage: { satisfied: [], missing: ["care-plan-about-me"] },
+      deliverable: {
+        type: "PARTICIPANT_NDIS_CARE_PLAN",
+        audience: "support workers",
+        sections: [
+          {
+            requirementId: "care-plan-about-me",
+            heading: "About Me",
+            content: "",
+            evidenceSources: [],
+            structuredRows: [],
+          },
+        ],
+      },
+      completion: {
+        operation: "CREATE",
+        unresolvedProfessionalContent: 1,
+        methodologyLeakage: false,
+        readyForCompletedWork: false,
+      },
+      claims: [],
+    }));
+
+    expect(parsed.deliverableSections).toEqual([
+      {
+        requirementId: "care-plan-about-me",
+        heading: "About Me",
+        content: "Not assessed - no generated section content supplied.",
+      },
+    ]);
+  });
+
   it("keeps targeted repair section schema compatible with OpenAI strict JSON schema", () => {
     const src = source("services/unifiedExecutionEngine.ts");
 
