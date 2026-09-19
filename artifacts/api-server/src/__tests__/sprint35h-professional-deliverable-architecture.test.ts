@@ -431,6 +431,28 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]);
   });
 
+  it("accepts top-level sections when a structured JSON response omits the deliverable wrapper", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      professional_work: { summary: "Draft attempted." },
+      requirement_coverage: { satisfied: ["care-plan-about-me"], missing: [] },
+      sections: [
+        {
+          requirementId: "care-plan-about-me",
+          heading: "About Me",
+          content: "Michael likes quiet routines and familiar workers.",
+        },
+      ],
+      completion: { unresolvedProfessionalContent: 0, methodologyLeakage: false, readyForCompletedWork: true },
+      claims: [],
+    }));
+
+    expect(parsed.deliverableSections?.[0]).toMatchObject({
+      requirementId: "care-plan-about-me",
+      heading: "About Me",
+      content: "Michael likes quiet routines and familiar workers.",
+    });
+  });
+
   it("keeps targeted repair section schema compatible with OpenAI strict JSON schema", () => {
     const src = source("services/unifiedExecutionEngine.ts");
 

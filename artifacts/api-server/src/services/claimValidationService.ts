@@ -1022,11 +1022,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, unknown>): ParsedDeliverableSection[] {
   const sections = firstArray(
+    Array.isArray(deliverable) ? deliverable : undefined,
     isRecord(deliverable) ? deliverable.sections : undefined,
     isRecord(deliverable) ? deliverable.sectionDeltas : undefined,
     isRecord(deliverable) ? deliverable.section_deltas : undefined,
     isRecord(deliverable) ? deliverable.changedSections : undefined,
     isRecord(deliverable) ? deliverable.changed_sections : undefined,
+    parsed?.sections,
     parsed?.deliverableSections,
     parsed?.deliverable_sections,
     parsed?.sectionDeltas,
