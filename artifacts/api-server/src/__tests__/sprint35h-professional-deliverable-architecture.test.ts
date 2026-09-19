@@ -1440,6 +1440,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("supportLevel");
   });
 
+  it("skips final synthesis when section-batched care plan already produced a complete canonical draft", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("hasCompleteBatchedCanonicalDraft");
+    expect(src).toContain('modelTelemetry?.runtimeProfile !== "professional_execution_batch"');
+    expect(src).toContain("!completeBatchedCanonicalDraft");
+    expect(src).toContain("sections[index]?.requirementId === requirementId");
+  });
+
+  it("does not discard a complete draft when final synthesis returns no canonical sections", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("fallbackToCurrentDraft: true");
+    expect(src).toContain("finalSynthesisFailure: synthesisResult.failureMessage");
+    expect(src).toContain("hasCompleteCanonicalDeliverableSections");
+    expect(src).toContain("Canonical final synthesis response did not include deliverable.sections[]");
+  });
+
   it("lets participant binding override standard-template wording when resolving care-plan deliverable type", () => {
     const carePlan = getRegistryEntry("care_plan") as any;
     const context = compileProfessionalExecutionContext({

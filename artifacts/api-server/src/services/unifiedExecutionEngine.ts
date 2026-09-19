@@ -1813,8 +1813,15 @@ export class UnifiedExecutionEngine {
       professionalWork,
     });
     runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
+    const completeBatchedCanonicalDraft = hasCompleteBatchedCanonicalDraft(
+      professionalContext,
+      latestModelTelemetry,
+      deliverableSections,
+      blueprintContract,
+    );
     if (
       latestModelTelemetry?.stage !== "deterministic_template_render" &&
+      !completeBatchedCanonicalDraft &&
       shouldRunCanonicalFinalDeliverableSynthesis(professionalContext, runtimeGate.failures, standardTemplateEvidence)
     ) {
       const synthesisResult = await this.synthesizeFinalDeliverable({
@@ -1831,6 +1838,31 @@ export class UnifiedExecutionEngine {
       });
 
       if (synthesisResult.failureMessage) {
+        const completeCurrentDraft = hasCompleteCanonicalDeliverableSections(
+          professionalContext,
+          deliverableSections,
+          blueprintContract,
+        );
+        if (completeCurrentDraft) {
+          await recordProfessionalSnapshot({
+            organizationId,
+            taskId: request.taskId,
+            manifest,
+            professionalContext,
+            blueprint,
+            stage: "final_synthesis_candidate",
+            sequence: snapshotSequence++,
+            contentMarkdown: reviewResult.finalContent,
+            structuredOutput: {
+              requirementPlan,
+              finalSynthesisFailure: synthesisResult.failureMessage,
+              fallbackToCurrentDraft: true,
+              deliverableSections,
+            },
+            coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+            modelTelemetry: synthesisResult.modelTelemetry,
+          });
+        } else {
         runtimeGate = {
           passed: false,
           failures: [{
@@ -1839,6 +1871,7 @@ export class UnifiedExecutionEngine {
             message: synthesisResult.failureMessage,
           }],
         };
+        }
       } else {
         draftContent = synthesisResult.content;
         rawClaims = synthesisResult.claims;
@@ -5274,6 +5307,35 @@ function shouldRunCanonicalFinalDeliverableSynthesis(
 ): boolean {
   if (professionalContext.operation === "CREATE" || professionalContext.operation === "TAILOR") return true;
   return shouldAttemptFinalDeliverableSynthesis(failures, standardTemplateEvidence);
+}
+
+function hasCompleteBatchedCanonicalDraft(
+  professionalContext: ProfessionalExecutionContext,
+  modelTelemetry: Record<string, unknown> | null | undefined,
+  sections: ParsedDeliverableSection[] | undefined,
+  contract?: BlueprintExecutionContract | null,
+): boolean {
+  if (modelTelemetry?.runtimeProfile !== "professional_execution_batch") return false;
+  const batchFailures = modelTelemetry.batchFailures;
+  if (Array.isArray(batchFailures) && batchFailures.length > 0) return false;
+  return hasCompleteCanonicalDeliverableSections(professionalContext, sections, contract);
+}
+
+function hasCompleteCanonicalDeliverableSections(
+  professionalContext: ProfessionalExecutionContext,
+  sections: ParsedDeliverableSection[] | undefined,
+  contract?: BlueprintExecutionContract | null,
+): boolean {
+  if (!sections?.length) return false;
+  if (!requiresCanonicalFinalDeliverablePayload(professionalContext)) return false;
+  const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  const requiredOrder = requirementOrderForCoverageProfile(coverageProfile);
+  if (sections.length !== requiredOrder.length) return false;
+  return requiredOrder.every((requirementId, index) =>
+    sections[index]?.requirementId === requirementId &&
+    typeof sections[index]?.heading === "string" &&
+    typeof sections[index]?.content === "string",
+  );
 }
 
 function requiresCanonicalFinalDeliverablePayload(
