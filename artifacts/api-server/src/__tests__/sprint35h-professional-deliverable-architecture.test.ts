@@ -542,6 +542,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("shouldRunCanonicalFinalDeliverableSynthesis");
     expect(src).toContain('professionalContext.operation === "CREATE"');
     expect(src).toContain("requiresCanonicalFinalDeliverablePayload");
+    expect(src).toContain("normaliseCanonicalDeliverableSectionsForContext");
+    expect(src).toContain("Not assessed - no generated section content supplied.");
     expect(src).toContain("Canonical final synthesis response did not include deliverable.sections[]");
     expect(src).toContain("REQUIRED USER-FACING DELIVERABLE CONTENT");
     expect(src).toContain("professionalContext.deliverable.mandatoryProfessionalContent");

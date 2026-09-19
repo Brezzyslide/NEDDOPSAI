@@ -2652,7 +2652,11 @@ export class UnifiedExecutionEngine {
       blueprintContract,
       parsed.deliverableSections,
     );
-    const finalDeliverableSections = assembledSections ?? parsed.deliverableSections;
+    const finalDeliverableSections = normaliseCanonicalDeliverableSectionsForContext(
+      professionalContext,
+      blueprintContract,
+      assembledSections ?? parsed.deliverableSections,
+    );
     const assembledContent = finalDeliverableSections?.length
       ? assembleDeliverableMarkdownFromSections(
           finalDeliverableSections,
@@ -4554,6 +4558,28 @@ function assembleTemplateSectionsForContext(
     blueprintSections: contract.sections,
     modelSections,
   }).sections;
+}
+
+function normaliseCanonicalDeliverableSectionsForContext(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+  modelSections: ParsedDeliverableSection[] | undefined,
+): ParsedDeliverableSection[] | undefined {
+  if (modelSections?.length) return modelSections;
+  if (!requiresCanonicalFinalDeliverablePayload(professionalContext) || !contract) return modelSections;
+  const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
+  return buildRequirementToDeliverablePlan(profile)
+    .filter((item) => item.applicability === "applicable")
+    .filter((item) =>
+      item.classification === "MUST_BE_REPRESENTED" ||
+      item.classification === "CONDITIONAL" ||
+      item.classification === "FACTUAL_FIELD"
+    )
+    .map((item) => ({
+      requirementId: item.requirementId,
+      heading: item.targetDeliverableLocation,
+      content: "Not assessed - no generated section content supplied.",
+    }));
 }
 
 function renderDeterministicStandardTemplateDraft(
