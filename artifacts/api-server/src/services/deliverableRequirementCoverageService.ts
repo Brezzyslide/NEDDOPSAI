@@ -119,6 +119,7 @@ export interface CarePlanCitationFinding {
   mode: CarePlanCitationValidationMode;
   accountable: boolean;
   passed: boolean;
+  accountableValue?: string;
   chunkId?: string;
   documentTitle?: string;
   citedText?: string;
@@ -1663,6 +1664,7 @@ function evaluateCarePlanCitationFindings(
         mode: "MISSING_CITATION",
         accountable: true,
         passed: false,
+        accountableValue: claim.value,
         citedText: nullishCitationText(section.evidenceSources),
         reason: `${claim.label} is an accountable value and has no verified citation.`,
       });
@@ -1678,6 +1680,7 @@ function evaluateCarePlanCitationFindings(
         mode: "VERIFIED_EXACT_VALUE",
         accountable: true,
         passed: true,
+        accountableValue: claim.value,
         chunkId: supported.source.chunkId,
         documentTitle: supported.source.documentTitle,
         citedText: supported.source.passage,
@@ -1691,6 +1694,7 @@ function evaluateCarePlanCitationFindings(
         mode: "UNSUPPORTED_CITATION",
         accountable: true,
         passed: false,
+        accountableValue: claim.value,
         chunkId: verifiedSources[0]?.source.chunkId,
         documentTitle: verifiedSources[0]?.source.documentTitle,
         citedText: verifiedSources.map(({ source }) => source.passage).join(" | ").slice(0, 1200),
@@ -1786,6 +1790,7 @@ function validateAdlAccountableClaim(
       mode: "MISSING_CITATION",
       accountable: true,
       passed: false,
+      accountableValue: claim.supportLevel,
       reason: "ADL support level is accountable and has no chunk citation.",
     };
   }
@@ -1796,6 +1801,7 @@ function validateAdlAccountableClaim(
       mode: "VERIFIED_MAPPING",
       accountable: true,
       passed: true,
+      accountableValue: claim.supportLevel,
       chunkId: claim.chunkId,
       citedText: claim.sourceValue,
       reason: `ADL source value "${claim.sourceValue}" deterministically maps to "${claim.supportLevel}".`,
@@ -1807,6 +1813,7 @@ function validateAdlAccountableClaim(
     mode: claim.mappingMode === "VERIFIED_MAPPING" ? "UNSUPPORTED_CITATION" : "CITED_INTERPRETATION_UNVERIFIED",
     accountable: true,
     passed: false,
+    accountableValue: claim.supportLevel,
     chunkId: claim.chunkId,
     citedText: claim.sourceValue,
     reason: claim.mappingMode === "VERIFIED_MAPPING"
@@ -1859,15 +1866,48 @@ function splitMarkdownRow(line: string | string[]): string[] {
   return line.split("|").slice(1, -1).map((cell) => cell.trim());
 }
 
+function extractMarkdownTablesFromContent(content: string): Array<{ headers: string[]; rows: string[][] }> {
+  const tables: Array<{ headers: string[]; rows: string[][] }> = [];
+  const lines = content.split(/\r?\n/);
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = lines[index]?.trim() ?? "";
+    const separator = lines[index + 1]?.trim() ?? "";
+    if (!header.startsWith("|") || !separator.startsWith("|") || !/^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)) continue;
+    const rows: string[][] = [];
+    let cursor = index + 2;
+    while (cursor < lines.length && (lines[cursor]?.trim().startsWith("|") ?? false)) {
+      rows.push(splitMarkdownRow(lines[cursor] ?? ""));
+      cursor += 1;
+    }
+    tables.push({ headers: splitMarkdownRow(header), rows });
+    index = cursor;
+  }
+  return tables;
+}
+
 function extractRestrictivePracticeStatusClaims(content: string): string[] {
   const values = new Set<string>();
-  const patterns = [
-    /\b(?:authorised|unauthorised|not authorised|authorization|authorisation|not applicable|not recorded|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion)\b/gi,
-  ];
-  for (const pattern of patterns) {
-    for (const match of content.matchAll(pattern)) {
+  const statusLines = content.split(/\r?\n/).filter((line) =>
+    /\b(?:participant-specific|for this participant|listed for .*participant|recorded for .*participant|restrictive practice status|status)\b/i.test(line) &&
+    /\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/i.test(line),
+  );
+  for (const line of statusLines) {
+    for (const match of line.matchAll(/\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
       const value = match[0]?.trim();
       if (value && !isMissingValue(value)) values.add(value);
+    }
+  }
+  for (const table of extractMarkdownTablesFromContent(content)) {
+    const statusIndex = table.headers.findIndex((header) =>
+      /\b(?:status|practice|restrictive practice|type)\b/i.test(header),
+    );
+    if (statusIndex < 0) continue;
+    for (const row of table.rows) {
+      const cell = row[statusIndex]?.trim() ?? "";
+      for (const match of cell.matchAll(/\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
+        const value = match[0]?.trim();
+        if (value && !isMissingValue(value)) values.add(value);
+      }
     }
   }
   return Array.from(values);

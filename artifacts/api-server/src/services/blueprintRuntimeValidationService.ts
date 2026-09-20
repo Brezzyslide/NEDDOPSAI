@@ -49,7 +49,9 @@ export interface BlueprintRuntimeGateFailure {
     | "artifact_required"
     | "approval_required"
     | "care_plan_behaviour_safety"
-    | "care_plan_protective_confirmation";
+    | "care_plan_protective_confirmation"
+    | "evidence_gap"
+    | "repair_degraded";
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];

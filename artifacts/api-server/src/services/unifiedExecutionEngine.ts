@@ -1940,37 +1940,108 @@ export class UnifiedExecutionEngine {
       }
     }
     if (!runtimeGate.passed) {
-      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
+      let coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
+      const gapReplacement = applyDeterministicEvidenceGapReplacements({
+        contentMarkdown: reviewResult.finalContent,
+        deliverableSections,
+        coverageFailures: coverageReport.missing,
+      });
+      if (gapReplacement.changed) {
+        draftContent = gapReplacement.contentMarkdown;
+        deliverableSections = gapReplacement.deliverableSections;
+        reviewResult = {
+          ...reviewResult,
+          finalContent: gapReplacement.contentMarkdown,
+          autoRevisionNote: [
+            reviewResult.autoRevisionNote,
+            "Unsupported accountable values were deterministically replaced with evidence-gap wording before repair.",
+          ].filter(Boolean).join(" "),
+        };
+        await recordProfessionalSnapshot({
+          organizationId,
+          taskId: request.taskId,
+          manifest,
+          professionalContext,
+          blueprint,
+          stage: "deterministic_gap_replacement",
+          sequence: snapshotSequence++,
+          contentMarkdown: reviewResult.finalContent,
+          structuredOutput: {
+            requirementPlan,
+            replacements: gapReplacement.replacements,
+          },
+          coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+          modelTelemetry: latestModelTelemetry,
+        });
+        runtimeGate = validateBlueprintRuntimeCompletion({
+          contract: blueprintContract,
+          contentMarkdown: reviewResult.finalContent,
+          rawClaims,
+          evidencePack: evidencePack ?? null,
+          artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+          deferApprovalGate: true,
+          standardTemplateEvidence,
+          professionalContext,
+          deliverableSections,
+          professionalWork,
+        });
+        runtimeGate = appendCarePlanCrossSectionConsistencyGate(runtimeGate, deliverableSections, professionalContext);
+        coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
+      }
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
       const hasMechanicalFailure = runtimeGate.failures.some((failure) => failure.gate === "mechanical_gate");
-      const repairableFailures = mergeRepairableRequirementFailures(
+      const mechanicalFailures = mechanicalRequirementFailuresForRepair(runtimeGate.failures, coverageReport);
+      const placeholderFailures = professionalPlaceholderFailuresForRepair(runtimeGate.failures, coverageReport, deliverableSections);
+      const repairClassification = classifyRequirementFailuresForRepair(
         coverageReport.missing,
-        mechanicalRequirementFailuresForRepair(runtimeGate.failures, coverageReport),
+        mechanicalFailures,
+        placeholderFailures,
       );
-      if ((hasCoverageFailure || hasMechanicalFailure) && repairableFailures.length > 0) {
+      if (repairClassification.evidenceGaps.length > 0) {
+        runtimeGate = appendRuntimeGateFailure(runtimeGate, {
+          gate: "evidence_gap",
+          state: "validation",
+          message: "Some care-plan failures are evidence gaps and cannot be fixed by rewriting. Provider evidence is required.",
+          details: repairClassification.evidenceGaps.map(formatRepairClassificationDetail),
+        });
+      }
+      const repairableFailures = mergeRepairableRequirementFailures(
+        repairClassification.repairable.map((entry) => entry.failure),
+        [],
+      );
+      if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0) {
         const repairGroups = groupRequirementFailuresForRepair(coverageProfile, repairableFailures).slice(0, 8);
         let repairFailureMessage: string | null = null;
         for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
           const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
-          const currentRepairableFailures = mergeRepairableRequirementFailures(
+          const currentGate = validateBlueprintRuntimeCompletion({
+            contract: blueprintContract,
+            contentMarkdown: reviewResult.finalContent,
+            rawClaims,
+            evidencePack: evidencePack ?? null,
+            artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+            deferApprovalGate: true,
+            standardTemplateEvidence,
+            professionalContext,
+            deliverableSections,
+            professionalWork,
+          });
+          const currentRepairClassification = classifyRequirementFailuresForRepair(
             currentCoverage.missing,
-            mechanicalRequirementFailuresForRepair(
-              validateBlueprintRuntimeCompletion({
-                contract: blueprintContract,
-                contentMarkdown: reviewResult.finalContent,
-                rawClaims,
-                evidencePack: evidencePack ?? null,
-                artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
-                deferApprovalGate: true,
-                standardTemplateEvidence,
-                professionalContext,
-                deliverableSections,
-                professionalWork,
-              }).failures,
-              currentCoverage,
-            ),
+            mechanicalRequirementFailuresForRepair(currentGate.failures, currentCoverage),
+            professionalPlaceholderFailuresForRepair(currentGate.failures, currentCoverage, deliverableSections),
+          );
+          const currentRepairableFailures = mergeRepairableRequirementFailures(
+            currentRepairClassification.repairable.map((entry) => entry.failure),
+            [],
           );
           if (currentRepairableFailures.length === 0) break;
+          const beforeRepairMetrics = buildRepairQualityMetrics({
+            contentMarkdown: reviewResult.finalContent,
+            deliverableSections,
+            coverageReport: currentCoverage,
+            runtimeGate: currentGate,
+          });
           const groupIds = new Set(repairGroups[repairIndex]!.map((failure) => failure.requirementId));
           const currentGroupMissing = currentRepairableFailures.filter((failure) => groupIds.has(failure.requirementId));
           if (currentGroupMissing.length === 0) continue;
@@ -1992,6 +2063,60 @@ export class UnifiedExecutionEngine {
 
           if (repairResult.failureMessage) {
             repairFailureMessage = repairResult.failureMessage;
+            break;
+          }
+          const candidateCoverage = evaluateDeliverableRequirementCoverage(repairResult.content, coverageProfile, {
+            deliverableSections: repairResult.deliverableSections,
+            evidencePack,
+          });
+          const candidateGate = validateBlueprintRuntimeCompletion({
+            contract: blueprintContract,
+            contentMarkdown: repairResult.content,
+            rawClaims: repairResult.claims,
+            evidencePack: evidencePack ?? null,
+            artifactId: artifactRequired ? "__artifact_generation_pending__" : null,
+            deferApprovalGate: true,
+            standardTemplateEvidence,
+            professionalContext,
+            deliverableSections: repairResult.deliverableSections,
+            professionalWork: repairResult.professionalWork ?? professionalWork,
+          });
+          const afterRepairMetrics = buildRepairQualityMetrics({
+            contentMarkdown: repairResult.content,
+            deliverableSections: repairResult.deliverableSections,
+            coverageReport: candidateCoverage,
+            runtimeGate: candidateGate,
+          });
+          const degradation = detectRepairDegradation(beforeRepairMetrics, afterRepairMetrics);
+          if (degradation.degraded) {
+            await recordProfessionalSnapshot({
+              organizationId,
+              taskId: request.taskId,
+              manifest,
+              professionalContext,
+              blueprint,
+              stage: "repair_degraded",
+              sequence: snapshotSequence++,
+              contentMarkdown: repairResult.content,
+              structuredOutput: {
+                requirementPlan,
+                repairedRequirementIds: currentGroupMissing.map((failure) => failure.requirementId),
+                repairGroupIndex: repairIndex + 1,
+                repairGroupCount: repairGroups.length,
+                before: beforeRepairMetrics,
+                after: afterRepairMetrics,
+                degradationReasons: degradation.reasons,
+              },
+              coverageSnapshot: buildCoverageSnapshot(repairResult.content, professionalContext, blueprintContract, repairResult.deliverableSections, evidencePack),
+              modelTelemetry: repairResult.modelTelemetry,
+            });
+            runtimeGate = appendRuntimeGateFailure(runtimeGate, {
+              gate: "repair_degraded",
+              state: "validation",
+              message: "Targeted repair was discarded because it degraded the draft.",
+              details: degradation.reasons,
+            });
+            repairFailureMessage = `Targeted repair degraded the draft: ${degradation.reasons.join("; ")}`;
             break;
           }
 
@@ -3288,6 +3413,294 @@ function mechanicalRequirementFailuresForRepair(
       };
     })
     .filter((failure): failure is DeliverableRequirementCoverageFailure => Boolean(failure));
+}
+
+type RepairFailureClassification = "REPAIRABLE" | "EVIDENCE_GAP";
+
+interface ClassifiedRepairFailure {
+  classification: RepairFailureClassification;
+  failure: DeliverableRequirementCoverageFailure;
+  reason: string;
+}
+
+function classifyRequirementFailuresForRepair(
+  coverageFailures: DeliverableRequirementCoverageFailure[],
+  mechanicalFailures: DeliverableRequirementCoverageFailure[],
+  placeholderFailures: DeliverableRequirementCoverageFailure[] = [],
+): { repairable: ClassifiedRepairFailure[]; evidenceGaps: ClassifiedRepairFailure[] } {
+  const merged = mergeRepairableRequirementFailures(coverageFailures, [
+    ...mechanicalFailures,
+    ...placeholderFailures,
+  ]);
+  const repairable: ClassifiedRepairFailure[] = [];
+  const evidenceGaps: ClassifiedRepairFailure[] = [];
+
+  for (const failure of merged) {
+    if (isEvidenceGapFailure(failure)) {
+      evidenceGaps.push({
+        classification: "EVIDENCE_GAP",
+        failure,
+        reason: evidenceGapReason(failure),
+      });
+    } else {
+      repairable.push({
+        classification: "REPAIRABLE",
+        failure,
+        reason: repairableFailureReason(failure),
+      });
+    }
+  }
+
+  return { repairable, evidenceGaps };
+}
+
+function isEvidenceGapFailure(failure: DeliverableRequirementCoverageFailure): boolean {
+  if (failure.substantiveValidationMode === "UNSUPPORTED_CITATION" ||
+      failure.substantiveValidationMode === "MISSING_CITATION" ||
+      failure.substantiveValidationMode === "CITED_INTERPRETATION_UNVERIFIED") {
+    return true;
+  }
+  if ((failure.citationFindings ?? []).some((finding) =>
+    !finding.passed &&
+    (finding.accountable ||
+      finding.mode === "UNSUPPORTED_CITATION" ||
+      finding.mode === "MISSING_CITATION" ||
+      finding.mode === "CITED_INTERPRETATION_UNVERIFIED"),
+  )) {
+    return true;
+  }
+  return /\b(?:unsupported citation|missing citation|no verified citation|not recorded in retrieved evidence|not assessed|unassessed|missing expected source|source document|document not supplied|evidence gap)\b/i.test(failure.reason);
+}
+
+function evidenceGapReason(failure: DeliverableRequirementCoverageFailure): string {
+  const citationModes = Array.from(new Set((failure.citationFindings ?? [])
+    .filter((finding) => !finding.passed)
+    .map((finding) => finding.mode)));
+  return citationModes.length > 0
+    ? `Evidence gap from citation mode(s): ${citationModes.join(", ")}`
+    : "Evidence gap cannot be resolved by rewriting; provider source evidence is required.";
+}
+
+function repairableFailureReason(failure: DeliverableRequirementCoverageFailure): string {
+  if (failure.structuralResult !== "STRUCTURE_PASS") return "Repairable structure defect.";
+  if (failure.actualLocation === null) return "Repairable missing section.";
+  if (/placeholder|\[.+\]|required rows|table|section not emitted|not emitted|missing field/i.test(failure.reason)) {
+    return "Repairable output structure or placeholder defect.";
+  }
+  return "Repairable mandatory deliverable representation defect.";
+}
+
+function formatRepairClassificationDetail(entry: ClassifiedRepairFailure): string {
+  return `${entry.classification}: ${entry.failure.requirementId}: ${entry.reason} ${entry.failure.reason}`.trim();
+}
+
+function professionalPlaceholderFailuresForRepair(
+  gateFailures: BlueprintRuntimeGateFailure[],
+  coverageReport: ReturnType<typeof evaluateDeliverableRequirementCoverage>,
+  deliverableSections?: ParsedDeliverableSection[],
+): DeliverableRequirementCoverageFailure[] {
+  const placeholderFailures = gateFailures.filter((failure) => failure.gate === "professional_placeholder");
+  if (placeholderFailures.length === 0) return [];
+  const sectionByRequirement = new Map((deliverableSections ?? []).map((section) => [section.requirementId, section]));
+  return coverageReport.requirementResults
+    .filter((item) => {
+      const section = sectionByRequirement.get(item.requirementId);
+      return Boolean(section && /\[[^\]]+\]/.test(section.content));
+    })
+    .map((item) => ({
+      requirementId: item.requirementId,
+      requirement: item.requirement,
+      classification: item.classification,
+      sourceBlueprintSection: item.sourceBlueprintSection,
+      requiredDeliverableRepresentation: item.expectedRepresentation,
+      expectedRepresentation: item.expectedRepresentation,
+      actualLocation: item.actualLocation,
+      structuralResult: item.structuralResult,
+      substantiveResult: item.substantiveResult,
+      finalResult: "NOT_SATISFIED" as const,
+      substantiveValidationMode: item.substantiveValidationMode,
+      citationFindings: item.citationFindings,
+      substantiveBreakdown: item.substantiveBreakdown,
+      expectedEvidenceCategories: item.expectedEvidenceCategories,
+      reason: "Professional placeholder tokens remain in this section.",
+    }));
+}
+
+function appendRuntimeGateFailure(
+  gate: ReturnType<typeof validateBlueprintRuntimeCompletion>,
+  failure: BlueprintRuntimeGateFailure,
+): ReturnType<typeof validateBlueprintRuntimeCompletion> {
+  return {
+    passed: false,
+    failures: [...gate.failures, failure],
+  };
+}
+
+interface DeterministicGapReplacementResult {
+  changed: boolean;
+  contentMarkdown: string;
+  deliverableSections?: ParsedDeliverableSection[];
+  replacements: Array<{
+    requirementId: string;
+    claim: string;
+    previousValue?: string;
+    replacement: string;
+    reason: string;
+  }>;
+}
+
+const DETERMINISTIC_EVIDENCE_GAP_VALUE = "not recorded in retrieved evidence";
+
+function applyDeterministicEvidenceGapReplacements(input: {
+  contentMarkdown: string;
+  deliverableSections?: ParsedDeliverableSection[];
+  coverageFailures: DeliverableRequirementCoverageFailure[];
+}): DeterministicGapReplacementResult {
+  if (!input.deliverableSections?.length) {
+    return { changed: false, contentMarkdown: input.contentMarkdown, deliverableSections: input.deliverableSections, replacements: [] };
+  }
+  const sections = input.deliverableSections.map((section) => ({
+    ...section,
+    evidenceSources: section.evidenceSources ? [...section.evidenceSources] : undefined,
+    structuredRows: section.structuredRows ? section.structuredRows.map((row) => ({ ...row })) : undefined,
+  }));
+  const sectionByRequirement = new Map(sections.map((section) => [section.requirementId, section]));
+  const replacements: DeterministicGapReplacementResult["replacements"] = [];
+
+  for (const failure of input.coverageFailures) {
+    for (const finding of failure.citationFindings ?? []) {
+      if (finding.passed || !finding.accountable) continue;
+      if (!["UNSUPPORTED_CITATION", "MISSING_CITATION", "CITED_INTERPRETATION_UNVERIFIED"].includes(finding.mode)) continue;
+      const section = sectionByRequirement.get(failure.requirementId);
+      if (!section) continue;
+
+      if (failure.requirementId === "care-plan-undertaking-adl" && section.structuredRows?.length) {
+        const beforeRows = JSON.stringify(section.structuredRows);
+        section.structuredRows = section.structuredRows.map((row) => {
+          const matchesActivity = finding.claim.toLowerCase().includes(row.activity.toLowerCase());
+          const matchesValue = finding.accountableValue && row.supportLevel === finding.accountableValue;
+          if (!matchesActivity && !matchesValue) return row;
+          return {
+            ...row,
+            supportLevel: "Not applicable / not assessed",
+            workerDescription: "Not assessed - no verified ADL source row was recorded in retrieved evidence.",
+            sourceValue: "Absent",
+            chunkId: "not-recorded-in-retrieved-evidence",
+            mappingMode: "VERIFIED_MAPPING" as const,
+          };
+        });
+        if (JSON.stringify(section.structuredRows) !== beforeRows) {
+          replacements.push({
+            requirementId: failure.requirementId,
+            claim: finding.claim,
+            previousValue: finding.accountableValue,
+            replacement: "Not applicable / not assessed",
+            reason: finding.reason,
+          });
+        }
+        continue;
+      }
+
+      if (!finding.accountableValue || !shouldDeterministicallyReplaceValue(failure.requirementId, finding.accountableValue)) continue;
+      const previous = section.content;
+      section.content = replaceAccountableValue(section.content, finding.accountableValue, DETERMINISTIC_EVIDENCE_GAP_VALUE);
+      if (section.content !== previous) {
+        replacements.push({
+          requirementId: failure.requirementId,
+          claim: finding.claim,
+          previousValue: finding.accountableValue,
+          replacement: DETERMINISTIC_EVIDENCE_GAP_VALUE,
+          reason: finding.reason,
+        });
+      }
+    }
+  }
+
+  if (replacements.length === 0) {
+    return { changed: false, contentMarkdown: input.contentMarkdown, deliverableSections: input.deliverableSections, replacements: [] };
+  }
+  const contentMarkdown = assembleDeliverableMarkdownFromSections(sections, sections.map((section) => section.requirementId));
+  return {
+    changed: true,
+    contentMarkdown: contentMarkdown || input.contentMarkdown,
+    deliverableSections: sections,
+    replacements,
+  };
+}
+
+function shouldDeterministicallyReplaceValue(requirementId: string, value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed || /\b(?:not recorded|not assessed|not supplied|not provided)\b/i.test(trimmed)) return false;
+  if (requirementId === "care-plan-restrictive-practices") return false;
+  return /\d/.test(trimmed) || /\s/.test(trimmed) || trimmed.length >= 12;
+}
+
+function replaceAccountableValue(content: string, value: string, replacement: string): string {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return content.replace(new RegExp(escaped, "g"), replacement);
+}
+
+interface RepairQualityMetrics {
+  coveragePercentage: number;
+  satisfiedCount: number;
+  missingCount: number;
+  blockingCitationCount: number;
+  placeholderCount: number;
+  mechanicalFailureCount: number;
+  sectionCount: number;
+  adlRowCount: number;
+  goalRowCount: number;
+}
+
+function buildRepairQualityMetrics(input: {
+  contentMarkdown: string;
+  deliverableSections?: ParsedDeliverableSection[];
+  coverageReport: ReturnType<typeof evaluateDeliverableRequirementCoverage>;
+  runtimeGate: ReturnType<typeof validateBlueprintRuntimeCompletion>;
+}): RepairQualityMetrics {
+  return {
+    coveragePercentage: input.coverageReport.coveragePercentage,
+    satisfiedCount: input.coverageReport.satisfiedCount,
+    missingCount: input.coverageReport.missingCount,
+    blockingCitationCount: input.coverageReport.requirementResults.reduce((count, item) =>
+      count + (item.citationFindings ?? []).filter((finding) =>
+        !finding.passed &&
+        (finding.accountable || finding.mode === "UNSUPPORTED_CITATION" || finding.mode === "MISSING_CITATION"),
+      ).length, 0),
+    placeholderCount: (input.contentMarkdown.match(/\[[^\]]+\]/g) ?? []).length,
+    mechanicalFailureCount: input.runtimeGate.failures.filter((failure) => failure.gate === "mechanical_gate").length,
+    sectionCount: input.deliverableSections?.filter((section) => section.content.trim()).length ?? 0,
+    adlRowCount: input.deliverableSections?.find((section) => section.requirementId === "care-plan-undertaking-adl")?.structuredRows?.length ?? 0,
+    goalRowCount: countCarePlanGoalRows(input.contentMarkdown),
+  };
+}
+
+function detectRepairDegradation(
+  before: RepairQualityMetrics,
+  after: RepairQualityMetrics,
+): { degraded: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  if (after.coveragePercentage < before.coveragePercentage) reasons.push(`coverage decreased from ${before.coveragePercentage}% to ${after.coveragePercentage}%`);
+  if (after.satisfiedCount < before.satisfiedCount) reasons.push(`satisfied requirements decreased from ${before.satisfiedCount} to ${after.satisfiedCount}`);
+  if (after.missingCount > before.missingCount) reasons.push(`missing requirements increased from ${before.missingCount} to ${after.missingCount}`);
+  if (after.blockingCitationCount > before.blockingCitationCount) reasons.push(`blocking citation findings increased from ${before.blockingCitationCount} to ${after.blockingCitationCount}`);
+  if (after.placeholderCount > before.placeholderCount) reasons.push(`placeholder count increased from ${before.placeholderCount} to ${after.placeholderCount}`);
+  if (after.placeholderCount > 0 && after.placeholderCount >= before.placeholderCount) reasons.push(`repair retained ${after.placeholderCount} placeholder token(s)`);
+  if (after.mechanicalFailureCount > before.mechanicalFailureCount) reasons.push(`mechanical failures increased from ${before.mechanicalFailureCount} to ${after.mechanicalFailureCount}`);
+  if (after.sectionCount < before.sectionCount) reasons.push(`section count decreased from ${before.sectionCount} to ${after.sectionCount}`);
+  if (after.adlRowCount < before.adlRowCount) reasons.push(`ADL structured rows decreased from ${before.adlRowCount} to ${after.adlRowCount}`);
+  if (after.goalRowCount < before.goalRowCount) reasons.push(`goal table rows decreased from ${before.goalRowCount} to ${after.goalRowCount}`);
+  return { degraded: reasons.length > 0, reasons };
+}
+
+function countCarePlanGoalRows(markdown: string): number {
+  const goalsMatch = markdown.match(/##\s+Goals\b[\s\S]*?(?=\n##\s+|\s*$)/i);
+  const section = goalsMatch?.[0] ?? "";
+  const rows = section.split(/\r?\n/).filter((line) => line.trim().startsWith("|"));
+  if (rows.length < 3) return 0;
+  const header = rows[0]?.toLowerCase() ?? "";
+  if (!["current situation", "goal", "actions", "person responsible", "timeframe", "outcomes"].every((value) => header.includes(value))) return 0;
+  return rows.slice(2).filter((line) => line.split("|").slice(1, -1).some((cell) => cell.trim())).length;
 }
 
 // ─── Canonical task runtime assembly ─────────────────────────────────────────
@@ -6001,7 +6414,7 @@ async function recordProfessionalSnapshot(input: {
   manifest: WorkPackageManifest;
   professionalContext: ProfessionalExecutionContext;
   blueprint: WorkBlueprint | null;
-  stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "targeted_repair_candidate" | "final_validated" | "gate_failure";
+  stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "targeted_repair_candidate" | "deterministic_gap_replacement" | "repair_degraded" | "final_validated" | "gate_failure";
   sequence: number;
   contentMarkdown?: string | null;
   structuredOutput?: Record<string, unknown> | null;

@@ -2660,6 +2660,50 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     )).toBe(true);
   });
 
+  it("does not treat generic restrictive-practice boilerplate as participant-specific status", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-restrictive-practices", "Restrictive Practices");
+    const content = [
+      "A restrictive practice must be authorised before use.",
+      "Workers must only use a listed practice as described in the behaviour support plan.",
+      "Participant-specific restrictive practice status: not recorded in retrieved evidence.",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Restrictive Practices\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-restrictive-practices",
+        heading: "Restrictive Practices",
+        content,
+        evidenceSources: [{
+          chunkId: "chunk-rp",
+          documentTitle: "CBSP",
+          passage: "The plan records behaviour support strategies but does not list restrictive practices.",
+          location: "p. 4",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("chunk-rp", "The plan records behaviour support strategies but does not list restrictive practices."),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
+      finding.accountable && /authorised/i.test(finding.claim),
+    )).toBe(false);
+  });
+
+  it("keeps targeted repair scoped to repairable failures and rejects degraded repair candidates", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("classifyRequirementFailuresForRepair");
+    expect(engine).toContain('"EVIDENCE_GAP"');
+    expect(engine).toContain("Evidence gap cannot be resolved by rewriting");
+    expect(engine).toContain("applyDeterministicEvidenceGapReplacements");
+    expect(engine).toContain("not recorded in retrieved evidence");
+    expect(engine).toContain("detectRepairDegradation");
+    expect(engine).toContain('stage: "repair_degraded"');
+    expect(engine).toContain('gate: "repair_degraded"');
+    expect(engine).toContain("coverage decreased");
+    expect(engine).toContain("goal table rows decreased");
+    expect(engine).toContain("blocking citation findings increased");
+  });
+
   it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {
     const exportService = source("services/completedWorkExportService.ts");
 
