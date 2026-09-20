@@ -29,6 +29,7 @@ import {
   assembleDeliverableMarkdownFromSections,
   mergeDeliverableSectionDeltas,
   parseSpecialistJsonOutput,
+  verifySpanDetailed,
 } from "../services/claimValidationService";
 import { planTask } from "../services/chiefOfStaffService";
 import { buildAuthoritativeTaskProposalPresentation } from "../services/taskProposalWorkforcePresentationService";
@@ -76,6 +77,56 @@ function manifest(overrides: Partial<WorkPackageManifest> = {}): WorkPackageMani
     createdAt: new Date("2026-08-26T00:00:00Z"),
     updatedAt: new Date("2026-08-26T00:00:00Z"),
     ...overrides,
+  };
+}
+
+function carePlanSingleRequirementProfile(requirementId: string, description: string) {
+  return {
+    deliverableType: "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE",
+    operation: "CREATE" as const,
+    standardisation: "participant_specific" as const,
+    requirements: [{
+      id: requirementId,
+      description,
+      classification: "MUST_BE_REPRESENTED" as const,
+      origin: "AUTHORED" as const,
+      professionalRationale: "Care-plan citation validation fixture.",
+      evidenceAuthority: [],
+      requiredDeliverableRepresentation: description,
+      adequacyCriteria: [],
+      templateCriteria: [],
+      fixedContent: [],
+      templateFields: [],
+      completionPrompt: null,
+      coverageRules: [{ allOf: [description.split(" ")[0] ?? "care"] }],
+    }],
+  };
+}
+
+function evidencePackWithChunk(chunkId: string, text: string) {
+  const chunk = {
+    chunkId,
+    sourceId: "source-fixture",
+    sourceVersionId: "version-fixture",
+    sourceTitle: "Fixture Source",
+    versionLabel: "v1",
+    sourceType: "participant_document",
+    documentCategory: "behaviour_support_plan",
+    evidenceClass: "PROFESSIONAL_SOURCE",
+    authorityLevel: "primary",
+    sectionTitle: "Fixture",
+    pageNumber: 1,
+    text,
+    confidence: 0.9,
+    citation: "Fixture Source, p.1",
+    selectionReason: "test fixture",
+  };
+  return {
+    sourceIds: ["source-fixture"],
+    chunks: [chunk],
+    citationsByType: { participant_document: [chunk] },
+    totalChunks: 1,
+    avgConfidence: 0.9,
   };
 }
 
@@ -2515,6 +2566,98 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(markdown).toContain("| Oral hygiene | Independent | Michael brushes his teeth without worker support. | Without support | 51ea99ce | VERIFIED_MAPPING |");
     expect(markdown).toContain("| Money handling and everyday purchases | Independent with prompting | Prompt Michael to check amounts and confirm purchases before paying. | Support required | 58501903 | VERIFIED_MAPPING |");
     expect(markdown).toContain("| Personal hygiene and grooming | Not applicable / not assessed | Not assessed - no structured ADL source row supplied. | Absent |  | CITED_INTERPRETATION |");
+  });
+
+  it("verifies cited spans after PDF-safe normalisation", () => {
+    const result = verifySpanDetailed(
+      "behaviour support plan records a supervision requirement",
+      "The behav-\n iour support plan records a supervision   requirement for the participant.",
+    );
+
+    expect(result.verified).toBe(true);
+    expect(result.byteExact).toBe(false);
+    expect(result.normalisationApplied).toEqual(expect.arrayContaining([
+      "NFKC unicode normalisation",
+      "case folded",
+      "soft hyphens removed",
+      "hyphenated line breaks joined",
+      "line breaks/whitespace collapsed",
+      "trimmed",
+    ]));
+  });
+
+  it("blocks accountable goal timeframes when the cited chunk does not contain the value", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-goals", "Goals");
+    const content = [
+      "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |",
+      "|---|---|---|---|---|---|",
+      "| Routine support is in place. | Maintain routine. | Prompt daily routine. | Elizabeth Johnson | 30/06/2026 | Routine maintained. |",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Goals\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-goals",
+        heading: "Goals",
+        content,
+        evidenceSources: [{
+          chunkId: "chunk-goals",
+          documentTitle: "CBSP",
+          passage: "Michael likes shopping and music.",
+          location: "p. 1",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("chunk-goals", "Michael likes shopping and music."),
+    });
+
+    expect(report.missing[0]?.substantiveValidationMode).toBe("UNSUPPORTED_CITATION");
+    expect(report.missing[0]?.reason).toContain("Claim:");
+    expect(report.missing[0]?.reason).toContain("30/06/2026");
+    expect(report.missing[0]?.reason).toContain("Cited text:");
+    expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
+      finding.mode === "UNSUPPORTED_CITATION" && finding.accountable,
+    )).toBe(true);
+  });
+
+  it("blocks accountable dates when no citation is supplied", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-goals", "Goals");
+    const content = [
+      "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |",
+      "|---|---|---|---|---|---|",
+      "| Routine support is in place. | Maintain routine. | Prompt daily routine. | Elizabeth Johnson | 30/06/2026 | Routine maintained. |",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Goals\n\n${content}`, profile, {
+      deliverableSections: [{ requirementId: "care-plan-goals", heading: "Goals", content, evidenceSources: [] }],
+      evidencePack: evidencePackWithChunk("unused", "No dates here."),
+    });
+
+    expect(report.missing[0]?.substantiveValidationMode).toBe("MISSING_CITATION");
+    expect(report.missing[0]?.reason).toContain("has no verified citation");
+  });
+
+  it("blocks ADL support levels that are only cited interpretation", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-undertaking-adl", "Undertaking ADL");
+    const content = "ADL rows are supplied structurally.";
+    const report = evaluateDeliverableRequirementCoverage(`## Undertaking ADL\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-undertaking-adl",
+        heading: "Undertaking ADL",
+        content,
+        structuredRows: [{
+          activity: "Oral hygiene",
+          supportLevel: "Independent",
+          workerDescription: "Michael brushes his teeth independently.",
+          sourceValue: "Support required",
+          chunkId: "chunk-adl",
+          mappingMode: "CITED_INTERPRETATION",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("chunk-adl", "Brush teeth: Support required."),
+    });
+
+    expect(report.missing[0]?.reason).toContain("ADL support levels are accountable values and cannot pass as cited interpretation");
+    expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
+      finding.mode === "CITED_INTERPRETATION_UNVERIFIED" && !finding.passed,
+    )).toBe(true);
   });
 
   it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {

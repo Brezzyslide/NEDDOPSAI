@@ -1905,7 +1905,7 @@ export class UnifiedExecutionEngine {
           evidencePack: evidencePack ?? null,
           requirementPlan,
           failedRequirements: toReviewFailedRequirements(
-            evaluateDeliverableRequirementCoverage(draftContent, coverageProfile, { deliverableSections }).missing,
+            evaluateDeliverableRequirementCoverage(draftContent, coverageProfile, { deliverableSections, evidencePack }).missing,
           ),
           deliverableContract: blueprint?.deliverableContract ?? null,
         });
@@ -1940,7 +1940,7 @@ export class UnifiedExecutionEngine {
       }
     }
     if (!runtimeGate.passed) {
-      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
+      const coverageReport = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
       const hasCoverageFailure = runtimeGate.failures.some((failure) => failure.gate === "mandatory_deliverable_coverage");
       const hasMechanicalFailure = runtimeGate.failures.some((failure) => failure.gate === "mechanical_gate");
       const repairableFailures = mergeRepairableRequirementFailures(
@@ -1951,7 +1951,7 @@ export class UnifiedExecutionEngine {
         const repairGroups = groupRequirementFailuresForRepair(coverageProfile, repairableFailures).slice(0, 8);
         let repairFailureMessage: string | null = null;
         for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
-          const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections });
+          const currentCoverage = evaluateDeliverableRequirementCoverage(reviewResult.finalContent, coverageProfile, { deliverableSections, evidencePack });
           const currentRepairableFailures = mergeRepairableRequirementFailures(
             currentCoverage.missing,
             mechanicalRequirementFailuresForRepair(
@@ -5876,7 +5876,7 @@ function buildCoverageSnapshot(
   evidencePack?: EvidencePack | null,
 ): Record<string, unknown> {
   const profile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile, { deliverableSections });
+  const report = evaluateDeliverableRequirementCoverage(contentMarkdown, profile, { deliverableSections, evidencePack });
   return {
     deliverableType: report.deliverableType,
     operation: report.operation,

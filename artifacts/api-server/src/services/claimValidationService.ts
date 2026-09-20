@@ -160,13 +160,74 @@ const APPROVED_EXTERNAL_SOURCE_TYPES = new Set([
 
 // ─── Supporting-span verification ─────────────────────────────────────────────
 
+export interface SpanVerificationResult {
+  verified: boolean;
+  byteExact: boolean;
+  normalised: boolean;
+  normalisedSpan: string;
+  normalisedChunkExcerpt: string | null;
+  normalisationApplied: string[];
+}
+
+const SPAN_NORMALISATION_STEPS = [
+  "NFKC unicode normalisation",
+  "case folded",
+  "soft hyphens removed",
+  "hyphenated line breaks joined",
+  "line breaks/whitespace collapsed",
+  "trimmed",
+];
+
+function normaliseEvidenceSpanText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .replace(/\u00AD/g, "")
+    .replace(/([A-Za-z])-\s*[\r\n]+\s*([A-Za-z])/g, "$1$2")
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 /**
- * Returns true if `span` exists verbatim inside `chunkText`.
- * Case-sensitive. Never fuzzy-rewrites or normalises the quotation.
+ * Verifies that `span` exists inside `chunkText` after PDF-safe normalisation.
+ * A positive result means the supporting passage is real; semantic support for
+ * the assertion is still classified separately.
  */
+export function verifySpanDetailed(span: string, chunkText: string): SpanVerificationResult {
+  if (!span || !chunkText) {
+    return {
+      verified: false,
+      byteExact: false,
+      normalised: true,
+      normalisedSpan: "",
+      normalisedChunkExcerpt: null,
+      normalisationApplied: SPAN_NORMALISATION_STEPS,
+    };
+  }
+  const byteExact = chunkText.includes(span);
+  const normalisedSpan = normaliseEvidenceSpanText(span);
+  const normalisedChunk = normaliseEvidenceSpanText(chunkText);
+  const verified = byteExact || (Boolean(normalisedSpan) && normalisedChunk.includes(normalisedSpan));
+  const index = normalisedSpan ? normalisedChunk.indexOf(normalisedSpan) : -1;
+  return {
+    verified,
+    byteExact,
+    normalised: !byteExact,
+    normalisedSpan,
+    normalisedChunkExcerpt: index >= 0
+      ? normalisedChunk.slice(Math.max(0, index - 80), index + normalisedSpan.length + 80)
+      : null,
+    normalisationApplied: SPAN_NORMALISATION_STEPS,
+  };
+}
+
+export function normaliseEvidenceTextForComparison(value: string): string {
+  return normaliseEvidenceSpanText(value);
+}
+
 export function verifySpan(span: string, chunkText: string): boolean {
-  if (!span || !chunkText) return false;
-  return chunkText.includes(span);
+  return verifySpanDetailed(span, chunkText).verified;
 }
 
 // ─── External authority check ──────────────────────────────────────────────────
@@ -264,7 +325,8 @@ function validateSingleClaim(
     let semanticConflicts: ConflictSignal[] = [];
 
     if (ev.supportingSpan) {
-      if (verifySpan(ev.supportingSpan, chunk.text)) {
+      const spanVerification = verifySpanDetailed(ev.supportingSpan, chunk.text);
+      if (spanVerification.verified) {
         supportingSpan = ev.supportingSpan;
         spanVerified = true;
         // Sprint 29K.4: classify semantic support — does the span actually support the claim?
@@ -285,7 +347,7 @@ function validateSingleClaim(
         // "span was provided but failed verification".
         spanRejected = true;
         spanRejectionReason =
-          `supportingSpan "${ev.supportingSpan.slice(0, 60)}..." is NOT an exact substring of chunkId "${ev.chunkId}" — span rejected, binding retained without span`;
+          `supportingSpan "${ev.supportingSpan.slice(0, 60)}..." is NOT present in chunkId "${ev.chunkId}" after normalisation (${spanVerification.normalisationApplied.join(", ")}) — span rejected, binding retained without span`;
         failures.push(spanRejectionReason);
       }
     }

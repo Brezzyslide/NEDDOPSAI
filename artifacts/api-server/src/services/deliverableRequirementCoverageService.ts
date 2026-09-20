@@ -8,6 +8,11 @@ import {
   normaliseCarePlanAdlActivity,
   type CarePlanAdlStructuredRow,
 } from "./carePlanAdlModel.js";
+import {
+  normaliseEvidenceTextForComparison,
+  verifySpanDetailed,
+} from "./claimValidationService.js";
+import type { EvidenceChunk, EvidencePack } from "./knowledgeResolutionService.js";
 
 export type DeliverableRequirementClassification =
   | "INTERNAL_METHODOLOGY"
@@ -62,6 +67,7 @@ export interface DeliverableRequirementCoverageFailure {
   substantiveResult?: RequirementSubstantiveResult;
   finalResult?: RequirementFinalResult;
   substantiveValidationMode?: RequirementSubstantiveValidationMode;
+  citationFindings?: CarePlanCitationFinding[];
   substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   expectedEvidenceCategories?: string[];
   reason: string;
@@ -89,9 +95,36 @@ export type RequirementSubstantiveValidationMode =
   | "TEMPLATE_CRITERIA"
   | "ADEQUACY_CRITERIA"
   | "UNVERIFIED_SEMANTIC_CRITERIA"
+  | "VERIFIED_EXACT_VALUE"
+  | "VERIFIED_MAPPING"
+  | "VERIFIED_SPAN"
+  | "CITED_INTERPRETATION_UNVERIFIED"
+  | "UNSUPPORTED_CITATION"
+  | "MISSING_CITATION"
   | "DOMAIN_HEURISTIC"
   | "FALLBACK_HEURISTIC"
   | "NOT_APPLICABLE";
+
+export type CarePlanCitationValidationMode =
+  | "VERIFIED_EXACT_VALUE"
+  | "VERIFIED_MAPPING"
+  | "VERIFIED_SPAN"
+  | "CITED_INTERPRETATION_UNVERIFIED"
+  | "UNSUPPORTED_CITATION"
+  | "MISSING_CITATION";
+
+export interface CarePlanCitationFinding {
+  requirementId: string;
+  claim: string;
+  mode: CarePlanCitationValidationMode;
+  accountable: boolean;
+  passed: boolean;
+  chunkId?: string;
+  documentTitle?: string;
+  citedText?: string;
+  reason: string;
+  normalisationApplied?: string[];
+}
 
 export interface DeliverableRequirementCoverageItem {
   requirementId: string;
@@ -110,6 +143,7 @@ export interface DeliverableRequirementCoverageItem {
   structuralResult: RequirementStructuralResult;
   substantiveResult: RequirementSubstantiveResult;
   substantiveValidationMode: RequirementSubstantiveValidationMode;
+  citationFindings?: CarePlanCitationFinding[];
   substantiveBreakdown?: DeliverableSubstantiveBreakdown;
   finalResult: RequirementFinalResult;
   failureReason: string | null;
@@ -365,7 +399,7 @@ export function groupRequirementFailuresForRepair(
 export function evaluateDeliverableRequirementCoverage(
   contentMarkdown: string,
   profile: DeliverableRequirementCoverageProfile,
-  options: { deliverableSections?: PerRequirementDeliverableSection[] } = {},
+  options: { deliverableSections?: PerRequirementDeliverableSection[]; evidencePack?: EvidencePack | null } = {},
 ): DeliverableRequirementCoverageReport {
   const normalisedContent = normaliseContent(contentMarkdown);
   const structure = parseMarkdownStructure(contentMarkdown);
@@ -396,6 +430,7 @@ export function evaluateDeliverableRequirementCoverage(
       schema,
       structuredSection: structuredSections.get(requirement.id) ?? null,
       structuredSectionsProvided,
+      evidencePack: options.evidencePack ?? null,
     });
     requirementResults.push(result);
     if (result.finalResult === "SATISFIED") {
@@ -418,6 +453,7 @@ export function evaluateDeliverableRequirementCoverage(
       structuralResult: result.structuralResult,
       substantiveResult: result.substantiveResult,
       substantiveValidationMode: result.substantiveValidationMode,
+      citationFindings: result.citationFindings,
       substantiveBreakdown: result.substantiveBreakdown,
       finalResult: result.finalResult,
       reason: result.failureReason ?? "Required professional substance is not represented in the user-facing deliverable.",
@@ -1159,6 +1195,7 @@ function validateRequirementAgainstContent(input: {
   schema: DeliverableOutputSchema;
   structuredSection: PerRequirementDeliverableSection | null;
   structuredSectionsProvided: boolean;
+  evidencePack: EvidencePack | null;
 }): DeliverableRequirementCoverageItem {
   const { requirement } = input;
   if (input.structuredSectionsProvided && !input.structuredSection && isBlockingRequirement(requirement.classification)) {
@@ -1453,7 +1490,7 @@ function validateRepresentedRequirement(input: {
       : adl.partial
         ? "PARTIAL"
         : "NOT_SATISFIED";
-    return coverageItem(requirement, {
+    return applyCarePlanCitationGate(coverageItem(requirement, {
       actualLocation: relevant.location,
       structuralResult: adl.structuralPassed
         ? "STRUCTURE_PASS"
@@ -1470,7 +1507,7 @@ function validateRepresentedRequirement(input: {
       finalResult,
       unverifiedSemanticCriteria: adl.unverifiedRows,
       failureReason: finalResult === "SATISFIED" ? null : adl.reason,
-    });
+    }), input);
   }
 
   const substantive = evaluateSubstantiveClauseContent(requirement, relevant.content, input.standardisation);
@@ -1505,7 +1542,7 @@ function validateRepresentedRequirement(input: {
       ? "PARTIAL"
       : "NOT_SATISFIED";
 
-  return coverageItem(requirement, {
+  return applyCarePlanCitationGate(coverageItem(requirement, {
     actualLocation: relevant.location,
     structuralResult: "STRUCTURE_PASS",
     substantiveResult: substantive.passed
@@ -1521,7 +1558,328 @@ function validateRepresentedRequirement(input: {
     failureReason: finalResult === "SATISFIED"
       ? null
       : substantive.reason ?? "Relevant section exists but does not materially address the professional requirement.",
-  });
+  }), input);
+}
+
+function applyCarePlanCitationGate(
+  item: DeliverableRequirementCoverageItem,
+  input: {
+    requirement: DeliverableRequirement;
+    structuredSection: PerRequirementDeliverableSection | null;
+    evidencePack: EvidencePack | null;
+  },
+): DeliverableRequirementCoverageItem {
+  if (!input.requirement.id.startsWith("care-plan-") || !input.structuredSection) return item;
+  const findings = evaluateCarePlanCitationFindings(input.requirement, input.structuredSection, input.evidencePack);
+  if (findings.length === 0) return item;
+  const blocking = findings.filter((finding) => !finding.passed && (
+    finding.accountable ||
+    finding.mode === "UNSUPPORTED_CITATION"
+  ));
+  const citationFindings = [...(item.citationFindings ?? []), ...findings];
+  if (blocking.length === 0) {
+    return { ...item, citationFindings };
+  }
+  const reason = blocking.map(formatCitationFindingFailure).join(" ");
+  return {
+    ...item,
+    citationFindings,
+    substantiveResult: "SUBSTANTIVE_FAIL",
+    substantiveValidationMode: blocking.some((finding) => finding.mode === "MISSING_CITATION")
+      ? "MISSING_CITATION"
+      : "UNSUPPORTED_CITATION",
+    finalResult: "NOT_SATISFIED",
+    failureReason: item.failureReason ? `${item.failureReason} ${reason}` : reason,
+  };
+}
+
+function evaluateCarePlanCitationFindings(
+  requirement: DeliverableRequirement,
+  section: PerRequirementDeliverableSection,
+  evidencePack: EvidencePack | null,
+): CarePlanCitationFinding[] {
+  const chunks = new Map<string, EvidenceChunk>((evidencePack?.chunks ?? []).map((chunk) => [chunk.chunkId, chunk]));
+  const findings: CarePlanCitationFinding[] = [];
+  const verifiedSources: Array<{ source: PerRequirementEvidenceSource; chunk: EvidenceChunk; citedText: string }> = [];
+
+  for (const source of section.evidenceSources ?? []) {
+    const chunk = chunks.get(source.chunkId);
+    if (!chunk) {
+      findings.push({
+        requirementId: requirement.id,
+        claim: `${section.heading}: cited evidence source`,
+        mode: "UNSUPPORTED_CITATION",
+        accountable: false,
+        passed: false,
+        chunkId: source.chunkId,
+        documentTitle: source.documentTitle,
+        citedText: source.passage,
+        reason: `Cited chunk is not present in the runtime evidence pack.`,
+      });
+      continue;
+    }
+    const span = verifySpanDetailed(source.passage, chunk.text);
+    if (!span.verified) {
+      findings.push({
+        requirementId: requirement.id,
+        claim: `${section.heading}: cited evidence passage`,
+        mode: "UNSUPPORTED_CITATION",
+        accountable: false,
+        passed: false,
+        chunkId: source.chunkId,
+        documentTitle: source.documentTitle,
+        citedText: source.passage,
+        reason: `Cited passage was not found in the chunk after normalisation.`,
+        normalisationApplied: span.normalisationApplied,
+      });
+      continue;
+    }
+    verifiedSources.push({ source, chunk, citedText: source.passage });
+    findings.push({
+      requirementId: requirement.id,
+      claim: `${section.heading}: cited evidence passage`,
+      mode: "VERIFIED_SPAN",
+      accountable: false,
+      passed: true,
+      chunkId: source.chunkId,
+      documentTitle: source.documentTitle,
+      citedText: source.passage,
+      reason: span.byteExact
+        ? "Span verified byte-exact; support still inferred from the claim context."
+        : "Span verified after normalisation; support inferred.",
+      normalisationApplied: span.byteExact ? undefined : span.normalisationApplied,
+    });
+  }
+
+  for (const claim of extractCarePlanAccountableClaims(requirement, section)) {
+    if (claim.kind === "adl_support_level") {
+      findings.push(validateAdlAccountableClaim(requirement.id, claim));
+      continue;
+    }
+    if (verifiedSources.length === 0) {
+      findings.push({
+        requirementId: requirement.id,
+        claim: claim.claim,
+        mode: "MISSING_CITATION",
+        accountable: true,
+        passed: false,
+        citedText: nullishCitationText(section.evidenceSources),
+        reason: `${claim.label} is an accountable value and has no verified citation.`,
+      });
+      continue;
+    }
+    const supported = verifiedSources.find(({ source, chunk }) =>
+      exactValueInEvidence(claim.value, source.passage) || exactValueInEvidence(claim.value, chunk.text),
+    );
+    if (supported) {
+      findings.push({
+        requirementId: requirement.id,
+        claim: claim.claim,
+        mode: "VERIFIED_EXACT_VALUE",
+        accountable: true,
+        passed: true,
+        chunkId: supported.source.chunkId,
+        documentTitle: supported.source.documentTitle,
+        citedText: supported.source.passage,
+        reason: `${claim.label} exact value appears in cited evidence after normalisation.`,
+        normalisationApplied: ["NFKC unicode normalisation", "case folded", "soft hyphens removed", "hyphenated line breaks joined", "line breaks/whitespace collapsed", "trimmed"],
+      });
+    } else {
+      findings.push({
+        requirementId: requirement.id,
+        claim: claim.claim,
+        mode: "UNSUPPORTED_CITATION",
+        accountable: true,
+        passed: false,
+        chunkId: verifiedSources[0]?.source.chunkId,
+        documentTitle: verifiedSources[0]?.source.documentTitle,
+        citedText: verifiedSources.map(({ source }) => source.passage).join(" | ").slice(0, 1200),
+        reason: `${claim.label} exact value "${claim.value}" does not appear in the cited passage or chunk after normalisation.`,
+        normalisationApplied: ["NFKC unicode normalisation", "case folded", "soft hyphens removed", "hyphenated line breaks joined", "line breaks/whitespace collapsed", "trimmed"],
+      });
+    }
+  }
+
+  return findings;
+}
+
+type AccountableCarePlanClaim =
+  | { kind: "exact"; label: string; value: string; claim: string }
+  | { kind: "adl_support_level"; activity: string; supportLevel: string; sourceValue: string; mappingMode: string; chunkId: string; claim: string };
+
+function extractCarePlanAccountableClaims(
+  requirement: DeliverableRequirement,
+  section: PerRequirementDeliverableSection,
+): AccountableCarePlanClaim[] {
+  const claims: AccountableCarePlanClaim[] = [];
+  const content = section.content;
+  const dateValues = Array.from(new Set(content.match(/\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\b/g) ?? []));
+  const dateRelevant = requirement.id === "care-plan-goals" ||
+    requirement.id === "care-plan-support-plan-meeting" ||
+    requirement.id === "care-plan-document-control";
+  if (dateRelevant) {
+    for (const value of dateValues) {
+      claims.push({ kind: "exact", label: "date/timeframe", value, claim: `${section.heading}: ${value}` });
+    }
+  }
+
+  if (requirement.id === "care-plan-goals") {
+    for (const value of extractMarkdownTableColumn(content, "person responsible")) {
+      if (!isMissingValue(value)) {
+        claims.push({ kind: "exact", label: "person responsible", value, claim: `${section.heading}: person responsible ${value}` });
+      }
+    }
+    for (const value of extractMarkdownTableColumn(content, "timeframe")) {
+      if (!isMissingValue(value)) {
+        claims.push({ kind: "exact", label: "goal timeframe", value, claim: `${section.heading}: goal timeframe ${value}` });
+      }
+    }
+  }
+
+  if (requirement.id === "care-plan-support-plan-meeting") {
+    for (const label of ["Support Plan Developed By", "People Present", "Date for Review", "Plan Date"]) {
+      const value = extractLabelValue(content, label);
+      if (value && !isMissingValue(value)) {
+        claims.push({ kind: "exact", label: label.toLowerCase(), value, claim: `${section.heading}: ${label} ${value}` });
+      }
+    }
+  }
+
+  if (requirement.id === "care-plan-restrictive-practices") {
+    for (const value of extractRestrictivePracticeStatusClaims(content)) {
+      claims.push({ kind: "exact", label: "restrictive practice status", value, claim: `${section.heading}: restrictive practice status ${value}` });
+    }
+  }
+
+  if (requirement.id === "care-plan-mobility-strategy") {
+    for (const value of extractMobilityAidClaims(content)) {
+      claims.push({ kind: "exact", label: "mobility aid/status", value, claim: `${section.heading}: mobility aid/status ${value}` });
+    }
+  }
+
+  if (requirement.id === "care-plan-undertaking-adl") {
+    for (const row of section.structuredRows ?? []) {
+      claims.push({
+        kind: "adl_support_level",
+        activity: row.activity,
+        supportLevel: row.supportLevel,
+        sourceValue: row.sourceValue,
+        mappingMode: row.mappingMode,
+        chunkId: row.chunkId,
+        claim: `${section.heading}: ${row.activity} support level ${row.supportLevel}`,
+      });
+    }
+  }
+
+  return claims;
+}
+
+function validateAdlAccountableClaim(
+  requirementId: string,
+  claim: Extract<AccountableCarePlanClaim, { kind: "adl_support_level" }>,
+): CarePlanCitationFinding {
+  const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
+  if (!claim.chunkId.trim()) {
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: "MISSING_CITATION",
+      accountable: true,
+      passed: false,
+      reason: "ADL support level is accountable and has no chunk citation.",
+    };
+  }
+  if (claim.mappingMode === "VERIFIED_MAPPING" && expected.includes(claim.supportLevel)) {
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: "VERIFIED_MAPPING",
+      accountable: true,
+      passed: true,
+      chunkId: claim.chunkId,
+      citedText: claim.sourceValue,
+      reason: `ADL source value "${claim.sourceValue}" deterministically maps to "${claim.supportLevel}".`,
+    };
+  }
+  return {
+    requirementId,
+    claim: claim.claim,
+    mode: claim.mappingMode === "VERIFIED_MAPPING" ? "UNSUPPORTED_CITATION" : "CITED_INTERPRETATION_UNVERIFIED",
+    accountable: true,
+    passed: false,
+    chunkId: claim.chunkId,
+    citedText: claim.sourceValue,
+    reason: claim.mappingMode === "VERIFIED_MAPPING"
+      ? `ADL source value "${claim.sourceValue}" does not deterministically map to "${claim.supportLevel}".`
+      : "ADL support levels are accountable values and cannot pass as cited interpretation.",
+  };
+}
+
+function exactValueInEvidence(value: string, evidenceText: string): boolean {
+  const normalisedValue = normaliseEvidenceTextForComparison(value);
+  const normalisedEvidence = normaliseEvidenceTextForComparison(evidenceText);
+  return Boolean(normalisedValue) && normalisedEvidence.includes(normalisedValue);
+}
+
+function formatCitationFindingFailure(finding: CarePlanCitationFinding): string {
+  const cited = finding.citedText ? ` Cited text: "${finding.citedText.slice(0, 300)}"` : " Cited text: none.";
+  return `[${finding.mode}] Claim: "${finding.claim}". ${finding.reason}.${cited}`;
+}
+
+function nullishCitationText(sources: PerRequirementEvidenceSource[] | undefined): string | undefined {
+  if (!sources?.length) return undefined;
+  return sources.map((source) => source.passage).join(" | ").slice(0, 1200);
+}
+
+function isMissingValue(value: string): boolean {
+  return /\b(?:not recorded|not available|not assessed|not supplied|evidence not recorded|unknown|to be supplied|not provided)\b/i.test(value.trim());
+}
+
+function extractLabelValue(content: string, label: string): string | null {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(new RegExp(`\\*\\*${escaped}:\\*\\*\\s*([^\\n]+)`, "i")) ??
+    content.match(new RegExp(`^\\s*${escaped}:\\s*([^\\n]+)`, "im"));
+  return match?.[1]?.trim() ?? null;
+}
+
+function extractMarkdownTableColumn(content: string, headerName: string): string[] {
+  const lines = content.split(/\r?\n/).filter((line) => line.trim().startsWith("|"));
+  if (lines.length < 3) return [];
+  const headers = splitMarkdownRow(lines[0] ?? []);
+  const index = headers.findIndex((header) => normaliseContent(header).includes(normaliseContent(headerName)));
+  if (index < 0) return [];
+  return lines.slice(2)
+    .map(splitMarkdownRow)
+    .map((cells) => cells[index]?.trim() ?? "")
+    .filter(Boolean);
+}
+
+function splitMarkdownRow(line: string | string[]): string[] {
+  if (Array.isArray(line)) return line;
+  return line.split("|").slice(1, -1).map((cell) => cell.trim());
+}
+
+function extractRestrictivePracticeStatusClaims(content: string): string[] {
+  const values = new Set<string>();
+  const patterns = [
+    /\b(?:authorised|unauthorised|not authorised|authorization|authorisation|not applicable|not recorded|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion)\b/gi,
+  ];
+  for (const pattern of patterns) {
+    for (const match of content.matchAll(pattern)) {
+      const value = match[0]?.trim();
+      if (value && !isMissingValue(value)) values.add(value);
+    }
+  }
+  return Array.from(values);
+}
+
+function extractMobilityAidClaims(content: string): string[] {
+  const values = new Set<string>();
+  for (const match of content.matchAll(/\b(?:mobility aid|walker|walking frame|wheelchair|cane|crutch|hoist|transfer aid)\b/gi)) {
+    const value = match[0]?.trim();
+    if (value && !isMissingValue(value)) values.add(value);
+  }
+  return Array.from(values);
 }
 
 function coverageItem(
