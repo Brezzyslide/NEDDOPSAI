@@ -3042,12 +3042,30 @@ function carePlanUserSection(
   sortOrder: number,
   requiredEvidenceCategories: string[] = [],
   minimumContentExpectation: string | null = "Section must be present. Conditional sections must contain content or explicit non-applicability naming the source.",
-  extra?: Partial<ReturnType<typeof section>> & { fixedContent?: string[]; fields?: string[]; completionPrompt?: string | null },
+  extra?: Partial<ReturnType<typeof section>> & {
+    fixedContent?: string[];
+    fields?: string[];
+    completionPrompt?: string | null;
+    retrievalVocabulary?: {
+      instrumentTerms?: string[];
+      sourceSynonyms?: string[];
+      accountableFields?: string[];
+      controlledMappings?: Array<{ sourceValues: string[]; outputValue: string; rule?: string; terms?: string[] }>;
+      nonApplicabilityTerms?: string[];
+    };
+  },
 ) {
+  const base = section(sectionCode, title, description, instructions, sortOrder, requiredEvidenceCategories, minimumContentExpectation);
+  const { retrievalVocabulary, evidenceRequirements: extraEvidenceRequirements, ...restExtra } = extra ?? {};
   return {
-    ...section(sectionCode, title, description, instructions, sortOrder, requiredEvidenceCategories, minimumContentExpectation),
+    ...base,
     sectionRole: "user_facing" as const,
-    ...(extra ?? {}),
+    ...(restExtra ?? {}),
+    evidenceRequirements: {
+      ...base.evidenceRequirements,
+      ...(extraEvidenceRequirements ?? {}),
+      ...(retrievalVocabulary ? { retrievalVocabulary } : {}),
+    },
   };
 }
 
@@ -3428,17 +3446,150 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
   },
 };
 
+const CARE_PLAN_ADL_ACTIVITY_TERMS = [
+  "Oral hygiene",
+  "Brush teeth",
+  "Showering and bathing",
+  "Take a shower",
+  "Personal hygiene and grooming",
+  "Comb hair",
+  "Brush hair",
+  "Shaving",
+  "Dressing and undressing",
+  "Dressing",
+  "Toileting and continence",
+  "Use toilet",
+  "Post toilet hygiene",
+  "Meal preparation",
+  "Cooking",
+  "Eating and drinking",
+  "Medication management",
+  "Cleaning",
+  "Household cleaning",
+  "Washing dishes",
+  "Laundry",
+  "Transfers and positioning",
+  "Transfer to/from bed",
+  "Mobility within the home",
+  "Walk without aid",
+  "Community access",
+  "Transport and travel",
+  "Use public transport",
+  "Money handling",
+  "Money handling and everyday purchases",
+  "Shopping",
+  "Making appointments",
+  "Attending appointments",
+  "Phone use",
+  "Communication device",
+  "Personal safety",
+];
+
+const CARE_PLAN_ADL_CHECKLIST_LABELS = [
+  "Without support",
+  "Support required",
+  "Completely unable to",
+  "Independent",
+  "Prompting",
+  "Supervision",
+  "Physical assistance",
+  "Not assessed",
+  "Not applicable",
+];
+
+const CARE_PLAN_SUPPORT_LEVEL_MAPPINGS = [
+  {
+    sourceValues: ["Without support"],
+    outputValue: "Independent",
+    rule: "Checklist value maps directly to independent support level when the source row names the activity.",
+  },
+  {
+    sourceValues: ["Completely unable to"],
+    outputValue: "Unable to complete",
+    rule: "Checklist value maps directly to unable-to-complete support level when the source row names the activity.",
+  },
+  {
+    sourceValues: ["Support required"],
+    outputValue: "Supported level requires cited context: prompting, supervision or partial physical assistance.",
+    rule: "Support required is not a complete support-level mapping without additional cited worker-support context.",
+    terms: ["prompting", "supervision", "hands-on support", "physical assistance", "support worker assistance"],
+  },
+];
+
+const CARE_PLAN_RESTRICTIVE_PRACTICE_TERMS = [
+  "Chemical restraint",
+  "Environmental restraint",
+  "Mechanical restraint",
+  "Physical restraint",
+  "Seclusion",
+  "Authorised",
+  "Unauthorised",
+  "Authorisation",
+  "Authorisation status",
+  "Restrictive practice authorisation",
+  "Recording requirement",
+  "Prohibited actions",
+];
+
 const CARE_PLAN_SECTIONS = [
-  carePlanUserSection("SUPPORT_PLAN_MEETING", "Support Plan Meeting", "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.", "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.", 10, ["intake_form", "service_agreement", "ndis_plan", "clinical_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.supportPlanMeeting),
-  carePlanUserSection("GOALS", "Goals", "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.", "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.", 20, ["ndis_plan", "strengths_based_questionnaire", "participant_voice", "allied_health_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.goals),
+  carePlanUserSection("SUPPORT_PLAN_MEETING", "Support Plan Meeting", "Header fields: client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, date for review.", "Populate the support plan meeting header from intake form, service agreement, NDIS plan and clinical report for diagnosis. Template mode uses labelled placeholders. Participant-specific mode requires populated values.", 10, ["intake_form", "service_agreement", "ndis_plan", "clinical_report"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.supportPlanMeeting,
+    retrievalVocabulary: {
+      instrumentTerms: ["date of birth", "DOB", "gender", "language spoken", "NDIS number", "diagnosis", "people present", "planning meeting", "review date"],
+      sourceSynonyms: ["intake checklist", "home safety checklist", "participant details", "client details"],
+      accountableFields: CARE_PLAN_TEMPLATE_CONTENT.supportPlanMeeting.fields,
+    },
+  }),
+  carePlanUserSection("GOALS", "Goals", "Table per objective: current situation, goal, actions, person responsible, timeframe, outcomes. Minimum three personal goals, plus NDIS goals where an NDIS plan exists.", "Create a goal table with all six columns. NDIS goals sit in the same table alongside personal goals. Do not use ongoing as a timeframe.", 20, ["ndis_plan", "strengths_based_questionnaire", "participant_voice", "allied_health_report"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.goals,
+    retrievalVocabulary: {
+      instrumentTerms: ["goal", "goals", "objective", "current situation", "actions", "person responsible", "timeframe", "target date", "outcomes", "NDIS goal", "personal goal"],
+      sourceSynonyms: ["participant goals", "plan goals", "what matters", "participant priorities"],
+      accountableFields: ["Goal", "Actions", "Person responsible", "Timeframe", "Outcomes"],
+      nonApplicabilityTerms: ["not recorded", "no NDIS plan", "goal not recorded"],
+    },
+  }),
   carePlanUserSection("ABOUT_ME", "About Me", "The person — strengths, likes, dislikes, what matters to them, communication preferences, informal supports.", "Write about the person, not their deficits. Forensic history, family psychiatric history, trauma and service-involvement history do not belong here.", 30, ["strengths_based_questionnaire", "participant_voice"], undefined, CARE_PLAN_TEMPLATE_CONTENT.aboutMe),
   carePlanUserSection("HISTORY_BACKGROUND", "History and Background", "Background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.", "Carry only what a support worker operationally needs. Every historical claim must be traceable to a named source document. Do not add clinical interpretation beyond the source.", 40, ["allied_health_report", "behaviour_support_plan", "intake_form"], undefined, CARE_PLAN_TEMPLATE_CONTENT.historyBackground),
-  carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.undertakingAdl),
+  carePlanUserSection("UNDERTAKING_ADL", "Undertaking ADL", "Personal grooming capacity and self-hygiene routine.", "State what the participant does independently, what needs prompting and what needs hands-on support.", 50, ["intake_form", "ot_assessment"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.undertakingAdl,
+    retrievalVocabulary: {
+      instrumentTerms: [...CARE_PLAN_ADL_ACTIVITY_TERMS, ...CARE_PLAN_ADL_CHECKLIST_LABELS],
+      sourceSynonyms: ["ADL checklist", "activities of daily living", "daily living", "functional assessment", "capacity checklist", "intake checklist", "home safety checklist"],
+      accountableFields: ["activity", "support level", "worker description", "source value"],
+      controlledMappings: CARE_PLAN_SUPPORT_LEVEL_MAPPINGS,
+      nonApplicabilityTerms: ["not assessed", "not applicable", "no functional assessment", "not recorded"],
+    },
+  }),
   carePlanUserSection("COMMUNICATION_STRATEGY", "Communication and Communication Strategy", "Verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.", "Complete capacity indicators and write the strategy a worker should actually use. Do not leave overview/strategy blank.", 60, ["intake_form", "speech_assessment", "behaviour_support_plan", "allied_health_report"], undefined, CARE_PLAN_TEMPLATE_CONTENT.communicationStrategy),
-  carePlanUserSection("MOBILITY_STRATEGY", "Mobility and Mobility Strategy", "Aid required / not required; overview and strategy.", "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.", 70, ["intake_form", "physiotherapy_assessment", "ot_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.mobilityStrategy),
+  carePlanUserSection("MOBILITY_STRATEGY", "Mobility and Mobility Strategy", "Aid required / not required; overview and strategy.", "Complete the capacity indicator and strategy narrative. Where an aid is used, name it and describe its use.", 70, ["intake_form", "physiotherapy_assessment", "ot_assessment"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.mobilityStrategy,
+    retrievalVocabulary: {
+      instrumentTerms: ["mobility aid", "aid required", "aid not required", "walking aid", "wheelchair", "walker", "frame", "transfer", "transfer method", "number of workers", "falls", "supervision", "walk without aid", "public transport"],
+      sourceSynonyms: ["mobility checklist", "manual handling", "transfer assessment", "physiotherapy assessment", "OT assessment"],
+      accountableFields: CARE_PLAN_TEMPLATE_CONTENT.mobilityStrategy.fields,
+      nonApplicabilityTerms: ["no aid required", "not assessed", "not recorded"],
+    },
+  }),
   carePlanUserSection("SUPPORT_DELIVERY_CLIENT_SAFETY", "Support Delivery and Client Safety", "Support type checklist — in-home ADL, personal care, community access, transport and travel training, social/group activity, behavioural redirection, companionship and mentorship, therapeutic cleaning — plus description of support.", "Every selected support type must have a corresponding description stating what the worker does. Reconcile selected supports against funded supports in the service agreement.", 80, ["service_agreement", "intake_form"], undefined, CARE_PLAN_TEMPLATE_CONTENT.supportDeliveryClientSafety),
-  carePlanUserSection("BEHAVIOURAL_MANAGEMENT", "Behavioural Management", "Three fold tables for proactive, reactive and protective behaviour support strategies.", "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, classify and render BSP-derived strategies in proactive, reactive and protective folds. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.", 90, ["behaviour_support_plan"], undefined, CARE_PLAN_TEMPLATE_CONTENT.behaviouralManagement),
-  carePlanUserSection("RESTRICTIVE_PRACTICES", "Restrictive Practices", "Table of authorised restrictive practices and worker instructions.", "Conditional. Where any restrictive practice is in place, render each practice as a row with type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.", 100, ["behaviour_support_plan", "restrictive_practice_authorisation"], undefined, CARE_PLAN_TEMPLATE_CONTENT.restrictivePractices),
+  carePlanUserSection("BEHAVIOURAL_MANAGEMENT", "Behavioural Management", "Three fold tables for proactive, reactive and protective behaviour support strategies.", "Conditional. Where a BSP exists, behaviours of concern are recorded, or any goal references behaviour, classify and render BSP-derived strategies in proactive, reactive and protective folds. Where none apply, state non-applicability naming the source. Authority boundary: implements an existing BSP. Does not author, amend, or make practitioner-level behaviour support decisions.", 90, ["behaviour_support_plan"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.behaviouralManagement,
+    retrievalVocabulary: {
+      instrumentTerms: ["behaviour of concern", "trigger", "setting event", "proactive strategy", "reactive strategy", "protective strategy", "early warning sign", "escalation", "worker action", "BSP source", "behaviour support plan"],
+      sourceSynonyms: ["BSP", "behaviour support", "behavioural strategy", "response strategy"],
+      accountableFields: ["fold", "behaviour or trigger", "strategy", "worker action", "BSP source"],
+      nonApplicabilityTerms: ["no behaviours of concern", "no BSP", "not applicable"],
+    },
+  }),
+  carePlanUserSection("RESTRICTIVE_PRACTICES", "Restrictive Practices", "Table of authorised restrictive practices and worker instructions.", "Conditional. Where any restrictive practice is in place, render each practice as a row with type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement. Where none, state non-applicability naming the source. Authority boundary: does not determine, grant or assess restrictive practice authorisation.", 100, ["behaviour_support_plan", "restrictive_practice_authorisation"], undefined, {
+    ...CARE_PLAN_TEMPLATE_CONTENT.restrictivePractices,
+    retrievalVocabulary: {
+      instrumentTerms: CARE_PLAN_RESTRICTIVE_PRACTICE_TERMS,
+      sourceSynonyms: ["regulated restrictive practice", "RPA", "restrictive practice authorisation", "behaviour support plan", "BSP"],
+      accountableFields: CARE_PLAN_TEMPLATE_CONTENT.restrictivePractices.fields,
+      nonApplicabilityTerms: ["no restrictive practices", "none authorised", "not authorised", "not recorded"],
+    },
+  }),
   carePlanUserSection("MEALTIME_MANAGEMENT_STRATEGY", "Mealtime Management Strategy", "The mealtime strategy a support worker executes.", "Draw the strategy from the mealtime management risk assessment and cite it. Where no hands-on strategy is required, state so with reference to the assessment and describe what does apply. Authority boundary: dysphagia, swallowing, texture-modification and other credentialed mealtime judgements require external or appropriately credentialed professional authority.", 110, ["mealtime_management_risk_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.mealtimeManagementStrategy),
   carePlanUserSection("DISASTER_MANAGEMENT_STRATEGY", "Disaster Management Strategy", "Participant-specific disaster and evacuation arrangements.", "Conditional. For SIL and supported accommodation, source from the disaster management risk assessment. For community access, source from the community access risk assessment and address both general and location-specific risk. For other settings, leave the [OPEN] decision visible and do not invent a rule.", 120, ["disaster_management_risk_assessment", "community_access_risk_assessment"], undefined, CARE_PLAN_TEMPLATE_CONTENT.disasterManagementStrategy),
   carePlanUserSection("CLIENT_ENDORSEMENT", "Client Endorsement", "Agreement statement, name of client or representative, signature, date, provided-to list, consent obtained.", "Provide a complete-able endorsement block. Do not fabricate signature or consent state.", 130, ["signing_process"], undefined, CARE_PLAN_TEMPLATE_CONTENT.clientEndorsement),

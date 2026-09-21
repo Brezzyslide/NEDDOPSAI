@@ -52,6 +52,9 @@ import {
   type BlueprintRuntimeGateFailure,
 } from "./blueprintRuntimeValidationService.js";
 import {
+  buildSectionRetrievalTerms,
+} from "./blueprintSectionVocabularyService.js";
+import {
   assembleWorkPackage,
   updateManifestObservability,
   type WorkPackageManifest,
@@ -1265,6 +1268,7 @@ export class UnifiedExecutionEngine {
         organisationId: organizationId,
         specialistCode: manifest.primarySpecialist,
         blueprint,
+        blueprintContract,
         workPackage: manifest,
         userRequest,
         entityIds: subjectParticipantIds,
@@ -4913,19 +4917,9 @@ function sectionEvidenceTerms(
   section: BlueprintExecutionContract["sections"][number],
   expectedCategories: string[],
 ): string[] {
-  const raw = [
-    section.sectionCode,
-    section.title,
-    section.description,
-    section.instructions,
-    ...(section.evidenceRequirements?.requiredEvidenceCategories ?? []),
-    ...expectedCategories,
-  ].filter((value): value is string => typeof value === "string");
-  return Array.from(new Set(raw
-    .join(" ")
-    .split(/[^a-zA-Z0-9]+/)
+  return buildSectionRetrievalTerms(section, expectedCategories)
     .map(normaliseContentForEvidenceRanking)
-    .filter((term) => term.length >= 4 && !SECTION_EVIDENCE_STOP_WORDS.has(term))));
+    .filter((term) => term.length >= 4 && !SECTION_EVIDENCE_STOP_WORDS.has(term));
 }
 
 const SECTION_EVIDENCE_STOP_WORDS = new Set([
@@ -5313,34 +5307,69 @@ type CarePlanBatchForwardContext = {
 const CARE_PLAN_BATCHES: CarePlanBatch[] = [
   {
     id: "participant-planning-basis",
-    name: "Participant identity, goals and planning basis",
-    rationale: "Sets participant identity, review dates, history and goals used by later service-delivery sections.",
+    name: "Participant identity and planning basis",
+    rationale: "Sets participant identity, review dates, about-me and history context used by later service-delivery sections.",
     requirementIds: [
       "care-plan-support-plan-meeting",
       "care-plan-about-me",
       "care-plan-history-background",
+    ],
+  },
+  {
+    id: "goals",
+    name: "Goals",
+    rationale: "Keeps the row-heavy goal table isolated so every goal action, responsible person and timeframe has its own citation budget.",
+    requirementIds: [
       "care-plan-goals",
     ],
   },
   {
-    id: "functional-capacity",
-    name: "Functional capacity",
-    rationale: "Keeps ADL, mobility and communication capacity together so support levels cannot drift between overlapping sections.",
+    id: "adl",
+    name: "Undertaking ADL",
+    rationale: "Keeps the 26-row ADL activity table in its own call so checklist mappings are not truncated or merged with other capacity sections.",
     requirementIds: [
       "care-plan-undertaking-adl",
+    ],
+  },
+  {
+    id: "mobility",
+    name: "Mobility",
+    rationale: "Keeps mobility aid, transfer and support-level findings isolated from ADL capacity mappings.",
+    requirementIds: [
       "care-plan-mobility-strategy",
+    ],
+  },
+  {
+    id: "communication",
+    name: "Communication",
+    rationale: "Completes communication capacity and worker strategy using intake, BSP and allied-health evidence after identity context exists.",
+    requirementIds: [
       "care-plan-communication-strategy",
     ],
   },
   {
     id: "support-delivery-safeguards",
-    name: "Support delivery and safeguards",
-    rationale: "Keeps support delivery, behavioural strategies, restrictive-practice status and disaster safeguards together.",
+    name: "Support delivery and disaster safeguards",
+    rationale: "Groups lighter operational support and disaster sections while table-heavy behaviour/RP sections run separately.",
     requirementIds: [
       "care-plan-support-delivery-client-safety",
-      "care-plan-behavioural-management",
-      "care-plan-restrictive-practices",
       "care-plan-disaster-management-strategy",
+    ],
+  },
+  {
+    id: "behavioural-management",
+    name: "Behavioural Management",
+    rationale: "Keeps BSP-derived proactive/reactive/protective strategy tables isolated for per-row citations.",
+    requirementIds: [
+      "care-plan-behavioural-management",
+    ],
+  },
+  {
+    id: "restrictive-practices",
+    name: "Restrictive Practices",
+    rationale: "Keeps restrictive-practice status, authorisation and worker instruction rows isolated for strict evidence verification.",
+    requirementIds: [
+      "care-plan-restrictive-practices",
     ],
   },
   {
@@ -5476,8 +5505,10 @@ function buildCarePlanBatchDirective(
 }
 
 function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
-  if (batch.id === "functional-capacity") return 6000;
-  if (batch.id === "support-delivery-safeguards") return 6000;
+  if (batch.id === "adl") return 6500;
+  if (batch.id === "behavioural-management") return 6500;
+  if (batch.id === "goals") return 5000;
+  if (batch.id === "restrictive-practices") return 5000;
   return 4500;
 }
 

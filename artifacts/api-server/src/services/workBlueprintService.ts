@@ -112,6 +112,19 @@ export interface BlueprintSection {
   updatedAt: Date;
 }
 
+export interface BlueprintSectionRetrievalVocabulary {
+  instrumentTerms?: string[];
+  sourceSynonyms?: string[];
+  accountableFields?: string[];
+  controlledMappings?: Array<{
+    sourceValues: string[];
+    outputValue: string;
+    rule?: string;
+    terms?: string[];
+  }>;
+  nonApplicabilityTerms?: string[];
+}
+
 export interface WorkTemplate {
   id: string;
   organizationId: string | null;

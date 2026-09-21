@@ -40,7 +40,7 @@ import {
   type EvidenceChunk,
 } from "../../services/knowledgeResolutionService.js";
 import type { WorkPackageManifest } from "../../services/workPackageService.js";
-import type { WorkBlueprint } from "../../services/workBlueprintService.js";
+import type { BlueprintExecutionContract, WorkBlueprint } from "../../services/workBlueprintService.js";
 import type {
   IResourceProvider,
   ResourceHandle,
@@ -84,6 +84,7 @@ export class ResourceRegistry {
     organisationId: string;
     specialistCode: string;
     blueprint: WorkBlueprint | null;
+    blueprintContract?: BlueprintExecutionContract | null;
     workPackage: WorkPackageManifest;
     userRequest: string;
     entityIds?: string[];

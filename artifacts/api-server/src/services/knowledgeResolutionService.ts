@@ -24,20 +24,25 @@
  *   - All chunk text is treated as authoritative — never inverted or discarded
  */
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { withSystemTenantContext } from "@workspace/db";
 import { knowledgeChunksTable, knowledgeSourcesTable, knowledgeSourceVersionsTable, retrievalAuditEventsTable } from "@workspace/db";
 import { eq, and, inArray, desc } from "drizzle-orm";
 
 import { retrieveChunks, type RawChunk } from "./hybridRetrievalService.js";
 import type { WorkPackageManifest } from "./workPackageService.js";
-import type { WorkBlueprint } from "./workBlueprintService.js";
+import type { BlueprintExecutionContract, BlueprintSection, WorkBlueprint } from "./workBlueprintService.js";
 import { OpenAIEmbeddingProvider } from "../lib/embeddings/openaiEmbeddingProvider.js";
 import { EmbeddingError } from "../lib/embeddings/embeddingInterface.js";
 import { mapKnowledgeCurrentness } from "../lib/knowledge/currentness.js";
 import {
   classifyStandardTemplateEvidenceContext,
 } from "./blueprintRuntimeValidationService.js";
+import {
+  buildSectionRetrievalQuery,
+  buildSectionVocabularyHash,
+  requiredEvidenceCategories,
+} from "./blueprintSectionVocabularyService.js";
 
 // ─── Query embedding generator ────────────────────────────────────────────────
 
@@ -162,6 +167,19 @@ export interface EvidencePackMetrics {
   embeddingMs: number;
 }
 
+export interface SectionRetrievalMetadata {
+  sectionCode: string;
+  sectionTitle: string;
+  queryHash: string;
+  vocabularyHash: string;
+  requiredEvidenceCategories: string[];
+  embeddingCacheHit: boolean;
+  embeddingUsed: boolean;
+  organisationLibraryChunkIds: string[];
+  entityScopedChunkIds: string[];
+  selectedChunkIds: string[];
+}
+
 export interface EvidencePack {
   /** Matches the manifest executionId for correlation */
   executionId: string;
@@ -176,12 +194,14 @@ export interface EvidencePack {
   totalChunks: number;
   avgConfidence: number;
   retrievalMetrics: EvidencePackMetrics;
+  sectionRetrieval?: SectionRetrievalMetadata[];
 }
 
 export interface KnowledgeResolutionInput {
   organisationId: string;
   specialistCode: string;
   blueprint: WorkBlueprint | null;
+  blueprintContract?: BlueprintExecutionContract | null;
   workPackage: WorkPackageManifest;
   userRequest: string;
   entityIds?: string[];
@@ -190,10 +210,12 @@ export interface KnowledgeResolutionInput {
 // ─── In-process execution cache ───────────────────────────────────────────────
 
 const _packCache = new Map<string, EvidencePack>();
+const _sectionEmbeddingCache = new Map<string, number[] | null>();
 
 /** Maximum chunks per evidence category to keep prompt size bounded */
 const MAX_LIBRARY_CHUNKS  = 20;
 const MAX_UPLOAD_CHUNKS   = 10;
+const MAX_SECTION_SCOPE_CHUNKS = 8;
 const MIN_CONFIDENCE      = 0.05; // discard near-zero relevance chunks
 
 interface BuiltInAuthoritySeed {
@@ -380,6 +402,87 @@ function parseEvidenceClass(value: string | null | undefined): EvidenceClass {
   }
 }
 
+type SectionRetrievalProfile = {
+  section: BlueprintSection;
+  query: string;
+  queryHash: string;
+  vocabularyHash: string;
+  requiredEvidenceCategories: string[];
+  embeddingCacheKey: string;
+};
+
+function buildSectionRetrievalProfiles(input: KnowledgeResolutionInput): SectionRetrievalProfile[] {
+  const sections = input.blueprintContract?.sections ?? [];
+  if (!sections.length || !input.blueprint) return [];
+  return [...sections]
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((section) => {
+      const requiredCategories = requiredEvidenceCategories(section);
+      const query = buildSectionRetrievalQuery(section, requiredCategories);
+      const vocabularyHash = buildSectionVocabularyHash(section, requiredCategories);
+      const queryHash = createShortHash(query);
+      return {
+        section,
+        query,
+        queryHash,
+        vocabularyHash,
+        requiredEvidenceCategories: requiredCategories,
+        embeddingCacheKey: [
+          input.blueprint?.id ?? input.blueprint?.code ?? "unknown_blueprint",
+          input.blueprint?.version ?? "unknown_version",
+          section.sectionCode,
+          vocabularyHash,
+        ].join(":"),
+      };
+    });
+}
+
+async function generateCachedSectionEmbedding(
+  cacheKey: string,
+  query: string,
+): Promise<{ embedding: number[] | null; cacheHit: boolean; embeddingMs: number }> {
+  if (_sectionEmbeddingCache.has(cacheKey)) {
+    return { embedding: _sectionEmbeddingCache.get(cacheKey) ?? null, cacheHit: true, embeddingMs: 0 };
+  }
+  const started = Date.now();
+  const embedding = await generateQueryEmbedding(query);
+  const embeddingMs = Date.now() - started;
+  if (embedding !== null) {
+    _sectionEmbeddingCache.set(cacheKey, embedding);
+  }
+  return { embedding, cacheHit: false, embeddingMs };
+}
+
+async function appendRawEvidenceChunks(
+  input: {
+    organisationId: string;
+    rawChunks: RawChunk[];
+    versionLabelFallback?: string | null;
+    selectionReason: string;
+    seenChunkIds: Set<string>;
+    allEvidenceChunks: EvidenceChunk[];
+  },
+): Promise<string[]> {
+  const selectedIds: string[] = [];
+  const versionIds = [...new Set(input.rawChunks.map(c => c.sourceVersionId))];
+  const versionLabels = await getVersionLabels(versionIds, input.organisationId);
+
+  for (const raw of input.rawChunks) {
+    if (raw.baseScore < MIN_CONFIDENCE) continue;
+    if (input.seenChunkIds.has(raw.id)) continue;
+    input.seenChunkIds.add(raw.id);
+    selectedIds.push(raw.id);
+    const vLabel = versionLabels.get(raw.sourceVersionId) ?? input.versionLabelFallback ?? null;
+    input.allEvidenceChunks.push(mapRawChunk(raw, vLabel, input.selectionReason));
+  }
+
+  return selectedIds;
+}
+
+function createShortHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 16);
+}
+
 // ─── Task-upload chunk retrieval ──────────────────────────────────────────────
 // hybridRetrievalService task_upload scope requires a taskId which is not
 // always available in the pipeline context. We query by source IDs directly.
@@ -524,6 +627,7 @@ function buildPack(
   organisationId: string,
   chunks: EvidenceChunk[],
   metrics: EvidencePackMetrics,
+  sectionRetrieval?: SectionRetrievalMetadata[],
 ): EvidencePack {
   const byType: Record<string, EvidenceChunk[]> = {};
   for (const c of chunks) {
@@ -547,6 +651,7 @@ function buildPack(
     totalChunks: chunks.length,
     avgConfidence,
     retrievalMetrics: metrics,
+    ...(sectionRetrieval?.length ? { sectionRetrieval } : {}),
   };
 }
 
@@ -577,109 +682,171 @@ export async function resolveEvidence(
   const startMs = Date.now();
   let queryCount = 0;
   let totalCandidates = 0;
+  let embeddingUsed = false;
+  let embeddingMs = 0;
   const seenChunkIds = new Set<string>();
   const allEvidenceChunks: EvidenceChunk[] = [];
+  const sectionRetrieval: SectionRetrievalMetadata[] = [];
 
-  // ── Generate query embedding for hybrid retrieval ──────────────────────────
-  // Generated once and reused for all retrieval calls in this execution.
-  // Fails soft: null = lexical-only fallback; retrieval is never aborted.
-  const embeddingStartMs = Date.now();
-  const queryEmbedding = await generateQueryEmbedding(userRequest);
-  const embeddingMs = Date.now() - embeddingStartMs;
+  const sectionProfiles = buildSectionRetrievalProfiles(input);
 
-  // ── Step 1: Organisation Library evidence via hybrid retrieval ─────────────
-  // hybridRetrievalService filters: status=approved, isCurrent=true, scope=org_library
-  //
-  // NOTE: We always run the org-library query for every task execution.
-  // The previous conditional gate (`organisationLibrarySources.length > 0 ||
-  // requiredLibraryKnowledge.length`) silently skipped library evidence when a
-  // blueprint with an empty requiredLibraryKnowledge[] was selected, even when
-  // the user's request explicitly named a policy that existed in the library.
-  // The hybrid retrieval already applies its own approved/current/org-library
-  // filters, so running it unconditionally is safe — it returns nothing when
-  // no relevant documents exist.
-  {
-    queryCount++;
-    const libraryRaw = await retrieveChunks({
-      organisationId,
-      query:          userRequest,
-      queryEmbedding,
-      scopeMode:      "org_library",
-      limit:          MAX_LIBRARY_CHUNKS,
-    });
-    totalCandidates += libraryRaw.length;
+  if (sectionProfiles.length > 0) {
+    for (const profile of sectionProfiles) {
+      const embeddingResult = await generateCachedSectionEmbedding(profile.embeddingCacheKey, profile.query);
+      embeddingMs += embeddingResult.embeddingMs;
+      embeddingUsed ||= embeddingResult.embedding !== null;
 
-    // Collect version labels in one batch
-    const versionIds = [...new Set(libraryRaw.map(c => c.sourceVersionId))];
-    const versionLabels = await getVersionLabels(versionIds, organisationId);
+      queryCount++;
+      const libraryRaw = await retrieveChunks({
+        organisationId,
+        query:          profile.query,
+        queryEmbedding: embeddingResult.embedding,
+        scopeMode:      "org_library",
+        limit:          MAX_SECTION_SCOPE_CHUNKS,
+      });
+      totalCandidates += libraryRaw.length;
+      const librarySelected = await appendRawEvidenceChunks({
+        organisationId,
+        rawChunks: libraryRaw,
+        selectionReason: `section_blueprint:${profile.section.sectionCode}:organisation_library`,
+        seenChunkIds,
+        allEvidenceChunks,
+      });
 
-    for (const raw of libraryRaw) {
-      if (raw.baseScore < MIN_CONFIDENCE) continue;
-      if (seenChunkIds.has(raw.id)) continue;
-      seenChunkIds.add(raw.id);
+      let entitySelected: string[] = [];
+      let entityReturnedIds: string[] = [];
+      if (entityIds.length > 0) {
+        queryCount++;
+        const entityRaw = await retrieveChunks({
+          organisationId,
+          query:          profile.query,
+          queryEmbedding: embeddingResult.embedding,
+          scopeMode:      "entity_scoped",
+          entityIds,
+          limit:          MAX_SECTION_SCOPE_CHUNKS,
+        });
+        totalCandidates += entityRaw.length;
+        entityReturnedIds = entityRaw.map((chunk) => chunk.id);
+        entitySelected = await appendRawEvidenceChunks({
+          organisationId,
+          rawChunks: entityRaw,
+          selectionReason: `section_blueprint:${profile.section.sectionCode}:entity_knowledge`,
+          seenChunkIds,
+          allEvidenceChunks,
+        });
+      }
 
-      // Determine authority-weighted sourceType for grouping
-      const vLabel = versionLabels.get(raw.sourceVersionId) ?? null;
-      const chunk = mapRawChunk(raw, vLabel, "organisation_library");
-
-      // Re-map sourceType from the source's actual type (hybridRetrievalService
-      // returns sourceScope, not sourceType; we need the actual type for grouping)
-      // We'll enrich below after the source type lookup.
-      allEvidenceChunks.push(chunk);
+      sectionRetrieval.push({
+        sectionCode: profile.section.sectionCode,
+        sectionTitle: profile.section.title,
+        queryHash: profile.queryHash,
+        vocabularyHash: profile.vocabularyHash,
+        requiredEvidenceCategories: profile.requiredEvidenceCategories,
+        embeddingCacheHit: embeddingResult.cacheHit,
+        embeddingUsed: embeddingResult.embedding !== null,
+        organisationLibraryChunkIds: libraryRaw.map((chunk) => chunk.id),
+        entityScopedChunkIds: entityIds.length > 0 ? [...new Set(entityReturnedIds)] : [],
+        selectedChunkIds: [...new Set([...librarySelected, ...entitySelected])],
+      });
     }
 
-    await enrichSourceMetadata(allEvidenceChunks, organisationId);
-  }
-
-  // ── Step 2: Participant/entity-scoped knowledge ────────────────────────────
-  if (entityIds.length > 0) {
-    queryCount++;
-    const entityRaw = await retrieveChunks({
-      organisationId,
-      query:          userRequest,
-      queryEmbedding,
-      scopeMode:      "entity_scoped",
-      entityIds,
-      limit:          MAX_LIBRARY_CHUNKS,
-      excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
-    });
-    totalCandidates += entityRaw.length;
-
-    const versionIds = [...new Set(entityRaw.map(c => c.sourceVersionId))];
-    const versionLabels = await getVersionLabels(versionIds, organisationId);
-
-    for (const raw of entityRaw) {
-      if (raw.baseScore < MIN_CONFIDENCE) continue;
-      if (seenChunkIds.has(raw.id)) continue;
-      seenChunkIds.add(raw.id);
-      const vLabel = versionLabels.get(raw.sourceVersionId) ?? null;
-      allEvidenceChunks.push(mapRawChunk(raw, vLabel, "entity_knowledge"));
+    if (input.specialistCode && workPackage.specialistMemories.length > 0) {
+      for (const profile of sectionProfiles) {
+        const embeddingResult = await generateCachedSectionEmbedding(profile.embeddingCacheKey, profile.query);
+        queryCount++;
+        const specialistRaw = await retrieveChunks({
+          organisationId,
+          query:          profile.query,
+          queryEmbedding: embeddingResult.embedding,
+          scopeMode:      "specialist_scoped",
+          specialistId:   input.specialistCode,
+          limit:          4,
+        });
+        totalCandidates += specialistRaw.length;
+        await appendRawEvidenceChunks({
+          organisationId,
+          rawChunks: specialistRaw,
+          selectionReason: `section_blueprint:${profile.section.sectionCode}:specialist_knowledge`,
+          seenChunkIds,
+          allEvidenceChunks,
+        });
+      }
     }
-  }
+  } else {
+    // ── Generate query embedding for legacy request-text retrieval ────────────
+    // Fails soft: null = lexical-only fallback; retrieval is never aborted.
+    const embeddingStartMs = Date.now();
+    const queryEmbedding = await generateQueryEmbedding(userRequest);
+    embeddingMs = Date.now() - embeddingStartMs;
+    embeddingUsed = queryEmbedding !== null;
 
-  // ── Step 3: Specialist-scoped knowledge ────────────────────────────────────
-  if (input.specialistCode && workPackage.specialistMemories.length > 0) {
-    queryCount++;
-    const specialistRaw = await retrieveChunks({
-      organisationId,
-      query:          userRequest,
-      queryEmbedding,
-      scopeMode:      "specialist_scoped",
-      specialistId:   input.specialistCode,
-      limit:          10,
-      excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
-    });
-    totalCandidates += specialistRaw.length;
+    // ── Step 1: Organisation Library evidence via hybrid retrieval ───────────
+    {
+      queryCount++;
+      const libraryRaw = await retrieveChunks({
+        organisationId,
+        query:          userRequest,
+        queryEmbedding,
+        scopeMode:      "org_library",
+        limit:          MAX_LIBRARY_CHUNKS,
+      });
+      totalCandidates += libraryRaw.length;
 
-    const versionIds = [...new Set(specialistRaw.map(c => c.sourceVersionId))];
-    const versionLabels = await getVersionLabels(versionIds, organisationId);
+      await appendRawEvidenceChunks({
+        organisationId,
+        rawChunks: libraryRaw,
+        selectionReason: "organisation_library",
+        seenChunkIds,
+        allEvidenceChunks,
+      });
 
-    for (const raw of specialistRaw) {
-      if (raw.baseScore < MIN_CONFIDENCE) continue;
-      if (seenChunkIds.has(raw.id)) continue;
-      seenChunkIds.add(raw.id);
-      const vLabel = versionLabels.get(raw.sourceVersionId) ?? null;
-      allEvidenceChunks.push(mapRawChunk(raw, vLabel, "specialist_knowledge"));
+      await enrichSourceMetadata(allEvidenceChunks, organisationId);
+    }
+
+    // ── Step 2: Participant/entity-scoped knowledge ──────────────────────────
+    if (entityIds.length > 0) {
+      queryCount++;
+      const entityRaw = await retrieveChunks({
+        organisationId,
+        query:          userRequest,
+        queryEmbedding,
+        scopeMode:      "entity_scoped",
+        entityIds,
+        limit:          MAX_LIBRARY_CHUNKS,
+        excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
+      });
+      totalCandidates += entityRaw.length;
+
+      await appendRawEvidenceChunks({
+        organisationId,
+        rawChunks: entityRaw,
+        selectionReason: "entity_knowledge",
+        seenChunkIds,
+        allEvidenceChunks,
+      });
+    }
+
+    // ── Step 3: Specialist-scoped knowledge ──────────────────────────────────
+    if (input.specialistCode && workPackage.specialistMemories.length > 0) {
+      queryCount++;
+      const specialistRaw = await retrieveChunks({
+        organisationId,
+        query:          userRequest,
+        queryEmbedding,
+        scopeMode:      "specialist_scoped",
+        specialistId:   input.specialistCode,
+        limit:          10,
+        excludeSourceIds: allEvidenceChunks.map(c => c.sourceId),
+      });
+      totalCandidates += specialistRaw.length;
+
+      await appendRawEvidenceChunks({
+        organisationId,
+        rawChunks: specialistRaw,
+        selectionReason: "specialist_knowledge",
+        seenChunkIds,
+        allEvidenceChunks,
+      });
     }
   }
 
@@ -782,11 +949,11 @@ export async function resolveEvidence(
     selectedChunks: allEvidenceChunks.length,
     cacheHit: false,
     retrievalMs: Date.now() - startMs,
-    embeddingUsed: queryEmbedding !== null,
+    embeddingUsed,
     embeddingMs,
   };
 
-  const pack = buildPack(executionId, organisationId, allEvidenceChunks, metrics);
+  const pack = buildPack(executionId, organisationId, allEvidenceChunks, metrics, sectionRetrieval);
   _packCache.set(executionId, pack);
 
   // Sprint 29I (D2): Write retrieval audit row for this physical retrieval.
@@ -956,8 +1123,8 @@ async function writeKrsRetrievalAudit(
     taskUploadIds:       []                        as unknown as any,
     retrievalMethod:     pack.retrievalMetrics.embeddingUsed ? "hybrid" : "lexical",
     scoreMetadata:       { topScore, meanScore }   as unknown as any,
-    rankingDetails:      []                        as unknown as any,
-    reasonSelected:      {}                        as unknown as any,
+    rankingDetails:      (pack.sectionRetrieval ?? []) as unknown as any,
+    reasonSelected:      { sectionRetrieval: pack.sectionRetrieval ?? [] } as unknown as any,
     reasonRejected:      {}                        as unknown as any,
     conflictCount:       0,
     tokenCount:          0, // EvidenceChunk interface does not expose tokenCount
@@ -982,6 +1149,7 @@ export function invalidateEvidenceCache(executionId: string): void {
  */
 export function clearEvidenceCache(): void {
   _packCache.clear();
+  _sectionEmbeddingCache.clear();
 }
 
 // ─── Prompt section builder ───────────────────────────────────────────────────

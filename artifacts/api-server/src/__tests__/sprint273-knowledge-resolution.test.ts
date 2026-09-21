@@ -274,13 +274,86 @@ describe("knowledgeResolutionService", () => {
     expect(pack2.retrievalMetrics.cacheHit).toBe(true);
   });
 
+  it("uses blueprint section retrieval queries independent of request phrasing", async () => {
+    const { resolveEvidence, clearEvidenceCache } = await import("../services/knowledgeResolutionService.js");
+    clearEvidenceCache();
+
+    mocks.retrieveChunks.mockResolvedValue([]);
+
+    const blueprint = {
+      id: "bp-care-plan",
+      code: "care_plan",
+      version: "v1",
+      title: "Care Plan",
+      purpose: "Participant care plan",
+    } as any;
+    const section = {
+      id: "section-adl",
+      blueprintId: "bp-care-plan",
+      sectionCode: "UNDERTAKING_ADL",
+      title: "Undertaking ADL",
+      description: "Personal grooming capacity and self-hygiene routine.",
+      instructions: "State what the participant does independently, what needs prompting and what needs hands-on support.",
+      sectionRole: "user_facing",
+      fixedContent: [],
+      fields: [],
+      completionPrompt: null,
+      required: true,
+      minimumContentExpectation: null,
+      evidenceRequirements: {
+        requiredEvidenceCategories: ["intake_form", "ot_assessment"],
+        retrievalVocabulary: {
+          instrumentTerms: ["Take a shower", "Dressing", "Use toilet", "Money handling"],
+          sourceSynonyms: ["ADL checklist", "activities of daily living"],
+        },
+      },
+      allowedSourceTypes: [],
+      prohibitedAssumptions: [],
+      validationRules: [],
+      qualityCriteria: [],
+      sortOrder: 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const blueprintContract = { blueprint, sections: [section], template: null, mode: "create" } as any;
+
+    await resolveEvidence({
+      organisationId: "org-1",
+      specialistCode: "ops",
+      blueprint,
+      blueprintContract,
+      workPackage: makeManifest({ executionId: "exec-phrasing-a", organisationLibrarySources: [] }),
+      userRequest: "Draft Care Plan for Micheal Rocca",
+      entityIds: ["participant-1"],
+    });
+    await resolveEvidence({
+      organisationId: "org-1",
+      specialistCode: "ops",
+      blueprint,
+      blueprintContract,
+      workPackage: makeManifest({ executionId: "exec-phrasing-b", organisationLibrarySources: [] }),
+      userRequest: "Complete Michael's care plan",
+      entityIds: ["participant-1"],
+    });
+
+    const queries = mocks.retrieveChunks.mock.calls.map(([arg]) => arg.query);
+    expect(queries).toHaveLength(4);
+    expect(queries[0]).toBe(queries[1]);
+    expect(queries[0]).toBe(queries[2]);
+    expect(queries[0]).toBe(queries[3]);
+    expect(queries[0]).toContain("Take a shower");
+    expect(queries[0]).toContain("Money handling");
+    expect(queries[0]).not.toContain("Draft Care Plan");
+    expect(queries[0]).not.toContain("Complete Michael");
+  });
+
   it("includes task upload chunks retrieved by source ID", async () => {
     const { resolveEvidence, clearEvidenceCache } = await import("../services/knowledgeResolutionService.js");
     clearEvidenceCache();
 
     mocks.retrieveChunks.mockResolvedValue([]);
 
-    // Wire the task-upload chunk query (retrieveTaskUploadChunks uses db.select.from.where.orderBy.limit)
+    // Wire the task-upload chunk query (retrieveTaskUploadChunks uses db.select.from.innerJoin.where.orderBy.limit)
     const { db } = await import("@workspace/db");
     const taskChunks = [{ id: "tc-1", knowledgeSourceId: "upload-src-1", sourceVersionId: "uv-1", chunkIndex: 0, sectionTitle: null, pageNumber: null, text: "Participant intake form details", tokenCount: 50 }];
 
@@ -291,7 +364,8 @@ describe("knowledgeResolutionService", () => {
       const orderByChain = { limit: limitFn };
       const orderByFn = vi.fn().mockReturnValue(orderByChain);
       const whereFn = vi.fn().mockReturnValue({ orderBy: orderByFn, limit: limitFn });
-      return { from: vi.fn().mockReturnValue({ where: whereFn }) };
+      const innerJoinFn = vi.fn().mockReturnValue({ where: whereFn });
+      return { from: vi.fn().mockReturnValue({ innerJoin: innerJoinFn, where: whereFn }) };
     });
     // Second call: version labels for upload chunks
     vi.mocked(db.select).mockImplementationOnce(() => makeSelectChain([{ id: "uv-1", versionLabel: "v1" }]));

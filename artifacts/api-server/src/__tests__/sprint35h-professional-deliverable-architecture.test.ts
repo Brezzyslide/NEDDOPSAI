@@ -1456,13 +1456,17 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(result.failures.map((failure) => failure.gate)).not.toContain("template_required");
   });
 
-  it("uses four section batches with structured forward context and isolated batch failures for participant care plans", () => {
+  it("uses isolated table-heavy section batches with structured forward context and isolated batch failures for participant care plans", () => {
     const src = source("services/unifiedExecutionEngine.ts");
 
     expect(src).toContain("shouldUseBatchedParticipantCarePlanGeneration");
     expect(src).toContain("const CARE_PLAN_BATCHES");
     expect(src).toContain('"participant-planning-basis"');
-    expect(src).toContain('"functional-capacity"');
+    expect(src).toContain('"goals"');
+    expect(src).toContain('"adl"');
+    expect(src).toContain('"mobility"');
+    expect(src).toContain('"behavioural-management"');
+    expect(src).toContain('"restrictive-practices"');
     expect(src).toContain('"support-delivery-safeguards"');
     expect(src).toContain('"specialist-admin"');
     expect(src).toContain('"care-plan-undertaking-adl"');
@@ -1481,6 +1485,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("buildFailedBatchSections(batch, reason)");
     expect(src).toContain("Batch ${batch.name} stopped at the configured output limit");
     expect(src).toContain("Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries");
+  });
+
+  it("declares care-plan retrieval vocabulary once and shares it between KRS and the section bridge", () => {
+    const registry = source("services/blueprintRegistry.ts");
+    const krs = source("services/knowledgeResolutionService.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+
+    expect(registry).toContain("retrievalVocabulary");
+    expect(registry).toContain("CARE_PLAN_ADL_ACTIVITY_TERMS");
+    expect(registry).toContain("Take a shower");
+    expect(registry).toContain("Money handling");
+    expect(registry).toContain("Chemical restraint");
+    expect(registry).toContain("Physical restraint");
+    expect(krs).toContain("buildSectionRetrievalProfiles(input)");
+    expect(krs).toContain("buildSectionRetrievalQuery(section, requiredCategories)");
+    expect(krs).toContain("embeddingCacheKey");
+    expect(krs).toContain("sectionRetrieval");
+    expect(uee).toContain("buildSectionRetrievalTerms(section, expectedCategories)");
   });
 
   it("isolates provider failures to the failed care-plan batch instead of aborting assembled sections", () => {
