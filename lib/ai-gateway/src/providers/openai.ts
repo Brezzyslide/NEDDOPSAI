@@ -115,6 +115,15 @@ export function resolveOpenAIRuntimePolicy(request: Pick<AIRequest, "runtimeProf
         retryOnRateLimit: true,
         retryOnServerError: true,
       };
+    case "professional_execution_batch":
+      return {
+        runtimeProfile,
+        timeoutMs: envInt("AI_PROFESSIONAL_BATCH_TIMEOUT_MS", envInt("AI_PROFESSIONAL_TIMEOUT_MS", 180_000)),
+        maxRetries: envInt("AI_PROFESSIONAL_BATCH_MAX_RETRIES", 2),
+        retryOnTimeout: true,
+        retryOnRateLimit: true,
+        retryOnServerError: true,
+      };
     case "final_synthesis":
       return {
         runtimeProfile,
@@ -302,6 +311,7 @@ export async function callOpenAI(request: AIRequest): Promise<OpenAICompletionRe
       // Network timeout
       if (isTimeoutError(err)) {
         if (policy.retryOnTimeout && retries < policy.maxRetries) {
+          await sleep(1000 * Math.pow(2, retries));
           retries++;
           continue;
         }

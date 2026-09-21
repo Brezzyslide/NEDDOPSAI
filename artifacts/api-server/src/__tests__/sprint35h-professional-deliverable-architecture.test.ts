@@ -41,6 +41,10 @@ function source(relativePath: string): string {
   return readFileSync(resolve(root, relativePath), "utf8");
 }
 
+function workspaceSource(relativePath: string): string {
+  return readFileSync(resolve(root, "../../..", relativePath), "utf8");
+}
+
 function manifest(overrides: Partial<WorkPackageManifest> = {}): WorkPackageManifest {
   return {
     id: "manifest-professional-context",
@@ -1477,6 +1481,29 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("buildFailedBatchSections(batch, reason)");
     expect(src).toContain("Batch ${batch.name} stopped at the configured output limit");
     expect(src).toContain("Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries");
+  });
+
+  it("isolates provider failures to the failed care-plan batch instead of aborting assembled sections", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("formatCarePlanBatchProviderFailure(batch, error, elapsedMs)");
+    expect(src).toContain('finishReason: "provider_failure"');
+    expect(src).toContain("providerFailureKind: extractGatewayProviderFailureKind(error)");
+    expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
+    expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
+    expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason))");
+    expect(src).toContain("continue;");
+  });
+
+  it("uses a retrying long-running OpenAI timeout policy for care-plan batch generation", () => {
+    const provider = workspaceSource("lib/ai-gateway/src/providers/openai.ts");
+    const types = workspaceSource("lib/ai-gateway/src/types.ts");
+
+    expect(types).toContain('| "professional_execution_batch"');
+    expect(provider).toContain('case "professional_execution_batch"');
+    expect(provider).toContain('envInt("AI_PROFESSIONAL_BATCH_TIMEOUT_MS", envInt("AI_PROFESSIONAL_TIMEOUT_MS", 180_000))');
+    expect(provider).toContain('maxRetries: envInt("AI_PROFESSIONAL_BATCH_MAX_RETRIES", 2)');
+    expect(provider).toContain("await sleep(1000 * Math.pow(2, retries))");
   });
 
   it("adds a mechanical consistency gate for repeated care-plan facts after batched assembly", () => {

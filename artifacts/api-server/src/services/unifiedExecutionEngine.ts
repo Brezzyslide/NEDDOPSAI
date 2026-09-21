@@ -2945,27 +2945,59 @@ export class UnifiedExecutionEngine {
       ].join("\n\n");
       const outputBudget = carePlanBatchOutputBudget(batch);
       const startedAt = Date.now();
-      const response = await gateway.process({
-        systemPrompt: input.systemPrompt,
-        userMessage,
-        retrievedFields: [
-          "carePlanBatch.targetRequirements",
-          "carePlanBatch.selectedEvidence",
-          "carePlanBatch.forwardContext",
-        ],
-        maxTokens: outputBudget,
-        outputMode: "json",
-        responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
-        promptCacheKey: buildProfessionalPromptCacheKey(
-          input.authCtx.organizationId,
-          input.specialistCode,
-          input.blueprint,
-          batchContract,
-          input.professionalContext,
-        ),
-        runtimeProfile: "professional_execution_batch",
-        allowProviderFallback: false,
-      });
+      let response: Awaited<ReturnType<typeof gateway.process>>;
+      try {
+        response = await gateway.process({
+          systemPrompt: input.systemPrompt,
+          userMessage,
+          retrievedFields: [
+            "carePlanBatch.targetRequirements",
+            "carePlanBatch.selectedEvidence",
+            "carePlanBatch.forwardContext",
+          ],
+          maxTokens: outputBudget,
+          outputMode: "json",
+          responseSchema: buildProfessionalDeliverableResponseSchema(input.professionalContext),
+          promptCacheKey: buildProfessionalPromptCacheKey(
+            input.authCtx.organizationId,
+            input.specialistCode,
+            input.blueprint,
+            batchContract,
+            input.professionalContext,
+          ),
+          runtimeProfile: "professional_execution_batch",
+          allowProviderFallback: false,
+        });
+      } catch (error) {
+        const elapsedMs = Date.now() - startedAt;
+        const reason = formatCarePlanBatchProviderFailure(batch, error, elapsedMs);
+        batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
+        allSections.push(...buildFailedBatchSections(batch, reason));
+        batchTelemetry.push({
+          batchId: batch.id,
+          batchName: batch.name,
+          requirementIds: batch.requirementIds,
+          configuredOutputBudget: outputBudget,
+          actualInputTokens: null,
+          actualOutputTokens: null,
+          actualTotalTokens: null,
+          cachedInputTokens: null,
+          outputMode: "json",
+          responseFormat: null,
+          finishReason: "provider_failure",
+          model: null,
+          latencyMs: elapsedMs,
+          runtimeProfile: "professional_execution_batch",
+          configuredTimeoutMs: extractGatewayTimeoutMs(error),
+          retryCount: extractGatewayRetryCount(error),
+          providerFailureKind: extractGatewayProviderFailureKind(error),
+          usedFallback: false,
+          selectedEvidenceChunks: batchEvidencePack?.totalChunks ?? 0,
+          failed: true,
+          failureReason: reason,
+        });
+        continue;
+      }
       const commonTelemetry = {
         batchId: batch.id,
         batchName: batch.name,
@@ -5447,6 +5479,45 @@ function carePlanBatchOutputBudget(batch: CarePlanBatch): number {
   if (batch.id === "functional-capacity") return 6000;
   if (batch.id === "support-delivery-safeguards") return 6000;
   return 4500;
+}
+
+function formatCarePlanBatchProviderFailure(batch: CarePlanBatch, error: unknown, elapsedMs: number): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const kind = extractGatewayProviderFailureKind(error);
+  const timeoutMs = extractGatewayTimeoutMs(error);
+  const retries = extractGatewayRetryCount(error);
+  return [
+    `Batch ${batch.name} generation_failed due to ${kind ?? "provider_error"}`,
+    `elapsedMs=${elapsedMs}`,
+    timeoutMs !== null ? `configuredTimeoutMs=${timeoutMs}` : null,
+    retries !== null ? `retryCount=${retries}` : null,
+    `message=${message}`,
+  ].filter(Boolean).join("; ");
+}
+
+function extractGatewayProviderFailureKind(error: unknown): string | null {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    const code = String((error as { code?: unknown }).code ?? "");
+    if (code === "PROVIDER_TIMEOUT") return "timeout";
+    if (code === "PROVIDER_RUNTIME_FAILURE") return "api_error";
+    if (code) return code;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (/\btimeout|timed out\b/i.test(message)) return "timeout";
+  if (/\brate.?limit|429\b/i.test(message)) return "rate_limit";
+  return "api_error";
+}
+
+function extractGatewayTimeoutMs(error: unknown): number | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/timed out after\s+(\d+)ms/i) ?? message.match(/configuredTimeoutMs=(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function extractGatewayRetryCount(error: unknown): number | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/\((\d+)\s+retries\)/i) ?? message.match(/retryCount=(\d+)/i);
+  return match ? Number(match[1]) : null;
 }
 
 function buildFailedBatchSections(batch: CarePlanBatch, reason: string): ParsedDeliverableSection[] {

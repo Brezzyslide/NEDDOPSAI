@@ -41,6 +41,7 @@ export type GatewayOutputMode = "text" | "json" | "structured";
 export type AIRuntimeProfile =
   | "conversation_intelligence"
   | "professional_execution"
+  | "professional_execution_batch"
   | "final_synthesis"
   | "targeted_repair"
   | "self_review"
