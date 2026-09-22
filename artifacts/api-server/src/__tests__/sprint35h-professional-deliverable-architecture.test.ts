@@ -2906,10 +2906,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]));
   });
 
-  it("derives ADL checklist cells, disaster fire fields and restrictive-practice chemical restraint server-side", () => {
+  it("derives ADL and mobility checklist cells, discrete disaster fire fields and restrictive-practice chemical restraint server-side", () => {
     const engine = source("services/unifiedExecutionEngine.ts");
 
     expect(engine).toContain("deriveAdlCellsFromControlledChecklist");
+    expect(engine).toContain("applyServerDerivedMobilityFields");
+    expect(engine).toContain("Mobility aid required");
+    expect(engine).toContain("Transfer method");
+    expect(engine).toContain("Number of workers required");
     expect(engine).toContain("deriveFireRiskAssessmentFields");
     expect(engine).toContain("applyServerDerivedDisasterManagementFields");
     expect(engine).toContain("replaceParticipantModeBracketPlaceholders");
@@ -2917,6 +2921,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain('return "Independent with prompting"');
     expect(engine).toContain("isCheckedChecklistBox");
     expect(engine).toContain("[☒☑✓xX☐□]");
+    expect(engine).not.toContain("(?:supervision level|level of supervision)");
+    expect(engine).not.toContain("(?:known )?triggers?");
+    expect(engine).not.toContain("(?:clear|simple|calm)\\\\s+verbal");
     expect(engine).toContain("findChemicalRestraintAuthorisationEvidence");
     expect(engine).toContain("Chemical Restraint");
     expect(engine).not.toContain("Authorised as per BSP, valid until 2024-12-31");

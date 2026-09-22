@@ -5538,6 +5538,9 @@ function applyServerDerivedCarePlanSectionCells(
   if (section.requirementId === "care-plan-undertaking-adl") {
     return applyServerDerivedAdlRows(section, evidencePack);
   }
+  if (section.requirementId === "care-plan-mobility-strategy") {
+    return applyServerDerivedMobilityFields(section, evidencePack);
+  }
   if (section.requirementId === "care-plan-disaster-management-strategy") {
     return applyServerDerivedDisasterManagementFields(section, evidencePack);
   }
@@ -5694,6 +5697,118 @@ function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell):
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
 }
 
+type MobilityField =
+  | "Mobility aid required"
+  | "Aid or equipment used"
+  | "Transfer method"
+  | "Number of workers required"
+  | "Mobility overview"
+  | "Mobility strategy";
+
+function applyServerDerivedMobilityFields(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const adlCells = deriveAdlCellsFromControlledChecklist(evidencePack);
+  const walk = adlCells.get(normaliseCarePlanAdlActivity("Mobility within the home"));
+  const transfer = adlCells.get(normaliseCarePlanAdlActivity("Transfers and positioning"));
+  if (!walk && !transfer) return section;
+
+  const rows = ([
+    mobilityDerivedRow("Mobility aid required", mobilityAidValue(walk), walk),
+    mobilityDerivedRow("Aid or equipment used", mobilityAidEquipmentValue(walk), walk),
+    mobilityDerivedRow("Transfer method", mobilityTransferValue(transfer), transfer),
+    mobilityDerivedRow("Number of workers required", mobilityWorkerCountValue(walk, transfer), transfer ?? walk),
+    mobilityDerivedRow("Mobility overview", mobilityOverviewValue(walk, transfer), walk ?? transfer),
+    mobilityDerivedRow("Mobility strategy", mobilityStrategyValue(walk, transfer), walk ?? transfer),
+  ] as Array<[MobilityField, string, DerivedAdlCell | undefined]>).map(([field, value, source]) => [
+    field,
+    value,
+    source?.sourceValue ?? "Absent",
+    source?.chunkId ?? "not-recorded-in-retrieved-evidence",
+    source ? "VERIFIED_MAPPING" : "NOT_ASSESSED",
+  ]);
+
+  return {
+    ...section,
+    content: [
+      renderMarkdownRows(["Field", "Value", "Source value", "Chunk ID", "Mapping mode"], rows),
+      extractMobilityStrategyNarrative(section.content),
+    ].filter(Boolean).join("\n\n"),
+    evidenceSources: mergeEvidenceSources(section.evidenceSources, [walk, transfer]
+      .filter((source): source is DerivedAdlCell => Boolean(source))
+      .map((source) => ({
+        chunkId: source.chunkId,
+        documentTitle: "Controlled intake checklist",
+        passage: `${source.sourceItems.join(", ")}: ${source.sourceValue}`,
+        location: source.chunkId,
+        evidenceClass: "client_record",
+      }))),
+  };
+}
+
+function mobilityDerivedRow(
+  field: MobilityField,
+  value: string,
+  source: DerivedAdlCell | undefined,
+): [MobilityField, string, DerivedAdlCell | undefined] {
+  return [field, value, source];
+}
+
+function mobilityAidValue(walk: DerivedAdlCell | undefined): string {
+  if (!walk) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  if (walk.supportLevel === "Independent") return "No mobility aid recorded as required in the controlled intake checklist.";
+  return "Mobility assistance requirement recorded in the controlled intake checklist.";
+}
+
+function mobilityAidEquipmentValue(walk: DerivedAdlCell | undefined): string {
+  if (!walk) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  if (walk.supportLevel === "Independent") return "No walking aid recorded; checklist item records walking without an aid.";
+  return "Aid or equipment not separately recorded in retrieved evidence.";
+}
+
+function mobilityTransferValue(transfer: DerivedAdlCell | undefined): string {
+  if (!transfer) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  if (transfer.supportLevel === "Independent") return "Transfers to and from bed without support.";
+  if (transfer.supportLevel === "Unable to complete") return "Unable to transfer to and from bed without full support.";
+  return "Support required for transfers to and from bed.";
+}
+
+function mobilityWorkerCountValue(walk: DerivedAdlCell | undefined, transfer: DerivedAdlCell | undefined): string {
+  if (!walk && !transfer) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  if ((walk && walk.supportLevel !== "Independent") || (transfer && transfer.supportLevel !== "Independent")) {
+    return "Worker assistance required; number of workers not recorded in retrieved evidence.";
+  }
+  return "No worker assistance recorded for walking without an aid or bed transfers in the controlled intake checklist.";
+}
+
+function mobilityOverviewValue(walk: DerivedAdlCell | undefined, transfer: DerivedAdlCell | undefined): string {
+  const parts = [
+    walk ? `walking: ${walk.sourceValue}` : null,
+    transfer ? `bed transfers: ${transfer.sourceValue}` : null,
+  ].filter(Boolean);
+  return parts.length ? `Controlled intake checklist records ${parts.join("; ")}.` : DETERMINISTIC_EVIDENCE_GAP_VALUE;
+}
+
+function mobilityStrategyValue(walk: DerivedAdlCell | undefined, transfer: DerivedAdlCell | undefined): string {
+  if (!walk && !transfer) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  if ((walk && walk.supportLevel !== "Independent") || (transfer && transfer.supportLevel !== "Independent")) {
+    return "Provide the least restrictive support recorded in the checklist and reassess if mobility safety changes.";
+  }
+  return "Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk.";
+}
+
+function extractMobilityStrategyNarrative(content: string): string {
+  const narrative = content
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block && !block.includes("|"))
+    .filter((block) => !/\bgeneration_failed\b|model returned no cells/i.test(block))
+    .slice(0, 2)
+    .join("\n\n");
+  return narrative ? `**Narrative strategy:**\n\n${narrative}` : "";
+}
+
 type FireRiskField =
   | "Evacuation assistance required"
   | "Supervision level during evacuation"
@@ -5765,22 +5880,10 @@ function deriveFireRiskAssessmentFields(evidencePack: EvidencePack | undefined):
       /evacuation assistance required\s*[:\-]?\s*(yes|no|not recorded|n\/a)/i,
       /requires?\s+(?:assistance|support)\s+(?:during|for)\s+evacuation\s*[:\-]?\s*(yes|no)?/i,
     ]);
-    addFireRiskField(fields, chunk, "Supervision level during evacuation", [
-      /(?:supervision level|level of supervision)\s*(?:during evacuation)?\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
-      /(?:supervise|supervision)[^\n\r.;]{0,80}(?:evacuation|emergency)[^\n\r.;]{0,80}/i,
-    ]);
     addFireRiskField(fields, chunk, "Assembly point", [
       /assembly point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
       /evacuation point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
       /muster point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
-    ]);
-    addFireRiskField(fields, chunk, "Communication approach", [
-      /communication approach\s*(?:during evacuation|in emergency)?\s*[:\-]?\s*([^\n\r.;]{2,160})/i,
-      /(?:clear|simple|calm)\s+verbal\s+(?:instruction|prompt)[^\n\r.;]{0,120}/i,
-    ]);
-    addFireRiskField(fields, chunk, "Known triggers during emergencies", [
-      /(?:known )?triggers?(?: during emergencies)?\s*[:\-]?\s*([^\n\r.;]{2,160})/i,
-      /(?:smoking|fire|alarm|panic|anxiety|distress)[^\n\r.;]{0,120}(?:emergency|evacuation|fire|alarm)/i,
     ]);
     const equipment = extractFireEquipment(chunk.text);
     if (equipment.length > 0 && !fields.has("Equipment present")) {
