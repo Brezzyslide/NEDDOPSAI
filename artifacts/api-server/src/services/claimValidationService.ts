@@ -653,6 +653,16 @@ const CARE_PLAN_ADL_GENERATION_FAILED_ROW = {
   mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
 };
 
+type CarePlanBehaviourFold = "proactive" | "reactive" | "protective";
+
+interface CarePlanBehaviourStrategyRow {
+  fold: CarePlanBehaviourFold;
+  trigger: string;
+  strategy: string;
+  workerAction: string;
+  bspSource: string;
+}
+
 export interface DeterministicTemplateRequirement {
   id: string;
   sourceBlueprintSection?: string;
@@ -773,7 +783,7 @@ export function normaliseCarePlanDeclaredInstrumentSection(
     return normaliseMarkdownInstrumentSection(section, renderGenerationFailedMobilityTable());
   }
   if (section.requirementId === "care-plan-behavioural-management") {
-    return normaliseMarkdownInstrumentSection(section, renderGenerationFailedBehaviouralManagementTables());
+    return normaliseBehaviouralManagementInstrumentSection(section);
   }
   if (section.requirementId === "care-plan-restrictive-practices") {
     return normaliseMarkdownInstrumentSection(section, renderGenerationFailedRestrictivePracticesTable());
@@ -835,6 +845,22 @@ function normaliseMarkdownInstrumentSection(
   };
 }
 
+function normaliseBehaviouralManagementInstrumentSection(
+  section: ParsedDeliverableSection,
+): ParsedDeliverableSection {
+  const rows = extractCarePlanBehaviourStrategyRows(section.content);
+  if (rows.length === 0) {
+    return {
+      ...section,
+      content: renderGenerationFailedBehaviouralManagementTables(),
+    };
+  }
+  return {
+    ...section,
+    content: renderCarePlanBehaviouralManagementTables(rows),
+  };
+}
+
 function containsMarkdownTable(content: string): boolean {
   const rows = content.split(/\r?\n/).map((line) => line.trim());
   return rows.some((line, index) =>
@@ -889,6 +915,133 @@ function renderGenerationFailedBehaviouralManagementTables(): string {
       ]],
     ),
   ].join("\n\n")).join("\n\n");
+}
+
+function renderCarePlanBehaviouralManagementTables(rows: CarePlanBehaviourStrategyRow[]): string {
+  return (["proactive", "reactive", "protective"] as CarePlanBehaviourFold[]).map((fold) => {
+    const title = `${capitalise(fold)} strategies`;
+    const foldRows = rows.filter((row) => row.fold === fold);
+    if (foldRows.length === 0) {
+      return [
+        `**${title}**`,
+        `No ${fold} strategies recorded in the BSP.`,
+      ].join("\n\n");
+    }
+    return [
+      `**${title}**`,
+      renderMarkdownRows(
+        ["Behaviour or trigger", "Strategy", "What the worker does", "BSP source"],
+        foldRows.map((row) => [row.trigger, row.strategy, row.workerAction, row.bspSource]),
+      ),
+    ].join("\n\n");
+  }).join("\n\n");
+}
+
+function extractCarePlanBehaviourStrategyRows(content: string): CarePlanBehaviourStrategyRow[] {
+  const rows: CarePlanBehaviourStrategyRow[] = [];
+  const used = new Set<string>();
+  const foldBlocks = [
+    ["proactive", /(?:^|\n)(?:#{1,6}\s+|\*\*)?proactive strategies(?:\*\*)?\s*\n([\s\S]*?)(?=\n(?:#{1,6}\s+|\*\*)?(?:reactive|protective) strategies(?:\*\*)?\s*\n|$)/i],
+    ["reactive", /(?:^|\n)(?:#{1,6}\s+|\*\*)?reactive strategies(?:\*\*)?\s*\n([\s\S]*?)(?=\n(?:#{1,6}\s+|\*\*)?protective strategies(?:\*\*)?\s*\n|$)/i],
+    ["protective", /(?:^|\n)(?:#{1,6}\s+|\*\*)?protective strategies(?:\*\*)?\s*\n([\s\S]*)$/i],
+  ] as const;
+
+  for (const [fold, pattern] of foldBlocks) {
+    const body = content.match(pattern)?.[1] ?? "";
+    for (const table of extractMarkdownTablesFromText(body)) {
+      const indices = behaviouralTableIndices(table.headers);
+      if (!indices) continue;
+      for (const row of table.rows) {
+        const trigger = row[indices.trigger]?.trim() ?? "";
+        const strategy = row[indices.strategy]?.trim() ?? "";
+        const workerAction = row[indices.workerAction]?.trim() ?? "";
+        const bspSource = row[indices.bspSource]?.trim() ?? "";
+        if (!trigger || !strategy || !workerAction || !bspSource) continue;
+        if (/generation_failed|model returned no cells/i.test(`${trigger} ${strategy} ${workerAction} ${bspSource}`)) continue;
+        const key = `${fold}:${trigger}:${strategy}:${workerAction}:${bspSource}`.toLowerCase();
+        if (used.has(key)) continue;
+        used.add(key);
+        rows.push({ fold, trigger, strategy, workerAction, bspSource });
+      }
+    }
+  }
+
+  for (const table of extractMarkdownTablesFromText(content)) {
+    const indices = behaviouralTableIndices(table.headers);
+    const foldIndex = table.headers.findIndex((header) => normaliseTableHeader(header) === "fold");
+    if (!indices || foldIndex < 0) continue;
+    for (const row of table.rows) {
+      const fold = normaliseBehaviourFold(row[foldIndex] ?? "");
+      if (!fold) continue;
+      const trigger = row[indices.trigger]?.trim() ?? "";
+      const strategy = row[indices.strategy]?.trim() ?? "";
+      const workerAction = row[indices.workerAction]?.trim() ?? "";
+      const bspSource = row[indices.bspSource]?.trim() ?? "";
+      if (!trigger || !strategy || !workerAction || !bspSource) continue;
+      const key = `${fold}:${trigger}:${strategy}:${workerAction}:${bspSource}`.toLowerCase();
+      if (used.has(key)) continue;
+      used.add(key);
+      rows.push({ fold, trigger, strategy, workerAction, bspSource });
+    }
+  }
+
+  return rows;
+}
+
+function behaviouralTableIndices(headers: string[]): {
+  trigger: number;
+  strategy: number;
+  workerAction: number;
+  bspSource: number;
+} | null {
+  const normalised = headers.map(normaliseTableHeader);
+  const trigger = normalised.findIndex((header) => header.includes("behaviour") || header.includes("trigger"));
+  const strategy = normalised.findIndex((header) => header === "strategy" || header.includes("strategy"));
+  const workerAction = normalised.findIndex((header) => header.includes("worker does") || header.includes("worker action"));
+  const bspSource = normalised.findIndex((header) => header.includes("bsp source") || header.includes("source"));
+  if (trigger < 0 || strategy < 0 || workerAction < 0 || bspSource < 0) return null;
+  return { trigger, strategy, workerAction, bspSource };
+}
+
+function extractMarkdownTablesFromText(markdown: string): Array<{ headers: string[]; rows: string[][] }> {
+  const lines = markdown.split(/\r?\n/);
+  const tables: Array<{ headers: string[]; rows: string[][] }> = [];
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const header = lines[index] ?? "";
+    const separator = lines[index + 1] ?? "";
+    if (!header.includes("|") || !/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(separator)) continue;
+    const headers = splitMarkdownTableRow(header);
+    const rows: string[][] = [];
+    for (let rowIndex = index + 2; rowIndex < lines.length; rowIndex += 1) {
+      const row = lines[rowIndex] ?? "";
+      if (!row.includes("|") || !row.trim()) break;
+      rows.push(splitMarkdownTableRow(row));
+      index = rowIndex;
+    }
+    tables.push({ headers, rows });
+  }
+  return tables;
+}
+
+function splitMarkdownTableRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function normaliseTableHeader(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normaliseBehaviourFold(value: string): CarePlanBehaviourFold | null {
+  const normalised = normaliseTableHeader(value);
+  if (normalised.includes("proactive")) return "proactive";
+  if (normalised.includes("reactive")) return "reactive";
+  if (normalised.includes("protective")) return "protective";
+  return null;
 }
 
 function renderGenerationFailedRestrictivePracticesTable(): string {
@@ -1333,7 +1486,7 @@ function parseDeliverableStructuredRows(value: unknown): ParsedDeliverableStruct
     const chunkId = stringField(raw, "chunkId", "chunk_id", "sourceChunkId", "source_chunk_id");
     const mappingMode = stringField(raw, "mappingMode", "mapping_mode", "mode") as CarePlanAdlMappingMode | "";
     if (!activity || !supportLevel || !workerDescription || !sourceValue || !chunkId) return [];
-    if (mappingMode !== "VERIFIED_MAPPING" && mappingMode !== "CITED_INTERPRETATION") return [];
+    if (mappingMode !== "VERIFIED_MAPPING" && mappingMode !== "CITED_INTERPRETATION" && mappingMode !== "NOT_ASSESSED") return [];
     return [{
       activity,
       supportLevel,

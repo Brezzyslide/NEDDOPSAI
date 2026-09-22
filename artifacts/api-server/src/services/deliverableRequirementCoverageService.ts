@@ -607,7 +607,7 @@ function isCompleteStructuredRow(row: CarePlanAdlStructuredRow): boolean {
     row.workerDescription?.trim() &&
     row.sourceValue?.trim() &&
     row.chunkId?.trim() &&
-    (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION"),
+    (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION" || row.mappingMode === "NOT_ASSESSED"),
   );
 }
 
@@ -1784,7 +1784,7 @@ function validateAdlAccountableClaim(
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
   if (
-    claim.supportLevel === "Not applicable / not assessed" &&
+    (claim.mappingMode === "NOT_ASSESSED" || claim.supportLevel === "Not applicable / not assessed") &&
     /not-recorded-in-retrieved-evidence|generation_failed/i.test(claim.chunkId)
   ) {
     return {
@@ -2377,7 +2377,7 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
       continue;
     }
     if (
-      row.supportLevel === "Not applicable / not assessed" &&
+      (row.mappingMode === "NOT_ASSESSED" || row.supportLevel === "Not applicable / not assessed") &&
       /not-recorded-in-retrieved-evidence|generation_failed/i.test(row.chunkId)
     ) {
       continue;

@@ -69,7 +69,7 @@ export const CARE_PLAN_ADL_SOURCE_ITEM_MAPPING_GAPS = [
   "Home-safety checklist items are context for Maintaining a safe home environment, but they are not controlled ADL support-level values unless the source states a support state.",
 ] as const;
 
-export type CarePlanAdlMappingMode = "VERIFIED_MAPPING" | "CITED_INTERPRETATION";
+export type CarePlanAdlMappingMode = "VERIFIED_MAPPING" | "CITED_INTERPRETATION" | "NOT_ASSESSED";
 
 export interface CarePlanAdlStructuredRow {
   activity: string;

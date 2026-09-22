@@ -2689,6 +2689,47 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(markdown).not.toContain("incorrectly returned restrictive-practice prose");
   });
 
+  it("renders Behavioural Management with variable strategy rows and empty fold findings", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      deliverable: {
+        sections: [
+          {
+            requirementId: "care-plan-behavioural-management",
+            heading: "Behavioural Management",
+            content: [
+              "### Proactive strategies",
+              "| Behaviour or trigger | Strategy | What the worker does | BSP source |",
+              "| --- | --- | --- | --- |",
+              "| Unstructured time | Offer planned evening activities | Prompt Michael to choose music or a planned outing before escalation. | CBSP chunk 77c8bfdc: structured evening activities |",
+              "",
+              "### Reactive strategies",
+              "| Behaviour or trigger | Strategy | What the worker does | BSP source |",
+              "| --- | --- | --- | --- |",
+              "",
+              "### Protective strategies",
+              "| Behaviour or trigger | Strategy | What the worker does | BSP source |",
+              "| --- | --- | --- | --- |",
+              "| Escalation creates immediate risk | Maintain distance and call on-call manager | Move to a safe distance and escalate according to the BSP. | CBSP chunk c91aae9a: maintain distance |",
+            ].join("\n"),
+            evidenceSources: [],
+            structuredRows: [],
+          },
+        ],
+      },
+      claims: [],
+    }));
+
+    const markdown = assembleDeliverableMarkdownFromSections(
+      parsed.deliverableSections?.map(normaliseCarePlanDeclaredInstrumentSection),
+    );
+
+    expect(markdown).toContain("**Proactive strategies**");
+    expect(markdown).toContain("| Unstructured time | Offer planned evening activities | Prompt Michael to choose music or a planned outing before escalation. | CBSP chunk 77c8bfdc: structured evening activities |");
+    expect(markdown).toContain("No reactive strategies recorded in the BSP.");
+    expect(markdown).toContain("| Escalation creates immediate risk | Maintain distance and call on-call manager | Move to a safe distance and escalate according to the BSP. | CBSP chunk c91aae9a: maintain distance |");
+    expect(markdown).not.toContain("generation_failed: model returned no cells for reactive");
+  });
+
   it("verifies cited spans after PDF-safe normalisation", () => {
     const result = verifySpanDetailed(
       "behaviour support plan records a supervision requirement",
@@ -2836,7 +2877,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const content = [
       "| Activity | Support level | What the worker does | Source value | Chunk ID | Mapping mode |",
       "| --- | --- | --- | --- | --- | --- |",
-      "| Personal hygiene and grooming | Not applicable / not assessed | No source row was available. | Absent | not-recorded-in-retrieved-evidence | CITED_INTERPRETATION |",
+      "| Personal hygiene and grooming | Not applicable / not assessed | No source row was available. | Absent | not-recorded-in-retrieved-evidence | NOT_ASSESSED |",
     ].join("\n");
     const report = evaluateDeliverableRequirementCoverage(`## Undertaking ADL\n\n${content}`, profile, {
       deliverableSections: [{
@@ -2850,7 +2891,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
           workerDescription: "No source row was available.",
           sourceValue: "Absent",
           chunkId: "not-recorded-in-retrieved-evidence",
-          mappingMode: "CITED_INTERPRETATION",
+          mappingMode: "NOT_ASSESSED",
         }],
       }],
     });
@@ -2865,10 +2906,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]));
   });
 
-  it("derives ADL checklist cells and restrictive-practice chemical restraint server-side", () => {
+  it("derives ADL checklist cells, disaster fire fields and restrictive-practice chemical restraint server-side", () => {
     const engine = source("services/unifiedExecutionEngine.ts");
 
     expect(engine).toContain("deriveAdlCellsFromControlledChecklist");
+    expect(engine).toContain("deriveFireRiskAssessmentFields");
+    expect(engine).toContain("applyServerDerivedDisasterManagementFields");
+    expect(engine).toContain("replaceParticipantModeBracketPlaceholders");
     expect(engine).toContain("CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS");
     expect(engine).toContain('return "Independent with prompting"');
     expect(engine).toContain("isCheckedChecklistBox");

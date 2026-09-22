@@ -3644,7 +3644,7 @@ function applyDeterministicEvidenceGapReplacements(input: {
             workerDescription: "Not assessed - no verified ADL source row was recorded in retrieved evidence.",
             sourceValue: "Absent",
             chunkId: "not-recorded-in-retrieved-evidence",
-            mappingMode: "CITED_INTERPRETATION" as const,
+            mappingMode: "NOT_ASSESSED" as const,
           };
         });
         if (JSON.stringify(section.structuredRows) !== beforeRows) {
@@ -3674,6 +3674,19 @@ function applyDeterministicEvidenceGapReplacements(input: {
     }
   }
 
+  for (const section of sections) {
+    const previous = section.content;
+    section.content = replaceParticipantModeBracketPlaceholders(section.content);
+    if (section.content !== previous) {
+      replacements.push({
+        requirementId: section.requirementId,
+        claim: `${section.heading}: bracket placeholder`,
+        replacement: DETERMINISTIC_EVIDENCE_GAP_VALUE,
+        reason: "Participant-specific sections must state evidence gaps in plain language instead of bracket placeholders.",
+      });
+    }
+  }
+
   if (replacements.length === 0) {
     return { changed: false, contentMarkdown: input.contentMarkdown, deliverableSections: input.deliverableSections, replacements: [] };
   }
@@ -3684,6 +3697,10 @@ function applyDeterministicEvidenceGapReplacements(input: {
     deliverableSections: sections,
     replacements,
   };
+}
+
+function replaceParticipantModeBracketPlaceholders(content: string): string {
+  return content.replace(/\[[^\]\r\n]{1,160}\]/g, DETERMINISTIC_EVIDENCE_GAP_VALUE);
 }
 
 function shouldDeterministicallyReplaceValue(requirementId: string, value: string): boolean {
@@ -4160,7 +4177,7 @@ function formatStructuredDeliverableResponseContract(
             "workerDescription": "<what the worker does, or a named evidence gap>",
             "sourceValue": "<controlled source value such as Without support, Support required, Completely unable to, Absent, or quoted prose basis>",
             "chunkId": "<retrieved evidence chunk id supporting this row>",
-            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, otherwise CITED_INTERPRETATION>"
+            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, NOT_ASSESSED when no source row exists, otherwise CITED_INTERPRETATION>"
           }
         ]`
     : "";
@@ -4200,7 +4217,7 @@ function formatTargetedRepairDeliverableResponseContract(): string {
             "workerDescription": "<what the worker does, or a named evidence gap>",
             "sourceValue": "<controlled source value such as Without support, Support required, Completely unable to, Absent, or quoted prose basis>",
             "chunkId": "<retrieved evidence chunk id supporting this row>",
-            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, otherwise CITED_INTERPRETATION>"
+            "mappingMode": "<VERIFIED_MAPPING for declared intake-checklist mappings, NOT_ASSESSED when no source row exists, otherwise CITED_INTERPRETATION>"
           }
         ]
       }
@@ -4305,7 +4322,7 @@ function buildProfessionalDeliverableResponseSchema(
                               workerDescription: { type: "string" },
                               sourceValue: { type: "string" },
                               chunkId: { type: "string" },
-                              mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION"] },
+                              mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION", "NOT_ASSESSED"] },
                             },
                           },
                         },
@@ -4455,7 +4472,7 @@ function buildTargetedRequirementRepairResponseSchema(
                         workerDescription: { type: "string" },
                         sourceValue: { type: "string" },
                         chunkId: { type: "string" },
-                        mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION"] },
+                        mappingMode: { type: "string", enum: ["VERIFIED_MAPPING", "CITED_INTERPRETATION", "NOT_ASSESSED"] },
                       },
                     },
                   },
@@ -4753,7 +4770,7 @@ function formatParticipantSpecificOutputContract(
     "For Undertaking ADL: return exactly 26 structuredRows, one for each canonical ADL activity row assembled by the server. Do not add, omit or rename ADL activities. Each row must carry activity, supportLevel, workerDescription, sourceValue, chunkId and mappingMode.",
     "ADL intake-checklist mapping: Without support -> Independent; Completely unable to -> Unable to complete; Support required -> Independent with prompting, Independent with supervision or Partial physical assistance, chosen from other cited evidence and defaulting to the least restrictive supported level; Absent -> Not applicable / not assessed.",
     "ADL source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing; Comb/brush hair and Shaving -> Personal hygiene and grooming; Dressing -> Dressing and undressing; Use toilet and Post toilet hygiene -> Toileting and continence; Cooking -> Meal preparation; Cleaning and Washing dishes -> Household cleaning; Transfer to/from bed -> Transfers and positioning; Money handling -> Money handling and everyday purchases; Walk without aid -> Mobility within the home; Use public transport -> Transport and travel. If several source items map to one row and disagree, use the highest support level and name the differing parts in workerDescription.",
-    "For Behavioural Management: render BSP-derived strategies as structured rows with fold, behaviour or trigger, strategy, worker action, BSP source, restrictive-practice flag and APO confirmation status.",
+    "For Behavioural Management: render BSP-derived strategies as markdown tables under the exact fold headings Proactive strategies, Reactive strategies and Protective strategies. The server owns those three fold headings and the columns Behaviour or trigger | Strategy | What the worker does | BSP source, but the BSP controls the number of rows. Every strategy row must carry a BSP chunkId and supporting passage in BSP source. Do not invent a row count.",
     "For Restrictive Practices: render practices as structured rows with practice type, worker actions, prohibited actions, authorisation status and the authorisation source.",
     "For Goals: every action and outcome must link to evidence, and each outcome must identify which action(s) it follows from.",
     "For About Me: person-centred statements must be categorised as strength, preference, like, dislike, what matters, communication preference or informal support, and each must link to its source.",
@@ -4902,6 +4919,11 @@ function rankEvidenceForSection(
 
   for (const candidate of ranked) {
     if (candidate.score < SECTION_EVIDENCE_RELEVANCE_THRESHOLD) continue;
+    if (section.sectionCode === "BEHAVIOURAL_MANAGEMENT" && isBehaviourSupportPlanChunk(candidate.chunk)) {
+      selected.push({ ...candidate, selectionReason: "above_threshold" });
+      usedTokens += candidate.tokenEstimate;
+      continue;
+    }
     if (usedTokens + candidate.tokenEstimate > SECTION_EVIDENCE_TOKEN_BUDGET && selected.length > 0) continue;
     selected.push({ ...candidate, selectionReason: "above_threshold" });
     usedTokens += candidate.tokenEstimate;
@@ -4933,6 +4955,11 @@ function rankEvidenceForSection(
       selectionReason: item.selectionReason,
     })),
   };
+}
+
+function isBehaviourSupportPlanChunk(chunk: EvidencePack["chunks"][number]): boolean {
+  return /behaviour_support_plan/i.test(chunk.documentCategory ?? "") ||
+    /\b(?:CBSP|Behaviour Support Plan|BSP)\b/i.test(chunk.sourceTitle);
 }
 
 function sectionEvidenceTerms(
@@ -5511,6 +5538,9 @@ function applyServerDerivedCarePlanSectionCells(
   if (section.requirementId === "care-plan-undertaking-adl") {
     return applyServerDerivedAdlRows(section, evidencePack);
   }
+  if (section.requirementId === "care-plan-disaster-management-strategy") {
+    return applyServerDerivedDisasterManagementFields(section, evidencePack);
+  }
   if (section.requirementId === "care-plan-restrictive-practices") {
     return applyServerDerivedRestrictivePracticeRows(section, evidencePack);
   }
@@ -5570,7 +5600,7 @@ function applyServerDerivedAdlRows(
       workerDescription: "Not assessed - no controlled ADL checklist value or cited participant-specific source row was available in retrieved evidence.",
       sourceValue: "Absent",
       chunkId: "not-recorded-in-retrieved-evidence",
-      mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
+      mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
     };
   });
   return { ...section, structuredRows: rows };
@@ -5664,6 +5694,196 @@ function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell):
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
 }
 
+type FireRiskField =
+  | "Evacuation assistance required"
+  | "Supervision level during evacuation"
+  | "Assembly point"
+  | "Equipment present"
+  | "Communication approach"
+  | "Known triggers during emergencies";
+
+interface DerivedFireRiskField {
+  field: FireRiskField;
+  value: string;
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
+}
+
+function applyServerDerivedDisasterManagementFields(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const fields = deriveFireRiskAssessmentFields(evidencePack);
+  if (fields.size === 0) return section;
+  const rows = ([
+    "Evacuation assistance required",
+    "Supervision level during evacuation",
+    "Assembly point",
+    "Equipment present",
+    "Communication approach",
+    "Known triggers during emergencies",
+  ] as FireRiskField[]).map((field) => {
+    const derived = fields.get(field);
+    return [
+      field,
+      derived?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE,
+      derived?.chunkId ?? "not-recorded-in-retrieved-evidence",
+    ];
+  });
+  const sourceNames = Array.from(new Set(Array.from(fields.values()).map((field) => field.documentTitle)));
+  const modelStrategy = extractDisasterWorkerStrategy(section.content);
+  const content = [
+    "This section records what workers do with Michael in an emergency or evacuation. It supplements, and does not replace, the site emergency plan.",
+    sourceNames.length
+      ? `Source risk assessment: ${sourceNames.join("; ")}.`
+      : "Source risk assessment: not recorded in retrieved evidence.",
+    renderMarkdownRows(["Field", "Recorded value", "Chunk ID"], rows),
+    "**Worker strategy:**",
+    modelStrategy || defaultDisasterWorkerStrategy(fields),
+  ].join("\n\n");
+  return {
+    ...section,
+    content,
+    evidenceSources: mergeEvidenceSources(section.evidenceSources, Array.from(fields.values()).map((field) => ({
+      chunkId: field.chunkId,
+      documentTitle: field.documentTitle,
+      passage: field.passage,
+      location: field.location,
+      evidenceClass: field.evidenceClass,
+    }))),
+  };
+}
+
+function deriveFireRiskAssessmentFields(evidencePack: EvidencePack | undefined): Map<FireRiskField, DerivedFireRiskField> {
+  const fields = new Map<FireRiskField, DerivedFireRiskField>();
+  for (const chunk of evidencePack?.chunks ?? []) {
+    if (!isFireRiskAssessmentChunk(chunk)) continue;
+    addFireRiskField(fields, chunk, "Evacuation assistance required", [
+      /evacuation assistance required\s*[:\-]?\s*(yes|no|not recorded|n\/a)/i,
+      /requires?\s+(?:assistance|support)\s+(?:during|for)\s+evacuation\s*[:\-]?\s*(yes|no)?/i,
+    ]);
+    addFireRiskField(fields, chunk, "Supervision level during evacuation", [
+      /(?:supervision level|level of supervision)\s*(?:during evacuation)?\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
+      /(?:supervise|supervision)[^\n\r.;]{0,80}(?:evacuation|emergency)[^\n\r.;]{0,80}/i,
+    ]);
+    addFireRiskField(fields, chunk, "Assembly point", [
+      /assembly point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
+      /evacuation point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
+      /muster point\s*[:\-]?\s*([^\n\r.;]{2,120})/i,
+    ]);
+    addFireRiskField(fields, chunk, "Communication approach", [
+      /communication approach\s*(?:during evacuation|in emergency)?\s*[:\-]?\s*([^\n\r.;]{2,160})/i,
+      /(?:clear|simple|calm)\s+verbal\s+(?:instruction|prompt)[^\n\r.;]{0,120}/i,
+    ]);
+    addFireRiskField(fields, chunk, "Known triggers during emergencies", [
+      /(?:known )?triggers?(?: during emergencies)?\s*[:\-]?\s*([^\n\r.;]{2,160})/i,
+      /(?:smoking|fire|alarm|panic|anxiety|distress)[^\n\r.;]{0,120}(?:emergency|evacuation|fire|alarm)/i,
+    ]);
+    const equipment = extractFireEquipment(chunk.text);
+    if (equipment.length > 0 && !fields.has("Equipment present")) {
+      const passage = compactEvidencePassage(extractPassageAroundTerms(chunk.text, equipment) || equipment.join(", "));
+      fields.set("Equipment present", {
+        field: "Equipment present",
+        value: equipment.join(", "),
+        chunkId: chunk.chunkId,
+        documentTitle: chunk.sourceTitle,
+        passage,
+        location: chunk.citation,
+        evidenceClass: chunk.evidenceClass,
+      });
+    }
+  }
+  return fields;
+}
+
+function isFireRiskAssessmentChunk(chunk: EvidencePack["chunks"][number]): boolean {
+  const haystack = `${chunk.sourceTitle} ${chunk.canonicalTitle ?? ""} ${chunk.documentCategory ?? ""} ${chunk.sectionTitle ?? ""}`;
+  return /fire risk|fire.*assessment|risk_assessment/i.test(haystack) &&
+    /fire|evacuation|smoke|blanket|extinguisher|assembly|alarm/i.test(`${haystack} ${chunk.text}`);
+}
+
+function addFireRiskField(
+  fields: Map<FireRiskField, DerivedFireRiskField>,
+  chunk: EvidencePack["chunks"][number],
+  field: FireRiskField,
+  patterns: RegExp[],
+): void {
+  if (fields.has(field)) return;
+  for (const pattern of patterns) {
+    const match = chunk.text.match(pattern);
+    if (!match) continue;
+    const value = compactEvidencePassage((match[1] ?? match[0]).replace(/^[\s:;-]+/, ""));
+    if (!value || /^not recorded$/i.test(value)) continue;
+    fields.set(field, {
+      field,
+      value,
+      chunkId: chunk.chunkId,
+      documentTitle: chunk.sourceTitle,
+      passage: compactEvidencePassage(match[0]),
+      location: chunk.citation,
+      evidenceClass: chunk.evidenceClass,
+    });
+    return;
+  }
+}
+
+function extractFireEquipment(text: string): string[] {
+  const equipment = [
+    [/fire blanket/i, "Fire blanket"],
+    [/fire extinguisher/i, "Fire extinguisher"],
+    [/smoke alarm/i, "Smoke alarm"],
+    [/sprinkler/i, "Sprinkler"],
+    [/evacuation diagram/i, "Evacuation diagram"],
+  ] as const;
+  return equipment.flatMap(([pattern, label]) => pattern.test(text) ? [label] : []);
+}
+
+function extractPassageAroundTerms(text: string, terms: string[]): string | null {
+  const lower = text.toLowerCase();
+  for (const term of terms) {
+    const index = lower.indexOf(term.toLowerCase());
+    if (index < 0) continue;
+    return text.slice(Math.max(0, index - 120), Math.min(text.length, index + 240));
+  }
+  return null;
+}
+
+function extractDisasterWorkerStrategy(content: string): string {
+  return content
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter((block) => block && !/\[[^\]]+\]/.test(block))
+    .filter((block) => !/^\*\*(?:evacuation assistance|required|assembly point|equipment|communication|medications|who to notify)/i.test(block))
+    .filter((block) => !/^This section records what workers do/i.test(block))
+    .slice(-3)
+    .join("\n\n");
+}
+
+function defaultDisasterWorkerStrategy(fields: Map<FireRiskField, DerivedFireRiskField>): string {
+  const equipment = fields.get("Equipment present")?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  const communication = fields.get("Communication approach")?.value ?? "clear, calm verbal instructions";
+  return `In an emergency, call 000 first, use ${communication}, maintain clear access to exits, take available emergency equipment recorded in the fire risk assessment (${equipment}), and notify the on-call service manager after immediate safety actions are underway.`;
+}
+
+function compactEvidencePassage(value: string): string {
+  return value.replace(/\s+/g, " ").replace(/^[:;\-\s]+|[:;\-\s]+$/g, "").trim();
+}
+
+function mergeEvidenceSources(
+  existing: ParsedDeliverableSection["evidenceSources"] | undefined,
+  additions: NonNullable<ParsedDeliverableSection["evidenceSources"]>,
+): ParsedDeliverableSection["evidenceSources"] {
+  const byChunk = new Map<string, NonNullable<ParsedDeliverableSection["evidenceSources"]>[number]>();
+  for (const source of [...(existing ?? []), ...additions]) {
+    if (!source.chunkId) continue;
+    byChunk.set(source.chunkId, source);
+  }
+  return Array.from(byChunk.values());
+}
+
 function isGenerationFailedText(value: string | undefined): boolean {
   return !value || /\bgeneration_failed\b|model returned no cells/i.test(value);
 }
@@ -5753,6 +5973,7 @@ function buildCarePlanBatchDirective(
     "Do not return other care-plan sections in this batch.",
     "If a fact is absent from this batch evidence and forwardContext, state not assessed / not recorded and name the missing evidence class.",
     "Use structuredRows for ADL and mobility support-level rows. Every row must include activity, supportLevel, workerDescription, sourceValue, chunkId and mappingMode.",
+    "For Behavioural Management, return markdown strategy tables in content. Use the exact fold headings Proactive strategies, Reactive strategies and Protective strategies, and the columns Behaviour or trigger | Strategy | What the worker does | BSP source. Include only strategies supported by the selected BSP evidence; a fold may have zero rows.",
     "Use evidenceSources for every material assertion. If a section only records a named evidence gap, evidenceSources may be empty.",
     "Forward context is structured data from earlier batches. Treat it as values, not prose authority. Do not paraphrase it into new facts without preserving the cited support level or source value.",
     `Selected evidence chunk count for this batch: ${evidencePack?.totalChunks ?? 0}.`,
