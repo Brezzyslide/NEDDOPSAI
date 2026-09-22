@@ -5642,6 +5642,7 @@ function isCheckedChecklistBox(value: string | undefined): boolean {
 }
 
 function adlSourceItemAliases(sourceItem: string): string[] {
+  if (sourceItem === "Brush teeth") return ["Brush your teeth", "Brush teeth", "Teeth"];
   if (sourceItem === "Take shower") return ["Take a shower", "Take shower", "Shower"];
   if (sourceItem === "Comb/brush hair") return ["Comb / brush your hair", "Comb/brush hair", "Comb brush hair"];
   if (sourceItem === "Use toilet") return ["Use the toilet", "Use toilet"];
