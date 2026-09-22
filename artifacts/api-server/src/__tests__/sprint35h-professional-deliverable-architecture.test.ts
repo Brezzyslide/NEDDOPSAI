@@ -2911,7 +2911,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
 
     expect(engine).toContain("deriveAdlCellsFromControlledChecklist");
     expect(engine).toContain("applyServerDerivedMobilityFields");
-    expect(engine).toContain("Mobility aid required");
+    expect(engine).toContain("Walking aid requirement");
     expect(engine).toContain("Transfer method");
     expect(engine).toContain("Number of workers required");
     expect(engine).toContain("deriveFireRiskAssessmentFields");

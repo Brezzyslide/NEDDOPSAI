@@ -5698,7 +5698,7 @@ function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell):
 }
 
 type MobilityField =
-  | "Mobility aid required"
+  | "Walking aid requirement"
   | "Aid or equipment used"
   | "Transfer method"
   | "Number of workers required"
@@ -5715,7 +5715,7 @@ function applyServerDerivedMobilityFields(
   if (!walk && !transfer) return section;
 
   const rows = ([
-    mobilityDerivedRow("Mobility aid required", mobilityAidValue(walk), walk),
+    mobilityDerivedRow("Walking aid requirement", mobilityAidValue(walk), walk),
     mobilityDerivedRow("Aid or equipment used", mobilityAidEquipmentValue(walk), walk),
     mobilityDerivedRow("Transfer method", mobilityTransferValue(transfer), transfer),
     mobilityDerivedRow("Number of workers required", mobilityWorkerCountValue(walk, transfer), transfer ?? walk),
