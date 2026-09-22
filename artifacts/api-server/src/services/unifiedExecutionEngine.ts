@@ -5757,13 +5757,13 @@ function mobilityDerivedRow(
 
 function mobilityAidValue(walk: DerivedAdlCell | undefined): string {
   if (!walk) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
-  if (walk.supportLevel === "Independent") return "No mobility aid recorded as required in the controlled intake checklist.";
+  if (walk.supportLevel === "Independent") return "Controlled intake checklist records walking without support; no separate equipment requirement is recorded.";
   return "Mobility assistance requirement recorded in the controlled intake checklist.";
 }
 
 function mobilityAidEquipmentValue(walk: DerivedAdlCell | undefined): string {
   if (!walk) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
-  if (walk.supportLevel === "Independent") return "No walking aid recorded; checklist item records walking without an aid.";
+  if (walk.supportLevel === "Independent") return "Controlled intake checklist records walking without an aid.";
   return "Aid or equipment not separately recorded in retrieved evidence.";
 }
 
