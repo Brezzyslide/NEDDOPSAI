@@ -1783,6 +1783,22 @@ function validateAdlAccountableClaim(
   claim: Extract<AccountableCarePlanClaim, { kind: "adl_support_level" }>,
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
+  if (
+    claim.supportLevel === "Not applicable / not assessed" &&
+    /not-recorded-in-retrieved-evidence|generation_failed/i.test(claim.chunkId)
+  ) {
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: "CITED_INTERPRETATION_UNVERIFIED",
+      accountable: false,
+      passed: true,
+      accountableValue: claim.supportLevel,
+      chunkId: claim.chunkId,
+      citedText: claim.sourceValue,
+      reason: "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping.",
+    };
+  }
   if (!claim.chunkId.trim()) {
     return {
       requirementId,
@@ -1887,12 +1903,15 @@ function extractMarkdownTablesFromContent(content: string): Array<{ headers: str
 
 function extractRestrictivePracticeStatusClaims(content: string): string[] {
   const values = new Set<string>();
+  if (/\b(?:no|none|not any)\s+(?:regulated\s+)?restrictive practices?\s+(?:are\s+)?(?:authorised|authorized|recorded|listed)\b/i.test(content)) {
+    values.add("No restrictive practices authorised");
+  }
   const statusLines = content.split(/\r?\n/).filter((line) =>
     /\b(?:participant-specific|for this participant|listed for .*participant|recorded for .*participant|restrictive practice status|status)\b/i.test(line) &&
-    /\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/i.test(line),
+    /\b(?:authorised|authorization|authorisation|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/i.test(line),
   );
   for (const line of statusLines) {
-    for (const match of line.matchAll(/\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
+    for (const match of line.matchAll(/\b(?:authorised|authorization|authorisation|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
       const value = match[0]?.trim();
       if (value && !isMissingValue(value)) values.add(value);
     }
@@ -1904,10 +1923,13 @@ function extractRestrictivePracticeStatusClaims(content: string): string[] {
     if (statusIndex < 0) continue;
     for (const row of table.rows) {
       const cell = row[statusIndex]?.trim() ?? "";
-      for (const match of cell.matchAll(/\b(?:authorised|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
+      for (const match of cell.matchAll(/\b(?:authorised|authorization|authorisation|unauthorised|not authorised|chemical restraint|environmental restraint|mechanical restraint|physical restraint|seclusion|not recorded|not applicable)\b/gi)) {
         const value = match[0]?.trim();
         if (value && !isMissingValue(value)) values.add(value);
       }
+      const authorisationIndex = table.headers.findIndex((header) => /\bauthori[sz]ation\b/i.test(header));
+      const authorisationCell = authorisationIndex >= 0 ? row[authorisationIndex]?.trim() ?? "" : "";
+      if (/\bauthori[sz]ation\b/i.test(authorisationCell)) values.add("Authorisation");
     }
   }
   return Array.from(values);
@@ -2352,6 +2374,12 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
       } else if (!expectedLevels.includes(row.supportLevel)) {
         supportLevelFailures.push(`${activity}: "${row.sourceValue}" cannot map to "${row.supportLevel}"`);
       }
+      continue;
+    }
+    if (
+      row.supportLevel === "Not applicable / not assessed" &&
+      /not-recorded-in-retrieved-evidence|generation_failed/i.test(row.chunkId)
+    ) {
       continue;
     }
     unverifiedRows.push(`${activity}: CITED_INTERPRETATION requires source review`);

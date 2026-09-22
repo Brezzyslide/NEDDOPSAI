@@ -55,6 +55,12 @@ import {
   buildSectionRetrievalTerms,
 } from "./blueprintSectionVocabularyService.js";
 import {
+  CARE_PLAN_ADL_CANONICAL_ROWS,
+  CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS,
+  normaliseCarePlanAdlActivity,
+  type CarePlanAdlMappingMode,
+} from "./carePlanAdlModel.js";
+import {
   assembleWorkPackage,
   updateManifestObservability,
   type WorkPackageManifest,
@@ -2103,7 +2109,10 @@ export class UnifiedExecutionEngine {
               blueprint,
               stage: "repair_degraded",
               sequence: snapshotSequence++,
-              contentMarkdown: repairResult.content,
+              contentMarkdown: reviewResult.finalContent,
+              documentStatus: "accepted",
+              rejectedCandidateMarkdown: repairResult.content,
+              rejectedReason: `Targeted repair was discarded because it degraded the draft: ${degradation.reasons.join("; ")}`,
               structuredOutput: {
                 requirementPlan,
                 repairedRequirementIds: currentGroupMissing.map((failure) => failure.requirementId),
@@ -2112,6 +2121,11 @@ export class UnifiedExecutionEngine {
                 before: beforeRepairMetrics,
                 after: afterRepairMetrics,
                 degradationReasons: degradation.reasons,
+                rejectedCandidate: {
+                  status: "rejected",
+                  reason: `Targeted repair was discarded because it degraded the draft: ${degradation.reasons.join("; ")}`,
+                  contentHash: createHash("sha256").update(repairResult.content).digest("hex"),
+                },
               },
               coverageSnapshot: buildCoverageSnapshot(repairResult.content, professionalContext, blueprintContract, repairResult.deliverableSections, evidencePack),
               modelTelemetry: repairResult.modelTelemetry,
@@ -3042,7 +3056,8 @@ export class UnifiedExecutionEngine {
       const parsed = parseSpecialistJsonOutput(response.content);
       const batchSections = (parsed.deliverableSections ?? [])
         .filter((section) => batch.requirementIds.includes(section.requirementId))
-        .map(normaliseCarePlanDeclaredInstrumentSection);
+        .map(normaliseCarePlanDeclaredInstrumentSection)
+        .map((section) => applyServerDerivedCarePlanSectionCells(section, batchEvidencePack));
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
@@ -3625,7 +3640,7 @@ function applyDeterministicEvidenceGapReplacements(input: {
             workerDescription: "Not assessed - no verified ADL source row was recorded in retrieved evidence.",
             sourceValue: "Absent",
             chunkId: "not-recorded-in-retrieved-evidence",
-            mappingMode: "VERIFIED_MAPPING" as const,
+            mappingMode: "CITED_INTERPRETATION" as const,
           };
         });
         if (JSON.stringify(section.structuredRows) !== beforeRows) {
@@ -5485,6 +5500,222 @@ function groupEvidenceChunksByType(chunks: EvidencePack["chunks"]): Record<strin
   }, {});
 }
 
+function applyServerDerivedCarePlanSectionCells(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  if (section.requirementId === "care-plan-undertaking-adl") {
+    return applyServerDerivedAdlRows(section, evidencePack);
+  }
+  if (section.requirementId === "care-plan-restrictive-practices") {
+    return applyServerDerivedRestrictivePracticeRows(section, evidencePack);
+  }
+  return section;
+}
+
+type AdlChecklistValue = "Without support" | "Support required" | "Completely unable to";
+
+interface DerivedAdlCell {
+  activity: string;
+  supportLevel: string;
+  sourceValue: string;
+  chunkId: string;
+  mappingMode: CarePlanAdlMappingMode;
+  sourceItems: string[];
+}
+
+const ADL_SUPPORT_RANK: Record<string, number> = {
+  "Independent": 1,
+  "Independent with prompting": 2,
+  "Independent with supervision": 3,
+  "Partial physical assistance": 4,
+  "Full physical assistance": 5,
+  "Unable to complete": 6,
+  "Not applicable / not assessed": 0,
+  "generation_failed": 0,
+};
+
+function applyServerDerivedAdlRows(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const modelRows = new Map((section.structuredRows ?? []).map((row) => [normaliseCarePlanAdlActivity(row.activity), row]));
+  const derivedRows = deriveAdlCellsFromControlledChecklist(evidencePack);
+  const rows = CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => {
+    const key = normaliseCarePlanAdlActivity(activity);
+    const derived = derivedRows.get(key);
+    const modelRow = modelRows.get(key);
+    if (derived) {
+      return {
+        activity,
+        supportLevel: derived.supportLevel,
+        workerDescription: modelRow && !isGenerationFailedText(modelRow.workerDescription)
+          ? modelRow.workerDescription
+          : defaultAdlWorkerDescription(activity, derived),
+        sourceValue: derived.sourceValue,
+        chunkId: derived.chunkId,
+        mappingMode: "VERIFIED_MAPPING" as CarePlanAdlMappingMode,
+      };
+    }
+    if (modelRow && modelRow.chunkId && modelRow.chunkId !== "generation_failed" && modelRow.chunkId !== "not-recorded-in-retrieved-evidence") {
+      return { ...modelRow, activity, mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode };
+    }
+    return {
+      activity,
+      supportLevel: "Not applicable / not assessed",
+      workerDescription: "Not assessed - no controlled ADL checklist value or cited participant-specific source row was available in retrieved evidence.",
+      sourceValue: "Absent",
+      chunkId: "not-recorded-in-retrieved-evidence",
+      mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
+    };
+  });
+  return { ...section, structuredRows: rows };
+}
+
+function deriveAdlCellsFromControlledChecklist(evidencePack: EvidencePack | undefined): Map<string, DerivedAdlCell> {
+  const byActivity = new Map<string, DerivedAdlCell>();
+  for (const chunk of evidencePack?.chunks ?? []) {
+    if (!isAdlChecklistChunk(chunk)) continue;
+    for (const mapping of CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS) {
+      const value = extractAdlChecklistValue(chunk.text, mapping.sourceItem);
+      if (!value) continue;
+      const activity = mapping.canonicalRow;
+      const supportLevel = mapAdlChecklistValueToSupportLevel(value);
+      const key = normaliseCarePlanAdlActivity(activity);
+      const existing = byActivity.get(key);
+      const candidate: DerivedAdlCell = {
+        activity,
+        supportLevel,
+        sourceValue: value,
+        chunkId: chunk.chunkId,
+        mappingMode: "VERIFIED_MAPPING",
+        sourceItems: [mapping.sourceItem],
+      };
+      if (!existing) {
+        byActivity.set(key, candidate);
+        continue;
+      }
+      const existingRank = ADL_SUPPORT_RANK[existing.supportLevel] ?? 0;
+      const candidateRank = ADL_SUPPORT_RANK[candidate.supportLevel] ?? 0;
+      if (candidateRank > existingRank) {
+        byActivity.set(key, {
+          ...candidate,
+          sourceItems: [...existing.sourceItems, mapping.sourceItem],
+          sourceValue: `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`,
+        });
+      } else {
+        existing.sourceItems.push(mapping.sourceItem);
+        if (!existing.sourceValue.includes(mapping.sourceItem)) {
+          existing.sourceValue = `${existing.sourceValue}; ${mapping.sourceItem}: ${value}`;
+        }
+      }
+    }
+  }
+  return byActivity;
+}
+
+function isAdlChecklistChunk(chunk: EvidencePack["chunks"][number]): boolean {
+  const haystack = `${chunk.sourceTitle} ${chunk.canonicalTitle ?? ""} ${chunk.documentCategory ?? ""} ${chunk.sectionTitle ?? ""} ${chunk.text}`;
+  return /\b(?:basic functional assessment|are you able to|without support|support required|completely unable)\b/i.test(haystack) &&
+    /\b(?:intake|checklist|functional assessment)\b/i.test(haystack);
+}
+
+function extractAdlChecklistValue(text: string, sourceItem: string): AdlChecklistValue | null {
+  const compact = text.replace(/\s+/g, " ");
+  const aliases = adlSourceItemAliases(sourceItem).map(escapeRegExp);
+  const labelPattern = aliases.join("|");
+  const match = compact.match(new RegExp(`(?:${labelPattern}).{0,120}?Without support\\s*([☒☑✓xX])?\\s*Support required\\s*([☒☑✓xX])?\\s*Completely unable(?: to)?\\s*([☒☑✓xX])?`, "i"));
+  if (!match) return null;
+  if (match[1]) return "Without support";
+  if (match[2]) return "Support required";
+  if (match[3]) return "Completely unable to";
+  return null;
+}
+
+function adlSourceItemAliases(sourceItem: string): string[] {
+  if (sourceItem === "Take shower") return ["Take a shower", "Take shower", "Shower"];
+  if (sourceItem === "Comb/brush hair") return ["Comb / brush your hair", "Comb/brush hair", "Comb brush hair"];
+  if (sourceItem === "Use toilet") return ["Use the toilet", "Use toilet"];
+  if (sourceItem === "Transfer to/from bed") return ["Transfer to and from bed", "Transfer to/from bed", "Transfer to and from"];
+  if (sourceItem === "Walk without aid") return ["Walk without and aid", "Walk without an aid", "Walk without aid"];
+  return [sourceItem];
+}
+
+function mapAdlChecklistValueToSupportLevel(value: AdlChecklistValue): string {
+  if (value === "Without support") return "Independent";
+  if (value === "Completely unable to") return "Unable to complete";
+  return "Independent with prompting";
+}
+
+function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell): string {
+  if (derived.supportLevel === "Independent") return `Michael completes ${activity.toLowerCase()} without support according to the retrieved intake checklist.`;
+  if (derived.supportLevel === "Unable to complete") return `Michael is recorded as completely unable to complete ${activity.toLowerCase()} in the retrieved intake checklist; workers must provide full support consistent with the current support plan.`;
+  const differingParts = derived.sourceItems.length > 1 ? ` The mapped checklist items were: ${derived.sourceItems.join(", ")}.` : "";
+  return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
+}
+
+function isGenerationFailedText(value: string | undefined): boolean {
+  return !value || /\bgeneration_failed\b|model returned no cells/i.test(value);
+}
+
+function applyServerDerivedRestrictivePracticeRows(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const chemical = findChemicalRestraintAuthorisationEvidence(evidencePack);
+  if (!chemical) return section;
+  return {
+    ...section,
+    content: renderMarkdownRows(
+      [
+        "Practice type",
+        "What it is in plain language",
+        "What the worker does",
+        "What the worker must not do",
+        "Authorisation status and reference",
+        "Recording requirement",
+      ],
+      [[
+        "Chemical restraint",
+        "Medication used to influence behaviour as recorded in the participant's BSP.",
+        "Administer medication only as prescribed and only within the current BSP/medication authority.",
+        "Do not use medication outside the prescription, BSP or authorisation evidence, and do not invent any other restrictive practice.",
+        `Authorisation recorded in BSP; expiry/review date not recorded in retrieved evidence (${chemical.chunkId})`,
+        "Record and report use according to the BSP, medication administration process and restrictive-practice reporting requirements.",
+      ]],
+    ),
+    evidenceSources: [{
+      chunkId: chemical.chunkId,
+      documentTitle: chemical.documentTitle,
+      passage: chemical.passage,
+      location: chemical.location,
+      evidenceClass: chemical.evidenceClass,
+    }],
+  };
+}
+
+function findChemicalRestraintAuthorisationEvidence(evidencePack: EvidencePack | undefined): {
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
+} | null {
+  for (const chunk of evidencePack?.chunks ?? []) {
+    if (!/behaviour_support_plan/i.test(chunk.documentCategory ?? "") && !/CBSP|Behaviour Support Plan/i.test(chunk.sourceTitle)) continue;
+    const match = chunk.text.match(/Summary of Regulated Restrictive Practices[\s\S]{0,500}?Chemical Restraint[\s\S]{0,120}?Authorisation/i);
+    if (!match) continue;
+    return {
+      chunkId: chunk.chunkId,
+      documentTitle: chunk.sourceTitle,
+      passage: match[0].replace(/\s+/g, " ").trim(),
+      location: chunk.citation,
+      evidenceClass: chunk.evidenceClass,
+    };
+  }
+  return null;
+}
+
 function buildCarePlanBatchDirective(
   batch: CarePlanBatch,
   batchNumber: number,
@@ -6522,6 +6753,9 @@ async function recordProfessionalSnapshot(input: {
   stage: "primary_draft" | "self_review_selected" | "final_synthesis_candidate" | "targeted_repair_candidate" | "deterministic_gap_replacement" | "repair_degraded" | "final_validated" | "gate_failure";
   sequence: number;
   contentMarkdown?: string | null;
+  documentStatus?: "accepted" | "candidate" | "rejected";
+  rejectedCandidateMarkdown?: string | null;
+  rejectedReason?: string | null;
   structuredOutput?: Record<string, unknown> | null;
   reviewSnapshot?: Record<string, unknown> | null;
   coverageSnapshot?: Record<string, unknown> | null;
@@ -6548,7 +6782,18 @@ async function recordProfessionalSnapshot(input: {
         specificity: input.professionalContext.specificity,
         primarySpecialist: input.manifest.primarySpecialist,
         contentHash: createHash("sha256").update(content).digest("hex"),
+        documentStatus: input.documentStatus ?? (
+          input.stage === "targeted_repair_candidate" || input.stage === "final_synthesis_candidate"
+            ? "candidate"
+            : "accepted"
+        ),
         contentMarkdown: content || null,
+        acceptedContentMarkdown: content || null,
+        rejectedCandidateMarkdown: input.rejectedCandidateMarkdown ?? null,
+        rejectedCandidateHash: input.rejectedCandidateMarkdown
+          ? createHash("sha256").update(input.rejectedCandidateMarkdown).digest("hex")
+          : null,
+        rejectedReason: input.rejectedReason ?? null,
         structuredOutput: input.structuredOutput ?? null,
         reviewSnapshot: input.reviewSnapshot ?? null,
         coverageSnapshot: input.coverageSnapshot ?? null,

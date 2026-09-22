@@ -2808,6 +2808,73 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     )).toBe(false);
   });
 
+  it("treats no-restrictive-practices statements as accountable claims requiring citation", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-restrictive-practices", "Restrictive Practices");
+    const content = "No restrictive practices are authorised for this participant.";
+    const report = evaluateDeliverableRequirementCoverage(`## Restrictive Practices\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-restrictive-practices",
+        heading: "Restrictive Practices",
+        content,
+        evidenceSources: [],
+      }],
+      evidencePack: evidencePackWithChunk("chunk-rp", "The BSP records Chemical Restraint Authorisation."),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        accountable: true,
+        passed: false,
+        accountableValue: "No restrictive practices authorised",
+      }),
+    ]));
+  });
+
+  it("does not label unsourced ADL not-assessed rows as verified mappings", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-undertaking-adl", "Undertaking ADL");
+    const content = [
+      "| Activity | Support level | What the worker does | Source value | Chunk ID | Mapping mode |",
+      "| --- | --- | --- | --- | --- | --- |",
+      "| Personal hygiene and grooming | Not applicable / not assessed | No source row was available. | Absent | not-recorded-in-retrieved-evidence | CITED_INTERPRETATION |",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Undertaking ADL\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-undertaking-adl",
+        heading: "Undertaking ADL",
+        content,
+        evidenceSources: [],
+        structuredRows: [{
+          activity: "Personal hygiene and grooming",
+          supportLevel: "Not applicable / not assessed",
+          workerDescription: "No source row was available.",
+          sourceValue: "Absent",
+          chunkId: "not-recorded-in-retrieved-evidence",
+          mappingMode: "CITED_INTERPRETATION",
+        }],
+      }],
+    });
+
+    expect(report.requirementResults[0]?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        claim: expect.stringContaining("Personal hygiene and grooming"),
+        accountable: false,
+        passed: true,
+        mode: "CITED_INTERPRETATION_UNVERIFIED",
+      }),
+    ]));
+  });
+
+  it("derives ADL checklist cells and restrictive-practice chemical restraint server-side", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("deriveAdlCellsFromControlledChecklist");
+    expect(engine).toContain("CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS");
+    expect(engine).toContain('return "Independent with prompting"');
+    expect(engine).toContain("findChemicalRestraintAuthorisationEvidence");
+    expect(engine).toContain("Chemical Restraint");
+    expect(engine).not.toContain("Authorised as per BSP, valid until 2024-12-31");
+  });
+
   it("keeps targeted repair scoped to repairable failures and rejects degraded repair candidates", () => {
     const engine = source("services/unifiedExecutionEngine.ts");
 
@@ -2819,6 +2886,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain("detectRepairDegradation");
     expect(engine).toContain('stage: "repair_degraded"');
     expect(engine).toContain('gate: "repair_degraded"');
+    expect(engine).toContain('documentStatus: "accepted"');
+    expect(engine).toContain("rejectedCandidateMarkdown");
     expect(engine).toContain("coverage decreased");
     expect(engine).toContain("goal table rows decreased");
     expect(engine).toContain("blocking citation findings increased");
