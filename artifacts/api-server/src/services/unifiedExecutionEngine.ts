@@ -5663,6 +5663,18 @@ function isGenerationFailedText(value: string | undefined): boolean {
   return !value || /\bgeneration_failed\b|model returned no cells/i.test(value);
 }
 
+function renderMarkdownRows(columns: string[], rows: string[][]): string {
+  return [
+    `| ${columns.map(escapeMarkdownTableCell).join(" | ")} |`,
+    `| ${columns.map(() => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.map(escapeMarkdownTableCell).join(" | ")} |`),
+  ].join("\n");
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n+/g, " ").trim();
+}
+
 function applyServerDerivedRestrictivePracticeRows(
   section: ParsedDeliverableSection,
   evidencePack: EvidencePack | undefined,
