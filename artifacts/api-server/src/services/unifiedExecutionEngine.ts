@@ -2992,7 +2992,8 @@ export class UnifiedExecutionEngine {
         const elapsedMs = Date.now() - startedAt;
         const reason = formatCarePlanBatchProviderFailure(batch, error, elapsedMs);
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
-        allSections.push(...buildFailedBatchSections(batch, reason));
+        allSections.push(...buildFailedBatchSections(batch, reason)
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
         batchTelemetry.push({
           batchId: batch.id,
           batchName: batch.name,
@@ -3041,7 +3042,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} did not produce content${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3050,7 +3051,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3059,12 +3060,12 @@ export class UnifiedExecutionEngine {
       const batchSections = (parsed.deliverableSections ?? [])
         .filter((section) => batch.requirementIds.includes(section.requirementId))
         .map(normaliseCarePlanDeclaredInstrumentSection)
-        .map((section) => applyServerDerivedCarePlanSectionCells(section, evidencePack));
+        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack));
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }

@@ -1514,7 +1514,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("providerFailureKind: extractGatewayProviderFailureKind(error)");
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
-    expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason))");
+    expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason)");
+    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack)");
     expect(src).toContain("continue;");
   });
 
