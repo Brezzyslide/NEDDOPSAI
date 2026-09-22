@@ -2870,6 +2870,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain("deriveAdlCellsFromControlledChecklist");
     expect(engine).toContain("CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS");
     expect(engine).toContain('return "Independent with prompting"');
+    expect(engine).toContain("isCheckedChecklistBox");
+    expect(engine).toContain("[☒☑✓xX☐□]");
     expect(engine).toContain("findChemicalRestraintAuthorisationEvidence");
     expect(engine).toContain("Chemical Restraint");
     expect(engine).not.toContain("Authorised as per BSP, valid until 2024-12-31");

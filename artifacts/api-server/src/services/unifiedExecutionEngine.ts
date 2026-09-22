@@ -5624,12 +5624,17 @@ function extractAdlChecklistValue(text: string, sourceItem: string): AdlChecklis
   const compact = text.replace(/\s+/g, " ");
   const aliases = adlSourceItemAliases(sourceItem).map(escapeRegExp);
   const labelPattern = aliases.join("|");
-  const match = compact.match(new RegExp(`(?:${labelPattern}).{0,120}?Without support\\s*([☒☑✓xX])?\\s*Support required\\s*([☒☑✓xX])?\\s*Completely unable(?: to)?\\s*([☒☑✓xX])?`, "i"));
+  const checkbox = "([☒☑✓xX☐□])";
+  const match = compact.match(new RegExp(`(?:${labelPattern}).{0,120}?Without support\\s*${checkbox}\\s*Support required\\s*${checkbox}\\s*Completely unable(?: to)?\\s*${checkbox}`, "i"));
   if (!match) return null;
-  if (match[1]) return "Without support";
-  if (match[2]) return "Support required";
-  if (match[3]) return "Completely unable to";
+  if (isCheckedChecklistBox(match[1])) return "Without support";
+  if (isCheckedChecklistBox(match[2])) return "Support required";
+  if (isCheckedChecklistBox(match[3])) return "Completely unable to";
   return null;
+}
+
+function isCheckedChecklistBox(value: string | undefined): boolean {
+  return value !== undefined && /[☒☑✓xX]/.test(value);
 }
 
 function adlSourceItemAliases(sourceItem: string): string[] {
