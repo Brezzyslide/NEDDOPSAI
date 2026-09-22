@@ -28,6 +28,7 @@ import {
   assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   mergeDeliverableSectionDeltas,
+  normaliseCarePlanDeclaredInstrumentSection,
   parseSpecialistJsonOutput,
   verifySpanDetailed,
 } from "../services/claimValidationService";
@@ -2614,7 +2615,77 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(markdown.match(/^\| .* \| .* \| .* \| .* \|.*\| .* \|$/gm)).toHaveLength(28);
     expect(markdown).toContain("| Oral hygiene | Independent | Michael brushes his teeth without worker support. | Without support | 51ea99ce | VERIFIED_MAPPING |");
     expect(markdown).toContain("| Money handling and everyday purchases | Independent with prompting | Prompt Michael to check amounts and confirm purchases before paying. | Support required | 58501903 | VERIFIED_MAPPING |");
-    expect(markdown).toContain("| Personal hygiene and grooming | Not applicable / not assessed | Not assessed - no structured ADL source row supplied. | Absent |  | CITED_INTERPRETATION |");
+    expect(markdown).toContain("| Personal hygiene and grooming | generation_failed | Generation failed - model returned no cells for this canonical ADL activity. | generation_failed | generation_failed | CITED_INTERPRETATION |");
+  });
+
+  it("renders prose-only participant ADL as generation_failed canonical rows instead of prose", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      deliverable: {
+        sections: [
+          {
+            requirementId: "care-plan-undertaking-adl",
+            heading: "Undertaking ADL",
+            content: "The model incorrectly returned prose instead of row cells.",
+            evidenceSources: [],
+            structuredRows: [],
+          },
+        ],
+      },
+      claims: [],
+    }));
+
+    const markdown = assembleDeliverableMarkdownFromSections(
+      parsed.deliverableSections?.map(normaliseCarePlanDeclaredInstrumentSection),
+    );
+
+    expect(markdown).toContain("| Activity | Support level | What the worker does | Source value | Chunk ID | Mapping mode |");
+    expect(markdown).toContain("| Personal hygiene and grooming | generation_failed | Generation failed - model returned no cells for this canonical ADL activity. | generation_failed | generation_failed | CITED_INTERPRETATION |");
+    expect(markdown).toContain("| Decision-making relating to daily activities | generation_failed | Generation failed - model returned no cells for this canonical ADL activity. | generation_failed | generation_failed | CITED_INTERPRETATION |");
+    expect(markdown).not.toContain("The model incorrectly returned prose instead of row cells.");
+  });
+
+  it("renders prose-only declared table instruments as generation_failed skeleton tables", () => {
+    const parsed = parseSpecialistJsonOutput(JSON.stringify({
+      deliverable: {
+        sections: [
+          {
+            requirementId: "care-plan-goals",
+            heading: "Goals",
+            content: "The model incorrectly returned goals prose.",
+            evidenceSources: [],
+            structuredRows: [],
+          },
+          {
+            requirementId: "care-plan-behavioural-management",
+            heading: "Behavioural Management",
+            content: "The model incorrectly returned behavioural prose.",
+            evidenceSources: [],
+            structuredRows: [],
+          },
+          {
+            requirementId: "care-plan-restrictive-practices",
+            heading: "Restrictive Practices",
+            content: "The model incorrectly returned restrictive-practice prose.",
+            evidenceSources: [],
+            structuredRows: [],
+          },
+        ],
+      },
+      claims: [],
+    }));
+
+    const markdown = assembleDeliverableMarkdownFromSections(
+      parsed.deliverableSections?.map(normaliseCarePlanDeclaredInstrumentSection),
+    );
+
+    expect(markdown).toContain("| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |");
+    expect(markdown).toContain("generation_failed: model returned no cells for goal 1");
+    expect(markdown).toContain("**Proactive strategies**");
+    expect(markdown).toContain("| Behaviour or trigger | Strategy | What the worker does | BSP source |");
+    expect(markdown).toContain("| Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement |");
+    expect(markdown).not.toContain("incorrectly returned goals prose");
+    expect(markdown).not.toContain("incorrectly returned behavioural prose");
+    expect(markdown).not.toContain("incorrectly returned restrictive-practice prose");
   });
 
   it("verifies cited spans after PDF-safe normalisation", () => {

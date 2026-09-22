@@ -73,7 +73,9 @@ import {
   parseSpecialistJsonOutput,
   assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
+  buildGenerationFailedDeclaredInstrumentSection,
   mergeDeliverableSectionDeltas,
+  normaliseCarePlanDeclaredInstrumentSection,
   rejectCrossTenantChunks,
   type ParsedDeliverableSection,
   type RawClaim,
@@ -3039,7 +3041,8 @@ export class UnifiedExecutionEngine {
 
       const parsed = parseSpecialistJsonOutput(response.content);
       const batchSections = (parsed.deliverableSections ?? [])
-        .filter((section) => batch.requirementIds.includes(section.requirementId));
+        .filter((section) => batch.requirementIds.includes(section.requirementId))
+        .map(normaliseCarePlanDeclaredInstrumentSection);
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
@@ -5284,7 +5287,7 @@ function normaliseCanonicalDeliverableSectionsForContext(
       heading: item.targetDeliverableLocation,
       content: "Not assessed - no generated section content supplied.",
     }));
-  return [...modelSections, ...missingSkeletons];
+  return [...modelSections, ...missingSkeletons].map(normaliseCarePlanDeclaredInstrumentSection);
 }
 
 type CarePlanBatch = {
@@ -5552,13 +5555,13 @@ function extractGatewayRetryCount(error: unknown): number | null {
 }
 
 function buildFailedBatchSections(batch: CarePlanBatch, reason: string): ParsedDeliverableSection[] {
-  return batch.requirementIds.map((requirementId) => ({
-    requirementId,
-    heading: carePlanRequirementHeading(requirementId),
-    content: `Generation incomplete - ${reason}`,
-    evidenceSources: [],
-    structuredRows: [],
-  }));
+  return batch.requirementIds.map((requirementId) =>
+    buildGenerationFailedDeclaredInstrumentSection(
+      requirementId,
+      carePlanRequirementHeading(requirementId),
+      reason,
+    )
+  );
 }
 
 function carePlanRequirementHeading(requirementId: string): string {

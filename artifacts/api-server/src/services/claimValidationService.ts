@@ -44,6 +44,7 @@ import {
 import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
   type CarePlanAdlMappingMode,
+  isCanonicalCarePlanAdlActivity,
   normaliseCarePlanAdlActivity,
 } from "./carePlanAdlModel.js";
 
@@ -644,6 +645,14 @@ export interface ParsedDeliverableStructuredRow {
   mappingMode: CarePlanAdlMappingMode;
 }
 
+const CARE_PLAN_ADL_GENERATION_FAILED_ROW = {
+  supportLevel: "generation_failed",
+  workerDescription: "Generation failed - model returned no cells for this canonical ADL activity.",
+  sourceValue: "generation_failed",
+  chunkId: "generation_failed",
+  mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode,
+};
+
 export interface DeterministicTemplateRequirement {
   id: string;
   sourceBlueprintSection?: string;
@@ -741,6 +750,166 @@ function renderDeliverableSectionContent(section: ParsedDeliverableSection): str
     return renderCarePlanAdlStructuredTable(section.structuredRows ?? []);
   }
   return section.content.trim();
+}
+
+export function normaliseDeclaredInstrumentSection(
+  section: ParsedDeliverableSection,
+): ParsedDeliverableSection {
+  if (isCarePlanAdlDeliverableSection(section)) {
+    return normaliseCarePlanAdlInstrumentSection(section);
+  }
+  return section;
+}
+
+export function normaliseCarePlanDeclaredInstrumentSection(
+  section: ParsedDeliverableSection,
+): ParsedDeliverableSection {
+  const adlNormalised = normaliseDeclaredInstrumentSection(section);
+  if (adlNormalised !== section) return adlNormalised;
+  if (section.requirementId === "care-plan-goals") {
+    return normaliseMarkdownInstrumentSection(section, renderGenerationFailedGoalsTable());
+  }
+  if (section.requirementId === "care-plan-mobility-strategy") {
+    return normaliseMarkdownInstrumentSection(section, renderGenerationFailedMobilityTable());
+  }
+  if (section.requirementId === "care-plan-behavioural-management") {
+    return normaliseMarkdownInstrumentSection(section, renderGenerationFailedBehaviouralManagementTables());
+  }
+  if (section.requirementId === "care-plan-restrictive-practices") {
+    return normaliseMarkdownInstrumentSection(section, renderGenerationFailedRestrictivePracticesTable());
+  }
+  return section;
+}
+
+export function buildGenerationFailedDeclaredInstrumentSection(
+  requirementId: string,
+  heading: string,
+  reason: string,
+): ParsedDeliverableSection {
+  return normaliseCarePlanDeclaredInstrumentSection({
+    requirementId,
+    heading,
+    content: `Generation incomplete - ${reason}`,
+    evidenceSources: [],
+    structuredRows: [],
+  });
+}
+
+function normaliseCarePlanAdlInstrumentSection(
+  section: ParsedDeliverableSection,
+): ParsedDeliverableSection {
+  const byActivity = new Map<string, ParsedDeliverableStructuredRow>();
+  for (const row of section.structuredRows ?? []) {
+    if (!row.activity || !isCanonicalCarePlanAdlActivity(row.activity)) continue;
+    const key = normaliseCarePlanAdlActivity(row.activity);
+    if (byActivity.has(key)) continue;
+    byActivity.set(key, row);
+  }
+
+  return {
+    ...section,
+    structuredRows: CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => {
+      const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
+      if (!row) {
+        return {
+          activity,
+          ...CARE_PLAN_ADL_GENERATION_FAILED_ROW,
+        };
+      }
+      return {
+        ...row,
+        activity,
+      };
+    }),
+  };
+}
+
+function normaliseMarkdownInstrumentSection(
+  section: ParsedDeliverableSection,
+  generationFailedTable: string,
+): ParsedDeliverableSection {
+  if (containsMarkdownTable(section.content)) return section;
+  return {
+    ...section,
+    content: generationFailedTable,
+  };
+}
+
+function containsMarkdownTable(content: string): boolean {
+  const rows = content.split(/\r?\n/).map((line) => line.trim());
+  return rows.some((line, index) =>
+    line.startsWith("|") &&
+    line.endsWith("|") &&
+    rows[index + 1]?.startsWith("|") === true &&
+    /---/.test(rows[index + 1] ?? "")
+  );
+}
+
+function generationFailedCell(label: string): string {
+  return `generation_failed: model returned no cells for ${label}`;
+}
+
+function renderGenerationFailedGoalsTable(): string {
+  return renderMarkdownRows(
+    ["Current situation", "Goal", "Actions", "Person responsible", "Timeframe", "Outcomes"],
+    [1, 2, 3].map((index) => [
+      generationFailedCell(`goal ${index} current situation`),
+      generationFailedCell(`goal ${index}`),
+      generationFailedCell(`goal ${index} actions`),
+      generationFailedCell(`goal ${index} person responsible`),
+      generationFailedCell(`goal ${index} timeframe`),
+      generationFailedCell(`goal ${index} outcomes`),
+    ]),
+  );
+}
+
+function renderGenerationFailedMobilityTable(): string {
+  return renderMarkdownRows(
+    ["Field", "Value", "Source value", "Chunk ID", "Mapping mode"],
+    ["Mobility aid required", "Aid or equipment used", "Transfer method", "Number of workers required", "Mobility overview", "Mobility strategy"].map((field) => [
+      field,
+      generationFailedCell(field),
+      "generation_failed",
+      "generation_failed",
+      "CITED_INTERPRETATION",
+    ]),
+  );
+}
+
+function renderGenerationFailedBehaviouralManagementTables(): string {
+  return ["Proactive", "Reactive", "Protective"].map((fold) => [
+    `**${fold} strategies**`,
+    renderMarkdownRows(
+      ["Behaviour or trigger", "Strategy", "What the worker does", "BSP source"],
+      [[
+        generationFailedCell(`${fold.toLowerCase()} behaviour or trigger`),
+        generationFailedCell(`${fold.toLowerCase()} strategy`),
+        generationFailedCell(`${fold.toLowerCase()} worker action`),
+        "generation_failed",
+      ]],
+    ),
+  ].join("\n\n")).join("\n\n");
+}
+
+function renderGenerationFailedRestrictivePracticesTable(): string {
+  return renderMarkdownRows(
+    [
+      "Practice type",
+      "What it is in plain language",
+      "What the worker does",
+      "What the worker must not do",
+      "Authorisation status and reference",
+      "Recording requirement",
+    ],
+    [[
+      generationFailedCell("practice type"),
+      generationFailedCell("plain language description"),
+      generationFailedCell("worker action"),
+      generationFailedCell("prohibited action"),
+      generationFailedCell("authorisation status and reference"),
+      generationFailedCell("recording requirement"),
+    ]],
+  );
 }
 
 function deterministicTemplateParts(
@@ -879,11 +1048,11 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
     if (!row) {
       return [
         activity,
-        "Not applicable / not assessed",
-        "Not assessed - no structured ADL source row supplied.",
-        "Absent",
-        "",
-        "CITED_INTERPRETATION",
+        CARE_PLAN_ADL_GENERATION_FAILED_ROW.supportLevel,
+        CARE_PLAN_ADL_GENERATION_FAILED_ROW.workerDescription,
+        CARE_PLAN_ADL_GENERATION_FAILED_ROW.sourceValue,
+        CARE_PLAN_ADL_GENERATION_FAILED_ROW.chunkId,
+        CARE_PLAN_ADL_GENERATION_FAILED_ROW.mappingMode,
       ];
     }
     return [
@@ -1114,13 +1283,13 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
     );
     if (!requirementId || !heading) return [];
     const safeContent = content || "Not assessed - no generated section content supplied.";
-    return [{
+    return [normaliseDeclaredInstrumentSection({
       requirementId,
       heading,
       content: safeContent,
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
       ...(structuredRows.length > 0 ? { structuredRows } : {}),
-    }];
+    })];
   });
 }
 
