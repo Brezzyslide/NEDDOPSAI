@@ -24,6 +24,10 @@ const platformPublicWorkerBoundaryMigration = readFileSync(
   resolve(root, "../../../lib/db/migrations/0050_platform_public_worker_boundaries.sql"),
   "utf8",
 );
+const signupPlatformBoundaryReconciliationMigration = readFileSync(
+  resolve(root, "../../../lib/db/migrations/0065_signup_platform_boundary_reconciliation.sql"),
+  "utf8",
+);
 const tenantMiddleware = readFileSync(
   resolve(root, "middlewares/tenantContext.ts"),
   "utf8",
@@ -216,6 +220,50 @@ describe("Sprint 46 RLS policy normalisation", () => {
         file: "0049_checkpoint_startup_sweep_functions.sql",
         transactional: true,
       }),
+    );
+  });
+
+  it("registers signup platform boundary reconciliation after evidence-class migration", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0065-signup-platform-boundary-reconciliation",
+        file: "0065_signup_platform_boundary_reconciliation.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0065-signup-platform-boundary-reconciliation")).toBe(
+      migrationIds.indexOf("0064-knowledge-source-evidence-class") + 1,
+    );
+  });
+
+  it("grants platform signup access to every tenant-owned row touched before tenant context exists", () => {
+    for (const table of [
+      "public.memberships",
+      "public.tenant_settings",
+      "public.onboarding_sessions",
+    ]) {
+      expect(signupPlatformBoundaryReconciliationMigration).toContain(table);
+    }
+
+    expect(signupPlatformBoundaryReconciliationMigration).toMatch(
+      /GRANT INSERT, UPDATE ON TABLE[\s\S]*public\.memberships[\s\S]*public\.tenant_settings[\s\S]*public\.onboarding_sessions[\s\S]*TO needsops_platform_app;/,
+    );
+
+    for (const table of ["memberships", "tenant_settings", "onboarding_sessions"]) {
+      expect(signupPlatformBoundaryReconciliationMigration).toContain(
+        `CREATE POLICY platform_console_insert ON public.${table}`,
+      );
+      expect(signupPlatformBoundaryReconciliationMigration).toContain(
+        `CREATE POLICY platform_console_update ON public.${table}`,
+      );
+    }
+    expect(signupPlatformBoundaryReconciliationMigration).toContain(
+      "CREATE POLICY platform_console_read ON public.tenant_settings",
+    );
+    expect(signupPlatformBoundaryReconciliationMigration).toContain(
+      "CREATE POLICY platform_console_read ON public.onboarding_sessions",
     );
   });
 

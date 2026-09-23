@@ -270,6 +270,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds capture-time evidence classes to knowledge sources and exposes them to KRS.",
   },
+  {
+    id: "0065-signup-platform-boundary-reconciliation",
+    file: "0065_signup_platform_boundary_reconciliation.sql",
+    transactional: true,
+    notes: "Adds platform grants and RLS policies required for public signup tenant creation before tenant context exists.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {

@@ -19,13 +19,15 @@ vi.mock("@workspace/db", () => ({
   db: mockDb,
   organizationsTable: {},
   plansTable: {},
+  planVersionsTable: {},
   tenantSubscriptionsTable: {},
+  onboardingSessionsTable: {},
 }));
 
 vi.mock("@workspace/org-db", () => ({ withOrgContext: vi.fn() }));
 vi.mock("../../services/auditService.js", () => ({ writeAuditEvent: vi.fn() }));
 vi.mock("../../services/packProvisioningService.js", () => ({
-  provisionPacksForOrg: vi.fn().mockResolvedValue({ provisioned: [] }),
+  provisionPacksForNewOrg: vi.fn().mockResolvedValue({ granted: [], requested: [], rejected: [] }),
 }));
 
 describe("isPaymentBypassEnabled", () => {

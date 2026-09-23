@@ -56,4 +56,16 @@ describe("platform auth boundaries", () => {
     expect(source).toContain("row.user?.displayName ?? (fullName || null)");
     expect(source).toContain("email: null");
   });
+
+  it("creates public signup tenants inside one platform transaction before tenant context exists", () => {
+    const source = readRoute("organisations.ts");
+
+    expect(source).toContain("platformDb.transaction");
+    expect(source).toContain("orgService.createOrg(");
+    expect(source).toContain("ensureTrialSubscriptionForOrg({");
+    expect(source).toContain("provisionPacksForNewOrg(");
+    expect(source.indexOf("orgService.createOrg(")).toBeLessThan(source.indexOf("ensureTrialSubscriptionForOrg({"));
+    expect(source.indexOf("ensureTrialSubscriptionForOrg({")).toBeLessThan(source.indexOf("provisionPacksForNewOrg("));
+    expect(source).not.toContain("[packProvisioning] Failed during org creation");
+  });
 });

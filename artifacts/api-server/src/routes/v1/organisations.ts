@@ -16,6 +16,7 @@ import { platformDb } from "@workspace/db/platform";
 import * as orgService from "../../services/orgService.js";
 import * as auditService from "../../services/auditService.js";
 import { provisionPacksForNewOrg } from "../../services/packProvisioningService.js";
+import { ensureTrialSubscriptionForOrg } from "../../services/subscriptionProvisioningService.js";
 
 const router = Router();
 
@@ -47,13 +48,32 @@ router.post("/", requireAuth, async (req, res, next) => {
       ? req.body.initialWorkforcePacks.filter((c: unknown) => typeof c === "string")
       : [];
 
-    const { org, membership } = await orgService.createOrg(
-      { name: name.trim(), type, industry, country, state, timezone, abn, ndisRegistrationNumber, primaryContactName, primaryContactEmail },
-      user.id,
-      platformDb,
-    );
-
     const meta = auditService.getRequestMeta(req);
+    const { org, membership, packProvisioningResult } = await platformDb.transaction(async (tx) => {
+      const { org, membership } = await orgService.createOrg(
+        { name: name.trim(), type, industry, country, state, timezone, abn, ndisRegistrationNumber, primaryContactName, primaryContactEmail },
+        user.id,
+        tx,
+      );
+
+      await ensureTrialSubscriptionForOrg({
+        organizationId: org.id,
+        changedBy: user.id,
+        planCode: initialWorkforcePacks.some(code => code.toLowerCase() !== "core") ? "professional" : "foundation",
+        note: "Created during signup so onboarding packs satisfy subscription entitlement gates.",
+      }, tx);
+
+      const packProvisioningResult = await provisionPacksForNewOrg(
+        org.id,
+        user.id,
+        initialWorkforcePacks,
+        tx,
+        meta,
+      );
+
+      return { org, membership, packProvisioningResult };
+    });
+
     await auditService.writeAuditEvent({
       organizationId: org.id,
       actorUserId: user.id,
@@ -63,19 +83,6 @@ router.post("/", requireAuth, async (req, res, next) => {
       metadata: { name: org.name, slug: org.slug },
       ...meta,
     }).catch(() => {});
-
-    // Provision workforce packs (Core auto-granted + selected packs)
-    const packProvisioningResult = await provisionPacksForNewOrg(
-      org.id,
-      user.id,
-      initialWorkforcePacks,
-      platformDb,
-      meta,
-    ).catch(err => {
-      // Non-fatal: org was created; log and continue
-      console.error("[packProvisioning] Failed during org creation:", err);
-      return null;
-    });
 
     res.status(201).json({ organisation: org, membership, packProvisioning: packProvisioningResult });
   } catch (err) {
