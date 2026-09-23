@@ -1658,6 +1658,23 @@ function evaluateCarePlanCitationFindings(
       continue;
     }
     if (verifiedSources.length === 0) {
+      const recovered = findRuntimeExactValueEvidence(claim.value, chunks.values());
+      if (recovered) {
+        findings.push({
+          requirementId: requirement.id,
+          claim: claim.claim,
+          mode: "VERIFIED_EXACT_VALUE",
+          accountable: true,
+          passed: true,
+          accountableValue: claim.value,
+          chunkId: recovered.chunk.chunkId,
+          documentTitle: recovered.chunk.sourceTitle,
+          citedText: recovered.citedText,
+          reason: `${claim.label} exact value was re-cited from another selected evidence chunk after the original citation failed.`,
+          normalisationApplied: ["NFKC unicode normalisation", "case folded", "soft hyphens removed", "hyphenated line breaks joined", "line breaks/whitespace collapsed", "trimmed"],
+        });
+        continue;
+      }
       findings.push({
         requirementId: requirement.id,
         claim: claim.claim,
@@ -1688,6 +1705,23 @@ function evaluateCarePlanCitationFindings(
         normalisationApplied: ["NFKC unicode normalisation", "case folded", "soft hyphens removed", "hyphenated line breaks joined", "line breaks/whitespace collapsed", "trimmed"],
       });
     } else {
+      const recovered = findRuntimeExactValueEvidence(claim.value, chunks.values());
+      if (recovered) {
+        findings.push({
+          requirementId: requirement.id,
+          claim: claim.claim,
+          mode: "VERIFIED_EXACT_VALUE",
+          accountable: true,
+          passed: true,
+          accountableValue: claim.value,
+          chunkId: recovered.chunk.chunkId,
+          documentTitle: recovered.chunk.sourceTitle,
+          citedText: recovered.citedText,
+          reason: `${claim.label} exact value was re-cited from another selected evidence chunk after the original citation did not support it.`,
+          normalisationApplied: ["NFKC unicode normalisation", "case folded", "soft hyphens removed", "hyphenated line breaks joined", "line breaks/whitespace collapsed", "trimmed"],
+        });
+        continue;
+      }
       findings.push({
         requirementId: requirement.id,
         claim: claim.claim,
@@ -1705,6 +1739,34 @@ function evaluateCarePlanCitationFindings(
   }
 
   return findings;
+}
+
+function findRuntimeExactValueEvidence(
+  value: string,
+  chunks: Iterable<EvidenceChunk>,
+): { chunk: EvidenceChunk; citedText: string } | null {
+  for (const chunk of chunks) {
+    if (!exactValueInEvidence(value, chunk.text)) continue;
+    return {
+      chunk,
+      citedText: extractValueEvidencePassage(value, chunk.text),
+    };
+  }
+  return null;
+}
+
+function extractValueEvidencePassage(value: string, text: string): string {
+  const directIndex = text.toLowerCase().indexOf(value.toLowerCase());
+  if (directIndex >= 0) {
+    return text
+      .slice(Math.max(0, directIndex - 120), Math.min(text.length, directIndex + value.length + 180))
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  const normalisedValue = normaliseEvidenceTextForComparison(value);
+  const sentences = text.split(/(?<=[.!?])\s+|\r?\n+/).map((sentence) => sentence.trim()).filter(Boolean);
+  const match = sentences.find((sentence) => normaliseEvidenceTextForComparison(sentence).includes(normalisedValue));
+  return (match ?? text.slice(0, 500)).replace(/\s+/g, " ").trim();
 }
 
 type AccountableCarePlanClaim =
@@ -1741,7 +1803,18 @@ function extractCarePlanAccountableClaims(
   }
 
   if (requirement.id === "care-plan-support-plan-meeting") {
-    for (const label of ["Support Plan Developed By", "People Present", "Date for Review", "Plan Date"]) {
+    for (const label of [
+      "Participant Name",
+      "Date of Birth",
+      "Gender",
+      "Language Spoken",
+      "NDIS Number",
+      "Diagnosis",
+      "Support Plan Developed By",
+      "People Present",
+      "Date for Review",
+      "Plan Date",
+    ]) {
       const value = extractLabelValue(content, label);
       if (value && !isMissingValue(value)) {
         claims.push({ kind: "exact", label: label.toLowerCase(), value, claim: `${section.heading}: ${label} ${value}` });

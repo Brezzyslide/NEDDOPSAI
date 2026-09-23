@@ -1519,6 +1519,37 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("continue;");
   });
 
+  it("server-derives accountable care-plan identity, ADL descriptions, mealtime gaps and document-control fields", () => {
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+
+    expect(uee).toContain("applyServerDerivedSupportPlanMeetingFields");
+    expect(uee).toContain("deriveSupportPlanIdentityFields");
+    expect(uee).toContain('"Date of Birth"');
+    expect(uee).toContain('"NDIS Number"');
+    expect(uee).toContain("conflict in retrieved evidence");
+    expect(uee).toContain("workerDescription: defaultAdlWorkerDescription(activity, derived)");
+    expect(uee).toContain("No functional assessment on file for this activity.");
+    expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
+    expect(uee).toContain("Form ID: NeedsOps AI+ Care Plan");
+    expect(coverage).toContain("findRuntimeExactValueEvidence");
+    expect(coverage).toContain("exact value was re-cited from another selected evidence chunk");
+    expect(coverage).toContain('"Participant Name"');
+    expect(coverage).toContain('"Diagnosis"');
+  });
+
+  it("renders behavioural strategies from whole BSP sentences instead of citation fragments", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("applyServerDerivedBehaviouralManagement");
+    expect(src).toContain("deriveBehaviourStrategiesFromBsp");
+    expect(src).toContain("splitEvidenceIntoSentences");
+    expect(src).toContain("normaliseBehaviourStrategySentence");
+    expect(src).toContain("accurately update all necessary records");
+    expect(src).toContain("BSP source");
+    expect(src).toContain("row.passage");
+  });
+
   it("uses a retrying long-running OpenAI timeout policy for care-plan batch generation", () => {
     const provider = workspaceSource("lib/ai-gateway/src/providers/openai.ts");
     const types = workspaceSource("lib/ai-gateway/src/types.ts");

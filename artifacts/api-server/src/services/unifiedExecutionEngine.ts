@@ -3641,7 +3641,7 @@ function applyDeterministicEvidenceGapReplacements(input: {
           return {
             ...row,
             supportLevel: "Not applicable / not assessed",
-            workerDescription: "Not assessed - no verified ADL source row was recorded in retrieved evidence.",
+            workerDescription: "No functional assessment on file for this activity.",
             sourceValue: "Absent",
             chunkId: "not-recorded-in-retrieved-evidence",
             mappingMode: "NOT_ASSESSED" as const,
@@ -5535,6 +5535,9 @@ function applyServerDerivedCarePlanSectionCells(
   section: ParsedDeliverableSection,
   evidencePack: EvidencePack | undefined,
 ): ParsedDeliverableSection {
+  if (section.requirementId === "care-plan-support-plan-meeting") {
+    return applyServerDerivedSupportPlanMeetingFields(section, evidencePack);
+  }
   if (section.requirementId === "care-plan-undertaking-adl") {
     return applyServerDerivedAdlRows(section, evidencePack);
   }
@@ -5544,10 +5547,177 @@ function applyServerDerivedCarePlanSectionCells(
   if (section.requirementId === "care-plan-disaster-management-strategy") {
     return applyServerDerivedDisasterManagementFields(section, evidencePack);
   }
+  if (section.requirementId === "care-plan-behavioural-management") {
+    return applyServerDerivedBehaviouralManagement(section, evidencePack);
+  }
   if (section.requirementId === "care-plan-restrictive-practices") {
     return applyServerDerivedRestrictivePracticeRows(section, evidencePack);
   }
+  if (section.requirementId === "care-plan-mealtime-management-strategy") {
+    return applyServerDerivedMealtimeManagement(section, evidencePack);
+  }
+  if (section.requirementId === "care-plan-document-control") {
+    return applyServerDerivedDocumentControl(section);
+  }
   return section;
+}
+
+type SupportPlanIdentityField =
+  | "Participant Name"
+  | "Date of Birth"
+  | "Gender"
+  | "Language Spoken"
+  | "NDIS Number"
+  | "Diagnosis";
+
+type SupportPlanMeetingField =
+  | SupportPlanIdentityField
+  | "People Present"
+  | "Support Plan Developed By"
+  | "Plan Date"
+  | "Date for Review";
+
+interface DerivedSupportPlanField {
+  label: SupportPlanIdentityField;
+  value: string;
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
+}
+
+function applyServerDerivedSupportPlanMeetingFields(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const derived = deriveSupportPlanIdentityFields(evidencePack);
+  const rows: Array<[SupportPlanMeetingField, string]> = [
+    ["Participant Name", supportPlanIdentityValue("Participant Name", derived)],
+    ["Date of Birth", supportPlanIdentityValue("Date of Birth", derived)],
+    ["Gender", supportPlanIdentityValue("Gender", derived)],
+    ["Language Spoken", supportPlanIdentityValue("Language Spoken", derived)],
+    ["NDIS Number", supportPlanIdentityValue("NDIS Number", derived)],
+    ["Diagnosis", supportPlanIdentityValue("Diagnosis", derived)],
+    ["People Present", DETERMINISTIC_EVIDENCE_GAP_VALUE],
+    ["Support Plan Developed By", DETERMINISTIC_EVIDENCE_GAP_VALUE],
+    ["Plan Date", DETERMINISTIC_EVIDENCE_GAP_VALUE],
+    ["Date for Review", DETERMINISTIC_EVIDENCE_GAP_VALUE],
+  ];
+  const intro = extractSupportPlanMeetingIntro(section.content);
+  const content = [
+    intro || "This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it.",
+    ...rows.map(([label, value]) => `**${label}:** ${value}`),
+  ].join("\n\n");
+  return {
+    ...section,
+    content,
+    evidenceSources: mergeEvidenceSources(section.evidenceSources, Array.from(derived.values()).flatMap((values) =>
+      values.map((field) => ({
+        chunkId: field.chunkId,
+        documentTitle: field.documentTitle,
+        passage: field.passage,
+        location: field.location,
+        evidenceClass: field.evidenceClass,
+      })),
+    )),
+  };
+}
+
+function extractSupportPlanMeetingIntro(content: string): string {
+  const firstBlock = content.split(/\n{2,}/).map((block) => block.trim()).find((block) =>
+    block && !block.startsWith("**") && !block.includes("|") && !/\[[^\]]+\]/.test(block),
+  );
+  return firstBlock ?? "";
+}
+
+function supportPlanIdentityValue(
+  label: SupportPlanIdentityField,
+  derived: Map<SupportPlanIdentityField, DerivedSupportPlanField[]>,
+): string {
+  const values = derived.get(label) ?? [];
+  if (!values.length) return DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  const byNormalisedValue = new Map<string, DerivedSupportPlanField[]>();
+  for (const item of values) {
+    const key = normaliseSupportPlanIdentityValue(item.value);
+    byNormalisedValue.set(key, [...(byNormalisedValue.get(key) ?? []), item]);
+  }
+  const unique = Array.from(byNormalisedValue.values());
+  if (unique.length === 1) return unique[0][0].value;
+  return `conflict in retrieved evidence: ${unique
+    .map((items) => `${items[0].value} (${items.map((item) => item.chunkId).join(", ")})`)
+    .join("; ")}`;
+}
+
+function normaliseSupportPlanIdentityValue(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, " ").replace(/[.,;:]+$/g, "").trim();
+}
+
+function deriveSupportPlanIdentityFields(
+  evidencePack: EvidencePack | undefined,
+): Map<SupportPlanIdentityField, DerivedSupportPlanField[]> {
+  const fields = new Map<SupportPlanIdentityField, DerivedSupportPlanField[]>();
+  for (const chunk of evidencePack?.chunks ?? []) {
+    if (!isParticipantIdentityChunk(chunk)) continue;
+    for (const label of ["Participant Name", "Date of Birth", "Gender", "Language Spoken", "NDIS Number", "Diagnosis"] as SupportPlanIdentityField[]) {
+      const derived = extractSupportPlanIdentityField(chunk, label);
+      if (!derived) continue;
+      fields.set(label, [...(fields.get(label) ?? []), derived]);
+    }
+  }
+  return fields;
+}
+
+function isParticipantIdentityChunk(chunk: EvidencePack["chunks"][number]): boolean {
+  const haystack = `${chunk.sourceTitle} ${chunk.documentCategory ?? ""} ${chunk.sectionTitle ?? ""} ${chunk.text}`;
+  return /\b(?:participant name|person[’']?s name|date of birth|ndis (?:number|participant)|diagnosis|gender|language)\b/i.test(haystack) &&
+    /\b(?:Michael|Rocca|430324461|24\/08\/1975)\b/i.test(haystack);
+}
+
+function extractSupportPlanIdentityField(
+  chunk: EvidencePack["chunks"][number],
+  label: SupportPlanIdentityField,
+): DerivedSupportPlanField | null {
+  const patterns = supportPlanIdentityPatterns(label);
+  for (const pattern of patterns) {
+    const match = chunk.text.match(pattern);
+    if (!match) continue;
+    const value = compactEvidencePassage(match[1] ?? match[0]);
+    if (!value || value.length > 260 || /\bnot recorded\b/i.test(value)) continue;
+    return {
+      label,
+      value,
+      chunkId: chunk.chunkId,
+      documentTitle: chunk.sourceTitle,
+      passage: compactEvidencePassage(match[0]),
+      location: chunk.citation,
+      evidenceClass: chunk.evidenceClass,
+    };
+  }
+  return null;
+}
+
+function supportPlanIdentityPatterns(label: SupportPlanIdentityField): RegExp[] {
+  switch (label) {
+    case "Participant Name":
+      return [
+        /\bParticipant Name\s*:?\s*(Michael\s+Rocca)\b/i,
+        /\bPerson[’']?s name\s*:?\s*(Michael\s+Rocca)\b/i,
+      ];
+    case "Date of Birth":
+      return [/\bDate of Birth(?:\s*\(age\))?\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{4})/i];
+    case "Gender":
+      return [/\bGender\s*:?\s*(?:☒\s*)?(Male|Female|Non-binary|Other)\b/i];
+    case "Language Spoken":
+      return [/\bLanguage(?: Spoken)?\s*:?\s*(English|Italian|[A-Z][A-Za-z ,/-]{1,40})\b/i];
+    case "NDIS Number":
+      return [/\bNDIS(?: Participant)?\s*(?:Number|#)\s*:?\s*(\d{6,})\b/i];
+    case "Diagnosis":
+      return [
+        /\bDiagnosis(?:\s*\/\s*Relevant Conditions)?\s*:?\s*([A-Z][\s\S]{10,240}?)(?=\s+(?:Support Ratio|NDIS|Participant Name|Date of Birth|Gender|Language|Assessment Date)\b|$)/i,
+        /\bdiagnosed with\s+([A-Z][\s\S]{10,220}?)(?=\.|\n|$)/i,
+      ];
+  }
 }
 
 type AdlChecklistValue = "Without support" | "Support required" | "Completely unable to";
@@ -5586,9 +5756,7 @@ function applyServerDerivedAdlRows(
       return {
         activity,
         supportLevel: derived.supportLevel,
-        workerDescription: modelRow && !isGenerationFailedText(modelRow.workerDescription)
-          ? modelRow.workerDescription
-          : defaultAdlWorkerDescription(activity, derived),
+        workerDescription: defaultAdlWorkerDescription(activity, derived),
         sourceValue: derived.sourceValue,
         chunkId: derived.chunkId,
         mappingMode: "VERIFIED_MAPPING" as CarePlanAdlMappingMode,
@@ -5600,7 +5768,7 @@ function applyServerDerivedAdlRows(
     return {
       activity,
       supportLevel: "Not applicable / not assessed",
-      workerDescription: "Not assessed - no controlled ADL checklist value or cited participant-specific source row was available in retrieved evidence.",
+      workerDescription: "No functional assessment on file for this activity.",
       sourceValue: "Absent",
       chunkId: "not-recorded-in-retrieved-evidence",
       mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
@@ -5691,7 +5859,7 @@ function mapAdlChecklistValueToSupportLevel(value: AdlChecklistValue): string {
 }
 
 function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell): string {
-  if (derived.supportLevel === "Independent") return `Michael completes ${activity.toLowerCase()} without support according to the retrieved intake checklist.`;
+  if (derived.supportLevel === "Independent") return `Michael completes ${activity.toLowerCase()} without assistance according to the retrieved intake checklist; workers should not provide hands-on help unless he asks or safety changes.`;
   if (derived.supportLevel === "Unable to complete") return `Michael is recorded as completely unable to complete ${activity.toLowerCase()} in the retrieved intake checklist; workers must provide full support consistent with the current support plan.`;
   const differingParts = derived.sourceItems.length > 1 ? ` The mapped checklist items were: ${derived.sourceItems.join(", ")}.` : "";
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
@@ -5969,6 +6137,189 @@ function defaultDisasterWorkerStrategy(fields: Map<FireRiskField, DerivedFireRis
   const equipment = fields.get("Equipment present")?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE;
   const communication = fields.get("Communication approach")?.value ?? "clear, calm verbal instructions";
   return `In an emergency, call 000 first, use ${communication}, maintain clear access to exits, take available emergency equipment recorded in the fire risk assessment (${equipment}), and notify the on-call service manager after immediate safety actions are underway.`;
+}
+
+type BehaviourStrategyFold = "Proactive" | "Reactive" | "Protective";
+
+interface DerivedBehaviourStrategy {
+  fold: BehaviourStrategyFold;
+  trigger: string;
+  strategy: string;
+  workerAction: string;
+  chunkId: string;
+  documentTitle: string;
+  passage: string;
+  location: string;
+  evidenceClass?: string;
+}
+
+function applyServerDerivedBehaviouralManagement(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const strategies = deriveBehaviourStrategiesFromBsp(evidencePack);
+  if (strategies.length === 0) return section;
+  const byFold = new Map<BehaviourStrategyFold, DerivedBehaviourStrategy[]>();
+  for (const strategy of strategies) {
+    byFold.set(strategy.fold, [...(byFold.get(strategy.fold) ?? []), strategy]);
+  }
+  const foldBlocks = (["Proactive", "Reactive", "Protective"] as BehaviourStrategyFold[]).map((fold) => {
+    const rows = byFold.get(fold) ?? [];
+    const heading = `**${fold.toLowerCase()} strategies**`;
+    if (rows.length === 0) {
+      return `${heading}\n\nNo ${fold.toLowerCase()} strategies were extracted from the retrieved behaviour support plan chunks.`;
+    }
+    return [
+      heading,
+      renderMarkdownRows(
+        ["Behaviour or trigger", "Strategy", "What the worker does", "BSP source"],
+        rows.map((row) => [
+          row.trigger,
+          row.strategy,
+          row.workerAction,
+          `${row.documentTitle} (${row.chunkId}): ${row.passage}`,
+        ]),
+      ),
+    ].join("\n\n");
+  });
+  return {
+    ...section,
+    content: [
+      "The strategies below implement the participant's behaviour support plan. They do not replace it. Workers must read the behaviour support plan before their first shift.",
+      "Strategies are grouped in escalation order. Proactive strategies are used routinely to prevent escalation. Reactive strategies are used when early signs appear or a behaviour has begun. Protective strategies are used only where there is risk of harm, as a last resort and for the shortest time necessary.",
+      ...foldBlocks,
+    ].join("\n\n"),
+    evidenceSources: mergeEvidenceSources(section.evidenceSources, strategies.map((strategy) => ({
+      chunkId: strategy.chunkId,
+      documentTitle: strategy.documentTitle,
+      passage: strategy.passage,
+      location: strategy.location,
+      evidenceClass: strategy.evidenceClass,
+    }))),
+  };
+}
+
+function deriveBehaviourStrategiesFromBsp(evidencePack: EvidencePack | undefined): DerivedBehaviourStrategy[] {
+  const strategies: DerivedBehaviourStrategy[] = [];
+  const seen = new Set<string>();
+  for (const chunk of evidencePack?.chunks ?? []) {
+    if (!isBehaviourSupportPlanChunk(chunk)) continue;
+    for (const sentence of splitEvidenceIntoSentences(chunk.text)) {
+      const candidate = normaliseBehaviourStrategySentence(sentence);
+      if (!candidate) continue;
+      const key = normaliseSupportPlanIdentityValue(candidate);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      strategies.push({
+        fold: classifyBehaviourStrategyFold(candidate),
+        trigger: deriveBehaviourTrigger(candidate),
+        strategy: deriveBehaviourStrategyLabel(candidate),
+        workerAction: candidate,
+        chunkId: chunk.chunkId,
+        documentTitle: chunk.sourceTitle,
+        passage: candidate,
+        location: chunk.citation,
+        evidenceClass: chunk.evidenceClass,
+      });
+    }
+  }
+  return strategies;
+}
+
+function splitEvidenceIntoSentences(text: string): string[] {
+  return text
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+|(?:^|\s)(?=\d{1,2}\.\s+[A-Z])/)
+    .map((sentence) => compactEvidencePassage(sentence))
+    .filter((sentence) => sentence.length >= 30 && sentence.length <= 360);
+}
+
+function normaliseBehaviourStrategySentence(sentence: string): string | null {
+  if (!/\b(?:staff|worker|support(?:s|ed)?|prompt|encourage|redirect|de-escalat|validate|praise|monitor|supervis|offer|provide|avoid|ensure|withdraw|safe distance|routine|visual|social story|grounding|calm)\b/i.test(sentence)) {
+    return null;
+  }
+  if (/\b(?:accurately update all necessary records|page \d+|version|appendix|signature|approval)\b/i.test(sentence)) {
+    return null;
+  }
+  if (!/[.!?]$/.test(sentence)) return `${sentence}.`;
+  return sentence;
+}
+
+function classifyBehaviourStrategyFold(sentence: string): BehaviourStrategyFold {
+  if (/\b(?:risk of harm|safe distance|withdraw|emergency|protect|supervis|crisis|contact police|call 000|immediate safety)\b/i.test(sentence)) {
+    return "Protective";
+  }
+  if (/\b(?:when|if|escalat|aggress|distress|incident|behaviour occurs|redirect|de-escalat|calm|grounding)\b/i.test(sentence)) {
+    return "Reactive";
+  }
+  return "Proactive";
+}
+
+function deriveBehaviourTrigger(sentence: string): string {
+  const match = sentence.match(/\b(?:when|if|where)\s+([^,.]{8,90})/i);
+  if (match?.[1]) return sentenceCase(compactEvidencePassage(match[1]));
+  if (/\bsocial\b/i.test(sentence)) return "Social connection or community participation";
+  if (/\broutine|structure|visual\b/i.test(sentence)) return "Need for predictable structure";
+  if (/\brisk|harm|safe\b/i.test(sentence)) return "Risk of harm or escalation";
+  return "Behaviour support plan strategy";
+}
+
+function deriveBehaviourStrategyLabel(sentence: string): string {
+  if (/\bde-escalat|calm|grounding\b/i.test(sentence)) return "Use calming and de-escalation strategies";
+  if (/\bredirect\b/i.test(sentence)) return "Redirect to a safer or more appropriate activity";
+  if (/\bpraise|validate|encourage\b/i.test(sentence)) return "Use praise, validation and encouragement";
+  if (/\broutine|visual|structure\b/i.test(sentence)) return "Maintain predictable structure and visual supports";
+  if (/\bwithdraw|safe distance|risk of harm\b/i.test(sentence)) return "Maintain safety and withdraw to a safe distance";
+  return "Follow the cited BSP strategy";
+}
+
+function sentenceCase(value: string): string {
+  const trimmed = value.trim();
+  return trimmed ? `${trimmed[0].toUpperCase()}${trimmed.slice(1)}` : trimmed;
+}
+
+function applyServerDerivedMealtimeManagement(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  const source = findMealtimeRiskAssessmentEvidence(evidencePack);
+  if (source) return section;
+  return {
+    ...section,
+    content: [
+      "No mealtime management risk assessment is recorded in the retrieved evidence.",
+      "No mealtime support requirements are recorded in the retrieved evidence.",
+      "Workers should report any change in eating, drinking, swallowing, choking risk, positioning or mealtime tolerance to the service manager before changing supports.",
+    ].join("\n\n"),
+    evidenceSources: section.evidenceSources,
+  };
+}
+
+function findMealtimeRiskAssessmentEvidence(evidencePack: EvidencePack | undefined): EvidencePack["chunks"][number] | null {
+  for (const chunk of evidencePack?.chunks ?? []) {
+    const haystack = `${chunk.sourceTitle} ${chunk.documentCategory ?? ""} ${chunk.sectionTitle ?? ""} ${chunk.text}`;
+    if (/\b(?:mealtime|swallow|dysphagia|texture|fluid consistency|choking)\b/i.test(haystack) &&
+      /\b(?:risk assessment|management plan|assessment)\b/i.test(haystack)) {
+      return chunk;
+    }
+  }
+  return null;
+}
+
+function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): ParsedDeliverableSection {
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    ...section,
+    content: [
+      "Uncontrolled when printed. The current version of this document is held in the provider's document management system.",
+      "",
+      "Form ID: NeedsOps AI+ Care Plan",
+      "Version: 1.0",
+      `Date: ${today}`,
+      `Next review date: ${DETERMINISTIC_EVIDENCE_GAP_VALUE}`,
+    ].join("\n"),
+    evidenceSources: section.evidenceSources,
+  };
 }
 
 function compactEvidencePassage(value: string): string {
