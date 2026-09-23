@@ -5682,7 +5682,7 @@ function extractSupportPlanIdentityField(
   for (const pattern of patterns) {
     const match = chunk.text.match(pattern);
     if (!match) continue;
-    const value = compactEvidencePassage(match[1] ?? match[0]);
+    const value = cleanSupportPlanIdentityValue(label, compactEvidencePassage(match[1] ?? match[0]));
     if (!value || value.length > 260 || /\bnot recorded\b/i.test(value)) continue;
     return {
       label,
@@ -5697,6 +5697,17 @@ function extractSupportPlanIdentityField(
   return null;
 }
 
+function cleanSupportPlanIdentityValue(label: SupportPlanIdentityField, value: string): string {
+  if (label === "Diagnosis") {
+    return value
+      .replace(/\s+\b(?:Current|Support Ratio|NDIS|Participant Name|Date of Birth|Gender|Language|Assessment Date)\b[\s\S]*$/i, "")
+      .replace(/\s+/g, " ")
+      .replace(/[.;,\s]+$/g, "")
+      .trim();
+  }
+  return value.trim();
+}
+
 function supportPlanIdentityPatterns(label: SupportPlanIdentityField): RegExp[] {
   switch (label) {
     case "Participant Name":
@@ -5709,13 +5720,17 @@ function supportPlanIdentityPatterns(label: SupportPlanIdentityField): RegExp[] 
     case "Gender":
       return [/\bGender\s*:?\s*(?:☒\s*)?(Male|Female|Non-binary|Other)\b/i];
     case "Language Spoken":
-      return [/\bLanguage(?: Spoken)?\s*:?\s*(English|Italian|[A-Z][A-Za-z ,/-]{1,40})\b/i];
+      return [
+        /\bLanguage Spoken\s*:?\s*(English|Italian)\b/i,
+        /\bcommunicates verbally in\s+(English|Italian)\b/i,
+        /\bverbal(?:ly)?\s+in\s+(English|Italian)\b/i,
+      ];
     case "NDIS Number":
       return [/\bNDIS(?: Participant)?\s*(?:Number|#)\s*:?\s*(\d{6,})\b/i];
     case "Diagnosis":
       return [
-        /\bDiagnosis(?:\s*\/\s*Relevant Conditions)?\s*:?\s*([A-Z][\s\S]{10,240}?)(?=\s+(?:Support Ratio|NDIS|Participant Name|Date of Birth|Gender|Language|Assessment Date)\b|$)/i,
-        /\bdiagnosed with\s+([A-Z][\s\S]{10,220}?)(?=\.|\n|$)/i,
+        /\bDiagnosis(?:\s*\/\s*Relevant Conditions)?\s*:?\s*([A-Z][\s\S]{10,240}?)(?=\s+(?:Current|Support Ratio|NDIS|Participant Name|Date of Birth|Gender|Language|Assessment Date)\b|$)/i,
+        /\bdiagnosed with\s+(?:a\s+)?([A-Z][\s\S]{10,220}?)(?=\.|\n|$)/i,
       ];
   }
 }
@@ -5899,10 +5914,7 @@ function applyServerDerivedMobilityFields(
 
   return {
     ...section,
-    content: [
-      renderMarkdownRows(["Field", "Value", "Source value", "Chunk ID", "Mapping mode"], rows),
-      extractMobilityStrategyNarrative(section.content),
-    ].filter(Boolean).join("\n\n"),
+    content: renderMarkdownRows(["Field", "Value", "Source value", "Chunk ID", "Mapping mode"], rows),
     evidenceSources: mergeEvidenceSources(section.evidenceSources, [walk, transfer]
       .filter((source): source is DerivedAdlCell => Boolean(source))
       .map((source) => ({
@@ -5964,17 +5976,6 @@ function mobilityStrategyValue(walk: DerivedAdlCell | undefined, transfer: Deriv
     return "Provide the least restrictive support recorded in the checklist and reassess if mobility safety changes.";
   }
   return "Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk.";
-}
-
-function extractMobilityStrategyNarrative(content: string): string {
-  const narrative = content
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter((block) => block && !block.includes("|"))
-    .filter((block) => !/\bgeneration_failed\b|model returned no cells/i.test(block))
-    .slice(0, 2)
-    .join("\n\n");
-  return narrative ? `**Narrative strategy:**\n\n${narrative}` : "";
 }
 
 type FireRiskField =
@@ -6161,7 +6162,9 @@ function applyServerDerivedBehaviouralManagement(
   if (strategies.length === 0) return section;
   const byFold = new Map<BehaviourStrategyFold, DerivedBehaviourStrategy[]>();
   for (const strategy of strategies) {
-    byFold.set(strategy.fold, [...(byFold.get(strategy.fold) ?? []), strategy]);
+    const existing = byFold.get(strategy.fold) ?? [];
+    if (existing.length >= 8) continue;
+    byFold.set(strategy.fold, [...existing, strategy]);
   }
   const foldBlocks = (["Proactive", "Reactive", "Protective"] as BehaviourStrategyFold[]).map((fold) => {
     const rows = byFold.get(fold) ?? [];
@@ -6235,10 +6238,13 @@ function splitEvidenceIntoSentences(text: string): string[] {
 }
 
 function normaliseBehaviourStrategySentence(sentence: string): string | null {
-  if (!/\b(?:staff|worker|support(?:s|ed)?|prompt|encourage|redirect|de-escalat|validate|praise|monitor|supervis|offer|provide|avoid|ensure|withdraw|safe distance|routine|visual|social story|grounding|calm)\b/i.test(sentence)) {
+  if (!/\b(?:staff|worker|support(?:s|ed)?|prompt|encourage|redirect|de-escalat|validate|praise|monitor|supervis|offer|provide|avoid|ensure|withdraw|safe distance|routine|visual|social story|grounding|calm|model slow breathing|practice grounding|post-incident reflection)\b/i.test(sentence)) {
     return null;
   }
-  if (/\b(?:accurately update all necessary records|page \d+|version|appendix|signature|approval)\b/i.test(sentence)) {
+  if (/\b(?:authorisation|authorised|lodged|lodge|commission|rules|legislative|quality and safeguards|practice guidance|checklists?|duly authorised|signature|supervisors?|endorsement|acknowledge|true, correct and accurate|page \d+|version|appendix|goal attainment|less than expected|expected emergency service|to the best of my knowledge|behaviour support plan template)\b/i.test(sentence)) {
+    return null;
+  }
+  if (!/\b(?:staff|worker|support team|support staff)\b/i.test(sentence) && !/^\s*[•-]\s*(?:model|practice|encourage|use|provide|avoid|redirect|withdraw|reduce|remain|offer|prompt)\b/i.test(sentence)) {
     return null;
   }
   if (!/[.!?]$/.test(sentence)) return `${sentence}.`;

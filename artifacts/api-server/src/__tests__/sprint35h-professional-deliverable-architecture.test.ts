@@ -1545,7 +1545,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("deriveBehaviourStrategiesFromBsp");
     expect(src).toContain("splitEvidenceIntoSentences");
     expect(src).toContain("normaliseBehaviourStrategySentence");
-    expect(src).toContain("accurately update all necessary records");
+    expect(src).toContain("authorisation|authorised|lodged|lodge|commission");
+    expect(src).toContain("to the best of my knowledge");
     expect(src).toContain("BSP source");
     expect(src).toContain("row.passage");
   });
