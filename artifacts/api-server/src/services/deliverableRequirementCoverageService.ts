@@ -1781,10 +1781,10 @@ function extractCarePlanAccountableClaims(
   const content = section.content;
   const dateValues = Array.from(new Set(content.match(/\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})\b/g) ?? []));
   const dateRelevant = requirement.id === "care-plan-goals" ||
-    requirement.id === "care-plan-support-plan-meeting" ||
-    requirement.id === "care-plan-document-control";
+    requirement.id === "care-plan-support-plan-meeting";
   if (dateRelevant) {
     for (const value of dateValues) {
+      if (isCarePlanSystemGeneratedAccountableValue(requirement.id, "date/timeframe", value)) continue;
       claims.push({ kind: "exact", label: "date/timeframe", value, claim: `${section.heading}: ${value}` });
     }
   }
@@ -1817,6 +1817,7 @@ function extractCarePlanAccountableClaims(
     ]) {
       const value = extractLabelValue(content, label);
       if (value && !isMissingValue(value)) {
+        if (isCarePlanSystemGeneratedAccountableValue(requirement.id, label, value)) continue;
         claims.push({ kind: "exact", label: label.toLowerCase(), value, claim: `${section.heading}: ${label} ${value}` });
       }
     }
@@ -1849,6 +1850,13 @@ function extractCarePlanAccountableClaims(
   }
 
   return claims;
+}
+
+function isCarePlanSystemGeneratedAccountableValue(requirementId: string, label: string, value: string): boolean {
+  if (requirementId === "care-plan-document-control") return true;
+  if (requirementId !== "care-plan-support-plan-meeting") return false;
+  if (!/^(?:Plan Date|Date for Review|date\/timeframe)$/i.test(label)) return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) || /^To be confirmed by approver$/i.test(value.trim());
 }
 
 function validateAdlAccountableClaim(

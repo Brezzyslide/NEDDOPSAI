@@ -1531,11 +1531,15 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain("workerDescription: defaultAdlWorkerDescription(activity, derived)");
     expect(uee).toContain("No functional assessment on file for this activity.");
     expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
-    expect(uee).toContain("Form ID: NeedsOps AI+ Care Plan");
+    expect(uee).toContain("Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}");
+    expect(uee).toContain("CARE_PLAN_SYSTEM_FORM_ID");
+    expect(uee).toContain("CARE_PLAN_APPROVER_REVIEW_DATE");
+    expect(uee).toContain("isCarePlanSystemGeneratedMetadataValue");
     expect(coverage).toContain("findRuntimeExactValueEvidence");
     expect(coverage).toContain("exact value was re-cited from another selected evidence chunk");
     expect(coverage).toContain('"Participant Name"');
     expect(coverage).toContain('"Diagnosis"');
+    expect(coverage).toContain("isCarePlanSystemGeneratedAccountableValue");
   });
 
   it("renders behavioural strategies from whole BSP sentences instead of citation fragments", () => {
@@ -1545,7 +1549,12 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("deriveBehaviourStrategiesFromBsp");
     expect(src).toContain("splitEvidenceIntoSentences");
     expect(src).toContain("normaliseBehaviourStrategySentence");
+    expect(src).toContain("hasBehaviourOrTriggerContext");
+    expect(src).toContain("hasBehaviourWorkerAction");
+    expect(src).toContain("isNonStrategyBspMaterial");
     expect(src).toContain("authorisation|authorised|lodged|lodge|commission");
+    expect(src).toContain("medication administration policy");
+    expect(src).toContain("the discussions included");
     expect(src).toContain("to the best of my knowledge");
     expect(src).toContain("BSP source");
     expect(src).toContain("row.passage");
@@ -2970,6 +2979,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain("applyDeterministicEvidenceGapReplacements");
     expect(engine).toContain("not recorded in retrieved evidence");
     expect(engine).toContain("detectRepairDegradation");
+    expect(engine).toContain("shouldSkipTargetedRepairForCarePlan");
+    expect(engine).toContain('gate: "targeted_repair_skipped"');
+    expect(engine).toContain("Targeted repair was skipped for participant care plans");
     expect(engine).toContain('stage: "repair_degraded"');
     expect(engine).toContain('gate: "repair_degraded"');
     expect(engine).toContain('documentStatus: "accepted"');

@@ -2021,7 +2021,15 @@ export class UnifiedExecutionEngine {
         repairClassification.repairable.map((entry) => entry.failure),
         [],
       );
-      if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0) {
+      const skipTargetedRepair = shouldSkipTargetedRepairForCarePlan(professionalContext, blueprintContract);
+      if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0 && skipTargetedRepair) {
+        runtimeGate = appendRuntimeGateFailure(runtimeGate, {
+          gate: "targeted_repair_skipped",
+          state: "validation",
+          message: "Targeted repair was skipped for participant care plans because repair candidates repeatedly degrade structured section integrity.",
+          details: repairableFailures.map((failure) => `${failure.requirementId}: ${failure.reason}`),
+        });
+      } else if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0) {
         const repairGroups = groupRequirementFailuresForRepair(coverageProfile, repairableFailures).slice(0, 8);
         let repairFailureMessage: string | null = null;
         for (let repairIndex = 0; repairIndex < repairGroups.length; repairIndex += 1) {
@@ -3608,6 +3616,9 @@ interface DeterministicGapReplacementResult {
 }
 
 const DETERMINISTIC_EVIDENCE_GAP_VALUE = "not recorded in retrieved evidence";
+const CARE_PLAN_SYSTEM_FORM_ID = "NeedsOps AI+ Care Plan";
+const CARE_PLAN_SYSTEM_VERSION = "1.0";
+const CARE_PLAN_APPROVER_REVIEW_DATE = "To be confirmed by approver";
 
 function applyDeterministicEvidenceGapReplacements(input: {
   contentMarkdown: string;
@@ -3706,8 +3717,19 @@ function replaceParticipantModeBracketPlaceholders(content: string): string {
 function shouldDeterministicallyReplaceValue(requirementId: string, value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed || /\b(?:not recorded|not assessed|not supplied|not provided)\b/i.test(trimmed)) return false;
+  if (isCarePlanSystemGeneratedMetadataValue(requirementId, trimmed)) return false;
   if (requirementId === "care-plan-restrictive-practices") return false;
   return /\d/.test(trimmed) || /\s/.test(trimmed) || trimmed.length >= 12;
+}
+
+function isCarePlanSystemGeneratedMetadataValue(requirementId: string, value: string): boolean {
+  if (requirementId === "care-plan-document-control") return true;
+  if (requirementId !== "care-plan-support-plan-meeting") return false;
+  return value === carePlanSystemPlanDate() || value === CARE_PLAN_APPROVER_REVIEW_DATE;
+}
+
+function carePlanSystemPlanDate(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
 }
 
 function replaceAccountableValue(content: string, value: string, replacement: string): string {
@@ -5443,6 +5465,13 @@ function shouldUseBatchedParticipantCarePlanGeneration(
     contract?.blueprint?.code === "care_plan";
 }
 
+function shouldSkipTargetedRepairForCarePlan(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+): boolean {
+  return shouldUseBatchedParticipantCarePlanGeneration(professionalContext, contract);
+}
+
 function buildParticipantCarePlanBatches(
   contract: BlueprintExecutionContract | undefined | null,
 ): CarePlanBatch[] {
@@ -5592,6 +5621,7 @@ function applyServerDerivedSupportPlanMeetingFields(
   evidencePack: EvidencePack | undefined,
 ): ParsedDeliverableSection {
   const derived = deriveSupportPlanIdentityFields(evidencePack);
+  const systemPlanDate = carePlanSystemPlanDate();
   const rows: Array<[SupportPlanMeetingField, string]> = [
     ["Participant Name", supportPlanIdentityValue("Participant Name", derived)],
     ["Date of Birth", supportPlanIdentityValue("Date of Birth", derived)],
@@ -5601,8 +5631,8 @@ function applyServerDerivedSupportPlanMeetingFields(
     ["Diagnosis", supportPlanIdentityValue("Diagnosis", derived)],
     ["People Present", DETERMINISTIC_EVIDENCE_GAP_VALUE],
     ["Support Plan Developed By", DETERMINISTIC_EVIDENCE_GAP_VALUE],
-    ["Plan Date", DETERMINISTIC_EVIDENCE_GAP_VALUE],
-    ["Date for Review", DETERMINISTIC_EVIDENCE_GAP_VALUE],
+    ["Plan Date", systemPlanDate],
+    ["Date for Review", CARE_PLAN_APPROVER_REVIEW_DATE],
   ];
   const intro = extractSupportPlanMeetingIntro(section.content);
   const content = [
@@ -6238,17 +6268,36 @@ function splitEvidenceIntoSentences(text: string): string[] {
 }
 
 function normaliseBehaviourStrategySentence(sentence: string): string | null {
-  if (!/\b(?:staff|worker|support(?:s|ed)?|prompt|encourage|redirect|de-escalat|validate|praise|monitor|supervis|offer|provide|avoid|ensure|withdraw|safe distance|routine|visual|social story|grounding|calm|model slow breathing|practice grounding|post-incident reflection)\b/i.test(sentence)) {
-    return null;
-  }
+  const compact = compactEvidencePassage(sentence);
+  if (isNonStrategyBspMaterial(compact)) return null;
+  if (!hasBehaviourOrTriggerContext(compact)) return null;
+  if (!hasBehaviourWorkerAction(compact)) return null;
+  if (!/[.!?]$/.test(compact)) return `${compact}.`;
+  return compact;
+}
+
+function isNonStrategyBspMaterial(sentence: string): boolean {
   if (/\b(?:authorisation|authorised|lodged|lodge|commission|rules|legislative|quality and safeguards|practice guidance|checklists?|duly authorised|signature|supervisors?|endorsement|acknowledge|true, correct and accurate|page \d+|version|appendix|goal attainment|less than expected|expected emergency service|to the best of my knowledge|behaviour support plan template)\b/i.test(sentence)) {
-    return null;
+    return true;
   }
-  if (!/\b(?:staff|worker|support team|support staff)\b/i.test(sentence) && !/^\s*[•-]\s*(?:model|practice|encourage|use|provide|avoid|redirect|withdraw|reduce|remain|offer|prompt)\b/i.test(sentence)) {
-    return null;
+  if (/\b(?:expected|goal \d|future potential|more recently|referred by|diagnosed with|currently lives|lives in supported|the discussions included|anna and the author|collaboration with|will be monitored through incident report|medication administration policy|medication chart|support co-ordinator|service coordination|review meeting|care-team collaboration)\b/i.test(sentence)) {
+    return true;
   }
-  if (!/[.!?]$/.test(sentence)) return `${sentence}.`;
-  return sentence;
+  if (/^\s*(?:included|inclusion|current|background|history|summary|assessment|risk formulation)\b/i.test(sentence)) {
+    return true;
+  }
+  return false;
+}
+
+function hasBehaviourOrTriggerContext(sentence: string): boolean {
+  return /\b(?:when|if|where|during|after|before|in response to|early signs?|trigger|behaviou?r|aggress|distress|escalat|incident|post-incident|risk of harm|self-harm|sexualised|financial fixation|medical attention|hospital presentation|emergency setting|night|children|female support staff|rejection|boredom|mistrust|testing behaviours?)\b/i.test(sentence);
+}
+
+function hasBehaviourWorkerAction(sentence: string): boolean {
+  if (/^\s*[•-]\s*(?:model|practice|encourage|use|provide|avoid|redirect|withdraw|reduce|remain|offer|prompt|support|ensure|validate|praise|monitor|supervise|contact|call|record|report)\b/i.test(sentence)) {
+    return true;
+  }
+  return /\b(?:staff|workers?|support staff|support team|team members?)\s+(?:must|should|will|are to|need to|can|use|provide|offer|encourage|prompt|redirect|withdraw|monitor|supervise|model|practice|avoid|remain|record|report|contact|call|ensure|support)\b/i.test(sentence);
 }
 
 function classifyBehaviourStrategyFold(sentence: string): BehaviourStrategyFold {
@@ -6313,16 +6362,18 @@ function findMealtimeRiskAssessmentEvidence(evidencePack: EvidencePack | undefin
 }
 
 function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): ParsedDeliverableSection {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = carePlanSystemPlanDate();
   return {
     ...section,
     content: [
       "Uncontrolled when printed. The current version of this document is held in the provider's document management system.",
       "",
-      "Form ID: NeedsOps AI+ Care Plan",
-      "Version: 1.0",
+      `Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}`,
+      `Version: ${CARE_PLAN_SYSTEM_VERSION}`,
       `Date: ${today}`,
-      `Next review date: ${DETERMINISTIC_EVIDENCE_GAP_VALUE}`,
+      `Next review date: ${CARE_PLAN_APPROVER_REVIEW_DATE}`,
+      "",
+      "Metadata source: system-generated document metadata.",
     ].join("\n"),
     evidenceSources: section.evidenceSources,
   };
