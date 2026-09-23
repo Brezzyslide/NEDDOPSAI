@@ -6242,10 +6242,12 @@ function deriveBehaviourStrategiesFromBsp(evidencePack: EvidencePack | undefined
       if (!candidate) continue;
       const key = normaliseSupportPlanIdentityValue(candidate);
       if (seen.has(key)) continue;
+      const trigger = deriveBehaviourTrigger(candidate);
+      if (!isRenderableBehaviourTrigger(trigger)) continue;
       seen.add(key);
       strategies.push({
         fold: classifyBehaviourStrategyFold(candidate),
-        trigger: deriveBehaviourTrigger(candidate),
+        trigger,
         strategy: deriveBehaviourStrategyLabel(candidate),
         workerAction: candidate,
         chunkId: chunk.chunkId,
@@ -6280,7 +6282,7 @@ function isNonStrategyBspMaterial(sentence: string): boolean {
   if (/\b(?:authorisation|authorised|lodged|lodge|commission|rules|legislative|quality and safeguards|practice guidance|checklists?|duly authorised|signature|supervisors?|endorsement|acknowledge|true, correct and accurate|page \d+|version|appendix|goal attainment|less than expected|expected emergency service|to the best of my knowledge|behaviour support plan template)\b/i.test(sentence)) {
     return true;
   }
-  if (/\b(?:expected|goal \d|future potential|more recently|referred by|diagnosed with|currently lives|lives in supported|the discussions included|anna and the author|collaboration with|will be monitored through incident report|medication administration policy|medication chart|support co-ordinator|service coordination|review meeting|care-team collaboration)\b/i.test(sentence)) {
+  if (/\b(?:expected|goal \d|future potential|more recently|referred by|diagnosed with|currently lives|lives in supported|the discussions included|anna and the author|collaboration with|will be monitored through incident report|medication administration policy|medication chart|support co-ordinator|service coordination|review meeting|care-team collaboration|underlying function|quality of life|self-determination)\b/i.test(sentence)) {
     return true;
   }
   if (/^\s*(?:included|inclusion|current|background|history|summary|assessment|risk formulation)\b/i.test(sentence)) {
@@ -6290,7 +6292,8 @@ function isNonStrategyBspMaterial(sentence: string): boolean {
 }
 
 function hasBehaviourOrTriggerContext(sentence: string): boolean {
-  return /\b(?:when|if|where|during|after|before|in response to|early signs?|trigger|behaviou?r|aggress|distress|escalat|incident|post-incident|risk of harm|self-harm|sexualised|financial fixation|medical attention|hospital presentation|emergency setting|night|children|female support staff|rejection|boredom|mistrust|testing behaviours?)\b/i.test(sentence);
+  return /\b(?:in response to|early signs?|trigger|aggress|distress|escalat|incident|post-incident|risk of harm|self-harm|sexualised|financial fixation|medical attention|hospital presentation|emergency setting|night|children|female support staff|rejection|boredom|mistrust|testing behaviours?|public vs private|community expectations|legal expectations|appropriate behaviour)\b/i.test(sentence) ||
+    /\b(?:when|where|during|after|before)\b.{0,120}\b(?:aggress|distress|escalat|incident|risk|harm|sexualised|financial fixation|medical attention|children|female support staff|rejection|boredom|mistrust|testing behaviour|public|private|community)\b/i.test(sentence);
 }
 
 function hasBehaviourWorkerAction(sentence: string): boolean {
@@ -6311,12 +6314,21 @@ function classifyBehaviourStrategyFold(sentence: string): BehaviourStrategyFold 
 }
 
 function deriveBehaviourTrigger(sentence: string): string {
+  if (/\bpost-incident\b/i.test(sentence)) return "Post-incident reflection";
+  if (/\bchildren\b/i.test(sentence)) return "Community access where children may be present";
+  if (/\b(?:public vs private|community expectations|legal expectations|appropriate behaviour)\b/i.test(sentence)) return "Public and private behaviour boundaries";
   const match = sentence.match(/\b(?:when|if|where)\s+([^,.]{8,90})/i);
   if (match?.[1]) return sentenceCase(compactEvidencePassage(match[1]));
   if (/\bsocial\b/i.test(sentence)) return "Social connection or community participation";
   if (/\broutine|structure|visual\b/i.test(sentence)) return "Need for predictable structure";
   if (/\brisk|harm|safe\b/i.test(sentence)) return "Risk of harm or escalation";
   return "Behaviour support plan strategy";
+}
+
+function isRenderableBehaviourTrigger(trigger: string): boolean {
+  if (!trigger || trigger === "Behaviour support plan strategy") return false;
+  if (/^(?:required|helpful|calm\)?|staff|worker)$/i.test(trigger.trim())) return false;
+  return true;
 }
 
 function deriveBehaviourStrategyLabel(sentence: string): string {
@@ -6375,7 +6387,7 @@ function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): P
       "",
       "Metadata source: system-generated document metadata.",
     ].join("\n"),
-    evidenceSources: section.evidenceSources,
+    evidenceSources: [],
   };
 }
 

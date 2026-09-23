@@ -1552,9 +1552,12 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("hasBehaviourOrTriggerContext");
     expect(src).toContain("hasBehaviourWorkerAction");
     expect(src).toContain("isNonStrategyBspMaterial");
+    expect(src).toContain("isRenderableBehaviourTrigger");
     expect(src).toContain("authorisation|authorised|lodged|lodge|commission");
     expect(src).toContain("medication administration policy");
     expect(src).toContain("the discussions included");
+    expect(src).toContain("underlying function");
+    expect(src).toContain("public vs private");
     expect(src).toContain("to the best of my knowledge");
     expect(src).toContain("BSP source");
     expect(src).toContain("row.passage");
