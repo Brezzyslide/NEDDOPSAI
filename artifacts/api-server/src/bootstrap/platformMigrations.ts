@@ -447,14 +447,14 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
           'specialist_run_memory'
         ]) AS table_name
       )
-      SELECT NOT EXISTS (
+      SELECT (NOT EXISTS (
         SELECT 1
         FROM policy_tables pt
         LEFT JOIN runtime_grants rg ON rg.table_name = pt.table_name
         LEFT JOIN intentionally_unrouted iu ON iu.table_name = pt.table_name
         WHERE rg.table_name IS NULL
           AND iu.table_name IS NULL
-      )::text AS value
+      ))::text AS value
     `,
     expected: "true",
   },
