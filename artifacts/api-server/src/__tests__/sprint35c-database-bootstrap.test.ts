@@ -32,6 +32,8 @@ class FakeMigrationClient implements MigrationDbClient {
     ["needsops_app cannot read user email by default", "false"],
     ["needsops_app can read context organization identity columns", "true"],
     ["needsops_app can read message read columns", "true"],
+    ["needsops_app can write notification read state under RLS", "true"],
+    ["RLS tables have runtime role grants or are explicitly allowlisted", "true"],
     ["needsops_app cannot insert directly into shared org audit log", "false"],
     ["needsops_app cannot insert directly into legacy audit log", "false"],
     ["needsops_app can write public task subsystem under RLS", "true"],
@@ -117,6 +119,12 @@ class FakeMigrationClient implements MigrationDbClient {
     }
     if (text.includes("'public.message_reads'")) {
       return { rows: [{ value: this.platformSecurityValues.get("needsops_app can read message read columns") }] as T[] };
+    }
+    if (text.includes("'public.notification_reads'")) {
+      return { rows: [{ value: this.platformSecurityValues.get("needsops_app can write notification read state under RLS") }] as T[] };
+    }
+    if (text.includes("policy_tables AS") && text.includes("intentionally_unrouted")) {
+      return { rows: [{ value: this.platformSecurityValues.get("RLS tables have runtime role grants or are explicitly allowlisted") }] as T[] };
     }
 
     return { rows: [] };
@@ -409,6 +417,8 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(client.queries.some((query) => query.text.includes("'public.tasks', 'INSERT'"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("'public.work_blueprints', 'SELECT'"))).toBe(true);
     expect(client.queries.some((query) => query.text.includes("'public.knowledge_sources', 'document_category'"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("'public.notification_reads', 'INSERT'"))).toBe(true);
+    expect(client.queries.some((query) => query.text.includes("intentionally_unrouted"))).toBe(true);
   });
 
   it("fails platform security verification when task subsystem writes are missing", async () => {
@@ -432,6 +442,18 @@ describe("Sprint 35C database bootstrap foundation", () => {
     expect(result.passed).toBe(false);
     expect(result.failures).toContain(
       "needsops_app can access execution runtime tables under RLS: expected true, got false",
+    );
+  });
+
+  it("fails platform security verification when an RLS table has no runtime-role grant", async () => {
+    const client = new FakeMigrationClient();
+    client.platformSecurityValues.set("RLS tables have runtime role grants or are explicitly allowlisted", "false");
+
+    const result = await verifyPlatformSecurityBaseline(client);
+
+    expect(result.passed).toBe(false);
+    expect(result.failures).toContain(
+      "RLS tables have runtime role grants or are explicitly allowlisted: expected true, got false",
     );
   });
 

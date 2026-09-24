@@ -276,6 +276,12 @@ export const PLATFORM_MIGRATIONS: readonly PlatformMigration[] = [
     transactional: true,
     notes: "Adds platform grants and RLS policies required for public signup tenant creation before tenant context exists.",
   },
+  {
+    id: "0066-notification-reads-grant-and-rls-grant-guard",
+    file: "0066_notification_reads_grant_and_rls_grant_guard.sql",
+    transactional: true,
+    notes: "Makes notification_reads app-role grants explicit and guards against unintentional RLS-policy-without-runtime-grant tables.",
+  },
 ] as const;
 
 interface PlatformSecurityCheck {
@@ -395,6 +401,59 @@ const PLATFORM_SECURITY_CHECKS: readonly PlatformSecurityCheck[] = [
         has_column_privilege('needsops_app', 'public.message_reads', 'message_id', 'SELECT') AND
         has_column_privilege('needsops_app', 'public.message_reads', 'user_id', 'SELECT') AND
         has_column_privilege('needsops_app', 'public.message_reads', 'read_at', 'SELECT')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "needsops_app can write notification read state under RLS",
+    query: `
+      SELECT (
+        has_table_privilege('needsops_app', 'public.notification_reads', 'SELECT') AND
+        has_table_privilege('needsops_app', 'public.notification_reads', 'INSERT') AND
+        has_table_privilege('needsops_app', 'public.notification_reads', 'UPDATE') AND
+        has_table_privilege('needsops_app', 'public.notification_reads', 'DELETE')
+      )::text AS value
+    `,
+    expected: "true",
+  },
+  {
+    name: "RLS tables have runtime role grants or are explicitly allowlisted",
+    query: `
+      WITH policy_tables AS (
+        SELECT DISTINCT c.relname AS table_name
+        FROM pg_policy p
+        JOIN pg_class c ON c.oid = p.polrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+      ),
+      runtime_grants AS (
+        SELECT DISTINCT table_name
+        FROM information_schema.role_table_grants
+        WHERE table_schema = 'public'
+          AND grantee IN ('needsops_app', 'needsops_platform_app', 'needsops_worker_app')
+      ),
+      intentionally_unrouted AS (
+        SELECT unnest(ARRAY[
+          'message_attachments',
+          'org_configuration',
+          'org_delegated_authority',
+          'org_departments',
+          'org_escalation_paths',
+          'org_positions',
+          'org_reporting_lines',
+          'org_teams',
+          'organisation_provisioning_jobs',
+          'specialist_run_memory'
+        ]) AS table_name
+      )
+      SELECT NOT EXISTS (
+        SELECT 1
+        FROM policy_tables pt
+        LEFT JOIN runtime_grants rg ON rg.table_name = pt.table_name
+        LEFT JOIN intentionally_unrouted iu ON iu.table_name = pt.table_name
+        WHERE rg.table_name IS NULL
+          AND iu.table_name IS NULL
       )::text AS value
     `,
     expected: "true",

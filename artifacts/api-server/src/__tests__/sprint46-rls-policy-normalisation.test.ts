@@ -28,6 +28,10 @@ const signupPlatformBoundaryReconciliationMigration = readFileSync(
   resolve(root, "../../../lib/db/migrations/0065_signup_platform_boundary_reconciliation.sql"),
   "utf8",
 );
+const notificationReadsGrantGuardMigration = readFileSync(
+  resolve(root, "../../../lib/db/migrations/0066_notification_reads_grant_and_rls_grant_guard.sql"),
+  "utf8",
+);
 const tenantMiddleware = readFileSync(
   resolve(root, "middlewares/tenantContext.ts"),
   "utf8",
@@ -236,6 +240,28 @@ describe("Sprint 46 RLS policy normalisation", () => {
     expect(migrationIds.indexOf("0065-signup-platform-boundary-reconciliation")).toBe(
       migrationIds.indexOf("0064-knowledge-source-evidence-class") + 1,
     );
+  });
+
+  it("registers notification read grants and RLS grant guard after signup reconciliation", () => {
+    const migrationIds = PLATFORM_MIGRATIONS.map((migration) => migration.id);
+
+    expect(PLATFORM_MIGRATIONS).toContainEqual(
+      expect.objectContaining({
+        id: "0066-notification-reads-grant-and-rls-grant-guard",
+        file: "0066_notification_reads_grant_and_rls_grant_guard.sql",
+        transactional: true,
+      }),
+    );
+    expect(migrationIds.indexOf("0066-notification-reads-grant-and-rls-grant-guard")).toBe(
+      migrationIds.indexOf("0065-signup-platform-boundary-reconciliation") + 1,
+    );
+  });
+
+  it("makes notification read-state grants explicit", () => {
+    expect(notificationReadsGrantGuardMigration).toContain(
+      "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.notification_reads TO needsops_app",
+    );
+    expect(notificationReadsGrantGuardMigration).toContain("Writable by needsops_app under RLS");
   });
 
   it("grants platform signup access to every tenant-owned row touched before tenant context exists", () => {
