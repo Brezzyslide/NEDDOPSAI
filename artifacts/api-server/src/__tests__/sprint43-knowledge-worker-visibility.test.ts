@@ -105,4 +105,28 @@ describe("Sprint 43 knowledge worker deployment visibility", () => {
     expect(detail).toContain("Processing is stalled");
     expect(detail).toContain("STALLED_JOB_THRESHOLD_MS = 10 * 60 * 1000");
   });
+
+  it("auto-approves completed ingestion unless substantial same-type overlap needs review", () => {
+    const pipeline = readRepo("artifacts/api-server/src/services/ingestionPipelineService.ts");
+
+    expect(pipeline).toContain("Auto-approve completed ingestion by default");
+    expect(pipeline).toContain("detectAutoApprovalConflict");
+    expect(pipeline).toContain("SUBSTANTIAL_OVERLAP_MIN_RATIO");
+    expect(pipeline).toContain("SUBSTANTIAL_OVERLAP_MIN_CHUNKS");
+    expect(pipeline).toContain("ks.source_type = ${source.sourceType}");
+    expect(pipeline).toContain("COALESCE(ks.document_category, '') = COALESCE(${source.documentCategory}, '')");
+    expect(pipeline).toContain("same_checksum");
+    expect(pipeline).toContain("same_canonical_title");
+    expect(pipeline).toContain("substantial_chunk_overlap");
+    expect(pipeline).toContain("DOCUMENT CONFLICT REQUIRES REVIEW.");
+    expect(pipeline).toContain("Neither document should be treated as the governing source");
+    expect(pipeline).not.toContain("if (!requiresHumanReview) {");
+  });
+
+  it("exposes ingestion auto-approval conflicts through the warnings endpoint", () => {
+    const route = readRepo("artifacts/api-server/src/routes/v1/ingestion.ts");
+
+    expect(route).toContain("autoApproval: (job?.metadata as any)?.autoApproval ?? null");
+    expect(route).toContain("conflictMessage: (job?.metadata as any)?.autoApproval?.message ?? null");
+  });
 });

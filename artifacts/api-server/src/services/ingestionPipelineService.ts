@@ -425,74 +425,63 @@ async function runPipeline(
     });
 
     // ── Stage 11: update source status ─────────────────────────────────────
-    // Sprint 29M: auto-approve low-risk uploads so ordinary documents become
-    // usable immediately without a manual approve-ingestion step.
-    //
-    // Auto-approval criteria (all must be true):
-    //   (a) No injection risk and not a scanned document (requiresHumanReview=false)
-    //   (b) No existing *approved* source with the same canonical title in this org
-    //       (conflicting "current" authoritative document requires human review)
-    //
-    // Amendment 3 guard: auto-approval grants *permission to use* — it does NOT
-    // declare the document as authoritative organisational truth.  Conflicting,
-    // superseded, ambiguous, or high-risk material continues to require human review.
+    // Auto-approve completed ingestion by default so evidence is retrievable.
+    // The only automatic holdback is a substantial same-type overlap with an
+    // already approved source; then human review must decide which document governs.
     const requiresHumanReview = injectionResult.requiresHumanReview || extraction.isScanned;
     let finalSourceStatus: "review_required" | "approved" = "review_required";
+    let autoApprovalConflict: AutoApprovalConflict | null = null;
 
-    if (!requiresHumanReview) {
-      try {
-        // Check for an existing approved source with the same canonical title.
-        // If one exists, a human must decide which is the current authority.
-        const sourceRow = await withIngestionPipelineTenant(
-          organizationId,
-          "ingestion_pipeline.auto_approval_source_identity",
-          (client) => client
-            .select({ canonicalTitle: knowledgeSourcesTable.canonicalTitle })
-            .from(knowledgeSourcesTable)
-            .where(and(
-              eq(knowledgeSourcesTable.id,             knowledgeSourceId),
-              eq(knowledgeSourcesTable.organizationId, organizationId),
-            ))
-            .limit(1),
-        );
-
-        const canonicalTitle = sourceRow[0]?.canonicalTitle;
-        let hasConflict = false;
-
-        if (canonicalTitle) {
-          const conflicts = await withIngestionPipelineTenant(
-            organizationId,
-            "ingestion_pipeline.auto_approval_conflict_check",
-            (client) => client
-              .select({ id: knowledgeSourcesTable.id })
-              .from(knowledgeSourcesTable)
-              .where(and(
-                eq(knowledgeSourcesTable.organizationId,  organizationId),
-                eq(knowledgeSourcesTable.canonicalTitle,  canonicalTitle),
-                eq(knowledgeSourcesTable.status,          "approved"),
-                ne(knowledgeSourcesTable.id,              knowledgeSourceId),
-              ))
-              .limit(1),
-          );
-          hasConflict = conflicts.length > 0;
-        }
-
-        if (!hasConflict) {
-          finalSourceStatus = "approved";
-        }
-      } catch {
-        // Auto-approve check failure must never block the pipeline — fall back to review_required
-        finalSourceStatus = "review_required";
-      }
+    try {
+      autoApprovalConflict = await detectAutoApprovalConflict({
+        organizationId,
+        knowledgeSourceId,
+        sourceVersionId,
+      });
+      finalSourceStatus = autoApprovalConflict ? "review_required" : "approved";
+    } catch {
+      // Conflict-detection failure must never accidentally approve a source.
+      finalSourceStatus = "review_required";
     }
 
     await withIngestionPipelineTenant(
       organizationId,
       "ingestion_pipeline.update_source_status",
       async (client) => {
+        const statusMetadataPatch = finalSourceStatus === "approved"
+          ? {
+              autoApproval: {
+                status: "approved",
+                reason: "No substantial same-type overlap with an existing approved source was detected.",
+                approvedAt: new Date().toISOString(),
+                requiresHumanReview,
+              },
+            }
+          : autoApprovalConflict
+            ? {
+                autoApproval: {
+                  status: "conflict_review_required",
+                  requiresHumanReview: true,
+                  conflict: autoApprovalConflict,
+                  message: autoApprovalConflict.message,
+                },
+              }
+            : {
+                autoApproval: {
+                  status: "review_required",
+                  requiresHumanReview,
+                  message: "Auto-approval was not applied because conflict detection could not be completed safely.",
+                },
+              };
+
         await client
           .update(knowledgeSourcesTable)
-          .set({ status: finalSourceStatus, updatedAt: new Date() })
+          .set({
+            status: finalSourceStatus,
+            approvedByUserId: finalSourceStatus === "approved" ? "system" : null,
+            approvedAt: finalSourceStatus === "approved" ? new Date() : null,
+            updatedAt: new Date(),
+          })
           .where(
             and(
               eq(knowledgeSourcesTable.id,             knowledgeSourceId),
@@ -502,12 +491,33 @@ async function runPipeline(
 
         await client
           .update(knowledgeSourceVersionsTable)
-          .set({ status: finalSourceStatus, updatedAt: new Date() })
+          .set({
+            status: finalSourceStatus,
+            approvedByUserId: finalSourceStatus === "approved" ? "system" : null,
+            approvedAt: finalSourceStatus === "approved" ? new Date() : null,
+            updatedAt: new Date(),
+          })
           .where(
             and(
               eq(knowledgeSourceVersionsTable.id,             sourceVersionId),
               eq(knowledgeSourceVersionsTable.organizationId, organizationId),
               eq(knowledgeSourceVersionsTable.isCurrent,      true),
+            ),
+          );
+
+        await client
+          .update(ingestionJobsTable)
+          .set({
+            status: finalSourceStatus,
+            completedAt: finalSourceStatus === "approved" ? new Date() : null,
+            requiresHumanReview: finalSourceStatus === "review_required",
+            metadata: sql`COALESCE(${ingestionJobsTable.metadata}, '{}'::jsonb) || ${JSON.stringify(statusMetadataPatch)}::jsonb`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(ingestionJobsTable.id,             jobId),
+              eq(ingestionJobsTable.organizationId, organizationId),
             ),
           );
       },
@@ -661,6 +671,236 @@ class PipelineError extends Error {
     this.code          = code;
     this.nonRetryable  = nonRetryable;
   }
+}
+
+interface AutoApprovalConflict {
+  status: "conflict_review_required";
+  conflictType: "same_checksum" | "same_canonical_title" | "substantial_chunk_overlap";
+  message: string;
+  newSource: {
+    id: string;
+    title: string;
+    sourceType: string;
+    documentCategory: string | null;
+    date: string;
+  };
+  existingApprovedSource: {
+    id: string;
+    title: string;
+    sourceType: string;
+    documentCategory: string | null;
+    date: string;
+  };
+  overlap: {
+    matchingChunkHashes: number;
+    newChunkCount: number;
+    existingChunkCount: number;
+    ratioOfNewDocument: number;
+  };
+}
+
+const SUBSTANTIAL_OVERLAP_MIN_RATIO = 0.35;
+const SUBSTANTIAL_OVERLAP_MIN_CHUNKS = 3;
+
+function sourceDisplayDate(row: {
+  effectiveFrom: Date | null;
+  approvedAt: Date | null;
+  createdAt: Date;
+}): string {
+  const date = row.effectiveFrom ?? row.approvedAt ?? row.createdAt;
+  return date.toISOString().slice(0, 10);
+}
+
+function normaliseTitle(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildConflictMessage(conflict: Omit<AutoApprovalConflict, "message">): string {
+  return [
+    "DOCUMENT CONFLICT REQUIRES REVIEW.",
+    `"${conflict.newSource.title}" (${conflict.newSource.date}) substantially overlaps approved document ` +
+      `"${conflict.existingApprovedSource.title}" (${conflict.existingApprovedSource.date}).`,
+    "Neither document should be treated as the governing source until a user chooses which document governs.",
+  ].join(" ");
+}
+
+async function detectAutoApprovalConflict(input: {
+  organizationId: string;
+  knowledgeSourceId: string;
+  sourceVersionId: string;
+}): Promise<AutoApprovalConflict | null> {
+  return withIngestionPipelineTenant(
+    input.organizationId,
+    "ingestion_pipeline.auto_approval_conflict_check",
+    async (client) => {
+      const sourceRows = await client
+        .select({
+          id:               knowledgeSourcesTable.id,
+          title:            knowledgeSourcesTable.title,
+          sourceType:       knowledgeSourcesTable.sourceType,
+          documentCategory: knowledgeSourcesTable.documentCategory,
+          canonicalTitle:   knowledgeSourcesTable.canonicalTitle,
+          checksum:         knowledgeSourcesTable.checksum,
+          effectiveFrom:    knowledgeSourcesTable.effectiveFrom,
+          approvedAt:       knowledgeSourcesTable.approvedAt,
+          createdAt:        knowledgeSourcesTable.createdAt,
+        })
+        .from(knowledgeSourcesTable)
+        .where(and(
+          eq(knowledgeSourcesTable.id,             input.knowledgeSourceId),
+          eq(knowledgeSourcesTable.organizationId, input.organizationId),
+        ))
+        .limit(1);
+
+      const source = sourceRows[0];
+      if (!source) return null;
+
+      const conflictRows = await client.execute<{
+        id: string;
+        title: string;
+        source_type: string;
+        document_category: string | null;
+        canonical_title: string | null;
+        checksum: string | null;
+        effective_from: Date | null;
+        approved_at: Date | null;
+        created_at: Date;
+        matching_chunk_hashes: string | number;
+        new_chunk_count: string | number;
+        existing_chunk_count: string | number;
+      }>(sql`
+        WITH new_hashes AS (
+          SELECT DISTINCT content_hash
+          FROM ${knowledgeChunksTable}
+          WHERE organization_id = ${input.organizationId}
+            AND knowledge_source_id = ${input.knowledgeSourceId}
+            AND source_version_id = ${input.sourceVersionId}
+            AND deleted_at IS NULL
+            AND content_hash IS NOT NULL
+        ),
+        new_count AS (
+          SELECT COUNT(*)::int AS count FROM new_hashes
+        ),
+        existing_counts AS (
+          SELECT
+            ks.id,
+            COUNT(DISTINCT kc.content_hash)::int AS existing_chunk_count,
+            COUNT(DISTINCT kc.content_hash) FILTER (WHERE nh.content_hash IS NOT NULL)::int AS matching_chunk_hashes
+          FROM ${knowledgeSourcesTable} ks
+          LEFT JOIN ${knowledgeChunksTable} kc
+            ON kc.knowledge_source_id = ks.id
+           AND kc.organization_id = ks.organization_id
+           AND kc.deleted_at IS NULL
+           AND kc.content_hash IS NOT NULL
+          LEFT JOIN new_hashes nh ON nh.content_hash = kc.content_hash
+          WHERE ks.organization_id = ${input.organizationId}
+            AND ks.id <> ${input.knowledgeSourceId}
+            AND ks.status = 'approved'
+            AND ks.deleted_at IS NULL
+            AND ks.source_type = ${source.sourceType}
+            AND COALESCE(ks.document_category, '') = COALESCE(${source.documentCategory}, '')
+          GROUP BY ks.id
+        )
+        SELECT
+          ks.id,
+          ks.title,
+          ks.source_type,
+          ks.document_category,
+          ks.canonical_title,
+          ks.checksum,
+          ks.effective_from,
+          ks.approved_at,
+          ks.created_at,
+          ec.matching_chunk_hashes,
+          nc.count AS new_chunk_count,
+          ec.existing_chunk_count
+        FROM ${knowledgeSourcesTable} ks
+        JOIN existing_counts ec ON ec.id = ks.id
+        CROSS JOIN new_count nc
+        WHERE
+          (
+            ${source.checksum ?? null} IS NOT NULL
+            AND ks.checksum = ${source.checksum ?? null}
+          )
+          OR (
+            ${normaliseTitle(source.canonicalTitle ?? source.title)}
+              <> ''
+            AND lower(regexp_replace(regexp_replace(COALESCE(ks.canonical_title, ks.title), '\\.[a-z0-9]{2,5}$', '', 'i'), '[_-]+', ' ', 'g'))
+              = ${normaliseTitle(source.canonicalTitle ?? source.title)}
+          )
+          OR (
+            nc.count >= ${SUBSTANTIAL_OVERLAP_MIN_CHUNKS}
+            AND ec.matching_chunk_hashes >= ${SUBSTANTIAL_OVERLAP_MIN_CHUNKS}
+            AND (ec.matching_chunk_hashes::float / NULLIF(nc.count, 0)) >= ${SUBSTANTIAL_OVERLAP_MIN_RATIO}
+          )
+        ORDER BY
+          CASE
+            WHEN ${source.checksum ?? null} IS NOT NULL AND ks.checksum = ${source.checksum ?? null} THEN 0
+            WHEN lower(regexp_replace(regexp_replace(COALESCE(ks.canonical_title, ks.title), '\\.[a-z0-9]{2,5}$', '', 'i'), '[_-]+', ' ', 'g'))
+              = ${normaliseTitle(source.canonicalTitle ?? source.title)} THEN 1
+            ELSE 2
+          END,
+          ec.matching_chunk_hashes DESC
+        LIMIT 1
+      `);
+
+      const rows = Array.isArray((conflictRows as any).rows)
+        ? (conflictRows as any).rows
+        : conflictRows as any[];
+      const existing = rows[0];
+      if (!existing) return null;
+
+      const matchingChunkHashes = Number(existing.matching_chunk_hashes ?? 0);
+      const newChunkCount = Number(existing.new_chunk_count ?? 0);
+      const existingChunkCount = Number(existing.existing_chunk_count ?? 0);
+      const ratioOfNewDocument = newChunkCount > 0 ? matchingChunkHashes / newChunkCount : 0;
+      const conflictType: AutoApprovalConflict["conflictType"] =
+        source.checksum && existing.checksum === source.checksum
+          ? "same_checksum"
+          : normaliseTitle(existing.canonical_title ?? existing.title) === normaliseTitle(source.canonicalTitle ?? source.title)
+            ? "same_canonical_title"
+            : "substantial_chunk_overlap";
+
+      const conflictWithoutMessage: Omit<AutoApprovalConflict, "message"> = {
+        status: "conflict_review_required",
+        conflictType,
+        newSource: {
+          id: source.id,
+          title: source.title,
+          sourceType: source.sourceType,
+          documentCategory: source.documentCategory,
+          date: sourceDisplayDate(source),
+        },
+        existingApprovedSource: {
+          id: existing.id,
+          title: existing.title,
+          sourceType: existing.source_type,
+          documentCategory: existing.document_category,
+          date: sourceDisplayDate({
+            effectiveFrom: existing.effective_from,
+            approvedAt: existing.approved_at,
+            createdAt: existing.created_at,
+          }),
+        },
+        overlap: {
+          matchingChunkHashes,
+          newChunkCount,
+          existingChunkCount,
+          ratioOfNewDocument,
+        },
+      };
+
+      return {
+        ...conflictWithoutMessage,
+        message: buildConflictMessage(conflictWithoutMessage),
+      };
+    },
+  );
 }
 
 async function fetchFromObjectStorage(storageKey: string): Promise<Buffer> {

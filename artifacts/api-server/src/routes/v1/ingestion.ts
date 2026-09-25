@@ -375,6 +375,8 @@ router.get(
         requiresHumanReview: job?.requiresHumanReview ?? false,
         promptInjectionFlags: job?.promptInjectionFlags ?? [],
         pipelineWarnings: (job?.metadata as any)?.warnings ?? [],
+        autoApproval: (job?.metadata as any)?.autoApproval ?? null,
+        conflictMessage: (job?.metadata as any)?.autoApproval?.message ?? null,
       });
     } catch (err) {
       next(err);
