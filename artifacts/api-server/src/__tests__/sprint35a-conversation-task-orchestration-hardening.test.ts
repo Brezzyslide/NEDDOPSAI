@@ -820,6 +820,29 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(uee).toContain("Execution lane context is missing for this task");
   });
 
+  it("reconstructs lane context for first dispatch without applying resume-only missing-lane wording", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+    const dispatchBody = coordinator.slice(
+      coordinator.indexOf("export async function dispatchWorkExecution"),
+      coordinator.indexOf("/**", coordinator.indexOf("export async function resumeFromCheckpoint")),
+    );
+    const runnerBody = coordinator.slice(
+      coordinator.indexOf("async function executeWorkAsync"),
+      coordinator.indexOf("// ─── Recovery", coordinator.indexOf("async function executeWorkAsync")),
+    );
+
+    expect(coordinator).toContain("classifyStandardTemplateEvidenceContext");
+    expect(coordinator).toContain("reconstructFirstDispatchLaneContext");
+    expect(coordinator).toContain("standardTemplate.customerExampleOptional");
+    expect(coordinator).toContain('requiresEvidence:       false');
+    expect(coordinator).toContain('phase?: "first_dispatch" | "resume"');
+    expect(runnerBody).toContain('phase: "first_dispatch"');
+    expect(runnerBody).toContain("plan: plan?.planData as TaskPlanLaneSeed | undefined");
+    expect(dispatchBody).toContain("taskTitle: input.taskTitle");
+    expect(coordinator).toContain("before ${phase}");
+    expect(coordinator).not.toContain("Execution lane context is missing; task execution must fail closed before resume.");
+  });
+
   it("CoS and system-authored plan cards cannot invent operational completion ETAs", () => {
     const cosPrompt = source("services/chiefOfStaffLLMService.ts");
     const conversationService = source("services/conversationService.ts");

@@ -51,6 +51,8 @@ import type { WorkPackageManifest } from "./workPackageService.js";
 import { resolveEvidence, type EvidencePack } from "./knowledgeResolutionService.js";
 import { validateWorkPackage, type ValidationResult } from "./workValidationService.js";
 import { classifyStandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
+import { classifyExecutionRequest } from "./executionClassifierService.js";
+import { classifyEvidenceMode } from "./evidenceModeService.js";
 import { checkExecutionAccess } from "./executionPolicy.js";
 import {
   claimTaskForExecution,
@@ -132,6 +134,12 @@ function hasCheckpointResumeArtefacts(checkpoint: ActiveCheckpoint): boolean {
   );
 }
 
+type TaskPlanLaneSeed = {
+  intent?: string;
+  confidence?: number;
+  requiresApproval?: boolean;
+};
+
 async function getTaskLaneContext(
   organizationId: string,
   taskId: string | undefined,
@@ -142,21 +150,94 @@ async function getTaskLaneContext(
   return isExecutionLaneContext(metadata.laneContext) ? metadata.laneContext : undefined;
 }
 
+async function reconstructFirstDispatchLaneContext(input: {
+  organizationId: string;
+  taskId?: string;
+  taskTitle?: string;
+  userRequest?: string;
+  plan?: TaskPlanLaneSeed | null;
+}): Promise<ExecutionLaneContext | undefined> {
+  const task = input.taskId ? await getTaskById(input.taskId, input.organizationId).catch(() => null) : null;
+  const plan = input.plan ?? (input.taskId
+    ? ((await getTaskPlan(input.taskId, input.organizationId).catch(() => null))?.planData as TaskPlanLaneSeed | undefined)
+    : undefined);
+  const taskCreation = (task?.metadata as Record<string, unknown> | null | undefined)?.taskCreation as Record<string, unknown> | undefined;
+  const userRequest = (
+    input.userRequest ??
+    (typeof taskCreation?.sourceUserRequest === "string" ? taskCreation.sourceUserRequest : undefined) ??
+    task?.description ??
+    input.taskTitle ??
+    task?.title ??
+    ""
+  ).trim();
+  const taskTitle = (input.taskTitle ?? task?.title ?? userRequest).trim();
+  if (!userRequest && !taskTitle) return undefined;
+
+  const standardTemplate = classifyStandardTemplateEvidenceContext(userRequest || taskTitle);
+  if (standardTemplate.customerExampleOptional) {
+    return {
+      executionClass:         "professional_work",
+      requiresCompletedWork:  true,
+      requiresEvidence:       false,
+      requiresClaimIntegrity: false,
+      requiresApproval:       plan?.requiresApproval ?? true,
+    };
+  }
+
+  const blueprint = plan?.intent
+    ? (await resolveCanonicalBlueprint(plan.intent, input.organizationId).catch(() => null))?.blueprint ?? null
+    : null;
+  const blueprintEvidenceMode = classifyEvidenceMode(blueprint);
+  const classification = classifyExecutionRequest({
+    userRequest: userRequest || taskTitle,
+    conversationMode: "task_intent",
+    proposedTask: { title: taskTitle, summary: task?.description ?? userRequest },
+    confidence: typeof plan?.confidence === "number" ? plan.confidence : 1,
+    shouldDispatchSpecialists: true,
+    extractedSearchTerms: [],
+    blueprintEvidenceMode,
+    trigger: "task",
+  });
+
+  return {
+    executionClass:         classification.executionClass,
+    requiresCompletedWork:  classification.requiresCompletedWork,
+    requiresEvidence:       classification.requiresEvidence,
+    requiresClaimIntegrity: classification.requiresClaimIntegrity,
+    requiresApproval:       classification.requiresApproval,
+  };
+}
+
 async function requireTaskLaneContext(input: {
   organizationId: string;
   taskId?: string;
   laneContext?: ExecutionLaneContext;
   checkpoint?: ActiveCheckpoint;
+  taskTitle?: string;
+  userRequest?: string;
+  plan?: TaskPlanLaneSeed | null;
+  phase?: "first_dispatch" | "resume";
 }): Promise<ExecutionLaneContext | undefined> {
   if (!input.taskId) return input.laneContext;
   const checkpointPayload = input.checkpoint?.payload as Record<string, unknown> | undefined;
   const checkpointLane = isExecutionLaneContext(checkpointPayload?.laneContext)
     ? checkpointPayload.laneContext
     : undefined;
-  const laneContext = input.laneContext ?? checkpointLane ?? await getTaskLaneContext(input.organizationId, input.taskId);
+  const metadataLane = await getTaskLaneContext(input.organizationId, input.taskId);
+  const laneContext = input.laneContext
+    ?? checkpointLane
+    ?? metadataLane
+    ?? await reconstructFirstDispatchLaneContext({
+      organizationId: input.organizationId,
+      taskId:         input.taskId,
+      taskTitle:      input.taskTitle,
+      userRequest:    input.userRequest,
+      plan:           input.plan,
+    });
   if (!laneContext) {
+    const phase = input.phase === "resume" ? "resume" : "first dispatch";
     throw Object.assign(
-      new Error("Execution lane context is missing; task execution must fail closed before resume."),
+      new Error(`Execution lane context is missing; task execution must fail closed before ${phase}.`),
       { code: "EXECUTION_LANE_CONTEXT_MISSING" },
     );
   }
@@ -509,6 +590,7 @@ export async function dispatchWorkExecution(
     organizationId: input.organizationId,
     requesterId: input.requesterId,
     taskId: input.taskId,
+    taskTitle: input.taskTitle,
     userRequest: input.sourceUserRequest?.trim() || input.taskTitle,
     conversationId,
     correlationId,
@@ -651,6 +733,8 @@ export async function resumeFromCheckpointById(
     organizationId,
     taskId: checkpoint.taskId ?? undefined,
     checkpoint,
+    userRequest: checkpoint.payload.originalRequest,
+    phase: "resume",
   });
 
   const claimed = await claimTaskForCheckpointResume({
@@ -749,6 +833,7 @@ export async function recoverOrphanedExecutions(organizationId: string): Promise
         organizationId: intent.organizationId,
         requesterId: intent.approvedBy ?? "system",
         taskId: intent.taskId,
+        taskTitle: task?.title ?? undefined,
         userRequest,
         conversationId: conversationId ?? undefined,
         correlationId,
@@ -862,6 +947,7 @@ interface BackgroundRunInput {
    */
   requesterRole?: string;
   taskId?: string;
+  taskTitle?: string;
   userRequest: string;
   conversationId?: string;
   correlationId: string;
@@ -952,6 +1038,10 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
       organizationId,
       taskId,
       laneContext: input.laneContext,
+      userRequest,
+      taskTitle: input.taskTitle,
+      plan: plan?.planData as TaskPlanLaneSeed | undefined,
+      phase: "first_dispatch",
     });
     if (taskId && plan) {
       const planData = plan.planData as { primarySpecialist?: string; assignedSpecialists?: string[] };
