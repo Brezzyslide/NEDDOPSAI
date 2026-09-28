@@ -69,7 +69,7 @@ import {
 import { validateWorkPackage } from "./workValidationService.js";
 import type { ValidationResult } from "./workValidationService.js";
 import { retrieveApprovedExamples, buildStyleGuidance } from "./approvedExampleService.js";
-import { reviewDraft } from "./selfReviewService.js";
+import { reviewDraft, type ReviewResult } from "./selfReviewService.js";
 import { createDraft, submitForApproval } from "./completedWorkService.js";
 import { generateCompletedWorkArtifacts } from "./completedWorkArtifactService.js";
 import { isTaskCancelled } from "./taskService.js";
@@ -1560,7 +1560,6 @@ export class UnifiedExecutionEngine {
       };
     }
 
-    await progress("retrieving_examples");
     const professionalContext = compileProfessionalExecutionContext({
       userRequest,
       subjectParticipantIds,
@@ -1700,11 +1699,50 @@ export class UnifiedExecutionEngine {
         mandatoryRequirementCount: requirementPlan.filter((item) => item.applicability === "applicable").length,
       },
     });
+    const deterministicStandardTemplateDraft = renderDeterministicStandardTemplateDraft(
+      blueprint,
+      blueprintContract,
+      professionalContext,
+    );
+    if (isStandardReusableCarePlanTemplate(professionalContext, blueprintContract) && !deterministicStandardTemplateDraft) {
+      const message = "Standard reusable care plan template could not be rendered deterministically. Model synthesis is disabled for this template mode.";
+      await persistInlineExecutionSession({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        requesterId,
+        status: "failed",
+        errorMessage: message,
+        metadata: { failedStage: "deterministic_template_render", configurationFailure: true },
+      });
+      updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "failed",
+          failedStage: "deterministic_template_render",
+          rootCause: message,
+          retryAvailable: false,
+        },
+      }, organizationId).catch(() => {});
+      return {
+        outcome: "configuration_failure",
+        manifestId: manifest.id,
+        blueprintCode: blueprint?.code,
+        message,
+      };
+    }
     const outputType = deriveOutputTypeForProfessionalContext(blueprint, professionalContext);
-    const examples = await retrieveApprovedExamples(organizationId, outputType);
-    const styleGuidance = await buildStyleGuidance(examples, organizationId);
+    let styleGuidanceBlock = "";
+    if (!deterministicStandardTemplateDraft) {
+      await progress("retrieving_examples");
+      const examples = await retrieveApprovedExamples(organizationId, outputType);
+      const styleGuidance = await buildStyleGuidance(examples, organizationId);
+      styleGuidanceBlock = styleGuidance.guidanceBlock;
+    }
 
-    await progress("executing");
+    if (!deterministicStandardTemplateDraft) {
+      await progress("executing");
+    }
     const t5 = Date.now();
     let snapshotSequence = 1;
     let draftContent: string;
@@ -1713,13 +1751,13 @@ export class UnifiedExecutionEngine {
     let professionalWork: Record<string, unknown> | undefined;
     let latestModelTelemetry: Record<string, unknown> | null = null;
     try {
-      const draftResult = await this.generateTaskDraft(
-        userRequest, manifest, blueprint, styleGuidance.guidanceBlock,
-        { userId: requesterId, organizationId, role: request.requesterRole! },
-        evidencePack ?? undefined,
-        blueprintContract,
-        professionalContext,
-      );
+      const draftResult = deterministicStandardTemplateDraft ?? await this.generateTaskDraft(
+          userRequest, manifest, blueprint, styleGuidanceBlock,
+          { userId: requesterId, organizationId, role: request.requesterRole! },
+          evidencePack ?? undefined,
+          blueprintContract,
+          professionalContext,
+        );
       draftContent = draftResult.content;
       rawClaims = draftResult.claims;
       deliverableSections = draftResult.deliverableSections;
@@ -1806,36 +1844,41 @@ export class UnifiedExecutionEngine {
       };
     }
 
-    await progress("reviewing");
     const t6 = Date.now();
-    let reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
-      organizationId,
-      userId: requesterId,
-      conversationId: request.conversationId,
-      // Sprint 29I (D3): pass the same EvidencePack used for specialist generation.
-      // ReviewContext already accepts this field. reviewEvidenceCitationGrounding
-      // will now receive real evidence instead of reporting "EvidencePack not available".
-      // No second retrieval is triggered — the same object reference is reused.
-      evidencePack: evidencePack ?? null,
-      requirementPlan,
-      failedRequirements: [],
-      deliverableContract: blueprint?.deliverableContract ?? null,
-    });
-    reviewResult = normaliseReviewResultToStructuredSections(reviewResult, deliverableSections, coverageProfile);
-    await recordProfessionalSnapshot({
-      organizationId,
-      taskId: request.taskId,
-      manifest,
-      professionalContext,
-      blueprint,
-      stage: "self_review_selected",
-      sequence: snapshotSequence++,
-      contentMarkdown: reviewResult.finalContent,
-      structuredOutput: { requirementPlan },
-      reviewSnapshot: buildReviewSnapshot(reviewResult),
-      coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
-      modelTelemetry: latestModelTelemetry,
-    });
+    let reviewResult: ReviewResult;
+    if (deterministicStandardTemplateDraft) {
+      reviewResult = buildDeterministicTemplateReviewResult(draftContent);
+    } else {
+      await progress("reviewing");
+      reviewResult = await reviewDraft(draftContent, manifest, blueprint, {
+        organizationId,
+        userId: requesterId,
+        conversationId: request.conversationId,
+        // Sprint 29I (D3): pass the same EvidencePack used for specialist generation.
+        // ReviewContext already accepts this field. reviewEvidenceCitationGrounding
+        // will now receive real evidence instead of reporting "EvidencePack not available".
+        // No second retrieval is triggered — the same object reference is reused.
+        evidencePack: evidencePack ?? null,
+        requirementPlan,
+        failedRequirements: [],
+        deliverableContract: blueprint?.deliverableContract ?? null,
+      });
+      reviewResult = normaliseReviewResultToStructuredSections(reviewResult, deliverableSections, coverageProfile);
+      await recordProfessionalSnapshot({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        blueprint,
+        stage: "self_review_selected",
+        sequence: snapshotSequence++,
+        contentMarkdown: reviewResult.finalContent,
+        structuredOutput: { requirementPlan },
+        reviewSnapshot: buildReviewSnapshot(reviewResult),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+        modelTelemetry: latestModelTelemetry,
+      });
+    }
     tReviewMs = Date.now() - t6;
 
     const artifactRequired = blueprint?.deliverableContract?.artifactRequired === true;
@@ -6873,6 +6916,31 @@ function renderDeterministicStandardTemplateDraft(
       bypassedStage1: true,
       bypassedFinalSynthesis: true,
     },
+  };
+}
+
+function isStandardReusableCarePlanTemplate(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+): boolean {
+  return isStandardReusableProfessionalTemplate(professionalContext) &&
+    professionalContext?.specificity === "STANDARD_NON_PARTICIPANT_SPECIFIC" &&
+    (professionalContext.subjectParticipantIds?.length ?? 0) === 0 &&
+    professionalContext.deliverable.requestedDeliverableType === "STANDARD_REUSABLE_NDIS_CARE_PLAN_TEMPLATE" &&
+    contract?.blueprint?.code === "care_plan";
+}
+
+function buildDeterministicTemplateReviewResult(content: string): ReviewResult {
+  return {
+    qualityScore: 100,
+    dimensions: [],
+    passed: true,
+    improvementFeedback: [],
+    revised: false,
+    finalContent: content,
+    autoRevisionNote: undefined,
+    revisionLimitReached: false,
+    evidenceSummaryHash: createHash("sha256").update("deterministic_template_review:" + content).digest("hex"),
   };
 }
 

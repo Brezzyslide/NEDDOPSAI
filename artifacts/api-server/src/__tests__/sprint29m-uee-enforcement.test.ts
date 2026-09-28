@@ -1157,7 +1157,7 @@ describe("D — care plan template full path uses declared Blueprint placeholder
     }
 
     expect(mockGatewayProcess).not.toHaveBeenCalled();
-    expect(mockReviewDraft).toHaveBeenCalled();
+    expect(mockReviewDraft).not.toHaveBeenCalled();
     expect(mockCreateDraft).toHaveBeenCalledOnce();
     expect(mockGenerateCompletedWorkArtifacts).toHaveBeenCalledOnce();
     expect(mockSubmitForApproval).toHaveBeenCalledOnce();

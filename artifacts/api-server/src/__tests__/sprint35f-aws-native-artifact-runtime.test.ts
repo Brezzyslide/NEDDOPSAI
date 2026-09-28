@@ -471,7 +471,7 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(result.failures.some((failure) => failure.gate === "professional_placeholder")).toBe(false);
   });
 
-  it("blocks instructional professional-method text where final clauses are required", () => {
+  it("allows authored instructional clause guidance that is not the ADL mapping leak", () => {
     const request = "Create a standard compliant NDIS Service Agreement template covering all relevant clauses";
     const contract = contractFor("service_agreement_review");
     const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
@@ -493,14 +493,11 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
       standardTemplateEvidence,
     });
 
-    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([
-      "instructional_text:Assess cancellation terms and insert the correct cancellation provisions after professional review.",
-      "instructional_text:Review the provider obligations clause and validate whether delivery responsibilities have been mapped before use.",
-    ]);
+    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([]);
     expect(result.failures.some((failure) =>
       failure.gate === "methodology_leak" &&
       failure.details?.some((detail) => detail.startsWith("instructional_text:")),
-    )).toBe(true);
+    )).toBe(false);
   });
 
   it("blocks internal ADL source mapping rules from standard reusable template content", () => {

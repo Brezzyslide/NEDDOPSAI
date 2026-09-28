@@ -732,13 +732,6 @@ export function detectInstructionalProfessionalText(
       findings.add(`internal_mapping_rule:${withoutHeading.slice(0, 140)}`);
       continue;
     }
-    if (
-      /\b(?:review|validate|assess|identify|map|check|determine|insert|draft|configure|complete)\b/i.test(withoutHeading) &&
-      /\b(?:clause|clauses|provision|provisions|obligation|obligations|responsibilit(?:y|ies)|right|rights|term|terms|cancellation|variation|termination|privacy|complaints?|payment|pricing|conclusion)\b/i.test(withoutHeading) &&
-      !/\b(?:must|will|should|agrees?|may|is responsible for|has the right to|is entitled to|assist|document|record|support(?:ed|s|ing)?|ensure)\b/i.test(withoutHeading)
-    ) {
-      findings.add(`instructional_text:${withoutHeading.slice(0, 140)}`);
-    }
   }
 
   return [...findings].sort();

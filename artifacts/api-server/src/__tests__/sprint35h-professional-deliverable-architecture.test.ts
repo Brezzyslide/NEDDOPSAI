@@ -3147,6 +3147,26 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain('input.blueprint?.code === "care_plan"');
   });
 
+  it("bypasses approved examples, specialist progress and self-review for deterministic standard reusable care plan templates", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+    const executeTask = src.slice(
+      src.indexOf("async executeTask("),
+      src.indexOf("  // ─── Task draft generation", src.indexOf("async executeTask(")),
+    );
+
+    expect(src).toContain("const deterministicStandardTemplateDraft = renderDeterministicStandardTemplateDraft(");
+    expect(src).toContain("if (!deterministicStandardTemplateDraft) {\n      await progress(\"retrieving_examples\")");
+    expect(src).toContain("if (!deterministicStandardTemplateDraft) {\n      await progress(\"executing\")");
+    expect(src).toContain("if (deterministicStandardTemplateDraft) {\n      reviewResult = buildDeterministicTemplateReviewResult(draftContent);");
+    expect(src).toContain("Model synthesis is disabled for this template mode.");
+    expect(executeTask.indexOf("const deterministicStandardTemplateDraft = renderDeterministicStandardTemplateDraft("))
+      .toBeLessThan(executeTask.indexOf("await progress(\"retrieving_examples\")"));
+    expect(executeTask.indexOf("const deterministicStandardTemplateDraft = renderDeterministicStandardTemplateDraft("))
+      .toBeLessThan(executeTask.indexOf("await progress(\"executing\")"));
+    expect(executeTask.indexOf("const deterministicStandardTemplateDraft = renderDeterministicStandardTemplateDraft("))
+      .toBeLessThan(executeTask.indexOf("await progress(\"reviewing\")"));
+  });
+
   it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");
