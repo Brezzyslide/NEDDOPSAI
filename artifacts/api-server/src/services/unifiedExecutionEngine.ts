@@ -1957,6 +1957,7 @@ export class UnifiedExecutionEngine {
         contentMarkdown: reviewResult.finalContent,
         deliverableSections,
         coverageFailures: coverageReport.missing,
+        professionalContext,
       });
       if (gapReplacement.changed) {
         draftContent = gapReplacement.contentMarkdown;
@@ -2021,12 +2022,14 @@ export class UnifiedExecutionEngine {
         repairClassification.repairable.map((entry) => entry.failure),
         [],
       );
-      const skipTargetedRepair = shouldSkipTargetedRepairForCarePlan(professionalContext, blueprintContract);
+      const skipTargetedRepair = shouldSkipTargetedRepair(professionalContext, blueprintContract);
       if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0 && skipTargetedRepair) {
         runtimeGate = appendRuntimeGateFailure(runtimeGate, {
           gate: "targeted_repair_skipped",
           state: "validation",
-          message: "Targeted repair was skipped for participant care plans because repair candidates repeatedly degrade structured section integrity.",
+          message: isStandardReusableProfessionalTemplate(professionalContext)
+            ? "Targeted repair was skipped for standard reusable templates because deterministic server-rendered templates must not be rewritten by repair."
+            : "Targeted repair was skipped for participant care plans because repair candidates repeatedly degrade structured section integrity.",
           details: repairableFailures.map((failure) => `${failure.requirementId}: ${failure.reason}`),
         });
       } else if ((hasCoverageFailure || hasMechanicalFailure || placeholderFailures.length > 0) && repairableFailures.length > 0) {
@@ -3624,7 +3627,11 @@ function applyDeterministicEvidenceGapReplacements(input: {
   contentMarkdown: string;
   deliverableSections?: ParsedDeliverableSection[];
   coverageFailures: DeliverableRequirementCoverageFailure[];
+  professionalContext?: ProfessionalExecutionContext | null;
 }): DeterministicGapReplacementResult {
+  if (isStandardReusableProfessionalTemplate(input.professionalContext)) {
+    return { changed: false, contentMarkdown: input.contentMarkdown, deliverableSections: input.deliverableSections, replacements: [] };
+  }
   if (!input.deliverableSections?.length) {
     return { changed: false, contentMarkdown: input.contentMarkdown, deliverableSections: input.deliverableSections, replacements: [] };
   }
@@ -5470,6 +5477,21 @@ function shouldSkipTargetedRepairForCarePlan(
   contract: BlueprintExecutionContract | undefined | null,
 ): boolean {
   return shouldUseBatchedParticipantCarePlanGeneration(professionalContext, contract);
+}
+
+function shouldSkipTargetedRepair(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+  contract: BlueprintExecutionContract | undefined | null,
+): boolean {
+  return shouldSkipTargetedRepairForCarePlan(professionalContext, contract) ||
+    isStandardReusableProfessionalTemplate(professionalContext);
+}
+
+function isStandardReusableProfessionalTemplate(
+  professionalContext: ProfessionalExecutionContext | undefined | null,
+): boolean {
+  return professionalContext?.specificity === "STANDARD_NON_PARTICIPANT_SPECIFIC" &&
+    professionalContext.deliverable.standardisation === "standard_reusable";
 }
 
 function buildParticipantCarePlanBatches(

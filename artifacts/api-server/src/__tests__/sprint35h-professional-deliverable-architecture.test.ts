@@ -3049,6 +3049,11 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       .flatMap((failure) => failure.details ?? []);
 
     expect(coverage.totalApplicableRequirements).toBe(14);
+    expect(coverage.satisfiedCount).toBe(14);
+    expect(coverage.missing).toHaveLength(0);
+    expect(coverage.coveragePercentage).toBe(100);
+    expect(runtime.failures.map((failure) => failure.gate).sort()).toEqual(["approval_required", "artifact_required"]);
+    expect(runtime.failures.map((failure) => failure.state)).toEqual(expect.arrayContaining(["artifact_generation", "awaiting_clarification"]));
     expect(coverage.missing.filter((failure) => failure.reason.includes("missing authored completionPrompt"))).toHaveLength(0);
     expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-goals")?.failureReason ?? "").not.toContain("three personal goal rows");
     expect(coverage.requirementResults.find((item) => item.requirementId === "care-plan-support-delivery-client-safety")?.failureReason ?? "").not.toContain("support type list");
@@ -3106,6 +3111,16 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain('stage: "deterministic_template_render"');
     expect(src).toContain("bypassedStage1: true");
     expect(src).toContain("bypassedFinalSynthesis: true");
+  });
+
+  it("does not mutate or repair deterministic standard reusable templates with participant-mode gates", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("function isStandardReusableProfessionalTemplate(");
+    expect(src).toContain("isStandardReusableProfessionalTemplate(input.professionalContext)");
+    expect(src).toContain("Targeted repair was skipped for standard reusable templates");
+    expect(src).toContain("const skipTargetedRepair = shouldSkipTargetedRepair(professionalContext, blueprintContract)");
+    expect(src).not.toContain("const skipTargetedRepair = shouldSkipTargetedRepairForCarePlan(professionalContext, blueprintContract)");
   });
 
   it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {

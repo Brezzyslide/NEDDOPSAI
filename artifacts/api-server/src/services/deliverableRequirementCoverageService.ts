@@ -1485,7 +1485,9 @@ function validateRepresentedRequirement(input: {
   }
 
   if (requirement.id === "care-plan-undertaking-adl") {
-    const adl = evaluateCarePlanAdlStructuredRows(input.structuredSection?.structuredRows ?? []);
+    const adl = input.standardisation === "standard_reusable"
+      ? evaluateCarePlanAdlStandardTemplateTable(relevant.content)
+      : evaluateCarePlanAdlStructuredRows(input.structuredSection?.structuredRows ?? []);
     const finalResult = adl.passed
       ? "SATISFIED"
       : adl.partial
@@ -2481,6 +2483,73 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
     structuralPassed,
     reason: failures.length ? failures.join(" ") : null,
     unverifiedRows,
+  };
+}
+
+function evaluateCarePlanAdlStandardTemplateTable(content: string): {
+  passed: boolean;
+  partial: boolean;
+  structuralPassed: boolean;
+  reason: string | null;
+  unverifiedRows: string[];
+} {
+  const tables = extractMarkdownTablesFromContent(content);
+  const adlTable = tables.find((table) => {
+    const headers = table.headers.map(normaliseContent);
+    return headers.some((header) => header === "activity") &&
+      headers.some((header) => header === "support level") &&
+      headers.some((header) => header === "what the worker does");
+  });
+  if (!adlTable) {
+    return {
+      passed: false,
+      partial: false,
+      structuralPassed: false,
+      reason: "Standard reusable ADL template must contain the Activity | Support level | What the worker does table.",
+      unverifiedRows: [],
+    };
+  }
+
+  const headers = adlTable.headers.map(normaliseContent);
+  const activityIndex = headers.findIndex((header) => header === "activity");
+  const supportIndex = headers.findIndex((header) => header === "support level");
+  const workerIndex = headers.findIndex((header) => header === "what the worker does");
+  const byActivity = new Map<string, string[]>();
+  const duplicate: string[] = [];
+  const invalid: string[] = [];
+  const missingCells: string[] = [];
+
+  for (const row of adlTable.rows) {
+    const activity = row[activityIndex]?.trim() ?? "";
+    if (!activity) continue;
+    const key = normaliseCarePlanAdlActivity(activity);
+    if (!isCanonicalCarePlanAdlActivity(activity)) {
+      invalid.push(`${activity}: not a canonical ADL activity`);
+      continue;
+    }
+    if (byActivity.has(key)) duplicate.push(activity);
+    byActivity.set(key, row);
+    if (!(row[supportIndex]?.trim())) missingCells.push(`${activity}: missing support level placeholder`);
+    if (!(row[workerIndex]?.trim())) missingCells.push(`${activity}: missing worker action placeholder`);
+  }
+
+  const missing = CARE_PLAN_ADL_CANONICAL_ROWS.filter((activity) =>
+    !byActivity.has(normaliseCarePlanAdlActivity(activity)),
+  );
+  const structuralPassed = missing.length === 0 && duplicate.length === 0 && invalid.length === 0 && missingCells.length === 0;
+  const failures = [
+    missing.length ? `Missing canonical ADL template rows: ${missing.join(", ")}.` : null,
+    duplicate.length ? `Duplicate ADL template rows: ${duplicate.join(", ")}.` : null,
+    invalid.length ? `Invalid ADL template rows: ${invalid.join("; ")}.` : null,
+    missingCells.length ? `Incomplete ADL template cells: ${missingCells.join("; ")}.` : null,
+  ].filter(Boolean) as string[];
+
+  return {
+    passed: structuralPassed,
+    partial: byActivity.size > 0 && missing.length < CARE_PLAN_ADL_CANONICAL_ROWS.length,
+    structuralPassed,
+    reason: failures.length ? failures.join(" ") : null,
+    unverifiedRows: [],
   };
 }
 
