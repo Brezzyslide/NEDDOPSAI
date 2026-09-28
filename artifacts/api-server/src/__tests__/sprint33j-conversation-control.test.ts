@@ -4,6 +4,26 @@ vi.mock("@workspace/db", () => ({
   db: {},
   approvalsTable: {},
   conversationMessagesTable: {},
+  specialistCatalogueTable: {
+    id: "specialist_catalogue.id",
+    specialistCode: "specialist_catalogue.specialist_code",
+    displayName: "specialist_catalogue.display_name",
+    description: "specialist_catalogue.description",
+    executionStatus: "specialist_catalogue.execution_status",
+    availability: "specialist_catalogue.availability",
+    category: "specialist_catalogue.category",
+    iconMetadata: "specialist_catalogue.icon_metadata",
+    packMembership: "specialist_catalogue.pack_membership",
+    planVisibility: "specialist_catalogue.plan_visibility",
+    comingSoon: "specialist_catalogue.coming_soon",
+    displayOrder: "specialist_catalogue.display_order",
+    versionMetadata: "specialist_catalogue.version_metadata",
+    isActive: "specialist_catalogue.is_active",
+    isArchived: "specialist_catalogue.is_archived",
+    versionCounter: "specialist_catalogue.version_counter",
+    createdAt: "specialist_catalogue.created_at",
+    updatedAt: "specialist_catalogue.updated_at",
+  },
   tasksTable: {},
 }));
 
@@ -343,6 +363,8 @@ describe("Sprint 33J.1 conversation control resolver", () => {
       "give me an update",
       "what's happening",
       "where are we up to",
+      "where is the template",
+      "where's the draft",
       "progress",
       "latest",
       "how is it going",
@@ -378,6 +400,16 @@ describe("Sprint 33J.1 conversation control resolver", () => {
 
     expect(isPendingConfirmationActive(fresh, now)).toBe(true);
     expect(isPendingConfirmationActive(stale, now)).toBe(false);
+  });
+
+  it("source guard: created tasks consume their pending conversation confirmations", () => {
+    const src = readFileSync(resolve(__dirname, "../services/conversationControlService.ts"), "utf8");
+
+    expect(src).toContain("resolveConsumedConfirmation");
+    expect(src).toContain("conversation_confirmation:${input.confirmation.id}");
+    expect(src).toContain("task_already_created_from_confirmation");
+    expect(src).toContain("referenced_task_terminal");
+    expect(src).toContain("conversation_confirmation.resolve_consumed");
   });
 
   it("live regression guard: bare confirm binds to the active service-agreement confirmation, not an older risk proposal", () => {

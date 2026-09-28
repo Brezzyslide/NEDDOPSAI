@@ -163,6 +163,8 @@ const REJECT_PATTERNS = [/^(reject|rejected|no|don'?t send it|do not send it|don
 const ETA_STATUS_PATTERN = /\b(how long|how much longer|eta|completion estimate|when (will|is|can).*(ready|done|finished|complete)|when.*(ready|done|finished|complete))\b/i;
 const STATUS_PATTERNS = [
   /\b(where are we|where are we up to|where is this work at|where is it up to|what'?s pending|what are you waiting for|has it finished|is it done|status|progress|update me|give me an update|any update|latest)\b/i,
+  /\bwhere (is|are).*\b(template|draft|document|work|task)\b/i,
+  /\bwhere'?s.*\b(template|draft|document|work|task)\b/i,
   /^(update|progress|latest)$/i,
   /\b(what'?s happening|what is happening|what'?s happening with this task|how is it going|what'?s the current position|what is the current position)\b/i,
   /\bwhat task are we working on\b/i,
@@ -196,6 +198,54 @@ export function isPendingConfirmationActive(confirmation: PendingConversationCon
   const created = Date.parse(confirmation.createdAt);
   if (!Number.isFinite(created)) return false;
   return now - created <= PENDING_CONFIRMATION_MAX_AGE_MS;
+}
+
+const TERMINAL_TASK_STATES = new Set(["completed", "cancelled", "failed"]);
+
+async function resolveConsumedConfirmation(input: {
+  organizationId: string;
+  confirmation: PendingConversationConfirmation;
+}): Promise<{ status: "confirmed" | "resolved"; reason: string; taskId?: string; taskState?: string } | null> {
+  if (input.confirmation.taskId) {
+    const [task] = await db
+      .select({ id: tasksTable.id, currentState: tasksTable.currentState })
+      .from(tasksTable)
+      .where(and(
+        eq(tasksTable.organizationId, input.organizationId),
+        eq(tasksTable.id, input.confirmation.taskId),
+      ))
+      .limit(1);
+    if (task && TERMINAL_TASK_STATES.has(task.currentState)) {
+      return {
+        status: "resolved",
+        reason: "referenced_task_terminal",
+        taskId: task.id,
+        taskState: task.currentState,
+      };
+    }
+  }
+
+  if (input.confirmation.action === "NEW_TASK") {
+    const idempotencyKey = `conversation_confirmation:${input.confirmation.id}`;
+    const [task] = await db
+      .select({ id: tasksTable.id, currentState: tasksTable.currentState })
+      .from(tasksTable)
+      .where(and(
+        eq(tasksTable.organizationId, input.organizationId),
+        sql`${tasksTable.metadata}->'taskCreation'->>'idempotencyKey' = ${idempotencyKey}`,
+      ))
+      .limit(1);
+    if (task) {
+      return {
+        status: "confirmed",
+        reason: "task_already_created_from_confirmation",
+        taskId: task.id,
+        taskState: task.currentState,
+      };
+    }
+  }
+
+  return null;
 }
 
 export function classifyCanonicalConversationAction(text: string): CanonicalConversationAction {
@@ -475,7 +525,31 @@ export async function getPendingConversationConfirmation(input: {
     const sc = row.structuredContent as any;
     if (sc?.type === "conversation_pending_confirmation" && sc.data?.status === "pending") {
       const confirmation = { ...sc.data, id: sc.data.id ?? row.id } as PendingConversationConfirmation;
-      if (isPendingConfirmationActive(confirmation)) return confirmation;
+      if (!isPendingConfirmationActive(confirmation)) continue;
+      const consumed = await resolveConsumedConfirmation({
+        organizationId: input.organizationId,
+        confirmation,
+      }).catch(() => null);
+      if (consumed) {
+        const data = {
+          ...(confirmation as Record<string, unknown>),
+          status: consumed.status,
+          resolvedAt: new Date().toISOString(),
+          resolutionReason: consumed.reason,
+          resolvedTaskId: consumed.taskId,
+          resolvedTaskState: consumed.taskState,
+        };
+        await withConversationControlTenant(input.organizationId, "conversation_confirmation.resolve_consumed", async (client) => client
+          .update(conversationMessagesTable)
+          .set({ structuredContent: { type: "conversation_pending_confirmation", data }, updatedAt: new Date() })
+          .where(and(
+            eq(conversationMessagesTable.organizationId, input.organizationId),
+            eq(conversationMessagesTable.conversationId, input.conversationId),
+            eq(conversationMessagesTable.id, row.id),
+          ))).catch(() => {});
+        continue;
+      }
+      return confirmation;
     }
   }
   return null;

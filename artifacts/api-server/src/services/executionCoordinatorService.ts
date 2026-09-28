@@ -82,6 +82,46 @@ function withExecutionCoordinatorTenant<T>(
   );
 }
 
+function readOriginatingConversationId(task: { metadata?: unknown } | null | undefined): string | null {
+  const metadata = task?.metadata && typeof task.metadata === "object"
+    ? task.metadata as Record<string, unknown>
+    : null;
+  const taskCreation = metadata?.taskCreation && typeof metadata.taskCreation === "object"
+    ? metadata.taskCreation as Record<string, unknown>
+    : null;
+  const conversationId = taskCreation?.conversationId;
+  return typeof conversationId === "string" && conversationId.trim().length > 0
+    ? conversationId.trim()
+    : null;
+}
+
+async function postExecutionFailureToConversationSurfaces(input: {
+  organizationId: string;
+  conversationId?: string;
+  taskId?: string;
+  errorMessage: string;
+  correlationId: string;
+}): Promise<void> {
+  const conversationIds = new Set<string>();
+  if (input.conversationId) conversationIds.add(input.conversationId);
+
+  if (input.taskId) {
+    const task = await getTaskById(input.taskId, input.organizationId).catch(() => null);
+    const originatingConversationId = readOriginatingConversationId(task);
+    if (originatingConversationId) conversationIds.add(originatingConversationId);
+  }
+
+  await Promise.all([...conversationIds].map(conversationId =>
+    postExecutionFailedToConversation(
+      input.organizationId,
+      conversationId,
+      input.taskId ?? "",
+      input.errorMessage,
+      input.correlationId,
+    ).catch(err => console.warn("[ExecutionCoordinator] Failure message failed:", err?.message)),
+  ));
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface CoordinateIntentApprovalResult {
@@ -1258,8 +1298,13 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           humanLabel: "Work could not be submitted for approval.",
           errorMessage: message,
         });
-        await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", message, correlationId)
-          .catch(() => {});
+        await postExecutionFailureToConversationSurfaces({
+          organizationId,
+          conversationId,
+          taskId,
+          errorMessage: message,
+          correlationId,
+        }).catch(() => {});
         return;
       }
       if (!conversationId) {
@@ -1330,13 +1375,13 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         errorMessage: result.message,
       });
 
-      await postExecutionFailedToConversation(
+      await postExecutionFailureToConversationSurfaces({
         organizationId,
         conversationId,
-        taskId ?? "",
-        result.message,
+        taskId,
+        errorMessage: result.message,
         correlationId,
-      ).catch(err => console.warn("[ExecutionCoordinator] Failure message failed:", err?.message));
+      }).catch(err => console.warn("[ExecutionCoordinator] Failure message failed:", err?.message));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "An unexpected error occurred during execution.";
@@ -1365,8 +1410,13 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         humanLabel: "An unexpected error occurred.",
         errorMessage: message,
       });
-      await postExecutionFailedToConversation(organizationId, conversationId, taskId ?? "", message, correlationId)
-        .catch(() => {});
+      await postExecutionFailureToConversationSurfaces({
+        organizationId,
+        conversationId,
+        taskId,
+        errorMessage: message,
+        correlationId,
+      }).catch(() => {});
     }
   }
 }

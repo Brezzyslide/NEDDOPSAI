@@ -980,6 +980,19 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(clarificationBlock).toContain("persistConversationConfirmation");
     expect(controlService).toContain("what task are we working on");
     expect(controlService).toContain("who('s| is)? working on");
+    expect(controlService).toContain("where (is|are).*");
+    expect(ingressService).toContain('const pendingConfirmation = controlIntent === "STATUS_QUERY"');
+    expect(ingressService).toContain('failure?.errorMessage ?? failure?.error');
+  });
+
+  it("execution failures are posted to the originating chat as well as the workroom", () => {
+    const coordinator = source("services/executionCoordinatorService.ts");
+
+    expect(coordinator).toContain("readOriginatingConversationId");
+    expect(coordinator).toContain("taskCreation");
+    expect(coordinator).toContain("postExecutionFailureToConversationSurfaces");
+    expect(coordinator).toContain("conversationIds.add(originatingConversationId)");
+    expect(coordinator).toContain("postExecutionFailedToConversation(");
   });
 
   it("current-task references resolve to focused task without asking user to select the same task", () => {

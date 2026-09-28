@@ -114,7 +114,7 @@ function hasExecutionStarted(task: { currentState: string; metadata?: Record<str
 
 function extractFailureMessage(task: { metadata?: Record<string, unknown> | null }): string | null {
   const failure = metadataObject(taskMetadataRecord(task.metadata).executionFailure);
-  const raw = failure?.error ?? failure?.message ?? failure?.reason;
+  const raw = failure?.errorMessage ?? failure?.error ?? failure?.message ?? failure?.reason;
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 
@@ -325,14 +325,20 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
 
   // ── 2. Check for active durable checkpoint ────────────────────────────────
 
-  const pendingConfirmation = await getPendingConversationConfirmation({
-    organizationId,
-    conversationId,
-  }).catch(() => null) ?? await getLatestTaskProposalConfirmation({
-    organizationId,
-    conversationId,
-    sourceUserRequest: content,
-  }).catch(() => null);
+  const controlIntent = classifyCanonicalConversationAction(content);
+  const pendingConfirmation = controlIntent === "STATUS_QUERY"
+    ? null
+    : (
+      await getPendingConversationConfirmation({
+        organizationId,
+        conversationId,
+      }).catch(() => null)
+      ?? await getLatestTaskProposalConfirmation({
+        organizationId,
+        conversationId,
+        sourceUserRequest: content,
+      }).catch(() => null)
+    );
   if (pendingConfirmation) {
     const confirmationResult = await maybeHandlePendingConfirmation({
       content,
@@ -349,7 +355,6 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   }
 
   const checkpoint = await getActiveCheckpointByConversation(conversationId, organizationId);
-  const controlIntent = classifyCanonicalConversationAction(content);
 
   if (checkpoint && isLikelyCheckpointAnswer(content, checkpoint)) {
     // ── 3a. Clarification answer path ─────────────────────────────────────
