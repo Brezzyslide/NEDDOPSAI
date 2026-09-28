@@ -687,6 +687,25 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(false);
   });
 
+  it("allows canonical care-plan template section headings in deterministic standard templates", () => {
+    const request = "Create a standard reusable NDIS care plan template.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Support Plan Meeting",
+      "The provider records the plan date, review date, attendees, diagnosis source and development basis before issuing the plan.",
+      "## Undertaking ADL",
+      "Workers must record each activity, the support level and what the worker does in the declared ADL table.",
+      "## Behavioural Management",
+      "Workers should follow the proactive, reactive and protective strategy tables and escalate any inconsistency before use.",
+      "## Document Control",
+      "The provider must maintain the form identifier, version, issue date, next review date and approval record.",
+    ].join("\n\n");
+
+    expect(detectLeakedBlueprintMethodologyHeadings(contentMarkdown, contract.sections, standardTemplateEvidence))
+      .toEqual([]);
+  });
+
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
     const uee = source("services/unifiedExecutionEngine.ts");
     const reviewIndex = uee.indexOf("let runtimeGate = validateBlueprintRuntimeCompletion");

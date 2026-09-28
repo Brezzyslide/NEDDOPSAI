@@ -356,6 +356,22 @@ const INTERNAL_METHOD_HEADING_PATTERN =
   /\b(?:extraction|validation|governance\s+decision\s+trail|decision\s+trail|evidence\s+doctrine|completeness\s+gate|authority\s+package|preservation\s+inventory|readiness\s+findings|change\s+history|professional\s+boundaries|handoffs|reconciliation)\b/i;
 const INTERNAL_CLASSIFICATION_TOKEN_PATTERN =
   /\b(?:FACTUAL_FIELD|MUST_BE_REPRESENTED|CONDITIONAL)\b|\bmandatory-\d+\b|\bblueprint-[a-z0-9-]+\b/g;
+const CARE_PLAN_TEMPLATE_USER_FACING_HEADINGS = new Set([
+  "support plan meeting",
+  "goals",
+  "about me",
+  "history and background",
+  "undertaking adl",
+  "communication and communication strategy",
+  "mobility and mobility strategy",
+  "support delivery and client safety",
+  "behavioural management",
+  "restrictive practices",
+  "mealtime management strategy",
+  "disaster management strategy",
+  "client endorsement",
+  "document control",
+]);
 const PROFESSIONAL_PLACEHOLDER_TERMS = [
   "CLAUSE",
   "CLAUSES",
@@ -703,6 +719,7 @@ function isAllowedUserFacingTemplateHeading(
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
 ): boolean {
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
+  if (CARE_PLAN_TEMPLATE_USER_FACING_HEADINGS.has(normaliseHeadingLabel(heading))) return true;
   return /\b(?:purpose|scope|goals?|preferences?|communication|support requirements?|support schedule|responsibilit(?:y|ies)|rights?|privacy|confidentiality|complaints?|feedback|payment|pricing|cancellation|variation|termination|review|updates?|consent|sign[- ]off|risk|safety|incident|escalation|health|medication|behaviour|community participation|coordination)\b/i.test(heading) &&
     !INTERNAL_METHOD_HEADING_PATTERN.test(heading) &&
     !/\b(?:gate|inventory|authority package|readiness assessment|completeness review|validation review|methodology|checklist|control)\b/i.test(heading);
