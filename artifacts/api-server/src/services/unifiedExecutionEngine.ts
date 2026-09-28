@@ -35,7 +35,7 @@ import {
   type ExecutionConstraints,
   type ExecutionStep,
 } from "@workspace/agent-runtime";
-import { db, executionEventsTable, executionSessionsTable, specialistRunsTable, taskExecutionPlansTable, withSystemTenantContext, workPackageManifestsTable } from "@workspace/db";
+import { db, executionEventsTable, executionSessionsTable, organizationsTable, specialistRunsTable, taskExecutionPlansTable, withSystemTenantContext, workPackageManifestsTable } from "@workspace/db";
 import type { BlueprintSelectionMetadata } from "@workspace/db";
 
 import {
@@ -2417,9 +2417,10 @@ export class UnifiedExecutionEngine {
     if (artifactRequired) {
       try {
         const artifactFormats = resolveArtifactFormats(blueprint?.deliverableContract);
+        const organizationName = await resolveExecutionOrganizationName(organizationId);
         const artifacts = await generateCompletedWorkArtifacts({
           organizationId,
-          organizationName: "Your Organisation",
+          organizationName,
           completedWorkId: completedWork.id,
           taskId: request.taskId ?? null,
           conversationId: request.conversationId ?? null,
@@ -5124,6 +5125,28 @@ function summariseSectionEvidence(chunks: EvidencePack["chunks"]): string {
 function estimatePromptTokens(text: string): number {
   if (!text.trim()) return 0;
   return Math.ceil(text.length / 4);
+}
+
+async function resolveExecutionOrganizationName(organizationId: string): Promise<string> {
+  try {
+    const [org] = await withUnifiedExecutionTenant(organizationId, "execution.organization_name.resolve", async (client) => client
+      .select({
+        name: organizationsTable.name,
+        displayName: organizationsTable.displayName,
+        legalName: organizationsTable.legalName,
+        tradingName: organizationsTable.tradingName,
+      })
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, organizationId))
+      .limit(1));
+    return org?.displayName?.trim() ||
+      org?.tradingName?.trim() ||
+      org?.legalName?.trim() ||
+      org?.name?.trim() ||
+      "Your Organisation";
+  } catch {
+    return "Your Organisation";
+  }
 }
 
 function resolveArtifactFormats(

@@ -503,6 +503,35 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     )).toBe(true);
   });
 
+  it("blocks internal ADL source mapping rules from standard reusable template content", () => {
+    const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
+    const contract = contractFor("care_plan");
+    const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(request);
+    const contentMarkdown = [
+      "## Undertaking ADL",
+      "Intake checklist source-value mapping: Without support maps to Independent. Support required maps to Independent with prompting.",
+      "Intake checklist source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing.",
+    ].join("\n\n");
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack(["current_authority"]),
+      artifactId: "artifact-standard-care-plan",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(detectInstructionalProfessionalText(contentMarkdown, standardTemplateEvidence)).toEqual([
+      "internal_mapping_rule:Intake checklist source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing.",
+      "internal_mapping_rule:Intake checklist source-value mapping: Without support maps to Independent. Support required maps to Independent with prompting.",
+    ]);
+    expect(result.failures.some((failure) =>
+      failure.gate === "methodology_leak" &&
+      failure.details?.some((detail) => detail.startsWith("internal_mapping_rule:")),
+    )).toBe(true);
+  });
+
   it("blocks internal requirement classification tokens in user-facing deliverables", () => {
     const request = "Create a standard comprehensive NDIS care plan template covering all professionally relevant areas.";
     const contract = contractFor("care_plan");

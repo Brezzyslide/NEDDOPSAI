@@ -545,12 +545,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const coverage = source("services/deliverableRequirementCoverageService.ts");
     const model = source("services/carePlanAdlModel.ts");
 
-    expect(registry).toContain("Without support maps to Independent");
-    expect(registry).toContain("Support required maps to Independent with prompting, Independent with supervision or Partial physical assistance");
-    expect(registry).toContain("use the highest support level and name the differing parts");
-    expect(registry).toContain("Shaving -> Personal hygiene and grooming");
-    expect(registry).toContain("Post toilet hygiene -> Toileting and continence");
-    expect(registry).toContain("Washing dishes -> Household cleaning");
+    expect(registry).not.toContain("Intake checklist source-value mapping");
+    expect(registry).not.toContain("Intake checklist source-item mapping");
+    expect(engine).toContain("ADL intake-checklist mapping");
+    expect(engine).toContain("ADL source-item mapping");
+    expect(engine).toContain("Support required -> Independent with prompting, Independent with supervision or Partial physical assistance");
+    expect(engine).toContain("Shaving -> Personal hygiene and grooming");
+    expect(engine).toContain("Post toilet hygiene -> Toileting and continence");
+    expect(engine).toContain("Washing dishes -> Household cleaning");
 
     expect(engine).toContain("return exactly 26 structuredRows");
     expect(engine).toContain("Do not add, omit or rename ADL activities");
@@ -3121,6 +3123,15 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("Targeted repair was skipped for standard reusable templates");
     expect(src).toContain("const skipTargetedRepair = shouldSkipTargetedRepair(professionalContext, blueprintContract)");
     expect(src).not.toContain("const skipTargetedRepair = shouldSkipTargetedRepairForCarePlan(professionalContext, blueprintContract)");
+  });
+
+  it("passes the tenant organisation name into generated artifacts instead of the placeholder default", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("async function resolveExecutionOrganizationName(");
+    expect(src).toContain("organizationName = await resolveExecutionOrganizationName(organizationId)");
+    expect(src).toContain("organizationsTable.displayName");
+    expect(src).not.toContain('organizationName: "Your Organisation"');
   });
 
   it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {
