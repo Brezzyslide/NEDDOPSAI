@@ -3134,6 +3134,19 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).not.toContain('organizationName: "Your Organisation"');
   });
 
+  it("bypasses evidence retrieval entirely for deterministic standard reusable care plan templates", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("function shouldBypassEvidenceRetrievalForStandardTemplate(");
+    expect(src).toContain('bypassReason: "standard_reusable_deterministic_template"');
+    expect(src).toContain("if (bypassEvidenceRetrieval)");
+    expect(src).toContain("await progress(\"retrieving_evidence\")");
+    expect(src.indexOf("if (bypassEvidenceRetrieval)")).toBeLessThan(src.indexOf("await progress(\"retrieving_evidence\")"));
+    expect(src).toContain("input.standardTemplateEvidence.customerExampleOptional");
+    expect(src).toContain("input.laneContext?.requiresEvidence !== true");
+    expect(src).toContain('input.blueprint?.code === "care_plan"');
+  });
+
   it("blocks participant-specific behavioural strategies without BSP traceability and extraction proof", () => {
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");

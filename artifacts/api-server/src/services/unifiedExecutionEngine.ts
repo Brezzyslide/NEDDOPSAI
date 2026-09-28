@@ -1267,64 +1267,90 @@ export class UnifiedExecutionEngine {
       };
     }
 
-    await progress("retrieving_evidence");
-    const t3evidence = Date.now();
+    const bypassEvidenceRetrieval = shouldBypassEvidenceRetrievalForStandardTemplate({
+      standardTemplateEvidence,
+      blueprint,
+      blueprintContract,
+      subjectParticipantIds,
+      laneContext,
+    });
+    let evidencePack: EvidencePack | null = null;
 
-    // ── 1. Start KRS evidence resolution ───────────────────────────────────────
-    const krsPromise = this.resourceRegistry
-      .resolveEvidenceForTask({
-        organisationId: organizationId,
-        specialistCode: manifest.primarySpecialist,
-        blueprint,
-        blueprintContract,
-        workPackage: manifest,
-        userRequest,
-        entityIds: subjectParticipantIds,
-      })
-      .catch(() => null);
+    if (bypassEvidenceRetrieval) {
+      tRetrievalMs = 0;
+      void logOrgEvent({
+        eventType:      "execution_coordinator.pipeline_outcome",
+        organizationId,
+        actorType:      "system",
+        resourceType:   "evidence_gate",
+        accessPurpose:  "evidence_gate",
+        metadata:       {
+          evidenceRetrievalBypassed: true,
+          bypassReason: "standard_reusable_deterministic_template",
+          finalEvidenceChunks: 0,
+          executionContinued: true,
+          allowExternalWebSearch: laneContext?.allowExternalWebSearch ?? false,
+        },
+      })?.catch(() => {});
+    } else {
+      await progress("retrieving_evidence");
+      const t3evidence = Date.now();
 
-    // ── 2. Start OpenClaw parallel discovery (EVIDENCE_BEARING only) ───────────
-    // Runs at the same time as KRS — NOT after KRS has been evaluated.
-    // NullDiscoveryAdapter (Cloud default) returns adapterAvailable=false immediately,
-    // adding zero latency when no Cloud OpenClaw runtime is connected (Part N).
-    // When allowExternalWebSearch=true, the adapter may search the web and retrieve
-    // external authoritative sources (Part C). All results pass through Authority Gate.
-    const openClawPromise: Promise<OrchestratorResult | null> =
-      laneContext?.requiresEvidence
-        ? runParallelEvidenceDiscovery({
-            executionId:            manifest.executionId,
-            organisationId:         organizationId,
-            evidenceQuestion:       userRequest,
-            allowExternalWebSearch: laneContext.allowExternalWebSearch ?? false,
-          }).catch(err => {
-            console.warn(
-              "[UnifiedExecutionEngine] 29N.11: OpenClaw parallel discovery threw: " +
-              (err instanceof Error ? err.message : String(err)),
-            );
-            return null;
-          })
-        : Promise.resolve(null);
+      // ── 1. Start KRS evidence resolution ─────────────────────────────────────
+      const krsPromise = this.resourceRegistry
+        .resolveEvidenceForTask({
+          organisationId: organizationId,
+          specialistCode: manifest.primarySpecialist,
+          blueprint,
+          blueprintContract,
+          workPackage: manifest,
+          userRequest,
+          entityIds: subjectParticipantIds,
+        })
+        .catch(() => null);
 
-    // ── 3. Await both — critical path = max(KRS latency, OpenClaw latency) ─────
-    // Part L: one slow provider must NOT hang execution indefinitely.
-    // NullDiscoveryAdapter resolves in ~0ms, so this is safe with no live adapter.
-    const [krsResult, openClawResult] = await Promise.all([krsPromise, openClawPromise]);
-    tRetrievalMs = Date.now() - t3evidence;
+      // ── 2. Start OpenClaw parallel discovery (EVIDENCE_BEARING only) ─────────
+      // Runs at the same time as KRS — NOT after KRS has been evaluated.
+      // NullDiscoveryAdapter (Cloud default) returns adapterAvailable=false immediately,
+      // adding zero latency when no Cloud OpenClaw runtime is connected (Part N).
+      // When allowExternalWebSearch=true, the adapter may search the web and retrieve
+      // external authoritative sources (Part C). All results pass through Authority Gate.
+      const openClawPromise: Promise<OrchestratorResult | null> =
+        laneContext?.requiresEvidence
+          ? runParallelEvidenceDiscovery({
+              executionId:            manifest.executionId,
+              organisationId:         organizationId,
+              evidenceQuestion:       userRequest,
+              allowExternalWebSearch: laneContext.allowExternalWebSearch ?? false,
+            }).catch(err => {
+              console.warn(
+                "[UnifiedExecutionEngine] 29N.11: OpenClaw parallel discovery threw: " +
+                (err instanceof Error ? err.message : String(err)),
+              );
+              return null;
+            })
+          : Promise.resolve(null);
 
-    // ── 4. Converge KRS + OpenClaw into one merged EvidencePack (Part H) ───────
-    // Deduplication: same sourceVersionId / sourceUrl / passageHash → "both" provenance.
-    // Contradiction: same source, different version/content → authority priority resolution.
-    // When OpenClaw is unavailable, convergence is a no-op returning krsResult as-is.
-    const convergence = convergeEvidenceResults(
-      krsResult,
-      openClawResult,
-      manifest.executionId,
-      organizationId,
-    );
-    let evidencePack: EvidencePack | null = convergence.mergedPack;
+      // ── 3. Await both — critical path = max(KRS latency, OpenClaw latency) ───
+      // Part L: one slow provider must NOT hang execution indefinitely.
+      // NullDiscoveryAdapter resolves in ~0ms, so this is safe with no live adapter.
+      const [krsResult, openClawResult] = await Promise.all([krsPromise, openClawPromise]);
+      tRetrievalMs = Date.now() - t3evidence;
 
-    // ── 5. Build observability record ──────────────────────────────────────────
-    const discoveryObservability: EvidenceDiscoveryObservability = {
+      // ── 4. Converge KRS + OpenClaw into one merged EvidencePack (Part H) ─────
+      // Deduplication: same sourceVersionId / sourceUrl / passageHash → "both" provenance.
+      // Contradiction: same source, different version/content → authority priority resolution.
+      // When OpenClaw is unavailable, convergence is a no-op returning krsResult as-is.
+      const convergence = convergeEvidenceResults(
+        krsResult,
+        openClawResult,
+        manifest.executionId,
+        organizationId,
+      );
+      evidencePack = convergence.mergedPack;
+
+      // ── 5. Build observability record ────────────────────────────────────────
+      const discoveryObservability: EvidenceDiscoveryObservability = {
       // Legacy fields (maintained for dashboard/audit backwards compatibility)
       initialKrsChunks:             convergence.krsChunks,
       initialSufficiencyStatus:     "not_evaluated",
@@ -1353,11 +1379,11 @@ export class UnifiedExecutionEngine {
       deduplicatedItems:            convergence.deduplicatedItems,
       contradictionsDetected:       convergence.contradictions.length,
       allowExternalWebSearch:       laneContext?.allowExternalWebSearch ?? false,
-    };
+      };
 
-    // ── 6. Sufficiency gate on the merged pack (EVIDENCE_BEARING only) ─────────
-    if (laneContext?.requiresEvidence) {
-      const mergedPack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
+      // ── 6. Sufficiency gate on the merged pack (EVIDENCE_BEARING only) ───────
+      if (laneContext?.requiresEvidence) {
+        const mergedPack = evidencePack ?? buildEmptyEvidencePack(manifest.executionId, organizationId);
 
       const sufficiency = evaluateEvidenceSufficiency({
         evidencePack:                   mergedPack,
@@ -1408,19 +1434,20 @@ export class UnifiedExecutionEngine {
           message:       buildInsufficientEvidenceMessage(sufficiency, discoveryResultForMessage),
         };
       }
-    }
-    // PROFESSIONAL_WORK and TRANSIENT → no sufficiency gate; evidencePack may be null
+      }
+      // PROFESSIONAL_WORK and TRANSIENT → no sufficiency gate; evidencePack may be null
 
-    discoveryObservability.finalEvidenceChunks   = evidencePack?.totalChunks ?? 0;
-    discoveryObservability.executionContinued     = true;
-    void logOrgEvent({
-      eventType:      "execution_coordinator.pipeline_outcome",
-      organizationId,
-      actorType:      "system",
-      resourceType:   "evidence_gate",
-      accessPurpose:  "evidence_gate",
-      metadata:       discoveryObservability as unknown as Record<string, unknown>,
-    })?.catch(() => {});
+      discoveryObservability.finalEvidenceChunks   = evidencePack?.totalChunks ?? 0;
+      discoveryObservability.executionContinued     = true;
+      void logOrgEvent({
+        eventType:      "execution_coordinator.pipeline_outcome",
+        organizationId,
+        actorType:      "system",
+        resourceType:   "evidence_gate",
+        accessPurpose:  "evidence_gate",
+        metadata:       discoveryObservability as unknown as Record<string, unknown>,
+      })?.catch(() => {});
+    }
 
     // ── Sprint 29D: Open task execution session ───────────────────────────────
     // Task executions carry a session from evidence retrieval through completion.
@@ -6847,6 +6874,22 @@ function renderDeterministicStandardTemplateDraft(
       bypassedFinalSynthesis: true,
     },
   };
+}
+
+function shouldBypassEvidenceRetrievalForStandardTemplate(input: {
+  standardTemplateEvidence: ReturnType<typeof classifyStandardTemplateEvidenceContext>;
+  blueprint: WorkBlueprint | null;
+  blueprintContract: BlueprintExecutionContract | null;
+  subjectParticipantIds: string[];
+  laneContext: ExecutionLaneContext | undefined;
+}): boolean {
+  return (
+    input.standardTemplateEvidence.customerExampleOptional &&
+    input.subjectParticipantIds.length === 0 &&
+    input.laneContext?.requiresEvidence !== true &&
+    input.blueprint?.code === "care_plan" &&
+    input.blueprintContract?.blueprint?.code === "care_plan"
+  );
 }
 
 function shouldAttemptFinalDeliverableSynthesis(
