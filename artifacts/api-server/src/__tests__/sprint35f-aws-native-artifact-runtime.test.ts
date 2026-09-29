@@ -704,6 +704,20 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
 
     expect(detectLeakedBlueprintMethodologyHeadings(contentMarkdown, contract.sections, standardTemplateEvidence))
       .toEqual([]);
+    expect(detectIncompleteProfessionalSections(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+    expect(detectPlaceholderDominatedProfessionalSections(contentMarkdown, standardTemplateEvidence)).toEqual([]);
+
+    const result = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown,
+      rawClaims: [],
+      evidencePack: evidencePack([]),
+      artifactId: "artifact-standard-care-plan-template",
+      approvalStates: Object.fromEntries(Object.keys(contract.blueprint.requiredApprovals ?? {}).map((key) => [key, true])),
+      standardTemplateEvidence,
+    });
+
+    expect(result.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
   });
 
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {

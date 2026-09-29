@@ -719,10 +719,14 @@ function isAllowedUserFacingTemplateHeading(
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
 ): boolean {
   if (!isCustomerTemplateOptional(standardTemplateEvidence)) return false;
-  if (CARE_PLAN_TEMPLATE_USER_FACING_HEADINGS.has(normaliseHeadingLabel(heading))) return true;
+  if (isCanonicalCarePlanTemplateHeading(heading)) return true;
   return /\b(?:purpose|scope|goals?|preferences?|communication|support requirements?|support schedule|responsibilit(?:y|ies)|rights?|privacy|confidentiality|complaints?|feedback|payment|pricing|cancellation|variation|termination|review|updates?|consent|sign[- ]off|risk|safety|incident|escalation|health|medication|behaviour|community participation|coordination)\b/i.test(heading) &&
     !INTERNAL_METHOD_HEADING_PATTERN.test(heading) &&
     !/\b(?:gate|inventory|authority package|readiness assessment|completeness review|validation review|methodology|checklist|control)\b/i.test(heading);
+}
+
+function isCanonicalCarePlanTemplateHeading(heading: string): boolean {
+  return CARE_PLAN_TEMPLATE_USER_FACING_HEADINGS.has(normaliseHeadingLabel(heading));
 }
 
 export function detectInstructionalProfessionalText(
@@ -764,6 +768,7 @@ export function detectIncompleteProfessionalSections(
   for (const section of extractMarkdownSections(contentMarkdown)) {
     const heading = section.heading;
     const body = section.body;
+    if (isCanonicalCarePlanTemplateHeading(heading)) continue;
     if (!isProfessionalSectionHeading(heading)) continue;
     const bodyWithoutPlaceholders = body
       .replace(INCOMPLETE_MARKER_PATTERN, "")
@@ -787,6 +792,7 @@ export function detectPlaceholderDominatedProfessionalSections(
   for (const section of extractMarkdownSections(contentMarkdown)) {
     const heading = section.heading;
     const body = section.body;
+    if (isCanonicalCarePlanTemplateHeading(heading)) continue;
     if (!isProfessionalSectionHeading(heading)) continue;
 
     const bracketTokens = [...body.matchAll(BRACKET_TOKEN_PATTERN)].length;
