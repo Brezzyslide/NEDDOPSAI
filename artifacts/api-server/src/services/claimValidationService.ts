@@ -730,7 +730,8 @@ export function assembleDeterministicTemplateDeliverableSections(input: {
     })),
     deterministicCompleteness: {
       fixedContentComplete: input.requirements.every((requirement) =>
-        (requirement.fixedContent ?? []).every((fixed) => markdown.includes(fixed)),
+        deterministicTemplateParts(requirement, blueprintByCode.get(requirement.sourceBlueprintSection ?? ""))
+          .every((fixed) => markdown.includes(fixed)),
       ),
       sectionCount: sections.filter((section) => section.content.trim()).length,
       goalRowCount: (markdown.match(/\[CURRENT_SITUATION_\d+\]/g) ?? []).length,
@@ -1069,7 +1070,8 @@ function deterministicTemplateParts(
   requirement: DeterministicTemplateRequirement,
   blueprintSection?: DeterministicTemplateBlueprintSection,
 ): string[] {
-  const fixedContent = requirement.fixedContent ?? blueprintSection?.fixedContent ?? [];
+  const fixedContent = (requirement.fixedContent ?? blueprintSection?.fixedContent ?? [])
+    .filter((part) => !isInternalCarePlanAdlMappingRule(part));
   const fields = requirement.templateFields ?? blueprintSection?.fields ?? [];
   const completionPrompt = requirement.completionPrompt ?? blueprintSection?.completionPrompt ?? null;
   const scalarFields = fields.filter((field) => !isStructuredTemplateField(field));
@@ -1078,8 +1080,13 @@ function deterministicTemplateParts(
     ...fixedContent,
     renderScalarTemplateFields(scalarFields),
     ...structuredFields.map(renderStructuredTemplateField).filter(Boolean),
-    renderCompletionPrompt(completionPrompt),
+    isInternalCarePlanAdlMappingRule(completionPrompt ?? "") ? "" : renderCompletionPrompt(completionPrompt),
   ].filter((part) => part.trim());
+}
+
+function isInternalCarePlanAdlMappingRule(value: string): boolean {
+  return /\b(?:source[- ]value mapping|source[- ]item mapping|maps?\s+to|->)\b/i.test(value) &&
+    /\b(?:intake checklist|adl|support level|without support|support required|completely unable|brush teeth|oral hygiene)\b/i.test(value);
 }
 
 function renderScalarTemplateFields(fields: string[]): string {

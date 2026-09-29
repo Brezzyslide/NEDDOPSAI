@@ -3,6 +3,10 @@ import { resolve } from "path";
 import { describe, expect, it } from "vitest";
 import { getRegistryEntry, resolveRegistryProfessionalOwner } from "../services/blueprintRegistry";
 import {
+  assembleDeterministicTemplateDeliverableSections,
+  assembleDeliverableMarkdownFromSections,
+} from "../services/claimValidationService";
+import {
   classifyStandardTemplateEvidenceContext,
   detectIncompleteProfessionalSections,
   detectInternalClassificationLeakage,
@@ -718,6 +722,47 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     });
 
     expect(result.failures.some((failure) => failure.gate === "methodology_leak")).toBe(false);
+  });
+
+  it("strips stale internal ADL mapping rules from deterministic care-plan template fixed content", () => {
+    const assembly = assembleDeterministicTemplateDeliverableSections({
+      requirements: [{
+        id: "care-plan-undertaking-adl",
+        professionalRequirement: "Undertaking ADL section is represented.",
+        origin: "AUTHORED",
+        sourceBlueprintSection: "UNDERTAKING_ADL",
+        classification: "MUST_BE_REPRESENTED",
+        authority: [],
+        adequacyCriteria: [],
+        templateCriteria: [],
+        completionFields: [],
+        expectedEvidenceCategories: [],
+        applicability: "applicable",
+        expectedUserFacingRepresentation: "Undertaking ADL",
+        targetDeliverableLocation: "Undertaking ADL",
+        requiredDeliverableRepresentation: { location: "Undertaking ADL" },
+        fixedContent: [
+          "Support is provided to build and maintain independence.",
+          "Intake checklist source-value mapping: Without support maps to Independent. Support required maps to Independent with prompting.",
+          "Intake checklist source-item mapping: Brush teeth -> Oral hygiene; Take shower -> Showering and bathing.",
+        ],
+      }],
+      blueprintSections: [{
+        sectionCode: "UNDERTAKING_ADL",
+        title: "Undertaking ADL",
+        fixedContent: [],
+        fields: ["Activity | Support level | What the worker does"],
+        completionPrompt: "Record a support level for every activity.",
+      }],
+      modelSections: [],
+    });
+    const markdown = assembleDeliverableMarkdownFromSections(assembly.sections, ["care-plan-undertaking-adl"]);
+
+    expect(markdown).toContain("Support is provided to build and maintain independence.");
+    expect(markdown).toContain("Activity | Support level | What the worker does");
+    expect(markdown).not.toContain("source-value mapping");
+    expect(markdown).not.toContain("source-item mapping");
+    expect(markdown).not.toContain("maps to Independent");
   });
 
   it("runs final professional deliverable synthesis before createDraft when gates catch placeholders or methodology", () => {
