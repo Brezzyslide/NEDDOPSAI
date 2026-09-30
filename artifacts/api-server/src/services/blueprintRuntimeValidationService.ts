@@ -210,6 +210,7 @@ export function validateBlueprintRuntimeCompletion(
     blueprint.code,
     input.contentMarkdown,
     input.deliverableSections,
+    input.professionalContext,
   ));
 
   failures.push(...validateCarePlanBehaviourSafety({
@@ -937,6 +938,7 @@ function validateCarePlanMechanicalRules(
   blueprintCode: string | null | undefined,
   contentMarkdown: string,
   deliverableSections?: PerRequirementDeliverableSection[],
+  professionalContext?: ProfessionalExecutionContext | null,
 ): BlueprintRuntimeGateFailure[] {
   if (blueprintCode !== "care_plan") return [];
 
@@ -991,6 +993,19 @@ function validateCarePlanMechanicalRules(
     failures.push(mechanicalFailure("care_plan_selected_supports_described", "Every selected support type must have a non-empty description."));
   }
 
+  const participantSpecific = professionalContext?.specificity === "PARTICIPANT_SPECIFIC";
+  if (participantSpecific) {
+    failures.push(...validateCarePlanCrossSectionConsistency(sections, deliverableSections));
+
+    const history = sectionByRequirementId("care-plan-history-background", /\bhistory and background\b/i);
+    if (history && containsClinicalCaseHistory(history.body)) {
+      failures.push(mechanicalFailure(
+        "care_plan_history_not_clinical_case_history",
+        "History and Background contains clinical/life-course case-history material; it must carry only worker-relevant background needed for safe support.",
+      ));
+    }
+  }
+
   for (const [rule, requirementId, pattern] of [
     ["care_plan_capacity_strategy_narratives_present", "care-plan-communication-strategy", /\bcommunication\b/i],
     ["care_plan_capacity_strategy_narratives_present", "care-plan-mobility-strategy", /\bmobility\b/i],
@@ -1025,6 +1040,77 @@ function validateCarePlanMechanicalRules(
   }
 
   return failures;
+}
+
+function validateCarePlanCrossSectionConsistency(
+  markdownSections: Array<{ heading: string; body: string }>,
+  deliverableSections?: PerRequirementDeliverableSection[],
+): BlueprintRuntimeGateFailure[] {
+  const sectionByRequirementId = (requirementId: string, fallbackPattern: RegExp) => {
+    const structured = deliverableSections?.find((section) => section.requirementId === requirementId);
+    return structured
+      ? { heading: structured.heading, body: structured.content }
+      : markdownSections.find((section) => fallbackPattern.test(section.heading));
+  };
+  const supportPlan = sectionByRequirementId("care-plan-support-plan-meeting", /\bsupport plan meeting\b/i);
+  const aboutMe = sectionByRequirementId("care-plan-about-me", /\babout me\b/i);
+  const communication = sectionByRequirementId("care-plan-communication-strategy", /\bcommunication\b/i);
+
+  const languageClaims = [
+    extractLabelledRuntimeValue(supportPlan?.body ?? "", "Language Spoken") ? {
+      location: "Support Plan Meeting / Language Spoken",
+      value: extractLabelledRuntimeValue(supportPlan?.body ?? "", "Language Spoken")!,
+    } : null,
+    extractLabelledRuntimeValue(communication?.body ?? "", "Verbal / non-verbal") ? {
+      location: "Communication / Verbal-non-verbal",
+      value: extractLabelledRuntimeValue(communication?.body ?? "", "Verbal / non-verbal")!,
+    } : null,
+    extractLabelledRuntimeValue(aboutMe?.body ?? "", "How I Prefer to Communicate") ? {
+      location: "About Me / How I Prefer to Communicate",
+      value: extractLabelledRuntimeValue(aboutMe?.body ?? "", "How I Prefer to Communicate")!,
+    } : null,
+  ].filter((claim): claim is { location: string; value: string } => Boolean(claim));
+
+  const normalisedLanguageClaims = languageClaims
+    .map((claim) => ({ ...claim, normalised: normaliseCarePlanIdentityClaim(claim.value) }))
+    .filter((claim) => claim.normalised);
+  const distinct = new Set(normalisedLanguageClaims.map((claim) => claim.normalised));
+  if (distinct.size <= 1) return [];
+
+  return [mechanicalFailure(
+    "care_plan_identity_language_consistency",
+    `Language identity field is inconsistent across sections: ${normalisedLanguageClaims
+      .map((claim) => `${claim.location}="${claim.value}"`)
+      .join("; ")}. Server-derived identity fields must have one source of truth.`,
+  )];
+}
+
+function extractLabelledRuntimeValue(content: string, label: string): string | null {
+  const escaped = escapeRegExp(label);
+  const patterns = [
+    new RegExp(`^\\s*\\*\\*${escaped}:\\*\\*\\s*(.+?)\\s*$`, "im"),
+    new RegExp(`^\\s*[-*]?\\s*${escaped}\\s*:\\s*(.+?)\\s*$`, "im"),
+    new RegExp(`^\\s*\\|\\s*${escaped}\\s*\\|\\s*(.+?)\\s*\\|`, "im"),
+  ];
+  for (const pattern of patterns) {
+    const match = content.match(pattern);
+    if (match?.[1]?.trim()) return match[1].trim();
+  }
+  return null;
+}
+
+function normaliseCarePlanIdentityClaim(value: string): string {
+  const text = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!text || /\bnot recorded\b|\bnot supplied\b|\bnot provided\b/.test(text)) return "not-recorded";
+  const languages = [
+    /\benglish\b/.test(text) ? "english" : null,
+    /\bitalian\b/.test(text) ? "italian" : null,
+  ].filter(Boolean);
+  if (languages.length > 0) {
+    const qualifier = /\b(?:some|limited|doesn.?t know|not well|not that well)\b/.test(text) ? "qualified" : "asserted";
+    return `${languages.join("+")}:${qualifier}`;
+  }
+  return normaliseRuntimeText(text);
 }
 
 function mechanicalFailure(rule: string, detail: string): BlueprintRuntimeGateFailure {
@@ -1289,6 +1375,12 @@ function hasSelectedSupportWithoutDescription(content: string): boolean {
     if (afterSeparator.length < 8) return true;
   }
   return false;
+}
+
+function containsClinicalCaseHistory(content: string): boolean {
+  return /\b(?:from infancy|in infancy|early childhood|school years|during school|family psychiatric history|forensic history|trauma history|case history|clinical history)\b/i.test(content) ||
+    /\b(?:hyperactive|short attention span|oppositional behaviour|self-harm|property damage)\b/i.test(content) &&
+      /\b(?:infancy|childhood|school|history|reported)\b/i.test(content);
 }
 
 function normaliseRuntimeText(value: string): string {

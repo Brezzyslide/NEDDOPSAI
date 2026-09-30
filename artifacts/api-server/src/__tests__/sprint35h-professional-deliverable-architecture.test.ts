@@ -3062,6 +3062,86 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(mechanicalDetails).not.toContainEqual(expect.stringContaining("care_plan_selected_supports_described"));
   });
 
+  it("blocks participant care plans with inconsistent language identity fields", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = { blueprint, sections: blueprint.sections ?? [], template: null, mode: "create" } as BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for Micheal Rocca.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const content = [
+      "## Support Plan Meeting",
+      "**Language Spoken:** not recorded in retrieved evidence",
+      "",
+      "## About Me",
+      "**How I Prefer to Communicate:**",
+      "- Michael communicates verbally in English, though it has been previously stated he is fluent in Italian, he has said he doesn’t know Italian that well.",
+      "",
+      "## Communication and Communication Strategy",
+      "**Verbal / non-verbal:** Verbal communication in English, with some knowledge of Italian.",
+    ].join("\n");
+
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: content,
+      professionalContext,
+      deferApprovalGate: true,
+    });
+
+    expect(runtime.failures.flatMap((failure) => failure.details ?? []))
+      .toEqual(expect.arrayContaining([expect.stringContaining("care_plan_identity_language_consistency")]));
+  });
+
+  it("blocks clinical case-history material in care-plan History and Background", () => {
+    const blueprint = getRegistryEntry("care_plan") as any;
+    const contract = { blueprint, sections: blueprint.sections ?? [], template: null, mode: "create" } as BlueprintExecutionContract;
+    const professionalContext = compileProfessionalExecutionContext({
+      userRequest: "Create a care plan for Micheal Rocca.",
+      manifest: manifest({ blueprintId: "care_plan", canonicalIntent: "care_plan.create" }),
+      blueprint,
+      blueprintContract: contract,
+      subjectParticipantIds: ["participant-micheal"],
+    });
+    const runtime = validateBlueprintRuntimeCompletion({
+      contract,
+      contentMarkdown: [
+        "## History and Background",
+        "From infancy he was reported to be hyperactive with a short attention span, and during school years he demonstrated aggression, oppositional behaviour, property damage and self-harm.",
+      ].join("\n\n"),
+      professionalContext,
+      deferApprovalGate: true,
+    });
+
+    expect(runtime.failures.flatMap((failure) => failure.details ?? []))
+      .toEqual(expect.arrayContaining([expect.stringContaining("care_plan_history_not_clinical_case_history")]));
+  });
+
+  it("keeps Disaster Management server-derived fields as the only source of truth", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("Do not add evacuation assistance, medication, equipment, assembly-point or communication requirements that are not recorded in the table.");
+    expect(engine).not.toContain("extractDisasterWorkerStrategy(section.content)");
+    expect(engine).not.toContain("### Participant-Specific Arrangements");
+  });
+
+  it("normalises inline participant evidence-gap fragments such as goal timeframes", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("normaliseParticipantEvidenceGapPhrases");
+    expect(engine).toContain('replace(/\\bBy\\s+not recorded in retrieved evidence\\b/gi, "Timeframe not recorded in retrieved evidence")');
+  });
+
+  it("derives distinct Behavioural Management strategy and worker-action text from BSP quotes", () => {
+    const engine = source("services/unifiedExecutionEngine.ts");
+
+    expect(engine).toContain("deriveBehaviourWorkerAction(candidate)");
+    expect(engine).toContain("Supervised community access near children");
+    expect(engine).not.toContain('return "Follow the cited BSP strategy";');
+  });
+
   it("proves standard reusable care plan assembly has zero surviving model-generated words", () => {
     const blueprint = getRegistryEntry("care_plan");
     if (!blueprint) throw new Error("missing care_plan blueprint");

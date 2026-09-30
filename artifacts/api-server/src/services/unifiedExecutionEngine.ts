@@ -3765,13 +3765,13 @@ function applyDeterministicEvidenceGapReplacements(input: {
 
   for (const section of sections) {
     const previous = section.content;
-    section.content = replaceParticipantModeBracketPlaceholders(section.content);
+    section.content = normaliseParticipantEvidenceGapPhrases(replaceParticipantModeBracketPlaceholders(section.content));
     if (section.content !== previous) {
       replacements.push({
         requirementId: section.requirementId,
         claim: `${section.heading}: bracket placeholder`,
         replacement: DETERMINISTIC_EVIDENCE_GAP_VALUE,
-        reason: "Participant-specific sections must state evidence gaps in plain language instead of bracket placeholders.",
+        reason: "Participant-specific sections must state evidence gaps in plain language instead of bracket placeholders or inline sentence fragments.",
       });
     }
   }
@@ -3790,6 +3790,15 @@ function applyDeterministicEvidenceGapReplacements(input: {
 
 function replaceParticipantModeBracketPlaceholders(content: string): string {
   return content.replace(/\[[^\]\r\n]{1,160}\]/g, DETERMINISTIC_EVIDENCE_GAP_VALUE);
+}
+
+function normaliseParticipantEvidenceGapPhrases(content: string): string {
+  return content
+    .replace(/\bBy\s+not recorded in retrieved evidence\b/gi, "Timeframe not recorded in retrieved evidence")
+    .replace(/\bby\s+not recorded in retrieved evidence\b/g, "timeframe not recorded in retrieved evidence")
+    .replace(/\b(?:on|at|within|before|after)\s+not recorded in retrieved evidence\b/gi, DETERMINISTIC_EVIDENCE_GAP_VALUE)
+    .replace(/\b(?:named|called|known as)\s+not recorded in retrieved evidence\b/gi, DETERMINISTIC_EVIDENCE_GAP_VALUE)
+    .replace(/\s{2,}/g, " ");
 }
 
 function shouldDeterministicallyReplaceValue(requirementId: string, value: string): boolean {
@@ -6163,7 +6172,6 @@ function applyServerDerivedDisasterManagementFields(
     ];
   });
   const sourceNames = Array.from(new Set(Array.from(fields.values()).map((field) => field.documentTitle)));
-  const modelStrategy = extractDisasterWorkerStrategy(section.content);
   const content = [
     "This section records what workers do with Michael in an emergency or evacuation. It supplements, and does not replace, the site emergency plan.",
     sourceNames.length
@@ -6171,7 +6179,7 @@ function applyServerDerivedDisasterManagementFields(
       : "Source risk assessment: not recorded in retrieved evidence.",
     renderMarkdownRows(["Field", "Recorded value", "Chunk ID"], rows),
     "**Worker strategy:**",
-    modelStrategy || defaultDisasterWorkerStrategy(fields),
+    defaultDisasterWorkerStrategy(fields),
   ].join("\n\n");
   return {
     ...section,
@@ -6268,21 +6276,15 @@ function extractPassageAroundTerms(text: string, terms: string[]): string | null
   return null;
 }
 
-function extractDisasterWorkerStrategy(content: string): string {
-  return content
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter((block) => block && !/\[[^\]]+\]/.test(block))
-    .filter((block) => !/^\*\*(?:evacuation assistance|required|assembly point|equipment|communication|medications|who to notify)/i.test(block))
-    .filter((block) => !/^This section records what workers do/i.test(block))
-    .slice(-3)
-    .join("\n\n");
-}
-
 function defaultDisasterWorkerStrategy(fields: Map<FireRiskField, DerivedFireRiskField>): string {
   const equipment = fields.get("Equipment present")?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE;
-  const communication = fields.get("Communication approach")?.value ?? "clear, calm verbal instructions";
-  return `In an emergency, call 000 first, use ${communication}, maintain clear access to exits, take available emergency equipment recorded in the fire risk assessment (${equipment}), and notify the on-call service manager after immediate safety actions are underway.`;
+  const communication = fields.get("Communication approach")?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  const evacuation = fields.get("Evacuation assistance required")?.value ?? DETERMINISTIC_EVIDENCE_GAP_VALUE;
+  return [
+    "In any emergency, worker priority is immediate safety. Call 000 first, maintain clear access to exits, and notify the on-call service manager after immediate safety actions are underway.",
+    `Use only the recorded disaster-management values above: evacuation assistance required = ${evacuation}; communication approach = ${communication}; equipment present = ${equipment}.`,
+    "Do not add evacuation assistance, medication, equipment, assembly-point or communication requirements that are not recorded in the table.",
+  ].join(" ");
 }
 
 type BehaviourStrategyFold = "Proactive" | "Reactive" | "Protective";
@@ -6364,7 +6366,7 @@ function deriveBehaviourStrategiesFromBsp(evidencePack: EvidencePack | undefined
         fold: classifyBehaviourStrategyFold(candidate),
         trigger,
         strategy: deriveBehaviourStrategyLabel(candidate),
-        workerAction: candidate,
+        workerAction: deriveBehaviourWorkerAction(candidate),
         chunkId: chunk.chunkId,
         documentTitle: chunk.sourceTitle,
         passage: candidate,
@@ -6447,12 +6449,43 @@ function isRenderableBehaviourTrigger(trigger: string): boolean {
 }
 
 function deriveBehaviourStrategyLabel(sentence: string): string {
+  if (/\bchildren\b/i.test(sentence)) return "Supervised community access near children";
+  if (/\bpost-incident\b/i.test(sentence)) return "Post-incident reflection after calm";
+  if (/\b(?:public vs private|community expectations|legal expectations|appropriate behaviour)\b/i.test(sentence)) return "Teach public and private behaviour boundaries";
   if (/\bde-escalat|calm|grounding\b/i.test(sentence)) return "Use calming and de-escalation strategies";
   if (/\bredirect\b/i.test(sentence)) return "Redirect to a safer or more appropriate activity";
   if (/\bpraise|validate|encourage\b/i.test(sentence)) return "Use praise, validation and encouragement";
   if (/\broutine|visual|structure\b/i.test(sentence)) return "Maintain predictable structure and visual supports";
   if (/\bwithdraw|safe distance|risk of harm\b/i.test(sentence)) return "Maintain safety and withdraw to a safe distance";
-  return "Follow the cited BSP strategy";
+  return "Apply the cited behaviour support strategy";
+}
+
+function deriveBehaviourWorkerAction(sentence: string): string {
+  if (/\bchildren\b/i.test(sentence)) {
+    return "Plan and supervise community access so Michael is supported in environments where children may be present; redirect or leave if risk increases.";
+  }
+  if (/\bpost-incident\b/i.test(sentence)) {
+    return "Wait until Michael is calm, then briefly reflect on what happened, validate feelings, and identify one practical next step for next time.";
+  }
+  if (/\b(?:public vs private|community expectations|legal expectations|appropriate behaviour)\b/i.test(sentence)) {
+    return "Use short, concrete prompts to remind Michael which behaviours are private, which are public, and what the immediate safer option is.";
+  }
+  if (/\bde-escalat|calm|grounding\b/i.test(sentence)) {
+    return "Reduce demands, use calm short statements, offer space, and continue only when Michael is settled.";
+  }
+  if (/\bredirect\b/i.test(sentence)) {
+    return "Redirect Michael to a safer activity or topic and remove avoidable triggers where this can be done safely.";
+  }
+  if (/\bpraise|validate|encourage\b/i.test(sentence)) {
+    return "Use specific praise and validation when Michael uses the target behaviour, and keep feedback immediate and concrete.";
+  }
+  if (/\broutine|visual|structure\b/i.test(sentence)) {
+    return "Keep the routine predictable, give one step at a time, and use visual or concrete prompts where available.";
+  }
+  if (/\bwithdraw|safe distance|risk of harm\b/i.test(sentence)) {
+    return "Move to a safe distance, reduce interaction, protect immediate safety, and escalate according to incident procedures.";
+  }
+  return "Translate the cited BSP instruction into a short, concrete prompt or environmental adjustment during the shift.";
 }
 
 function sentenceCase(value: string): string {
