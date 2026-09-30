@@ -52,6 +52,12 @@ export interface AutoDispatchInput {
    * Omitting this field is allowed for backward compatibility.
    */
   laneContext?: ExecutionLaneContext;
+  /**
+   * Optional participant subject binding inherited from the current/focused
+   * conversation task. Prevents a follow-on participant task from silently
+   * dropping the selected participant.
+   */
+  subjectParticipantIds?: string[];
 }
 
 export interface AutoDispatchResult {
@@ -100,6 +106,7 @@ export async function autoCreateAndDispatch(
     conversationId,
     idempotencyKey:    input.idempotencyKey ?? `cos_auto_dispatch:${conversationId}:${proposedTask.title.trim().toLowerCase()}`,
     sourceUserRequest: proposedTask.sourceUserRequest,
+    subjectParticipantIds: input.subjectParticipantIds,
   });
 
   const { task, plan } = result;

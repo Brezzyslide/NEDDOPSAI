@@ -33,9 +33,11 @@ import {
   recordClarificationAnswer,
   beginResume,
 } from "./executionCheckpointService.js";
-import { resumeFromCheckpointById } from "./executionCoordinatorService.js";
+import { dispatchWorkExecution, resumeFromCheckpointById } from "./executionCoordinatorService.js";
 import { autoCreateAndDispatch } from "./autoDispatchService.js";
 import { logOrgEvent } from "./auditService.js";
+import { getTaskById, transitionTaskState } from "./taskService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import type { ProcessMessageResult } from "./conversationService.js";
 import type { ConversationUnderstanding, StructuredContent } from "./conversationIntelligenceService.js";
 import {
@@ -228,6 +230,13 @@ function isCurrentTaskQuestion(text: string): boolean {
     || /\bwhat are we working on\b/i.test(text);
 }
 
+function isEvidenceRequiredResumeReply(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return /^(done|ready|ok|okay|yes|yep|yeah|confirmed|approved|continue|resume|proceed|try again|retry|rerun)$/i.test(normalized)
+    || /\b(i'?ve|i have|we have).*(done|linked|uploaded|approved|added|provided)\b/i.test(text)
+    || /\b(continue|resume|proceed|try again|retry|rerun)\b/i.test(text);
+}
+
 function formatStatusResponse(task: { title: string; currentState: string; metadata?: Record<string, unknown> | null }, text: string): string {
   const label = taskStateLabel(task.currentState);
   const failure = extractFailureMessage(task);
@@ -270,6 +279,118 @@ function formatStatusResponse(task: { title: string; currentState: string; metad
     return `The task "${task.title}" is failed. Latest failure: ${failure}`;
   }
   return `The task "${task.title}" is currently ${label}.`;
+}
+
+async function getFocusedEvidenceRequiredTask(input: {
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+}): Promise<Awaited<ReturnType<typeof getTaskById>> | null> {
+  const focus = await getConversationFocus({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+  }).catch(() => null);
+  const candidateIds = [
+    input.taskId,
+    focus?.taskId,
+  ].filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  for (const candidateId of candidateIds) {
+    const task = await getTaskById(candidateId, input.organizationId).catch(() => undefined);
+    if (task?.currentState === "evidence_required") return task;
+  }
+  return null;
+}
+
+async function getFocusedSubjectParticipantIds(input: {
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+}): Promise<string[]> {
+  const focus = await getConversationFocus({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+  }).catch(() => null);
+  const candidateIds = [
+    input.taskId,
+    focus?.taskId,
+  ].filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  for (const candidateId of candidateIds) {
+    const ids = await getRetrievalSubjectParticipantIdsForTask(input.organizationId, candidateId).catch(() => []);
+    if (ids.length > 0) return ids;
+  }
+  return [];
+}
+
+async function maybeResumeEvidenceRequiredTask(input: {
+  content: string;
+  organizationId: string;
+  conversationId: string;
+  taskId?: string;
+  userId: string;
+  idempotencyKey?: string;
+}): Promise<ProcessMessageResult | null> {
+  if (!isEvidenceRequiredResumeReply(input.content)) return null;
+
+  const task = await getFocusedEvidenceRequiredTask(input);
+  if (!task) return null;
+
+  const metadata = taskMetadataRecord(task.metadata);
+  const taskCreation = metadataObject(metadata.taskCreation);
+  const sourceUserRequest = typeof taskCreation?.sourceUserRequest === "string"
+    ? taskCreation.sourceUserRequest
+    : task.title;
+
+  await transitionTaskState(task.id, input.organizationId, "queued", {
+    metadata: {
+      ...metadata,
+      evidenceRequiredResume: {
+        resumedAt: new Date().toISOString(),
+        resumedBy: input.userId,
+        conversationId: input.conversationId,
+      },
+    },
+  });
+
+  dispatchWorkExecution({
+    organizationId: input.organizationId,
+    requesterId: input.userId,
+    taskId: task.id,
+    taskTitle: task.title,
+    taskDescription: task.description ?? undefined,
+    sourceUserRequest,
+    conversationId: input.conversationId,
+  }).catch(err =>
+    console.warn("[MessageIngress] Evidence-required task resume dispatch failed (non-fatal):", err?.message),
+  );
+
+  await logOrgEvent({
+    eventType: "message_ingress.evidence_required_task_resumed",
+    organizationId: input.organizationId,
+    actorType: "user",
+    actorUserId: input.userId,
+    resourceType: "task",
+    resourceId: task.id,
+    metadata: {
+      conversationId: input.conversationId,
+      previousState: task.currentState,
+    },
+  }).catch(() => {});
+
+  return addControlMessages({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    taskId: task.id,
+    userId: input.userId,
+    content: input.content,
+    response: `Received. I am resuming "${task.title}" with the existing participant context.`,
+    idempotencyKey: input.idempotencyKey,
+    mode: "task_followup",
+    action: "resume",
+    confidence: 0.99,
+    messageType: "execution_update",
+  });
 }
 
 // ─── Main entry-point ─────────────────────────────────────────────────────────
@@ -326,6 +447,18 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   // ── 2. Check for active durable checkpoint ────────────────────────────────
 
   const controlIntent = classifyCanonicalConversationAction(content);
+  const evidenceResumeResult = await maybeResumeEvidenceRequiredTask({
+    content,
+    organizationId,
+    conversationId,
+    taskId,
+    userId,
+    idempotencyKey: input.idempotencyKey,
+  });
+  if (evidenceResumeResult) {
+    return { type: "normal", result: evidenceResumeResult, conversationId };
+  }
+
   const pendingConfirmation = controlIntent === "STATUS_QUERY"
     ? null
     : (
@@ -717,12 +850,18 @@ async function maybeHandlePendingConfirmation(input: {
   }
 
   if (answer.kind === "confirm" && input.confirmation.action === "NEW_TASK" && input.confirmation.proposedTask) {
+    const inheritedSubjectParticipantIds = await getFocusedSubjectParticipantIds({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.taskId,
+    });
     const created = await autoCreateAndDispatch({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       requesterId: input.userId,
       idempotencyKey: `conversation_confirmation:${input.confirmation.id}`,
       proposedTask: input.confirmation.proposedTask,
+      subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined,
     });
     await markConversationConfirmationResolved({
       organizationId: input.organizationId,

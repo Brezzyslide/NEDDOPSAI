@@ -296,6 +296,19 @@ export function validateWorkPackage(
 
   // Memory types (always from manifest — memories are not in the evidence pack)
   const memoryTypes = new Set(manifest.cosMemories.map(m => m.memoryType));
+  const participantEvidencePresentForThreshold =
+    retrievedAllTypes.has("participant_document") ||
+    retrievedAllTypes.has("participant_record") ||
+    retrievedAllTypes.has("entity_knowledge") ||
+    manifest.entityKnowledge?.participant != null;
+  const substantiveProfessionalSourcePresentForThreshold =
+    blueprint?.code === "care_plan"
+      ? carePlanSubstantiveProfessionalSourcePresent(evidencePack)
+      : retrievedEvidenceCount > 0 || manifest.taskUploads.length > 0;
+  const participantEvidenceThresholdMet =
+    participantSpecificMode &&
+    participantEvidencePresentForThreshold &&
+    substantiveProfessionalSourcePresentForThreshold;
 
   const issues: ValidationIssue[] = [];
   const conflictingItems: string[] = [];
@@ -323,6 +336,19 @@ export function validateWorkPackage(
       memoryTypes,
       manifest,
     );
+
+    if (evalResult.unimplemented) {
+      issues.push({
+        rule: `unimplemented:${rule.rule}`,
+        level: "warning",
+        message: `Blueprint validation rule "${rule.rule}" is declared${rule.required ? " as mandatory" : ""} but has no runtime implementation.`,
+        details: [
+          rule.description,
+          ...(evalResult.details ?? []),
+        ],
+      });
+      continue;
+    }
 
     if (standardReusableRelaxed) {
       issues.push({
@@ -470,21 +496,26 @@ export function validateWorkPackage(
   for (const rawType of blueprint.requiredMemories ?? []) {
     const canonical = canonicaliseMemoryType(rawType);
     if (!memoryTypes.has(rawType) && !memoryTypes.has(canonical)) {
+      const memoryBlocksParticipantWork = participantSpecificMode && !participantEvidenceThresholdMet;
       issues.push({
         rule: "required_memory",
-        level: participantSpecificMode ? "error" : "warning",
-        message: `No approved ${memoryTypeDisplayLabel(rawType)} memory found for this work.`,
+        level: memoryBlocksParticipantWork ? "error" : "warning",
+        message: memoryBlocksParticipantWork
+          ? `No approved ${memoryTypeDisplayLabel(rawType)} memory found for this work.`
+          : `No approved ${memoryTypeDisplayLabel(rawType)} memory found; proceeding with available participant evidence and noting the missing organisational context.`,
         details: [memoryTypeDisplayLabel(rawType)],
       });
 
       upsertMissing({
         canonicalType: `memory:${canonical}`,
         displayLabel: memoryTypeDisplayLabel(rawType),
-        required: participantSpecificMode,
-        reason: `Blueprint recommends approved ${memoryTypeDisplayLabel(rawType)} memory for this type of work`,
+        required: memoryBlocksParticipantWork,
+        reason: memoryBlocksParticipantWork
+          ? `Blueprint recommends approved ${memoryTypeDisplayLabel(rawType)} memory for this type of work`
+          : `Blueprint recommends approved ${memoryTypeDisplayLabel(rawType)} memory, but memory is organisational context and does not block participant-specific work once participant evidence threshold is met`,
         searched: true,
         searchOutcome: "not_found",
-        suggestedAction: participantSpecificMode ? "upload_document" : "proceed_without",
+        suggestedAction: memoryBlocksParticipantWork ? "approve_existing" : "proceed_without",
       });
     }
   }
@@ -663,6 +694,11 @@ function carePlanSubstantiveProfessionalSourcePresent(evidencePack?: EvidencePac
 
 interface RuleEvalResult {
   passed: boolean;
+  /**
+   * The blueprint declares this rule, but the runtime does not yet implement a
+   * mechanical check for it. Surface this honestly; do not silently pass it.
+   */
+  unimplemented?: boolean;
   /** Canonical type of the primary missing requirement (for MissingEvidenceItem) */
   missingCanonicalType?: string;
   details?: string[];
@@ -752,8 +788,11 @@ function evaluateRule(
       };
 
     default:
-      // Unknown rule — pass by default (don't block on unrecognised rules)
-      return { passed: true };
+      return {
+        passed: false,
+        unimplemented: true,
+        details: ["No deterministic runtime check is registered for this validation rule."],
+      };
   }
 }
 
@@ -814,9 +853,34 @@ export function buildClarificationMessage(
   // ── Required blockers ─────────────────────────────────────────────────────
   const orgBlockers = blockers.filter(m => m.suggestedAction !== "platform_limitation");
   if (orgBlockers.length > 0) {
+    const memoryBlockers = orgBlockers.filter(m => m.canonicalType.startsWith("memory:"));
+    const documentBlockers = orgBlockers.filter(m => !m.canonicalType.startsWith("memory:"));
+    if (memoryBlockers.length > 0) {
+      if (memoryBlockers.length === 1) {
+        const item = memoryBlockers[0]!;
+        parts.push(
+          `This work is missing approved ${item.displayLabel} organisational memory required by the selected Blueprint.`,
+        );
+        parts.push(
+          `Please approve or create the ${item.displayLabel} memory, or confirm the task should proceed without that organisational preference where allowed.`,
+        );
+      } else {
+        const labels = memoryBlockers.map(m => m.displayLabel);
+        parts.push(
+          `This work is missing the following approved organisational memories:\n\n` +
+          labels.map(l => `• ${l}`).join("\n"),
+        );
+        parts.push(
+          `Please approve or create these memories, or confirm the task should proceed without those organisational preferences where allowed.`,
+        );
+      }
+    }
+    if (documentBlockers.length === 0) {
+      // Memory blockers are handled above; do not describe them as documents.
+    } else
     if (evidenceSearched) {
-      if (orgBlockers.length === 1) {
-        const item = orgBlockers[0]!;
+      if (documentBlockers.length === 1) {
+        const item = documentBlockers[0]!;
         parts.push(
           `I searched your approved Organisation Library but could not locate a current ${item.displayLabel} required for this work.`,
         );
@@ -824,7 +888,7 @@ export function buildClarificationMessage(
           `Please upload or approve a ${item.displayLabel}, or confirm that another approved document should be used instead.`,
         );
       } else {
-        const labels = orgBlockers.map(m => m.displayLabel);
+        const labels = documentBlockers.map(m => m.displayLabel);
         parts.push(
           `I searched your approved Organisation Library but could not locate the following required documents:\n\n` +
           labels.map(l => `• ${l}`).join("\n"),
@@ -834,8 +898,8 @@ export function buildClarificationMessage(
         );
       }
     } else {
-      const labels = orgBlockers.map(m => m.displayLabel);
-      if (orgBlockers.length === 1) {
+      const labels = documentBlockers.map(m => m.displayLabel);
+      if (documentBlockers.length === 1) {
         parts.push(
           `This work requires a ${labels[0]} to proceed. Please upload or approve the relevant document.`,
         );

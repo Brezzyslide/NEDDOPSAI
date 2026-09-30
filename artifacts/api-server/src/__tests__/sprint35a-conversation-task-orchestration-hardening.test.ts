@@ -953,6 +953,40 @@ describe("Sprint 35A conversational task-orchestration hardening", () => {
     expect(validation).toContain("No retrieved evidence reached the runtime EvidencePack.");
   });
 
+  it("bare confirmations resume focused evidence-required tasks before pending task confirmations", () => {
+    const ingress = source("services/messageIngressService.ts");
+    const pendingIndex = ingress.indexOf("const pendingConfirmation = controlIntent === \"STATUS_QUERY\"");
+    const resumeIndex = ingress.indexOf("const evidenceResumeResult = await maybeResumeEvidenceRequiredTask");
+
+    expect(resumeIndex).toBeGreaterThanOrEqual(0);
+    expect(pendingIndex).toBeGreaterThanOrEqual(0);
+    expect(resumeIndex).toBeLessThan(pendingIndex);
+    expect(ingress).toContain("transitionTaskState(task.id, input.organizationId, \"queued\"");
+    expect(ingress).toContain("dispatchWorkExecution({");
+    expect(ingress).toContain("message_ingress.evidence_required_task_resumed");
+  });
+
+  it("confirmed follow-on tasks inherit focused subject participant bindings", () => {
+    const ingress = source("services/messageIngressService.ts");
+    const autoDispatch = source("services/autoDispatchService.ts");
+
+    expect(ingress).toContain("getFocusedSubjectParticipantIds");
+    expect(ingress).toContain("getRetrievalSubjectParticipantIdsForTask");
+    expect(ingress).toContain("subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined");
+    expect(autoDispatch).toContain("subjectParticipantIds?: string[]");
+    expect(autoDispatch).toContain("subjectParticipantIds: input.subjectParticipantIds");
+  });
+
+  it("participant care plans do not block on organisational memory once evidence threshold is met", () => {
+    const validation = source("services/workValidationService.ts");
+
+    expect(validation).toContain("participantEvidenceThresholdMet");
+    expect(validation).toContain("const memoryBlocksParticipantWork = participantSpecificMode && !participantEvidenceThresholdMet");
+    expect(validation).toContain("proceeding with available participant evidence and noting the missing organisational context");
+    expect(validation).toContain("unimplemented: true");
+    expect(validation).toContain("Blueprint validation rule");
+  });
+
   it("action-state grounding queries persisted task state and exposes it to the CoS prompt", () => {
     const actionState = source("services/conversationActionStateService.ts");
 
