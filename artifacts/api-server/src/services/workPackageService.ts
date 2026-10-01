@@ -27,7 +27,7 @@ import {
   type ManifestPerformanceMetrics,
   type ManifestFailureInfo,
 } from "@workspace/db";
-import { eq, and, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull } from "drizzle-orm";
 import type { WorkBlueprint } from "./workBlueprintService.js";
 
 type DbClient = typeof db;
@@ -300,7 +300,27 @@ export async function assembleWorkPackage(
 
   // ── Retrieve task uploads ────────────────────────────────────────────────
   let taskUploads: ManifestLibrarySource[] = [];
-  if (taskUploadSourceIds.length > 0) {
+  const effectiveTaskUploadSourceIds = new Set(taskUploadSourceIds);
+  if (input.conversationId) {
+    const conversationUploads = await withWorkPackageTenant(
+      organizationId,
+      "work_package.task_uploads.conversation_lookup",
+      async (client) => client.select({ id: knowledgeSourcesTable.id })
+        .from(knowledgeSourcesTable)
+        .where(and(
+          eq(knowledgeSourcesTable.organizationId, organizationId),
+          eq(knowledgeSourcesTable.sourceScope, "task"),
+          eq(knowledgeSourcesTable.taskId, input.conversationId!),
+          eq(knowledgeSourcesTable.status, "approved"),
+          eq(knowledgeSourcesTable.isCurrent, true),
+          isNull(knowledgeSourcesTable.deletedAt),
+        )),
+    );
+    for (const upload of conversationUploads) effectiveTaskUploadSourceIds.add(upload.id);
+  }
+
+  const resolvedTaskUploadSourceIds = [...effectiveTaskUploadSourceIds];
+  if (resolvedTaskUploadSourceIds.length > 0) {
     const _uploadFields = {
       id: knowledgeSourcesTable.id,
       title: knowledgeSourcesTable.title,
@@ -315,7 +335,7 @@ export async function assembleWorkPackage(
         and(
           eq(knowledgeSourcesTable.organizationId, organizationId),
           eq(knowledgeSourcesTable.sourceScope, "task"),
-          inArray(knowledgeSourcesTable.id, taskUploadSourceIds),
+          inArray(knowledgeSourcesTable.id, resolvedTaskUploadSourceIds),
         )
       ));
 

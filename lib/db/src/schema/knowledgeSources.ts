@@ -280,6 +280,7 @@ export const KNOWLEDGE_SOURCE_TYPES = [
   "connected_document",
   "reference_material",
   "task_upload",
+  "provider_stated",
 ] as const;
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
 

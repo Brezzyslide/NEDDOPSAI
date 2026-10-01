@@ -9,6 +9,7 @@
  */
 
 import { Router } from "express";
+import { createHash, randomUUID } from "crypto";
 import { requireAuth, resolveTenantFromSlug } from "../../middlewares/tenantContext.js";
 import * as conversationService from "../../services/conversationService.js";
 import * as taskService from "../../services/taskService.js";
@@ -18,8 +19,13 @@ import { listCompletedWork, getCompletedWork } from "../../services/completedWor
 import { listCompletedWorkGeneratedArtifacts } from "../../services/completedWorkArtifactService.js";
 import * as auditService from "../../services/auditService.js";
 import { handleIncomingMessage } from "../../services/messageIngressService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "../../services/taskParticipantService.js";
 import {
   approvalsTable,
+  knowledgeChunksTable,
+  knowledgeSourceScopesTable,
+  knowledgeSourcesTable,
+  knowledgeSourceVersionsTable,
   workArtifactsTable,
   withTenantContext,
 } from "@workspace/db";
@@ -27,6 +33,58 @@ import { eq, and, desc } from "drizzle-orm";
 import type { TaskState } from "@workspace/shared";
 
 const router = Router({ mergeParams: true });
+
+function displayNameForUser(user: any): string {
+  const name = String(user?.displayName ?? "").trim()
+    || [user?.firstName, user?.lastName].map(v => String(v ?? "").trim()).filter(Boolean).join(" ")
+    || String(user?.email ?? "").trim();
+  return name || "Provider";
+}
+
+function displayRole(role: string | undefined): string {
+  const raw = String(role ?? "provider").replace(/_/g, " ").trim();
+  return raw.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatProviderStatementDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(date);
+}
+
+function cleanStatementField(value: unknown, max: number): string {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function buildProviderStatementText(input: {
+  authorName: string;
+  authorRole: string;
+  dateLabel: string;
+  sectionCode: string;
+  sectionTitle: string;
+  gapDescription: string;
+  missingDocument: string;
+  text: string;
+  evidenceClass: "PROVIDER_STATED" | "PARTICIPANT_STATED";
+}): string {
+  const statementKind = input.evidenceClass === "PARTICIPANT_STATED"
+    ? "Participant-stated information relayed by provider"
+    : "Provider-stated information";
+  return [
+    statementKind,
+    `Advised by ${input.authorName}, ${input.authorRole}, ${input.dateLabel}.`,
+    `Section: ${input.sectionTitle || input.sectionCode}`,
+    `Section code: ${input.sectionCode}`,
+    `Gap addressed: ${input.gapDescription}`,
+    `Document that would close the gap: ${input.missingDocument}`,
+    "",
+    "Statement:",
+    input.text,
+  ].join("\n");
+}
 
 // ─── Get workroom (conversation + task detail for the full workroom page) ──────
 router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
@@ -45,6 +103,7 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
     const conv = await conversationService.getOrCreateWorkroom(ctx.tenantId, taskId, user.id);
     const messages = await conversationService.getMessages(ctx.tenantId, conv.id, { limit: 100 });
     const unreadCount = await conversationService.getUnreadCount(ctx.tenantId, conv.id, user.id);
+    const subjectParticipantIds = await getRetrievalSubjectParticipantIdsForTask(ctx.tenantId, taskId).catch(() => []);
     const taskMetadata = (task.metadata as Record<string, unknown> | null) ?? {};
     const completedWorkIds = new Set<string>();
     const executionCompletion = taskMetadata.executionCompletion as Record<string, unknown> | undefined;
@@ -98,8 +157,258 @@ router.get("/workroom", requireAuth, resolveTenantFromSlug, async (req, res, nex
       unreadCount,
       pendingApproval: approval ?? null,
       completedWork: completedWork.filter(Boolean),
+      providerContribution: {
+        subjectParticipantIds,
+        enabled: subjectParticipantIds.length > 0,
+      },
     });
   } catch (err) { next(err); }
+});
+
+// ─── Add participant-scoped provider statement evidence ───────────────────────
+router.post("/provider-statements", requireAuth, resolveTenantFromSlug, async (req, res, next) => {
+  try {
+    const ctx = req.tenantContext!;
+    const user = req.appUser!;
+    const { taskId } = req.params as { taskId: string };
+    const {
+      participantId,
+      sectionCode,
+      sectionTitle,
+      gapDescription,
+      missingDocument,
+      text,
+      participantStated,
+    } = req.body as Record<string, unknown>;
+
+    const task = await taskService.getTaskById(taskId, ctx.tenantId);
+    if (!task) {
+      res.status(404).json({ error: { code: "RESOURCE_NOT_FOUND", message: "Task not found." } });
+      return;
+    }
+
+    const subjectParticipantIds = await getRetrievalSubjectParticipantIdsForTask(ctx.tenantId, taskId);
+    const targetParticipantId = cleanStatementField(participantId, 100) || (subjectParticipantIds.length === 1 ? subjectParticipantIds[0]! : "");
+    if (!targetParticipantId || !subjectParticipantIds.includes(targetParticipantId)) {
+      res.status(400).json({
+        error: {
+          code: "PARTICIPANT_REQUIRED",
+          message: "Choose the task's subject participant before adding provider-stated evidence.",
+        },
+      });
+      return;
+    }
+
+    const bodyText = String(text ?? "").trim();
+    if (bodyText.length < 10) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Provider statement must be at least 10 characters." } });
+      return;
+    }
+    if (bodyText.length > 6000) {
+      res.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Provider statement must be 6000 characters or less." } });
+      return;
+    }
+
+    const cleanSectionCode = cleanStatementField(sectionCode, 120);
+    const cleanSectionTitle = cleanStatementField(sectionTitle, 180) || cleanSectionCode;
+    const cleanGap = cleanStatementField(gapDescription, 500);
+    const cleanMissingDocument = cleanStatementField(missingDocument, 240);
+    if (!cleanSectionCode || !cleanGap || !cleanMissingDocument) {
+      res.status(400).json({
+        error: {
+          code: "TARGETED_GAP_REQUIRED",
+          message: "Provider statements must name the section, the gap, and the document that would close it.",
+        },
+      });
+      return;
+    }
+
+    const now = new Date();
+    const sourceId = randomUUID();
+    const versionId = randomUUID();
+    const chunkId = randomUUID();
+    const scopeId = randomUUID();
+    const authorName = displayNameForUser(user);
+    const authorRole = displayRole(ctx.role);
+    const dateLabel = formatProviderStatementDate(now);
+    const evidenceClass = participantStated === true ? "PARTICIPANT_STATED" : "PROVIDER_STATED";
+    const statementText = buildProviderStatementText({
+      authorName,
+      authorRole,
+      dateLabel,
+      sectionCode: cleanSectionCode,
+      sectionTitle: cleanSectionTitle,
+      gapDescription: cleanGap,
+      missingDocument: cleanMissingDocument,
+      text: bodyText,
+      evidenceClass,
+    });
+    const sourceTitle = `Advised by ${authorName}, ${authorRole}, ${dateLabel}`;
+
+    await withTenantContext(
+      { tenantId: ctx.tenantId, userId: user.id, purpose: "provider_statement.create" },
+      async (tx) => {
+        await tx.insert(knowledgeSourcesTable).values({
+          id: sourceId,
+          organizationId: ctx.tenantId,
+          sourceScope: "library",
+          taskId: null,
+          title: sourceTitle,
+          canonicalTitle: sourceTitle,
+          description: `Provider statement for ${cleanSectionTitle}: ${cleanGap}`,
+          sourceType: "provider_stated",
+          documentCategory: "provider_stated",
+          evidenceClass,
+          originalFileName: null,
+          mimeType: "text/plain",
+          storageProvider: "local",
+          storageKey: null,
+          checksum: createHash("sha256").update(statementText, "utf8").digest("hex"),
+          fileSize: Buffer.byteLength(statementText, "utf8"),
+          language: "en-AU",
+          status: "approved",
+          authorityLevel: "reference_only",
+          sensitivityClassification: "confidential",
+          effectiveFrom: now,
+          effectiveTo: null,
+          versionLabel: "1.0",
+          isCurrent: true,
+          uploadedByUserId: user.id,
+          approvedByUserId: user.id,
+          approvedAt: now,
+          searchAliases: [cleanSectionTitle, cleanSectionCode, cleanMissingDocument, cleanGap],
+          createdAt: now,
+          updatedAt: now,
+        } as never);
+
+        await tx.insert(knowledgeSourceVersionsTable).values({
+          id: versionId,
+          knowledgeSourceId: sourceId,
+          organizationId: ctx.tenantId,
+          versionLabel: "1.0",
+          checksum: createHash("sha256").update(statementText, "utf8").digest("hex"),
+          storageKey: null,
+          storageProvider: "local",
+          fileSize: Buffer.byteLength(statementText, "utf8"),
+          mimeType: "text/plain",
+          originalFileName: null,
+          isCurrent: true,
+          status: "approved",
+          effectiveFrom: now,
+          effectiveTo: null,
+          uploadedByUserId: user.id,
+          approvedByUserId: user.id,
+          approvedAt: now,
+          ingestionStatus: "complete",
+          ingestionMetadata: {
+            providerStatement: true,
+            participantId: targetParticipantId,
+            taskId,
+            sectionCode: cleanSectionCode,
+            sectionTitle: cleanSectionTitle,
+            gapDescription: cleanGap,
+            missingDocument: cleanMissingDocument,
+            authorName,
+            authorRole,
+            advisedAt: now.toISOString(),
+            evidenceClass,
+          },
+          createdAt: now,
+          updatedAt: now,
+        } as never);
+
+        await tx.insert(knowledgeChunksTable).values({
+          id: chunkId,
+          organizationId: ctx.tenantId,
+          knowledgeSourceId: sourceId,
+          sourceVersionId: versionId,
+          chunkIndex: 0,
+          sectionTitle: cleanSectionTitle,
+          pageNumber: null,
+          headingPath: `Provider statement > ${cleanSectionTitle}`,
+          text: statementText,
+          tokenCount: Math.ceil(statementText.length / 4),
+          embedding: null,
+          embeddingModel: null,
+          embeddingDimensions: null,
+          contentHash: createHash("sha256").update(statementText, "utf8").digest("hex"),
+          chunkingStrategy: "provider_statement_v1",
+          chunkingStrategyVersion: "1.0.0",
+          createdAt: now,
+        } as never);
+
+        await tx.insert(knowledgeSourceScopesTable).values({
+          id: scopeId,
+          knowledgeSourceId: sourceId,
+          organizationId: ctx.tenantId,
+          scopeType: "entity",
+          scopeId: targetParticipantId,
+          createdAt: now,
+          updatedAt: now,
+        });
+      },
+    );
+
+    const conv = await conversationService.getOrCreateWorkroom(ctx.tenantId, taskId, user.id);
+    const message = await conversationService.addMessage({
+      organizationId: ctx.tenantId,
+      conversationId: conv.id,
+      taskId,
+      senderType: "user",
+      senderUserId: user.id,
+      messageType: "text",
+      content: `Provider statement added for ${cleanSectionTitle}: ${cleanGap}`,
+      structuredContent: {
+        type: "provider_statement_created",
+        data: {
+          sourceId,
+          chunkId,
+          participantId: targetParticipantId,
+          sectionCode: cleanSectionCode,
+          sectionTitle: cleanSectionTitle,
+          gapDescription: cleanGap,
+          missingDocument: cleanMissingDocument,
+          evidenceClass,
+          citation: sourceTitle,
+        },
+      },
+    });
+
+    await auditService.writeAuditEvent({
+      organizationId: ctx.tenantId,
+      actorUserId: user.id,
+      eventType: "provider_statement.created",
+      resourceType: "knowledge_source",
+      resourceId: sourceId,
+      metadata: {
+        taskId,
+        participantId: targetParticipantId,
+        sectionCode: cleanSectionCode,
+        sectionTitle: cleanSectionTitle,
+        gapDescription: cleanGap,
+        missingDocument: cleanMissingDocument,
+        evidenceClass,
+      },
+      ...auditService.getRequestMeta(req),
+    }).catch(() => {});
+
+    res.status(201).json({
+      providerStatement: {
+        sourceId,
+        chunkId,
+        participantId: targetParticipantId,
+        sectionCode: cleanSectionCode,
+        sectionTitle: cleanSectionTitle,
+        gapDescription: cleanGap,
+        missingDocument: cleanMissingDocument,
+        evidenceClass,
+        citation: sourceTitle,
+      },
+      message,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── Post message to task workroom ────────────────────────────────────────────

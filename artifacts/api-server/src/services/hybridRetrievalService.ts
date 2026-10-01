@@ -296,7 +296,7 @@ function buildScopeClause(
       if (entityIds.length === 0) return "AND 1=0";
       const safeIds = entityIds.map(id => `'${id.replace(/'/g, "''")}'`).join(", ");
       return `AND ks.source_scope = 'library'
-              AND ks.source_type = 'participant_document'
+              AND ks.source_type IN ('participant_document', 'provider_stated')
               AND EXISTS (
                 SELECT 1 FROM knowledge_source_scopes kss
                 WHERE kss.knowledge_source_id = ks.id

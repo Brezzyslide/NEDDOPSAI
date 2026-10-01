@@ -280,7 +280,9 @@ describe("Sprint 29N.10 Part F — Dashboard active work uses canonical active-e
     expect(taskCentre).toContain('"Awaiting Input"');
     expect(taskCentre).toContain('!["awaiting_approval", "evidence_required"].includes(task.currentState)');
     expect(workroom).toContain('"evidence_required"');
-    expect(workroom).toContain("Provide the requested evidence");
+    expect(workroom).toContain("Provider Evidence");
+    expect(workroom).toContain("Ask a question or use Provider Evidence in the side panel");
+    expect(workroom).not.toContain("Provide the requested evidence");
     expect(inbox).toContain('w.status === "awaiting_approval"');
     expect(inbox).toContain('type: "work_delivered"');
     expect(inbox).toContain("Completed work awaiting your approval");

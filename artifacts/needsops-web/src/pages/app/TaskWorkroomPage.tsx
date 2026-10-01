@@ -161,7 +161,30 @@ interface CompletedWorkSummary {
   generatedArtifacts: GeneratedArtifact[];
 }
 
+interface ProviderContributionContext {
+  enabled: boolean;
+  subjectParticipantIds: string[];
+}
+
+interface ProviderStatementForm {
+  sectionCode: string;
+  sectionTitle: string;
+  gapDescription: string;
+  missingDocument: string;
+  text: string;
+  participantStated: boolean;
+}
+
 // ─── Constants ─────────────────────────────────────────────────────────────────
+
+const INITIAL_PROVIDER_STATEMENT_FORM: ProviderStatementForm = {
+  sectionCode: "",
+  sectionTitle: "",
+  gapDescription: "",
+  missingDocument: "",
+  text: "",
+  participantStated: false,
+};
 
 const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string }> = {
   draft:             { label: "Draft",             cls: "bg-[#1E3A5F] text-[#64748B]",            icon: "◎" },
@@ -476,10 +499,15 @@ function TaskSidePanel({
   plan,
   pendingApproval,
   completedWork,
+  providerContribution,
+  providerStatementForm,
   onCommand,
   commandLoading,
   onDownloadArtifact,
   downloadingArtifactId,
+  onProviderStatementChange,
+  onProviderStatementSubmit,
+  providerStatementSaving,
   orgSlug,
   taskId,
 }: {
@@ -487,10 +515,15 @@ function TaskSidePanel({
   plan: Plan | null;
   pendingApproval: Approval | null;
   completedWork: CompletedWorkSummary[];
+  providerContribution: ProviderContributionContext;
+  providerStatementForm: ProviderStatementForm;
   onCommand: (cmd: string) => void;
   commandLoading: boolean;
   onDownloadArtifact: (work: CompletedWorkSummary, artifact: GeneratedArtifact) => void;
   downloadingArtifactId: string | null;
+  onProviderStatementChange: (patch: Partial<ProviderStatementForm>) => void;
+  onProviderStatementSubmit: () => void;
+  providerStatementSaving: boolean;
   orgSlug: string;
   taskId: string;
 }) {
@@ -499,6 +532,11 @@ function TaskSidePanel({
   const failureReason = task.currentState === "failed"
     ? task.metadata?.executionFailure?.errorMessage
     : null;
+  const canSaveProviderStatement = providerContribution.enabled
+    && providerStatementForm.sectionCode.trim().length > 0
+    && providerStatementForm.gapDescription.trim().length > 0
+    && providerStatementForm.missingDocument.trim().length > 0
+    && providerStatementForm.text.trim().length >= 10;
 
   return (
     <div className="w-80 shrink-0 border-l border-[#1E3A5F] overflow-y-auto bg-[#0A1628] flex flex-col">
@@ -609,6 +647,78 @@ function TaskSidePanel({
         </div>
       )}
 
+      {/* Provider evidence */}
+      <div className="p-4 border-b border-[#1E3A5F]">
+        <p className="text-[#64748B] text-xs uppercase tracking-wider mb-3">Provider Evidence</p>
+        {providerContribution.enabled ? (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <input
+                value={providerStatementForm.sectionCode}
+                onChange={e => onProviderStatementChange({ sectionCode: e.target.value })}
+                placeholder="Section code, e.g. MEALTIME_MANAGEMENT"
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#E2E8F0] placeholder-[#475569] focus:outline-none focus:border-[#00D4FF]/50"
+              />
+              <input
+                value={providerStatementForm.sectionTitle}
+                onChange={e => onProviderStatementChange({ sectionTitle: e.target.value })}
+                placeholder="Section title"
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#E2E8F0] placeholder-[#475569] focus:outline-none focus:border-[#00D4FF]/50"
+              />
+              <textarea
+                value={providerStatementForm.gapDescription}
+                onChange={e => onProviderStatementChange({ gapDescription: e.target.value })}
+                placeholder="Gap this answers, e.g. no mealtime risk assessment on file"
+                rows={2}
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#E2E8F0] placeholder-[#475569] focus:outline-none focus:border-[#00D4FF]/50 resize-none"
+              />
+              <input
+                value={providerStatementForm.missingDocument}
+                onChange={e => onProviderStatementChange({ missingDocument: e.target.value })}
+                placeholder="Document that would close it"
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#E2E8F0] placeholder-[#475569] focus:outline-none focus:border-[#00D4FF]/50"
+              />
+              <textarea
+                value={providerStatementForm.text}
+                onChange={e => onProviderStatementChange({ text: e.target.value })}
+                placeholder="Write what you know. This is saved as attributed evidence."
+                rows={4}
+                className="w-full rounded-lg border border-[#1E3A5F] bg-[#0B1829] px-3 py-2 text-xs text-[#E2E8F0] placeholder-[#475569] focus:outline-none focus:border-[#00D4FF]/50 resize-none"
+              />
+              <label className="flex items-start gap-2 text-xs text-[#94A3B8]">
+                <input
+                  type="checkbox"
+                  checked={providerStatementForm.participantStated}
+                  onChange={e => onProviderStatementChange({ participantStated: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span>This relays what the participant said</span>
+              </label>
+            </div>
+            <button
+              onClick={onProviderStatementSubmit}
+              disabled={!canSaveProviderStatement || providerStatementSaving}
+              className="w-full rounded-lg bg-[#00D4FF] px-3 py-2 text-xs font-semibold text-[#0B1829] hover:bg-[#00D4FF]/90 disabled:opacity-40 transition-colors"
+            >
+              {providerStatementSaving ? "Saving…" : "Save provider statement"}
+            </button>
+            <a
+              href={`/app/${orgSlug}/library`}
+              className="block text-xs text-[#00D4FF] hover:underline"
+            >
+              Upload a source document instead
+            </a>
+            <p className="text-[#64748B] text-xs leading-relaxed">
+              Add all gap statements first, then regenerate once. Section-only regeneration is not available yet.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[#64748B] text-xs leading-relaxed">
+            Provider statements require a selected subject participant on the task.
+          </p>
+        )}
+      </div>
+
       {/* Completed Work */}
       {completedWork.length > 0 && (
         <div className="p-4 border-b border-[#1E3A5F]">
@@ -678,6 +788,8 @@ export default function TaskWorkroomPage() {
   const [approving, setApproving] = useState(false);
   const [commandLoading, setCommandLoading] = useState(false);
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null);
+  const [providerStatementForm, setProviderStatementForm] = useState<ProviderStatementForm>(INITIAL_PROVIDER_STATEMENT_FORM);
+  const [providerStatementSaving, setProviderStatementSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -701,6 +813,10 @@ export default function TaskWorkroomPage() {
   const plan: Plan | null = data?.plan ?? null;
   const pendingApproval: Approval | null = data?.pendingApproval ?? null;
   const completedWork: CompletedWorkSummary[] = data?.completedWork ?? [];
+  const providerContribution: ProviderContributionContext = data?.providerContribution ?? {
+    enabled: false,
+    subjectParticipantIds: [],
+  };
 
   useEffect(() => {
     if (data?.messages) {
@@ -905,6 +1021,34 @@ export default function TaskWorkroomPage() {
     }
   };
 
+  const handleProviderStatementSubmit = async () => {
+    if (!slug || !taskId || providerStatementSaving) return;
+    setProviderStatementSaving(true);
+    setError(null);
+    try {
+      const resp = await apiFetch(`/v1/organisations/${slug}/tasks/${taskId}/provider-statements`, {
+        method: "POST",
+        body: JSON.stringify(providerStatementForm),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setError(extractApiErrorMessage(resp.status, payload, "Provider statement could not be saved."));
+        return;
+      }
+      if (payload?.message) {
+        const savedMessage = payload.message as Message;
+        setMessages(prev => prev.some(message => message.id === savedMessage.id) ? prev : [...prev, savedMessage]);
+      }
+      setProviderStatementForm(INITIAL_PROVIDER_STATEMENT_FORM);
+      await refetch();
+      await qc.invalidateQueries({ queryKey: ["workroom", slug, taskId] });
+    } catch {
+      setError("Provider statement could not be saved.");
+    } finally {
+      setProviderStatementSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <AppShell orgSlug={slug ?? ""}>
@@ -1021,7 +1165,7 @@ export default function TaskWorkroomPage() {
                   task.currentState === "awaiting_approval"
                     ? "Approve, reject, or ask a question…"
                     : task.currentState === "evidence_required"
-                    ? "Provide the requested evidence or ask a question…"
+                    ? "Ask a question or use Provider Evidence in the side panel…"
                     : task.currentState === "executing"
                     ? "Ask the workforce a question or request a status update…"
                     : "Ask a question, request changes, or give instructions…"
@@ -1061,10 +1205,15 @@ export default function TaskWorkroomPage() {
           plan={plan}
           pendingApproval={pendingApproval}
           completedWork={completedWork}
+          providerContribution={providerContribution}
+          providerStatementForm={providerStatementForm}
           onCommand={handleCommand}
           commandLoading={commandLoading}
           onDownloadArtifact={handleDownloadArtifact}
           downloadingArtifactId={downloadingArtifactId}
+          onProviderStatementChange={patch => setProviderStatementForm(prev => ({ ...prev, ...patch }))}
+          onProviderStatementSubmit={handleProviderStatementSubmit}
+          providerStatementSaving={providerStatementSaving}
           orgSlug={slug ?? ""}
           taskId={taskId ?? ""}
         />

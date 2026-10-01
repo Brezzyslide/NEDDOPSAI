@@ -23,6 +23,7 @@ export const SOURCE_TYPE_DISPLAY_LABELS: Record<string, string> = {
   template:               "Organisation Template",
   participant_document:   "Participant Document",
   task_upload:            "Uploaded Document",
+  provider_stated:        "Provider Statement",
   reference:              "Reference Material",
   communication_guide:    "Communication Guide",
   style_guide:            "Style Guide",

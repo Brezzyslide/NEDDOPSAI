@@ -245,6 +245,43 @@ describe("Sprint 35F AWS-native execution and artifact completion", () => {
     expect(page).toContain("Excel");
   });
 
+  it("turns targeted provider statements into participant-scoped evidence, not chat text", () => {
+    const route = source("routes/v1/taskWorkroom.ts");
+    const page = repoSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+    const sourceTypes = repoSource("lib/db/src/schema/knowledgeSources.ts");
+    const retrieval = source("services/hybridRetrievalService.ts");
+    const labels = source("utils/sourceTypeNormalisation.ts");
+
+    expect(route).toContain('router.post("/provider-statements"');
+    expect(route).toContain('sourceScope: "library"');
+    expect(route).toContain('sourceType: "provider_stated"');
+    expect(route).toContain('evidenceClass = participantStated === true ? "PARTICIPANT_STATED" : "PROVIDER_STATED"');
+    expect(route).toContain('scopeType: "entity"');
+    expect(route).toContain("Advised by ${authorName}, ${authorRole}, ${dateLabel}");
+    expect(route).toContain("Provider statements must name the section, the gap, and the document that would close it.");
+    expect(page).toContain("Provider Evidence");
+    expect(page).toContain("This relays what the participant said");
+    expect(page).toContain("/provider-statements");
+    expect(page).toContain("Add all gap statements first, then regenerate once.");
+    expect(page).not.toContain("Provide the requested evidence");
+    expect(sourceTypes).toContain('"provider_stated"');
+    expect(retrieval).toContain("ks.source_type IN ('participant_document', 'provider_stated')");
+    expect(labels).toContain('provider_stated:        "Provider Statement"');
+  });
+
+  it("threads workroom task uploads into execution even when clients do not pass source IDs", () => {
+    const taskUploadsRoute = source("routes/v1/taskUploads.ts");
+    const workPackage = source("services/workPackageService.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+
+    expect(taskUploadsRoute).toContain('taskId:                 conversationId');
+    expect(uee).toContain("conversationId: request.conversationId");
+    expect(workPackage).toContain("effectiveTaskUploadSourceIds");
+    expect(workPackage).toContain("work_package.task_uploads.conversation_lookup");
+    expect(workPackage).toContain("eq(knowledgeSourcesTable.taskId, input.conversationId!)");
+    expect(workPackage).toContain("resolvedTaskUploadSourceIds");
+  });
+
   it("finalises the task when approved Completed Work matches the execution approval gate", () => {
     const taskService = source("services/taskService.ts");
     const route = source("routes/v1/completedWork.ts");
