@@ -135,6 +135,33 @@ function evidencePackWithChunk(chunkId: string, text: string) {
   };
 }
 
+function evidencePackWithChunks(chunks: Array<{ chunkId: string; text: string; title?: string }>) {
+  const built = chunks.map((input, index) => ({
+    chunkId: input.chunkId,
+    sourceId: `source-fixture-${index + 1}`,
+    sourceVersionId: `version-fixture-${index + 1}`,
+    sourceTitle: input.title ?? `Fixture Source ${index + 1}`,
+    versionLabel: "v1",
+    sourceType: "participant_document",
+    documentCategory: "behaviour_support_plan",
+    evidenceClass: "PROFESSIONAL_SOURCE",
+    authorityLevel: "primary",
+    sectionTitle: "Fixture",
+    pageNumber: 1,
+    text: input.text,
+    confidence: 0.9,
+    citation: `${input.title ?? `Fixture Source ${index + 1}`}, p.1`,
+    selectionReason: "test fixture",
+  }));
+  return {
+    sourceIds: built.map((chunk) => chunk.sourceId),
+    chunks: built,
+    citationsByType: { participant_document: built },
+    totalChunks: built.length,
+    avgConfidence: 0.9,
+  };
+}
+
 function serviceAgreementContract(): BlueprintExecutionContract {
   const blueprint = getRegistryEntry("service_agreement_review");
   if (!blueprint) throw new Error("missing service agreement blueprint");
@@ -2842,6 +2869,103 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(report.missing[0]?.reason).toContain("has no verified citation");
   });
 
+  it("rebinds exact evidence-source passages to another selected chunk when the generated chunkId is wrong", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-about-me", "About Me");
+    const passage = "Michael takes pride in his appearance and enjoys fashion, particularly shoes and tattoos, which reflect his sense of individuality and personal style.";
+    const content = `${passage} Workers should use this as person-centred context for engagement.`;
+    const report = evaluateDeliverableRequirementCoverage(`## About Me\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-about-me",
+        heading: "About Me",
+        content,
+        evidenceSources: [{
+          chunkId: "wrong-chunk",
+          documentTitle: "BSP",
+          passage,
+          location: "p. 9",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunks([
+        { chunkId: "wrong-chunk", text: "This chunk is about implementation reporting and does not contain the person-centred passage.", title: "BSP" },
+        { chunkId: "right-chunk", text: `Background summary. ${passage} End.`, title: "BSP" },
+      ]),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "VERIFIED_SPAN",
+        passed: true,
+        chunkId: "right-chunk",
+        reason: expect.stringContaining("re-bound"),
+      }),
+    ]));
+    expect(report.requirementResults[0]?.citationFindings?.some((finding) =>
+      finding.mode === "UNSUPPORTED_CITATION" && finding.citedText === passage,
+    )).toBe(false);
+  });
+
+  it("still rejects paraphrased evidence-source passages that are not exact selected evidence text", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-mobility-strategy", "Mobility and Mobility Strategy");
+    const content = "Michael can walk without aid and does not need a walking aid.";
+    const report = evaluateDeliverableRequirementCoverage(`## Mobility and Mobility Strategy\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-mobility-strategy",
+        heading: "Mobility and Mobility Strategy",
+        content,
+        evidenceSources: [{
+          chunkId: "adl-checklist",
+          documentTitle: "Intake checklist",
+          passage: "Walk without aid: Without support",
+          location: "p. 2",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("adl-checklist", "Walk without and aid Without support ☒ Support required ☐ Completely unable to ☐"),
+    });
+
+    expect(report.requirementResults[0]?.citationFindings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        mode: "UNSUPPORTED_CITATION",
+        passed: false,
+        citedText: "Walk without aid: Without support",
+      }),
+    ]));
+  });
+
+  it("accepts approver-deferred care-plan review dates instead of requiring an invented date", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-support-plan-meeting", "Support Plan Meeting");
+    const content = [
+      "**Participant Name:** Micheal Rocca",
+      "**Date of Birth:** not recorded in retrieved evidence",
+      "**Gender:** Male",
+      "**Language Spoken:** English",
+      "**NDIS Number:** 430324461",
+      "**Diagnosis:** Moderate intellectual disability",
+      "**People Present:** not recorded in retrieved evidence",
+      "**Support Plan Developed By:** NeedsOps AI+",
+      "**Plan Date:** 2026-09-30",
+      "**Date for Review:** To be confirmed by approver",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-support-plan-meeting",
+        heading: "Support Plan Meeting",
+        content,
+        evidenceSources: [{
+          chunkId: "identity",
+          documentTitle: "Intake",
+          passage: "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability",
+          location: "p. 1",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("identity", "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability"),
+    });
+
+    expect(report.missing[0]?.reason ?? "").not.toContain("Date for Review is a real date");
+  });
+
   it("blocks ADL support levels that are only cited interpretation", () => {
     const profile = carePlanSingleRequirementProfile("care-plan-undertaking-adl", "Undertaking ADL");
     const content = "ADL rows are supplied structurally.";
@@ -2994,6 +3118,14 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(engine).toContain("coverage decreased");
     expect(engine).toContain("goal table rows decreased");
     expect(engine).toContain("blocking citation findings increased");
+  });
+
+  it("classifies explicit participant care-plan missing-source statements as evidence gaps", () => {
+    const runtime = source("services/blueprintRuntimeValidationService.ts");
+
+    expect(runtime).toContain('gate: "evidence_gap"');
+    expect(runtime).toContain("explicitlyStatesSectionEvidenceGap");
+    expect(runtime).toContain("records missing evidence categories as an evidence gap");
   });
 
   it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {

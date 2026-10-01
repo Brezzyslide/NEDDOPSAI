@@ -1623,6 +1623,29 @@ function evaluateCarePlanCitationFindings(
     }
     const span = verifySpanDetailed(source.passage, chunk.text);
     if (!span.verified) {
+      const recovered = findRuntimeExactPassageEvidence(source.passage, chunks.values());
+      if (recovered) {
+        const recoveredSource: PerRequirementEvidenceSource = {
+          ...source,
+          chunkId: recovered.chunk.chunkId,
+          documentTitle: recovered.chunk.sourceTitle,
+          location: recovered.chunk.citation,
+        };
+        verifiedSources.push({ source: recoveredSource, chunk: recovered.chunk, citedText: source.passage });
+        findings.push({
+          requirementId: requirement.id,
+          claim: `${section.heading}: cited evidence passage`,
+          mode: "VERIFIED_SPAN",
+          accountable: false,
+          passed: true,
+          chunkId: recovered.chunk.chunkId,
+          documentTitle: recovered.chunk.sourceTitle,
+          citedText: source.passage,
+          reason: `Cited passage was re-bound to another selected evidence chunk after the generated chunkId did not contain it.`,
+          normalisationApplied: recovered.verification.byteExact ? undefined : recovered.verification.normalisationApplied,
+        });
+        continue;
+      }
       findings.push({
         requirementId: requirement.id,
         claim: `${section.heading}: cited evidence passage`,
@@ -1741,6 +1764,19 @@ function evaluateCarePlanCitationFindings(
   }
 
   return findings;
+}
+
+function findRuntimeExactPassageEvidence(
+  passage: string,
+  chunks: Iterable<EvidenceChunk>,
+): { chunk: EvidenceChunk; verification: ReturnType<typeof verifySpanDetailed> } | null {
+  if (!passage.trim()) return null;
+  for (const chunk of chunks) {
+    const verification = verifySpanDetailed(passage, chunk.text);
+    if (!verification.verified) continue;
+    return { chunk, verification };
+  }
+  return null;
 }
 
 function findRuntimeExactValueEvidence(
@@ -2670,6 +2706,11 @@ function templateFieldIsRepresented(field: string, content: string): boolean {
 
 function adequacyCriterionMatchesContent(criterion: string, normalisedContent: string): boolean {
   const criterionKey = normaliseContent(criterion);
+  if (criterionKey.includes("date for review") && criterionKey.includes("later than the plan date")) {
+    return /\bto be confirmed by approver\b/.test(normalisedContent) ||
+      /\bdate for review\b/.test(normalisedContent) &&
+        /\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})\b/.test(normalisedContent);
+  }
   if (criterionKey.includes("capacity indicators completed")) {
     return /\b(capacity|verbal|non verbal|expressive|understand|communication)\b/.test(normalisedContent);
   }

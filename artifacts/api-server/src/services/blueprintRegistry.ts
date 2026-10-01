@@ -3341,7 +3341,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
       "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document.",
     ],
     fields: ["Relevant history", "Prior service involvement", "Risk-relevant context", "Source documents and dates"],
-    completionPrompt: "Include only what changes how a worker should deliver support. Name the source document and date for each statement.",
+    completionPrompt: "Include only what changes how a worker should deliver support on shift. Before adding any history, ask whether a worker would act differently because of it; if not, leave it out. Do not write life-course, childhood, forensic, trauma, family psychiatric or clinical case-history narrative. Name the source document and date for each statement.",
   },
   undertakingAdl: {
     fixedContent: [

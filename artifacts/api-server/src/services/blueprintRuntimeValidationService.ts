@@ -232,6 +232,8 @@ export function validateBlueprintRuntimeCompletion(
     input.contentMarkdown,
     input.evidencePack,
     standardTemplateEvidence,
+    input.professionalContext,
+    blueprint.code,
   ));
 
   if (deliverableContract) {
@@ -880,9 +882,13 @@ function validateSections(
   contentMarkdown: string,
   evidencePack?: EvidencePack | null,
   standardTemplateEvidence?: StandardTemplateEvidenceContext | null,
+  professionalContext?: ProfessionalExecutionContext | null,
+  blueprintCode?: string | null,
 ): BlueprintRuntimeGateFailure[] {
   const failures: BlueprintRuntimeGateFailure[] = [];
   const sectionHeadingsAreAdvisory = isCustomerTemplateOptional(standardTemplateEvidence);
+  const participantCarePlan = blueprintCode === "care_plan" &&
+    professionalContext?.specificity === "PARTICIPANT_SPECIFIC";
   for (const section of sections.filter((s) => s.required)) {
     const content = extractSectionContent(contentMarkdown, section);
     if (!content) {
@@ -923,6 +929,15 @@ function validateSections(
       !hasEvidenceCategory(evidencePack, category, standardTemplateEvidence),
     );
     if (missing.length > 0) {
+      if (participantCarePlan && content && explicitlyStatesSectionEvidenceGap(content, missing)) {
+        failures.push({
+          gate: "evidence_gap",
+          state: "validation",
+          message: `Section ${section.sectionCode} records missing evidence categories as an evidence gap.`,
+          details: missing,
+        });
+        continue;
+      }
       failures.push({
         gate: "section_evidence",
         state: "validation",
@@ -932,6 +947,22 @@ function validateSections(
     }
   }
   return failures;
+}
+
+function explicitlyStatesSectionEvidenceGap(content: string, missingCategories: string[]): boolean {
+  const normalised = normaliseRuntimeText(content);
+  if (!/\b(?:not recorded|not available|not present|not provided|not found|not supplied|unavailable|absent|no retrieved|no evidence|evidence gap)\b/.test(normalised)) {
+    return false;
+  }
+  if (!/\b(?:source|document|evidence|assessment|plan|record|form|report)\b/.test(normalised)) {
+    return false;
+  }
+  return missingCategories.some((category) => {
+    const readable = normaliseRuntimeText(category.replace(/_/g, " "));
+    const compact = normaliseRuntimeText(category);
+    return Boolean(readable && normalised.includes(readable)) ||
+      Boolean(compact && normalised.includes(compact));
+  });
 }
 
 function validateCarePlanMechanicalRules(
