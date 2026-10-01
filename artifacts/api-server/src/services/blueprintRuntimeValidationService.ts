@@ -347,7 +347,11 @@ export function validateBlueprintRuntimeCompletion(
     }
   }
 
-  return { passed: failures.length === 0, failures };
+  return { passed: failures.every(isNonBlockingRuntimeFailure), failures };
+}
+
+function isNonBlockingRuntimeFailure(failure: BlueprintRuntimeGateFailure): boolean {
+  return failure.gate === "evidence_gap";
 }
 
 const INCOMPLETE_MARKER_PATTERN = /\[(?:INCOMPLETE|MISSING|TODO|UNKNOWN|REQUIRED)(?::[^\]]+)?\]/gi;
@@ -918,6 +922,15 @@ function validateSections(
       standardTemplateEvidence,
     );
     if (minimumEvidenceCount > 0 && countEvidenceItems(evidencePack) < minimumEvidenceCount) {
+      if (participantCarePlan) {
+        failures.push({
+          gate: "evidence_gap",
+          state: "validation",
+          message: `Section ${section.sectionCode} has insufficient retrieved evidence and must state the provider evidence gap.`,
+          details: [`minimumEvidenceCount=${minimumEvidenceCount}`],
+        });
+        continue;
+      }
       failures.push({
         gate: "section_evidence",
         state: "validation",
@@ -929,11 +942,13 @@ function validateSections(
       !hasEvidenceCategory(evidencePack, category, standardTemplateEvidence),
     );
     if (missing.length > 0) {
-      if (participantCarePlan && content && explicitlyStatesSectionEvidenceGap(content, missing)) {
+      if (participantCarePlan) {
         failures.push({
           gate: "evidence_gap",
           state: "validation",
-          message: `Section ${section.sectionCode} records missing evidence categories as an evidence gap.`,
+          message: content && explicitlyStatesSectionEvidenceGap(content, missing)
+            ? `Section ${section.sectionCode} records missing evidence categories as an evidence gap.`
+            : `Section ${section.sectionCode} is missing evidence categories and must name those provider evidence gaps in the section.`,
           details: missing,
         });
         continue;
@@ -1148,7 +1163,7 @@ function mechanicalFailure(rule: string, detail: string): BlueprintRuntimeGateFa
   return {
     gate: "mechanical_gate",
     state: "validation",
-    message: "Care Plan mechanical gate failed.",
+    message: `Care Plan mechanical gate failed: ${rule}. ${detail}`,
     details: [`${rule}: ${detail}`],
   };
 }
