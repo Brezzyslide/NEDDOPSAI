@@ -183,6 +183,7 @@ const CONFIRM_PATTERNS = [
   /^(confirm|confirmed|yes|yep|yeah|ok|okay)[, ]+(please )?(go ahead|proceed|create|do it)\.?$/i,
 ];
 const DECLINE_PATTERNS = [/^(no|nope|no[, ]+don'?t proceed|no[, ]+do not proceed|don't|do not|don'?t cancel|keep it|leave it|not anymore|do not proceed)\.?$/i];
+const CANCEL_CONFIRM_PATTERN = /^(cancel it|cancel that)\.?$/i;
 
 function matches(patterns: RegExp[], text: string): boolean {
   return patterns.some(pattern => pattern.test(text));
@@ -692,6 +693,9 @@ export function resolvePendingConfirmationAnswer(
   confirmation: PendingConversationConfirmation,
 ): PendingConfirmationAnswer {
   const trimmed = text.trim();
+  if (CANCEL_CONFIRM_PATTERN.test(trimmed)) {
+    return confirmation.action === "CANCEL_TASK" ? { kind: "confirm" } : { kind: "decline" };
+  }
   if (matches(CONFIRM_PATTERNS, trimmed)) return { kind: "confirm" };
   if (matches(DECLINE_PATTERNS, trimmed)) return { kind: "decline" };
   if (matches(NEW_TASK_PATTERNS, trimmed) || matches(STATUS_PATTERNS, trimmed) || matches(SWITCH_PATTERNS, trimmed)) {

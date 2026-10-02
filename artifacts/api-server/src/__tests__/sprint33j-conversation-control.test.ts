@@ -458,6 +458,34 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(answer.kind).toBe("decline");
   });
 
+  it("does not treat cancel it as confirmation for a pending task proposal", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "cancel it",
+      pendingConfirmation({
+        action: "NEW_TASK",
+        taskId: undefined,
+        taskTitle: undefined,
+        expectedResponse: "yes_no",
+        proposedTask: {
+          title: "Service Delivery Review for Michael",
+          summary: "Prepare a service delivery review for Michael for July 2026.",
+          priority: "normal",
+        },
+      }),
+    );
+
+    expect(answer.kind).toBe("decline");
+  });
+
+  it("keeps cancel it as confirmation for a pending cancel action", () => {
+    const answer = resolvePendingConfirmationAnswer(
+      "cancel it",
+      pendingConfirmation({ action: "CANCEL_TASK", taskId: reportTask.id, expectedResponse: "yes_no" }),
+    );
+
+    expect(answer.kind).toBe("confirm");
+  });
+
   it("binds yes to pending CONFIRM_CANCEL instead of generic approval resolution", () => {
     const answer = resolvePendingConfirmationAnswer(
       "yes",
