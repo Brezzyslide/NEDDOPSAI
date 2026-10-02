@@ -35,6 +35,7 @@ import {
 import { planTask } from "../services/chiefOfStaffService";
 import { buildAuthoritativeTaskProposalPresentation } from "../services/taskProposalWorkforcePresentationService";
 import { validateWorkPackage } from "../services/workValidationService";
+import { validateOpenAIStructuredOutputStrictSchema } from "../services/openAIStructuredOutputSchemaValidationService";
 
 const root = resolve(__dirname, "..");
 
@@ -540,8 +541,24 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     const src = source("services/unifiedExecutionEngine.ts");
 
     expect(src).toContain('name: "targeted_requirement_repair_response"');
-    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources", "structuredRows"]');
+    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources", "evidenceGaps", "structuredRows"]');
     expect(src).toContain('required: ["activity", "supportLevel", "workerDescription", "sourceValue", "chunkId", "mappingMode"]');
+  });
+
+  it("validates OpenAI strict structured-output schemas before provider calls", () => {
+    const src = source("services/unifiedExecutionEngine.ts");
+
+    expect(src).toContain("validateOpenAIStructuredOutputStrictSchema(response.name, response.schema)");
+    expect(src).toContain('required: ["requirementId", "heading", "content", "evidenceSources", "evidenceGaps", "structuredRows"]');
+    expect(() => validateOpenAIStructuredOutputStrictSchema("bad_schema", {
+      type: "object",
+      additionalProperties: false,
+      required: ["present"],
+      properties: {
+        present: { type: "string" },
+        missing: { type: "string" },
+      },
+    })).toThrow(/missing/);
   });
 
   it("keeps final synthesis and targeted repair response contracts aligned with their schemas", () => {

@@ -54,6 +54,7 @@ import {
 import {
   buildSectionRetrievalTerms,
 } from "./blueprintSectionVocabularyService.js";
+import { validateOpenAIStructuredOutputStrictSchema } from "./openAIStructuredOutputSchemaValidationService.js";
 import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
   CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS,
@@ -4342,7 +4343,7 @@ function formatTargetedRepairDeliverableResponseContract(): string {
   }`;
 }
 
-function buildProfessionalDeliverableResponseSchema(
+export function buildProfessionalDeliverableResponseSchema(
   professionalContext: ProfessionalExecutionContext | undefined,
 ): { name: string; strict: boolean; schema: Record<string, unknown> } {
   const operation = professionalContext?.operation ?? "CREATE";
@@ -4351,7 +4352,7 @@ function buildProfessionalDeliverableResponseSchema(
   const requiresSectionEvidenceSources = professionalContext?.specificity === "PARTICIPANT_SPECIFIC" ||
     professionalContext?.deliverable.standardisation === "participant_specific";
   const stringArray = { type: "array", items: { type: "string" } };
-  return {
+  const response = {
     name: "professional_deliverable_response",
     strict: true,
     schema: {
@@ -4393,7 +4394,7 @@ function buildProfessionalDeliverableResponseSchema(
                 type: "object",
                 additionalProperties: false,
                 required: requiresSectionEvidenceSources
-                  ? ["requirementId", "heading", "content", "evidenceSources", "structuredRows"]
+                  ? ["requirementId", "heading", "content", "evidenceSources", "evidenceGaps", "structuredRows"]
                   : ["requirementId", "heading", "content"],
                 properties: {
                   requirementId: { type: "string" },
@@ -4513,14 +4514,16 @@ function buildProfessionalDeliverableResponseSchema(
       },
     },
   };
+  validateOpenAIStructuredOutputStrictSchema(response.name, response.schema);
+  return response;
 }
 
-function buildTargetedRequirementRepairResponseSchema(
+export function buildTargetedRequirementRepairResponseSchema(
   professionalContext: ProfessionalExecutionContext | undefined,
 ): { name: string; strict: boolean; schema: Record<string, unknown> } {
   const operation = professionalContext?.operation ?? "CREATE";
   const stringArray = { type: "array", items: { type: "string" } };
-  return {
+  const response = {
     name: "targeted_requirement_repair_response",
     strict: true,
     schema: {
@@ -4559,7 +4562,7 @@ function buildTargetedRequirementRepairResponseSchema(
               items: {
                 type: "object",
                 additionalProperties: false,
-                required: ["requirementId", "heading", "content", "evidenceSources", "structuredRows"],
+                required: ["requirementId", "heading", "content", "evidenceSources", "evidenceGaps", "structuredRows"],
                 properties: {
                   requirementId: { type: "string" },
                   heading: { type: "string" },
@@ -4674,6 +4677,8 @@ function buildTargetedRequirementRepairResponseSchema(
       },
     },
   };
+  validateOpenAIStructuredOutputStrictSchema(response.name, response.schema);
+  return response;
 }
 
 /**
