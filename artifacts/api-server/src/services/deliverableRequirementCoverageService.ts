@@ -247,6 +247,7 @@ export interface PerRequirementDeliverableSection {
   content: string;
   evidenceSources?: PerRequirementEvidenceSource[];
   structuredRows?: CarePlanAdlStructuredRow[];
+  evidenceGaps?: PerRequirementEvidenceGap[];
 }
 
 export interface PerRequirementEvidenceSource {
@@ -255,6 +256,12 @@ export interface PerRequirementEvidenceSource {
   passage: string;
   location: string;
   evidenceClass?: string;
+}
+
+export interface PerRequirementEvidenceGap {
+  category?: string;
+  missingDocument?: string;
+  reason?: string;
 }
 
 export interface BlueprintRequirementClassificationSummary {
@@ -584,6 +591,7 @@ function normaliseDeliverableSections(
       content,
       evidenceSources: section.evidenceSources?.filter(isCompleteEvidenceSource),
       structuredRows: section.structuredRows?.filter(isCompleteStructuredRow),
+      evidenceGaps: section.evidenceGaps?.filter(isCompleteEvidenceGap),
     });
   }
   return mapped;
@@ -608,6 +616,13 @@ function isCompleteStructuredRow(row: CarePlanAdlStructuredRow): boolean {
     row.sourceValue?.trim() &&
     row.chunkId?.trim() &&
     (row.mappingMode === "VERIFIED_MAPPING" || row.mappingMode === "CITED_INTERPRETATION" || row.mappingMode === "NOT_ASSESSED"),
+  );
+}
+
+function isCompleteEvidenceGap(gap: PerRequirementEvidenceGap): boolean {
+  return Boolean(
+    gap &&
+    (gap.category?.trim() || gap.missingDocument?.trim() || gap.reason?.trim()),
   );
 }
 
@@ -1207,6 +1222,23 @@ function validateRequirementAgainstContent(input: {
       finalResult: "NOT_SATISFIED",
       failureReason: `deliverable.sections is missing an entry for required requirementId "${requirement.id}".`,
     });
+  }
+  if (
+    input.standardisation === "participant_specific" &&
+    input.structuredSection &&
+    sectionHasEvidenceGapForRequirement(input.structuredSection, requirement)
+  ) {
+    const blueprintAuthoringGaps = requirement.adequacyCriteria.filter(isBlueprintAuthoringGapCriterion);
+    return applyCarePlanCitationGate(coverageItem(requirement, {
+      actualLocation: `${input.structuredSection.heading} structured evidence gap`,
+      structuralResult: "STRUCTURE_PASS",
+      substantiveResult: "SUBSTANTIVE_PASS",
+      substantiveValidationMode: "ADEQUACY_CRITERIA",
+      substantiveBreakdown: analyseSubstantiveCoverageContent(input.structuredSection.content, requirement),
+      blueprintAuthoringGaps,
+      finalResult: "SATISFIED",
+      failureReason: null,
+    }), input);
   }
   if (requirement.classification === "FACTUAL_FIELD") {
     return validateFactualFieldRequirement(input);
@@ -2616,6 +2648,40 @@ function explicitlyStatesEvidenceAbsenceForRequirement(
     return /\b(?:missing|not recorded|not available|not provided)\b/.test(normalised);
   }
   return expected.some((category) => normalised.includes(category));
+}
+
+function sectionHasEvidenceGapForRequirement(
+  section: PerRequirementDeliverableSection,
+  requirement: DeliverableRequirement,
+): boolean {
+  if ((section.evidenceGaps ?? []).some((gap) => evidenceGapMatchesRequirement(gap, requirement))) {
+    return true;
+  }
+  return explicitlyStatesEvidenceAbsenceForRequirement(section.content, requirement);
+}
+
+function evidenceGapMatchesRequirement(
+  gap: PerRequirementEvidenceGap,
+  requirement: DeliverableRequirement,
+): boolean {
+  const gapText = normaliseContent([
+    gap.category,
+    gap.missingDocument,
+    gap.reason,
+  ].filter(Boolean).join(" "));
+  if (!gapText) return false;
+
+  const expected = (requirement.expectedEvidenceCategories ?? [])
+    .flatMap((category) => [category, category.replace(/_/g, " ")])
+    .map(normaliseContent)
+    .filter(Boolean);
+  if (expected.length === 0) {
+    return true;
+  }
+  return expected.some((category) =>
+    gapText.includes(category) ||
+    category.includes(gapText),
+  );
 }
 
 function evaluateTemplateRequirementContent(

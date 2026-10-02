@@ -3598,7 +3598,7 @@ function isEvidenceGapFailure(failure: DeliverableRequirementCoverageFailure): b
   if (failure.substantiveValidationMode === "UNSUPPORTED_CITATION" ||
       failure.substantiveValidationMode === "MISSING_CITATION" ||
       failure.substantiveValidationMode === "CITED_INTERPRETATION_UNVERIFIED") {
-    return true;
+    return false;
   }
   if ((failure.citationFindings ?? []).some((finding) =>
     !finding.passed &&
@@ -3607,9 +3607,9 @@ function isEvidenceGapFailure(failure: DeliverableRequirementCoverageFailure): b
       finding.mode === "MISSING_CITATION" ||
       finding.mode === "CITED_INTERPRETATION_UNVERIFIED"),
   )) {
-    return true;
+    return false;
   }
-  return /\b(?:unsupported citation|missing citation|no verified citation|not recorded in retrieved evidence|not assessed|unassessed|missing expected source|source document|document not supplied|evidence gap)\b/i.test(failure.reason);
+  return /\b(?:not recorded in retrieved evidence|not assessed|unassessed|missing expected source|source document|document not supplied|evidence gap|not available|not provided|not supplied)\b/i.test(failure.reason);
 }
 
 function evidenceGapReason(failure: DeliverableRequirementCoverageFailure): string {
@@ -3671,7 +3671,7 @@ function appendRuntimeGateFailure(
   failure: BlueprintRuntimeGateFailure,
 ): ReturnType<typeof validateBlueprintRuntimeCompletion> {
   return {
-    passed: false,
+    passed: gate.passed && failure.gate === "evidence_gap",
     failures: [...gate.failures, failure],
   };
 }
@@ -3709,6 +3709,7 @@ function applyDeterministicEvidenceGapReplacements(input: {
   const sections = input.deliverableSections.map((section) => ({
     ...section,
     evidenceSources: section.evidenceSources ? [...section.evidenceSources] : undefined,
+    evidenceGaps: section.evidenceGaps ? section.evidenceGaps.map((gap) => ({ ...gap })) : undefined,
     structuredRows: section.structuredRows ? section.structuredRows.map((row) => ({ ...row })) : undefined,
   }));
   const sectionByRequirement = new Map(sections.map((section) => [section.requirementId, section]));
@@ -4319,6 +4320,13 @@ function formatTargetedRepairDeliverableResponseContract(): string {
             "evidenceClass": "<evidence class>"
           }
         ],
+        "evidenceGaps": [
+          {
+            "category": "<missing evidence category or source type>",
+            "missingDocument": "<named missing source document>",
+            "reason": "<short provider-facing evidence gap statement>"
+          }
+        ],
         "structuredRows": [
           {
             "activity": "<ADL canonical activity name; return [] for repaired non-ADL sections>",
@@ -4405,6 +4413,19 @@ function buildProfessionalDeliverableResponseSchema(
                               passage: { type: "string" },
                               location: { type: "string" },
                               evidenceClass: { type: "string" },
+                            },
+                          },
+                        },
+                        evidenceGaps: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required: ["category", "missingDocument", "reason"],
+                            properties: {
+                              category: { type: "string" },
+                              missingDocument: { type: "string" },
+                              reason: { type: "string" },
                             },
                           },
                         },
@@ -4555,6 +4576,19 @@ function buildTargetedRequirementRepairResponseSchema(
                         passage: { type: "string" },
                         location: { type: "string" },
                         evidenceClass: { type: "string" },
+                      },
+                    },
+                  },
+                  evidenceGaps: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["category", "missingDocument", "reason"],
+                      properties: {
+                        category: { type: "string" },
+                        missingDocument: { type: "string" },
+                        reason: { type: "string" },
                       },
                     },
                   },

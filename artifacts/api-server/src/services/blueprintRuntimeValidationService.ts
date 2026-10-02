@@ -180,6 +180,7 @@ export function validateBlueprintRuntimeCompletion(
     const coverageProfile = deriveDeliverableRequirementCoverageProfile(input.professionalContext, contract);
     const coverageReport = evaluateDeliverableRequirementCoverage(input.contentMarkdown, coverageProfile, {
       deliverableSections: input.deliverableSections,
+      evidencePack: input.evidencePack,
     });
     if (participantCarePlan && carePlanCoreOperatingSectionsAllUnsupported(coverageReport)) {
       failures.push({
@@ -192,17 +193,23 @@ export function validateBlueprintRuntimeCompletion(
       });
     }
     if (coverageReport.missing.length > 0) {
-      failures.push({
-        gate: "mandatory_deliverable_coverage",
-        state: "validation",
-        message: "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
-        details: [
-          `coverage=${coverageReport.satisfiedCount}/${coverageReport.mandatoryRequirementCount} (${coverageReport.coveragePercentage}%)`,
-          ...coverageReport.missing.slice(0, 20).map((failure) =>
-            `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
-          ),
-        ],
-      });
+      const blockingCoverageFailures = coverageReport.missing.filter((failure) => !isCoverageEvidenceGapFailure(failure));
+      if (blockingCoverageFailures.length === 0) {
+        // Evidence gaps are reported in the coverage snapshot, but missing provider source material is not
+        // a rewrite/blocking defect when the participant care plan states the gap honestly.
+      } else {
+        failures.push({
+          gate: "mandatory_deliverable_coverage",
+          state: "validation",
+          message: "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
+          details: [
+            `coverage=${coverageReport.satisfiedCount}/${coverageReport.mandatoryRequirementCount} (${coverageReport.coveragePercentage}%)`,
+            ...blockingCoverageFailures.slice(0, 20).map((failure) =>
+              `${failure.requirementId}: ${failure.requiredDeliverableRepresentation} (${failure.classification})`,
+            ),
+          ],
+        });
+      }
     }
   }
 
@@ -923,12 +930,6 @@ function validateSections(
     );
     if (minimumEvidenceCount > 0 && countEvidenceItems(evidencePack) < minimumEvidenceCount) {
       if (participantCarePlan) {
-        failures.push({
-          gate: "evidence_gap",
-          state: "validation",
-          message: `Section ${section.sectionCode} has insufficient retrieved evidence and must state the provider evidence gap.`,
-          details: [`minimumEvidenceCount=${minimumEvidenceCount}`],
-        });
         continue;
       }
       failures.push({
@@ -943,14 +944,6 @@ function validateSections(
     );
     if (missing.length > 0) {
       if (participantCarePlan) {
-        failures.push({
-          gate: "evidence_gap",
-          state: "validation",
-          message: content && explicitlyStatesSectionEvidenceGap(content, missing)
-            ? `Section ${section.sectionCode} records missing evidence categories as an evidence gap.`
-            : `Section ${section.sectionCode} is missing evidence categories and must name those provider evidence gaps in the section.`,
-          details: missing,
-        });
         continue;
       }
       failures.push({
@@ -1521,6 +1514,28 @@ function carePlanCoreOperatingSectionsAllUnsupported(
   ]);
   const results = new Map(coverageReport.requirementResults.map((item) => [item.requirementId, item]));
   return Array.from(required).every((id) => results.get(id)?.finalResult !== "SATISFIED");
+}
+
+function isCoverageEvidenceGapFailure(
+  failure: ReturnType<typeof evaluateDeliverableRequirementCoverage>["missing"][number],
+): boolean {
+  if (
+    failure.substantiveValidationMode === "UNSUPPORTED_CITATION" ||
+    failure.substantiveValidationMode === "MISSING_CITATION" ||
+    failure.substantiveValidationMode === "CITED_INTERPRETATION_UNVERIFIED"
+  ) {
+    return false;
+  }
+  if ((failure.citationFindings ?? []).some((finding) =>
+    !finding.passed &&
+    (finding.accountable ||
+      finding.mode === "UNSUPPORTED_CITATION" ||
+      finding.mode === "MISSING_CITATION" ||
+      finding.mode === "CITED_INTERPRETATION_UNVERIFIED"),
+  )) {
+    return false;
+  }
+  return /\b(?:not recorded in retrieved evidence|missing expected source|source document|document not supplied|evidence gap|not available|not provided|not supplied)\b/i.test(failure.reason);
 }
 
 function containsDeliverableHeading(contentMarkdown: string, deliverable: string): boolean {

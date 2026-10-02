@@ -626,6 +626,7 @@ export interface ParsedDeliverableSection {
   content: string;
   evidenceSources?: ParsedDeliverableSectionEvidenceSource[];
   structuredRows?: ParsedDeliverableStructuredRow[];
+  evidenceGaps?: ParsedDeliverableEvidenceGap[];
 }
 
 export interface ParsedDeliverableSectionEvidenceSource {
@@ -634,6 +635,12 @@ export interface ParsedDeliverableSectionEvidenceSource {
   passage: string;
   location: string;
   evidenceClass?: string;
+}
+
+export interface ParsedDeliverableEvidenceGap {
+  category?: string;
+  missingDocument?: string;
+  reason?: string;
 }
 
 export interface ParsedDeliverableStructuredRow {
@@ -1434,6 +1441,7 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
     const heading = stringField(raw, "heading", "title", "sectionTitle", "section_title", "name");
     const content = stringField(raw, "content", "markdown", "markdownContent", "markdown_content", "body", "text", "sectionContent", "section_content");
     const evidenceSources = parseSectionEvidenceSources(raw.evidenceSources ?? raw.evidence_sources);
+    const evidenceGaps = parseSectionEvidenceGaps(raw.evidenceGaps ?? raw.evidence_gaps);
     const structuredRows = parseDeliverableStructuredRows(
       raw.structuredRows ??
       raw.structured_rows ??
@@ -1448,6 +1456,7 @@ function parseDeliverableSections(deliverable: unknown, parsed?: Record<string, 
       heading,
       content: safeContent,
       ...(evidenceSources.length > 0 ? { evidenceSources } : {}),
+      ...(evidenceGaps.length > 0 ? { evidenceGaps } : {}),
       ...(structuredRows.length > 0 ? { structuredRows } : {}),
     })];
   });
@@ -1479,6 +1488,26 @@ function parseSectionEvidenceSources(value: unknown): ParsedDeliverableSectionEv
     const evidenceClass = typeof raw.evidenceClass === "string" ? raw.evidenceClass.trim() : undefined;
     if (!chunkId || !documentTitle || !passage || !location) return [];
     return [{ chunkId, documentTitle, passage, location, evidenceClass }];
+  });
+}
+
+function parseSectionEvidenceGaps(value: unknown): ParsedDeliverableEvidenceGap[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw) => {
+    if (typeof raw === "string") {
+      const reason = raw.trim();
+      return reason ? [{ reason }] : [];
+    }
+    if (!isRecord(raw)) return [];
+    const category = stringField(raw, "category", "evidenceCategory", "evidence_category", "sourceType", "source_type");
+    const missingDocument = stringField(raw, "missingDocument", "missing_document", "document", "documentTitle", "document_title");
+    const reason = stringField(raw, "reason", "gap", "description", "details");
+    if (!category && !missingDocument && !reason) return [];
+    return [{
+      ...(category ? { category } : {}),
+      ...(missingDocument ? { missingDocument } : {}),
+      ...(reason ? { reason } : {}),
+    }];
   });
 }
 

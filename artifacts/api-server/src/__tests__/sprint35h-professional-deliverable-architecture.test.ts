@@ -2933,6 +2933,65 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     ]));
   });
 
+  it("counts structured participant evidence gaps as covered without pretending source evidence exists", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-disaster-management", "Disaster Management Plan");
+    profile.requirements[0]!.expectedEvidenceCategories = ["disaster_management_plan"];
+    const content = "No disaster management plan was recorded in retrieved evidence for this participant.";
+    const report = evaluateDeliverableRequirementCoverage(`## Disaster Management Plan\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-disaster-management",
+        heading: "Disaster Management Plan",
+        content,
+        evidenceSources: [],
+        evidenceGaps: [{
+          category: "disaster_management_plan",
+          missingDocument: "Disaster management plan",
+          reason: "No disaster management plan was recorded in retrieved evidence.",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("unused", "No disaster plan here."),
+    });
+
+    expect(report.missing).toHaveLength(0);
+    expect(report.satisfiedCount).toBe(1);
+    expect(report.requirementResults[0]).toMatchObject({
+      finalResult: "SATISFIED",
+      substantiveValidationMode: "ADEQUACY_CRITERIA",
+    });
+  });
+
+  it("does not downgrade unsupported citations to non-blocking evidence gaps", () => {
+    const profile = carePlanSingleRequirementProfile("care-plan-goals", "Goals");
+    const content = [
+      "| Current situation | Goal | Actions | Person responsible | Timeframe | Outcomes |",
+      "|---|---|---|---|---|---|",
+      "| Routine support is in place. | Maintain routine. | Prompt daily routine. | Elizabeth Johnson | 30/06/2026 | Routine maintained. |",
+    ].join("\n");
+    const report = evaluateDeliverableRequirementCoverage(`## Goals\n\n${content}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-goals",
+        heading: "Goals",
+        content,
+        evidenceSources: [{
+          chunkId: "chunk-goals",
+          documentTitle: "CBSP",
+          passage: "Michael likes shopping and music.",
+          location: "p. 1",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+        evidenceGaps: [{
+          category: "ndis_plan",
+          missingDocument: "NDIS plan",
+          reason: "NDIS plan was not recorded in retrieved evidence.",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("chunk-goals", "Michael likes shopping and music."),
+    });
+
+    expect(report.missing).toHaveLength(1);
+    expect(report.missing[0]?.substantiveValidationMode).toBe("UNSUPPORTED_CITATION");
+  });
+
   it("accepts approver-deferred care-plan review dates instead of requiring an invented date", () => {
     const profile = carePlanSingleRequirementProfile("care-plan-support-plan-meeting", "Support Plan Meeting");
     const content = [
@@ -3123,9 +3182,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
   it("classifies explicit participant care-plan missing-source statements as evidence gaps", () => {
     const runtime = source("services/blueprintRuntimeValidationService.ts");
 
-    expect(runtime).toContain('gate: "evidence_gap"');
+    expect(runtime).not.toContain('gate: "evidence_gap"');
     expect(runtime).toContain("explicitlyStatesSectionEvidenceGap");
-    expect(runtime).toContain("records missing evidence categories as an evidence gap");
+    expect(runtime).toContain("participantCarePlan");
   });
 
   it("keeps care plan completion prompts visually distinct in DOCX and PDF export paths", () => {
