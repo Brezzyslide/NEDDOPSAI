@@ -22,6 +22,13 @@ import {
   completedWorkVersionsTable,
 } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
+import {
+  getConversationFocus,
+  getOpenConversationTasks,
+  getPendingConversationConfirmation,
+  type PendingConversationConfirmation,
+} from "./conversationControlService.js";
+import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 
 // ─── Action State Level ────────────────────────────────────────────────────────
 
@@ -216,12 +223,87 @@ export interface ConversationActionState {
    * assignedSpecialists which reflects who was assigned to the task.
    */
   completedWork?: CompletedWorkRecord;
+  pendingItem?: {
+    id: string;
+    action: string;
+    waitingOn: string;
+    ageMinutes: number;
+    taskId?: string;
+    taskTitle?: string;
+    proposedTaskTitle?: string;
+    expectedResponse: string;
+  };
+  openTasks: Array<{
+    id: string;
+    title: string;
+    state: string;
+    boundParticipantIds: string[];
+    lastError?: string;
+  }>;
+  focusedParticipantIds: string[];
   allowedClaims: readonly string[];
   disallowedClaims: readonly string[];
   becauseExplanation: string;
 }
 
 // ─── Resolver ─────────────────────────────────────────────────────────────────
+
+const ACTION_STATE_TERMINAL_TASK_STATES = new Set(["failed", "completed", "cancelled"]);
+
+function pendingWaitingOn(confirmation: PendingConversationConfirmation): string {
+  if (confirmation.action === "NEW_TASK") return "user confirmation to create the proposed task";
+  if (confirmation.action === "CANCEL_TASK") return "user confirmation to cancel the task";
+  if (confirmation.expectedResponse === "task_selection") return "user selection of the intended task";
+  return "user confirmation";
+}
+
+async function isPendingItemStillRelevant(input: {
+  organisationId: string;
+  confirmation: PendingConversationConfirmation;
+}): Promise<boolean> {
+  if (!input.confirmation.taskId) return true;
+  try {
+    const [task] = await db
+      .select({ currentState: tasksTable.currentState })
+      .from(tasksTable)
+      .where(and(
+        eq(tasksTable.organizationId, input.organisationId),
+        eq(tasksTable.id, input.confirmation.taskId),
+      ))
+      .limit(1);
+    return task ? !ACTION_STATE_TERMINAL_TASK_STATES.has(task.currentState) : true;
+  } catch {
+    return true;
+  }
+}
+
+function formatPendingItem(confirmation: PendingConversationConfirmation): ConversationActionState["pendingItem"] {
+  const created = Date.parse(confirmation.createdAt);
+  const ageMinutes = Number.isFinite(created)
+    ? Math.max(0, Math.floor((Date.now() - created) / 60_000))
+    : 0;
+  return {
+    id: confirmation.id,
+    action: confirmation.action,
+    waitingOn: pendingWaitingOn(confirmation),
+    ageMinutes,
+    taskId: confirmation.taskId,
+    taskTitle: confirmation.taskTitle,
+    proposedTaskTitle: confirmation.proposedTask?.title,
+    expectedResponse: confirmation.expectedResponse,
+  };
+}
+
+function readLastError(metadata: Record<string, unknown> | null | undefined): string | undefined {
+  const candidates = [
+    metadata?.lastError,
+    metadata?.errorMessage,
+    (metadata?.execution as Record<string, unknown> | undefined)?.errorMessage,
+    (metadata?.lastFailure as Record<string, unknown> | undefined)?.message,
+  ];
+  const value = candidates.find(candidate => typeof candidate === "string" && candidate.trim());
+  return typeof value === "string" ? value.slice(0, 240) : undefined;
+}
 
 export async function resolveConversationActionState(input: {
   organisationId: string;
@@ -359,6 +441,43 @@ export async function resolveConversationActionState(input: {
     console.warn("[ActionState] completed_work query failed:", e instanceof Error ? e.message : e);
   }
 
+  let pendingItem: ConversationActionState["pendingItem"] | undefined;
+  try {
+    const pending = await getPendingConversationConfirmation({ organizationId: organisationId, conversationId });
+    if (pending && await isPendingItemStillRelevant({ organisationId, confirmation: pending })) {
+      pendingItem = formatPendingItem(pending);
+    }
+  } catch (e) {
+    console.warn("[ActionState] pending confirmation query failed:", e instanceof Error ? e.message : e);
+  }
+
+  let openTasks: ConversationActionState["openTasks"] = [];
+  let focusedParticipantIds: string[] = [];
+  try {
+    const focus = await getConversationFocus({ organizationId: organisationId, conversationId }).catch(() => null);
+    const taskRows = await getOpenConversationTasks({
+      organizationId: organisationId,
+      conversationId,
+      currentTaskId: taskId,
+      focusedTaskId: focus?.taskId,
+    });
+    openTasks = await Promise.all(taskRows.slice(0, 8).map(async task => {
+      const boundParticipantIds = await getRetrievalSubjectParticipantIdsForTask(organisationId, task.id).catch(() => []);
+      if (task.id === taskId || task.id === focus?.taskId) {
+        focusedParticipantIds = boundParticipantIds;
+      }
+      return {
+        id: task.id,
+        title: task.title,
+        state: task.currentState,
+        boundParticipantIds,
+        lastError: readLastError(task.metadata),
+      };
+    }));
+  } catch (e) {
+    console.warn("[ActionState] open task query failed:", e instanceof Error ? e.message : e);
+  }
+
   // 5. Resolve level.
   //    Sprint 29H.2 (Part A): historical completed work no longer overrides level.
   //    Level reflects current active execution state only. Historical completed
@@ -373,7 +492,11 @@ export async function resolveConversationActionState(input: {
     // completedWorkId intentionally excluded from level resolution
   });
 
-  return makeState(level, proposalExists, taskId, !!taskId, taskState, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId, completedWork);
+  return makeState(level, proposalExists, taskId, !!taskId, taskState, assignedSpecialists, executionIntentExists, executionStatus, completedWorkId, completedWork, {
+    pendingItem,
+    openTasks,
+    focusedParticipantIds,
+  });
 }
 
 function resolveLevel(s: {
@@ -423,6 +546,7 @@ function makeState(
   executionStatus: string | undefined,
   completedWorkId: string | undefined,
   completedWork: CompletedWorkRecord | undefined,
+  extras: Partial<Pick<ConversationActionState, "pendingItem" | "openTasks" | "focusedParticipantIds">> = {},
 ): ConversationActionState {
   const claims = CLAIMS_BY_LEVEL[level];
   return {
@@ -436,6 +560,9 @@ function makeState(
     executionStatus,
     completedWorkId,
     completedWork,
+    openTasks: extras.openTasks ?? [],
+    focusedParticipantIds: extras.focusedParticipantIds ?? [],
+    pendingItem: extras.pendingItem,
     allowedClaims: claims.allowed,
     disallowedClaims: claims.disallowed,
     becauseExplanation: claims.becauseExplanation,
@@ -488,6 +615,34 @@ export function buildActionStateSection(state: ConversationActionState): string 
   }
   if (state.taskState) {
     lines.push(`Authoritative task state: ${state.taskState}`);
+  }
+  if (state.pendingItem) {
+    const pending = state.pendingItem;
+    const target = pending.proposedTaskTitle ?? pending.taskTitle ?? pending.taskId ?? pending.id;
+    lines.push(
+      "",
+      "Active pending item:",
+      `- Type: ${pending.action}`,
+      `- Target: ${target}`,
+      `- Waiting on: ${pending.waitingOn}`,
+      `- Expected response: ${pending.expectedResponse}`,
+      `- Age: ${pending.ageMinutes} minute(s)`,
+    );
+  } else {
+    lines.push("", "Active pending item: none");
+  }
+  if (state.openTasks.length > 0) {
+    lines.push("", "Open tasks in this conversation:");
+    for (const task of state.openTasks) {
+      const participants = task.boundParticipantIds.length > 0 ? task.boundParticipantIds.join(", ") : "none";
+      const lastError = task.lastError ? `; last error: ${task.lastError}` : "";
+      lines.push(`- ${task.id}: "${task.title}" [${task.state}], bound participant(s): ${participants}${lastError}`);
+    }
+  } else {
+    lines.push("", "Open tasks in this conversation: none");
+  }
+  if (state.focusedParticipantIds.length > 0) {
+    lines.push(`Focused work participant(s): ${state.focusedParticipantIds.join(", ")}`);
   }
 
   lines.push("", "Allowed claims:");

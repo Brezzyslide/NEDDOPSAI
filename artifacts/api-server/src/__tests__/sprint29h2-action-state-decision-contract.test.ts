@@ -55,6 +55,8 @@ function makeState(overrides: Partial<ConversationActionState> = {}): Conversati
     executionStatus: undefined,
     completedWorkId: "e7f810e9-3554-422f-a892-258973ee5ac6",
     completedWork: EXISTING_WORK,
+    openTasks: [],
+    focusedParticipantIds: [],
     allowedClaims: ["The specialist has been assigned"],
     disallowedClaims: ["started / underway / in progress"],
     becauseExplanation: "Specialist assigned, no active execution",
@@ -159,6 +161,7 @@ describe("Part D — buildActionStateSection grounded metadata", () => {
     const section = buildActionStateSection(state);
     expect(section).not.toContain("Approved at:");
   });
+
 });
 
 // ─── Part B: resolveActionDecision — 8 scenarios ──────────────────────────────

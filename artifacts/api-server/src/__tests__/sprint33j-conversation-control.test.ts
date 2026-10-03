@@ -393,13 +393,36 @@ describe("Sprint 33J.1 conversation control resolver", () => {
     expect(responseRequestsTaskConfirmation("Created. I have opened the work plan.")).toBe(false);
   });
 
-  it("expires stale pending confirmations so old forensic tasks cannot consume a new bare confirm", () => {
+  it("keeps pending confirmations visible for 24 hours and expires older items", () => {
     const now = Date.parse("2026-08-24T02:34:17Z");
     const fresh = pendingConfirmation({ createdAt: new Date(now - 5 * 60 * 1000).toISOString() });
-    const stale = pendingConfirmation({ createdAt: "2026-08-23T23:44:06.677Z" });
+    const stillActive = pendingConfirmation({ createdAt: new Date(now - 12 * 60 * 60 * 1000).toISOString() });
+    const stale = pendingConfirmation({ createdAt: new Date(now - 25 * 60 * 60 * 1000).toISOString() });
 
     expect(isPendingConfirmationActive(fresh, now)).toBe(true);
+    expect(isPendingConfirmationActive(stillActive, now)).toBe(true);
     expect(isPendingConfirmationActive(stale, now)).toBe(false);
+  });
+
+  it("source guard: task proposal recovery persists a real supersedable confirmation", () => {
+    const ingress = readFileSync(resolve(__dirname, "../services/messageIngressService.ts"), "utf8");
+    const control = readFileSync(resolve(__dirname, "../services/conversationControlService.ts"), "utf8");
+
+    expect(ingress).not.toContain("getLatestTaskProposalConfirmation");
+    expect(ingress).toContain("recoverTaskProposal: true");
+    expect(control).toContain("recoverLatestTaskProposalConfirmation");
+    expect(control).toContain("sourceMessageId");
+    expect(control).toContain("persistConversationConfirmation({");
+  });
+
+  it("source guard: pending replies use model-led resolution before frozen pattern fallback", () => {
+    const ingress = readFileSync(resolve(__dirname, "../services/messageIngressService.ts"), "utf8");
+
+    expect(ingress).toContain("classifyMessageLLM(input.content");
+    expect(ingress).toContain("modelUnderstanding.pending_resolution");
+    expect(ingress).toContain("modelUnderstanding.usedFallback");
+    expect(ingress).toContain("resolvePendingConfirmationAnswer(input.content, input.confirmation)");
+    expect(ingress).toContain("I still have a pending");
   });
 
   it("source guard: created tasks consume their pending conversation confirmations", () => {
@@ -431,7 +454,7 @@ describe("Sprint 33J.1 conversation control resolver", () => {
         summary: "Create a standard risk assessment template.",
         priority: "high",
       },
-      createdAt: "2026-08-23T23:44:06.677Z",
+      createdAt: "2026-08-22T23:44:06.677Z",
     });
 
     expect(resolvePendingConfirmationAnswer("confirm", serviceAgreement).kind).toBe("confirm");

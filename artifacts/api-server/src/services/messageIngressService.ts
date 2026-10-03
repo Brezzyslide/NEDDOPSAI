@@ -22,7 +22,7 @@
 import { randomUUID } from "crypto";
 import type { ConversationMessage } from "@workspace/db";
 import { db, conversationMessagesTable } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   addMessage,
   getOrCreateWorkroom,
@@ -48,7 +48,6 @@ import {
   getPendingConversationConfirmation,
   getPendingApprovalsForConversation,
   holdTaskFromConversation,
-  isPendingConfirmationActive,
   isLikelyCheckpointAnswer,
   markConversationConfirmationResolved,
   modifyTaskFromConversation,
@@ -61,6 +60,8 @@ import {
   type PendingConversationConfirmation,
   type TaskReferenceCandidate,
 } from "./conversationControlService.js";
+import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
+import type { ConversationActionState } from "./conversationActionStateService.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,52 +173,6 @@ function extractProposedTaskForConfirmation(
       (result.agentMessage as ConversationMessage | undefined)?.structuredContent as StructuredContent | undefined,
       sourceUserRequest,
     );
-}
-
-async function getLatestTaskProposalConfirmation(input: {
-  organizationId: string;
-  conversationId: string;
-  sourceUserRequest: string;
-}): Promise<PendingConversationConfirmation | null> {
-  const rows = await db
-    .select({
-      id: conversationMessagesTable.id,
-      structuredContent: conversationMessagesTable.structuredContent,
-      createdAt: conversationMessagesTable.createdAt,
-    })
-    .from(conversationMessagesTable)
-    .where(and(
-      eq(conversationMessagesTable.organizationId, input.organizationId),
-      eq(conversationMessagesTable.conversationId, input.conversationId),
-      eq(conversationMessagesTable.messageType, "task_proposal"),
-    ))
-    .orderBy(desc(conversationMessagesTable.createdAt))
-    .limit(10);
-
-  for (const row of rows) {
-    const proposedTask = extractProposedTaskFromStructuredContent(
-      row.structuredContent as StructuredContent | undefined,
-      input.sourceUserRequest,
-    );
-    if (!proposedTask) continue;
-    const createdAt = row.createdAt instanceof Date
-      ? row.createdAt.toISOString()
-      : typeof row.createdAt === "string"
-        ? row.createdAt
-        : new Date().toISOString();
-    const confirmation: PendingConversationConfirmation = {
-      id: `proposal:${row.id}`,
-      action: "NEW_TASK",
-      proposedTask,
-      candidateTasks: [],
-      createdAt,
-      status: "pending",
-      expectedResponse: "yes_no",
-      reason: "task_proposal_message_recovery",
-    };
-    if (isPendingConfirmationActive(confirmation)) return confirmation;
-  }
-  return null;
 }
 
 function isStartedStatusQuestion(text: string): boolean {
@@ -459,19 +414,14 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
     return { type: "normal", result: evidenceResumeResult, conversationId };
   }
 
+  let preclassifiedUnderstanding: (ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string }) | undefined;
   const pendingConfirmation = controlIntent === "STATUS_QUERY"
     ? null
-    : (
-      await getPendingConversationConfirmation({
-        organizationId,
-        conversationId,
-      }).catch(() => null)
-      ?? await getLatestTaskProposalConfirmation({
-        organizationId,
-        conversationId,
-        sourceUserRequest: content,
-      }).catch(() => null)
-    );
+    : await getPendingConversationConfirmation({
+      organizationId,
+      conversationId,
+      recoverTaskProposal: true,
+    }).catch(() => null);
   if (pendingConfirmation) {
     const confirmationResult = await maybeHandlePendingConfirmation({
       content,
@@ -482,9 +432,10 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
       idempotencyKey: input.idempotencyKey,
       confirmation: pendingConfirmation,
     });
-    if (confirmationResult) {
-      return { type: "normal", result: confirmationResult, conversationId };
+    if (confirmationResult.result) {
+      return { type: "normal", result: confirmationResult.result, conversationId };
     }
+    preclassifiedUnderstanding = confirmationResult.preclassifiedUnderstanding;
   }
 
   const checkpoint = await getActiveCheckpointByConversation(conversationId, organizationId);
@@ -607,7 +558,9 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
   // processUserMessage persists both user and agent messages internally.
 
   try {
-    const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey);
+    const result = await processUserMessage(organizationId, conversationId, userId, content, taskId, input.idempotencyKey, {
+      preclassifiedUnderstanding,
+    });
 
     const proposedTaskForConfirmation = extractProposedTaskForConfirmation(result, content);
     if (proposedTaskForConfirmation && responseRequestsTaskConfirmation(result.understanding.customerResponse)) {
@@ -618,6 +571,7 @@ export async function handleIncomingMessage(input: IngressInput): Promise<Ingres
         proposedTask: proposedTaskForConfirmation,
         expectedResponse: "yes_no",
         reason: "task_proposal_confirmation",
+        sourceMessageId: result.agentMessage?.id,
       }).catch(() => {});
     }
 
@@ -722,9 +676,74 @@ async function maybeHandlePendingConfirmation(input: {
   userId: string;
   idempotencyKey?: string;
   confirmation: PendingConversationConfirmation;
-}): Promise<ProcessMessageResult | null> {
-  const answer = resolvePendingConfirmationAnswer(input.content, input.confirmation);
-  if (answer.kind === "unrelated") return null;
+}): Promise<{ result: ProcessMessageResult | null; preclassifiedUnderstanding?: ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string } }> {
+  const handle = async (result: Promise<ProcessMessageResult> | ProcessMessageResult) => ({
+    result: await result,
+  });
+  const pendingTarget = input.confirmation.proposedTask?.title
+    ?? input.confirmation.taskTitle
+    ?? input.confirmation.taskId
+    ?? "the pending item";
+
+  let modelUnderstanding: (ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string }) | undefined;
+  try {
+    modelUnderstanding = await classifyMessageLLM(input.content, {
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      currentTaskId: input.taskId,
+    }, {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      role: "member",
+      permissions: [],
+    });
+  } catch {
+    modelUnderstanding = undefined;
+  }
+
+  let answer: ReturnType<typeof resolvePendingConfirmationAnswer> | null = null;
+  if (modelUnderstanding && !modelUnderstanding.usedFallback) {
+    switch (modelUnderstanding.pending_resolution) {
+      case "CONFIRM":
+        answer = { kind: "confirm" };
+        break;
+      case "DECLINE":
+        answer = { kind: "decline" };
+        break;
+      case "AMBIGUOUS":
+        return handle(addControlMessages({
+          organizationId: input.organizationId,
+          conversationId: input.conversationId,
+          taskId: input.confirmation.taskId ?? input.taskId,
+          userId: input.userId,
+          content: input.content,
+          response: `Do you mean the pending ${input.confirmation.action.toLowerCase().replace(/_/g, " ")} for "${pendingTarget}", or something else?`,
+          idempotencyKey: input.idempotencyKey,
+          mode: "task_followup",
+          confidence: 0.6,
+          messageType: "question",
+        }));
+      case "UNRELATED":
+      default:
+        return { result: null, preclassifiedUnderstanding: modelUnderstanding };
+    }
+  } else {
+    answer = resolvePendingConfirmationAnswer(input.content, input.confirmation);
+    if (answer.kind === "unrelated") {
+      return handle(addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: input.confirmation.taskId ?? input.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `I still have a pending ${input.confirmation.action.toLowerCase().replace(/_/g, " ")} for "${pendingTarget}". Do you want me to confirm it, decline it, or change it?`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "task_followup",
+        confidence: 0.6,
+        messageType: "question",
+      }));
+    }
+  }
 
   if (answer.kind === "decline") {
     await markConversationConfirmationResolved({
@@ -733,7 +752,7 @@ async function maybeHandlePendingConfirmation(input: {
       confirmation: input.confirmation,
       status: "declined",
     }).catch(() => {});
-    return addControlMessages({
+    return handle(addControlMessages({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       taskId: input.confirmation.taskId ?? input.taskId,
@@ -746,7 +765,7 @@ async function maybeHandlePendingConfirmation(input: {
       mode: input.confirmation.action === "CANCEL_TASK" ? "cancellation_request" : "task_followup",
       action: input.confirmation.action === "CANCEL_TASK" ? "cancel" : undefined,
       confidence: 0.98,
-    });
+    }));
   }
 
   if (answer.kind === "task_selection") {
@@ -774,7 +793,7 @@ async function maybeHandlePendingConfirmation(input: {
         expectedResponse: "yes_no",
         reason: "task_selection_for_cancellation",
       });
-      return addControlMessages({
+      return handle(addControlMessages({
         organizationId: input.organizationId,
         conversationId: input.conversationId,
         taskId: answer.candidate.taskId,
@@ -786,11 +805,11 @@ async function maybeHandlePendingConfirmation(input: {
         action: "cancel",
         confidence: 0.92,
         messageType: "question",
-      });
+      }));
     }
 
     if (input.confirmation.action === "STATUS_QUERY") {
-      return addControlMessages({
+      return handle(addControlMessages({
         organizationId: input.organizationId,
         conversationId: input.conversationId,
         taskId: answer.candidate.taskId,
@@ -801,10 +820,10 @@ async function maybeHandlePendingConfirmation(input: {
         mode: "status_request",
         action: "status",
         confidence: 0.92,
-      });
+      }));
     }
 
-    return addControlMessages({
+    return handle(addControlMessages({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       taskId: answer.candidate.taskId,
@@ -814,7 +833,7 @@ async function maybeHandlePendingConfirmation(input: {
       idempotencyKey: input.idempotencyKey,
       mode: "task_followup",
       confidence: 0.9,
-    });
+    }));
   }
 
   if (answer.kind === "confirm" && input.confirmation.action === "CANCEL_TASK" && input.confirmation.taskId) {
@@ -831,7 +850,7 @@ async function maybeHandlePendingConfirmation(input: {
       status: "confirmed",
     }).catch(() => {});
     const title = input.confirmation.taskTitle ?? "that task";
-    return addControlMessages({
+    return handle(addControlMessages({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       taskId: input.confirmation.taskId,
@@ -846,7 +865,7 @@ async function maybeHandlePendingConfirmation(input: {
       mode: "cancellation_request",
       action: "cancel",
       confidence: 0.99,
-    });
+    }));
   }
 
   if (answer.kind === "confirm" && input.confirmation.action === "NEW_TASK" && input.confirmation.proposedTask) {
@@ -876,7 +895,7 @@ async function maybeHandlePendingConfirmation(input: {
       reason: "confirmed_task_proposal",
       source: "state_change",
     }).catch(() => {});
-    return addControlMessages({
+    return handle(addControlMessages({
       organizationId: input.organizationId,
       conversationId: input.conversationId,
       taskId: created.taskId,
@@ -897,10 +916,10 @@ async function maybeHandlePendingConfirmation(input: {
           workroomConversationId: created.workroomConversationId,
         },
       },
-    });
+    }));
   }
 
-  return null;
+  return { result: null };
 }
 
 async function maybeHandleDeterministicControl(input: {

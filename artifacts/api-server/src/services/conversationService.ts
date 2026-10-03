@@ -38,7 +38,7 @@ import { classifyMessageLLM } from "./chiefOfStaffLLMService.js";
 // Sprint 29H.2 — Action State Decision Contract (Part B)
 // Note: dispatchWorkExecution lives in executionCoordinatorService which already
 // imports from conversationService — wiring is in the route/ingress layer instead.
-import { resolveConversationActionState } from "./conversationActionStateService.js";
+import type { ConversationActionState } from "./conversationActionStateService.js";
 import { resolveActionDecision, type ConversationActionDecision } from "./conversationActionDecisionService.js";
 import { shouldTriggerSummarisation, updateConversationSummary } from "./conversationMemoryService.js";
 import { detectAndProposeConversationKnowledge } from "./conversationLearningService.js";
@@ -478,6 +478,10 @@ export interface ProcessMessageResult {
   executionClassification?: ExecutionClassification;
 }
 
+export interface ProcessUserMessageOptions {
+  preclassifiedUnderstanding?: ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string };
+}
+
 export async function buildMessageContext(
   organizationId: string,
   conversationId: string,
@@ -564,6 +568,7 @@ export async function processUserMessage(
   text: string,
   taskId?: string,
   correlationId?: string,
+  options: ProcessUserMessageOptions = {},
 ): Promise<ProcessMessageResult> {
   // 1. Store user message
   const userMessage = await addMessage({
@@ -583,12 +588,13 @@ export async function processUserMessage(
   // 3. Classify intent — LLM primary (OpenAI when configured), deterministic fallback.
   // Sprint 9.2: classifyMessageLLM now builds the full tenant-aware context package
   // internally (up to 300 messages, org memory, summary, pinned decisions).
-  const understanding = await classifyMessageLLM(text, ctx, {
-    userId,
-    organizationId,
-    role:        "member",   // conservative default — gateway enforces allowlist
-    permissions: [],
-  });
+  const understanding = options.preclassifiedUnderstanding
+    ?? await classifyMessageLLM(text, ctx, {
+      userId,
+      organizationId,
+      role:        "member",   // conservative default — gateway enforces allowlist
+      permissions: [],
+    });
   if (understanding.proposedTask) {
     understanding.proposedTask.sourceUserRequest = text;
   }
@@ -696,16 +702,13 @@ export async function processUserMessage(
   // executionCoordinatorService already imports from conversationService.
   let actionDecision: ConversationActionDecision | undefined;
   try {
-    const actionState = await resolveConversationActionState({
-      organisationId: organizationId,
-      conversationId,
-      recentMessages: (ctx.recentMessages ?? []).map(m => ({
-        messageType: m.messageType ?? "text",
-        content: m.content ?? "",
-      })),
-      taskId: taskId ?? ctx.currentTaskId,
-    });
-    actionDecision = resolveActionDecision(text, understanding, actionState);
+    const actionState = understanding.actionState ?? null;
+    if (actionState && !actionState.pendingItem) {
+      // Precedence rule: when a pending item is active, the model's
+      // pending_resolution wins because it answered the exact pending prompt.
+      // resolveActionDecision handles non-pending platform operations only.
+      actionDecision = resolveActionDecision(text, understanding, actionState);
+    }
   } catch (err) {
     // Action decision errors must never break conversation flow
     console.warn("[ConversationService] Action decision failed (non-fatal):", (err as Error)?.message);

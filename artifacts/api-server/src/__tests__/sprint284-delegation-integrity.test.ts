@@ -179,7 +179,8 @@ import {
 
 import type { ConversationActionState } from "../services/conversationActionStateService.js";
 
-import { classifyMessageLLM } from "../services/chiefOfStaffLLMService.js";
+import { buildCoSConversationResponseSchema, classifyMessageLLM } from "../services/chiefOfStaffLLMService.js";
+import { validateOpenAIStructuredOutputStrictSchema } from "../services/openAIStructuredOutputSchemaValidationService.js";
 import { _clearWorkforceCache } from "../services/conversationWorkforceContextService.js";
 import type { MessageContext } from "../services/conversationIntelligenceService.js";
 
@@ -209,6 +210,8 @@ function makeActionState(overrides: Partial<ConversationActionState> = {}): Conv
     taskExists: false,
     assignedSpecialists: [],
     executionIntentExists: false,
+    openTasks: [],
+    focusedParticipantIds: [],
     allowedClaims: ["I can prepare a task proposal", "Shall I prepare the task?"],
     disallowedClaims: ["assigned / delegated", "started / underway", "completed"],
     becauseExplanation: "No task or proposal exists yet.",
@@ -224,6 +227,8 @@ function makeLLMResponse(partial: Record<string, unknown> = {}) {
     shouldUpdateTask: false,
     relatedWorkforceRoles: ["chief_of_staff", "operations_manager"],
     customerResponse: "The Operations Manager is available. Shall I prepare a task?",
+    pending_resolution: "UNRELATED",
+    pending_resolution_reason: "No active pending item.",
     ...partial,
   });
 }
@@ -591,6 +596,34 @@ describe("buildActionStateSection", () => {
     const section = buildActionStateSection(state);
     expect(section).toContain("operations_manager");
   });
+
+  it("includes pending item, open task, and focused participant context", () => {
+    const section = buildActionStateSection(makeActionState({
+      pendingItem: {
+        id: "confirm-001",
+        action: "NEW_TASK",
+        waitingOn: "user confirmation to create the proposed task",
+        ageMinutes: 42,
+        proposedTaskTitle: "Prepare Micheal care plan",
+        expectedResponse: "yes_no",
+      },
+      openTasks: [{
+        id: "task-001",
+        title: "Existing care plan",
+        state: "failed",
+        boundParticipantIds: ["participant-001"],
+        lastError: "Evidence retrieval failed",
+      }],
+      focusedParticipantIds: ["participant-001"],
+    }));
+
+    expect(section).toContain("Active pending item:");
+    expect(section).toContain("Prepare Micheal care plan");
+    expect(section).toContain("Age: 42 minute(s)");
+    expect(section).toContain("Open tasks in this conversation:");
+    expect(section).toContain("Evidence retrieval failed");
+    expect(section).toContain("Focused work participant(s): participant-001");
+  });
 });
 
 // ─── E. classifyMessageLLM — action state injected + validated ────────────────
@@ -636,6 +669,34 @@ describe("classifyMessageLLM — action state enforcement", () => {
     // Action state must appear before workforce and user message
     expect(actionPos).toBeLessThan(workforcePos);
     expect(actionPos).toBeLessThan(userMsgPos);
+  });
+
+  it("uses a strict structured response schema with pending-resolution fields", async () => {
+    const response = buildCoSConversationResponseSchema();
+
+    expect(response.name).toBe("cos_conversation_intelligence_response");
+    expect(() => validateOpenAIStructuredOutputStrictSchema(response.name, response.schema)).not.toThrow();
+    expect((response.schema as any).required).toContain("pending_resolution");
+    expect((response.schema as any).required).toContain("pending_resolution_reason");
+    expect((response.schema as any).properties.pending_resolution.enum).toContain("AMBIGUOUS");
+  });
+
+  it("passes the strict schema to the gateway and parses pending resolution", async () => {
+    mocks.gatewayProcess.mockResolvedValue({
+      content: makeLLMResponse({
+        pending_resolution: "CONFIRM",
+        pending_resolution_reason: "User clearly confirmed the pending item.",
+      }),
+      usedFallback: false,
+    });
+
+    const result = await classifyMessageLLM("yess", baseCtx, authCtx);
+    const request = mocks.gatewayProcess.mock.calls[0]?.[0] as any;
+
+    expect(request.outputMode).toBe("structured");
+    expect(request.responseSchema?.name).toBe("cos_conversation_intelligence_response");
+    expect(result.pending_resolution).toBe("UNRELATED");
+    expect(result.pending_resolution_reason).toMatch(/No active pending item/);
   });
 
   it("shows 'informational' level for a new conversation with no proposal or task", async () => {

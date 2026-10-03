@@ -53,6 +53,7 @@ import {
   checkDelegationIntegrity,
   buildDelegationIntegrityAuditEvent,
 } from "./delegationIntegrityService.js";
+import { validateOpenAIStructuredOutputStrictSchema } from "./openAIStructuredOutputSchemaValidationService.js";
 
 // ─── Workforce role validation ────────────────────────────────────────────────
 
@@ -357,6 +358,8 @@ Your output MUST be a single JSON object with these exact fields:
   "requestedTaskAction": one of ["create","revise","approve","reject","pause","resume","cancel","status","follow_up"] or null,
   "relatedWorkforceRoles": array of role codes,
   "customerResponse": string,
+  "pending_resolution": one of ["CONFIRM","DECLINE","UNRELATED","AMBIGUOUS"],
+  "pending_resolution_reason": string,
   "reasoning": string,
   "orchestrationSteps": array of { "stepId": string, "completed": boolean, "notes": string } — CoS reasoning trace for all 9 steps,
   "shouldDispatchSpecialists": boolean — true if immediate specialist dispatch is recommended,
@@ -365,6 +368,9 @@ Your output MUST be a single JSON object with these exact fields:
 
 Rules:
 - shouldCreateTask is ALWAYS false
+- pending_resolution is about the Active pending item in CURRENT ACTION STATE only. If there is no active pending item, set it to UNRELATED.
+- Use AMBIGUOUS when the user may be referring to more than one pending/open item or the wording is too short to decide safely.
+- Never infer CONFIRM unless the user clearly confirms the active pending item. Ambiguity resolves toward AMBIGUOUS or DECLINE, not CONFIRM.
 - customerResponse must be warm, professional, direct — reference context from memory when relevant
 - customerResponse must NEVER contain prohibited response patterns listed above
 - If a pinned decision is relevant, acknowledge it explicitly
@@ -409,6 +415,96 @@ const VALID_PRIORITIES = new Set(["low","normal","high","urgent"]);
 const VALID_TASK_ACTIONS = new Set([
   "create","revise","approve","reject","pause","resume","cancel","status","follow_up",
 ]);
+const VALID_PENDING_RESOLUTIONS = new Set(["CONFIRM", "DECLINE", "UNRELATED", "AMBIGUOUS"]);
+
+export function buildCoSConversationResponseSchema() {
+  const response = {
+    name: "cos_conversation_intelligence_response",
+    strict: true,
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "conversationMode",
+        "confidence",
+        "clarificationRequired",
+        "clarificationQuestions",
+        "shouldCreateTask",
+        "shouldUpdateTask",
+        "proposedTask",
+        "requestedTaskAction",
+        "relatedWorkforceRoles",
+        "customerResponse",
+        "pending_resolution",
+        "pending_resolution_reason",
+        "reasoning",
+        "orchestrationSteps",
+        "shouldDispatchSpecialists",
+        "specialistSequence",
+      ],
+      properties: {
+        conversationMode: { type: "string", enum: [...VALID_MODES] },
+        confidence: { type: "number" },
+        clarificationRequired: { type: "boolean" },
+        clarificationQuestions: { type: "array", items: { type: "string" } },
+        shouldCreateTask: { type: "boolean" },
+        shouldUpdateTask: { type: "boolean" },
+        proposedTask: {
+          anyOf: [
+            { type: "null" },
+            {
+              type: "object",
+              additionalProperties: false,
+              required: ["title", "summary", "priority", "requestedOutcome", "knownConstraints"],
+              properties: {
+                title: { type: "string" },
+                summary: { type: "string" },
+                priority: { type: "string", enum: [...VALID_PRIORITIES] },
+                requestedOutcome: { type: "string" },
+                knownConstraints: { type: "array", items: { type: "string" } },
+              },
+            },
+          ],
+        },
+        requestedTaskAction: { anyOf: [{ type: "null" }, { type: "string", enum: [...VALID_TASK_ACTIONS] }] },
+        relatedWorkforceRoles: { type: "array", items: { type: "string" } },
+        customerResponse: { type: "string" },
+        pending_resolution: { type: "string", enum: [...VALID_PENDING_RESOLUTIONS] },
+        pending_resolution_reason: { type: "string" },
+        reasoning: { type: "string" },
+        orchestrationSteps: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["stepId", "completed", "notes"],
+            properties: {
+              stepId: { type: "string" },
+              completed: { type: "boolean" },
+              notes: { type: "string" },
+            },
+          },
+        },
+        shouldDispatchSpecialists: { type: "boolean" },
+        specialistSequence: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["roleCode", "dependsOn", "rationale"],
+            properties: {
+              roleCode: { type: "string" },
+              dependsOn: { type: "array", items: { type: "string" } },
+              rationale: { type: "string" },
+            },
+          },
+        },
+      },
+    },
+  } as const;
+  validateOpenAIStructuredOutputStrictSchema(response.name, response.schema);
+  return response;
+}
 
 // ─── Document search term extraction (Sprint 28.5) ────────────────────────────
 // Moved to conversationContextBuilder.ts to avoid circular imports.
@@ -510,7 +606,7 @@ export async function classifyMessageLLM(
   text: string,
   ctx: MessageContext,
   authCtx: { userId: string; organizationId: string; role: string; permissions: string[] },
-): Promise<ConversationUnderstanding & CoSExtendedOutput & { usedFallback?: boolean; fallbackReason?: string }> {
+): Promise<ConversationUnderstanding & CoSExtendedOutput & { usedFallback?: boolean; fallbackReason?: string; actionState?: ConversationActionState | null }> {
 
   // ── Sprint 28.5: Single authoritative context builder ────────────────────
   // All context components (library presence, action state, workforce, memory)
@@ -566,7 +662,7 @@ export async function classifyMessageLLM(
         base.customerResponse = integrityResult.correctedResponse;
       }
     }
-    return { ...base, usedFallback: true, fallbackReason: `AI_PROVIDER is "${provider}", not "openai"` };
+    return { ...base, pending_resolution: "UNRELATED", pending_resolution_reason: "No provider model call was made.", usedFallback: true, fallbackReason: `AI_PROVIDER is "${provider}", not "openai"`, actionState };
   }
 
   try {
@@ -600,7 +696,9 @@ export async function classifyMessageLLM(
       userMessage,
       retrievedFields,
       maxTokens: 1400,
-      outputMode: "json", // CoS classification returns structured JSON routing decision
+      outputMode: "structured", // CoS classification returns strict structured JSON routing decision
+      responseSchema: buildCoSConversationResponseSchema(),
+      runtimeProfile: "conversation_intelligence",
     });
 
     if (response.usedFallback) {
@@ -609,7 +707,7 @@ export async function classifyMessageLLM(
         const filtered = base.relatedWorkforceRoles.filter(r => dispatchableCodes.has(r));
         base.relatedWorkforceRoles = filtered.length > 0 ? filtered : ["chief_of_staff"];
       }
-      return { ...base, usedFallback: true, fallbackReason: response.fallbackReason };
+      return { ...base, pending_resolution: "UNRELATED", pending_resolution_reason: response.fallbackReason ?? "Provider fallback used.", usedFallback: true, fallbackReason: response.fallbackReason, actionState };
     }
 
     const parsed = parseAndValidateLLMResponse(response.content, deriveMessageContext(context), workforceCtx ?? undefined, actionState ?? undefined);
@@ -629,9 +727,9 @@ export async function classifyMessageLLM(
           deterministic.customerResponse = integrityResult.correctedResponse;
         }
       }
-      return { ...deterministic, usedFallback: false };
+      return { ...deterministic, pending_resolution: parsed.pending_resolution, pending_resolution_reason: parsed.pending_resolution_reason, usedFallback: false, actionState };
     }
-    return { ...parsed, usedFallback: false };
+    return { ...parsed, usedFallback: false, actionState };
 
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -648,7 +746,7 @@ export async function classifyMessageLLM(
         base.customerResponse = integrityResult.correctedResponse;
       }
     }
-    return { ...base, usedFallback: true, fallbackReason: reason };
+    return { ...base, pending_resolution: "UNRELATED", pending_resolution_reason: reason, usedFallback: true, fallbackReason: reason, actionState };
   }
 }
 
@@ -882,6 +980,13 @@ function parseAndValidateLLMResponse(
 
   const rta = raw.requestedTaskAction as string | null;
   const requestedTaskAction = (rta && VALID_TASK_ACTIONS.has(rta)) ? rta as any : undefined;
+  const rawPendingResolution = raw.pending_resolution;
+  const pendingResolution = typeof rawPendingResolution === "string" && VALID_PENDING_RESOLUTIONS.has(rawPendingResolution)
+    ? rawPendingResolution as ConversationUnderstanding["pending_resolution"]
+    : "UNRELATED";
+  const pendingResolutionReason = typeof raw.pending_resolution_reason === "string"
+    ? raw.pending_resolution_reason.slice(0, 500)
+    : "No pending-resolution reason supplied.";
 
   // ── Sprint 28.3: Live workforce filtering ─────────────────────────────────
   // Build lookup sets from the live workforce context so we can enforce
@@ -1001,6 +1106,8 @@ function parseAndValidateLLMResponse(
     requestedTaskAction,
     relatedWorkforceRoles: roles.length > 0 ? roles : ["chief_of_staff"],
     customerResponse,
+    pending_resolution: actionState?.pendingItem ? pendingResolution : "UNRELATED",
+    pending_resolution_reason: actionState?.pendingItem ? pendingResolutionReason : "No active pending item in action-state context.",
     // CoS extended fields (Sprint 10)
     orchestrationSteps,
     shouldDispatchSpecialists,

@@ -95,6 +95,7 @@ export interface PendingConversationConfirmation {
   taskId?: string;
   taskTitle?: string;
   approvalId?: string;
+  sourceMessageId?: string;
   proposedTask?: {
     title: string;
     summary: string;
@@ -146,7 +147,7 @@ const OPEN_TASK_STATES: TaskState[] = [
   "failed",
 ];
 const ORG_REFERENCE_TASK_STATES: TaskState[] = OPEN_TASK_STATES.filter(state => state !== "failed");
-const PENDING_CONFIRMATION_MAX_AGE_MS = 30 * 60 * 1000;
+const PENDING_CONFIRMATION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 const CANCEL_PATTERNS = [
   /\b(cancel|stop|abort|terminate|kill)\b.*\b(task|request|report|work|execution|job|that|this|it)\b/i,
@@ -199,6 +200,102 @@ export function isPendingConfirmationActive(confirmation: PendingConversationCon
   const created = Date.parse(confirmation.createdAt);
   if (!Number.isFinite(created)) return false;
   return now - created <= PENDING_CONFIRMATION_MAX_AGE_MS;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function readPriority(value: unknown): NonNullable<PendingConversationConfirmation["proposedTask"]>["priority"] {
+  return typeof value === "string" && ["low", "normal", "high", "urgent"].includes(value)
+    ? value
+    : "normal";
+}
+
+function extractTaskProposalFromStructuredContent(
+  structuredContent: unknown,
+): PendingConversationConfirmation["proposedTask"] | undefined {
+  const sc = structuredContent as { type?: unknown; data?: unknown } | null | undefined;
+  if (!sc || sc.type !== "task_proposal" || !sc.data || typeof sc.data !== "object") return undefined;
+  const data = sc.data as Record<string, unknown>;
+  const proposal = data.proposedTask && typeof data.proposedTask === "object"
+    ? data.proposedTask as Record<string, unknown>
+    : data;
+  const title = readString(proposal.title) ?? readString(data.title);
+  if (!title) return undefined;
+  const sourceUserRequest = readString(proposal.sourceUserRequest)
+    ?? readString(data.sourceUserRequest)
+    ?? readString(proposal.summary)
+    ?? title;
+  return {
+    title,
+    summary: readString(proposal.summary) ?? readString(data.summary) ?? sourceUserRequest,
+    priority: readPriority(proposal.priority ?? data.priority),
+    requestedOutcome: readString(proposal.requestedOutcome) ?? readString(data.requestedOutcome),
+    knownConstraints: readStringArray(proposal.knownConstraints ?? data.knownConstraints),
+    sourceUserRequest,
+  };
+}
+
+async function recoverLatestTaskProposalConfirmation(input: {
+  organizationId: string;
+  conversationId: string;
+  seenSourceMessageIds: Set<string>;
+}): Promise<PendingConversationConfirmation | null> {
+  const rows = await db
+    .select({
+      id: conversationMessagesTable.id,
+      structuredContent: conversationMessagesTable.structuredContent,
+      createdAt: conversationMessagesTable.createdAt,
+    })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "task_proposal"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(10);
+
+  for (const row of rows) {
+    if (input.seenSourceMessageIds.has(row.id)) continue;
+    const proposedTask = extractTaskProposalFromStructuredContent(row.structuredContent);
+    if (!proposedTask) continue;
+    const createdAt = row.createdAt instanceof Date
+      ? row.createdAt.toISOString()
+      : typeof row.createdAt === "string"
+        ? row.createdAt
+        : new Date().toISOString();
+    const candidate: PendingConversationConfirmation = {
+      id: `proposal:${row.id}`,
+      action: "NEW_TASK",
+      proposedTask,
+      candidateTasks: [],
+      createdAt,
+      status: "pending",
+      expectedResponse: "yes_no",
+      reason: "task_proposal_message_recovery",
+      sourceMessageId: row.id,
+    };
+    if (!isPendingConfirmationActive(candidate)) continue;
+    return persistConversationConfirmation({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      action: "NEW_TASK",
+      proposedTask,
+      candidateTasks: [],
+      expectedResponse: "yes_no",
+      reason: "task_proposal_message_recovery",
+      sourceMessageId: row.id,
+    });
+  }
+  return null;
 }
 
 const TERMINAL_TASK_STATES = new Set(["completed", "cancelled", "failed"]);
@@ -510,6 +607,7 @@ export async function getConversationFocus(input: {
 export async function getPendingConversationConfirmation(input: {
   organizationId: string;
   conversationId: string;
+  recoverTaskProposal?: boolean;
 }): Promise<PendingConversationConfirmation | null> {
   const rows = await db
     .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
@@ -522,8 +620,12 @@ export async function getPendingConversationConfirmation(input: {
     .orderBy(desc(conversationMessagesTable.createdAt))
     .limit(30);
 
+  const seenSourceMessageIds = new Set<string>();
   for (const row of rows) {
     const sc = row.structuredContent as any;
+    if (sc?.type === "conversation_pending_confirmation" && typeof sc.data?.sourceMessageId === "string") {
+      seenSourceMessageIds.add(sc.data.sourceMessageId);
+    }
     if (sc?.type === "conversation_pending_confirmation" && sc.data?.status === "pending") {
       const confirmation = { ...sc.data, id: sc.data.id ?? row.id } as PendingConversationConfirmation;
       if (!isPendingConfirmationActive(confirmation)) continue;
@@ -553,7 +655,13 @@ export async function getPendingConversationConfirmation(input: {
       return confirmation;
     }
   }
-  return null;
+  return input.recoverTaskProposal
+    ? recoverLatestTaskProposalConfirmation({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        seenSourceMessageIds,
+      }).catch(() => null)
+    : null;
 }
 
 async function supersedePendingConversationConfirmations(input: {
@@ -603,6 +711,7 @@ export async function persistConversationConfirmation(input: {
   approvalId?: string;
   proposedTask?: PendingConversationConfirmation["proposedTask"];
   candidateTasks?: TaskReferenceCandidate[];
+  sourceMessageId?: string;
   expectedResponse: PendingConversationConfirmation["expectedResponse"];
   reason: string;
 }): Promise<PendingConversationConfirmation> {
@@ -612,6 +721,7 @@ export async function persistConversationConfirmation(input: {
     taskId: input.taskId,
     taskTitle: input.taskTitle,
     approvalId: input.approvalId,
+    sourceMessageId: input.sourceMessageId,
     proposedTask: input.proposedTask,
     candidateTasks: input.candidateTasks ?? [],
     createdAt: new Date().toISOString(),

@@ -57,6 +57,8 @@ export interface ConversationUnderstanding {
     | "follow_up";
   relatedWorkforceRoles: string[];
   customerResponse: string;             // suggested plain-text reply from Chief of Staff
+  pending_resolution?: "CONFIRM" | "DECLINE" | "UNRELATED" | "AMBIGUOUS";
+  pending_resolution_reason?: string;
 }
 
 export interface MessageContext {
