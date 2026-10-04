@@ -489,9 +489,10 @@ describe("Sprint 28.7 — Caller outputMode declaration audit (source-level)", (
     expect(src).toContain(`outputMode: "text"`);
   });
 
-  it("chiefOfStaffLLMService: outputMode='json' (classification returns JSON)", async () => {
+  it("chiefOfStaffLLMService: outputMode='structured' (classification returns strict JSON schema)", async () => {
     const src = await readService("chiefOfStaffLLMService.ts");
-    expect(src).toContain(`outputMode: "json"`);
+    expect(src).toContain(`outputMode: "structured"`);
+    expect(src).toContain("responseSchema: buildCoSConversationResponseSchema()");
   });
 
   it("workBlueprintService: outputMode='json' (blueprint selection returns JSON)", async () => {

@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockGetActiveCheckpoint   = vi.fn();
 const mockBeginResume           = vi.fn();
 const mockRecordAnswer          = vi.fn();
+const mockClassifyMessageLLM    = vi.fn();
 const mockCreateDurableCheckpoint = vi.fn().mockResolvedValue({
   id: "cp-new", conversationId: "conv-1", status: "awaiting_clarification",
 });
@@ -56,6 +57,10 @@ vi.mock("../services/conversationService.js", () => ({
   getMessages:                             vi.fn(),
 }));
 
+vi.mock("../services/chiefOfStaffLLMService.js", () => ({
+  classifyMessageLLM: (...a: unknown[]) => mockClassifyMessageLLM(...a),
+}));
+
 const mockResumeById        = vi.fn().mockResolvedValue(undefined);
 const mockResumeCheckpoint  = vi.fn().mockResolvedValue(undefined);
 const mockDispatch          = vi.fn().mockResolvedValue(undefined);
@@ -95,6 +100,26 @@ vi.mock("../services/auditService.js", () => ({
 }));
 
 vi.mock("@workspace/db", () => {
+  const fakeSpecialistCatalogueTable = {
+    id:              {},
+    specialistCode:  {},
+    displayName:     {},
+    description:     {},
+    executionStatus: {},
+    availability:    {},
+    category:        {},
+    iconMetadata:    {},
+    packMembership:  {},
+    planVisibility:  {},
+    comingSoon:      {},
+    displayOrder:    {},
+    versionMetadata: {},
+    isActive:        {},
+    isArchived:      {},
+    versionCounter:  {},
+    createdAt:       {},
+    updatedAt:       {},
+  };
   const updateChain = () => ({
     set:      vi.fn().mockReturnThis(),
     where:    vi.fn().mockReturnThis(),
@@ -121,6 +146,8 @@ vi.mock("@workspace/db", () => {
     executionCheckpointsTable: {},
     approvalsTable:        {},
     taskExecutionPlansTable: {},
+    platformAuditLogTable: {},
+    specialistCatalogueTable: fakeSpecialistCatalogueTable,
   };
 });
 
@@ -181,6 +208,17 @@ describe("messageIngressService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDbSelect.mockImplementation(() => makeSelectChain());
+    mockClassifyMessageLLM.mockResolvedValue({
+      conversationMode: "general",
+      confidence: 0.7,
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: [],
+      customerResponse: "I need to clarify the pending item.",
+      pending_resolution: "UNRELATED",
+      pending_resolution_reason: "Default test response.",
+      usedFallback: false,
+    });
     mockGetOrCreateWorkroom.mockResolvedValue({ id: "conv-1" });
     mockAutoCreateAndDispatch.mockResolvedValue({
       taskId: "task-created-1",
@@ -381,7 +419,8 @@ describe("messageIngressService", () => {
 
   it("production path: bound task confirmation consumes typoed proceed without replanning", async () => {
     mockGetActiveCheckpoint.mockResolvedValue(null);
-    mockDbSelect.mockImplementation(() => makeSelectChain([{
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{
       id: "notice-1",
       structuredContent: {
         type: "conversation_pending_confirmation",
@@ -402,7 +441,20 @@ describe("messageIngressService", () => {
           reason: "task_proposal_confirmation",
         },
       },
-    }]));
+    }]))
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementation(() => makeSelectChain([]));
+    mockClassifyMessageLLM.mockResolvedValue({
+      conversationMode: "general",
+      confidence: 0.9,
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: [],
+      customerResponse: "Confirmed. I will create that task.",
+      pending_resolution: "CONFIRM",
+      pending_resolution_reason: "User typo confirms the active pending proposal.",
+      usedFallback: false,
+    });
     mockAddMessage
       .mockResolvedValueOnce({ id: "um-proceed", senderType: "user", content: "please procceed" })
       .mockResolvedValueOnce({ id: "am-created", senderType: "chief_of_staff", content: "Created." });
@@ -416,6 +468,10 @@ describe("messageIngressService", () => {
     });
 
     expect(result.type).toBe("normal");
+    expect(mockClassifyMessageLLM).toHaveBeenCalledWith("please procceed", expect.objectContaining({
+      organizationId: "org-1",
+      conversationId: "conv-1",
+    }), expect.any(Object));
     expect(mockProcessUserMessage).not.toHaveBeenCalled();
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({
       organizationId: "org-1",
@@ -429,6 +485,7 @@ describe("messageIngressService", () => {
   it("production path: explicit confirmation recovers from an unbound latest proposal card and creates the task once", async () => {
     mockGetActiveCheckpoint.mockResolvedValue(null);
     mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementationOnce(() => makeSelectChain([{
@@ -450,7 +507,19 @@ describe("messageIngressService", () => {
           },
         },
       }]))
+      .mockImplementationOnce(() => makeSelectChain([]))
       .mockImplementation(() => makeSelectChain([]));
+    mockClassifyMessageLLM.mockResolvedValue({
+      conversationMode: "general",
+      confidence: 0.9,
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      relatedWorkforceRoles: [],
+      customerResponse: "Confirmed. I will create that task.",
+      pending_resolution: "CONFIRM",
+      pending_resolution_reason: "User explicitly confirms the recovered pending proposal.",
+      usedFallback: false,
+    });
     mockAddMessage
       .mockResolvedValueOnce({ id: "um-confirm", senderType: "user", content: "Confirm, please proceed." })
       .mockResolvedValueOnce({ id: "am-created", senderType: "chief_of_staff", content: "Created." });
@@ -465,6 +534,10 @@ describe("messageIngressService", () => {
     });
 
     expect(result.type).toBe("normal");
+    expect(mockClassifyMessageLLM).toHaveBeenCalledWith("Confirm, please proceed.", expect.objectContaining({
+      organizationId: "org-1",
+      conversationId: "conv-1",
+    }), expect.any(Object));
     expect(mockProcessUserMessage).not.toHaveBeenCalled();
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledTimes(1);
     expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({

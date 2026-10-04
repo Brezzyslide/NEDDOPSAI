@@ -129,7 +129,11 @@ function runGate(input: {
 describe("Sprint 39 integration release readiness", () => {
   it("keeps proposal confirmation wired to one task creation path", () => {
     const ingress = source("services/messageIngressService.ts");
-    expect(ingress).toContain("getLatestTaskProposalConfirmation");
+    const control = source("services/conversationControlService.ts");
+    expect(ingress).toContain("recoverTaskProposal: true");
+    expect(control).toContain("recoverLatestTaskProposalConfirmation");
+    expect(control).toContain("persistConversationConfirmation({");
+    expect(control).toContain("reason: \"task_proposal_message_recovery\"");
     expect(ingress).toContain("answer.kind === \"confirm\" && input.confirmation.action === \"NEW_TASK\"");
     expect(ingress).toContain("autoCreateAndDispatch({");
     expect(ingress).toContain("idempotencyKey: `conversation_confirmation:${input.confirmation.id}`");

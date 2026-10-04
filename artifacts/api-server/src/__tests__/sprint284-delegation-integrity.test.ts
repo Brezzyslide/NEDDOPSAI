@@ -233,6 +233,46 @@ function makeLLMResponse(partial: Record<string, unknown> = {}) {
   });
 }
 
+function setPendingConfirmationRow(input: {
+  action: "NEW_TASK" | "CANCEL_TASK";
+  id?: string;
+  taskId?: string;
+  taskTitle?: string;
+  proposedTaskTitle?: string;
+}) {
+  const proposedTask = input.action === "NEW_TASK"
+    ? {
+        title: input.proposedTaskTitle ?? "Prepare Sarah care plan",
+        summary: "Prepare the participant care plan.",
+        priority: "normal",
+        sourceUserRequest: "Prepare Sarah care plan",
+      }
+    : undefined;
+
+  mocks.tableRows.set("conversation_messages", [{
+    id: input.id ?? "pending-confirmation-message-001",
+    organizationId: ORG_A,
+    conversationId: CONV_ID,
+    messageType: "system_notice",
+    structuredContent: {
+      type: "conversation_pending_confirmation",
+      data: {
+        id: input.id ?? "pending-confirmation-001",
+        action: input.action,
+        taskId: input.taskId,
+        taskTitle: input.taskTitle,
+        proposedTask,
+        candidateTasks: [],
+        createdAt: new Date().toISOString(),
+        status: "pending",
+        expectedResponse: "yes_no",
+        reason: "test_pending_confirmation",
+      },
+    },
+    createdAt: new Date(),
+  }]);
+}
+
 // ─── A. resolveConversationActionState ────────────────────────────────────────
 
 describe("resolveConversationActionState", () => {
@@ -697,6 +737,114 @@ describe("classifyMessageLLM — action state enforcement", () => {
     expect(request.responseSchema?.name).toBe("cos_conversation_intelligence_response");
     expect(result.pending_resolution).toBe("UNRELATED");
     expect(result.pending_resolution_reason).toMatch(/No active pending item/);
+  });
+
+  const newTaskConfirmPhrases = ["yess", "yesss", "procced", "yeah go on then", "sure mate"];
+  it.each(newTaskConfirmPhrases)(
+    "resolves pending NEW_TASK confirmation phrase %s through the CoS schema",
+    async (phrase) => {
+      setPendingConfirmationRow({ action: "NEW_TASK", proposedTaskTitle: "Prepare Sarah care plan" });
+      let capturedRequest: any;
+      mocks.gatewayProcess.mockImplementation(async (request: any) => {
+        capturedRequest = request;
+        return {
+          content: makeLLMResponse({
+            conversationMode: "general",
+            shouldCreateTask: false,
+            relatedWorkforceRoles: [],
+            customerResponse: "Confirmed. I will create the proposed task.",
+            pending_resolution: "CONFIRM",
+            pending_resolution_reason: `${phrase} confirms the active pending proposal.`,
+          }),
+          usedFallback: false,
+        };
+      });
+
+      const result = await classifyMessageLLM(phrase, baseCtx, authCtx);
+
+      expect(capturedRequest.outputMode).toBe("structured");
+      expect(capturedRequest.responseSchema?.name).toBe("cos_conversation_intelligence_response");
+      expect(capturedRequest.userMessage).toContain("Active pending item:");
+      expect(capturedRequest.userMessage).toContain("Prepare Sarah care plan");
+      expect(result.pending_resolution).toBe("CONFIRM");
+      expect(result.shouldCreateTask).toBe(false);
+      expect(result.proposedTask).toBeUndefined();
+    },
+  );
+
+  const newTaskDeclinePhrases = ["nah leave it", "forget it", "scrap that", "don't bother", "actually no", "hold up"];
+  it.each(newTaskDeclinePhrases)(
+    "resolves pending NEW_TASK decline phrase %s through the CoS schema",
+    async (phrase) => {
+      setPendingConfirmationRow({ action: "NEW_TASK", proposedTaskTitle: "Prepare Sarah care plan" });
+      mocks.gatewayProcess.mockResolvedValue({
+        content: makeLLMResponse({
+          conversationMode: "general",
+          shouldCreateTask: false,
+          relatedWorkforceRoles: [],
+          customerResponse: "No problem. I will not create that proposed task.",
+          pending_resolution: "DECLINE",
+          pending_resolution_reason: `${phrase} declines the active pending proposal.`,
+        }),
+        usedFallback: false,
+      });
+
+      const result = await classifyMessageLLM(phrase, baseCtx, authCtx);
+
+      expect(result.pending_resolution).toBe("DECLINE");
+      expect(result.shouldCreateTask).toBe(false);
+      expect(result.proposedTask).toBeUndefined();
+    },
+  );
+
+  it("resolves 'cancel it' as CONFIRM for pending CANCEL_TASK through the CoS schema", async () => {
+    setPendingConfirmationRow({
+      action: "CANCEL_TASK",
+      taskId: "task-cancel-001",
+      taskTitle: "Cancel stale task",
+    });
+    mocks.gatewayProcess.mockResolvedValue({
+      content: makeLLMResponse({
+        conversationMode: "general",
+        shouldCreateTask: false,
+        relatedWorkforceRoles: [],
+        customerResponse: "Confirmed. I will cancel that task.",
+        pending_resolution: "CONFIRM",
+        pending_resolution_reason: "cancel it confirms the pending cancellation.",
+      }),
+      usedFallback: false,
+    });
+
+    const result = await classifyMessageLLM("cancel it", baseCtx, authCtx);
+
+    expect(result.pending_resolution).toBe("CONFIRM");
+    expect(result.shouldCreateTask).toBe(false);
+    expect(result.proposedTask).toBeUndefined();
+  });
+
+  it("resolves 'no' as DECLINE for pending CANCEL_TASK through the CoS schema", async () => {
+    setPendingConfirmationRow({
+      action: "CANCEL_TASK",
+      taskId: "task-cancel-001",
+      taskTitle: "Cancel stale task",
+    });
+    mocks.gatewayProcess.mockResolvedValue({
+      content: makeLLMResponse({
+        conversationMode: "general",
+        shouldCreateTask: false,
+        relatedWorkforceRoles: [],
+        customerResponse: "Okay, I will not cancel that task.",
+        pending_resolution: "DECLINE",
+        pending_resolution_reason: "no declines the pending cancellation.",
+      }),
+      usedFallback: false,
+    });
+
+    const result = await classifyMessageLLM("no", baseCtx, authCtx);
+
+    expect(result.pending_resolution).toBe("DECLINE");
+    expect(result.shouldCreateTask).toBe(false);
+    expect(result.proposedTask).toBeUndefined();
   });
 
   it("shows 'informational' level for a new conversation with no proposal or task", async () => {

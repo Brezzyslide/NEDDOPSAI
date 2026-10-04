@@ -625,7 +625,8 @@ describe("ChiefOfStaffLLM — response parser", () => {
 
     expect(processMock).toHaveBeenCalledTimes(1);
     const request = processMock.mock.calls[0][0];
-    expect(request.outputMode).toBe("json");
+    expect(request.outputMode).toBe("structured");
+    expect(request.responseSchema?.name).toBe("cos_conversation_intelligence_response");
     expect(request.systemPrompt).toContain("Chief of Staff");
     expect(request.userMessage).toContain("who are you and what is your role");
     expect(result.usedFallback).toBe(false);
