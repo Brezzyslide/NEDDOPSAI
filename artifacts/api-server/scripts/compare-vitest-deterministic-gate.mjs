@@ -209,6 +209,11 @@ const unexpectedParentZeroCollected = parentZeroCollected
   .filter(result => !zeroCollectedExclusions.has(result.file));
 const unexpectedCurrentZeroCollected = currentZeroCollected
   .filter(result => !zeroCollectedExclusions.has(result.file));
+const unexpectedCurrentZeroCollectedFiles = new Set(unexpectedCurrentZeroCollected.map(result => result.file));
+const unresolvedParentZeroCollected = unexpectedParentZeroCollected
+  .filter(result => unexpectedCurrentZeroCollectedFiles.has(result.file));
+const fixedParentZeroCollected = unexpectedParentZeroCollected
+  .filter(result => !unexpectedCurrentZeroCollectedFiles.has(result.file));
 const newlyZeroCollected = currentZeroCollected
   .filter(result => (parentAssertionCounts.get(result.file) ?? 0) > 0);
 const totalDropped = current.numTotalTests < parent.numTotalTests;
@@ -232,7 +237,8 @@ const summary = {
   reportShapeErrors,
   releaseOnlyFailures: releaseOnly,
   zeroCollectedFiles: unexpectedCurrentZeroCollected,
-  parentZeroCollectedFiles: unexpectedParentZeroCollected,
+  parentZeroCollectedFiles: unresolvedParentZeroCollected,
+  fixedParentZeroCollectedFiles: fixedParentZeroCollected,
   newlyZeroCollectedFiles: newlyZeroCollected,
   excludedZeroCollectedFiles: {
     parent: parentZeroCollected.filter(result => zeroCollectedExclusions.has(result.file)).length,
@@ -243,7 +249,7 @@ const summary = {
 
 console.log(JSON.stringify(summary, null, 2));
 
-if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || unexpectedParentZeroCollected.length > 0 || unexpectedCurrentZeroCollected.length > 0) {
+if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || unresolvedParentZeroCollected.length > 0 || unexpectedCurrentZeroCollected.length > 0) {
   if (releaseOnly.length > 0) console.error(`Release-only failures: ${releaseOnly.length}`);
   if (totalDropped) console.error(`Total test count dropped: ${parent.numTotalTests} -> ${current.numTotalTests}`);
   for (const error of reportShapeErrors) {
@@ -256,7 +262,7 @@ if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || un
       if (error.extra.length > 0) console.error(`${error.label} unexpected test files: ${error.extra.join(", ")}`);
     }
   }
-  if (unexpectedParentZeroCollected.length > 0) console.error(`Parent files collected zero tests: ${unexpectedParentZeroCollected.map(item => item.file).join(", ")}`);
+  if (unresolvedParentZeroCollected.length > 0) console.error(`Parent files still collect zero tests in current: ${unresolvedParentZeroCollected.map(item => item.file).join(", ")}`);
   if (unexpectedCurrentZeroCollected.length > 0) console.error(`Current files collected zero tests: ${unexpectedCurrentZeroCollected.map(item => item.file).join(", ")}`);
   process.exit(1);
 }

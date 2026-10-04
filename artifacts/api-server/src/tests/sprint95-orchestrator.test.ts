@@ -110,6 +110,26 @@ vi.mock("../services/auditService.js", () => ({
 }));
 
 vi.mock("@workspace/db", () => {
+  const fakeSpecialistCatalogueTable = {
+    id:              {},
+    specialistCode:  {},
+    displayName:     {},
+    description:     {},
+    executionStatus: {},
+    availability:    {},
+    category:        {},
+    iconMetadata:    {},
+    packMembership:  {},
+    planVisibility:  {},
+    comingSoon:      {},
+    displayOrder:    {},
+    versionMetadata: {},
+    isActive:        {},
+    isArchived:      {},
+    versionCounter:  {},
+    createdAt:       {},
+    updatedAt:       {},
+  };
   const mockDb = {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
@@ -177,6 +197,8 @@ vi.mock("@workspace/db", () => {
       id: null,
       organizationId: null,
     },
+    platformAuditLogTable: {},
+    specialistCatalogueTable: fakeSpecialistCatalogueTable,
   };
 });
 

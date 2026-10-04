@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 describe("classifyIngestionError", () => {
   it("classifies permanent codes as permanent", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     const permanentCodes = [
       "UNSUPPORTED_FILE_TYPE", "CORRUPTED_DOCUMENT", "ENCRYPTED_DOCUMENT",
       "EMPTY_DOCUMENT", "OVERSIZED_CONTENT", "NO_CHUNKS", "OBJECT_NOT_FOUND",
@@ -29,7 +29,7 @@ describe("classifyIngestionError", () => {
   });
 
   it("classifies transient codes as transient", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     const transientCodes = [
       "FETCH_FAILED_TRANSIENT", "EMBEDDING_TIMEOUT", "EMBEDDING_UNAVAILABLE",
       "STORAGE_TIMEOUT", "DB_TIMEOUT",
@@ -40,27 +40,27 @@ describe("classifyIngestionError", () => {
   });
 
   it("classifies unknown codes as unknown when no message hint", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     expect(classifyIngestionError("SOME_UNKNOWN_CODE")).toBe("unknown");
   });
 
   it("classifies unknown code as transient when error message contains timeout", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     expect(classifyIngestionError("SOME_UNKNOWN_CODE", new Error("Request timeout after 30s"))).toBe("transient");
   });
 
   it("classifies unknown code as transient when error message contains ECONNREFUSED", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     expect(classifyIngestionError("SOME_UNKNOWN_CODE", new Error("connect ECONNREFUSED 127.0.0.1:9200"))).toBe("transient");
   });
 
   it("classifies unknown code as transient when message has socket hang up", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     expect(classifyIngestionError("SOME_UNKNOWN_CODE", new Error("socket hang up"))).toBe("transient");
   });
 
   it("classifies non-transient unknown code as unknown regardless of error type", async () => {
-    const { classifyIngestionError } = await import("../services/ingestionPipelineService.js");
+    const { classifyIngestionError } = await import("../services/ingestionErrorClassifierService.js");
     expect(classifyIngestionError("SOME_CODE", new Error("something totally unexpected happened"))).toBe("unknown");
   });
 });

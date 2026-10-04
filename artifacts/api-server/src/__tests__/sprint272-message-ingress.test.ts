@@ -553,6 +553,75 @@ describe("messageIngressService", () => {
     expect((result as any).result.agentMessage.content).toMatch(/Created/);
   });
 
+  it("asks before replacing an active proposal when model resolves the reply as unrelated", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{
+        id: "notice-p1",
+        structuredContent: {
+          type: "conversation_pending_confirmation",
+          data: {
+            id: "confirm-p1",
+            action: "NEW_TASK",
+            proposedTask: {
+              title: "Prepare Micheal care plan",
+              summary: "Prepare the participant care plan for Micheal.",
+              priority: "normal",
+              requestedOutcome: "Care plan",
+              knownConstraints: [],
+            },
+            candidateTasks: [],
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            expectedResponse: "yes_no",
+            reason: "task_proposal_confirmation",
+          },
+        },
+      }]))
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementation(() => makeSelectChain([]));
+    mockClassifyMessageLLM.mockResolvedValue({
+      conversationMode: "task_intent",
+      confidence: 0.9,
+      shouldCreateTask: false,
+      shouldUpdateTask: false,
+      requestedTaskAction: "create",
+      proposedTask: {
+        title: "Prepare Sarah care plan",
+        summary: "Prepare the participant care plan for Sarah.",
+        priority: "normal",
+        requestedOutcome: "Care plan",
+        knownConstraints: [],
+      },
+      relatedWorkforceRoles: ["chief_of_staff"],
+      customerResponse: "Please confirm to proceed.",
+      pending_resolution: "UNRELATED",
+      pending_resolution_reason: "User is asking for a different participant.",
+      usedFallback: false,
+    });
+    mockAddMessage
+      .mockResolvedValueOnce({ id: "um-sarah", senderType: "user", content: "make it for Sarah instead" })
+      .mockImplementationOnce(async (input: any) => ({ id: "am-clarify", senderType: "chief_of_staff", content: input.content }));
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "make it for Sarah instead",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+    });
+
+    const dbModule = (await import("@workspace/db")) as any;
+    expect(result.type).toBe("normal");
+    expect(mockProcessUserMessage).not.toHaveBeenCalled();
+    expect(mockAutoCreateAndDispatch).not.toHaveBeenCalled();
+    expect(dbModule.db.insert).not.toHaveBeenCalled();
+    expect(dbModule.db.update).not.toHaveBeenCalled();
+    expect((result as any).result.agentMessage.content).toContain("Prepare Micheal care plan");
+    expect((result as any).result.agentMessage.content).toContain("Prepare Sarah care plan");
+    expect((result as any).result.agentMessage.content).toMatch(/replace/i);
+  });
+
   it("prevents duplicate network submission when idempotencyKey already exists", async () => {
     mockDbSelect.mockImplementation(() => makeSelectChain([{ id: "message-existing" }]));
     mockGetActiveCheckpoint.mockResolvedValue(null);

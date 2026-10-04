@@ -724,6 +724,24 @@ async function maybeHandlePendingConfirmation(input: {
           messageType: "question",
         }));
       case "UNRELATED":
+        if (input.confirmation.action === "NEW_TASK") {
+          const newProposalTitle = modelUnderstanding.proposedTask?.title
+            ?? modelUnderstanding.proposedTask?.summary
+            ?? "the new request";
+          return handle(addControlMessages({
+            organizationId: input.organizationId,
+            conversationId: input.conversationId,
+            taskId: input.confirmation.taskId ?? input.taskId,
+            userId: input.userId,
+            content: input.content,
+            response: `I still have a pending proposal for "${pendingTarget}". Do you want me to keep that pending proposal, replace it with "${newProposalTitle}", or cancel the pending proposal?`,
+            idempotencyKey: input.idempotencyKey,
+            mode: "task_followup",
+            confidence: 0.6,
+            messageType: "question",
+          }));
+        }
+        return { result: null, preclassifiedUnderstanding: modelUnderstanding };
       default:
         return { result: null, preclassifiedUnderstanding: modelUnderstanding };
     }
