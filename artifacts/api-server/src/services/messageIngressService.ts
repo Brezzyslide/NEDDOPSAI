@@ -49,6 +49,7 @@ import {
   getPendingApprovalsForConversation,
   holdTaskFromConversation,
   isLikelyCheckpointAnswer,
+  clearPendingConversationReplacement,
   markConversationConfirmationResolved,
   modifyTaskFromConversation,
   persistConversationFocus,
@@ -57,6 +58,7 @@ import {
   resolvePendingConfirmationAnswer,
   resolveConversationReference,
   resolveSingleApproval,
+  setPendingConversationReplacement,
   type PendingConversationConfirmation,
   type TaskReferenceCandidate,
 } from "./conversationControlService.js";
@@ -98,6 +100,10 @@ export type IngressResult =
 function taskStateLabel(state: string | undefined): string {
   return state ? state.replace(/_/g, " ") : "unknown";
 }
+
+const REPLACEMENT_CONFIRM_PATTERN = /^(replace|replace it|use the new one|use new one|new one|the new one|yes replace|replace the pending proposal)\.?$/i;
+const REPLACEMENT_KEEP_PATTERN = /^(keep|keep it|keep original|keep the original|original|old one|the old one|leave it|leave as is)\.?$/i;
+const REPLACEMENT_CANCEL_PATTERN = /^(cancel|cancel it|cancel pending|scrap it|forget it)\.?$/i;
 
 function taskMetadataRecord(metadata: Record<string, unknown> | null | undefined): Record<string, unknown> {
   return metadata && typeof metadata === "object" ? metadata : {};
@@ -685,6 +691,112 @@ async function maybeHandlePendingConfirmation(input: {
     ?? input.confirmation.taskId
     ?? "the pending item";
 
+  if (input.confirmation.action === "NEW_TASK" && input.confirmation.replacementProposedTask) {
+    const replacementTitle = input.confirmation.replacementProposedTask.title;
+    if (REPLACEMENT_CONFIRM_PATTERN.test(input.content.trim())) {
+      const inheritedSubjectParticipantIds = await getFocusedSubjectParticipantIds({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: input.taskId,
+      });
+      const created = await autoCreateAndDispatch({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        requesterId: input.userId,
+        idempotencyKey: `conversation_confirmation:${input.confirmation.id}:replacement`,
+        proposedTask: input.confirmation.replacementProposedTask,
+        subjectParticipantIds: inheritedSubjectParticipantIds.length > 0 ? inheritedSubjectParticipantIds : undefined,
+      });
+      await markConversationConfirmationResolved({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        confirmation: input.confirmation,
+        status: "confirmed",
+      }).catch(() => {});
+      await persistConversationFocus({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: created.taskId,
+        reason: "confirmed_replacement_task_proposal",
+        source: "state_change",
+      }).catch(() => {});
+      return handle(addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: created.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `Replaced the pending proposal. I have opened "${created.title}" and prepared the work plan.`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "task_confirmation",
+        action: "create",
+        confidence: 0.99,
+        messageType: "task_created",
+        structuredContent: {
+          type: "task_created",
+          data: {
+            taskId: created.taskId,
+            title: created.title,
+            specialists: created.assignedSpecialists,
+          },
+        },
+      }));
+    }
+
+    if (REPLACEMENT_KEEP_PATTERN.test(input.content.trim())) {
+      await clearPendingConversationReplacement({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        confirmation: input.confirmation,
+      }).catch(() => {});
+      return handle(addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: input.confirmation.taskId ?? input.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `Okay, I will keep the pending proposal for "${pendingTarget}" and will not replace it with "${replacementTitle}". Reply yes to create it, or no to cancel it.`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "task_followup",
+        confidence: 0.95,
+        messageType: "question",
+      }));
+    }
+
+    if (REPLACEMENT_CANCEL_PATTERN.test(input.content.trim())) {
+      await markConversationConfirmationResolved({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        confirmation: input.confirmation,
+        status: "declined",
+      }).catch(() => {});
+      return handle(addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: input.confirmation.taskId ?? input.taskId,
+        userId: input.userId,
+        content: input.content,
+        response: `Okay, I have cancelled the pending proposal for "${pendingTarget}" and have not created "${replacementTitle}".`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "task_followup",
+        confidence: 0.95,
+      }));
+    }
+
+    return handle(addControlMessages({
+      organizationId: input.organizationId,
+      conversationId: input.conversationId,
+      taskId: input.confirmation.taskId ?? input.taskId,
+      userId: input.userId,
+      content: input.content,
+      response: `I still need one clear choice: keep "${pendingTarget}", replace it with "${replacementTitle}", or cancel the pending proposal.`,
+      idempotencyKey: input.idempotencyKey,
+      mode: "task_followup",
+      confidence: 0.6,
+      messageType: "question",
+    }));
+  }
+
   let modelUnderstanding: (ConversationUnderstanding & { actionState?: ConversationActionState | null; usedFallback?: boolean; fallbackReason?: string }) | undefined;
   try {
     modelUnderstanding = await classifyMessageLLM(input.content, {
@@ -728,6 +840,14 @@ async function maybeHandlePendingConfirmation(input: {
           const newProposalTitle = modelUnderstanding.proposedTask?.title
             ?? modelUnderstanding.proposedTask?.summary
             ?? "the new request";
+          if (modelUnderstanding.proposedTask) {
+            await setPendingConversationReplacement({
+              organizationId: input.organizationId,
+              conversationId: input.conversationId,
+              confirmation: input.confirmation,
+              replacementProposedTask: modelUnderstanding.proposedTask,
+            }).catch(() => {});
+          }
           return handle(addControlMessages({
             organizationId: input.organizationId,
             conversationId: input.conversationId,

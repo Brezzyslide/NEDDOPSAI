@@ -68,6 +68,7 @@ const mockEmitEvent         = vi.fn();
 const mockExecuteWork       = vi.fn();
 const mockLogOrg            = vi.fn().mockResolvedValue(undefined);
 const mockDbSelect          = vi.fn();
+const mockDbUpdateSet       = vi.fn();
 const mockAutoCreateAndDispatch = vi.fn();
 
 vi.mock("../services/executionCoordinatorService.js", () => ({
@@ -121,7 +122,10 @@ vi.mock("@workspace/db", () => {
     updatedAt:       {},
   };
   const updateChain = () => ({
-    set:      vi.fn().mockReturnThis(),
+    set:      vi.fn((payload: unknown) => {
+      mockDbUpdateSet(payload);
+      return updateChain();
+    }),
     where:    vi.fn().mockReturnThis(),
     returning: vi.fn().mockResolvedValue([]),
   });
@@ -555,8 +559,7 @@ describe("messageIngressService", () => {
 
   it("asks before replacing an active proposal when model resolves the reply as unrelated", async () => {
     mockGetActiveCheckpoint.mockResolvedValue(null);
-    mockDbSelect
-      .mockImplementationOnce(() => makeSelectChain([{
+    const pendingMichealProposalRow = {
         id: "notice-p1",
         structuredContent: {
           type: "conversation_pending_confirmation",
@@ -577,8 +580,11 @@ describe("messageIngressService", () => {
             reason: "task_proposal_confirmation",
           },
         },
-      }]))
+      };
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([pendingMichealProposalRow]))
       .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([pendingMichealProposalRow]))
       .mockImplementation(() => makeSelectChain([]));
     mockClassifyMessageLLM.mockResolvedValue({
       conversationMode: "task_intent",
@@ -616,10 +622,93 @@ describe("messageIngressService", () => {
     expect(mockProcessUserMessage).not.toHaveBeenCalled();
     expect(mockAutoCreateAndDispatch).not.toHaveBeenCalled();
     expect(dbModule.db.insert).not.toHaveBeenCalled();
-    expect(dbModule.db.update).not.toHaveBeenCalled();
+    expect(dbModule.db.update).toHaveBeenCalled();
+    expect(mockDbUpdateSet).toHaveBeenCalledWith(expect.objectContaining({
+      structuredContent: expect.objectContaining({
+        data: expect.objectContaining({
+          id: "confirm-p1",
+          status: "pending",
+          proposedTask: expect.objectContaining({ title: "Prepare Micheal care plan" }),
+          replacementProposedTask: expect.objectContaining({ title: "Prepare Sarah care plan" }),
+        }),
+      }),
+    }));
+    expect(mockDbUpdateSet).not.toHaveBeenCalledWith(expect.objectContaining({
+      structuredContent: expect.objectContaining({
+        data: expect.objectContaining({ status: "superseded" }),
+      }),
+    }));
     expect((result as any).result.agentMessage.content).toContain("Prepare Micheal care plan");
     expect((result as any).result.agentMessage.content).toContain("Prepare Sarah care plan");
     expect((result as any).result.agentMessage.content).toMatch(/replace/i);
+  });
+
+  it("resolves replace after an unrelated replacement clarification in one turn", async () => {
+    mockGetActiveCheckpoint.mockResolvedValue(null);
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([{
+        id: "notice-p1",
+        structuredContent: {
+          type: "conversation_pending_confirmation",
+          data: {
+            id: "confirm-p1",
+            action: "NEW_TASK",
+            proposedTask: {
+              title: "Prepare Micheal care plan",
+              summary: "Prepare the participant care plan for Micheal.",
+              priority: "normal",
+              requestedOutcome: "Care plan",
+              knownConstraints: [],
+            },
+            replacementProposedTask: {
+              title: "Prepare Sarah care plan",
+              summary: "Prepare the participant care plan for Sarah.",
+              priority: "normal",
+              requestedOutcome: "Care plan",
+              knownConstraints: [],
+            },
+            replacementPromptedAt: new Date().toISOString(),
+            candidateTasks: [],
+            createdAt: new Date().toISOString(),
+            status: "pending",
+            expectedResponse: "yes_no",
+            reason: "task_proposal_confirmation",
+          },
+        },
+      }]))
+      .mockImplementation(() => makeSelectChain([]));
+    mockAddMessage
+      .mockResolvedValueOnce({ id: "um-replace", senderType: "user", content: "replace" })
+      .mockImplementationOnce(async (input: any) => ({ id: "am-created", senderType: "chief_of_staff", content: input.content, structuredContent: input.structuredContent }));
+    mockAutoCreateAndDispatch.mockResolvedValueOnce({
+      taskId: "task-sarah-1",
+      title: "Prepare Sarah care plan",
+      conversationId: "conv-1",
+      workroomConversationId: "workroom-1",
+      dispatched: true,
+      requiresApproval: false,
+      approvalId: null,
+      assignedSpecialists: ["chief_of_staff"],
+    });
+
+    const { handleIncomingMessage } = await import("../services/messageIngressService.js");
+    const result = await handleIncomingMessage({
+      content: "replace",
+      organizationId: "org-1",
+      conversationId: "conv-1",
+      userId: "user-1",
+    });
+
+    expect(result.type).toBe("normal");
+    expect(mockClassifyMessageLLM).not.toHaveBeenCalled();
+    expect(mockProcessUserMessage).not.toHaveBeenCalled();
+    expect(mockAutoCreateAndDispatch).toHaveBeenCalledTimes(1);
+    expect(mockAutoCreateAndDispatch).toHaveBeenCalledWith(expect.objectContaining({
+      proposedTask: expect.objectContaining({ title: "Prepare Sarah care plan" }),
+      idempotencyKey: "conversation_confirmation:confirm-p1:replacement",
+    }));
+    expect((result as any).result.agentMessage.content).toContain("Replaced the pending proposal");
+    expect((result as any).result.agentMessage.content).toContain("Prepare Sarah care plan");
   });
 
   it("prevents duplicate network submission when idempotencyKey already exists", async () => {

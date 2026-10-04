@@ -104,6 +104,8 @@ export interface PendingConversationConfirmation {
     knownConstraints?: string[];
     sourceUserRequest?: string;
   };
+  replacementProposedTask?: PendingConversationConfirmation["proposedTask"];
+  replacementPromptedAt?: string;
   candidateTasks: TaskReferenceCandidate[];
   createdAt: string;
   status: "pending" | "confirmed" | "declined" | "resolved" | "superseded";
@@ -796,6 +798,73 @@ export async function markConversationConfirmationResolved(input: {
       eq(conversationMessagesTable.conversationId, input.conversationId),
       eq(conversationMessagesTable.id, row.id),
     )));
+}
+
+async function updateConversationConfirmationData(input: {
+  organizationId: string;
+  conversationId: string;
+  confirmation: PendingConversationConfirmation;
+  data: Record<string, unknown>;
+  purpose: string;
+}): Promise<void> {
+  const rows = await withConversationControlTenant(input.organizationId, `${input.purpose}.lookup`, async (client) => client
+    .select({ id: conversationMessagesTable.id, structuredContent: conversationMessagesTable.structuredContent })
+    .from(conversationMessagesTable)
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.messageType, "system_notice"),
+    ))
+    .orderBy(desc(conversationMessagesTable.createdAt))
+    .limit(30));
+
+  const row = rows.find(candidate => {
+    const sc = candidate.structuredContent as any;
+    return sc?.type === "conversation_pending_confirmation" && sc.data?.id === input.confirmation.id;
+  });
+  if (!row) return;
+  await withConversationControlTenant(input.organizationId, `${input.purpose}.update`, async (client) => client
+    .update(conversationMessagesTable)
+    .set({ structuredContent: { type: "conversation_pending_confirmation", data: input.data }, updatedAt: new Date() })
+    .where(and(
+      eq(conversationMessagesTable.organizationId, input.organizationId),
+      eq(conversationMessagesTable.conversationId, input.conversationId),
+      eq(conversationMessagesTable.id, row.id),
+    )));
+}
+
+export async function setPendingConversationReplacement(input: {
+  organizationId: string;
+  conversationId: string;
+  confirmation: PendingConversationConfirmation;
+  replacementProposedTask: NonNullable<PendingConversationConfirmation["proposedTask"]>;
+}): Promise<void> {
+  await updateConversationConfirmationData({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    confirmation: input.confirmation,
+    purpose: "conversation_confirmation.replacement.set",
+    data: {
+      ...(input.confirmation as Record<string, unknown>),
+      replacementProposedTask: input.replacementProposedTask,
+      replacementPromptedAt: new Date().toISOString(),
+    },
+  });
+}
+
+export async function clearPendingConversationReplacement(input: {
+  organizationId: string;
+  conversationId: string;
+  confirmation: PendingConversationConfirmation;
+}): Promise<void> {
+  const { replacementProposedTask: _replacementProposedTask, replacementPromptedAt: _replacementPromptedAt, ...data } = input.confirmation as Record<string, unknown>;
+  await updateConversationConfirmationData({
+    organizationId: input.organizationId,
+    conversationId: input.conversationId,
+    confirmation: input.confirmation,
+    purpose: "conversation_confirmation.replacement.clear",
+    data,
+  });
 }
 
 export function resolvePendingConfirmationAnswer(
