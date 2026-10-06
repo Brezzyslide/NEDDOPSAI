@@ -21,7 +21,7 @@ import {
 import type { BlueprintExecutionContract } from "../services/workBlueprintService.js";
 import type { WorkPackageManifest } from "../services/workPackageService.js";
 
-type Mode = "fixture";
+type Mode = "gate-replay";
 
 interface CapturedEvent {
   eventType: string;
@@ -58,11 +58,12 @@ const EXPECTED_2026_10_05_FAILURES = [
 
 function parseArgs(argv: string[]): ReplayOptions {
   const [modeArg, ...rest] = argv;
-  if (modeArg !== "fixture") {
-    throw new Error("Usage: replay-participant-deliverable.ts fixture --fixture path --output-dir dir");
+  const mode = modeArg === "fixture" ? "gate-replay" : modeArg;
+  if (mode !== "gate-replay") {
+    throw new Error("Usage: replay-participant-deliverable.ts gate-replay --fixture path --output-dir dir");
   }
   const opts: Partial<ReplayOptions> = {
-    mode: modeArg,
+    mode,
     outputDir: "artifacts/replay/participant-deliverable/latest",
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -211,6 +212,24 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function mandatoryRequirementStates(
+  contract: BlueprintExecutionContract,
+  coverage: ReturnType<typeof evaluateDeliverableRequirementCoverage>,
+) {
+  const missingIds = new Set(coverage.missing.map((failure) => failure.requirementId));
+  return ((contract.blueprint.deliverableContract?.requirementPlan ?? []) as Array<{
+    id?: string;
+    sectionCode?: string;
+    mandatory?: boolean;
+  }>)
+    .filter((requirement) => requirement.id && requirement.mandatory !== false)
+    .map((requirement) => ({
+      requirementId: requirement.id,
+      sectionCode: requirement.sectionCode ?? null,
+      state: missingIds.has(requirement.id ?? "") ? "uncovered" : "covered",
+    }));
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const outputDir = resolve(process.cwd(), opts.outputDir);
@@ -288,6 +307,8 @@ async function main() {
         mandatoryRequirementCount: coverage.mandatoryRequirementCount,
         satisfiedCount: coverage.satisfiedCount,
         missingCount: coverage.missing.length,
+        syntheticMissingCount: coverage.missing.filter((failure) => failure.requirementId.startsWith("__")).length,
+        mandatoryRequirementStates: mandatoryRequirementStates(contract, coverage),
         missing: coverage.missing,
       },
       completionGates: {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "mode": "fixture",
-  "generatedAt": "2026-10-06T21:54:35.275Z",
+  "mode": "gate-replay",
+  "generatedAt": "2026-10-06T22:13:50.077Z",
   "tenantSlug": "mhr-holdings-pty-ltd",
   "organizationId": "7f76b224-d441-4abe-954b-1e07aef37025",
   "taskId": "0bef8bce-aaf2-4f6b-9888-c2f136f9818d",
@@ -1235,6 +1235,79 @@
       "mandatoryRequirementCount": 14,
       "satisfiedCount": 5,
       "missingCount": 10,
+      "syntheticMissingCount": 1,
+      "mandatoryRequirementStates": [
+        {
+          "requirementId": "care-plan-support-plan-meeting",
+          "sectionCode": "SUPPORT_PLAN_MEETING",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-goals",
+          "sectionCode": "GOALS",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-about-me",
+          "sectionCode": "ABOUT_ME",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-history-background",
+          "sectionCode": "HISTORY_BACKGROUND",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-undertaking-adl",
+          "sectionCode": "UNDERTAKING_ADL",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-communication-strategy",
+          "sectionCode": "COMMUNICATION_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-mobility-strategy",
+          "sectionCode": "MOBILITY_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-support-delivery-client-safety",
+          "sectionCode": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-behavioural-management",
+          "sectionCode": "BEHAVIOURAL_MANAGEMENT",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-restrictive-practices",
+          "sectionCode": "RESTRICTIVE_PRACTICES",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-mealtime-management-strategy",
+          "sectionCode": "MEALTIME_MANAGEMENT_STRATEGY",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-disaster-management-strategy",
+          "sectionCode": "DISASTER_MANAGEMENT_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-client-endorsement",
+          "sectionCode": "CLIENT_ENDORSEMENT",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-document-control",
+          "sectionCode": "DOCUMENT_CONTROL",
+          "state": "covered"
+        }
+      ],
       "missing": [
         {
           "requirementId": "__deliverable_section_integrity__",

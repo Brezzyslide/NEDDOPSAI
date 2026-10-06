@@ -268,7 +268,7 @@ function runParticipantDeliverableReplayFixtures() {
       "exec",
       "tsx",
       "src/scripts/replay-participant-deliverable.ts",
-      "fixture",
+      "gate-replay",
       "--fixture",
       fixturePath,
       "--output-dir",
