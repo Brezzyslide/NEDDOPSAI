@@ -1579,7 +1579,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
     expect(uee).toContain("Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}");
     expect(uee).toContain("CARE_PLAN_SYSTEM_FORM_ID");
-    expect(uee).toContain("CARE_PLAN_APPROVER_REVIEW_DATE");
+    expect(uee).toContain("carePlanSystemReviewDate");
+    expect(uee).toContain("addMonthsToIsoDate");
     expect(uee).toContain("isCarePlanSystemGeneratedMetadataValue");
     expect(coverage).toContain("findRuntimeExactValueEvidence");
     expect(coverage).toContain("exact value was re-cited from another selected evidence chunk");
@@ -3009,9 +3010,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(report.missing[0]?.substantiveValidationMode).toBe("UNSUPPORTED_CITATION");
   });
 
-  it("accepts approver-deferred care-plan review dates instead of requiring an invented date", () => {
+  it("accepts computed care-plan review dates and does not exempt approver placeholders", () => {
     const profile = carePlanSingleRequirementProfile("care-plan-support-plan-meeting", "Support Plan Meeting");
-    const content = [
+    const computedContent = [
       "**Participant Name:** Micheal Rocca",
       "**Date of Birth:** not recorded in retrieved evidence",
       "**Gender:** Male",
@@ -3021,13 +3022,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "**People Present:** not recorded in retrieved evidence",
       "**Support Plan Developed By:** NeedsOps AI+",
       "**Plan Date:** 2026-09-30",
-      "**Date for Review:** To be confirmed by approver",
+      "**Date for Review:** 2027-09-30",
     ].join("\n");
-    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${content}`, profile, {
+    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${computedContent}`, profile, {
       deliverableSections: [{
         requirementId: "care-plan-support-plan-meeting",
         heading: "Support Plan Meeting",
-        content,
+        content: computedContent,
         evidenceSources: [{
           chunkId: "identity",
           documentTitle: "Intake",
@@ -3040,6 +3041,25 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
 
     expect(report.missing[0]?.reason ?? "").not.toContain("Date for Review is a real date");
+
+    const placeholderContent = computedContent.replace("**Date for Review:** 2027-09-30", "**Date for Review:** To be confirmed by approver");
+    const placeholderReport = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${placeholderContent}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-support-plan-meeting",
+        heading: "Support Plan Meeting",
+        content: placeholderContent,
+        evidenceSources: [{
+          chunkId: "identity",
+          documentTitle: "Intake",
+          passage: "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability",
+          location: "p. 1",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("identity", "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability"),
+    });
+
+    expect(placeholderReport.missing.some((missing) => missing.reason.includes("To be confirmed by approver"))).toBe(true);
   });
 
   it("blocks ADL support levels that are only cited interpretation", () => {

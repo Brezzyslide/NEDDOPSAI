@@ -1926,7 +1926,7 @@ function isCarePlanSystemGeneratedAccountableValue(requirementId: string, label:
   if (requirementId === "care-plan-document-control") return true;
   if (requirementId !== "care-plan-support-plan-meeting") return false;
   if (!/^(?:Plan Date|Date for Review|date\/timeframe)$/i.test(label)) return false;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) || /^To be confirmed by approver$/i.test(value.trim());
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
 }
 
 function validateAdlAccountableClaim(

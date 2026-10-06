@@ -3693,7 +3693,6 @@ interface DeterministicGapReplacementResult {
 const DETERMINISTIC_EVIDENCE_GAP_VALUE = "not recorded in retrieved evidence";
 const CARE_PLAN_SYSTEM_FORM_ID = "NeedsOps AI+ Care Plan";
 const CARE_PLAN_SYSTEM_VERSION = "1.0";
-const CARE_PLAN_APPROVER_REVIEW_DATE = "To be confirmed by approver";
 
 function applyDeterministicEvidenceGapReplacements(input: {
   contentMarkdown: string;
@@ -3814,11 +3813,22 @@ function shouldDeterministicallyReplaceValue(requirementId: string, value: strin
 function isCarePlanSystemGeneratedMetadataValue(requirementId: string, value: string): boolean {
   if (requirementId === "care-plan-document-control") return true;
   if (requirementId !== "care-plan-support-plan-meeting") return false;
-  return value === carePlanSystemPlanDate() || value === CARE_PLAN_APPROVER_REVIEW_DATE;
+  return value === carePlanSystemPlanDate() || value === carePlanSystemReviewDate();
 }
 
 function carePlanSystemPlanDate(now = new Date()): string {
   return now.toISOString().slice(0, 10);
+}
+
+function carePlanSystemReviewDate(now = new Date()): string {
+  return addMonthsToIsoDate(carePlanSystemPlanDate(now), 12);
+}
+
+function addMonthsToIsoDate(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.split("-").map((value) => Number.parseInt(value, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
 }
 
 function replaceAccountableValue(content: string, value: string, replacement: string): string {
@@ -5785,6 +5795,7 @@ function applyServerDerivedSupportPlanMeetingFields(
 ): ParsedDeliverableSection {
   const derived = deriveSupportPlanIdentityFields(evidencePack);
   const systemPlanDate = carePlanSystemPlanDate();
+  const systemReviewDate = carePlanSystemReviewDate();
   const rows: Array<[SupportPlanMeetingField, string]> = [
     ["Participant Name", supportPlanIdentityValue("Participant Name", derived)],
     ["Date of Birth", supportPlanIdentityValue("Date of Birth", derived)],
@@ -5795,7 +5806,7 @@ function applyServerDerivedSupportPlanMeetingFields(
     ["People Present", DETERMINISTIC_EVIDENCE_GAP_VALUE],
     ["Support Plan Developed By", DETERMINISTIC_EVIDENCE_GAP_VALUE],
     ["Plan Date", systemPlanDate],
-    ["Date for Review", CARE_PLAN_APPROVER_REVIEW_DATE],
+    ["Date for Review", systemReviewDate],
   ];
   const intro = extractSupportPlanMeetingIntro(section.content);
   const content = [
@@ -6562,6 +6573,7 @@ function findMealtimeRiskAssessmentEvidence(evidencePack: EvidencePack | undefin
 
 function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): ParsedDeliverableSection {
   const today = carePlanSystemPlanDate();
+  const reviewDate = carePlanSystemReviewDate();
   return {
     ...section,
     content: [
@@ -6570,7 +6582,7 @@ function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): P
       `Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}`,
       `Version: ${CARE_PLAN_SYSTEM_VERSION}`,
       `Date: ${today}`,
-      `Next review date: ${CARE_PLAN_APPROVER_REVIEW_DATE}`,
+      `Next review date: ${reviewDate}`,
       "",
       "Metadata source: system-generated document metadata.",
     ].join("\n"),
