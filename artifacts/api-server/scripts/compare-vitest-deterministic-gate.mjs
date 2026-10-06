@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -249,7 +249,52 @@ const summary = {
 
 console.log(JSON.stringify(summary, null, 2));
 
-if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || unresolvedParentZeroCollected.length > 0 || unexpectedCurrentZeroCollected.length > 0) {
+function runParticipantDeliverableReplayFixtures() {
+  const fixtureDir = resolve(process.cwd(), "src/__fixtures__/participant-deliverable");
+  if (!existsSync(fixtureDir)) {
+    return [];
+  }
+  const fixtures = readdirSync(fixtureDir)
+    .filter((file) => file.endsWith(".fixture.json"))
+    .sort();
+  const results = [];
+  for (const fixture of fixtures) {
+    const fixturePath = resolve(fixtureDir, fixture);
+    const outputDir = resolve(
+      mkdtempSync(resolve(tmpdir(), "needsops-participant-replay-")),
+      fixture.replace(/\.fixture\.json$/, ""),
+    );
+    const result = spawnSync("pnpm", [
+      "exec",
+      "tsx",
+      "src/scripts/replay-participant-deliverable.ts",
+      "fixture",
+      "--fixture",
+      fixturePath,
+      "--output-dir",
+      outputDir,
+    ], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false",
+      },
+      stdio: "inherit",
+    });
+    if (result.error) throw result.error;
+    results.push({ fixture, status: result.status ?? 0 });
+  }
+  return results;
+}
+
+const replayFixtureResults = runParticipantDeliverableReplayFixtures();
+if (replayFixtureResults.length > 0) {
+  console.log(JSON.stringify({ participantDeliverableReplayFixtures: replayFixtureResults }, null, 2));
+}
+
+const replayFixtureFailed = replayFixtureResults.some((result) => result.status !== 0);
+
+if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || unresolvedParentZeroCollected.length > 0 || unexpectedCurrentZeroCollected.length > 0 || replayFixtureFailed) {
   if (releaseOnly.length > 0) console.error(`Release-only failures: ${releaseOnly.length}`);
   if (totalDropped) console.error(`Total test count dropped: ${parent.numTotalTests} -> ${current.numTotalTests}`);
   for (const error of reportShapeErrors) {
@@ -264,5 +309,6 @@ if (releaseOnly.length > 0 || totalDropped || reportShapeErrors.length > 0 || un
   }
   if (unresolvedParentZeroCollected.length > 0) console.error(`Parent files still collect zero tests in current: ${unresolvedParentZeroCollected.map(item => item.file).join(", ")}`);
   if (unexpectedCurrentZeroCollected.length > 0) console.error(`Current files collected zero tests: ${unexpectedCurrentZeroCollected.map(item => item.file).join(", ")}`);
+  if (replayFixtureFailed) console.error(`Participant deliverable replay fixtures failed: ${replayFixtureResults.filter((result) => result.status !== 0).map((result) => result.fixture).join(", ")}`);
   process.exit(1);
 }
