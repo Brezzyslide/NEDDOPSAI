@@ -1711,7 +1711,7 @@ function evaluateCarePlanCitationFindings(
 
   for (const claim of extractCarePlanAccountableClaims(requirement, section)) {
     if (claim.kind === "adl_support_level") {
-      findings.push(validateAdlAccountableClaim(requirement.id, claim));
+      findings.push(validateAdlAccountableClaim(requirement.id, claim, chunks));
       continue;
     }
     if (verifiedSources.length === 0) {
@@ -1932,6 +1932,7 @@ function isCarePlanSystemGeneratedAccountableValue(requirementId: string, label:
 function validateAdlAccountableClaim(
   requirementId: string,
   claim: Extract<AccountableCarePlanClaim, { kind: "adl_support_level" }>,
+  chunks: Map<string, EvidenceChunk>,
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
   if (
@@ -1959,6 +1960,19 @@ function validateAdlAccountableClaim(
       passed: false,
       accountableValue: claim.supportLevel,
       reason: "ADL support level is accountable and has no chunk citation.",
+    };
+  }
+  if (!chunks.has(claim.chunkId)) {
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: "UNSUPPORTED_CITATION",
+      accountable: true,
+      passed: false,
+      accountableValue: claim.supportLevel,
+      chunkId: claim.chunkId,
+      citedText: claim.sourceValue,
+      reason: "ADL support level mapping cites a chunk that is not present in the runtime evidence pack; deterministic mapping cannot be verified without the cited chunk.",
     };
   }
   if (claim.mappingMode === "VERIFIED_MAPPING" && expected.includes(claim.supportLevel)) {
