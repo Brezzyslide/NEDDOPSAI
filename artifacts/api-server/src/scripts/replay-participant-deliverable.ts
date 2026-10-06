@@ -18,6 +18,7 @@ import {
 import {
   compileProfessionalExecutionContext,
 } from "../services/professionalExecutionContextService.js";
+import type { EvidencePack } from "../services/knowledgeResolutionService.js";
 import type { BlueprintExecutionContract } from "../services/workBlueprintService.js";
 import type { WorkPackageManifest } from "../services/workPackageService.js";
 
@@ -208,6 +209,29 @@ function mergeVerdicts(stored: ReturnType<typeof summariseFailures>, recomputed:
   return [...byKey.values()];
 }
 
+function extractCapturedEvidencePack(fixture: ReplayFixture): EvidencePack | null {
+  const evidencePack = (fixture as unknown as { evidencePack?: unknown }).evidencePack;
+  if (!evidencePack || typeof evidencePack !== "object") return null;
+  const chunks = (evidencePack as { chunks?: unknown }).chunks;
+  if (!Array.isArray(chunks)) return null;
+  return evidencePack as EvidencePack;
+}
+
+function evidencePackUnevaluableGates(evidencePack: EvidencePack | null) {
+  if (evidencePack) return [];
+  return [{
+    gate: "mandatory_deliverable_coverage",
+    state: "NOT_EVALUABLE",
+    reason: "Gate replay fixture does not contain the runtime EvidencePack; citation-dependent coverage cannot be evaluated.",
+    requiredInput: "EvidencePack.chunks[]",
+  }];
+}
+
+function removeUnevaluableVerdicts<T extends { verdictId: string }>(verdicts: T[], unevaluable: Array<{ gate: string }>): T[] {
+  const blocked = new Set(unevaluable.map((item) => item.gate));
+  return verdicts.filter((verdict) => !blocked.has(verdict.verdictId));
+}
+
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
@@ -239,6 +263,8 @@ async function main() {
   const snapshot = latestDraftEvent(fixture);
   const sections = extractSections(snapshot.payload);
   const draft = extractDraft(snapshot.payload, sections);
+  const evidencePack = extractCapturedEvidencePack(fixture);
+  const unevaluableGates = evidencePackUnevaluableGates(evidencePack);
   const draftPath = resolve(outputDir, "draft.md");
   writeFileSync(draftPath, `${draft.replace(/[ \t]+$/gm, "")}\n`);
 
@@ -252,12 +278,14 @@ async function main() {
     blueprintContract: contract,
   });
   const coverageProfile = deriveDeliverableRequirementCoverageProfile(professionalContext, contract);
-  const coverage = evaluateDeliverableRequirementCoverage(draft, coverageProfile, { deliverableSections: sections });
+  const coverage = evidencePack
+    ? evaluateDeliverableRequirementCoverage(draft, coverageProfile, { deliverableSections: sections, evidencePack })
+    : null;
   const runtime = validateBlueprintRuntimeCompletion({
     contract,
     contentMarkdown: draft,
     deliverableSections: sections,
-    evidencePack: null,
+    evidencePack,
     artifactId: contract.blueprint.deliverableContract?.artifactRequired ? "__artifact_generation_pending__" : null,
     deferApprovalGate: true,
     professionalContext,
@@ -266,18 +294,20 @@ async function main() {
   const storedGate = (snapshot.payload.gateSnapshot as { failures?: BlueprintRuntimeGateFailure[] } | undefined)?.failures ?? [];
   const storedVerdicts = summariseFailures(storedGate, "stored");
   const recomputedVerdicts = summariseFailures(runtime.failures, "recomputed");
-  const verdicts = mergeVerdicts(storedVerdicts, recomputedVerdicts);
+  const verdicts = removeUnevaluableVerdicts(mergeVerdicts(storedVerdicts, recomputedVerdicts), unevaluableGates);
   const verdictIds = verdicts.map((verdict) => verdict.verdictId);
 
   const expected = fixture.taskId === "0bef8bce-aaf2-4f6b-9888-c2f136f9818d"
     ? EXPECTED_2026_10_05_FAILURES
     : [];
+  const unevaluableGateIds = new Set(unevaluableGates.map((gate) => gate.gate));
   const reproduction = expected.length > 0
     ? {
         expected,
-        missing: expected.filter((id) => !verdictIds.includes(id)),
+        unevaluable: expected.filter((id) => unevaluableGateIds.has(id)),
+        missing: expected.filter((id) => !verdictIds.includes(id) && !unevaluableGateIds.has(id)),
         unexpected: verdictIds.filter((id) => !expected.includes(id)),
-        matched: expected.every((id) => verdictIds.includes(id)),
+        matched: expected.every((id) => verdictIds.includes(id) || unevaluableGateIds.has(id)),
       }
     : null;
 
@@ -304,17 +334,20 @@ async function main() {
       synthesis: { draftPath, wordCount: draft.split(/\s+/).filter(Boolean).length, sectionCount: sections.length },
       qualityReview: snapshot.payload.reviewSnapshot ?? null,
       requirementValidation: {
-        mandatoryRequirementCount: coverage.mandatoryRequirementCount,
-        satisfiedCount: coverage.satisfiedCount,
-        missingCount: coverage.missing.length,
-        syntheticMissingCount: coverage.missing.filter((failure) => failure.requirementId.startsWith("__")).length,
-        mandatoryRequirementStates: mandatoryRequirementStates(contract, coverage),
-        missing: coverage.missing,
+        status: coverage ? "EVALUATED" : "NOT_EVALUABLE",
+        unevaluableReason: coverage ? null : "Fixture does not contain EvidencePack.chunks[]; mandatory coverage includes citation-dependent predicates.",
+        mandatoryRequirementCount: coverage?.mandatoryRequirementCount ?? null,
+        satisfiedCount: coverage?.satisfiedCount ?? null,
+        missingCount: coverage?.missing.length ?? null,
+        syntheticMissingCount: coverage?.missing.filter((failure) => failure.requirementId.startsWith("__")).length ?? null,
+        mandatoryRequirementStates: coverage ? mandatoryRequirementStates(contract, coverage) : [],
+        missing: coverage?.missing ?? [],
       },
       completionGates: {
         storedPassed: storedGate.length === 0,
         recomputedPassed: runtime.passed,
         verdicts,
+        unevaluableGates,
       },
       targetedRepair: {
         skipped: verdictIds.includes("targeted_repair_skipped"),
