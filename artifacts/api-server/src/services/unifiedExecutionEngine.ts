@@ -3076,7 +3076,7 @@ export class UnifiedExecutionEngine {
         const reason = formatCarePlanBatchProviderFailure(batch, error, elapsedMs);
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({
           batchId: batch.id,
           batchName: batch.name,
@@ -3125,7 +3125,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} did not produce content${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3134,7 +3134,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3143,12 +3143,12 @@ export class UnifiedExecutionEngine {
       const batchSections = (parsed.deliverableSections ?? [])
         .filter((section) => batch.requirementIds.includes(section.requirementId))
         .map(normaliseCarePlanDeclaredInstrumentSection)
-        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack));
+        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract));
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -4959,7 +4959,7 @@ type SectionEvidenceRoutingRow = {
     score: number;
     categoryBoosted: boolean;
     tokenEstimate: number;
-    selectionReason: "above_threshold" | "best_available_below_threshold";
+    selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required";
   }>;
 };
 
@@ -5062,10 +5062,18 @@ function rankEvidenceForSection(
     score: number;
     categoryBoosted: boolean;
     tokenEstimate: number;
-    selectionReason: "above_threshold" | "best_available_below_threshold";
+    selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required";
   }> = [];
 
   for (const candidate of ranked) {
+    if (!isRequiredCarePlanSectionEvidence(section, candidate.chunk)) continue;
+    if (selected.some((item) => item.chunk.chunkId === candidate.chunk.chunkId)) continue;
+    selected.push({ ...candidate, selectionReason: "section_required" });
+    usedTokens += candidate.tokenEstimate;
+  }
+
+  for (const candidate of ranked) {
+    if (selected.some((item) => item.chunk.chunkId === candidate.chunk.chunkId)) continue;
     if (candidate.score < SECTION_EVIDENCE_RELEVANCE_THRESHOLD) continue;
     if (section.sectionCode === "BEHAVIOURAL_MANAGEMENT" && isBehaviourSupportPlanChunk(candidate.chunk)) {
       selected.push({ ...candidate, selectionReason: "above_threshold" });
@@ -5103,6 +5111,19 @@ function rankEvidenceForSection(
       selectionReason: item.selectionReason,
     })),
   };
+}
+
+function isRequiredCarePlanSectionEvidence(
+  section: BlueprintExecutionContract["sections"][number],
+  chunk: EvidencePack["chunks"][number],
+): boolean {
+  if (section.sectionCode === "SUPPORT_PLAN_MEETING") {
+    return isParticipantIdentityChunk(chunk);
+  }
+  if (section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY") {
+    return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0;
+  }
+  return false;
 }
 
 function isBehaviourSupportPlanChunk(chunk: EvidencePack["chunks"][number]): boolean {
@@ -5726,32 +5747,74 @@ function groupEvidenceChunksByType(chunks: EvidencePack["chunks"]): Record<strin
 function applyServerDerivedCarePlanSectionCells(
   section: ParsedDeliverableSection,
   evidencePack: EvidencePack | undefined,
+  contract?: BlueprintExecutionContract | null,
 ): ParsedDeliverableSection {
+  const scopedEvidencePack = sectionScopedEvidencePackForCarePlanSection(section, evidencePack, contract);
+  let derivedSection: ParsedDeliverableSection;
   if (section.requirementId === "care-plan-support-plan-meeting") {
-    return applyServerDerivedSupportPlanMeetingFields(section, evidencePack);
+    derivedSection = applyServerDerivedSupportPlanMeetingFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-undertaking-adl") {
+    derivedSection = applyServerDerivedAdlRows(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-mobility-strategy") {
+    derivedSection = applyServerDerivedMobilityFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-disaster-management-strategy") {
+    derivedSection = applyServerDerivedDisasterManagementFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-behavioural-management") {
+    derivedSection = applyServerDerivedBehaviouralManagement(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-restrictive-practices") {
+    derivedSection = applyServerDerivedRestrictivePracticeRows(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-mealtime-management-strategy") {
+    derivedSection = applyServerDerivedMealtimeManagement(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-document-control") {
+    derivedSection = applyServerDerivedDocumentControl(section);
+  } else {
+    derivedSection = section;
   }
-  if (section.requirementId === "care-plan-undertaking-adl") {
-    return applyServerDerivedAdlRows(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-mobility-strategy") {
-    return applyServerDerivedMobilityFields(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-disaster-management-strategy") {
-    return applyServerDerivedDisasterManagementFields(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-behavioural-management") {
-    return applyServerDerivedBehaviouralManagement(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-restrictive-practices") {
-    return applyServerDerivedRestrictivePracticeRows(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-mealtime-management-strategy") {
-    return applyServerDerivedMealtimeManagement(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-document-control") {
-    return applyServerDerivedDocumentControl(section);
-  }
-  return section;
+  return filterCarePlanSectionEvidenceSourcesToScopedPack(derivedSection, scopedEvidencePack);
+}
+
+function sectionScopedEvidencePackForCarePlanSection(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+  contract: BlueprintExecutionContract | undefined | null,
+): EvidencePack | undefined {
+  if (!evidencePack || !contract?.sections.length) return evidencePack;
+  const sectionCode = requirementSectionCode(contract, section.requirementId);
+  if (!sectionCode) return evidencePack;
+  const routing = buildSectionEvidenceRoutingReport(contract, evidencePack);
+  const row = routing.find((item) => item.sectionCode === sectionCode);
+  if (!row) return { ...evidencePack, chunks: [], citationsByType: {}, totalChunks: 0, avgConfidence: 0 };
+  const selectedIds = new Set(row.selected.map((selection) => selection.chunkId));
+  const chunks = evidencePack.chunks.filter((chunk) => selectedIds.has(chunk.chunkId));
+  return {
+    ...evidencePack,
+    chunks,
+    sourceIds: Array.from(new Set(chunks.map((chunk) => chunk.sourceId))),
+    citationsByType: groupEvidenceChunksByType(chunks),
+    totalChunks: chunks.length,
+    avgConfidence: chunks.length ? chunks.reduce((sum, chunk) => sum + chunk.confidence, 0) / chunks.length : 0,
+    retrievalMetrics: {
+      ...evidencePack.retrievalMetrics,
+      selectedChunks: chunks.length,
+    },
+  };
+}
+
+function requirementSectionCode(contract: BlueprintExecutionContract, requirementId: string): string | null {
+  const plan = contract.blueprint.deliverableContract?.requirementPlan as Array<{ id?: string; sectionCode?: string }> | undefined;
+  return plan?.find((item) => item.id === requirementId)?.sectionCode ?? null;
+}
+
+function filterCarePlanSectionEvidenceSourcesToScopedPack(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  if (!evidencePack || !section.evidenceSources?.length) return section;
+  const allowed = new Set(evidencePack.chunks.map((chunk) => chunk.chunkId));
+  return {
+    ...section,
+    evidenceSources: section.evidenceSources.filter((source) => allowed.has(source.chunkId)),
+  };
 }
 
 type SupportPlanIdentityField =

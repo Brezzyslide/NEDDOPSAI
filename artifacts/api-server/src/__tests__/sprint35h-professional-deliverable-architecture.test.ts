@@ -1561,7 +1561,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
     expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason)");
-    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack)");
+    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)");
     expect(src).toContain("continue;");
   });
 
@@ -3797,5 +3797,25 @@ The strategies below implement the participant's behaviour support plan.
     expect(result.passed).toBe(false);
     expect(result.missingItems).toContain("Participant Document");
     expect(result.clarificationMessage).not.toMatch(/approval required/i);
+  });
+
+  it("routes identity and fire-equipment chunks before section-scoped derived fields run", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("function isRequiredCarePlanSectionEvidence");
+    expect(sourceText).toContain('section.sectionCode === "SUPPORT_PLAN_MEETING"');
+    expect(sourceText).toContain("return isParticipantIdentityChunk(chunk)");
+    expect(sourceText).toContain('section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY"');
+    expect(sourceText).toContain("return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0");
+    expect(sourceText).toContain('selectionReason: "section_required"');
+  });
+
+  it("applies server-derived care-plan cells with section-scoped evidence", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("function sectionScopedEvidencePackForCarePlanSection");
+    expect(sourceText).toContain("const scopedEvidencePack = sectionScopedEvidencePackForCarePlanSection(section, evidencePack, contract)");
+    expect(sourceText).toContain("filterCarePlanSectionEvidenceSourcesToScopedPack");
+    expect(sourceText).toContain("allowed.has(source.chunkId)");
   });
 });
