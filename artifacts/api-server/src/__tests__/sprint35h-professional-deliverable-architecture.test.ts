@@ -3798,4 +3798,26 @@ The strategies below implement the participant's behaviour support plan.
     expect(result.missingItems).toContain("Participant Document");
     expect(result.clarificationMessage).not.toMatch(/approval required/i);
   });
+
+  it("records ADL row-level absence verification instead of treating failed lookup as proof", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+    const adlModel = source("services/carePlanAdlModel.ts");
+
+    expect(adlModel).toContain("export interface CarePlanAdlAbsenceRecord");
+    expect(adlModel).toContain('verificationStatus: CarePlanAdlAbsenceVerificationStatus');
+    expect(sourceText).toContain("function buildAdlAbsenceRecord");
+    expect(sourceText).toContain("aliasesSearched: aliases");
+    expect(sourceText).toContain("chunksSearched: checklistChunks.map((chunk) => chunk.chunkId)");
+    expect(sourceText).toContain('verificationStatus = "contradicted_absence"');
+    expect(sourceText).toContain('supportLevel: "Needs review"');
+    expect(sourceText).toContain("retrieved evidence mentions this activity or the ADL evidence scope is incomplete");
+  });
+
+  it("keeps unverified ADL absence out of approval-ready coverage", () => {
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+
+    expect(coverage).toContain('row.absenceRecord?.verificationStatus === "unverified_absence"');
+    expect(coverage).toContain('row.absenceRecord?.verificationStatus === "contradicted_absence"');
+    expect(coverage).toContain("must be reviewed before approval");
+  });
 });

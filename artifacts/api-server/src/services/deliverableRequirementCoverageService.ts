@@ -2518,6 +2518,10 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
       supportLevelFailures.push(`${activity}: unsupported level "${row.supportLevel}"`);
       continue;
     }
+    if (row.absenceRecord?.verificationStatus === "unverified_absence" || row.absenceRecord?.verificationStatus === "contradicted_absence") {
+      supportLevelFailures.push(`${activity}: ${row.absenceRecord.verificationStatus} must be reviewed before approval`);
+      continue;
+    }
     const expectedLevels = expectedCarePlanAdlSupportLevelsForSourceValue(row.sourceValue);
     if (row.mappingMode === "VERIFIED_MAPPING") {
       if (expectedLevels.length === 0) {
