@@ -22,7 +22,39 @@ import type { EvidencePack } from "../services/knowledgeResolutionService.js";
 import type { BlueprintExecutionContract } from "../services/workBlueprintService.js";
 import type { WorkPackageManifest } from "../services/workPackageService.js";
 
-type Mode = "gate-replay";
+type Mode = "gate-replay" | "synthesis-replay";
+
+interface CapturedEvidencePackChunk {
+  chunkId: string;
+  sourceId: string;
+  sourceVersionId?: string | null;
+  text: string;
+  sourceTitle?: string | null;
+  sourceType?: string | null;
+  documentCategory?: string | null;
+}
+
+interface CapturedBatchEvidencePackRef {
+  batchId: string;
+  batchName?: string | null;
+  requirementIds: string[];
+  chunkIds: string[];
+}
+
+interface CapturedSynthesisReplayInput {
+  model?: {
+    provider?: string | null;
+    model?: string | null;
+    promptVersion?: string | null;
+  } | null;
+  evidencePack?: {
+    chunks: CapturedEvidencePackChunk[];
+  } | null;
+  batchEvidencePacks?: CapturedBatchEvidencePackRef[];
+  sectionEvidenceRouting?: unknown;
+  participantContext?: unknown;
+  blueprintResolution?: unknown;
+}
 
 interface CapturedEvent {
   eventType: string;
@@ -41,6 +73,12 @@ interface ReplayFixture {
   blueprintCode: string;
   userRequest: string;
   events: CapturedEvent[];
+  evidencePack?: {
+    retentionDays?: number;
+    chunks: CapturedEvidencePackChunk[];
+  };
+  batchEvidencePacks?: CapturedBatchEvidencePackRef[];
+  synthesisReplayInput?: CapturedSynthesisReplayInput;
 }
 
 interface ReplayOptions {
@@ -60,8 +98,8 @@ const EXPECTED_2026_10_05_FAILURES = [
 function parseArgs(argv: string[]): ReplayOptions {
   const [modeArg, ...rest] = argv;
   const mode = modeArg === "fixture" ? "gate-replay" : modeArg;
-  if (mode !== "gate-replay") {
-    throw new Error("Usage: replay-participant-deliverable.ts gate-replay --fixture path --output-dir dir");
+  if (mode !== "gate-replay" && mode !== "synthesis-replay") {
+    throw new Error("Usage: replay-participant-deliverable.ts <gate-replay|synthesis-replay> --fixture path --output-dir dir");
   }
   const opts: Partial<ReplayOptions> = {
     mode,
@@ -85,6 +123,26 @@ function parseArgs(argv: string[]): ReplayOptions {
 
 function loadFixture(path: string): ReplayFixture {
   return JSON.parse(readFileSync(path, "utf8")) as ReplayFixture;
+}
+
+function estimateJsonBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), "utf8");
+}
+
+function evidencePackCaptureStorageEstimate(fixture: ReplayFixture) {
+  const chunks = fixture.evidencePack?.chunks ?? fixture.synthesisReplayInput?.evidencePack?.chunks ?? [];
+  const batchRefs = fixture.batchEvidencePacks ?? fixture.synthesisReplayInput?.batchEvidencePacks ?? [];
+  const fullPackBytes = chunks.length > 0 ? estimateJsonBytes({ chunks }) : null;
+  const batchRefBytes = batchRefs.length > 0 ? estimateJsonBytes(batchRefs) : null;
+  return {
+    configuredRetentionDays: fixture.evidencePack?.retentionDays ?? 30,
+    fullPackChunkCount: chunks.length,
+    fullPackBytes,
+    batchPackCount: batchRefs.length,
+    batchPackReferenceBytes: batchRefBytes,
+    strategy: "Store the full converged EvidencePack.chunks[] once; store per-batch narrowed packs as chunkId references only.",
+    isolation: "Participant evidence; fixture retention must follow tenant isolation and delete with task lifecycle after 30 days unless explicitly promoted as a regression fixture.",
+  };
 }
 
 function professionalEvents(fixture: ReplayFixture): CapturedEvent[] {
@@ -217,6 +275,80 @@ function extractCapturedEvidencePack(fixture: ReplayFixture): EvidencePack | nul
   return evidencePack as EvidencePack;
 }
 
+function extractSectionCitations(section: PerRequirementDeliverableSection) {
+  const cited = new Map<string, { chunkId: string; source: string; passage?: string | null }>();
+  for (const source of section.evidenceSources ?? []) {
+    if (!source.chunkId) continue;
+    cited.set(source.chunkId, {
+      chunkId: source.chunkId,
+      source: "evidenceSources",
+      passage: source.passage ?? null,
+    });
+  }
+  const content = [
+    section.content,
+    JSON.stringify(section.structuredRows ?? []),
+  ].join("\n");
+  const chunkIdPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+  for (const match of content.matchAll(chunkIdPattern)) {
+    const chunkId = match[0];
+    if (!cited.has(chunkId)) cited.set(chunkId, { chunkId, source: "rendered_content", passage: null });
+  }
+  return Array.from(cited.values()).sort((left, right) => left.chunkId.localeCompare(right.chunkId));
+}
+
+function sectionCitationRoutingComparison(
+  sections: PerRequirementDeliverableSection[],
+  routing: unknown,
+) {
+  const rows = Array.isArray(routing) ? routing as Array<Record<string, unknown>> : [];
+  const routedByRequirement = new Map<string, Set<string>>();
+  const routedByTitle = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const selected = Array.isArray(row.selected) ? row.selected as Array<Record<string, unknown>> : [];
+    const ids = new Set(selected.map((item) => String(item.chunkId ?? "")).filter(Boolean));
+    const title = typeof row.sectionTitle === "string" ? row.sectionTitle : null;
+    const code = typeof row.sectionCode === "string" ? row.sectionCode : null;
+    if (title) routedByTitle.set(title, ids);
+    if (code) routedByRequirement.set(code, ids);
+  }
+
+  return sections.map((section) => {
+    const sectionTitle = (section as unknown as { heading?: string; title?: string }).heading
+      ?? (section as unknown as { title?: string }).title
+      ?? section.requirementId;
+    const citations = extractSectionCitations(section);
+    const routed = routedByRequirement.get(section.requirementId) ?? routedByTitle.get(sectionTitle) ?? new Set<string>();
+    const citedChunkIds = citations.map((citation) => citation.chunkId);
+    const routedChunkIds = Array.from(routed).sort();
+    return {
+      requirementId: section.requirementId,
+      title: sectionTitle,
+      routedChunkIds,
+      citedChunkIds,
+      citations,
+      citedOutsideRoutedSet: citedChunkIds.filter((chunkId) => !routed.has(chunkId)).sort(),
+      routedButNotCited: routedChunkIds.filter((chunkId) => !citedChunkIds.includes(chunkId)).sort(),
+    };
+  });
+}
+
+function synthesisReplayReadiness(fixture: ReplayFixture) {
+  const input = fixture.synthesisReplayInput;
+  const missing: string[] = [];
+  if (!input) missing.push("synthesisReplayInput");
+  if (!input?.evidencePack?.chunks?.length) missing.push("synthesisReplayInput.evidencePack.chunks[]");
+  if (!input?.batchEvidencePacks?.length) missing.push("synthesisReplayInput.batchEvidencePacks[]");
+  if (!input?.blueprintResolution) missing.push("synthesisReplayInput.blueprintResolution");
+  if (!input?.participantContext) missing.push("synthesisReplayInput.participantContext");
+  return {
+    ready: missing.length === 0,
+    missing,
+    model: input?.model ?? null,
+    acceptance: "Run synthesis twice from the same captured inputs and compare gate verdict set plus coverage counts; do not assert byte-identical draft text.",
+  };
+}
+
 function evidencePackUnevaluableGates(evidencePack: EvidencePack | null) {
   if (evidencePack) return [];
   return [{
@@ -260,6 +392,29 @@ async function main() {
   mkdirSync(outputDir, { recursive: true });
 
   const fixture = loadFixture(resolve(process.cwd(), opts.fixturePath));
+  const synthesisReadiness = synthesisReplayReadiness(fixture);
+  if (opts.mode === "synthesis-replay" && !synthesisReadiness.ready) {
+    const reportPath = resolve(outputDir, "report.json");
+    writeJson(reportPath, {
+      schemaVersion: 1,
+      mode: opts.mode,
+      generatedAt: new Date().toISOString(),
+      tenantSlug: fixture.tenantSlug,
+      organizationId: fixture.organizationId,
+      taskId: fixture.taskId,
+      participant: fixture.participant,
+      blueprintCode: fixture.blueprintCode,
+      status: "NOT_EVALUABLE",
+      reason: "Fixture does not contain captured synthesis inputs. Synthesis replay intentionally does not fall back to persisted draft replay.",
+      synthesisReplay: synthesisReadiness,
+      fixtureCapture: {
+        evidencePackStorage: evidencePackCaptureStorageEstimate(fixture),
+      },
+    });
+    console.log(JSON.stringify({ reportPath, status: "NOT_EVALUABLE", missing: synthesisReadiness.missing }, null, 2));
+    process.exitCode = 2;
+    return;
+  }
   const snapshot = latestDraftEvent(fixture);
   const sections = extractSections(snapshot.payload);
   const draft = extractDraft(snapshot.payload, sections);
@@ -296,6 +451,7 @@ async function main() {
   const recomputedVerdicts = summariseFailures(runtime.failures, "recomputed");
   const verdicts = removeUnevaluableVerdicts(mergeVerdicts(storedVerdicts, recomputedVerdicts), unevaluableGates);
   const verdictIds = verdicts.map((verdict) => verdict.verdictId);
+  const sectionEvidenceRouting = (snapshot.payload.coverageSnapshot as Record<string, unknown> | undefined)?.sectionEvidenceRouting ?? null;
 
   const expected = fixture.taskId === "0bef8bce-aaf2-4f6b-9888-c2f136f9818d"
     ? EXPECTED_2026_10_05_FAILURES
@@ -325,11 +481,17 @@ async function main() {
       occurredAt: snapshot.occurredAt,
       contentHash: createHash("sha256").update(draft).digest("hex"),
     },
+    fixtureCapture: {
+      evidencePackStorage: evidencePackCaptureStorageEstimate(fixture),
+      synthesisReplay: synthesisReadiness,
+      sectionCitationRoutingComparison: sectionCitationRoutingComparison(sections, sectionEvidenceRouting),
+    },
     stages: {
       blueprintResolution: { blueprintCode: contract.blueprint.code, sectionCount: contract.sections.length },
       evidenceRetrieval: {
         source: "captured_snapshot",
-        sectionEvidenceRouting: (snapshot.payload.coverageSnapshot as Record<string, unknown> | undefined)?.sectionEvidenceRouting ?? null,
+        sectionEvidenceRouting,
+        batchEvidencePacks: fixture.batchEvidencePacks ?? fixture.synthesisReplayInput?.batchEvidencePacks ?? [],
       },
       synthesis: { draftPath, wordCount: draft.split(/\s+/).filter(Boolean).length, sectionCount: sections.length },
       qualityReview: snapshot.payload.reviewSnapshot ?? null,

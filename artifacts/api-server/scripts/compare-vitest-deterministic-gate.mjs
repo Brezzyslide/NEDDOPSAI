@@ -283,6 +283,32 @@ function runParticipantDeliverableReplayFixtures() {
     });
     if (result.error) throw result.error;
     results.push({ fixture, status: result.status ?? 0 });
+    const fixtureJson = JSON.parse(readFileSync(fixturePath, "utf8"));
+    if (fixtureJson.synthesisReplayInput) {
+      const synthesisOutputDir = resolve(
+        mkdtempSync(resolve(tmpdir(), "needsops-participant-synthesis-replay-")),
+        fixture.replace(/\.fixture\.json$/, ""),
+      );
+      const synthesisResult = spawnSync("pnpm", [
+        "exec",
+        "tsx",
+        "src/scripts/replay-participant-deliverable.ts",
+        "synthesis-replay",
+        "--fixture",
+        fixturePath,
+        "--output-dir",
+        synthesisOutputDir,
+      ], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false",
+        },
+        stdio: "inherit",
+      });
+      if (synthesisResult.error) throw synthesisResult.error;
+      results.push({ fixture: `${fixture}:synthesis-replay`, status: synthesisResult.status ?? 0 });
+    }
   }
   return results;
 }
