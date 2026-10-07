@@ -1,0 +1,2343 @@
+{
+  "schemaVersion": 1,
+  "mode": "gate-replay",
+  "generatedAt": "2026-10-06T22:13:50.077Z",
+  "tenantSlug": "mhr-holdings-pty-ltd",
+  "organizationId": "7f76b224-d441-4abe-954b-1e07aef37025",
+  "taskId": "0bef8bce-aaf2-4f6b-9888-c2f136f9818d",
+  "participant": "Micheal Rocca",
+  "blueprintCode": "care_plan",
+  "snapshot": {
+    "eventType": "professional.gate_failure",
+    "occurredAt": "2026-10-05T00:22:37.141Z",
+    "contentHash": "a778504ed29d802f9baf780b424e5bf6be6d247a9fa78d91fbf5b1588c5ace84"
+  },
+  "stages": {
+    "blueprintResolution": {
+      "blueprintCode": "care_plan",
+      "sectionCount": 14
+    },
+    "evidenceRetrieval": {
+      "source": "captured_snapshot",
+      "sectionEvidenceRouting": [
+        {
+          "selected": [
+            {
+              "score": 17.23,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 15.67,
+              "chunkId": "be218165-1077-4b6e-a28e-a95d25435a07",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 481,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 15.07,
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 430,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 12.59,
+              "chunkId": "349c4c94-bdf7-4f86-8e91-e785953fb997",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 744,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 9.57,
+              "chunkId": "c948ffe7-7de1-409b-8015-a3da8912a0f2",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 243,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "SUPPORT_PLAN_MEETING",
+          "tokenBudget": 2200,
+          "sectionTitle": "Support Plan Meeting",
+          "selectedCount": 5,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "intake_form",
+            "service_agreement",
+            "ndis_plan",
+            "clinical_report"
+          ],
+          "highestRejectedScore": 12.57
+        },
+        {
+          "selected": [
+            {
+              "score": 16.09,
+              "chunkId": "a38b07f8-6131-4c5f-bc3b-691e87b1fff4",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 394,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 16.07,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 15.21,
+              "chunkId": "bcaa0be9-6682-405a-b475-6f13398f9f58",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 402,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 8.3,
+              "chunkId": "ba9165fb-7f83-40e8-a9e6-d028174f0320",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 271,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 4.29,
+              "chunkId": "8ea6e7d0-7c35-40e2-bee6-681529d093c7",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 51,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "GOALS",
+          "tokenBudget": 2200,
+          "sectionTitle": "Goals",
+          "selectedCount": 5,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "ndis_plan",
+            "strengths_based_questionnaire",
+            "participant_voice",
+            "allied_health_report",
+            "behaviour_support_plan",
+            "allied_health_reports"
+          ],
+          "highestRejectedScore": 12.15
+        },
+        {
+          "selected": [
+            {
+              "score": 11.57,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.5,
+              "chunkId": "2f059d61-d399-4b89-b479-b10cbe097c0e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 646,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 4.73,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 4.38,
+              "chunkId": "7b1a61ce-f1d4-4fe8-9387-beeb631cae70",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 138,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 2.51,
+              "chunkId": "f3465335-eff6-472c-b474-168fcfd97f6e",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 79,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "ABOUT_ME",
+          "tokenBudget": 2200,
+          "sectionTitle": "About Me",
+          "selectedCount": 5,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "strengths_based_questionnaire",
+            "participant_voice"
+          ],
+          "highestRejectedScore": 7.49
+        },
+        {
+          "selected": [
+            {
+              "score": 14.09,
+              "chunkId": "349c4c94-bdf7-4f86-8e91-e785953fb997",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 744,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 14.07,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 9.21,
+              "chunkId": "bcaa0be9-6682-405a-b475-6f13398f9f58",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 402,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "HISTORY_BACKGROUND",
+          "tokenBudget": 2200,
+          "sectionTitle": "History and Background",
+          "selectedCount": 3,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "allied_health_report",
+            "behaviour_support_plan",
+            "intake_form",
+            "allied_health_reports"
+          ],
+          "highestRejectedScore": 11.16
+        },
+        {
+          "selected": [
+            {
+              "score": 30.57,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 30.3,
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 297,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 26.07,
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 430,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 14.23,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 8.4,
+              "chunkId": "39b8456e-22f8-4b80-a3d3-dc869dbc1921",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 95,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 4.42,
+              "chunkId": "ec452306-4f50-4183-a5e5-1c824e2c5ae4",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 45,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "UNDERTAKING_ADL",
+          "tokenBudget": 2200,
+          "sectionTitle": "Undertaking ADL",
+          "selectedCount": 6,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "intake_form",
+            "ot_assessment",
+            "allied_health_reports"
+          ],
+          "highestRejectedScore": 23.55
+        },
+        {
+          "selected": [
+            {
+              "score": 13.07,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 12.15,
+              "chunkId": "1669b2f0-b028-4b31-801f-773702d0ceef",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 507,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 10.99,
+              "chunkId": "b75da853-045f-4f73-859b-a6d77ccffd7d",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 545,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 4.2,
+              "chunkId": "7671c2c1-6aa8-4d68-96a9-ea118a1b629a",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 98,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "COMMUNICATION_STRATEGY",
+          "tokenBudget": 2200,
+          "sectionTitle": "Communication and Communication Strategy",
+          "selectedCount": 4,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "intake_form",
+            "speech_assessment",
+            "behaviour_support_plan",
+            "allied_health_report",
+            "allied_health_reports"
+          ],
+          "highestRejectedScore": 11.08
+        },
+        {
+          "selected": [
+            {
+              "score": 17.07,
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 430,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 9.55,
+              "chunkId": "c46434f1-006a-4625-908f-e3c67d38d205",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 608,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 9.3,
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 297,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 9.23,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 8.67,
+              "chunkId": "be218165-1077-4b6e-a28e-a95d25435a07",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 481,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 3.66,
+              "chunkId": "bcff6480-38d1-48c0-bfba-c8b97ab412f7",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 106,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "MOBILITY_STRATEGY",
+          "tokenBudget": 2200,
+          "sectionTitle": "Mobility and Mobility Strategy",
+          "selectedCount": 6,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "intake_form",
+            "physiotherapy_assessment",
+            "ot_assessment",
+            "allied_health_reports"
+          ],
+          "highestRejectedScore": 8.59
+        },
+        {
+          "selected": [
+            {
+              "score": 13.57,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 12.59,
+              "chunkId": "349c4c94-bdf7-4f86-8e91-e785953fb997",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 744,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 12.23,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 5.4,
+              "chunkId": "39b8456e-22f8-4b80-a3d3-dc869dbc1921",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 95,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+          "tokenBudget": 2200,
+          "sectionTitle": "Support Delivery and Client Safety",
+          "selectedCount": 4,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "service_agreement",
+            "intake_form",
+            "ndis_plan"
+          ],
+          "highestRejectedScore": 12.43
+        },
+        {
+          "selected": [
+            {
+              "score": 20.08,
+              "chunkId": "decfe48c-1aa3-4e4e-986f-a1590900a98c",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 767,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 18.07,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 14.93,
+              "chunkId": "53cff928-61eb-4570-b5ad-55de23d3ea6e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 786,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 14.05,
+              "chunkId": "2f5d39b7-e4c5-45b6-b56b-38bb47ad9ce8",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 755,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 14,
+              "chunkId": "2f059d61-d399-4b89-b479-b10cbe097c0e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 646,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 13.21,
+              "chunkId": "bcaa0be9-6682-405a-b475-6f13398f9f58",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 402,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 13.09,
+              "chunkId": "349c4c94-bdf7-4f86-8e91-e785953fb997",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 744,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 11.24,
+              "chunkId": "80a352b1-552c-4213-a97a-b20eac8b462e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 723,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 11.16,
+              "chunkId": "3f4dde3c-ded1-4c43-8385-0fdd5fc19513",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 407,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 11.15,
+              "chunkId": "1669b2f0-b028-4b31-801f-773702d0ceef",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 507,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 11.12,
+              "chunkId": "c91aae9a-93bf-4cbe-a78d-98e9b4d265d1",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 634,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 11.09,
+              "chunkId": "a38b07f8-6131-4c5f-bc3b-691e87b1fff4",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 394,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 10.99,
+              "chunkId": "b75da853-045f-4f73-859b-a6d77ccffd7d",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 545,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 9.99,
+              "chunkId": "2c972076-c860-4437-9903-5ae80493368f",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 758,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 9.1,
+              "chunkId": "d2a8f109-7bd4-4e78-8691-40fbd0ede6b5",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 373,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 9.02,
+              "chunkId": "320a6828-deac-41a7-ae00-71c5f167faa9",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 358,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 8.18,
+              "chunkId": "e6e21316-49a0-4a25-ab28-015c24fb6379",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 244,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.3,
+              "chunkId": "ba9165fb-7f83-40e8-a9e6-d028174f0320",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 271,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.18,
+              "chunkId": "da39f4eb-da72-40db-bd3b-76fed9f1dc68",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 129,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.1,
+              "chunkId": "282db490-f9d5-4661-9e71-2d999b525f4b",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 521,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "BEHAVIOURAL_MANAGEMENT",
+          "tokenBudget": 2200,
+          "sectionTitle": "Behavioural Management",
+          "selectedCount": 20,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "behaviour_support_plan"
+          ],
+          "highestRejectedScore": 13.68
+        },
+        {
+          "selected": [
+            {
+              "score": 20.3,
+              "chunkId": "ba9165fb-7f83-40e8-a9e6-d028174f0320",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 271,
+              "categoryBoosted": true,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 16.62,
+              "chunkId": "a32332ee-f1d0-48b8-9937-f4841584e5c2",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 415,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 16.59,
+              "chunkId": "98e84e05-9c90-4963-8713-b5d03cf03ee5",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 421,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 15.54,
+              "chunkId": "45df74b7-7774-496f-a3ce-83d4c4858308",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 379,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 14.58,
+              "chunkId": "9645abd1-898a-49fe-a1d3-3998875b7cbb",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 343,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 14.39,
+              "chunkId": "ace3aa9c-7f06-4bc4-8407-d218c5169170",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 366,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "RESTRICTIVE_PRACTICES",
+          "tokenBudget": 2200,
+          "sectionTitle": "Restrictive Practices",
+          "selectedCount": 6,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "behaviour_support_plan",
+            "restrictive_practice_authorisation"
+          ],
+          "highestRejectedScore": 15.24
+        },
+        {
+          "selected": [
+            {
+              "score": 10.57,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 6.59,
+              "chunkId": "98e84e05-9c90-4963-8713-b5d03cf03ee5",
+              "sourceType": "procedure",
+              "sourceTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "tokenEstimate": 421,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 6.57,
+              "chunkId": "c948ffe7-7de1-409b-8015-a3da8912a0f2",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 243,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 6.53,
+              "chunkId": "129b0537-a09d-4fc1-b684-17fca20a1936",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 473,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "MEALTIME_MANAGEMENT_STRATEGY",
+          "tokenBudget": 2200,
+          "sectionTitle": "Mealtime Management Strategy",
+          "selectedCount": 4,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "mealtime_management_risk_assessment"
+          ],
+          "highestRejectedScore": 6.47
+        },
+        {
+          "selected": [
+            {
+              "score": 9.67,
+              "chunkId": "be218165-1077-4b6e-a28e-a95d25435a07",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 481,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 9.57,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 1050,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 8.57,
+              "chunkId": "c948ffe7-7de1-409b-8015-a3da8912a0f2",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 243,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 5.52,
+              "chunkId": "29669e30-ef4d-459f-8372-81f0ce31ee1a",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 196,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 4.44,
+              "chunkId": "9cdd76b9-d96d-4a20-a342-017792c0b829",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 156,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 2.52,
+              "chunkId": "4b810ce9-4169-477f-883c-0cc306759816",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 49,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "DISASTER_MANAGEMENT_STRATEGY",
+          "tokenBudget": 2200,
+          "sectionTitle": "Disaster Management Strategy",
+          "selectedCount": 6,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "disaster_management_risk_assessment",
+            "community_access_risk_assessment"
+          ],
+          "highestRejectedScore": 8.6
+        },
+        {
+          "selected": [
+            {
+              "score": 10.74,
+              "chunkId": "80a352b1-552c-4213-a97a-b20eac8b462e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 723,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 6.73,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 5.8,
+              "chunkId": "ba9165fb-7f83-40e8-a9e6-d028174f0320",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 271,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 5.68,
+              "chunkId": "da39f4eb-da72-40db-bd3b-76fed9f1dc68",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 129,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 5.68,
+              "chunkId": "e6e21316-49a0-4a25-ab28-015c24fb6379",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 244,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 5.67,
+              "chunkId": "be218165-1077-4b6e-a28e-a95d25435a07",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 481,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 2.52,
+              "chunkId": "4b810ce9-4169-477f-883c-0cc306759816",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 49,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "CLIENT_ENDORSEMENT",
+          "tokenBudget": 2200,
+          "sectionTitle": "Client Endorsement",
+          "selectedCount": 7,
+          "consideredCount": 65,
+          "expectedCategories": [
+            "signing_process"
+          ],
+          "highestRejectedScore": 5.57
+        },
+        {
+          "selected": [
+            {
+              "score": 8.49,
+              "chunkId": "b75da853-045f-4f73-859b-a6d77ccffd7d",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 545,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 8.43,
+              "chunkId": "53cff928-61eb-4570-b5ad-55de23d3ea6e",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 786,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.73,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "sourceType": "participant_document",
+              "sourceTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "tokenEstimate": 268,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "intake_form"
+            },
+            {
+              "score": 7.66,
+              "chunkId": "3f4dde3c-ded1-4c43-8385-0fdd5fc19513",
+              "sourceType": "participant_document",
+              "sourceTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "tokenEstimate": 407,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "behaviour_support_plan"
+            },
+            {
+              "score": 7.52,
+              "chunkId": "4b810ce9-4169-477f-883c-0cc306759816",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 49,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 6.22,
+              "chunkId": "d6943ce0-d2dd-4630-98bd-5c28b0777ec3",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 38,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            },
+            {
+              "score": 5.29,
+              "chunkId": "8ea6e7d0-7c35-40e2-bee6-681529d093c7",
+              "sourceType": "participant_document",
+              "sourceTitle": "Client Fire Risk Assessment Form_MR",
+              "tokenEstimate": 51,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": "risk_assessment"
+            },
+            {
+              "score": 1.42,
+              "chunkId": "ec452306-4f50-4183-a5e5-1c824e2c5ae4",
+              "sourceType": "procedure",
+              "sourceTitle": "Rostering & Workforce Allocation Manual",
+              "tokenEstimate": 45,
+              "categoryBoosted": false,
+              "selectionReason": "above_threshold",
+              "documentCategory": null
+            }
+          ],
+          "threshold": 1.25,
+          "sectionCode": "DOCUMENT_CONTROL",
+          "tokenBudget": 2200,
+          "sectionTitle": "Document Control",
+          "selectedCount": 8,
+          "consideredCount": 65,
+          "expectedCategories": [],
+          "highestRejectedScore": 7.58
+        }
+      ]
+    },
+    "synthesis": {
+      "draftPath": "/private/tmp/neddops-participant-replay-final/artifacts/api-server/artifacts/replay/participant-deliverable/0bef8bce-historical/draft.md",
+      "wordCount": 2763,
+      "sectionCount": 14
+    },
+    "qualityReview": {
+      "passed": true,
+      "revised": false,
+      "dimensions": [
+        {
+          "score": 10,
+          "passed": true,
+          "feedback": "2/2 scored success criteria satisfied",
+          "dimension": "instruction_adherence",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 6,
+          "passed": true,
+          "feedback": "No policies retrieved — policy compliance not fully evaluated",
+          "dimension": "policy_compliance",
+          "improvementSuggestions": [
+            "Retrieve relevant organisational policies before generating this output"
+          ]
+        },
+        {
+          "score": 6,
+          "passed": true,
+          "feedback": "Avg sentence length: 27 words; word count: 2757",
+          "dimension": "writing_style_compliance",
+          "improvementSuggestions": [
+            "Ensure organisational terminology and required citations are used consistently"
+          ]
+        },
+        {
+          "score": 6,
+          "passed": true,
+          "feedback": "No library sources were retrieved for this execution",
+          "dimension": "source_coverage",
+          "improvementSuggestions": [
+            "Add relevant documents to the Organisation Library to improve output quality"
+          ]
+        },
+        {
+          "score": 7,
+          "passed": true,
+          "feedback": "Content length: 19185 chars; headings: true; incomplete markers: 0",
+          "dimension": "completeness",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 9,
+          "passed": true,
+          "feedback": "1 hedging expressions detected",
+          "dimension": "confidence",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 10,
+          "passed": true,
+          "feedback": "0 missing markers; 0 unresolved questions",
+          "dimension": "missing_information",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 9,
+          "passed": true,
+          "feedback": "Approval section present",
+          "dimension": "approval_requirements",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 10,
+          "passed": true,
+          "feedback": "No safety flags detected",
+          "dimension": "safety",
+          "improvementSuggestions": []
+        },
+        {
+          "score": 8,
+          "passed": true,
+          "feedback": "Consistency score 8/10; 0 contradiction(s); objective coverage checked",
+          "dimension": "consistency",
+          "improvementSuggestions": [
+            "Content does not appear to address the blueprint objective"
+          ]
+        },
+        {
+          "score": 8,
+          "passed": true,
+          "feedback": "EvidencePack: 65 chunks, 5 sources; manifest match: 0/0; connector: 0 chunk(s)",
+          "dimension": "evidence_citation_grounding",
+          "improvementSuggestions": []
+        }
+      ],
+      "qualityScore": 81,
+      "autoRevisionNote": "Unsupported accountable values were deterministically replaced with evidence-gap wording before repair.",
+      "evidenceSummaryHash": "190ef85d2b942fe3",
+      "revisionLimitReached": false
+    },
+    "requirementValidation": {
+      "mandatoryRequirementCount": 14,
+      "satisfiedCount": 5,
+      "missingCount": 10,
+      "syntheticMissingCount": 1,
+      "mandatoryRequirementStates": [
+        {
+          "requirementId": "care-plan-support-plan-meeting",
+          "sectionCode": "SUPPORT_PLAN_MEETING",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-goals",
+          "sectionCode": "GOALS",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-about-me",
+          "sectionCode": "ABOUT_ME",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-history-background",
+          "sectionCode": "HISTORY_BACKGROUND",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-undertaking-adl",
+          "sectionCode": "UNDERTAKING_ADL",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-communication-strategy",
+          "sectionCode": "COMMUNICATION_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-mobility-strategy",
+          "sectionCode": "MOBILITY_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-support-delivery-client-safety",
+          "sectionCode": "SUPPORT_DELIVERY_CLIENT_SAFETY",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-behavioural-management",
+          "sectionCode": "BEHAVIOURAL_MANAGEMENT",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-restrictive-practices",
+          "sectionCode": "RESTRICTIVE_PRACTICES",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-mealtime-management-strategy",
+          "sectionCode": "MEALTIME_MANAGEMENT_STRATEGY",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-disaster-management-strategy",
+          "sectionCode": "DISASTER_MANAGEMENT_STRATEGY",
+          "state": "uncovered"
+        },
+        {
+          "requirementId": "care-plan-client-endorsement",
+          "sectionCode": "CLIENT_ENDORSEMENT",
+          "state": "covered"
+        },
+        {
+          "requirementId": "care-plan-document-control",
+          "sectionCode": "DOCUMENT_CONTROL",
+          "state": "covered"
+        }
+      ],
+      "missing": [
+        {
+          "requirementId": "__deliverable_section_integrity__",
+          "requirement": "Persisted deliverable markdown must match the structured deliverable sections used during execution.",
+          "classification": "QUALITY_CONTROL",
+          "requiredDeliverableRepresentation": "The shipped markdown artifact contains the same complete section set as the structured deliverable.",
+          "expectedRepresentation": "Structured deliverable section side-channel may inform parsing but must not substitute for the persisted artifact.",
+          "actualLocation": null,
+          "structuralResult": "STRUCTURE_FAIL",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "FALLBACK_HEURISTIC",
+          "finalResult": "NOT_SATISFIED",
+          "reason": "Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): care-plan-undertaking-adl."
+        },
+        {
+          "requirementId": "care-plan-support-plan-meeting",
+          "requirement": "Support Plan Meeting section contains client name, date of birth, gender, language spoken, NDIS number, diagnosis, people present, support plan developed by, and date for review.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "SUPPORT_PLAN_MEETING",
+          "requiredDeliverableRepresentation": "Support Plan Meeting (header)",
+          "expectedRepresentation": "Support Plan Meeting (header)",
+          "adequacyCriteria": [
+            "Every field present and labelled",
+            "People present names people who attended the planning meeting. A document title in that field is a defect",
+            "Where the plan was developed using allied health reports or a BSP rather than a meeting, the source documents are named with their dates",
+            "Date for Review is a real date, later than the plan date",
+            "Diagnosis is transcribed from a clinical source, never inferred"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "Support Plan Meeting structured evidence gap",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "MISSING_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "documentTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "citedText": "NDIS Number 430324461",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "c948ffe7-7de1-409b-8015-a3da8912a0f2",
+              "documentTitle": "Client Fire Risk Assessment Form_MR",
+              "citedText": "This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "documentTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "citedText": "Referral and participant details",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "da39f4eb-da72-40db-bd3b-76fed9f1dc68",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Date of Birth (age): 24/08/1975",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "be218165-1077-4b6e-a28e-a95d25435a07",
+              "documentTitle": "Client Fire Risk Assessment Form_MR",
+              "citedText": "Diagnosis / Relevant Conditions Moderate Intellectual Disability, Schizoaffective Disorder, Mixed Personality Disorder, and traits of autism spectrum disorder",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: 24/08/1975",
+              "mode": "MISSING_CITATION",
+              "accountable": true,
+              "passed": false,
+              "accountableValue": "24/08/1975",
+              "citedText": "NDIS Number 430324461 | This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings. | Referral and participant details | Date of Birth (age): 24/08/1975 | Diagnosis / Relevant Conditions Moderate Intellectual Disability, Schizoaffective Disorder, Mixed Personality Disorder, and traits of autism spectrum disorder",
+              "reason": "date/timeframe is an accountable value and has no verified citation."
+            },
+            {
+              "requirementId": "care-plan-support-plan-meeting",
+              "claim": "Support Plan Meeting: Plan Date 2026-10-05 **Date for Review:** To be confirmed by approver",
+              "mode": "MISSING_CITATION",
+              "accountable": true,
+              "passed": false,
+              "accountableValue": "2026-10-05 **Date for Review:** To be confirmed by approver",
+              "citedText": "NDIS Number 430324461 | This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings. | Referral and participant details | Date of Birth (age): 24/08/1975 | Diagnosis / Relevant Conditions Moderate Intellectual Disability, Schizoaffective Disorder, Mixed Personality Disorder, and traits of autism spectrum disorder",
+              "reason": "plan date is an accountable value and has no verified citation."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 112,
+            "fixedContentWordCount": 46,
+            "proseWordCount": 66,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "This plan describes the supports to be delivered to the participant and how support workers are to deliver them. It must be read together with the participant's NDIS plan, service agreement, and any behaviour support plan, health support plan or risk assessment referenced in it. **Participant Name:** Michael Rocca **Date of Birth:** 24/08/1975 **Gender:** Male **Language Spoken:** not recorded in retrieved evidence **NDIS Number:** 430324461 **Diagnosis:** Moderate Intellectual Disability, Schizoaffective Disorder, Mixed Personality Disorder, and traits of autism spectrum disorder **People Present:** not recorded in retrieved evidence **Support Plan Developed By:** not recorded in retrieved evidence **Plan Date:** 2026-10-05 **Date for Review:** To be confirmed by approver"
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"NDIS Number 430324461\" [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings.\" [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Referral and participant details\" [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Date of Birth (age): 24/08/1975\" [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Diagnosis / Relevant Conditions Moderate Intellectual Disability, Schizoaffective Disorder, Mixed Personality Disorder, and traits of autism spectrum disorder\" [MISSING_CITATION] Claim: \"Support Plan Meeting: 24/08/1975\". date/timeframe is an accountable value and has no verified citation.. Cited text: \"NDIS Number 430324461 | This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings. | Referral and participant details | Date of Birth (age): 24/08/1975 | Diagnosis / Relevant Conditio\" [MISSING_CITATION] Claim: \"Support Plan Meeting: Plan Date 2026-10-05 **Date for Review:** To be confirmed by approver\". plan date is an accountable value and has no verified citation.. Cited text: \"NDIS Number 430324461 | This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings. | Referral and participant details | Date of Birth (age): 24/08/1975 | Diagnosis / Relevant Conditio\""
+        },
+        {
+          "requirementId": "care-plan-about-me",
+          "requirement": "About Me section contains the person — strengths, likes, dislikes, what matters to them, communication preferences, and informal supports.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "ABOUT_ME",
+          "requiredDeliverableRepresentation": "About Me",
+          "expectedRepresentation": "About Me",
+          "adequacyCriteria": [
+            "Strengths stated",
+            "Likes and dislikes stated",
+            "Informal supports identified",
+            "Forensic history, family psychiatric history, trauma and service-involvement history do NOT belong here. They go to History and Background (4.4)",
+            "Written about the person, not about their deficits"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "About Me structured evidence gap",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-about-me",
+              "claim": "About Me: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "bcaa0be9-6682-405a-b475-6f13398f9f58",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Michael takes pride in his appearance and enjoys fashion, particularly shoes and tattoos, which reflect his sense of individuality and personal style.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-about-me",
+              "claim": "About Me: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "documentTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "citedText": "Participant Details: Family name: Rocca, Given name/s: Michael, Preferred name: Michael.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 131,
+            "fixedContentWordCount": 28,
+            "proseWordCount": 103,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "This section is about who the participant is, not what they cannot do. It is written to help a support worker understand the person before their first shift. **Strengths:** Sociable, responds well to praise, validation and clear communication, humour, resilience, keeps his house tidy with support. **Likes:** Branded shoes, listening to music, Holden cars, keeping a tidy house, shopping. **Dislikes:** Being told what to do, being told he can’t do something, being alone, feeling rejected, feeling bored. **What matters to me:** Michael values independence, music, shopping, and outdoor activities, thriving on predictability and routine. **How I prefer to communicate:** Michael communicates verbally in English, prefers short, clear sentences, and benefits from visual aids. **People who matter to me:** not recorded in retrieved evidence **Informal supports:** not recorded in retrieved evidence"
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"About Me: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Michael takes pride in his appearance and enjoys fashion, particularly shoes and tattoos, which reflect his sense of individuality and personal style.\" [UNSUPPORTED_CITATION] Claim: \"About Me: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Participant Details: Family name: Rocca, Given name/s: Michael, Preferred name: Michael.\""
+        },
+        {
+          "requirementId": "care-plan-history-background",
+          "requirement": "History and Background section contains background a support worker operationally needs — relevant history, prior service involvement, and risk-relevant context.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "HISTORY_BACKGROUND",
+          "requiredDeliverableRepresentation": "History and Background",
+          "expectedRepresentation": "History and Background",
+          "adequacyCriteria": [
+            "Carries only what a support worker operationally needs. Not the full file",
+            "Every historical claim traceable to a named source document",
+            "No clinical interpretation added beyond what the source states",
+            "[OPEN] Should this section state an access restriction, given its content?"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "History and Background structured evidence gap",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-history-background",
+              "claim": "History and Background: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "bcaa0be9-6682-405a-b475-6f13398f9f58",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Michael’s behavioural challenges began in early childhood and have remained consistent across his life.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-history-background",
+              "claim": "History and Background: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "349c4c94-bdf7-4f86-8e91-e785953fb997",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Michael has a history of trauma, including family violence and disrupted attachments, contributing to anxiety and mood instability.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 170,
+            "fixedContentWordCount": 33,
+            "proseWordCount": 137,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "This section carries only the background a support worker needs to deliver safe, respectful support. It is not a clinical or case history. Every statement must be traceable to a named source document. **Relevant History:** Michael’s behavioural challenges began in early childhood and have remained consistent across his life. He has displayed physical aggression, threats, assaults, and property damage. His interactions within the community have raised concerns regarding boundaries, especially in relation to children. **Prior Service Involvement:** Michael currently lives in Supported Independent Living (SIL) with 24-hour support. He has a complex health profile and requires consistent, long-term staff who build trust and rapport. **Risk-Relevant Context:** Michael has a history of trauma, including family violence and disrupted attachments, contributing to anxiety and mood instability. He has ongoing sleep issues and significant anxiety, leading to frequent use of medical and emergency services. **Source Documents and Dates:** 20260324 MR NDIS CBSP (Updated Sexualised Behaviour), dated 24/03/2023; Client Fire Risk Assessment Form_MR, dated 19/02/2026."
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"History and Background: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Michael’s behavioural challenges began in early childhood and have remained consistent across his life.\" [UNSUPPORTED_CITATION] Claim: \"History and Background: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Michael has a history of trauma, including family violence and disrupted attachments, contributing to anxiety and mood instability.\""
+        },
+        {
+          "requirementId": "care-plan-undertaking-adl",
+          "requirement": "Undertaking ADL section contains personal grooming capacity and self-hygiene routine.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "UNDERTAKING_ADL",
+          "requiredDeliverableRepresentation": "Undertaking ADL",
+          "expectedRepresentation": "Undertaking ADL",
+          "adequacyCriteria": [
+            "States what the participant does independently",
+            "States what needs prompting",
+            "States what needs hands-on support",
+            "A capacity statement with no support description is inadequate"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance.",
+            "Required table structure is present: Table with columns Activity | Support level | What the worker does, emitted deterministically with rows: Personal hygiene and grooming / Showering and bathing / Dressing and undressing / Toileting and continence / Oral hygiene / Eating and drinking / Meal preparation / Medication management / Mobility within the home / Transfers and positioning / Bedtime and morning routines / Household cleaning / Laundry and clothing care / Making and changing bedding / Shopping for essential items / Managing personal belongings / Using household appliances / Maintaining a safe home environment / Managing daily routines / Time awareness and task initiation / Attending appointments / Community access / Transport and travel / Money handling and everyday purchases / Communication of daily needs / Decision-making relating to daily activities."
+          ],
+          "actualLocation": "deliverable.sections[care-plan-undertaking-adl] \"Undertaking ADL\"",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "documentTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "citedText": "Without support ☒ Support required ☐ Completely unable to ☐",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "b334fc75-1183-4aaa-8a67-30fb8d4b1a38",
+              "documentTitle": "MH AND R _ Intake and home saefty checklist  form  _ All programs(1)",
+              "citedText": "Date of referral: 06/05/2022 ☒ New client ☐ Returning client",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Michael has a complex health profile having been diagnosed with a moderate intellectual disability, schizoaffective disorder, mixed personality disorder and traits of autism spectrum disorder.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Personal hygiene and grooming support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support; Shaving: Without support",
+              "reason": "ADL source value \"Without support; Shaving: Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Showering and bathing support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support",
+              "reason": "ADL source value \"Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Dressing and undressing support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support",
+              "reason": "ADL source value \"Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Toileting and continence support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support; Post toilet hygiene: Without support",
+              "reason": "ADL source value \"Without support; Post toilet hygiene: Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Oral hygiene support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support",
+              "reason": "ADL source value \"Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Eating and drinking support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Meal preparation support level Independent with prompting",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent with prompting",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Support required",
+              "reason": "ADL source value \"Support required\" deterministically maps to \"Independent with prompting\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Medication management support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Mobility within the home support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "citedText": "Without support",
+              "reason": "ADL source value \"Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Transfers and positioning support level Independent",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Without support; Transfer to/from bed: Without support",
+              "reason": "ADL source value \"Without support; Transfer to/from bed: Without support\" deterministically maps to \"Independent\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Bedtime and morning routines support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Household cleaning support level Independent with prompting",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent with prompting",
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "citedText": "Support required",
+              "reason": "ADL source value \"Support required\" deterministically maps to \"Independent with prompting\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Laundry and clothing care support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Making and changing bedding support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Shopping for essential items support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Managing personal belongings support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Using household appliances support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Maintaining a safe home environment support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Managing daily routines support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Time awareness and task initiation support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Attending appointments support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Community access support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Transport and travel support level Independent with prompting",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent with prompting",
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "citedText": "Support required",
+              "reason": "ADL source value \"Support required\" deterministically maps to \"Independent with prompting\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Money handling and everyday purchases support level Independent with prompting",
+              "mode": "VERIFIED_MAPPING",
+              "accountable": true,
+              "passed": true,
+              "accountableValue": "Independent with prompting",
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "citedText": "Support required",
+              "reason": "ADL source value \"Support required\" deterministically maps to \"Independent with prompting\"."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Communication of daily needs support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            },
+            {
+              "requirementId": "care-plan-undertaking-adl",
+              "claim": "Undertaking ADL: Decision-making relating to daily activities support level Not applicable / not assessed",
+              "mode": "CITED_INTERPRETATION_UNVERIFIED",
+              "accountable": false,
+              "passed": true,
+              "accountableValue": "Not applicable / not assessed",
+              "chunkId": "not-recorded-in-retrieved-evidence",
+              "citedText": "Absent",
+              "reason": "ADL row is explicitly marked not assessed because no controlled or cited source row was retrieved; it is not a verified mapping."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 804,
+            "fixedContentWordCount": 211,
+            "proseWordCount": 593,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "Support is provided to build and maintain independence. Workers do for the participant only what the participant cannot do for themselves at that time. Where the participant's capacity changes, the change is recorded and the plan updated. Each activity below is recorded against one support level. Where an activity requires a specific strategy, that strategy is recorded in the section that governs it — mobility and transfers in Mobility and Mobility Strategy, meal preparation and eating in Mealtime Management Strategy, and medication in the participant's health support plan. This section records the level of support required, not the clinical or specialist strategy. Support levels: Independent — completes the activity safely and effectively without assistance. Independent with prompting — physically completes the activity but requires verbal, visual or gestural prompts, reminders or task initiation. Independent with supervision — completes the activity but requires another person to remain available or observe for safety. Partial physical assistance — completes part of the activity but requires hands-on assistance for specific components. Full physical assistance — requires hands-on support for most or all of the activity. Unable to complete — cannot currently undertake the activity, even with ordinary prompting or supervision, without another person completing it. Not applicable / not assessed — activity is not relevant or sufficient information is unavailable. | Activity | Support Level | What the Worker Does | Source Value | Chunk ID | Mapping Mode | |------------------------------|-----------------------------|----------------------|--------------------|--------------------------------------------|---------------------| | Brush teeth | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Take shower | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Comb/brush hair | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Shaving | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Dressing | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Use toilet | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Post toilet hygiene | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Cooking | Support required | Needs assistance | Support required | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Cleaning | Support required | Needs assistance | Support required | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Washing dishes | Support required | Needs assistance | Support required | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Transfer to/from bed | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Money handling | Support required | Needs assistance | Support required | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Walk without aid | Independent | Completes without assistance | Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Use public transport | Support required | Needs assistance | Support required | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED | | Not assessed | Not applicable / not assessed | Not assessed — no functional assessment on file | Absent | Not assessed — no functional assessment on file | NOT_ASSESSED |"
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Undertaking ADL: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Without support ☒ Support required ☐ Completely unable to ☐\" [UNSUPPORTED_CITATION] Claim: \"Undertaking ADL: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Date of referral: 06/05/2022 ☒ New client ☐ Returning client\" [UNSUPPORTED_CITATION] Claim: \"Undertaking ADL: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Michael has a complex health profile having been diagnosed with a moderate intellectual disability, schizoaffective disorder, mixed personality disorder and traits of autism spectrum disorder.\""
+        },
+        {
+          "requirementId": "care-plan-communication-strategy",
+          "requirement": "Communication and Communication Strategy section contains verbal / non-verbal; expressive and receptive capacity; overview and effective strategy.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "COMMUNICATION_STRATEGY",
+          "requiredDeliverableRepresentation": "Communication and Communication Strategy",
+          "expectedRepresentation": "Communication and Communication Strategy",
+          "adequacyCriteria": [
+            "Capacity indicators completed",
+            "Strategy narrative present. A ticked capacity box with an empty overview is a defect",
+            "Strategy states what a worker should actually do",
+            "Capacity indicators must not contradict narrative content elsewhere in the plan (mechanically checkable)"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "deliverable.sections[care-plan-communication-strategy] \"Communication and Communication Strategy\"",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-communication-strategy",
+              "claim": "Communication and Communication Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Michael communicates verbally in English, although it has been previously stated he is fluent in Italian, he has said he doesn’t know Italian that well.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-communication-strategy",
+              "claim": "Communication and Communication Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "He responds best when spoken to using short, clear sentences and is more successful with directions when they are broken down into simple steps supported by visual aids.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-communication-strategy",
+              "claim": "Communication and Communication Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "89118727-aac4-4b15-9c89-a4b82af63a31",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Difficulties in communication are compounded by cognitive challenges, limited vocabulary, attention difficulties, and a lack of functional literacy and numeracy.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-communication-strategy",
+              "claim": "Communication and Communication Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "7671c2c1-6aa8-4d68-96a9-ea118a1b629a",
+              "documentTitle": "MH&R_Restrictive_Practice_Implementation_Manual",
+              "citedText": "Where the participant uses a communication aid or system, it must be available and used at every shift.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 215,
+            "fixedContentWordCount": 48,
+            "proseWordCount": 167,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "Every worker must read and follow the communication strategy before their first shift with this participant. Communication difficulty is not a reason to make decisions on the participant's behalf. Where the participant uses a communication aid or system, it must be available and used at every shift. **Verbal / Non-verbal:** Michael communicates verbally in English, although he has stated he doesn't know Italian that well. At his baseline, when calm and comfortable, Michael is polite, articulate and considerate. **Expressive Capacity:** Michael responds best when spoken to using short, clear sentences and is more successful with directions when they are broken down into simple steps supported by visual aids. **Receptive Capacity:** Difficulties in communication are compounded by cognitive challenges, limited vocabulary, attention difficulties, and a lack of functional literacy and numeracy. These challenges impact his ability to manage budgeting, time, and waiting. **Communication Aid or System Used:** Michael has been introduced to Talking Mats to support his self-awareness around his likes, dislikes, and appropriate behaviours. **Communication Strategy:** Workers should gain Michael's attention by using his name and making eye contact. Allow sufficient time for him to respond, and be aware of signs indicating whether he has understood, such as nodding or verbal acknowledgment. Avoid overwhelming him with too much information at once."
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Michael communicates verbally in English, although it has been previously stated he is fluent in Italian, he has said he doesn’t know Italian that well.\" [UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"He responds best when spoken to using short, clear sentences and is more successful with directions when they are broken down into simple steps supported by visual aids.\" [UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Difficulties in communication are compounded by cognitive challenges, limited vocabulary, attention difficulties, and a lack of functional literacy and numeracy.\" [UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Where the participant uses a communication aid or system, it must be available and used at every shift.\""
+        },
+        {
+          "requirementId": "care-plan-mobility-strategy",
+          "requirement": "Mobility and Mobility Strategy section contains aid required / not required; overview and strategy.",
+          "classification": "MUST_BE_REPRESENTED",
+          "sourceBlueprintSection": "MOBILITY_STRATEGY",
+          "requiredDeliverableRepresentation": "Mobility and Mobility Strategy",
+          "expectedRepresentation": "Mobility and Mobility Strategy",
+          "adequacyCriteria": [
+            "Capacity indicator completed",
+            "Strategy narrative present, not checkbox alone",
+            "Where an aid is used, it is named and its use described"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "deliverable.sections[care-plan-mobility-strategy] \"Mobility and Mobility Strategy\"",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-mobility-strategy",
+              "claim": "Mobility and Mobility Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "58501903-d5a4-4e88-82e5-715cc39e7fd8",
+              "documentTitle": "Controlled intake checklist",
+              "citedText": "Walk without aid: Without support",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-mobility-strategy",
+              "claim": "Mobility and Mobility Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "51ea99ce-4536-4627-bb82-7c5861913e36",
+              "documentTitle": "Controlled intake checklist",
+              "citedText": "Transfer to/from bed, Transfer to/from bed: Without support; Transfer to/from bed: Without support",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 172,
+            "fixedContentWordCount": 0,
+            "proseWordCount": 172,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "| Field | Value | Source value | Chunk ID | Mapping mode | | --- | --- | --- | --- | --- | | Walking aid requirement | Controlled intake checklist records walking without support; no separate equipment requirement is recorded. | Without support | 58501903-d5a4-4e88-82e5-715cc39e7fd8 | VERIFIED_MAPPING | | Aid or equipment used | Controlled intake checklist records walking without an aid. | Without support | 58501903-d5a4-4e88-82e5-715cc39e7fd8 | VERIFIED_MAPPING | | Transfer method | Transfers to and from bed without support. | Without support; Transfer to/from bed: Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Number of workers required | No worker assistance recorded for walking without an aid or bed transfers in the controlled intake checklist. | Without support; Transfer to/from bed: Without support | 51ea99ce-4536-4627-bb82-7c5861913e36 | VERIFIED_MAPPING | | Mobility overview | Controlled intake checklist records walking: Without support; bed transfers: Without support; Transfer to/from bed: Without support. | Without support | 58501903-d5a4-4e88-82e5-715cc39e7fd8 | VERIFIED_MAPPING | | Mobility strategy | Allow independent walking and bed transfers while keeping pathways clear and escalating any change in mobility or falls risk. | Without support | 58501903-d5a4-4e88-82e5-715cc39e7fd8 | VERIFIED_MAPPING |"
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Where an aid is used, it is named and its use described. [UNSUPPORTED_CITATION] Claim: \"Mobility and Mobility Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Walk without aid: Without support\" [UNSUPPORTED_CITATION] Claim: \"Mobility and Mobility Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Transfer to/from bed, Transfer to/from bed: Without support; Transfer to/from bed: Without support\""
+        },
+        {
+          "requirementId": "care-plan-behavioural-management",
+          "requirement": "Behavioural Management section contains three BSP-derived strategy folds: Proactive strategies, Reactive strategies and Protective strategies, each with behaviour or trigger, strategy, worker action and BSP source.",
+          "classification": "CONDITIONAL",
+          "sourceBlueprintSection": "BEHAVIOURAL_MANAGEMENT",
+          "requiredDeliverableRepresentation": "Behavioural Management",
+          "expectedRepresentation": "Behavioural Management",
+          "adequacyCriteria": [
+            "Template mode includes all three fold headings and their four-column tables",
+            "Participant-specific mode: every rendered strategy has a non-empty, specific BSP source containing the quoted passage and location",
+            "Participant-specific mode: distinct strategies extracted from the BSP equal distinct strategies rendered across the three folds",
+            "Participant-specific mode: no strategy flagged by the restrictive practice cross-check appears unless it is on the authorised Restrictive Practices list",
+            "Participant-specific mode: protective strategies are APO confirmed before approval",
+            "No strategy exists that cannot be traced to a BSP passage"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance.",
+            "Required table structure is present: Proactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source.",
+            "Required table structure is present: Reactive strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source.",
+            "Required table structure is present: Protective strategies table with columns Behaviour or trigger | Strategy | What the worker does | BSP source."
+          ],
+          "actualLocation": "deliverable.sections[care-plan-behavioural-management] \"Behavioural Management\"",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-behavioural-management",
+              "claim": "Behavioural Management: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "53cff928-61eb-4570-b5ad-55de23d3ea6e",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "• Ensure Michael’s community access is supported and supervised where required, particularly in environments where children may be present.",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 155,
+            "fixedContentWordCount": 0,
+            "proseWordCount": 155,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "**Proactive strategies** | Behaviour or trigger | Strategy | What the worker does | BSP source | | --- | --- | --- | --- | | Community access where children may be present | Supervised community access near children | Plan and supervise community access so Michael is supported in environments where children may be present; redirect or leave if risk increases. | 20260324 MR NDIS CBSP (Updated Sexualised Behaviour) (53cff928-61eb-4570-b5ad-55de23d3ea6e): • Ensure Michael’s community access is supported and supervised where required, particularly in environments where children may be present. | **Reactive strategies** | Behaviour or trigger | Strategy | What the worker does | BSP source | | --- | --- | --- | --- | | Post-incident reflection | Post-incident reflection after calm | Wait until Michael is calm, then briefly reflect on what happened, validate feelings, and identify one practical next step for next time. | 20260324 MR NDIS CBSP (Updated Sexualised Behaviour) (53cff928-61eb-4570-b5ad-55de23d3ea6e): • Encourage post-incident reflection with Michael (when calm) to build emotional understanding and relational trust. | **Protective strategies** No protective strategies recorded in the BSP."
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Behavioural Management: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"• Ensure Michael’s community access is supported and supervised where required, particularly in environments where children may be present.\""
+        },
+        {
+          "requirementId": "care-plan-restrictive-practices",
+          "requirement": "Restrictive Practices section contains a six-column table for practice type, plain-language description, worker actions, prohibited actions, authorisation status/reference and recording requirement.",
+          "classification": "CONDITIONAL",
+          "sourceBlueprintSection": "RESTRICTIVE_PRACTICES",
+          "requiredDeliverableRepresentation": "Restrictive Practices",
+          "expectedRepresentation": "Restrictive Practices",
+          "adequacyCriteria": [
+            "Template mode includes the Restrictive Practices table with all six columns",
+            "Participant-specific mode: every restrictive practice row has an authorisation status and reference",
+            "Each practice is named in plain language a support worker understands",
+            "Each row states what the worker does, what the worker must not do and the recording requirement",
+            "Authorisation status is stated as recorded in the BSP or authorisation source, never determined here"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance.",
+            "Required table structure is present: Table with columns Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement."
+          ],
+          "actualLocation": "Restrictive Practices structured evidence gap",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "MISSING_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-restrictive-practices",
+              "claim": "Restrictive Practices: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "ba9165fb-7f83-40e8-a9e6-d028174f0320",
+              "documentTitle": "20260324 MR NDIS CBSP (Updated Sexualised Behaviour)",
+              "citedText": "Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richmond, Vic., 3121. 123 Saric Street, Fraser Rise, Victoria, 3336. Chemical Restraint Authorisation",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            },
+            {
+              "requirementId": "care-plan-restrictive-practices",
+              "claim": "Restrictive Practices: restrictive practice status Authorisation",
+              "mode": "MISSING_CITATION",
+              "accountable": true,
+              "passed": false,
+              "accountableValue": "Authorisation",
+              "citedText": "Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richmond, Vic., 3121. 123 Saric Street, Fraser Rise, Victoria, 3336. Chemical Restraint Authorisation",
+              "reason": "restrictive practice status is an accountable value and has no verified citation."
+            },
+            {
+              "requirementId": "care-plan-restrictive-practices",
+              "claim": "Restrictive Practices: restrictive practice status Chemical restraint",
+              "mode": "MISSING_CITATION",
+              "accountable": true,
+              "passed": false,
+              "accountableValue": "Chemical restraint",
+              "citedText": "Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richmond, Vic., 3121. 123 Saric Street, Fraser Rise, Victoria, 3336. Chemical Restraint Authorisation",
+              "reason": "restrictive practice status is an accountable value and has no verified citation."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 103,
+            "fixedContentWordCount": 0,
+            "proseWordCount": 103,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 0,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 0,
+            "strippedSelfDescription": [],
+            "countedContent": "| Practice type | What it is in plain language | What the worker does | What the worker must not do | Authorisation status and reference | Recording requirement | | --- | --- | --- | --- | --- | --- | | Chemical restraint | Medication used to influence behaviour as recorded in the participant's BSP. | Administer medication only as prescribed and only within the current BSP/medication authority. | Do not use medication outside the prescription, BSP or authorisation evidence, and do not invent any other restrictive practice. | Authorisation recorded in BSP; expiry/review date not recorded in retrieved evidence (ba9165fb-7f83-40e8-a9e6-d028174f0320) | Record and report use according to the BSP, medication administration process and restrictive-practice reporting requirements. |"
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Restrictive Practices: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richm\" [MISSING_CITATION] Claim: \"Restrictive Practices: restrictive practice status Authorisation\". restrictive practice status is an accountable value and has no verified citation.. Cited text: \"Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richm\" [MISSING_CITATION] Claim: \"Restrictive Practices: restrictive practice status Chemical restraint\". restrictive practice status is an accountable value and has no verified citation.. Cited text: \"Summary of Regulated Restrictive Practices (RRP) Person / Provider Registration ID or ABN (if relevant) Location (e.g., service outlet) Type of RRPs used (i.e., chemical, environmental, mechanical, physical restraint, seclusion) Taye Ajao MH&R Holdings 12624239738 Suite 1, 19-23 Hoddle Street, Richm\""
+        },
+        {
+          "requirementId": "care-plan-disaster-management-strategy",
+          "requirement": "Disaster Management Strategy section contains participant-specific disaster and evacuation arrangements.",
+          "classification": "CONDITIONAL",
+          "sourceBlueprintSection": "DISASTER_MANAGEMENT_STRATEGY",
+          "requiredDeliverableRepresentation": "Disaster Management Strategy",
+          "expectedRepresentation": "Disaster Management Strategy",
+          "adequacyCriteria": [
+            "States participant-specific arrangements, not a reproduction of the site plan",
+            "Names the source risk assessment",
+            "For community access, addresses both general and location-specific risk",
+            "Written as worker actions",
+            "[OPEN] Other settings: confirm"
+          ],
+          "templateCriteria": [
+            "All authored fixedContent paragraphs are emitted verbatim.",
+            "All declared template fields are present and labelled.",
+            "The authored completionPrompt is emitted verbatim as template guidance."
+          ],
+          "actualLocation": "Disaster Management Strategy structured evidence gap",
+          "structuralResult": "STRUCTURE_PASS",
+          "substantiveResult": "SUBSTANTIVE_FAIL",
+          "substantiveValidationMode": "UNSUPPORTED_CITATION",
+          "citationFindings": [
+            {
+              "requirementId": "care-plan-disaster-management-strategy",
+              "claim": "Disaster Management Strategy: cited evidence source",
+              "mode": "UNSUPPORTED_CITATION",
+              "accountable": false,
+              "passed": false,
+              "chunkId": "ff35a88e-e14a-4a82-ab2f-319bb1373faa",
+              "documentTitle": "Client Fire Risk Assessment Form_MR",
+              "citedText": "ther intentionally or unintentionally. Although there is no documented history of specifically damaging smoke alarms or fire extinguishers, Michael’s aggression, impulsivity, emotional dysregulation, and property damage profile create elevated environmental safety risk requiring supervision and active behavioural support. Medical condition affecting fire saf",
+              "reason": "Cited chunk is not present in the runtime evidence pack."
+            }
+          ],
+          "substantiveBreakdown": {
+            "countedWordCount": 192,
+            "fixedContentWordCount": 10,
+            "proseWordCount": 173,
+            "completionPromptWordCount": 0,
+            "fieldLabelCount": 1,
+            "placeholderCount": 0,
+            "fieldAndPlaceholderWordCount": 9,
+            "strippedSelfDescription": [],
+            "countedContent": "This section records what workers do with Michael in an emergency or evacuation. It supplements, and does not replace, the site emergency plan. Source risk assessment: Client Fire Risk Assessment Form_MR. | Field | Recorded value | Chunk ID | | --- | --- | --- | | Evacuation assistance required | not recorded in retrieved evidence | not-recorded-in-retrieved-evidence | | Supervision level during evacuation | not recorded in retrieved evidence | not-recorded-in-retrieved-evidence | | Assembly point | not recorded in retrieved evidence | not-recorded-in-retrieved-evidence | | Equipment present | Fire extinguisher, Smoke alarm | ff35a88e-e14a-4a82-ab2f-319bb1373faa | | Communication approach | not recorded in retrieved evidence | not-recorded-in-retrieved-evidence | | Known triggers during emergencies | not recorded in retrieved evidence | not-recorded-in-retrieved-evidence | **Worker strategy:** In any emergency, worker priority is immediate safety. Call 000 first, maintain clear access to exits, and notify the on-call service manager after immediate safety actions are underway. Use only the recorded disaster-management values above: evacuation assistance required = not recorded in retrieved evidence; communication approach = not recorded in retrieved evidence; equipment present = Fire extinguisher, Smoke alarm. Do not add evacuation assistance, medication, equipment, assembly-point or communication requirements that are not recorded in the table."
+          },
+          "finalResult": "NOT_SATISFIED",
+          "reason": "[UNSUPPORTED_CITATION] Claim: \"Disaster Management Strategy: cited evidence source\". Cited chunk is not present in the runtime evidence pack.. Cited text: \"ther intentionally or unintentionally. Although there is no documented history of specifically damaging smoke alarms or fire extinguishers, Michael’s aggression, impulsivity, emotional dysregulation, and property damage profile create elevated environmental safety risk requiring supervision and acti\""
+        }
+      ]
+    },
+    "completionGates": {
+      "storedPassed": false,
+      "recomputedPassed": false,
+      "verdicts": [
+        {
+          "verdictId": "mandatory_deliverable_coverage",
+          "gate": "mandatory_deliverable_coverage",
+          "state": "validation",
+          "source": "stored",
+          "message": "Draft does not represent all applicable mandatory professional deliverable requirements. Professional completion requires 100% mandatory deliverable coverage before artifacts or task completion.",
+          "failingContent": [
+            "coverage=9/14 (64.3%)",
+            "__deliverable_section_integrity__: The shipped markdown artifact contains the same complete section set as the structured deliverable. (QUALITY_CONTROL)",
+            "care-plan-support-plan-meeting: Support Plan Meeting (header) (MUST_BE_REPRESENTED)",
+            "care-plan-about-me: About Me (MUST_BE_REPRESENTED)",
+            "care-plan-history-background: History and Background (MUST_BE_REPRESENTED)",
+            "care-plan-communication-strategy: Communication and Communication Strategy (MUST_BE_REPRESENTED)",
+            "care-plan-mobility-strategy: Mobility and Mobility Strategy (MUST_BE_REPRESENTED)",
+            "coverage=5/14 (35.7%)",
+            "care-plan-undertaking-adl: Undertaking ADL (MUST_BE_REPRESENTED)",
+            "care-plan-behavioural-management: Behavioural Management (CONDITIONAL)",
+            "care-plan-restrictive-practices: Restrictive Practices (CONDITIONAL)",
+            "care-plan-disaster-management-strategy: Disaster Management Strategy (CONDITIONAL)"
+          ],
+          "sources": [
+            "stored",
+            "recomputed"
+          ]
+        },
+        {
+          "verdictId": "care_plan_review_date_later_than_plan_date",
+          "gate": "mechanical_gate",
+          "state": "validation",
+          "source": "stored",
+          "message": "Care Plan mechanical gate failed: care_plan_review_date_later_than_plan_date. Review date must be later than the plan date.",
+          "failingContent": [
+            "care_plan_review_date_later_than_plan_date: Review date must be later than the plan date."
+          ],
+          "sources": [
+            "stored",
+            "recomputed"
+          ]
+        },
+        {
+          "verdictId": "care_plan_history_not_clinical_case_history",
+          "gate": "mechanical_gate",
+          "state": "validation",
+          "source": "stored",
+          "message": "Care Plan mechanical gate failed: care_plan_history_not_clinical_case_history. History and Background contains clinical/life-course case-history material; it must carry only worker-relevant background needed for safe support.",
+          "failingContent": [
+            "care_plan_history_not_clinical_case_history: History and Background contains clinical/life-course case-history material; it must carry only worker-relevant background needed for safe support."
+          ],
+          "sources": [
+            "stored",
+            "recomputed"
+          ]
+        },
+        {
+          "verdictId": "contradictory repeated facts",
+          "gate": "mechanical_gate",
+          "state": "validation",
+          "source": "stored",
+          "message": "Care plan sections contain contradictory repeated facts.",
+          "failingContent": [
+            "Community access: care-plan-undertaking-adl=\"Not applicable / not assessed\" contradicts care-plan-support-delivery-client-safety=\"Independent\""
+          ],
+          "sources": [
+            "stored"
+          ]
+        },
+        {
+          "verdictId": "targeted_repair_skipped",
+          "gate": "targeted_repair_skipped",
+          "state": "validation",
+          "source": "stored",
+          "message": "Targeted repair was skipped for participant care plans because repair candidates repeatedly degrade structured section integrity.",
+          "failingContent": [
+            "__deliverable_section_integrity__: Structured deliverable sections are not represented in the persisted markdown artifact for requirementId(s): care-plan-undertaking-adl.",
+            "care-plan-support-plan-meeting: [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Referral and participant details\" [UNSUPPORTED_CITATION] Claim: \"Support Plan Meeting: Plan Date 2026-10-05 **Date for Review:** To be confirmed by approver\". plan date exact value \"2026-10-05 **Date for Review:** To be confirmed by approver\" does not appear in the cited passage or chunk after normalisation.. Cited text: \"NDIS Number 430324461 | This assessment is used to identify fire-related risks associated with participants receiving support services within MH&R Holdings Pty Ltd residential and community settings. | Date of Birth (age): 24/08/1975 | Diagnosis / Relevant Conditions Moderate Intellectual Disability\" Mechanical care-plan gate failed for this requirement: care_plan_review_date_later_than_plan_date: Review date must be later than the plan date.",
+            "care-plan-about-me: [UNSUPPORTED_CITATION] Claim: \"About Me: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Participant Details: Family name: Rocca, Given name/s: Michael, Preferred name: Michael.\"",
+            "care-plan-history-background: [UNSUPPORTED_CITATION] Claim: \"History and Background: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Michael has a history of trauma, including family violence and disrupted attachments, contributing to anxiety and mood instability.\"",
+            "care-plan-communication-strategy: [UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Difficulties in communication are compounded by cognitive challenges, limited vocabulary, attention difficulties, and a lack of functional literacy and numeracy.\" [UNSUPPORTED_CITATION] Claim: \"Communication and Communication Strategy: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Where the participant uses a communication aid or system, it must be available and used at every shift.\"",
+            "care-plan-mobility-strategy: Relevant section does not satisfy authored adequacy criteria: Capacity indicator completed; Where an aid is used, it is named and its use described. [UNSUPPORTED_CITATION] Claim: \"Mobility and Mobility Strategy: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Walk without aid: Without support\" [UNSUPPORTED_CITATION] Claim: \"Mobility and Mobility Strategy: cited evidence passage\". Cited passage was not found in the chunk after normalisation.. Cited text: \"Transfer to/from bed, Transfer to/from bed: Without support; Transfer to/from bed: Without support\""
+          ],
+          "sources": [
+            "stored"
+          ]
+        }
+      ]
+    },
+    "targetedRepair": {
+      "skipped": true,
+      "source": "stored_gate_snapshot"
+    }
+  },
+  "reproduction": {
+    "expected": [
+      "mandatory_deliverable_coverage",
+      "care_plan_review_date_later_than_plan_date",
+      "care_plan_history_not_clinical_case_history",
+      "contradictory repeated facts",
+      "targeted_repair_skipped"
+    ],
+    "missing": [],
+    "unexpected": [],
+    "matched": true
+  }
+}

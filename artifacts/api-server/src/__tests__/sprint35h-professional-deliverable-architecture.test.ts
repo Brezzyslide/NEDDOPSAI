@@ -3798,4 +3798,33 @@ The strategies below implement the participant's behaviour support plan.
     expect(result.missingItems).toContain("Participant Document");
     expect(result.clarificationMessage).not.toMatch(/approval required/i);
   });
+
+  it("participant deliverable replay fixture captures full pack once and narrowed batches as references", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain("interface CapturedEvidencePackChunk");
+    expect(replay).toContain("sourceVersionId?: string | null");
+    expect(replay).toContain("interface CapturedBatchEvidencePackRef");
+    expect(replay).toContain("chunkIds: string[]");
+    expect(replay).toContain("Store the full converged EvidencePack.chunks[] once; store per-batch narrowed packs as chunkId references only.");
+    expect(replay).toContain("configuredRetentionDays: fixture.evidencePack?.retentionDays ?? 30");
+  });
+
+  it("participant deliverable replay compares section citations against routed evidence", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain("function sectionCitationRoutingComparison");
+    expect(replay).toContain("extractSectionCitations(section)");
+    expect(replay).toContain("citedOutsideRoutedSet");
+    expect(replay).toContain("routedButNotCited");
+  });
+
+  it("synthesis replay refuses to fall back to persisted draft replay when inputs are missing", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain('type Mode = "gate-replay" | "synthesis-replay"');
+    expect(replay).toContain("function synthesisReplayReadiness");
+    expect(replay).toContain("Fixture does not contain captured synthesis inputs. Synthesis replay intentionally does not fall back to persisted draft replay.");
+    expect(replay).toContain("Run synthesis twice from the same captured inputs and compare gate verdict set plus coverage counts");
+  });
 });
