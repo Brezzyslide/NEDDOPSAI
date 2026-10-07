@@ -6078,7 +6078,7 @@ function mapAdlChecklistValueToSupportLevel(value: AdlChecklistValue): string {
 }
 
 function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell): string {
-  if (derived.supportLevel === "Independent") return `Michael completes ${activity.toLowerCase()} without assistance according to the retrieved intake checklist; workers should not provide hands-on help unless he asks or safety changes.`;
+  if (derived.supportLevel === "Independent") return `Recorded support level: Independent. The retrieved intake checklist records "${derived.sourceValue}" for ${activity.toLowerCase()}.`;
   if (derived.supportLevel === "Unable to complete") return `Michael is recorded as completely unable to complete ${activity.toLowerCase()} in the retrieved intake checklist; workers must provide full support consistent with the current support plan.`;
   const differingParts = derived.sourceItems.length > 1 ? ` The mapped checklist items were: ${derived.sourceItems.join(", ")}.` : "";
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;

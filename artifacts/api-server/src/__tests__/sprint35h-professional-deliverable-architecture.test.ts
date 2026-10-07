@@ -1575,6 +1575,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain('"NDIS Number"');
     expect(uee).toContain("conflict in retrieved evidence");
     expect(uee).toContain("workerDescription: defaultAdlWorkerDescription(activity, derived)");
+    expect(uee).toContain("Recorded support level: Independent.");
+    expect(uee).not.toContain("workers should not provide hands-on help unless he asks or safety changes");
     expect(uee).toContain("No functional assessment on file for this activity.");
     expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
     expect(uee).toContain("Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}");
