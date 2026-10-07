@@ -49,6 +49,12 @@ export interface CarePlanAdlAbsenceRecord {
   contradictoryChunkIds: string[];
 }
 
+export interface CarePlanDerivedGuidance {
+  text: string;
+  provenance: "SYSTEM_DERIVED";
+  basisField: string;
+}
+
 export const CARE_PLAN_ADL_SOURCE_VALUE_SUPPORT_MAPPING = {
   "Without support": ["Independent"],
   "Support required": [
@@ -90,6 +96,7 @@ export interface CarePlanAdlStructuredRow {
   sourceValue: string;
   chunkId: string;
   mappingMode: CarePlanAdlMappingMode;
+  derivedGuidance?: CarePlanDerivedGuidance;
   absenceRecord?: CarePlanAdlAbsenceRecord;
 }
 

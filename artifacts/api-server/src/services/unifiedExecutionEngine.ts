@@ -60,6 +60,7 @@ import {
   CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS,
   normaliseCarePlanAdlActivity,
   type CarePlanAdlAbsenceRecord,
+  type CarePlanDerivedGuidance,
   type CarePlanAdlMappingMode,
 } from "./carePlanAdlModel.js";
 import {
@@ -6036,13 +6037,15 @@ function applyServerDerivedAdlRows(
     const derived = derivedRows.get(key);
     const modelRow = modelRows.get(key);
     if (derived) {
+      const derivedGuidance = systemDerivedGuidance(defaultAdlWorkerDescription(activity, derived), "supportLevel");
       return {
         activity,
         supportLevel: derived.supportLevel,
-        workerDescription: defaultAdlWorkerDescription(activity, derived),
+        workerDescription: derivedGuidance.text,
         sourceValue: derived.sourceValue,
         chunkId: derived.chunkId,
         mappingMode: "VERIFIED_MAPPING" as CarePlanAdlMappingMode,
+        derivedGuidance,
       };
     }
     if (modelRow && modelRow.chunkId && modelRow.chunkId !== "generation_failed" && modelRow.chunkId !== "not-recorded-in-retrieved-evidence") {
@@ -6222,6 +6225,14 @@ function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell):
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
 }
 
+function systemDerivedGuidance(text: string, basisField: string): CarePlanDerivedGuidance {
+  return {
+    text,
+    provenance: "SYSTEM_DERIVED",
+    basisField,
+  };
+}
+
 type MobilityField =
   | "Walking aid requirement"
   | "Aid or equipment used"
@@ -6252,11 +6263,23 @@ function applyServerDerivedMobilityFields(
     source?.sourceValue ?? "Absent",
     source?.chunkId ?? "not-recorded-in-retrieved-evidence",
     source ? "VERIFIED_MAPPING" : "NOT_ASSESSED",
+    source ? mobilityDerivedGuidance(field, value).text : "",
+    source ? "SYSTEM_DERIVED" : "",
+    source ? mobilityDerivedGuidance(field, value).basisField : "",
   ]);
 
   return {
     ...section,
-    content: renderMarkdownRows(["Field", "Value", "Source value", "Chunk ID", "Mapping mode"], rows),
+    content: renderMarkdownRows([
+      "Field",
+      "Value",
+      "Source value",
+      "Chunk ID",
+      "Mapping mode",
+      "Derived guidance",
+      "Guidance provenance",
+      "Guidance basis",
+    ], rows),
     evidenceSources: mergeEvidenceSources(section.evidenceSources, [walk, transfer]
       .filter((source): source is DerivedAdlCell => Boolean(source))
       .map((source) => ({
@@ -6275,6 +6298,10 @@ function mobilityDerivedRow(
   source: DerivedAdlCell | undefined,
 ): [MobilityField, string, DerivedAdlCell | undefined] {
   return [field, value, source];
+}
+
+function mobilityDerivedGuidance(field: MobilityField, value: string): CarePlanDerivedGuidance {
+  return systemDerivedGuidance(`${field}: ${value}`, "supportLevel");
 }
 
 function mobilityAidValue(walk: DerivedAdlCell | undefined): string {
@@ -6961,6 +6988,9 @@ function rowToForwardContextRecord(row: NonNullable<ParsedDeliverableSection["st
     sourceValue: row.sourceValue,
     chunkId: row.chunkId,
     mappingMode: row.mappingMode,
+    derivedGuidance: row.derivedGuidance?.text ?? "",
+    derivedGuidanceProvenance: row.derivedGuidance?.provenance ?? "",
+    derivedGuidanceBasis: row.derivedGuidance?.basisField ?? "",
   };
 }
 

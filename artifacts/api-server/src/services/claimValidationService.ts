@@ -44,6 +44,7 @@ import {
 import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
   type CarePlanAdlAbsenceRecord,
+  type CarePlanDerivedGuidance,
   type CarePlanAdlMappingMode,
   isCanonicalCarePlanAdlActivity,
   normaliseCarePlanAdlActivity,
@@ -651,6 +652,7 @@ export interface ParsedDeliverableStructuredRow {
   sourceValue: string;
   chunkId: string;
   mappingMode: CarePlanAdlMappingMode;
+  derivedGuidance?: CarePlanDerivedGuidance;
   absenceRecord?: CarePlanAdlAbsenceRecord;
 }
 
@@ -1212,6 +1214,9 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
     "Source value",
     "Chunk ID",
     "Mapping mode",
+    "Derived guidance",
+    "Guidance provenance",
+    "Guidance basis",
   ], CARE_PLAN_ADL_CANONICAL_ROWS.map((activity) => {
     const row = byActivity.get(normaliseCarePlanAdlActivity(activity));
     if (!row) {
@@ -1222,6 +1227,9 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
         CARE_PLAN_ADL_GENERATION_FAILED_ROW.sourceValue,
         CARE_PLAN_ADL_GENERATION_FAILED_ROW.chunkId,
         CARE_PLAN_ADL_GENERATION_FAILED_ROW.mappingMode,
+        "",
+        "",
+        "",
       ];
     }
     return [
@@ -1231,6 +1239,9 @@ function renderCarePlanAdlStructuredTable(rows: ParsedDeliverableStructuredRow[]
       escapeMarkdownTableCell(row.sourceValue),
       escapeMarkdownTableCell(row.chunkId),
       row.mappingMode,
+      escapeMarkdownTableCell(row.derivedGuidance?.text ?? ""),
+      row.derivedGuidance?.provenance ?? "",
+      escapeMarkdownTableCell(row.derivedGuidance?.basisField ?? ""),
     ];
   }));
 }
@@ -1523,6 +1534,7 @@ function parseDeliverableStructuredRows(value: unknown): ParsedDeliverableStruct
     const sourceValue = stringField(raw, "sourceValue", "source_value", "checklistValue", "checklist_value", "value");
     const chunkId = stringField(raw, "chunkId", "chunk_id", "sourceChunkId", "source_chunk_id");
     const mappingMode = stringField(raw, "mappingMode", "mapping_mode", "mode") as CarePlanAdlMappingMode | "";
+    const derivedGuidance = parseCarePlanDerivedGuidance(raw.derivedGuidance ?? raw.derived_guidance);
     if (!activity || !supportLevel || !workerDescription || !sourceValue || !chunkId) return [];
     if (mappingMode !== "VERIFIED_MAPPING" && mappingMode !== "CITED_INTERPRETATION" && mappingMode !== "NOT_ASSESSED") return [];
     return [{
@@ -1532,8 +1544,18 @@ function parseDeliverableStructuredRows(value: unknown): ParsedDeliverableStruct
       sourceValue,
       chunkId,
       mappingMode,
+      ...(derivedGuidance ? { derivedGuidance } : {}),
     }];
   });
+}
+
+function parseCarePlanDerivedGuidance(value: unknown): CarePlanDerivedGuidance | undefined {
+  if (!isRecord(value)) return undefined;
+  const text = stringField(value, "text");
+  const provenance = stringField(value, "provenance");
+  const basisField = stringField(value, "basisField", "basis_field");
+  if (!text || provenance !== "SYSTEM_DERIVED" || !basisField) return undefined;
+  return { text, provenance: "SYSTEM_DERIVED", basisField };
 }
 
 // ─── Cross-tenant chunk guard ─────────────────────────────────────────────────

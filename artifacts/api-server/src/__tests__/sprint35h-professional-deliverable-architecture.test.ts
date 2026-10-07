@@ -1574,7 +1574,8 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain('"Date of Birth"');
     expect(uee).toContain('"NDIS Number"');
     expect(uee).toContain("conflict in retrieved evidence");
-    expect(uee).toContain("workerDescription: defaultAdlWorkerDescription(activity, derived)");
+    expect(uee).toContain("const derivedGuidance = systemDerivedGuidance(defaultAdlWorkerDescription(activity, derived), \"supportLevel\")");
+    expect(uee).toContain("workerDescription: derivedGuidance.text");
     expect(uee).toContain("Recorded support level: Independent.");
     expect(uee).not.toContain("workers should not provide hands-on help unless he asks or safety changes");
     expect(uee).toContain("No functional assessment on file for this activity.");
@@ -3870,6 +3871,22 @@ The strategies below implement the participant's behaviour support plan.
     expect(coverage).toContain('row.absenceRecord?.verificationStatus === "unverified_absence"');
     expect(coverage).toContain('row.absenceRecord?.verificationStatus === "contradicted_absence"');
     expect(coverage).toContain("must be reviewed before approval");
+  });
+
+  it("separates verified mapped ADL values from system-derived worker guidance", () => {
+    const adlModel = source("services/carePlanAdlModel.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const renderer = source("services/claimValidationService.ts");
+
+    expect(adlModel).toContain("export interface CarePlanDerivedGuidance");
+    expect(adlModel).toContain('provenance: "SYSTEM_DERIVED"');
+    expect(adlModel).toContain("basisField: string");
+    expect(uee).toContain("function systemDerivedGuidance");
+    expect(uee).toContain("derivedGuidance,");
+    expect(uee).toContain("mobilityDerivedGuidance(field, value).text");
+    expect(renderer).toContain('"Derived guidance"');
+    expect(renderer).toContain('"Guidance provenance"');
+    expect(renderer).toContain('"Guidance basis"');
   });
 
   it("routes identity and fire-equipment chunks before section-scoped derived fields run", () => {
