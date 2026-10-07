@@ -59,6 +59,7 @@ import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
   CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS,
   normaliseCarePlanAdlActivity,
+  type CarePlanAdlAbsenceRecord,
   type CarePlanAdlMappingMode,
 } from "./carePlanAdlModel.js";
 import {
@@ -5984,16 +5985,90 @@ function applyServerDerivedAdlRows(
     if (modelRow && modelRow.chunkId && modelRow.chunkId !== "generation_failed" && modelRow.chunkId !== "not-recorded-in-retrieved-evidence") {
       return { ...modelRow, activity, mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode };
     }
+    const absenceRecord = buildAdlAbsenceRecord(activity, evidencePack);
+    if (absenceRecord.verificationStatus !== "verified_absence") {
+      return {
+        activity,
+        supportLevel: "Needs review",
+        workerDescription: adlNeedsReviewWorkerDescription(absenceRecord),
+        sourceValue: absenceRecord.verificationStatus,
+        chunkId: absenceRecord.contradictoryChunkIds[0] ?? "unverified-absence",
+        mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
+        absenceRecord,
+      };
+    }
     return {
       activity,
       supportLevel: "Not applicable / not assessed",
-      workerDescription: "No functional assessment on file for this activity.",
-      sourceValue: "Absent",
+      workerDescription: verifiedAdlAbsenceWorkerDescription(activity),
+      sourceValue: "verified_absence",
       chunkId: "not-recorded-in-retrieved-evidence",
       mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
+      absenceRecord,
     };
   });
   return { ...section, structuredRows: rows };
+}
+
+function buildAdlAbsenceRecord(activity: string, evidencePack: EvidencePack | undefined): CarePlanAdlAbsenceRecord {
+  const aliases = adlActivityAbsenceAliases(activity);
+  const checklistChunks = (evidencePack?.chunks ?? []).filter(isAdlChecklistChunk);
+  const contradictoryChunkIds = checklistChunks
+    .filter((chunk) => adlChunkMentionsActivity(chunk.text, aliases) && adlChunkHasSupportValueNearActivity(chunk.text, aliases))
+    .map((chunk) => chunk.chunkId);
+  const activityMentionChunkIds = checklistChunks
+    .filter((chunk) => adlChunkMentionsActivity(chunk.text, aliases))
+    .map((chunk) => chunk.chunkId);
+  const allRelevantSourcesFullyAvailable = checklistChunks.length > 0;
+  let verificationStatus: CarePlanAdlAbsenceRecord["verificationStatus"] = "verified_absence";
+  if (contradictoryChunkIds.length > 0) {
+    verificationStatus = "contradicted_absence";
+  } else if (!allRelevantSourcesFullyAvailable || activityMentionChunkIds.length > 0) {
+    verificationStatus = "unverified_absence";
+  }
+  return {
+    activity,
+    aliasesSearched: aliases,
+    evidenceScopeSearched: "runtime EvidencePack chunks classified as ADL/intake checklist evidence",
+    chunksSearched: checklistChunks.map((chunk) => chunk.chunkId),
+    allRelevantSourcesFullyAvailable,
+    verificationStatus,
+    contradictoryChunkIds,
+  };
+}
+
+function adlActivityAbsenceAliases(activity: string): string[] {
+  const mapped = CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS
+    .filter((mapping) => normaliseCarePlanAdlActivity(mapping.canonicalRow) === normaliseCarePlanAdlActivity(activity))
+    .flatMap((mapping) => adlSourceItemAliases(mapping.sourceItem));
+  const base = [activity];
+  if (activity === "Eating and drinking") base.push("Eating", "Drinking", "Meal", "Food", "Fluid");
+  if (activity === "Medication management") base.push("Medication", "Medicine", "Medication administration");
+  if (activity === "Community access") base.push("Community access", "Community", "Accessing the community");
+  if (activity === "Communication of daily needs") base.push("Communication", "Daily needs");
+  if (activity === "Decision-making relating to daily activities") base.push("Decision making", "Daily activities");
+  return Array.from(new Set([...base, ...mapped].map((alias) => alias.trim()).filter(Boolean)));
+}
+
+function adlChunkMentionsActivity(text: string, aliases: string[]): boolean {
+  const compact = text.replace(/\s+/g, " ");
+  return aliases.some((alias) => new RegExp(`\\b${escapeRegExp(alias)}\\b`, "i").test(compact));
+}
+
+function adlChunkHasSupportValueNearActivity(text: string, aliases: string[]): boolean {
+  const compact = text.replace(/\s+/g, " ");
+  return aliases.some((alias) => new RegExp(`\\b${escapeRegExp(alias)}\\b.{0,160}?(?:Without support|Support required|Completely unable)`, "i").test(compact));
+}
+
+function verifiedAdlAbsenceWorkerDescription(activity: string): string {
+  return `No ADL support-level evidence was found for ${activity.toLowerCase()} in the retrieved intake or functional-assessment evidence; workers should report any observed support need to the service manager before relying on this row.`;
+}
+
+function adlNeedsReviewWorkerDescription(absenceRecord: CarePlanAdlAbsenceRecord): string {
+  if (absenceRecord.verificationStatus === "contradicted_absence") {
+    return "Needs review: retrieved ADL evidence appears to mention this activity with a support value, but the system could not map it safely into the ADL table.";
+  }
+  return "Needs review: retrieved evidence mentions this activity or the ADL evidence scope is incomplete, so absence of a support requirement is not verified.";
 }
 
 function deriveAdlCellsFromControlledChecklist(evidencePack: EvidencePack | undefined): Map<string, DerivedAdlCell> {

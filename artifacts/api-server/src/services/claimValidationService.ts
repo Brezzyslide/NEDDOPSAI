@@ -43,6 +43,7 @@ import {
 } from "./semanticSupportValidator.js";
 import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
+  type CarePlanAdlAbsenceRecord,
   type CarePlanAdlMappingMode,
   isCanonicalCarePlanAdlActivity,
   normaliseCarePlanAdlActivity,
@@ -650,6 +651,7 @@ export interface ParsedDeliverableStructuredRow {
   sourceValue: string;
   chunkId: string;
   mappingMode: CarePlanAdlMappingMode;
+  absenceRecord?: CarePlanAdlAbsenceRecord;
 }
 
 const CARE_PLAN_ADL_GENERATION_FAILED_ROW = {
