@@ -3430,7 +3430,7 @@ const CARE_PLAN_TEMPLATE_CONTENT = {
   },
   clientEndorsement: {
     fixedContent: [
-      "I have been involved in the development of this Care Plan. My needs, preferences, choices and goals have been considered, and I agree with the supports outlined in this plan.",
+      "This section is completed only when the participant or authorised representative has reviewed the plan and provided endorsement. Leave unsigned and incomplete until that occurs.",
     ],
     fields: ["Participant or representative name", "Relationship to participant", "Signature", "Date", "Plan provided to", "Consent form reference and date"],
     completionPrompt: "Where the participant cannot sign, record who signed on their behalf and their authority to do so. List everyone the plan is provided to, and reference the consent form completed at intake.",

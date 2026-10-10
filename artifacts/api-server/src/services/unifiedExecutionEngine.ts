@@ -83,6 +83,8 @@ import {
   assembleDeterministicTemplateDeliverableSections,
   assembleDeliverableMarkdownFromSections,
   buildGenerationFailedDeclaredInstrumentSection,
+  applyParticipantCarePlanClaimGuard,
+  collectParticipantCarePlanSuppressionRecords,
   mergeDeliverableSectionDeltas,
   normaliseCarePlanDeclaredInstrumentSection,
   rejectCrossTenantChunks,
@@ -3175,11 +3177,13 @@ export class UnifiedExecutionEngine {
       input.blueprintContract,
       orderedSections,
     );
+    const guardedSections = (finalDeliverableSections ?? orderedSections).map(applyParticipantCarePlanClaimGuard);
+    const suppressionRecords = collectParticipantCarePlanSuppressionRecords(guardedSections);
     const content = assembleDeliverableMarkdownFromSections(
-      finalDeliverableSections ?? orderedSections,
+      guardedSections,
       requirementOrderForCoverageProfile(coverageProfile),
     );
-    const consistencyFailures = evaluateCarePlanCrossBatchConsistency(finalDeliverableSections ?? orderedSections);
+    const consistencyFailures = evaluateCarePlanCrossBatchConsistency(guardedSections);
 
     return {
       content,
@@ -3191,17 +3195,18 @@ export class UnifiedExecutionEngine {
         evidence_map: batchTelemetry.map((item) => JSON.stringify(item)),
         missing_information: batchFailures.map((failure) => failure.reason),
         batch_failures: batchFailures,
+        suppressed_claims: suppressionRecords,
         forward_context: forwardContext as unknown as Record<string, unknown>,
         cross_section_consistency_failures: consistencyFailures,
       },
       requirementCoverage: {
-        satisfied: (finalDeliverableSections ?? orderedSections)
+        satisfied: guardedSections
           .filter((section) => !/^Generation (?:incomplete|failed)/i.test(section.content))
           .map((section) => section.requirementId),
         missing: batchFailures.flatMap((failure) => failure.requirementIds),
       },
-      deliverable: { sections: finalDeliverableSections ?? orderedSections },
-      deliverableSections: finalDeliverableSections ?? orderedSections,
+      deliverable: { sections: guardedSections },
+      deliverableSections: guardedSections,
       completion: {
         operation: input.professionalContext.operation,
         unresolvedProfessionalContent: batchFailures.length,
