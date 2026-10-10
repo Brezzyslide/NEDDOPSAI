@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 
 import {
   assembleDeliverableMarkdownFromSections,
+  applyParticipantCarePlanClaimGuard,
+  collectParticipantCarePlanSuppressionRecords,
 } from "../services/claimValidationService.js";
 import {
   type PerRequirementDeliverableSection,
@@ -359,6 +361,107 @@ function evidencePackUnevaluableGates(evidencePack: EvidencePack | null) {
   }];
 }
 
+type ReplayCarePlanSection = Parameters<typeof applyParticipantCarePlanClaimGuard>[0];
+
+interface ReplaySectionContentProvenance {
+  requirementId: string;
+  heading: string;
+  contentProvenance: "generated_current_run" | "replayed_stored_fixture_content";
+  source: "current_code_guard" | "current_code_normalisation" | "current_code_structured_renderer" | "stored_fixture";
+  canEvidenceRenderingChange: boolean;
+  storedContentHash: string;
+  replayContentHash: string;
+  contentChangedFromStored: boolean;
+  note: string;
+}
+
+function applyHistoricalReplayServerDerivedCarePlanFields(section: ReplayCarePlanSection): ReplayCarePlanSection {
+  if (section.requirementId === "care-plan-support-plan-meeting") {
+    return {
+      ...section,
+      content: section.content
+        .replace(/(\*\*Plan Date:\*\*\s*)\d{4}-\d{2}-\d{2}/i, `$1${carePlanSystemPlanDate()}`)
+        .replace(/(\*\*Date for Review:\*\*\s*)(?:To be confirmed by approver|\d{4}-\d{2}-\d{2})/i, `$1${carePlanSystemReviewDate()}`),
+    };
+  }
+  if (section.requirementId === "care-plan-document-control") {
+    return {
+      ...section,
+      content: [
+        "Uncontrolled when printed. The current version of this document is held in the provider's document management system.",
+        "",
+        "Form ID: NeedsOps AI+ Care Plan",
+        "Version: 1.0",
+        `Date: ${carePlanSystemPlanDate()}`,
+        `Next review date: ${carePlanSystemReviewDate()}`,
+        "",
+        "Metadata source: system-generated document metadata.",
+      ].join("\n"),
+      evidenceSources: [],
+    };
+  }
+  return section;
+}
+
+function replaySectionContentProvenance(
+  rawSection: ReplayCarePlanSection,
+  replaySection: ReplayCarePlanSection,
+): ReplaySectionContentProvenance {
+  const storedMarkdown = renderReplaySection(rawSection);
+  const replayMarkdown = renderReplaySection(replaySection);
+  const storedContentHash = sha256(storedMarkdown);
+  const replayContentHash = sha256(replayMarkdown);
+  const contentChangedFromStored = storedContentHash !== replayContentHash;
+  const currentCodeRenderedStructuredRows = rawSection.requirementId === "care-plan-undertaking-adl";
+  const currentCodeNormalised = rawSection.requirementId === "care-plan-support-plan-meeting" ||
+    rawSection.requirementId === "care-plan-document-control";
+  const currentCodeGuarded = (replaySection.suppressedClaims ?? []).length > 0 ||
+    rawSection.requirementId === "care-plan-client-endorsement" ||
+    rawSection.requirementId === "care-plan-support-delivery-client-safety";
+  const generated = contentChangedFromStored || currentCodeRenderedStructuredRows || currentCodeNormalised || currentCodeGuarded;
+  let source: ReplaySectionContentProvenance["source"] = "stored_fixture";
+  if (currentCodeGuarded) source = "current_code_guard";
+  else if (currentCodeNormalised) source = "current_code_normalisation";
+  else if (currentCodeRenderedStructuredRows) source = "current_code_structured_renderer";
+
+  return {
+    requirementId: replaySection.requirementId,
+    heading: replaySection.heading,
+    contentProvenance: generated ? "generated_current_run" : "replayed_stored_fixture_content",
+    source,
+    canEvidenceRenderingChange: generated,
+    storedContentHash,
+    replayContentHash,
+    contentChangedFromStored,
+    note: generated
+      ? "This section content was produced or changed by current replay code in this run."
+      : "This section content was replayed from stored fixture content; it cannot evidence a current rendering change.",
+  };
+}
+
+function renderReplaySection(section: ReplayCarePlanSection): string {
+  return assembleDeliverableMarkdownFromSections([section], [section.requirementId]);
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function carePlanSystemPlanDate(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function carePlanSystemReviewDate(now = new Date()): string {
+  return addMonthsToIsoDate(carePlanSystemPlanDate(now), 12);
+}
+
+function addMonthsToIsoDate(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.split("-").map((value) => Number.parseInt(value, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
+
 function removeUnevaluableVerdicts<T extends { verdictId: string }>(verdicts: T[], unevaluable: Array<{ gate: string }>): T[] {
   const blocked = new Set(unevaluable.map((item) => item.gate));
   return verdicts.filter((verdict) => !blocked.has(verdict.verdictId));
@@ -416,14 +519,31 @@ async function main() {
     return;
   }
   const snapshot = latestDraftEvent(fixture);
-  const sections = extractSections(snapshot.payload);
-  const draft = extractDraft(snapshot.payload, sections);
+  const contract = makeContract(fixture.blueprintCode);
   const evidencePack = extractCapturedEvidencePack(fixture);
+  const rawSections = extractSections(snapshot.payload);
+  const sections = rawSections.map((section) => {
+    const rawSection = section as Parameters<typeof applyParticipantCarePlanClaimGuard>[0];
+    return applyParticipantCarePlanClaimGuard(
+      applyHistoricalReplayServerDerivedCarePlanFields(rawSection),
+    );
+  }) as PerRequirementDeliverableSection[];
+  const sectionContentProvenance = rawSections.map((section, index) =>
+    replaySectionContentProvenance(
+      section as Parameters<typeof applyParticipantCarePlanClaimGuard>[0],
+      sections[index] as Parameters<typeof applyParticipantCarePlanClaimGuard>[0],
+    ),
+  );
+  const draft = sections.length > 0
+    ? assembleDeliverableMarkdownFromSections(sections, sections.map((section) => section.requirementId))
+    : extractDraft(snapshot.payload, sections);
+  const suppressionRecords = collectParticipantCarePlanSuppressionRecords(
+    sections as Parameters<typeof collectParticipantCarePlanSuppressionRecords>[0],
+  );
   const unevaluableGates = evidencePackUnevaluableGates(evidencePack);
   const draftPath = resolve(outputDir, "draft.md");
   writeFileSync(draftPath, `${draft.replace(/[ \t]+$/gm, "")}\n`);
 
-  const contract = makeContract(fixture.blueprintCode);
   const manifest = makeManifest(fixture, snapshot.payload);
   const professionalContext = compileProfessionalExecutionContext({
     userRequest: fixture.userRequest,
@@ -484,6 +604,8 @@ async function main() {
     fixtureCapture: {
       evidencePackStorage: evidencePackCaptureStorageEstimate(fixture),
       synthesisReplay: synthesisReadiness,
+      participantClaimSuppression: suppressionRecords,
+      sectionContentProvenance,
       sectionCitationRoutingComparison: sectionCitationRoutingComparison(sections, sectionEvidenceRouting),
     },
     stages: {
