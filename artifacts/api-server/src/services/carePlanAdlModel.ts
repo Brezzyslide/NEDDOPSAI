@@ -37,6 +37,24 @@ export const CARE_PLAN_ADL_SUPPORT_LEVELS = [
   "Not applicable / not assessed",
 ] as const;
 
+export type CarePlanAdlAbsenceVerificationStatus = "verified_absence" | "unverified_absence" | "contradicted_absence";
+
+export interface CarePlanAdlAbsenceRecord {
+  activity: string;
+  aliasesSearched: string[];
+  evidenceScopeSearched: string;
+  chunksSearched: string[];
+  allRelevantSourcesFullyAvailable: boolean;
+  verificationStatus: CarePlanAdlAbsenceVerificationStatus;
+  contradictoryChunkIds: string[];
+}
+
+export interface CarePlanDerivedGuidance {
+  text: string;
+  provenance: "SYSTEM_DERIVED";
+  basisField: string;
+}
+
 export const CARE_PLAN_ADL_SOURCE_VALUE_SUPPORT_MAPPING = {
   "Without support": ["Independent"],
   "Support required": [
@@ -78,6 +96,8 @@ export interface CarePlanAdlStructuredRow {
   sourceValue: string;
   chunkId: string;
   mappingMode: CarePlanAdlMappingMode;
+  derivedGuidance?: CarePlanDerivedGuidance;
+  absenceRecord?: CarePlanAdlAbsenceRecord;
 }
 
 export function normaliseCarePlanAdlActivity(value: string): string {

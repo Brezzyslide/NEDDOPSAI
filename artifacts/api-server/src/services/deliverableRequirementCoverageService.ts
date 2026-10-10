@@ -1711,7 +1711,7 @@ function evaluateCarePlanCitationFindings(
 
   for (const claim of extractCarePlanAccountableClaims(requirement, section)) {
     if (claim.kind === "adl_support_level") {
-      findings.push(validateAdlAccountableClaim(requirement.id, claim));
+      findings.push(validateAdlAccountableClaim(requirement.id, claim, chunks));
       continue;
     }
     if (verifiedSources.length === 0) {
@@ -1926,12 +1926,13 @@ function isCarePlanSystemGeneratedAccountableValue(requirementId: string, label:
   if (requirementId === "care-plan-document-control") return true;
   if (requirementId !== "care-plan-support-plan-meeting") return false;
   if (!/^(?:Plan Date|Date for Review|date\/timeframe)$/i.test(label)) return false;
-  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim()) || /^To be confirmed by approver$/i.test(value.trim());
+  return /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
 }
 
 function validateAdlAccountableClaim(
   requirementId: string,
   claim: Extract<AccountableCarePlanClaim, { kind: "adl_support_level" }>,
+  chunks: Map<string, EvidenceChunk>,
 ): CarePlanCitationFinding {
   const expected = expectedCarePlanAdlSupportLevelsForSourceValue(claim.sourceValue);
   if (
@@ -1959,6 +1960,19 @@ function validateAdlAccountableClaim(
       passed: false,
       accountableValue: claim.supportLevel,
       reason: "ADL support level is accountable and has no chunk citation.",
+    };
+  }
+  if (!chunks.has(claim.chunkId)) {
+    return {
+      requirementId,
+      claim: claim.claim,
+      mode: "UNSUPPORTED_CITATION",
+      accountable: true,
+      passed: false,
+      accountableValue: claim.supportLevel,
+      chunkId: claim.chunkId,
+      citedText: claim.sourceValue,
+      reason: "ADL support level mapping cites a chunk that is not present in the runtime evidence pack; deterministic mapping cannot be verified without the cited chunk.",
     };
   }
   if (claim.mappingMode === "VERIFIED_MAPPING" && expected.includes(claim.supportLevel)) {
@@ -2516,6 +2530,10 @@ function evaluateCarePlanAdlStructuredRows(rows: CarePlanAdlStructuredRow[]): {
     if (!row.chunkId.trim()) citationFailures.push(`${activity}: missing chunkId`);
     if (!isCarePlanAdlSupportLevel(row.supportLevel)) {
       supportLevelFailures.push(`${activity}: unsupported level "${row.supportLevel}"`);
+      continue;
+    }
+    if (row.absenceRecord?.verificationStatus === "unverified_absence" || row.absenceRecord?.verificationStatus === "contradicted_absence") {
+      supportLevelFailures.push(`${activity}: ${row.absenceRecord.verificationStatus} must be reviewed before approval`);
       continue;
     }
     const expectedLevels = expectedCarePlanAdlSupportLevelsForSourceValue(row.sourceValue);

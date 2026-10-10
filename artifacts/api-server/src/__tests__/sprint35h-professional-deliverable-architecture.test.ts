@@ -1561,7 +1561,7 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(src).toContain("configuredTimeoutMs: extractGatewayTimeoutMs(error)");
     expect(src).toContain("retryCount: extractGatewayRetryCount(error)");
     expect(src).toContain("allSections.push(...buildFailedBatchSections(batch, reason)");
-    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack)");
+    expect(src).toContain("applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)");
     expect(src).toContain("continue;");
   });
 
@@ -1574,12 +1574,16 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(uee).toContain('"Date of Birth"');
     expect(uee).toContain('"NDIS Number"');
     expect(uee).toContain("conflict in retrieved evidence");
-    expect(uee).toContain("workerDescription: defaultAdlWorkerDescription(activity, derived)");
+    expect(uee).toContain("const derivedGuidance = systemDerivedGuidance(defaultAdlWorkerDescription(activity, derived), \"supportLevel\")");
+    expect(uee).toContain("workerDescription: derivedGuidance.text");
+    expect(uee).toContain("Recorded support level: Independent.");
+    expect(uee).not.toContain("workers should not provide hands-on help unless he asks or safety changes");
     expect(uee).toContain("No functional assessment on file for this activity.");
     expect(uee).toContain("No mealtime support requirements are recorded in the retrieved evidence.");
     expect(uee).toContain("Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}");
     expect(uee).toContain("CARE_PLAN_SYSTEM_FORM_ID");
-    expect(uee).toContain("CARE_PLAN_APPROVER_REVIEW_DATE");
+    expect(uee).toContain("carePlanSystemReviewDate");
+    expect(uee).toContain("addMonthsToIsoDate");
     expect(uee).toContain("isCarePlanSystemGeneratedMetadataValue");
     expect(coverage).toContain("findRuntimeExactValueEvidence");
     expect(coverage).toContain("exact value was re-cited from another selected evidence chunk");
@@ -3009,9 +3013,9 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     expect(report.missing[0]?.substantiveValidationMode).toBe("UNSUPPORTED_CITATION");
   });
 
-  it("accepts approver-deferred care-plan review dates instead of requiring an invented date", () => {
+  it("accepts computed care-plan review dates and does not exempt approver placeholders", () => {
     const profile = carePlanSingleRequirementProfile("care-plan-support-plan-meeting", "Support Plan Meeting");
-    const content = [
+    const computedContent = [
       "**Participant Name:** Micheal Rocca",
       "**Date of Birth:** not recorded in retrieved evidence",
       "**Gender:** Male",
@@ -3021,13 +3025,13 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
       "**People Present:** not recorded in retrieved evidence",
       "**Support Plan Developed By:** NeedsOps AI+",
       "**Plan Date:** 2026-09-30",
-      "**Date for Review:** To be confirmed by approver",
+      "**Date for Review:** 2027-09-30",
     ].join("\n");
-    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${content}`, profile, {
+    const report = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${computedContent}`, profile, {
       deliverableSections: [{
         requirementId: "care-plan-support-plan-meeting",
         heading: "Support Plan Meeting",
-        content,
+        content: computedContent,
         evidenceSources: [{
           chunkId: "identity",
           documentTitle: "Intake",
@@ -3040,6 +3044,25 @@ describe("Sprint 35H professional operation and deliverable architecture", () =>
     });
 
     expect(report.missing[0]?.reason ?? "").not.toContain("Date for Review is a real date");
+
+    const placeholderContent = computedContent.replace("**Date for Review:** 2027-09-30", "**Date for Review:** To be confirmed by approver");
+    const placeholderReport = evaluateDeliverableRequirementCoverage(`## Support Plan Meeting\n\n${placeholderContent}`, profile, {
+      deliverableSections: [{
+        requirementId: "care-plan-support-plan-meeting",
+        heading: "Support Plan Meeting",
+        content: placeholderContent,
+        evidenceSources: [{
+          chunkId: "identity",
+          documentTitle: "Intake",
+          passage: "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability",
+          location: "p. 1",
+          evidenceClass: "PROFESSIONAL_SOURCE",
+        }],
+      }],
+      evidencePack: evidencePackWithChunk("identity", "Micheal Rocca NDIS Number 430324461 Male English Moderate intellectual disability"),
+    });
+
+    expect(placeholderReport.missing.some((missing) => missing.reason.includes("To be confirmed by approver"))).toBe(true);
   });
 
   it("blocks ADL support levels that are only cited interpretation", () => {
@@ -3797,5 +3820,92 @@ The strategies below implement the participant's behaviour support plan.
     expect(result.passed).toBe(false);
     expect(result.missingItems).toContain("Participant Document");
     expect(result.clarificationMessage).not.toMatch(/approval required/i);
+  });
+
+  it("participant deliverable replay fixture captures full pack once and narrowed batches as references", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain("interface CapturedEvidencePackChunk");
+    expect(replay).toContain("sourceVersionId?: string | null");
+    expect(replay).toContain("interface CapturedBatchEvidencePackRef");
+    expect(replay).toContain("chunkIds: string[]");
+    expect(replay).toContain("Store the full converged EvidencePack.chunks[] once; store per-batch narrowed packs as chunkId references only.");
+    expect(replay).toContain("configuredRetentionDays: fixture.evidencePack?.retentionDays ?? 30");
+  });
+
+  it("participant deliverable replay compares section citations against routed evidence", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain("function sectionCitationRoutingComparison");
+    expect(replay).toContain("extractSectionCitations(section)");
+    expect(replay).toContain("citedOutsideRoutedSet");
+    expect(replay).toContain("routedButNotCited");
+  });
+
+  it("synthesis replay refuses to fall back to persisted draft replay when inputs are missing", () => {
+    const replay = source("scripts/replay-participant-deliverable.ts");
+
+    expect(replay).toContain('type Mode = "gate-replay" | "synthesis-replay"');
+    expect(replay).toContain("function synthesisReplayReadiness");
+    expect(replay).toContain("Fixture does not contain captured synthesis inputs. Synthesis replay intentionally does not fall back to persisted draft replay.");
+    expect(replay).toContain("Run synthesis twice from the same captured inputs and compare gate verdict set plus coverage counts");
+  });
+
+  it("records ADL row-level absence verification instead of treating failed lookup as proof", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+    const adlModel = source("services/carePlanAdlModel.ts");
+
+    expect(adlModel).toContain("export interface CarePlanAdlAbsenceRecord");
+    expect(adlModel).toContain('verificationStatus: CarePlanAdlAbsenceVerificationStatus');
+    expect(sourceText).toContain("function buildAdlAbsenceRecord");
+    expect(sourceText).toContain("aliasesSearched: aliases");
+    expect(sourceText).toContain("chunksSearched: checklistChunks.map((chunk) => chunk.chunkId)");
+    expect(sourceText).toContain('verificationStatus = "contradicted_absence"');
+    expect(sourceText).toContain('supportLevel: "Needs review"');
+    expect(sourceText).toContain("retrieved evidence mentions this activity or the ADL evidence scope is incomplete");
+  });
+
+  it("keeps unverified ADL absence out of approval-ready coverage", () => {
+    const coverage = source("services/deliverableRequirementCoverageService.ts");
+
+    expect(coverage).toContain('row.absenceRecord?.verificationStatus === "unverified_absence"');
+    expect(coverage).toContain('row.absenceRecord?.verificationStatus === "contradicted_absence"');
+    expect(coverage).toContain("must be reviewed before approval");
+  });
+
+  it("separates verified mapped ADL values from system-derived worker guidance", () => {
+    const adlModel = source("services/carePlanAdlModel.ts");
+    const uee = source("services/unifiedExecutionEngine.ts");
+    const renderer = source("services/claimValidationService.ts");
+
+    expect(adlModel).toContain("export interface CarePlanDerivedGuidance");
+    expect(adlModel).toContain('provenance: "SYSTEM_DERIVED"');
+    expect(adlModel).toContain("basisField: string");
+    expect(uee).toContain("function systemDerivedGuidance");
+    expect(uee).toContain("derivedGuidance,");
+    expect(uee).toContain("mobilityDerivedGuidance(field, value).text");
+    expect(renderer).toContain('"Derived guidance"');
+    expect(renderer).toContain('"Guidance provenance"');
+    expect(renderer).toContain('"Guidance basis"');
+  });
+
+  it("routes identity and fire-equipment chunks before section-scoped derived fields run", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("function isRequiredCarePlanSectionEvidence");
+    expect(sourceText).toContain('section.sectionCode === "SUPPORT_PLAN_MEETING"');
+    expect(sourceText).toContain("return isParticipantIdentityChunk(chunk)");
+    expect(sourceText).toContain('section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY"');
+    expect(sourceText).toContain("return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0");
+    expect(sourceText).toContain('selectionReason: "section_required"');
+  });
+
+  it("applies server-derived care-plan cells with section-scoped evidence", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("function sectionScopedEvidencePackForCarePlanSection");
+    expect(sourceText).toContain("const scopedEvidencePack = sectionScopedEvidencePackForCarePlanSection(section, evidencePack, contract)");
+    expect(sourceText).toContain("filterCarePlanSectionEvidenceSourcesToScopedPack");
+    expect(sourceText).toContain("allowed.has(source.chunkId)");
   });
 });

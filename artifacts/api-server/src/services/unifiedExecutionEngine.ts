@@ -59,6 +59,8 @@ import {
   CARE_PLAN_ADL_CANONICAL_ROWS,
   CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS,
   normaliseCarePlanAdlActivity,
+  type CarePlanAdlAbsenceRecord,
+  type CarePlanDerivedGuidance,
   type CarePlanAdlMappingMode,
 } from "./carePlanAdlModel.js";
 import {
@@ -3076,7 +3078,7 @@ export class UnifiedExecutionEngine {
         const reason = formatCarePlanBatchProviderFailure(batch, error, elapsedMs);
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({
           batchId: batch.id,
           batchName: batch.name,
@@ -3125,7 +3127,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} did not produce content${response.fallbackReason ? `: ${response.fallbackReason}` : "."}`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3134,7 +3136,7 @@ export class UnifiedExecutionEngine {
         const reason = `Batch ${batch.name} stopped at the configured output limit (${outputBudget} tokens).`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3143,12 +3145,12 @@ export class UnifiedExecutionEngine {
       const batchSections = (parsed.deliverableSections ?? [])
         .filter((section) => batch.requirementIds.includes(section.requirementId))
         .map(normaliseCarePlanDeclaredInstrumentSection)
-        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack));
+        .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract));
       if (batchSections.length === 0) {
         const reason = `Batch ${batch.name} returned JSON but no parseable deliverable.sections[] entries for its target sections.`;
         batchFailures.push({ batchId: batch.id, requirementIds: batch.requirementIds, reason });
         allSections.push(...buildFailedBatchSections(batch, reason)
-          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack)));
+          .map((section) => applyServerDerivedCarePlanSectionCells(section, input.evidencePack, input.blueprintContract)));
         batchTelemetry.push({ ...commonTelemetry, failed: true, failureReason: reason });
         continue;
       }
@@ -3693,7 +3695,6 @@ interface DeterministicGapReplacementResult {
 const DETERMINISTIC_EVIDENCE_GAP_VALUE = "not recorded in retrieved evidence";
 const CARE_PLAN_SYSTEM_FORM_ID = "NeedsOps AI+ Care Plan";
 const CARE_PLAN_SYSTEM_VERSION = "1.0";
-const CARE_PLAN_APPROVER_REVIEW_DATE = "To be confirmed by approver";
 
 function applyDeterministicEvidenceGapReplacements(input: {
   contentMarkdown: string;
@@ -3814,11 +3815,22 @@ function shouldDeterministicallyReplaceValue(requirementId: string, value: strin
 function isCarePlanSystemGeneratedMetadataValue(requirementId: string, value: string): boolean {
   if (requirementId === "care-plan-document-control") return true;
   if (requirementId !== "care-plan-support-plan-meeting") return false;
-  return value === carePlanSystemPlanDate() || value === CARE_PLAN_APPROVER_REVIEW_DATE;
+  return value === carePlanSystemPlanDate() || value === carePlanSystemReviewDate();
 }
 
 function carePlanSystemPlanDate(now = new Date()): string {
   return now.toISOString().slice(0, 10);
+}
+
+function carePlanSystemReviewDate(now = new Date()): string {
+  return addMonthsToIsoDate(carePlanSystemPlanDate(now), 12);
+}
+
+function addMonthsToIsoDate(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.split("-").map((value) => Number.parseInt(value, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
 }
 
 function replaceAccountableValue(content: string, value: string, replacement: string): string {
@@ -4959,7 +4971,7 @@ type SectionEvidenceRoutingRow = {
     score: number;
     categoryBoosted: boolean;
     tokenEstimate: number;
-    selectionReason: "above_threshold" | "best_available_below_threshold";
+    selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required";
   }>;
 };
 
@@ -5062,10 +5074,18 @@ function rankEvidenceForSection(
     score: number;
     categoryBoosted: boolean;
     tokenEstimate: number;
-    selectionReason: "above_threshold" | "best_available_below_threshold";
+    selectionReason: "above_threshold" | "best_available_below_threshold" | "section_required";
   }> = [];
 
   for (const candidate of ranked) {
+    if (!isRequiredCarePlanSectionEvidence(section, candidate.chunk)) continue;
+    if (selected.some((item) => item.chunk.chunkId === candidate.chunk.chunkId)) continue;
+    selected.push({ ...candidate, selectionReason: "section_required" });
+    usedTokens += candidate.tokenEstimate;
+  }
+
+  for (const candidate of ranked) {
+    if (selected.some((item) => item.chunk.chunkId === candidate.chunk.chunkId)) continue;
     if (candidate.score < SECTION_EVIDENCE_RELEVANCE_THRESHOLD) continue;
     if (section.sectionCode === "BEHAVIOURAL_MANAGEMENT" && isBehaviourSupportPlanChunk(candidate.chunk)) {
       selected.push({ ...candidate, selectionReason: "above_threshold" });
@@ -5103,6 +5123,19 @@ function rankEvidenceForSection(
       selectionReason: item.selectionReason,
     })),
   };
+}
+
+function isRequiredCarePlanSectionEvidence(
+  section: BlueprintExecutionContract["sections"][number],
+  chunk: EvidencePack["chunks"][number],
+): boolean {
+  if (section.sectionCode === "SUPPORT_PLAN_MEETING") {
+    return isParticipantIdentityChunk(chunk);
+  }
+  if (section.sectionCode === "DISASTER_MANAGEMENT_STRATEGY") {
+    return isFireRiskAssessmentChunk(chunk) && extractFireEquipment(chunk.text).length > 0;
+  }
+  return false;
 }
 
 function isBehaviourSupportPlanChunk(chunk: EvidencePack["chunks"][number]): boolean {
@@ -5726,32 +5759,74 @@ function groupEvidenceChunksByType(chunks: EvidencePack["chunks"]): Record<strin
 function applyServerDerivedCarePlanSectionCells(
   section: ParsedDeliverableSection,
   evidencePack: EvidencePack | undefined,
+  contract?: BlueprintExecutionContract | null,
 ): ParsedDeliverableSection {
+  const scopedEvidencePack = sectionScopedEvidencePackForCarePlanSection(section, evidencePack, contract);
+  let derivedSection: ParsedDeliverableSection;
   if (section.requirementId === "care-plan-support-plan-meeting") {
-    return applyServerDerivedSupportPlanMeetingFields(section, evidencePack);
+    derivedSection = applyServerDerivedSupportPlanMeetingFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-undertaking-adl") {
+    derivedSection = applyServerDerivedAdlRows(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-mobility-strategy") {
+    derivedSection = applyServerDerivedMobilityFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-disaster-management-strategy") {
+    derivedSection = applyServerDerivedDisasterManagementFields(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-behavioural-management") {
+    derivedSection = applyServerDerivedBehaviouralManagement(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-restrictive-practices") {
+    derivedSection = applyServerDerivedRestrictivePracticeRows(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-mealtime-management-strategy") {
+    derivedSection = applyServerDerivedMealtimeManagement(section, scopedEvidencePack);
+  } else if (section.requirementId === "care-plan-document-control") {
+    derivedSection = applyServerDerivedDocumentControl(section);
+  } else {
+    derivedSection = section;
   }
-  if (section.requirementId === "care-plan-undertaking-adl") {
-    return applyServerDerivedAdlRows(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-mobility-strategy") {
-    return applyServerDerivedMobilityFields(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-disaster-management-strategy") {
-    return applyServerDerivedDisasterManagementFields(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-behavioural-management") {
-    return applyServerDerivedBehaviouralManagement(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-restrictive-practices") {
-    return applyServerDerivedRestrictivePracticeRows(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-mealtime-management-strategy") {
-    return applyServerDerivedMealtimeManagement(section, evidencePack);
-  }
-  if (section.requirementId === "care-plan-document-control") {
-    return applyServerDerivedDocumentControl(section);
-  }
-  return section;
+  return filterCarePlanSectionEvidenceSourcesToScopedPack(derivedSection, scopedEvidencePack);
+}
+
+function sectionScopedEvidencePackForCarePlanSection(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+  contract: BlueprintExecutionContract | undefined | null,
+): EvidencePack | undefined {
+  if (!evidencePack || !contract?.sections.length) return evidencePack;
+  const sectionCode = requirementSectionCode(contract, section.requirementId);
+  if (!sectionCode) return evidencePack;
+  const routing = buildSectionEvidenceRoutingReport(contract, evidencePack);
+  const row = routing.find((item) => item.sectionCode === sectionCode);
+  if (!row) return { ...evidencePack, chunks: [], citationsByType: {}, totalChunks: 0, avgConfidence: 0 };
+  const selectedIds = new Set(row.selected.map((selection) => selection.chunkId));
+  const chunks = evidencePack.chunks.filter((chunk) => selectedIds.has(chunk.chunkId));
+  return {
+    ...evidencePack,
+    chunks,
+    sourceIds: Array.from(new Set(chunks.map((chunk) => chunk.sourceId))),
+    citationsByType: groupEvidenceChunksByType(chunks),
+    totalChunks: chunks.length,
+    avgConfidence: chunks.length ? chunks.reduce((sum, chunk) => sum + chunk.confidence, 0) / chunks.length : 0,
+    retrievalMetrics: {
+      ...evidencePack.retrievalMetrics,
+      selectedChunks: chunks.length,
+    },
+  };
+}
+
+function requirementSectionCode(contract: BlueprintExecutionContract, requirementId: string): string | null {
+  const plan = contract.blueprint.deliverableContract?.requirementPlan as Array<{ id?: string; sectionCode?: string }> | undefined;
+  return plan?.find((item) => item.id === requirementId)?.sectionCode ?? null;
+}
+
+function filterCarePlanSectionEvidenceSourcesToScopedPack(
+  section: ParsedDeliverableSection,
+  evidencePack: EvidencePack | undefined,
+): ParsedDeliverableSection {
+  if (!evidencePack || !section.evidenceSources?.length) return section;
+  const allowed = new Set(evidencePack.chunks.map((chunk) => chunk.chunkId));
+  return {
+    ...section,
+    evidenceSources: section.evidenceSources.filter((source) => allowed.has(source.chunkId)),
+  };
 }
 
 type SupportPlanIdentityField =
@@ -5785,6 +5860,7 @@ function applyServerDerivedSupportPlanMeetingFields(
 ): ParsedDeliverableSection {
   const derived = deriveSupportPlanIdentityFields(evidencePack);
   const systemPlanDate = carePlanSystemPlanDate();
+  const systemReviewDate = carePlanSystemReviewDate();
   const rows: Array<[SupportPlanMeetingField, string]> = [
     ["Participant Name", supportPlanIdentityValue("Participant Name", derived)],
     ["Date of Birth", supportPlanIdentityValue("Date of Birth", derived)],
@@ -5795,7 +5871,7 @@ function applyServerDerivedSupportPlanMeetingFields(
     ["People Present", DETERMINISTIC_EVIDENCE_GAP_VALUE],
     ["Support Plan Developed By", DETERMINISTIC_EVIDENCE_GAP_VALUE],
     ["Plan Date", systemPlanDate],
-    ["Date for Review", CARE_PLAN_APPROVER_REVIEW_DATE],
+    ["Date for Review", systemReviewDate],
   ];
   const intro = extractSupportPlanMeetingIntro(section.content);
   const content = [
@@ -5961,28 +6037,104 @@ function applyServerDerivedAdlRows(
     const derived = derivedRows.get(key);
     const modelRow = modelRows.get(key);
     if (derived) {
+      const derivedGuidance = systemDerivedGuidance(defaultAdlWorkerDescription(activity, derived), "supportLevel");
       return {
         activity,
         supportLevel: derived.supportLevel,
-        workerDescription: defaultAdlWorkerDescription(activity, derived),
+        workerDescription: derivedGuidance.text,
         sourceValue: derived.sourceValue,
         chunkId: derived.chunkId,
         mappingMode: "VERIFIED_MAPPING" as CarePlanAdlMappingMode,
+        derivedGuidance,
       };
     }
     if (modelRow && modelRow.chunkId && modelRow.chunkId !== "generation_failed" && modelRow.chunkId !== "not-recorded-in-retrieved-evidence") {
       return { ...modelRow, activity, mappingMode: "CITED_INTERPRETATION" as CarePlanAdlMappingMode };
     }
+    const absenceRecord = buildAdlAbsenceRecord(activity, evidencePack);
+    if (absenceRecord.verificationStatus !== "verified_absence") {
+      return {
+        activity,
+        supportLevel: "Needs review",
+        workerDescription: adlNeedsReviewWorkerDescription(absenceRecord),
+        sourceValue: absenceRecord.verificationStatus,
+        chunkId: absenceRecord.contradictoryChunkIds[0] ?? "unverified-absence",
+        mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
+        absenceRecord,
+      };
+    }
     return {
       activity,
       supportLevel: "Not applicable / not assessed",
-      workerDescription: "No functional assessment on file for this activity.",
-      sourceValue: "Absent",
+      workerDescription: verifiedAdlAbsenceWorkerDescription(activity),
+      sourceValue: "verified_absence",
       chunkId: "not-recorded-in-retrieved-evidence",
       mappingMode: "NOT_ASSESSED" as CarePlanAdlMappingMode,
+      absenceRecord,
     };
   });
   return { ...section, structuredRows: rows };
+}
+
+function buildAdlAbsenceRecord(activity: string, evidencePack: EvidencePack | undefined): CarePlanAdlAbsenceRecord {
+  const aliases = adlActivityAbsenceAliases(activity);
+  const checklistChunks = (evidencePack?.chunks ?? []).filter(isAdlChecklistChunk);
+  const contradictoryChunkIds = checklistChunks
+    .filter((chunk) => adlChunkMentionsActivity(chunk.text, aliases) && adlChunkHasSupportValueNearActivity(chunk.text, aliases))
+    .map((chunk) => chunk.chunkId);
+  const activityMentionChunkIds = checklistChunks
+    .filter((chunk) => adlChunkMentionsActivity(chunk.text, aliases))
+    .map((chunk) => chunk.chunkId);
+  const allRelevantSourcesFullyAvailable = checklistChunks.length > 0;
+  let verificationStatus: CarePlanAdlAbsenceRecord["verificationStatus"] = "verified_absence";
+  if (contradictoryChunkIds.length > 0) {
+    verificationStatus = "contradicted_absence";
+  } else if (!allRelevantSourcesFullyAvailable || activityMentionChunkIds.length > 0) {
+    verificationStatus = "unverified_absence";
+  }
+  return {
+    activity,
+    aliasesSearched: aliases,
+    evidenceScopeSearched: "runtime EvidencePack chunks classified as ADL/intake checklist evidence",
+    chunksSearched: checklistChunks.map((chunk) => chunk.chunkId),
+    allRelevantSourcesFullyAvailable,
+    verificationStatus,
+    contradictoryChunkIds,
+  };
+}
+
+function adlActivityAbsenceAliases(activity: string): string[] {
+  const mapped = CARE_PLAN_ADL_SOURCE_ITEM_MAPPINGS
+    .filter((mapping) => normaliseCarePlanAdlActivity(mapping.canonicalRow) === normaliseCarePlanAdlActivity(activity))
+    .flatMap((mapping) => adlSourceItemAliases(mapping.sourceItem));
+  const base = [activity];
+  if (activity === "Eating and drinking") base.push("Eating", "Drinking", "Meal", "Food", "Fluid");
+  if (activity === "Medication management") base.push("Medication", "Medicine", "Medication administration");
+  if (activity === "Community access") base.push("Community access", "Community", "Accessing the community");
+  if (activity === "Communication of daily needs") base.push("Communication", "Daily needs");
+  if (activity === "Decision-making relating to daily activities") base.push("Decision making", "Daily activities");
+  return Array.from(new Set([...base, ...mapped].map((alias) => alias.trim()).filter(Boolean)));
+}
+
+function adlChunkMentionsActivity(text: string, aliases: string[]): boolean {
+  const compact = text.replace(/\s+/g, " ");
+  return aliases.some((alias) => new RegExp(`\\b${escapeRegExp(alias)}\\b`, "i").test(compact));
+}
+
+function adlChunkHasSupportValueNearActivity(text: string, aliases: string[]): boolean {
+  const compact = text.replace(/\s+/g, " ");
+  return aliases.some((alias) => new RegExp(`\\b${escapeRegExp(alias)}\\b.{0,160}?(?:Without support|Support required|Completely unable)`, "i").test(compact));
+}
+
+function verifiedAdlAbsenceWorkerDescription(activity: string): string {
+  return `No ADL support-level evidence was found for ${activity.toLowerCase()} in the retrieved intake or functional-assessment evidence; workers should report any observed support need to the service manager before relying on this row.`;
+}
+
+function adlNeedsReviewWorkerDescription(absenceRecord: CarePlanAdlAbsenceRecord): string {
+  if (absenceRecord.verificationStatus === "contradicted_absence") {
+    return "Needs review: retrieved ADL evidence appears to mention this activity with a support value, but the system could not map it safely into the ADL table.";
+  }
+  return "Needs review: retrieved evidence mentions this activity or the ADL evidence scope is incomplete, so absence of a support requirement is not verified.";
 }
 
 function deriveAdlCellsFromControlledChecklist(evidencePack: EvidencePack | undefined): Map<string, DerivedAdlCell> {
@@ -6067,10 +6219,18 @@ function mapAdlChecklistValueToSupportLevel(value: AdlChecklistValue): string {
 }
 
 function defaultAdlWorkerDescription(activity: string, derived: DerivedAdlCell): string {
-  if (derived.supportLevel === "Independent") return `Michael completes ${activity.toLowerCase()} without assistance according to the retrieved intake checklist; workers should not provide hands-on help unless he asks or safety changes.`;
+  if (derived.supportLevel === "Independent") return `Recorded support level: Independent. The retrieved intake checklist records "${derived.sourceValue}" for ${activity.toLowerCase()}.`;
   if (derived.supportLevel === "Unable to complete") return `Michael is recorded as completely unable to complete ${activity.toLowerCase()} in the retrieved intake checklist; workers must provide full support consistent with the current support plan.`;
   const differingParts = derived.sourceItems.length > 1 ? ` The mapped checklist items were: ${derived.sourceItems.join(", ")}.` : "";
   return `Michael requires support with ${activity.toLowerCase()} according to the retrieved intake checklist; provide the least restrictive prompting support unless another cited source requires more assistance.${differingParts}`;
+}
+
+function systemDerivedGuidance(text: string, basisField: string): CarePlanDerivedGuidance {
+  return {
+    text,
+    provenance: "SYSTEM_DERIVED",
+    basisField,
+  };
 }
 
 type MobilityField =
@@ -6103,11 +6263,23 @@ function applyServerDerivedMobilityFields(
     source?.sourceValue ?? "Absent",
     source?.chunkId ?? "not-recorded-in-retrieved-evidence",
     source ? "VERIFIED_MAPPING" : "NOT_ASSESSED",
+    source ? mobilityDerivedGuidance(field, value).text : "",
+    source ? "SYSTEM_DERIVED" : "",
+    source ? mobilityDerivedGuidance(field, value).basisField : "",
   ]);
 
   return {
     ...section,
-    content: renderMarkdownRows(["Field", "Value", "Source value", "Chunk ID", "Mapping mode"], rows),
+    content: renderMarkdownRows([
+      "Field",
+      "Value",
+      "Source value",
+      "Chunk ID",
+      "Mapping mode",
+      "Derived guidance",
+      "Guidance provenance",
+      "Guidance basis",
+    ], rows),
     evidenceSources: mergeEvidenceSources(section.evidenceSources, [walk, transfer]
       .filter((source): source is DerivedAdlCell => Boolean(source))
       .map((source) => ({
@@ -6126,6 +6298,10 @@ function mobilityDerivedRow(
   source: DerivedAdlCell | undefined,
 ): [MobilityField, string, DerivedAdlCell | undefined] {
   return [field, value, source];
+}
+
+function mobilityDerivedGuidance(field: MobilityField, value: string): CarePlanDerivedGuidance {
+  return systemDerivedGuidance(`${field}: ${value}`, "supportLevel");
 }
 
 function mobilityAidValue(walk: DerivedAdlCell | undefined): string {
@@ -6562,6 +6738,7 @@ function findMealtimeRiskAssessmentEvidence(evidencePack: EvidencePack | undefin
 
 function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): ParsedDeliverableSection {
   const today = carePlanSystemPlanDate();
+  const reviewDate = carePlanSystemReviewDate();
   return {
     ...section,
     content: [
@@ -6570,7 +6747,7 @@ function applyServerDerivedDocumentControl(section: ParsedDeliverableSection): P
       `Form ID: ${CARE_PLAN_SYSTEM_FORM_ID}`,
       `Version: ${CARE_PLAN_SYSTEM_VERSION}`,
       `Date: ${today}`,
-      `Next review date: ${CARE_PLAN_APPROVER_REVIEW_DATE}`,
+      `Next review date: ${reviewDate}`,
       "",
       "Metadata source: system-generated document metadata.",
     ].join("\n"),
@@ -6811,6 +6988,9 @@ function rowToForwardContextRecord(row: NonNullable<ParsedDeliverableSection["st
     sourceValue: row.sourceValue,
     chunkId: row.chunkId,
     mappingMode: row.mappingMode,
+    derivedGuidance: row.derivedGuidance?.text ?? "",
+    derivedGuidanceProvenance: row.derivedGuidance?.provenance ?? "",
+    derivedGuidanceBasis: row.derivedGuidance?.basisField ?? "",
   };
 }
 
