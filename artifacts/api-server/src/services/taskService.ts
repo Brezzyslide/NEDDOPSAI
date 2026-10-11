@@ -72,7 +72,22 @@ export function isValidTransition(from: TaskState, to: TaskState): boolean {
 }
 
 const TERMINAL_TASK_STATES = new Set<TaskState>(["completed", "cancelled"]);
-const DISPATCHABLE_TASK_STATES = ["queued", "approved", "failed"] as const;
+const RESUMABLE_TASK_STATES = ["evidence_required", "queued", "approved", "failed"] as const;
+
+function metadataObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+export function isBlockedDraftTask(task: { metadata?: unknown } | null | undefined): boolean {
+  return !!metadataObject(metadataObject(task?.metadata)?.incompleteDraft);
+}
+
+export function isTaskResumable(task: { currentState?: string | null; metadata?: unknown } | null | undefined): boolean {
+  if (!task?.currentState || isBlockedDraftTask(task)) return false;
+  return RESUMABLE_TASK_STATES.includes(task.currentState as (typeof RESUMABLE_TASK_STATES)[number]);
+}
 
 function withTaskTenant<T>(
   organizationId: string,
@@ -508,7 +523,7 @@ export async function claimTaskForExecution(
   if (state === "cancelled") return { claimed: false, task, reason: "cancelled" };
   if (state === "completed") return { claimed: false, task, reason: "completed" };
   if (state === "executing") return { claimed: false, task, reason: "already_executing" };
-  if (!DISPATCHABLE_TASK_STATES.includes(state as (typeof DISPATCHABLE_TASK_STATES)[number])) {
+  if (!isTaskResumable(task)) {
     return { claimed: false, task, reason: "not_dispatchable" };
   }
 
@@ -527,7 +542,7 @@ export async function claimTaskForExecution(
     .where(and(
       eq(tasksTable.id, taskId),
       eq(tasksTable.organizationId, organizationId),
-      inArray(tasksTable.currentState, [...DISPATCHABLE_TASK_STATES] as unknown as string[]),
+      inArray(tasksTable.currentState, [...RESUMABLE_TASK_STATES] as unknown as string[]),
     ))
     .returning());
 
@@ -655,9 +670,11 @@ export async function reconcileTaskExecutionSuccess(input: {
   organizationId: string;
   completedWorkId?: string;
   completedWorkStatus?: string;
+  approvalBlocked?: boolean;
+  completionGateFailures?: unknown;
   correlationId?: string;
   requestedByUserId?: string;
-}): Promise<{ status: "completed" | "cancelled" | "awaiting_approval" | "not_applicable" | "not_found" | "approval_not_ready"; task?: typeof tasksTable.$inferSelect; reason?: string }> {
+}): Promise<{ status: "completed" | "cancelled" | "awaiting_approval" | "draft_unapproved" | "not_applicable" | "not_found" | "approval_not_ready"; task?: typeof tasksTable.$inferSelect; reason?: string }> {
   if (!input.taskId) return { status: "not_applicable" };
   const task = await getTaskById(input.taskId, input.organizationId);
   if (!task) return { status: "not_found" };
@@ -679,6 +696,32 @@ export async function reconcileTaskExecutionSuccess(input: {
     if (approvalGate.status === "cancelled") return { status: "cancelled", task: approvalGate.task };
     if (approvalGate.status === "completed") return { status: "completed", task: approvalGate.task };
     if (approvalGate.status === "not_ready") return { status: "approval_not_ready", task: approvalGate.task, reason: approvalGate.reason };
+  }
+
+  if (input.completedWorkStatus === "draft" && input.approvalBlocked === true) {
+    const [updated] = await withTaskTenant(input.organizationId, "task.reconcile_draft_unapproved", async (client) => client
+      .update(tasksTable)
+      .set({
+        currentState: "evidence_required",
+        metadata: mergeTaskMetadata(task.metadata, {
+          incompleteDraft: {
+            completedWorkId: input.completedWorkId,
+            completedWorkStatus: input.completedWorkStatus,
+            correlationId: input.correlationId,
+            reason: "Completion checks did not pass. Draft exists but is blocked from approval.",
+            completionGateFailures: input.completionGateFailures ?? [],
+            recordedAt: new Date().toISOString(),
+          },
+        }),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(tasksTable.id, input.taskId),
+        eq(tasksTable.organizationId, input.organizationId),
+        inArray(tasksTable.currentState, ["approved", "executing", "failed", "planning"]),
+      ))
+      .returning());
+    return { status: "draft_unapproved", task: updated ?? task };
   }
 
   const [updated] = await withTaskTenant(input.organizationId, "task.reconcile_success", async (client) => client

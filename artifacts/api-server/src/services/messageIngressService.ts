@@ -36,7 +36,7 @@ import {
 import { dispatchWorkExecution, resumeFromCheckpointById } from "./executionCoordinatorService.js";
 import { autoCreateAndDispatch } from "./autoDispatchService.js";
 import { logOrgEvent } from "./auditService.js";
-import { getTaskById, transitionTaskState } from "./taskService.js";
+import { getTaskById, isBlockedDraftTask, isTaskResumable, transitionTaskState } from "./taskService.js";
 import { getRetrievalSubjectParticipantIdsForTask } from "./taskParticipantService.js";
 import type { ProcessMessageResult } from "./conversationService.js";
 import type { ConversationUnderstanding, StructuredContent } from "./conversationIntelligenceService.js";
@@ -111,6 +111,20 @@ function taskMetadataRecord(metadata: Record<string, unknown> | null | undefined
 
 function metadataObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? value as Record<string, unknown> : null;
+}
+
+function incompleteDraftMetadata(task: { metadata?: Record<string, unknown> | null }): Record<string, unknown> | null {
+  return metadataObject(taskMetadataRecord(task.metadata).incompleteDraft);
+}
+
+function blockedDraftStatusMessage(task: { title: string; metadata?: Record<string, unknown> | null }): string | null {
+  const incompleteDraft = incompleteDraftMetadata(task);
+  if (!incompleteDraft) return null;
+  const completedWorkId = typeof incompleteDraft.completedWorkId === "string"
+    ? incompleteDraft.completedWorkId
+    : null;
+  const suffix = completedWorkId ? ` Completed Work ref: \`${completedWorkId}\`.` : "";
+  return `The task "${task.title}" has an unapproved draft, but completion checks did not pass. The task is not complete, the draft is blocked from approval, and the draft lists what needs review.${suffix}`;
 }
 
 function hasExecutionStarted(task: { currentState: string; metadata?: Record<string, unknown> | null }): boolean {
@@ -201,6 +215,8 @@ function isEvidenceRequiredResumeReply(text: string): boolean {
 function formatStatusResponse(task: { title: string; currentState: string; metadata?: Record<string, unknown> | null }, text: string): string {
   const label = taskStateLabel(task.currentState);
   const failure = extractFailureMessage(task);
+  const blockedDraft = blockedDraftStatusMessage(task);
+  if (blockedDraft) return blockedDraft;
   const metadata = taskMetadataRecord(task.metadata);
   const approvalGate = metadataObject(metadata.approvalGate);
   const executionCompletion = metadataObject(metadata.executionCompletion);
@@ -298,6 +314,30 @@ async function maybeResumeEvidenceRequiredTask(input: {
   if (!task) return null;
 
   const metadata = taskMetadataRecord(task.metadata);
+  if (!isTaskResumable(task)) {
+    if (isBlockedDraftTask(task)) {
+      const incompleteDraft = metadataObject(metadata.incompleteDraft);
+      const completedWorkId = typeof incompleteDraft?.completedWorkId === "string"
+        ? incompleteDraft.completedWorkId
+        : null;
+      const suffix = completedWorkId ? ` Completed Work ref: \`${completedWorkId}\`.` : "";
+      return addControlMessages({
+        organizationId: input.organizationId,
+        conversationId: input.conversationId,
+        taskId: task.id,
+        userId: input.userId,
+        content: input.content,
+        response: `The task "${task.title}" already has an unapproved draft, but completion checks did not pass. The task is not complete, the draft is blocked from approval, and the draft lists what needs review.${suffix}`,
+        idempotencyKey: input.idempotencyKey,
+        mode: "task_followup",
+        action: "status",
+        confidence: 0.99,
+        messageType: "execution_update",
+      });
+    }
+    return null;
+  }
+
   const taskCreation = metadataObject(metadata.taskCreation);
   const sourceUserRequest = typeof taskCreation?.sourceUserRequest === "string"
     ? taskCreation.sourceUserRequest

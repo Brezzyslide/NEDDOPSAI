@@ -746,7 +746,11 @@ router.post("/commands", requireAuth, resolveTenantFromSlug, async (req, res, ne
         break;
 
       case "status":
-        responseContent = `Current status: ${task.currentState.replace(/_/g, " ")}.`;
+        if (task.metadata && typeof task.metadata === "object" && !Array.isArray(task.metadata) && (task.metadata as Record<string, unknown>).incompleteDraft) {
+          responseContent = "Current status: unapproved draft blocked. Completion checks did not pass, the task is not complete, and the draft cannot be submitted for approval.";
+        } else {
+          responseContent = `Current status: ${task.currentState.replace(/_/g, " ")}.`;
+        }
         break;
 
       default:

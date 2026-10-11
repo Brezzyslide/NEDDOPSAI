@@ -62,6 +62,7 @@ export interface CreateDraftInput {
   contentMarkdown: string;
   reviewResult?: ReviewResult;
   createdByUserId: string;
+  approvalWorkflow?: Record<string, unknown>;
   assetIds?: Array<{
     assetId: string;
     assetType: "library_source" | "memory" | "template" | "example" | "task_upload";
@@ -103,6 +104,7 @@ export interface CompletedWorkItem {
   createdByUserId: string;
   approvedByUserId: string | null;
   approvedAt: Date | null;
+  approvalWorkflow: Record<string, unknown>;
   rejectedAt: Date | null;
   archivedAt: Date | null;
   reopenedAt: Date | null;
@@ -168,7 +170,7 @@ export async function createDraft(input: CreateDraftInput): Promise<CompletedWor
         outputType: input.outputType,
         status: "draft",
         currentVersionId: versionId,
-        approvalWorkflow: {},
+        approvalWorkflow: input.approvalWorkflow ?? {},
         artifactState: input.artifactState ?? null,
         artifactRequired: input.artifactRequired ?? false,
         artifactId: input.artifactId ?? null,
@@ -338,6 +340,17 @@ export async function submitForApproval(
   organizationId: string,
   actorUserId: string,
 ): Promise<CompletedWorkItem> {
+  const work = await getCompletedWork(id, organizationId);
+  if (!work) throw Object.assign(new Error("Completed work not found"), { statusCode: 404 });
+  const approvalWorkflow = work.approvalWorkflow ?? {};
+  if (approvalWorkflow.approvalBlocked === true) {
+    throw Object.assign(
+      new Error(typeof approvalWorkflow.approvalBlockedReason === "string"
+        ? approvalWorkflow.approvalBlockedReason
+        : "This draft did not pass completion checks and cannot be submitted for approval."),
+      { statusCode: 400 },
+    );
+  }
   return transitionStatus(id, organizationId, "draft", "awaiting_approval", actorUserId, {
     eventType: "completed_work_submitted",
   });
@@ -897,6 +910,7 @@ function mapRow(row: typeof completedWorkTable.$inferSelect): CompletedWorkItem 
     createdByUserId: row.createdByUserId,
     approvedByUserId: row.approvedByUserId ?? null,
     approvedAt: row.approvedAt ?? null,
+    approvalWorkflow: (row.approvalWorkflow as Record<string, unknown> | null) ?? {},
     rejectedAt: row.rejectedAt ?? null,
     archivedAt: row.archivedAt ?? null,
     reopenedAt: row.reopenedAt ?? null,

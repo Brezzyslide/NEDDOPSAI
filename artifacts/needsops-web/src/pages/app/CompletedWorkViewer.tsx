@@ -50,6 +50,7 @@ interface CompletedWorkItem {
   currentVersionId: string | null;
   createdByUserId:  string | null;
   approvedByUserId: string | null;
+  approvalWorkflow?: Record<string, unknown> | null;
   rejectedAt:       string | null;
   archivedAt:       string | null;
   supersededById:   string | null;
@@ -110,6 +111,12 @@ const STATUS_BADGE: Record<WorkStatus, { bg: string; text: string; label: string
   superseded:        { bg: "bg-purple-900/40",  text: "text-purple-300",  label: "Superseded" },
   reopened:          { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Reopened" },
 };
+
+const BLOCKED_DRAFT_BADGE = { bg: "bg-red-900/40", text: "text-red-300", label: "Unapproved Draft Blocked" };
+
+function isApprovalBlocked(work: CompletedWorkItem | null | undefined): boolean {
+  return work?.approvalWorkflow?.approvalBlocked === true;
+}
 
 const ASSET_TYPE_META: Record<string, { icon: string; label: string; desc: string }> = {
   library_source:    { icon: "📚", label: "Organisation Library",  desc: "Verified knowledge from your library" },
@@ -1316,15 +1323,21 @@ export default function CompletedWorkViewer() {
   function ActionBar() {
     if (!work) return null;
     const status = work.status;
+    const approvalBlocked = isApprovalBlocked(work);
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        {status === "draft" && (
+        {status === "draft" && !approvalBlocked && (
           <button
             onClick={() => transition.mutate({ action: "submit" })}
             className="px-3 py-1.5 text-sm rounded-lg bg-[#00D4FF] text-[#0B1829] font-semibold hover:bg-cyan-300"
           >
             Submit for Approval
           </button>
+        )}
+        {status === "draft" && approvalBlocked && (
+          <span className="px-3 py-1.5 text-sm rounded-lg border border-red-500/30 bg-red-950/20 text-red-300">
+            Approval blocked
+          </span>
         )}
         {/* Sprint 29N.10: approval controls gated to org admin/owner only */}
         {status === "awaiting_approval" && canApprove && <>
@@ -1388,7 +1401,7 @@ export default function CompletedWorkViewer() {
     );
   }
 
-  const badge = STATUS_BADGE[work.status] ?? STATUS_BADGE.draft;
+  const badge = isApprovalBlocked(work) ? BLOCKED_DRAFT_BADGE : STATUS_BADGE[work.status] ?? STATUS_BADGE.draft;
 
   return (
     <Show when="signed-in" fallback={<Redirect to="/sign-in" />}>

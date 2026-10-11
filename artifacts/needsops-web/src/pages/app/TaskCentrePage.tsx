@@ -33,6 +33,13 @@ const STATE_BADGE: Record<TaskState, { label: string; cls: string }> = {
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400" },
 };
 
+const BLOCKED_DRAFT_BADGE = { label: "Unapproved Draft Blocked", cls: "bg-red-900/25 text-red-300" };
+
+function hasBlockedDraft(task: { metadata?: Record<string, any> | null }): boolean {
+  const incompleteDraft = task.metadata?.incompleteDraft;
+  return !!incompleteDraft && typeof incompleteDraft === "object";
+}
+
 const PRIORITY_BADGE: Record<string, string> = {
   low: "text-[#64748B]",
   normal: "text-[#94A3B8]",
@@ -192,7 +199,8 @@ export default function TaskCentrePage() {
         ) : (
           <div className="space-y-3">
             {tasks.map((task: any) => {
-              const badge = STATE_BADGE[task.currentState as TaskState];
+              const blockedDraft = hasBlockedDraft(task);
+              const badge = blockedDraft ? BLOCKED_DRAFT_BADGE : STATE_BADGE[task.currentState as TaskState];
               const priorityCls = PRIORITY_BADGE[task.priority] ?? PRIORITY_BADGE.normal!;
               const failureReason = task.currentState === "failed"
                 ? task.metadata?.executionFailure?.errorMessage
@@ -219,6 +227,11 @@ export default function TaskCentrePage() {
                       )}
                       {failureReason && (
                         <p className="text-red-300/80 text-xs line-clamp-2 mt-1">{failureReason}</p>
+                      )}
+                      {blockedDraft && (
+                        <p className="text-red-300/80 text-xs line-clamp-2 mt-1">
+                          Review the draft and its completion-check findings. The draft is blocked from approval.
+                        </p>
                       )}
                       <p className="text-[#64748B] text-xs mt-1.5">
                         {new Date(task.createdAt).toLocaleString("en-AU")}

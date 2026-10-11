@@ -936,6 +936,9 @@ export async function postCompletedWorkCreatedToConversation(
     case "draft":
       actionLine = `"${title}" has been saved as a draft. Open it from the Completed Work portal and click **Submit for Approval** when ready (ref: \`${completedWorkId}\`).`;
       break;
+    case "draft_blocked":
+      actionLine = `"${title}" has been saved as an unapproved draft, but completion checks failed. The task is not complete, the draft cannot be submitted for approval, and the top of the draft lists what is wrong with it (ref: \`${completedWorkId}\`).`;
+      break;
     default:
       actionLine = `"${title}" is ready for your review in the Completed Work portal (ref: \`${completedWorkId}\`).`;
   }

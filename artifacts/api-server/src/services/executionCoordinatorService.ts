@@ -58,6 +58,7 @@ import {
   claimTaskForExecution,
   getTaskById,
   getTaskPlan,
+  isTaskResumable,
   isTaskCancelled,
   reconcileTaskExecutionFailure,
   reconcileTaskExecutionSuccess,
@@ -320,8 +321,7 @@ async function claimTaskForCheckpointResume(input: {
     return false;
   }
 
-  const resumableStates = ["evidence_required", "queued", "approved", "failed"];
-  if (!resumableStates.includes(task.currentState)) {
+  if (!isTaskResumable(task)) {
     await logOrgEvent({
       eventType: "execution_coordinator.resume_task_not_dispatchable",
       organizationId: input.organizationId,
@@ -1240,6 +1240,8 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
         organizationId,
         completedWorkId: result.completedWorkId,
         completedWorkStatus: result.completedWorkStatus,
+        approvalBlocked: result.approvalBlocked,
+        completionGateFailures: result.failureMetadata?.completionGateFailures,
         correlationId,
         requestedByUserId: requesterId,
       });
@@ -1305,6 +1307,30 @@ async function executeWorkAsync(input: BackgroundRunInput): Promise<void> {
           errorMessage: message,
           correlationId,
         }).catch(() => {});
+        return;
+      }
+      if (reconciliation.status === "draft_unapproved") {
+        if (!conversationId) return;
+        const persistedTitle = result.completedWorkTitle
+          ?? (userRequest.slice(0, 80) + (userRequest.length > 80 ? "…" : ""));
+        emitExecutionEvent(conversationId, {
+          type: "execution_completed",
+          conversationId,
+          correlationId,
+          organizationId,
+          humanLabel: "Draft produced, but completion checks failed. It is not approvable.",
+          completedWorkId: result.completedWorkId,
+        });
+        await postCompletedWorkCreatedToConversation(
+          organizationId,
+          conversationId,
+          taskId ?? "",
+          result.completedWorkId,
+          persistedTitle,
+          "draft_blocked",
+          result.qualityScore ?? null,
+          correlationId,
+        ).catch(err => console.warn("[ExecutionCoordinator] Incomplete draft message failed:", err?.message));
         return;
       }
       if (!conversationId) {

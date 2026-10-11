@@ -37,10 +37,19 @@ const TASK_STATUS: Record<string, { label: string; cls: string }> = {
   planning:          { label: "Planning",          cls: "bg-purple-900/30 text-purple-400" },
   awaiting_approval: { label: "Awaiting Approval", cls: "bg-amber-900/30 text-amber-400" },
   evidence_required: { label: "Evidence Required", cls: "bg-orange-900/30 text-orange-400" },
+  draft_blocked:     { label: "Unapproved Draft Blocked", cls: "bg-red-900/25 text-red-300" },
   executing:         { label: "Executing",         cls: "bg-cyan-900/30 text-cyan-400" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400" },
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400" },
 };
+
+function taskStatusKey(task: any): string {
+  if (task?.metadata?.incompleteDraft) {
+    return "draft_blocked";
+  }
+
+  return task?.status ?? task?.currentState ?? task?.state ?? "queued";
+}
 
 function StatusBadge({ status, map }: { status: string; map: Record<string, { label: string; cls: string }> }) {
   const s = map[status] ?? { label: status, cls: "bg-[#1E3A5F] text-[#64748B]" };
@@ -384,7 +393,7 @@ export default function ExecutiveDashboard() {
                           <p className="text-[#E2E8F0] text-sm font-medium truncate">{t.title ?? "Untitled task"}</p>
                           <p className="text-[#64748B] text-xs mt-0.5">Task · {timeAgo(t.createdAt)}</p>
                         </div>
-                        <StatusBadge status={t.status ?? t.currentState ?? t.state ?? "queued"} map={TASK_STATUS} />
+                        <StatusBadge status={taskStatusKey(t)} map={TASK_STATUS} />
                       </div>
                     ))}
                   </div>

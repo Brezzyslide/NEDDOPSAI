@@ -89,6 +89,7 @@ import {
   normaliseCarePlanDeclaredInstrumentSection,
   rejectCrossTenantChunks,
   type ParsedDeliverableSection,
+  type ParsedDeliverableSuppressedClaim,
   type RawClaim,
   type ValidatedClaim,
 } from "./claimValidationService.js";
@@ -331,6 +332,7 @@ export interface ExecuteWorkResult {
   manifestId?: string;
   blueprintCode?: string;
   qualityScore?: number;
+  approvalBlocked?: boolean;
   validationResult?: ValidationResult;
   message: string;
   clarificationQuestions?: string[];
@@ -2317,20 +2319,76 @@ export class UnifiedExecutionEngine {
         }
       }
     }
-    if (!runtimeGate.passed) {
-      const blockingMessage = runtimeGate.failures
+    const completionGateDisposition = classifyCompletionGateFailuresForProduction(runtimeGate.failures);
+    const approvalBlockingCompletionFailures = completionGateDisposition.approvalBlockers;
+    const metadataOnlyCompletionFailures = completionGateDisposition.metadataOnly;
+    let approvalBlockedByCompletionGates = false;
+    if (!runtimeGate.passed && completionGateDisposition.hardFailures.length === 0 && approvalBlockingCompletionFailures.length > 0) {
+      approvalBlockedByCompletionGates = true;
+      const latestSuppressionRecords = collectParticipantCarePlanSuppressionRecords(deliverableSections);
+      draftContent = buildIncompleteDraftContent({
+        content: reviewResult.finalContent,
+        failures: approvalBlockingCompletionFailures,
+        suppressionRecords: latestSuppressionRecords,
+      });
+      reviewResult = {
+        ...reviewResult,
+        finalContent: draftContent,
+        autoRevisionNote: [
+          reviewResult.autoRevisionNote,
+          "Completion checks did not pass; the output was saved as an unapproved draft and blocked from approval.",
+        ].filter(Boolean).join(" "),
+      };
+      professionalWork = {
+        ...(professionalWork ?? {}),
+        completion_gate_approval_blockers: approvalBlockingCompletionFailures,
+        completion_gate_metadata: metadataOnlyCompletionFailures,
+        suppressed_claims: latestSuppressionRecords,
+      };
+      await recordProfessionalSnapshot({
+        organizationId,
+        taskId: request.taskId,
+        manifest,
+        professionalContext,
+        blueprint,
+        stage: "gate_failure",
+        sequence: snapshotSequence++,
+        contentMarkdown: reviewResult.finalContent,
+        documentStatus: "candidate",
+        structuredOutput: {
+          requirementPlan,
+          deliverableSections: deliverableSections ?? null,
+          approvalBlockedByCompletionGates: true,
+          approvalBlockingCompletionFailures,
+          metadataOnlyCompletionFailures,
+          participantClaimSuppression: latestSuppressionRecords,
+        },
+        reviewSnapshot: buildReviewSnapshot(reviewResult),
+        coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
+        gateSnapshot: { passed: false, failures: runtimeGate.failures },
+        modelTelemetry: latestModelTelemetry,
+      });
+    } else if (!runtimeGate.passed) {
+      const blockingMessage = completionGateDisposition.hardFailures.length > 0
+        ? completionGateDisposition.hardFailures
+          .map((failure) => `${failure.gate}: ${failure.message}`)
+          .join("; ")
+        : runtimeGate.failures
         .map((failure) => `${failure.gate}: ${failure.message}`)
         .join("; ");
+      const blockingFailures = completionGateDisposition.hardFailures.length > 0
+        ? completionGateDisposition.hardFailures
+        : runtimeGate.failures;
       await updateManifestObservability(manifest.id, {
         failureInfo: {
-          state: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+          state: blockingFailures.some((failure) => failure.state === "awaiting_clarification")
             ? "awaiting_clarification"
             : "failed",
           failedStage: "completion_gates",
           rootCause: blockingMessage,
           retryAvailable: true,
-          clarificationItems: buildRuntimeGateFailureItems(runtimeGate.failures),
-          gateFailures: runtimeGate.failures,
+          clarificationItems: buildRuntimeGateFailureItems(blockingFailures),
+          gateFailures: blockingFailures,
         },
       }, organizationId);
       await recordProfessionalSnapshot({
@@ -2345,11 +2403,11 @@ export class UnifiedExecutionEngine {
         structuredOutput: { requirementPlan, deliverableSections: deliverableSections ?? null },
         reviewSnapshot: buildReviewSnapshot(reviewResult),
         coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
-        gateSnapshot: { passed: false, failures: runtimeGate.failures },
+        gateSnapshot: { passed: false, failures: blockingFailures },
         modelTelemetry: latestModelTelemetry,
       });
 
-      taskSession = runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+      taskSession = blockingFailures.some((failure) => failure.state === "awaiting_clarification")
         ? closeExecutionSession(taskSession)
         : markSessionError(taskSession, blockingMessage);
       ctx.session = taskSession;
@@ -2365,14 +2423,14 @@ export class UnifiedExecutionEngine {
           : blockingMessage,
         metadata: {
           failedStage: "completion_gates",
-          gateFailures: runtimeGate.failures,
+          gateFailures: blockingFailures,
           coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
       });
 
       return {
-        outcome: runtimeGate.failures.some((failure) => failure.state === "awaiting_clarification")
+        outcome: blockingFailures.some((failure) => failure.state === "awaiting_clarification")
           ? "awaiting_clarification"
           : "validation_failed",
         manifestId: manifest.id,
@@ -2380,11 +2438,11 @@ export class UnifiedExecutionEngine {
         message: `Blueprint completion gates blocked this work: ${blockingMessage}`,
         failureMetadata: {
           failedStage: "completion_gates",
-          gateFailures: runtimeGate.failures,
+          gateFailures: blockingFailures,
           coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
           professionalContext: buildProfessionalContextFailureSnapshot(professionalContext),
         },
-        clarificationQuestions: runtimeGate.failures
+        clarificationQuestions: blockingFailures
           .filter((failure) => failure.state === "awaiting_clarification")
           .map((failure) => failure.message),
       };
@@ -2482,6 +2540,19 @@ export class UnifiedExecutionEngine {
       contentMarkdown: reviewResult.finalContent,
       reviewResult,
       createdByUserId: requesterId,
+      approvalWorkflow: approvalBlockedByCompletionGates ? {
+        approvalBlocked: true,
+        approvalBlockedReason: "This draft did not pass completion checks and cannot be submitted for approval.",
+        completionGateFailures: approvalBlockingCompletionFailures.map((failure) => ({
+          gate: failure.gate,
+          message: plainCompletionFailure(failure),
+          details: (failure.details ?? []).map(plainCompletionFailureDetail),
+        })),
+        metadataOnlyCompletionFindings: metadataOnlyCompletionFailures.map((failure) => ({
+          gate: failure.gate,
+          message: failure.message,
+        })),
+      } : undefined,
       assetIds,
       artifactRequired,
       artifactState: artifactRequired ? "content_drafting" : null,
@@ -2719,7 +2790,7 @@ export class UnifiedExecutionEngine {
     // approval gate even when routed through a no-approval blueprint.
     const laneRequiresApproval = laneContext?.requiresApproval === true;
     const qualityGatePassed = reviewResult.passed ?? reviewPassed(reviewResult);
-    const requiresApproval = qualityGatePassed && (laneRequiresApproval || request.outputRequiresApproval !== false);
+    const requiresApproval = !approvalBlockedByCompletionGates && qualityGatePassed && (laneRequiresApproval || request.outputRequiresApproval !== false);
     if (laneRequiresApproval && request.outputRequiresApproval === false) {
       console.info(
         "[UnifiedExecutionEngine] Sprint 29M: laneContext.requiresApproval=true overrides " +
@@ -2739,6 +2810,17 @@ export class UnifiedExecutionEngine {
               name: dimension.dimension,
               reason: dimension.feedback.slice(0, 240),
             })),
+        },
+      }, organizationId);
+    }
+    if (approvalBlockedByCompletionGates) {
+      await updateManifestObservability(manifest.id, {
+        failureInfo: {
+          state: "awaiting_clarification",
+          failedStage: "completion_gates_block_approval",
+          rootCause: "A draft was produced, but completion checks did not pass. The draft is blocked from approval.",
+          retryAvailable: true,
+          gateFailures: approvalBlockingCompletionFailures,
         },
       }, organizationId);
     }
@@ -2783,6 +2865,8 @@ export class UnifiedExecutionEngine {
       metadata: {
         completedWorkId: finalWork.id,
         completedWorkStatus: finalWork.status,
+        approvalBlocked: approvalBlockedByCompletionGates,
+        completionGateFailures: approvalBlockingCompletionFailures,
         qualityScore: reviewResult.qualityScore,
         coverageSnapshot: buildCoverageSnapshot(reviewResult.finalContent, professionalContext, blueprintContract, deliverableSections, evidencePack),
       },
@@ -2796,7 +2880,15 @@ export class UnifiedExecutionEngine {
       manifestId: manifest.id,
       blueprintCode: blueprint?.code,
       qualityScore: reviewResult.qualityScore,
-      message: buildCompletionMessage(finalWork.id, finalWork.status, completedWork.title, reviewResult),
+      approvalBlocked: approvalBlockedByCompletionGates,
+      failureMetadata: approvalBlockedByCompletionGates ? {
+        failedStage: "completion_gates_block_approval",
+        completionGateFailures: approvalBlockingCompletionFailures,
+        metadataOnlyCompletionFindings: metadataOnlyCompletionFailures,
+      } : undefined,
+      message: approvalBlockedByCompletionGates
+        ? `Draft saved but completion checks did not pass. The task is not complete and the draft cannot be submitted for approval.`
+        : buildCompletionMessage(finalWork.id, finalWork.status, completedWork.title, reviewResult),
     };
   }
 
@@ -3682,6 +3774,162 @@ function appendRuntimeGateFailure(
     passed: gate.passed && failure.gate === "evidence_gap",
     failures: [...gate.failures, failure],
   };
+}
+
+const APPROVAL_BLOCKING_COMPLETION_GATES = new Set<string>([
+  "mandatory_deliverable_coverage",
+  "mechanical_gate",
+  "methodology_leak",
+  "section_evidence",
+  "missing_evidence",
+  "evidence_gap",
+  "repair_degraded",
+  "professional_placeholder",
+]);
+
+const TASK_FAILING_COMPLETION_GATES = new Set<string>([
+  "care_plan_behaviour_safety",
+  "care_plan_protective_confirmation",
+  "claim_integrity",
+  "final_synthesis",
+  "artifact_required",
+  "artifact_generation",
+  "artifact_generation_failed",
+  "prohibited_deliverable",
+]);
+
+function classifyCompletionGateFailuresForProduction(
+  failures: BlueprintRuntimeGateFailure[],
+): {
+  hardFailures: BlueprintRuntimeGateFailure[];
+  approvalBlockers: BlueprintRuntimeGateFailure[];
+  metadataOnly: BlueprintRuntimeGateFailure[];
+} {
+  const hardFailures: BlueprintRuntimeGateFailure[] = [];
+  const approvalBlockers: BlueprintRuntimeGateFailure[] = [];
+  const metadataOnly: BlueprintRuntimeGateFailure[] = [];
+  for (const failure of failures) {
+    if (failure.gate === "targeted_repair_skipped") {
+      metadataOnly.push(failure);
+    } else if (TASK_FAILING_COMPLETION_GATES.has(failure.gate)) {
+      hardFailures.push(failure);
+    } else if (APPROVAL_BLOCKING_COMPLETION_GATES.has(failure.gate)) {
+      approvalBlockers.push(failure);
+    } else if (failure.state === "awaiting_clarification" || failure.state === "artifact_generation") {
+      hardFailures.push(failure);
+    } else {
+      approvalBlockers.push(failure);
+    }
+  }
+  return { hardFailures, approvalBlockers, metadataOnly };
+}
+
+function renderIncompleteDraftHeader(input: {
+  failures: BlueprintRuntimeGateFailure[];
+  suppressionRecords: ParsedDeliverableSuppressedClaim[];
+}): string {
+  const lines = [
+    "# Unapproved Incomplete Draft",
+    "",
+    "This is an unapproved draft that did not pass completion checks. It must not be used as a current care plan or given to workers as an approved support document.",
+    "",
+    "## Completion Checks Not Passed",
+    "",
+  ];
+  for (const failure of input.failures) {
+    lines.push(`- ${plainCompletionFailure(failure)}`);
+    for (const detail of (failure.details ?? []).slice(0, 12)) {
+      lines.push(`  - ${plainCompletionFailureDetail(detail)}`);
+    }
+  }
+  if (input.suppressionRecords.length > 0) {
+    lines.push("", "## Suppressed Unsupported Claims", "");
+    for (const record of input.suppressionRecords) {
+      lines.push(`- ${record.section}: "${normaliseInlineForNotice(record.claim)}" was not rendered because ${normaliseInlineForNotice(record.reason)}.`);
+    }
+  }
+  lines.push("", "## Draft Content", "");
+  return lines.join("\n");
+}
+
+function applyIncompleteDraftContentTransform(content: string): string {
+  return content
+    .replace(/\[[^\]\n]*(?:insert|specific|name|date|reference|contact|approver|tbc|to be confirmed)[^\]\n]*\]/gi, "Evidence gap: value not supported by retrieved evidence")
+    .replace(/\bTo be confirmed by approver\b/gi, "Evidence gap: value not supported by retrieved evidence")
+    .replace(/\bTBC\b/g, "Evidence gap: value not supported by retrieved evidence");
+}
+
+function buildIncompleteDraftContent(input: {
+  content: string;
+  failures: BlueprintRuntimeGateFailure[];
+  suppressionRecords: ParsedDeliverableSuppressedClaim[];
+}): string {
+  return `${renderIncompleteDraftHeader({
+    failures: input.failures,
+    suppressionRecords: input.suppressionRecords,
+  })}${applyIncompleteDraftContentTransform(input.content).replace(/^\s+/, "")}`;
+}
+
+function plainCompletionFailure(failure: BlueprintRuntimeGateFailure): string {
+  if (failure.gate === "mandatory_deliverable_coverage") {
+    return "Required care-plan content is missing, unsupported or not represented clearly enough.";
+  }
+  if (failure.gate === "mechanical_gate") {
+    const joined = (failure.details ?? []).join(" ");
+    if (/care_plan_history_not_clinical_case_history/i.test(joined)) {
+      return "The history section contains clinical detail that should not be in a worker-facing plan.";
+    }
+    if (/care_plan_review_date_later_than_plan_date/i.test(joined)) {
+      return "The review date is missing or is not later than the plan date.";
+    }
+    if (/contradict/i.test(failure.message)) {
+      return "The draft contains contradictory facts across care-plan sections.";
+    }
+    return "The draft failed a care-plan structure or consistency check.";
+  }
+  if (failure.gate === "professional_placeholder") {
+    return "A required professional value is still a placeholder. It has been rendered as an evidence gap, not as a plan value.";
+  }
+  if (failure.gate === "methodology_leak") {
+    return "The draft includes internal method or working-note content that should not appear in the final document.";
+  }
+  if (failure.gate === "section_evidence") {
+    return "A section does not have the required supporting evidence.";
+  }
+  if (failure.gate === "missing_evidence" || failure.gate === "evidence_gap") {
+    return "Required source evidence was not available for part of the draft.";
+  }
+  if (failure.gate === "repair_degraded") {
+    return "Automatic repair was attempted but rejected because it made the draft less reliable.";
+  }
+  return normaliseInlineForNotice(failure.message);
+}
+
+function plainCompletionFailureDetail(detail: string): string {
+  return humaniseCarePlanIdentifiers(
+    detail
+      .replace(/\bcare_plan_history_not_clinical_case_history\b/gi, "history section contains clinical detail")
+      .replace(/\bcare_plan_review_date_later_than_plan_date\b/gi, "review date must be later than the plan date")
+      .replace(/\bmandatory_deliverable_coverage\b/gi, "required content coverage")
+      .replace(/\btargeted_repair_skipped\b/gi, "automatic repair was unavailable")
+      .replace(/\bprofessional_placeholder\b/gi, "placeholder content remains"),
+  );
+}
+
+function humaniseCarePlanIdentifiers(value: string): string {
+  return normaliseInlineForNotice(value.replace(/\bcare-plan-([a-z0-9-]+)\b/g, (_match, raw: string) =>
+    raw
+      .split("-")
+      .map((part: string) => part.toUpperCase() === "ADL" ? "ADL" : `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(" "),
+  ));
+}
+
+function normaliseInlineForNotice(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/\s+\./g, ".")
+    .trim();
 }
 
 interface DeterministicGapReplacementResult {

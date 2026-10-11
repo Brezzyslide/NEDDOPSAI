@@ -42,6 +42,7 @@ export interface ActiveExecution {
   startedAt?:      string | null;
   queuedAt?:       string | null;
   createdAt:       string;
+  metadata?:        Record<string, unknown> | null;
 }
 
 export interface GetActiveExecutionsResult {
@@ -81,14 +82,15 @@ export async function getActiveExecutions(
     organizationId,
     "active_executions.list",
     async (client) => Promise.all([
-    client
-      .select({
-        id:           tasksTable.id,
-        title:        tasksTable.title,
-        currentState: tasksTable.currentState,
-        createdAt:    tasksTable.createdAt,
-        updatedAt:    tasksTable.updatedAt,
-      })
+	    client
+	      .select({
+	        id:           tasksTable.id,
+	        title:        tasksTable.title,
+	        currentState: tasksTable.currentState,
+	        metadata:     tasksTable.metadata,
+	        createdAt:    tasksTable.createdAt,
+	        updatedAt:    tasksTable.updatedAt,
+	      })
       .from(tasksTable)
       .where(and(
         eq(tasksTable.organizationId, organizationId),
@@ -128,13 +130,16 @@ export async function getActiveExecutions(
   );
 
   const activeExecutions: ActiveExecution[] = [
-    ...tasks.map(t => ({
-      id:        t.id,
-      kind:      "task" as const,
-      title:     t.title,
-      status:    projectUserFacingWorkStatus({ taskState: t.currentState as string }).status,
-      createdAt: t.createdAt?.toISOString() ?? new Date().toISOString(),
-    })),
+	    ...tasks.map(t => ({
+	      id:        t.id,
+	      kind:      "task" as const,
+	      title:     t.title,
+	      status:    t.metadata && typeof t.metadata === "object" && !Array.isArray(t.metadata) && (t.metadata as Record<string, unknown>).incompleteDraft
+	        ? "draft_blocked"
+	        : projectUserFacingWorkStatus({ taskState: t.currentState as string }).status,
+	      metadata:  (t.metadata as Record<string, unknown> | null) ?? null,
+	      createdAt: t.createdAt?.toISOString() ?? new Date().toISOString(),
+	    })),
     ...runs.map(r => ({
       id:             r.id,
       kind:           "specialist_run" as const,

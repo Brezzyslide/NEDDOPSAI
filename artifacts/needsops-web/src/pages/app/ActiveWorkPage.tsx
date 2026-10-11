@@ -38,6 +38,7 @@ const TASK_STATUS_META: Record<string, { label: string; cls: string; dot: string
   approved:          { label: "Approved",          cls: "bg-cyan-900/30 text-cyan-400",      dot: "bg-cyan-400" },
   executing:         { label: "Executing",         cls: "bg-cyan-900/30 text-cyan-400",      dot: "bg-cyan-400" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400",dot: "bg-emerald-400" },
+  draft_blocked:     { label: "Unapproved Draft Blocked", cls: "bg-red-900/25 text-red-300", dot: "bg-red-300" },
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400",        dot: "bg-red-400" },
 };
 
@@ -152,7 +153,7 @@ export default function ActiveWorkPage() {
   const IN_PROGRESS_STATUSES = ["executing", "approved", "planning", "queued", "running", "claimed", "created", "waiting_for_runtime"];
 
   const inProgressCount  = allActive.filter(e => IN_PROGRESS_STATUSES.includes(e.status)).length;
-  const awaitingCount    = allActive.filter(e => e.status === "awaiting_approval" || e.status === "evidence_required").length;
+  const awaitingCount    = allActive.filter(e => e.status === "awaiting_approval" || e.status === "evidence_required" || e.status === "draft_blocked").length;
   const dispatchedCount  = allActive.filter(e => e.status === "dispatched").length;
   const totalCount       = allActive.length;
 
@@ -161,7 +162,7 @@ export default function ActiveWorkPage() {
     if (filter === "all") return true;
     if (filter === "in_progress")
       return IN_PROGRESS_STATUSES.includes(status);
-    if (filter === "awaiting_approval") return status === "awaiting_approval" || status === "evidence_required";
+    if (filter === "awaiting_approval") return status === "awaiting_approval" || status === "evidence_required" || status === "draft_blocked";
     if (filter === "completed") return status === "dispatched";
     if (filter === "failed") return false; // failed tasks not returned by active-executions
     return true;

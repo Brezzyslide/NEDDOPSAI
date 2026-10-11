@@ -387,3 +387,258 @@ describe("postCompletedWorkCreatedToConversation — function signature", () => 
     expect(postCompletedWorkCreatedToConversation.length).toBe(8);
   });
 });
+
+// ─── Part 5: Real database reconciliation guard ───────────────────────────────
+
+const runDbBackedLifecycleTests = process.env["NEEDSOPS_DB_TESTS"] === "1" && !!process.env["DATABASE_URL"];
+
+describe.runIf(runDbBackedLifecycleTests)("DB-backed blocked draft reconciliation", () => {
+  it("persists evidence_required + incompleteDraft metadata and blocks completed work approval", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const organizationId = `org-db-blocked-draft-${suffix}`;
+    const taskId = `task-db-blocked-draft-${suffix}`;
+    const completedWorkId = `cw-db-blocked-draft-${suffix}`;
+    const userId = `user-db-blocked-draft-${suffix}`;
+
+    const [
+      { db, organizationsTable, tasksTable, completedWorkTable, withSystemTenantContext },
+      { eq, and },
+      taskService,
+      completedWorkService,
+    ] = await Promise.all([
+      import("@workspace/db"),
+      import("drizzle-orm"),
+      import("../services/taskService.js"),
+      vi.importActual<typeof import("../services/completedWorkService.js")>("../services/completedWorkService.js"),
+    ]);
+
+    await db.insert(organizationsTable).values({
+      id: organizationId,
+      name: "DB Blocked Draft Test",
+      slug: `db-blocked-draft-${suffix}`.slice(0, 63),
+      displayName: "DB Blocked Draft Test",
+      status: "active",
+      environment: "test",
+      isTestOrganisation: true,
+    });
+
+    try {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft.seed" },
+        async (client) => {
+          await client.insert(tasksTable).values({
+            id: taskId,
+            organizationId,
+            title: "Blocked draft reconciliation fixture",
+            currentState: "executing",
+            priority: "normal",
+            approvalState: "required",
+            metadata: {},
+          });
+          await client.insert(completedWorkTable).values({
+            id: completedWorkId,
+            organizationId,
+            conversationId: null,
+            blueprintId: "care_plan",
+            blueprintVersion: "1.0.0",
+            manifestId: "manifest-db-blocked-draft",
+            primarySpecialist: "service_delivery_coordinator",
+            title: "Blocked draft completed work fixture",
+            outputType: "care_plan",
+            status: "draft",
+            currentVersionId: null,
+            approvalWorkflow: {
+              approvalBlocked: true,
+              approvalBlockedReason: "This draft did not pass completion checks and cannot be submitted for approval.",
+            },
+            createdByUserId: userId,
+          });
+        },
+      );
+
+      const result = await taskService.reconcileTaskExecutionSuccess({
+        taskId,
+        organizationId,
+        completedWorkId,
+        completedWorkStatus: "draft",
+        approvalBlocked: true,
+        completionGateFailures: [{ gate: "mandatory_deliverable_coverage", message: "missing content" }],
+        correlationId: `corr-${suffix}`,
+        requestedByUserId: userId,
+      });
+
+      expect(result.status).toBe("draft_unapproved");
+
+      const [persistedTask] = await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft.assert_task" },
+        async (client) => client.select()
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
+          .limit(1),
+      );
+      expect(persistedTask?.currentState).toBe("evidence_required");
+      expect((persistedTask?.metadata as any)?.incompleteDraft).toMatchObject({
+        completedWorkId,
+        completedWorkStatus: "draft",
+        correlationId: `corr-${suffix}`,
+        reason: "Completion checks did not pass. Draft exists but is blocked from approval.",
+      });
+
+      const work = await completedWorkService.getCompletedWork(completedWorkId, organizationId);
+      expect(work?.status).toBe("draft");
+      expect(work?.approvalWorkflow?.approvalBlocked).toBe(true);
+
+      await expect(
+        completedWorkService.submitForApproval(completedWorkId, organizationId, userId),
+      ).rejects.toThrow("This draft did not pass completion checks and cannot be submitted for approval.");
+    } finally {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft.cleanup" },
+        async (client) => {
+          await client.delete(completedWorkTable)
+            .where(and(eq(completedWorkTable.id, completedWorkId), eq(completedWorkTable.organizationId, organizationId)));
+          await client.delete(tasksTable)
+            .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)));
+        },
+      ).catch(() => undefined);
+      await db.delete(organizationsTable).where(eq(organizationsTable.id, organizationId)).catch(() => undefined);
+    }
+  });
+
+  it("does not requeue or redispatch a blocked draft when the user sends an affirmation", async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const organizationId = `org-db-blocked-loop-${suffix}`;
+    const taskId = `task-db-blocked-loop-${suffix}`;
+    const completedWorkId = `cw-db-blocked-loop-${suffix}`;
+    const conversationId = `conv-db-blocked-loop-${suffix}`;
+    const userId = `user-db-blocked-loop-${suffix}`;
+
+    const [
+      {
+        db,
+        organizationsTable,
+        usersTable,
+        tasksTable,
+        completedWorkTable,
+        conversationsTable,
+        conversationMessagesTable,
+        withSystemTenantContext,
+      },
+      { eq, and },
+      { handleIncomingMessage },
+    ] = await Promise.all([
+      import("@workspace/db"),
+      import("drizzle-orm"),
+      import("../services/messageIngressService.js"),
+    ]);
+
+    await db.insert(organizationsTable).values({
+      id: organizationId,
+      name: "DB Blocked Draft Loop Test",
+      slug: `db-blocked-loop-${suffix}`.slice(0, 63),
+      displayName: "DB Blocked Draft Loop Test",
+      status: "active",
+      environment: "test",
+      isTestOrganisation: true,
+    });
+    await db.insert(usersTable).values({
+      id: userId,
+      externalId: `ext-${userId}`,
+      email: `${userId}@example.test`,
+      displayName: "Blocked Draft Loop Tester",
+      status: "active",
+    });
+
+    try {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft_loop.seed" },
+        async (client) => {
+          await client.insert(tasksTable).values({
+            id: taskId,
+            organizationId,
+            title: "Blocked draft loop fixture",
+            currentState: "evidence_required",
+            priority: "normal",
+            approvalState: "required",
+            metadata: {
+              incompleteDraft: {
+                completedWorkId,
+                completedWorkStatus: "draft",
+                reason: "Completion checks did not pass. Draft exists but is blocked from approval.",
+              },
+            },
+          });
+          await client.insert(completedWorkTable).values({
+            id: completedWorkId,
+            organizationId,
+            conversationId,
+            blueprintId: "care_plan",
+            blueprintVersion: "1.0.0",
+            manifestId: "manifest-db-blocked-loop",
+            primarySpecialist: "service_delivery_coordinator",
+            title: "Blocked draft loop completed work fixture",
+            outputType: "care_plan",
+            status: "draft",
+            currentVersionId: null,
+            approvalWorkflow: {
+              approvalBlocked: true,
+              approvalBlockedReason: "This draft did not pass completion checks and cannot be submitted for approval.",
+            },
+            createdByUserId: userId,
+          });
+          await client.insert(conversationsTable).values({
+            id: conversationId,
+            organizationId,
+            createdByUserId: userId,
+            title: "Blocked draft workroom",
+            conversationType: "task_workroom",
+            status: "active",
+            primaryTaskId: taskId,
+          });
+        },
+      );
+
+      const result = await handleIncomingMessage({
+        organizationId,
+        userId,
+        conversationId,
+        taskId,
+        content: "continue",
+        idempotencyKey: `blocked-loop-${suffix}`,
+      });
+
+      expect(result.type).toBe("normal");
+      expect(result.result.understanding.conversationMode).toBe("task_followup");
+      expect(result.result.understanding.customerResponse).toContain("unapproved draft");
+      expect(result.result.understanding.customerResponse).toContain("blocked from approval");
+
+      const [persistedTask] = await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft_loop.assert_task" },
+        async (client) => client.select()
+          .from(tasksTable)
+          .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)))
+          .limit(1),
+      );
+      expect(persistedTask?.currentState).toBe("evidence_required");
+      expect((persistedTask?.metadata as any)?.incompleteDraft).toMatchObject({ completedWorkId });
+      expect((persistedTask?.metadata as any)?.evidenceRequiredResume).toBeUndefined();
+      expect((persistedTask?.metadata as any)?.executionClaim).toBeUndefined();
+    } finally {
+      await withSystemTenantContext(
+        { tenantId: organizationId, serviceIdentity: "vitest", purpose: "blocked_draft_loop.cleanup" },
+        async (client) => {
+          await client.delete(conversationMessagesTable)
+            .where(and(eq(conversationMessagesTable.conversationId, conversationId), eq(conversationMessagesTable.organizationId, organizationId)));
+          await client.delete(completedWorkTable)
+            .where(and(eq(completedWorkTable.id, completedWorkId), eq(completedWorkTable.organizationId, organizationId)));
+          await client.delete(conversationsTable)
+            .where(and(eq(conversationsTable.id, conversationId), eq(conversationsTable.organizationId, organizationId)));
+          await client.delete(tasksTable)
+            .where(and(eq(tasksTable.id, taskId), eq(tasksTable.organizationId, organizationId)));
+        },
+      ).catch(() => undefined);
+      await db.delete(usersTable).where(eq(usersTable.id, userId)).catch(() => undefined);
+      await db.delete(organizationsTable).where(eq(organizationsTable.id, organizationId)).catch(() => undefined);
+    }
+  });
+});

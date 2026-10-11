@@ -51,7 +51,9 @@ export interface BlueprintRuntimeGateFailure {
     | "care_plan_behaviour_safety"
     | "care_plan_protective_confirmation"
     | "evidence_gap"
-    | "repair_degraded";
+    | "repair_degraded"
+    | "targeted_repair_skipped"
+    | "care_plan_core_operating_floor";
   state: BlueprintRuntimeGateState;
   message: string;
   details?: string[];

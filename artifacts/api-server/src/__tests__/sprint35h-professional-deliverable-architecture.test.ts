@@ -4061,4 +4061,85 @@ The strategies below implement the participant's behaviour support plan.
     expect(sourceText).toContain("filterCarePlanSectionEvidenceSourcesToScopedPack");
     expect(sourceText).toContain("allowed.has(source.chunkId)");
   });
+
+  it("turns draft-quality completion gates into approval blockers before completed work creation", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("const APPROVAL_BLOCKING_COMPLETION_GATES = new Set<string>");
+    expect(sourceText).toContain('"mandatory_deliverable_coverage"');
+    expect(sourceText).toContain('"mechanical_gate"');
+    expect(sourceText).toContain('"section_evidence"');
+    expect(sourceText).toContain('"missing_evidence"');
+    expect(sourceText).toContain('"evidence_gap"');
+    expect(sourceText).toContain('"repair_degraded"');
+    expect(sourceText).toContain("buildIncompleteDraftContent({");
+    expect(sourceText).toContain("# Unapproved Incomplete Draft");
+    expect(sourceText).toContain("completion_gate_approval_blockers");
+    expect(sourceText).toContain("approvalWorkflow: approvalBlockedByCompletionGates");
+  });
+
+  it("keeps behaviour safety, protective confirmation and claim integrity as task-failing gates", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain("const TASK_FAILING_COMPLETION_GATES = new Set<string>");
+    expect(sourceText).toContain('"care_plan_behaviour_safety"');
+    expect(sourceText).toContain('"care_plan_protective_confirmation"');
+    expect(sourceText).toContain('"claim_integrity"');
+    expect(sourceText).toContain('"prohibited_deliverable"');
+    expect(sourceText).toContain("completionGateDisposition.hardFailures.length > 0");
+    expect(sourceText).toContain("message: `Blueprint completion gates blocked this work: ${blockingMessage}`");
+  });
+
+  it("records targeted repair skipped as metadata rather than a task failure", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+
+    expect(sourceText).toContain('failure.gate === "targeted_repair_skipped"');
+    expect(sourceText).toContain("metadataOnly.push(failure)");
+    expect(sourceText).toContain("completion_gate_metadata");
+    expect(sourceText).toContain("metadataOnlyCompletionFindings");
+  });
+
+  it("blocks incomplete draft approval and keeps task reconciliation out of completed", () => {
+    const completedWork = source("services/completedWorkService.ts");
+    const taskService = source("services/taskService.ts");
+
+    expect(completedWork).toContain("approvalWorkflow.approvalBlocked === true");
+    expect(completedWork).toContain("This draft did not pass completion checks and cannot be submitted for approval.");
+    expect(taskService).toContain('status: "draft_unapproved"');
+    expect(taskService).toContain('currentState: "evidence_required"');
+    expect(taskService).toContain("incompleteDraft");
+    expect(taskService).toContain("Completion checks did not pass. Draft exists but is blocked from approval.");
+  });
+
+  it("renders blocked draft wording on task and completed-work web surfaces", () => {
+    const messageIngress = source("services/messageIngressService.ts");
+    const workroomRoute = source("routes/v1/taskWorkroom.ts");
+    const taskWorkroom = workspaceSource("artifacts/needsops-web/src/pages/app/TaskWorkroomPage.tsx");
+    const taskCentre = workspaceSource("artifacts/needsops-web/src/pages/app/TaskCentrePage.tsx");
+    const activeWork = workspaceSource("artifacts/needsops-web/src/pages/app/ActiveWorkPage.tsx");
+    const completedViewer = workspaceSource("artifacts/needsops-web/src/pages/app/CompletedWorkViewer.tsx");
+    const completedPortal = workspaceSource("artifacts/needsops-web/src/pages/app/CompletedWorkPortal.tsx");
+
+    expect(messageIngress).toContain("has an unapproved draft, but completion checks did not pass");
+    expect(workroomRoute).toContain("Current status: unapproved draft blocked.");
+    expect(taskWorkroom).toContain("Unapproved Draft Blocked");
+    expect(taskCentre).toContain("Unapproved Draft Blocked");
+    expect(activeWork).toContain("draft_blocked");
+    expect(completedViewer).toContain("status === \"draft\" && !approvalBlocked");
+    expect(completedViewer).toContain("Approval blocked");
+    expect(completedPortal).toContain("Unapproved Draft Blocked");
+  });
+
+  it("keeps post-artifact completion failures task-failing after completed work already exists", () => {
+    const sourceText = source("services/unifiedExecutionEngine.ts");
+    const postArtifactBlock = sourceText.slice(
+      sourceText.indexOf('failedStage: "post_artifact_completion_gates"') - 1200,
+      sourceText.indexOf('failedStage: "post_artifact_completion_gates"') + 2600,
+    );
+
+    expect(postArtifactBlock).toContain("artifactGate.failures");
+    expect(postArtifactBlock).toContain("status: \"failed\"");
+    expect(postArtifactBlock).toContain("message: `Blueprint completion gates blocked this work after artifact generation: ${blockingMessage}`");
+    expect(postArtifactBlock).not.toContain("approvalBlockedByCompletionGates = true");
+  });
 });

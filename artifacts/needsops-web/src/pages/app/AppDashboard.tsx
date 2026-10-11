@@ -23,6 +23,8 @@ const TASK_STATE_BADGE: Record<string, { label: string; cls: string }> = {
   queued:            { label: "Queued",            cls: "bg-blue-900/30 text-blue-400" },
   planning:          { label: "Planning",          cls: "bg-purple-900/30 text-purple-400" },
   awaiting_approval: { label: "Awaiting Approval", cls: "bg-amber-900/30 text-amber-400" },
+  evidence_required: { label: "Evidence Required", cls: "bg-orange-900/30 text-orange-400" },
+  draft_blocked:     { label: "Unapproved Draft Blocked", cls: "bg-red-900/25 text-red-300" },
   approved:          { label: "Approved",          cls: "bg-cyan-900/30 text-cyan-400" },
   executing:         { label: "Executing",         cls: "bg-indigo-900/30 text-indigo-400" },
   completed:         { label: "Completed",         cls: "bg-emerald-900/30 text-emerald-400" },
@@ -358,7 +360,8 @@ export default function AppDashboard() {
             ) : (
               <div className="space-y-2">
                 {tasks.slice(0, 6).map((task: any) => {
-                  const badge = TASK_STATE_BADGE[task.currentState] ?? TASK_STATE_BADGE.draft!;
+                  const blockedDraft = !!task.metadata?.incompleteDraft && typeof task.metadata.incompleteDraft === "object";
+                  const badge = blockedDraft ? TASK_STATE_BADGE.draft_blocked! : TASK_STATE_BADGE[task.currentState] ?? TASK_STATE_BADGE.draft!;
                   return (
                     <div key={task.id} className="flex items-center gap-3 py-2 border-b border-[#1E3A5F] last:border-0">
                       <div className="flex-1 min-w-0">

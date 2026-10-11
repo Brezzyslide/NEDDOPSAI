@@ -40,6 +40,7 @@ interface CompletedWorkItem {
   conversationId:     string | null;
   createdByUserId:    string | null;
   approvedByUserId:   string | null;
+  approvalWorkflow?:  Record<string, unknown> | null;
   latestQualityScore?: number | null;
 }
 
@@ -64,6 +65,12 @@ const STATUS_BADGE: Record<WorkStatus, { bg: string; text: string; label: string
   superseded:        { bg: "bg-purple-900/40",  text: "text-purple-300",  label: "Superseded" },
   reopened:          { bg: "bg-orange-900/40",  text: "text-orange-300",  label: "Reopened" },
 };
+
+const BLOCKED_DRAFT_BADGE = { bg: "bg-red-900/40", text: "text-red-300", label: "Unapproved Draft Blocked" };
+
+function isApprovalBlocked(item: CompletedWorkItem): boolean {
+  return item.approvalWorkflow?.approvalBlocked === true;
+}
 
 const SPECIALIST_LABELS: Record<string, string> = {
   chief_of_staff:                   "Chief of Staff",
@@ -143,7 +150,7 @@ function WorkCard({
   onDownload?: (id: string, format: "pdf" | "docx") => void;
 }) {
   const [dlOpen, setDlOpen] = useState(false);
-  const badge = STATUS_BADGE[item.status] ?? STATUS_BADGE.draft;
+  const badge = isApprovalBlocked(item) ? BLOCKED_DRAFT_BADGE : STATUS_BADGE[item.status] ?? STATUS_BADGE.draft;
   const isApproved = item.status === "approved";
   const scoreColor = item.latestQualityScore == null ? "" :
     item.latestQualityScore >= 80 ? "text-emerald-300" :

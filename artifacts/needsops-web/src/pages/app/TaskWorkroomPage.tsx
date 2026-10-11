@@ -156,6 +156,7 @@ interface CompletedWorkSummary {
   primarySpecialist: string;
   artifactState: string | null;
   artifactRequired: boolean;
+  approvalWorkflow?: Record<string, unknown> | null;
   approvedAt?: string | null;
   updatedAt: string;
   generatedArtifacts: GeneratedArtifact[];
@@ -198,6 +199,23 @@ const STATE_CONFIG: Record<TaskState, { label: string; cls: string; icon: string
   cancelled:         { label: "Cancelled",         cls: "bg-[#1E3A5F] text-[#64748B]",            icon: "✕" },
   failed:            { label: "Failed",            cls: "bg-red-900/30 text-red-400",              icon: "✕" },
 };
+
+const BLOCKED_DRAFT_STATE = {
+  label: "Unapproved Draft Blocked",
+  cls: "bg-red-900/25 text-red-300",
+  icon: "!",
+};
+
+function hasBlockedDraft(task: { metadata?: Record<string, any> | null }): boolean {
+  const incompleteDraft = task.metadata?.incompleteDraft;
+  return !!incompleteDraft && typeof incompleteDraft === "object";
+}
+
+function completedWorkStatusLabel(work: CompletedWorkSummary): string {
+  return work.approvalWorkflow?.approvalBlocked === true
+    ? "unapproved draft blocked"
+    : work.status.replace(/_/g, " ");
+}
 
 function artifactFormatLabel(format: GeneratedArtifact["fileFormat"] | string): string {
   switch (format) {
@@ -527,7 +545,8 @@ function TaskSidePanel({
   orgSlug: string;
   taskId: string;
 }) {
-  const state = STATE_CONFIG[task.currentState];
+  const blockedDraft = hasBlockedDraft(task);
+  const state = blockedDraft ? BLOCKED_DRAFT_STATE : STATE_CONFIG[task.currentState];
   const assignedRoles = plan?.assignedSpecialists ?? [];
   const failureReason = task.currentState === "failed"
     ? task.metadata?.executionFailure?.errorMessage
@@ -561,6 +580,14 @@ function TaskSidePanel({
           <div className="mt-3 rounded-lg border border-red-500/30 bg-red-950/20 p-3">
             <p className="text-red-300 text-xs font-semibold mb-1">Needs attention</p>
             <p className="text-red-200/80 text-xs leading-relaxed">{failureReason}</p>
+          </div>
+        )}
+        {blockedDraft && (
+          <div className="mt-3 rounded-lg border border-red-500/30 bg-red-950/20 p-3">
+            <p className="text-red-300 text-xs font-semibold mb-1">Unapproved draft blocked</p>
+            <p className="text-red-200/80 text-xs leading-relaxed">
+              Completion checks did not pass. The task is not complete and the draft cannot be submitted for approval.
+            </p>
           </div>
         )}
       </div>
@@ -728,10 +755,10 @@ function TaskSidePanel({
               <div key={work.id} className="space-y-2">
                 <div>
                   <p className="text-[#E2E8F0] text-xs font-semibold leading-snug">{work.title}</p>
-                  <p className="text-[#64748B] text-xs mt-1">
-                    {work.status.replace(/_/g, " ")}
-                    {work.primarySpecialist ? ` · ${work.primarySpecialist.replace(/_/g, " ")}` : ""}
-                  </p>
+	                  <p className="text-[#64748B] text-xs mt-1">
+	                    {completedWorkStatusLabel(work)}
+	                    {work.primarySpecialist ? ` · ${work.primarySpecialist.replace(/_/g, " ")}` : ""}
+	                  </p>
                 </div>
                 {work.generatedArtifacts.length > 0 ? (
                   <div className="grid grid-cols-2 gap-2">
@@ -813,6 +840,7 @@ export default function TaskWorkroomPage() {
   const plan: Plan | null = data?.plan ?? null;
   const pendingApproval: Approval | null = data?.pendingApproval ?? null;
   const completedWork: CompletedWorkSummary[] = data?.completedWork ?? [];
+  const blockedDraft = task ? hasBlockedDraft(task) : false;
   const providerContribution: ProviderContributionContext = data?.providerContribution ?? {
     enabled: false,
     subjectParticipantIds: [],
@@ -1162,7 +1190,9 @@ export default function TaskWorkroomPage() {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  task.currentState === "awaiting_approval"
+                  blockedDraft
+                    ? "Ask for a status update or review what the blocked draft needs…"
+                    : task.currentState === "awaiting_approval"
                     ? "Approve, reject, or ask a question…"
                     : task.currentState === "evidence_required"
                     ? "Ask a question or use Provider Evidence in the side panel…"

@@ -975,6 +975,8 @@ async function startAwsNativeExecution(input: {
           organizationId: input.task.organizationId,
           completedWorkId: result.completedWorkId,
           completedWorkStatus: result.completedWorkStatus,
+          approvalBlocked: result.approvalBlocked,
+          completionGateFailures: result.failureMetadata?.completionGateFailures,
           correlationId: input.pkg.executionId,
           requestedByUserId: input.requestedByUserId,
         });
@@ -992,6 +994,7 @@ async function startAwsNativeExecution(input: {
               outcome: result.outcome,
               completedWorkId: result.completedWorkId,
               completedWorkStatus: result.completedWorkStatus,
+              approvalBlocked: result.approvalBlocked === true,
               taskReconciliation: reconciliation.status,
               workPackageManifestId: result.manifestId,
               blueprintCode: result.blueprintCode,
@@ -1006,6 +1009,7 @@ async function startAwsNativeExecution(input: {
           payload: {
             completedWorkId: result.completedWorkId,
             completedWorkStatus: result.completedWorkStatus,
+            approvalBlocked: result.approvalBlocked === true,
             taskReconciliation: reconciliation.status,
             manifestId: result.manifestId,
           },
