@@ -97,21 +97,25 @@ export function classifyStandardTemplateEvidenceContext(
   const raw = requestText.trim();
   const lower = raw.toLowerCase();
 
-  const templateIntent = /\b(template|form|checklist|framework|standard\s+(?:document|agreement|assessment)|reusable|generic|general|standard|comprehensive|all\s+(?:relevant|areas)|everything)\b/i.test(raw);
+  const templateIntent = /\b(template|form|checklist|framework|blank|standard\s+(?:document|agreement|assessment)|reusable|generic|general|standard|comprehensive|all\s+(?:relevant|areas)|everything)\b/i.test(raw);
   const creationIntent = /\b(create|design|develop|draft|build|prepare|make|generate|produce|provide|give\s+me|i\s+need|can\s+you\s+give\s+me)\b/i.test(raw);
+  const standaloneTemplateRequest = /\b(?:care\s+plan|support\s+plan)\s+(?:template|form)\s+(?:please)?\b/i.test(raw);
   const existingTemplateRequested = /\b(match|mirror|use|follow|based\s+on|same\s+as)\s+(?:our|my|existing|current|uploaded|attached|organisation(?:al)?|company|customer)\s+(?:template|format|example|document|agreement|style)\b/i.test(raw)
     || /\b(existing|current|uploaded|attached)\s+(?:template|format|example|agreement|risk\s+assessment)\b/i.test(raw);
 
   const specificParticipantReference = /\b(?:participant|client)\s+(?:[A-Z][A-Za-z0-9'_-]+|#[A-Za-z0-9_-]+|\d{2,})\b/.test(raw);
+  const namedCarePlanTarget = /\b(?:care\s+plan|support\s+plan)\b/i.test(raw) &&
+    /\b(?:for|about|regarding)\s+(?!a\b|an\b|the\b|our\b|my\b|standard\b|generic\b|blank\b|template\b|form\b|support\b|workers?\b|staff\b|participants?\b|clients?\b)(?:[a-z][a-z'_-]*)(?:\s+[a-z][a-z'_-]*){0,3}\b/i.test(raw);
   const participantCompletionIntent = /\b(?:complete|fill\s*(?:in|out)|assess|review|evaluate|finalise|update|revise)\s+(?:an?\s+)?(?:risk\s+assessment|service\s+agreement|agreement|assessment)\s+(?:for|about|regarding)\s+(?:participant|client)\b/i.test(raw);
-  const participantSpecificRequested = !templateIntent && (specificParticipantReference || participantCompletionIntent)
+  const participantSpecificRequested = (!templateIntent && (specificParticipantReference || participantCompletionIntent || namedCarePlanTarget))
+    || namedCarePlanTarget
     || (participantCompletionIntent && specificParticipantReference);
 
   const organisationSpecificRequested = existingTemplateRequested
     || /\b(?:for|using)\s+(?:our|my)\s+(?:organisation|organization|company|provider|business|service)\s+(?:details|branding|format|terms|rates|prices|policies|procedures)\b/i.test(lower);
 
   const standardTemplateRequested = templateIntent
-    && creationIntent
+    && (creationIntent || standaloneTemplateRequest)
     && !participantSpecificRequested;
 
   return {

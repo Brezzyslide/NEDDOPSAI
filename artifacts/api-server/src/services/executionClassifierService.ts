@@ -25,6 +25,8 @@
 // text produces false positives: "draft an onboarding procedure" → "Onboarding Procedure" as
 // a search term, making the classifier think a document was referenced when none was.
 
+import { classifyStandardTemplateEvidenceContext } from "./blueprintRuntimeValidationService.js";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ExecutionClass = "transient" | "professional_work" | "evidence_bearing";
@@ -50,6 +52,8 @@ export interface ExecutionClassifierInput {
   extractedSearchTerms: string[];
   /** Blueprint-derived evidence mode (when a blueprint is already resolved). */
   blueprintEvidenceMode?: "required" | "optional" | "none";
+  /** Subject participant binding resolved before task creation/dispatch, when available. */
+  subjectParticipantIds?: string[];
   /** Execution trigger — non-conversation triggers are never TRANSIENT. */
   trigger?: ExecutionTrigger;
 }
@@ -192,6 +196,7 @@ export function classifyExecutionRequest(
     shouldDispatchSpecialists,
     extractedSearchTerms,
     blueprintEvidenceMode,
+    subjectParticipantIds = [],
     trigger = "conversation",
   } = input;
 
@@ -210,6 +215,17 @@ export function classifyExecutionRequest(
   const transientScore = scorePatterns(userRequest, TRANSIENT_OUTPUT_PATTERNS);
   const evidenceScore = scorePatterns(userRequest, EVIDENCE_OUTPUT_PATTERNS);
   const professionalScore = scorePatterns(userRequest, PROFESSIONAL_OUTPUT_PATTERNS);
+  const standardTemplateEvidence = classifyStandardTemplateEvidenceContext(
+    [
+      userRequest,
+      typeof proposedTask?.title === "string" ? proposedTask.title : "",
+      typeof proposedTask?.description === "string" ? proposedTask.description : "",
+      typeof proposedTask?.requestedOutcome === "string" ? proposedTask.requestedOutcome : "",
+      typeof proposedTask?.summary === "string" ? proposedTask.summary : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
 
   const signals = {
     conversationMode,
@@ -223,6 +239,35 @@ export function classifyExecutionRequest(
     evidenceOutputScore: evidenceScore,
     transientModeDetected: isTransientMode,
   };
+
+  // ── Standard reusable care-plan templates are not participant evidence tasks ─
+  // "Create NDIS Care Plan Template" contains the regulated phrase "care plan",
+  // but when the user asks for a standard reusable template, customer examples
+  // are optional. Keep the first persisted laneContext non-evidence-bearing so
+  // UEE's standard-template bypass can reach synthesis in an empty tenant.
+  if (subjectParticipantIds.length > 0) {
+    return {
+      executionClass: "evidence_bearing",
+      reason: "Participant-bound care-plan work can never use the standard-template evidence bypass",
+      requiresCompletedWork: true,
+      requiresEvidence: true,
+      requiresClaimIntegrity: true,
+      requiresApproval: true,
+      signals,
+    };
+  }
+
+  if (standardTemplateEvidence.customerExampleOptional) {
+    return {
+      executionClass: "professional_work",
+      reason: "Standard reusable care-plan template request; customer examples are optional and evidence retrieval is not required",
+      requiresCompletedWork: true,
+      requiresEvidence: false,
+      requiresClaimIntegrity: false,
+      requiresApproval: true,
+      signals,
+    };
+  }
 
   // ── Rule 1: Non-conversation triggers never downgrade to TRANSIENT ───────────
   if (!isConversationTrigger) {

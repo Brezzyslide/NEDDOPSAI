@@ -275,12 +275,11 @@ export function buildInsufficientEvidenceMessage(
   if (discoveryResult && !discoveryResult.adapterAvailable) {
     const refs = sufficiency.unresolvedReferences?.map(r => r.referencedTitle) ?? [];
     return (
-      `This task requires evidence that could not be retrieved from the organisation library. ` +
       (refs.length > 0
         ? `The following referenced documents were not found: ${refs.map(r => `"${r}"`).join(", ")}. `
         : "") +
-      "Extended evidence discovery is not available in this environment. " +
-      "Please upload the relevant documents to the Knowledge Library and re-run this task."
+      "Relevant evidence was not found in the organisation library, and NeedsOps could not search beyond it. " +
+      "Add or connect the authoritative source documents for this work, then re-run the task."
     );
   }
 

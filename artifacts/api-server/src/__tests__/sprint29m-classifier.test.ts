@@ -409,6 +409,115 @@ describe("ambiguous cases — must not downgrade to TRANSIENT", () => {
   });
 });
 
+// ─── Standard reusable templates ─────────────────────────────────────────────
+
+describe("standard reusable care-plan templates", () => {
+  it.each([
+    ["Create NDIS Care Plan Template", false, false],
+    ["create a care plan template", false, false],
+    ["make me a blank care plan", false, false],
+    ["I need a care plan template", false, false],
+    ["set up a standard care plan form", false, false],
+    ["care plan template please", false, false],
+    ["create a care plan from the template for Michael", true, true],
+    ["create a care plan for Michael Rocca", true, true],
+    ["create a care plan using our standard template for Michael", true, true],
+  ])("template/participant wording matrix: %s", (request, requiresEvidence, requiresClaimIntegrity) => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               request,
+      conversationMode:          "task_intent",
+      proposedTask:              { title: request },
+      shouldDispatchSpecialists: true,
+    }));
+
+    expect(r.requiresEvidence).toBe(requiresEvidence);
+    expect(r.requiresClaimIntegrity).toBe(requiresClaimIntegrity);
+  });
+
+  it.each([
+    "Create NDIS Care Plan Template",
+    "create a care plan template",
+    "make me a blank care plan",
+    "I need a care plan template",
+    "set up a standard care plan form",
+    "care plan template please",
+  ])("does not treat standard template request as evidence-bearing: %s", (request) => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               request,
+      conversationMode:          "task_intent",
+      proposedTask:              {
+        title:            request,
+        requestedOutcome: "Create a reusable NDIS care plan template",
+      },
+      shouldDispatchSpecialists: true,
+      extractedSearchTerms:      [],
+    }));
+
+    expect(r.executionClass).toBe("professional_work");
+    expect(r.requiresCompletedWork).toBe(true);
+    expect(r.requiresEvidence).toBe(false);
+    expect(r.requiresClaimIntegrity).toBe(false);
+    expect(r.reason).toContain("Standard reusable");
+  });
+
+  it("preserves the standard-template bypass even when the context builder extracted a false document term", () => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               "Create NDIS Care Plan Template",
+      conversationMode:          "task_intent",
+      proposedTask:              { title: "Create NDIS Care Plan Template" },
+      shouldDispatchSpecialists: true,
+      extractedSearchTerms:      ["NDIS Care Plan Template"],
+    }));
+
+    expect(r.executionClass).toBe("professional_work");
+    expect(r.requiresEvidence).toBe(false);
+  });
+
+  it("still treats participant-specific care-plan creation as evidence-bearing", () => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               "Create a care plan for Michael Rocca",
+      conversationMode:          "task_intent",
+      proposedTask:              { title: "Create Michael Rocca care plan" },
+      shouldDispatchSpecialists: true,
+    }));
+
+    expect(r.executionClass).toBe("evidence_bearing");
+    expect(r.requiresEvidence).toBe(true);
+  });
+
+  it.each([
+    "create a care plan from the template for Michael",
+    "create a care plan for Michael Rocca",
+    "create a care plan using our standard template for Michael",
+  ])("requires evidence for participant-specific template wording: %s", (request) => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               request,
+      conversationMode:          "task_intent",
+      proposedTask:              { title: request },
+      shouldDispatchSpecialists: true,
+    }));
+
+    expect(r.executionClass).toBe("evidence_bearing");
+    expect(r.requiresEvidence).toBe(true);
+    expect(r.requiresClaimIntegrity).toBe(true);
+  });
+
+  it("participant-bound tasks can never use the standard-template bypass", () => {
+    const r = classifyExecutionRequest(makeInput({
+      userRequest:               "create a care plan template",
+      conversationMode:          "task_intent",
+      proposedTask:              { title: "create a care plan template" },
+      shouldDispatchSpecialists: true,
+      subjectParticipantIds:     ["participant-michael"],
+    }));
+
+    expect(r.executionClass).toBe("evidence_bearing");
+    expect(r.requiresEvidence).toBe(true);
+    expect(r.requiresClaimIntegrity).toBe(true);
+    expect(r.reason).toContain("Participant-bound");
+  });
+});
+
 // ─── Return shape contract ────────────────────────────────────────────────────
 
 describe("return shape contract", () => {

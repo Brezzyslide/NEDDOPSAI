@@ -113,6 +113,50 @@ export interface WorkPackageValidationOptions {
   } | null;
 }
 
+const PARTICIPANT_CARE_PLAN_BASELINE_RULES = [
+  "care_plan_participant_identity_evidence",
+  "care_plan_substantive_professional_source",
+] as const;
+
+export function countResolvedMandatoryRequirements(
+  validationResult: ValidationResult,
+  evidencePack?: EvidencePack | null,
+): number {
+  if (validationResult.passed) return 1;
+  if ((evidencePack?.totalChunks ?? evidencePack?.chunks.length ?? 0) === 0) return 0;
+
+  const failedErrorRules = new Set(
+    validationResult.issues
+      .filter((issue) => issue.level === "error")
+      .map((issue) => issue.rule),
+  );
+  if (failedErrorRules.has("runtime_evidence_pack_present")) return 0;
+
+  const baselineRulesSeen = PARTICIPANT_CARE_PLAN_BASELINE_RULES.some((rule) =>
+    failedErrorRules.has(rule),
+  );
+  if (baselineRulesSeen) {
+    return PARTICIPANT_CARE_PLAN_BASELINE_RULES
+      .filter((rule) => !failedErrorRules.has(rule))
+      .length;
+  }
+
+  return 1;
+}
+
+export function buildNoResolvedMandatoryRequirementsMessage(
+  validationResult: ValidationResult,
+): string {
+  const requiredItems = validationResult.missingEvidenceItems
+    .filter((item) => item.required)
+    .map((item) => item.displayLabel);
+  const needed = requiredItems.length > 0
+    ? requiredItems.join(", ")
+    : validationResult.missingItems.join(", ") || "authoritative source evidence";
+
+  return `NeedsOps could not satisfy any mandatory evidence requirement for this participant deliverable. The blueprint needs: ${needed}. Add or connect at least one authoritative source that satisfies these requirements, such as an intake form, behaviour support plan, occupational therapy report, allied health report, clinical report, or risk assessment, then re-run the task.`;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
